@@ -1,0 +1,67 @@
+id: REG-104
+title: "RolePermissions.toRole() returned null for any app-defined role name and the caller loop `continue`d, so an app-declared role (e.g. WarehouseManager) silently granted nothing at the platform-permission layer -- no error, no log line (X0-5)"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-01
+closed: 2026-08-01
+verification: VERIFIED_LIVE
+source: |
+  Found and fixed while building MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 3 (RC-B1,
+  MOVE11_RUNTIME_CONFIGURATION_PLAN Part B.1). Already named in
+  docs/X0_SILENT_EXPRESSION_REGISTER.md as X0-5, filed OPEN with no REG id at the time that
+  register was written (2026-07-31); this item is that fix, closing X0-5's OPEN status to
+  FIXED.
+
+  RolePermissions.hasPermission(context, permission) iterated context.roles(), called the
+  private toRole(rawRole) helper, and on any name outside the closed USER/OPERATOR/ADMIN enum
+  toRole returned null via a caught IllegalArgumentException -- the loop then `continue`d with
+  no diagnostic anywhere. An app that declared its own role vocabulary in the model (which the
+  DSL had no way to express at all before this fix) would have that role silently mean nothing
+  once implemented naively, exactly the same "silent-wrong-answer" defect class as the
+  platform's other X0 findings.
+surface: dsl, kernel, runtimehost
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/RoleAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ModelAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/RoleValidation.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledRole.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModel.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/RolePermissions.java
+  - NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/defaultpolicy/DefaultExecutionAuthorizationPolicy.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevAuthConfig.java
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - scripts/quality/check-dsl-coverage.py
+detail: |
+  Fix shape: the model gained an optional top-level `roles[]` (name + grants, structurally
+  validated -- non-blank name, unique names, non-empty/unique grants -- but grant names are NOT
+  checked against the real Permission enum at the DSL layer, since dsl has no dependency on
+  kernel). RolePermissions gained a model-aware 3-arg hasPermission(context, permission,
+  appDeclaredRoles) overload: a role matching neither a built-in Role NOR an app-declared role
+  now logs a named WARNING (actor, role, "neither built-in nor declared") before denying,
+  instead of silently continuing. DefaultExecutionAuthorizationPolicy gained a constructor
+  taking a CompiledModel, resolving every declared grant name against the real Permission enum
+  at CONSTRUCTION (app boot) time -- an unrecognized grant name (a typo, a renamed permission)
+  throws IllegalStateException at boot, not silently the first time an affected user makes a
+  request.
+
+  Live-verified: WmsOffice's model declared "WarehouseManager": ["EXECUTE_FLOW",
+  "READ_EXECUTIONS", "READ_FLOW_DEFINITIONS"]; the app booted cleanly with real kernel jars
+  built from source, and GET /api/admin/roles (the new RC-B2 vocabulary endpoint) round-tripped
+  the declaration correctly through the full parse -> resolve -> validate -> compile ->
+  canonical-JSON -> NPDevModelProvider boot-load -> REST chain. Full detail:
+  D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\move11\move11-b1-app-roles.txt
+
+  Regression coverage: RolePermissionsTest and DefaultExecutionAuthorizationPolicyTest both
+  gained a test proving an app declaring NO roles (empty map / null CompiledModel -- what every
+  pre-existing app is) behaves identically to the pre-fix code path for the built-in
+  USER/OPERATOR/ADMIN trio.

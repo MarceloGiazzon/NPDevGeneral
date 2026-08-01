@@ -1,0 +1,63 @@
+id: REG-93
+title: "The panel-provenance impact gate failed on manifests whose screen had been DELETED -- it has been RED since Move 8's crossdocking deletion, and structurally contradicted the bytes-deleted metric it is supposed to coexist with"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found in Move 10 W1 (docs/MOVE10_CONSOLE_PARITY_SPEC.md) while establishing a clean baseline
+  before deleting a second console. Running the gate against the live WmsOffice bundle, with NO
+  changes of this move's own in play:
+
+    Panel provenance impact check
+
+    FAIL: 2 confirmed manifest(s) reference model elements that no longer exist:
+      - crossdocking.panel.json: references invocation 'flow:CancelarCrossDocking', which no longer exists
+      - crossdocking.panel.json: references invocation 'flow:ConcluirCrossDocking', which no longer exists
+
+    Either regenerate the screen against the current bundle, or update the model.
+surface: scripts/quality, provenance-gate
+files:
+  - scripts/quality/check-panel-provenance-impact.py
+detail: |
+  `check-panel-provenance-impact.py` walks every `*.panel.json` and fails the build when a
+  CONFIRMED manifest names a field or invocation the model no longer has. Its purpose, stated in
+  `docs/REMEDIATION_PLAN.md` R-G1, is that "a field rename goes through a rebuild; that is precisely
+  the moment the check has to fire" -- i.e. protect a LIVE hand-written screen from silently
+  breaking.
+
+  It never asked whether the screen still exists.
+
+  **Why that is not a nitpick: it directly contradicts the metric.** Move 3 §6 replaced the
+  hand-written/model ratio with "bytes of `web/*.html` deleted after a console reaches full
+  behavioural parity". Deleting a console is the SUCCESS condition. And per the crossdocking "two
+  paths, one incomplete" finding (docs/SCREEN_TAXONOMY.md), the deletion must ALSO remove the flows
+  that console was the only caller of -- otherwise a future author binds a panel action to an
+  incomplete duplicate and silently loses behaviour. So every successful conversion necessarily
+  leaves a manifest naming now-deleted flows, and therefore necessarily turned this gate red. The
+  gate punished the metric for succeeding.
+
+  **It had already fired, and been left red.** Move 8 Part A deleted `crossdocking.html` plus
+  `ConcluirCrossDocking`/`CancelarCrossDocking` on 2026-07-30 and did not touch
+  `crossdocking.panel.json`. The gate has failed on every run since -- roughly a day and three
+  moves. It went unnoticed because `Rebuild-And-Restage.ps1` runs it as step 4, AFTER building and
+  starting the app, and the intervening rebuilds either did not reach step 4 or were not run.
+
+  **Fix**: treat a manifest whose `screen` file no longer exists as RETIRED -- reported as an
+  advisory warning, never a blocking failure. The manifest is deliberately kept rather than deleted:
+  it is the provenance record of what the frozen `*.original.html` reference touched. Everything
+  else is unchanged; a manifest whose screen IS still on disk keeps the full-strength rule.
+
+  **RED/GREEN**: the script's own `--calibrate` self-test gained a third control ("stale confirmed
+  manifest, screen DELETED (retired)"), and the two pre-existing controls were tightened -- they
+  previously never created the screen file at all, so before this change every calibration case was
+  accidentally exercising the retired path without anyone noticing. With the fix, all 3 pass. With
+  the one-line `and not retired` reverted in a scratch copy, exactly the new control fails
+  ("[FAIL] stale confirmed manifest, screen DELETED (retired) (fired)") and the other two still
+  pass, confirming the control isolates this bug and does not weaken the real protection.
+
+  **Verified live**: after the fix, the gate run against the live WmsOffice bundle that produced the
+  FAIL above reports the crossdocking entries as `[warn] ... (retired -- screen deleted, nothing
+  left to break)` and exits 0.

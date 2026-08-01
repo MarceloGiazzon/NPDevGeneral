@@ -1,0 +1,47 @@
+id: REG-106
+title: "SchemaLifecycleExecutor.migrate() skipped flyway.repair() whenever the schema fingerprint was unchanged, but V1's generated migration SQL text can drift (comments/emission order) independently of the structural fingerprint -- a plain model.json edit with zero concept/table changes crashed the boot with a Flyway 'Migration checksum mismatch' on the next regeneration"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-01
+closed: 2026-08-01
+verification: VERIFIED_LIVE
+source: |
+  Found and fixed while rebuilding WmsOffice for Move 10 B2 (LC-B2, MOVE10_AI_LOWCODE_PLAN Part
+  B.2) live verification -- the model change that triggered it (3 new queries + 1 new
+  guidePage, no concept/table changes at all) could not possibly have altered the schema
+  structurally, yet the app failed to boot with:
+
+    org.flywaydb.core.api.exception.FlywayValidateException: Validate failed: Migrations have
+    failed validation
+    Migration checksum mismatch for migration version 1
+    -> Applied to database : -2143873802
+    -> Resolved locally    : -642233137
+
+  SchemaLifecycleExecutor.migrate() already had a repair() call for exactly this class of
+  problem (V1's SQL is regenerated from the full model on every generation pass, so its
+  checksum "legitimately changes... even though it must not be re-executed"), but it was
+  gated behind `recreation.safeAdditive()` -- true only when the schema FINGERPRINT changed in
+  a known-additive way. When the fingerprint is UNCHANGED (the log even printed "stored schema
+  fingerprint matches generated schema fingerprint; no destructive recreation required"), the
+  code assumed the migration file's literal bytes were therefore also unchanged and skipped
+  repair() entirely, going straight to a bare flyway.migrate() -- which then validated the
+  freshly generated (but byte-different, e.g. comment/table-ordering drift accumulated across
+  many generator runs over time) V1 file against the OLD checksum recorded in
+  flyway_schema_history from whenever this database was last migrated, and failed.
+surface: runtimehost
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+detail: |
+  Fix: widened the repair() call from the `recreation.safeAdditive()`-only branch to the whole
+  `else` (non-destructive-recreation) branch, i.e. whenever `recreation.performed()` is false.
+  V1 is entirely generated, never hand-authored, so trusting the freshly generated file (via
+  repair(), which only reconciles Flyway's bookkeeping checksums -- it does not re-execute or
+  alter any table data) is correct whether the fingerprint changed additively or did not change
+  at all; only the destructive-recreation branch (which already clears schema-realization
+  history outright) needs no repair() call.
+
+  Live-verified: WmsOffice failed to boot with the checksum-mismatch error on the first rebuild
+  attempt after this session's Move 10 B2 model.json change; after the fix, the SAME database
+  (not wiped, not recreated) booted clean on the next rebuild with the identical model. Full
+  detail: move10-b2-charts.txt.

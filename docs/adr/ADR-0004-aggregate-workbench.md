@@ -1,7 +1,8 @@
 # ADR-0004 Aggregate Workbench
 
 ## Status
-Proposed - 2026-07-11
+Accepted - 2026-07-25 (per `docs/architecture/AGGREGATE_WORKBENCH_PLAN.md`'s own execution record:
+"All phases delivered 2026-07-11…2026-07-25")
 
 ## Context
 

@@ -1,0 +1,122 @@
+id: REG-102
+title: "npdev migration diff (and the MCP tool npdev_migration_diff that shells out to it) is completely non-functional -- it always throws CONFIG_MIGRATIONS_DISABLED, because it passes generator CLI flags that the generator's own arg parser unconditionally rejects"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found while scoping MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 1.2 (LC-C1: add METADATA_ONLY to "the
+  existing classification (SAFE_ADDITIVE/BACKFILL_REQUIRED/MANUAL_REVIEW), already in npdev migration
+  diff / MCP npdev_migration_diff"). Before extending that classification, tried to run it once to see
+  its current output shape -- it does not run at all.
+
+  Reproduced live:
+
+      $ python NPDevCli/npdev_cli.py migration diff --baseline <x> --current <x>
+      Exception in thread "main" java.lang.IllegalArgumentException: CONFIG_MIGRATIONS_DISABLED:
+        stateful upgrade management is not supported by this generation path (source: --migrationsDir).
+        Use recreate-style generation and schema realization instead.
+        at com.npdev.generator.GeneratorMain.migrationsDisabled(GeneratorMain.java:399)
+        at com.npdev.generator.GeneratorMain$Args.parse(GeneratorMain.java:730)
+      BUILD FAILED
+      npdev command failed with exit code 1
+surface: cli, mcp, generator
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevMcp/server.py
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java
+detail: |
+  `run_migration_diff` (NPDevCli/npdev_cli.py:960) invokes `:generator:run` with
+  `--migrationsDir`, `--migrationMode=additive-only`, `--migrationPlanOnly`,
+  `--migrationRiskThreshold=...`, `--migrationDecisionReport` -- five flags, every one of them
+  starting with the literal substring `--migration`.
+
+  `GeneratorMain.Args.parse` (GeneratorMain.java:729) contains:
+
+      if (cur.startsWith("--migration") || cur.startsWith("--enableMigrations")) {
+          throw migrationsDisabled(cur);
+      }
+
+  This check exists to reject the OLD, unsupported migration-management CONFIG surface (model.json
+  declaring `migrationManagement`/`migrations`/`schemaEvolution` -- see
+  `rejectUnsupportedMigrationManagement`, a different, correctly-scoped guard over the model JSON).
+  But the CLI-ARGS version of the guard matches on a bare string prefix, so it ALSO catches the two
+  real, supported migration-plan flags before they were renamed to dodge it
+  (`--previousCompiledModel`, `--schemaMigrationPlanOut` -- see the comments at GeneratorMain.java
+  ~633,648 explaining exactly why those two were "deliberately named without a --migration prefix for
+  this reason") -- and it catches `run_migration_diff`'s five flags, which were never renamed and so
+  are caught on the very first one (`--migrationsDir`).
+
+  **The generator has NO support at all today** for `--migrationMode`, `--migrationPlanOnly`,
+  `--migrationRiskThreshold`, or `--migrationDecisionReport` -- grepped the whole `NPDevGenerator`
+  tree for each name; zero hits. This is not a renamed-flag bug fixable by search-and-replace; the
+  offline "classify this change as SAFE_ADDITIVE/BACKFILL_REQUIRED/MANUAL_REVIEW/METADATA_ONLY by
+  diffing two model.json snapshots" feature the CLI subcommand and MCP tool both advertise has never
+  been built. The REAL classification (`SafetyClass`, `SchemaDiffEngine`, `ClassificationReducer` in
+  `NPDevRuntimeHost/src/main/java/com/finalexec/db/`) is computed only at APP BOOT TIME, diffing the
+  compiled model against the LIVE database's stored schema history via `SchemaHistoryStore` -- there
+  is no offline, two-model-snapshots equivalent.
+
+  **Consequence for the programme.** Wave 1.2 (LC-C1) cannot honestly be scoped as "add METADATA_ONLY
+  to the existing classification" -- there is no existing classification to add to at this layer.
+  Wave 2's AC-4 ("MCP submit") and the contract's own diff-gate (AC-2) likely inherit the same
+  dependency and should be re-verified live, not assumed working, before being built on.
+
+  **Fix shape when taken up**: either (a) build the offline classifier for real -- a
+  `ModelChangeClassifier` that diffs two `CompiledModel`s' concept/field/index shapes directly (no
+  Gradle subprocess, no generator CLI involvement) and returns SAFE_ADDITIVE/BACKFILL_REQUIRED/
+  MANUAL_REVIEW/METADATA_ONLY -- or (b) rename `run_migration_diff`'s five flags to route through the
+  generator's real, already-supported `--previousCompiledModel`/`--schemaMigrationPlanOut` pair and
+  reuse `MigrationPlanEmitter`'s existing diff, which does NOT currently classify by risk level at
+  all (it only lists additive-vs-destructive migration items) -- so (b) still needs new classification
+  logic layered on top, just via a different entry point. Neither is a small fix; do not attempt as a
+  side effect of LC-C1.
+
+  ---
+
+  ## CLOSED (2026-07-31, MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 1.2, hybrid of fix shapes (a)+(b))
+
+  Re-reading `MigrationPlanEmitter` (LNCH-1 Phase 6) found it is ALREADY the offline, no-database,
+  pure model-vs-model diff engine fix shape (a) described building from scratch -- it just had no
+  working CLI/MCP entry point (the actual root cause) and no coarse risk-level classification on top
+  of its `PlanItem.Kind` vocabulary (ADD_TABLE/ADD_COLUMN/ADD_COLUMN_BACKFILL/RENAME_*/WIDEN_TYPE/
+  ADD_UNIQUE_CONSTRAINT/DROP_COLUMN/DROP_TABLE/NARROW_TYPE/UNKNOWN). So the real fix reuses it rather
+  than re-deriving a diff engine "no Gradle subprocess" would have required building twice:
+
+  1. **`ModelChangeClassifier`** (new, `NPDevGenerator/generator/.../schemaevolution/`): maps
+     `PlanItem.Kind` to the coarse METADATA_ONLY/SAFE_ADDITIVE/BACKFILL_REQUIRED/MANUAL_REVIEW the
+     CLI/MCP surface advertises. `METADATA_ONLY` is definitionally exact, not approximated:
+     `MigrationPlanEmitter` diffs exactly the concept/field shape that feeds
+     `UserDatabaseDefinitionLoader#fingerprintInputs`'s business-table lines, so an empty item list
+     (on a non-fresh-install) means the fingerprint provably did not move. 16 unit tests (every
+     `PlanItem.Kind` -> `Level` mapping, worst-item-wins aggregation, fresh-install, no-change) plus
+     **2 corpus property tests** over all 10 in-repo `NPDevSamples/*/Input/model.json` models
+     (LC-C1's own DoD line: "a change to a concept field is never classified METADATA_ONLY --
+     property test over the corpus, not a single example") -- 20/20 tests green.
+  2. **`ModelChangeClassifierMain`** + a new `:generator:classifyModelChange` Gradle task
+     (`-PcurrentPath=... -PbaselinePath=... -PreportOut=...`, mirroring `:validateModel`'s own
+     pattern) -- deliberately its OWN entry point, never a new `GeneratorMain` flag, since THAT
+     class's arg parser is the thing that rejected every one of the five broken flags. Every flag
+     here is named without the `--migration` prefix, matching the precedent
+     `--previousCompiledModel`/`--schemaMigrationPlanOut` already set.
+  3. **`npdev_cli.py`'s `run_migration_diff`** rewired to call the new task instead of the broken
+     `:generator:run --migration*` invocation; the now-meaningless `--migrationRiskThreshold` input
+     (a threshold gating a classifier that never existed) removed from both the CLI arg parser and
+     the MCP tool schema/call -- the classifier now always reports its own level, the caller decides.
+
+  **Verified live, all four layers, not just unit tests**: the exact repro command from this item's
+  own `source:` block now runs clean --
+
+      $ python NPDevCli/npdev_cli.py migration diff --baseline user-minimal/model.json \
+            --current simple-contact-intake/model.json
+      migration diff classification: MANUAL_REVIEW
+        - [SAFE_ADDITIVE] New concept adds table 'contact_messages'.
+        - [MANUAL_REVIEW] Concept removed: table 'users' will be dropped ...
+
+  and the MCP tool (`server.tool_migration_diff`, called directly, not mocked) returns
+  `classification: METADATA_ONLY` for two identical models and `MANUAL_REVIEW` for the same
+  destructive pair above.
+
+  `:generator:test` (31 tasks, full suite) green after the change.

@@ -1,0 +1,68 @@
+id: REG-85
+title: "dsl-conformance-max fails ReleaseGateValidator's T2 promotion bar (7 concepts stuck at T1)"
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Move 8 D1 (item G3, docs/MOVE8_CLOSE_TABLE_SPEC.md): wired ReleaseGateValidator into
+  scripts/quality/run-generator-gate.ps1 (releaseGateT2 step) -- the smallest real check,
+  running ModelValidatorMain --releaseGate --targetTruthLevel=T2 against
+  NPDevSamples/dsl-conformance-max/Input/model.json. Before this the validator was invocable
+  but called by nothing (R81, REG-81). Now wired and run for the first time, it genuinely
+  fails: PromotedWidgetCatalogEntry, WidgetCatalogEntry, WidgetOrder, WidgetOrderAudit,
+  WidgetOrderLine, WidgetOrderLineNote, and labeling::Label are all only T1 -- each blocks
+  T2 promotion via truth_closure_below_target (a reachable bond dependency below the
+  target level). Per the spec's own explicit instruction, the T2 bar was NOT lowered to
+  make this pass -- the failure is reported here instead, and run-generator-gate.ps1 is
+  genuinely red until this is closed.
+surface: dsl/release-gate
+files:
+  - scripts/quality/run-generator-gate.ps1
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+detail: |
+  This is dsl-conformance-max's own real maturity state, not a bug in ReleaseGateValidator or
+  in the new gate step -- the fixture was built to exercise DSL SURFACE AREA (one witness per
+  feature), not to carry T2-grade evidence for every concept. Promoting the 7 blocked
+  concepts to T2 needs real evidence per ReleaseGateValidator.EvidenceProvider's contract
+  (nothing supplied today falls back to ReleaseGateValidator.EvidenceProvider.none(), which
+  T4+ always fails; T2's own bar is lower but still requires the concept's own truth level
+  AND every reachable bond dependency to be at T2) -- a genuine, non-trivial maturity-closure
+  task, not a quick fix, and out of Move 8's own scope (D1's job was to wire the check, not to
+  promote the corpus). Leaving run-generator-gate.ps1 red is the intentionally chosen outcome
+  per the spec's own absolute prohibition against lowering D1's T2 bar to force a pass.
+
+closure: |
+  Closed 2026-07-31 (Move 9 C1) with real evidence, not a label flip. T2 ("Generated") requires no
+  EvidenceProvider evidence (only T4+ does -- confirmed by reading ReleaseGateValidator.validatePromotion
+  directly: the evidence check is gated on `target.rank() >= TruthLevel.T4_TESTED.rank()`), only that
+  the concept's own truth level AND every reachable bond dependency are >= T2. Before declaring
+  truthLevel:T2 on the 7 named concepts, re-ran scripts/quality/check-dsl-conformance-generates.py
+  live against dsl-conformance-max's CURRENT model -- genuinely regenerated the fixture (not
+  --skip-generate) and confirmed all 11 asserted features (aggregates, autoPanels, documents,
+  domainTypes, externalAi, guidePages, selectors, step.forEach, step.generatedAction,
+  step.onFailureSteps, flow.schedule) survive into real compiled/emitted output. That is genuine
+  T2-grade evidence ("has this concept actually been through the generator") for the whole model,
+  not just an assertion.
+
+  Added `"truthLevel": "T2"` to exactly the 7 named concepts (WidgetOrder, WidgetOrderLine,
+  WidgetOrderLineNote, WidgetOrderAudit, WidgetCatalogEntry, PromotedWidgetCatalogEntry in
+  NPDevSamples/dsl-conformance-max/Input/model.json; Label in .../Input/packs/labeling/pack.json) --
+  confirmed by grep that these were the ONLY 7 concepts in the whole resolved model missing a
+  truthLevel declaration (every other concept already had one), matching this ledger item's own
+  finding exactly, one-for-one.
+
+  Verified live: `:NPDevContract:dsl:validateModel -PreleaseGate -PtargetTruthLevel=T2` against
+  dsl-conformance-max now reports `"status": "passed"`, 0 errors. Per the DoD's own required
+  self-check, deliberately demoted WidgetOrderAudit (removed its truthLevel line), re-ran the SAME
+  command, confirmed it fails again with the exact `truth_closure_below_target` diagnostic this
+  ledger item originally reported, then restored the fix and reconfirmed passed -- proving the gate
+  still fires, not just that it currently happens to pass.
+  `scripts/quality/run-generator-gate.ps1` (which wires the `releaseGateT2` step, unchanged, still
+  present and still firing) re-run in full and confirmed green end to end.
+
+  Not lowered: the T2 bar itself, the `releaseGateT2` step, and `ReleaseGateValidator`'s own logic
+  are byte-for-byte unchanged from Move 8's wiring -- only the corpus's own declared maturity closed,
+  exactly as this item's own detail section scoped it.

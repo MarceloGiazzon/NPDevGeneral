@@ -1,0 +1,71 @@
+id: REG-101
+title: "A declared query can carry parameters[] and a ':name' bind placeholder in its where, and NOTHING substitutes it -- pack-sample's SalesByStore has therefore returned zero rows since it was written, and the DSL accepts the shape with no error"
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found by LC-P0's own detector on its first run (Wave 0.4,
+  MASTER_AI_PLATFORM_PROGRAMME_v2.md) -- i.e. the corpus scan that exists precisely to find models
+  whose declared filter never worked found one immediately:
+
+    $ python scripts\quality\check-query-predicate-compilable.py
+    Query-predicate compilability (29 corpus model(s))
+      14 declared predicate(s) checked, 1 uncompilable
+
+    FAIL: a declared `where` cannot be compiled ...
+      - AppGen/apps/pack-sample/definition/model.json: queries[SalesByStore].where =
+        'storeId == :storeId' -- literal ':storeId' is neither a quoted string, a number,
+        nor a boolean
+
+  The declaration:
+
+      { "name": "SalesByStore", "concept": "Sale",
+        "where": "storeId == :storeId",
+        "orderBy": ["soldAt"],
+        "parameters": [ { "name": "storeId", "type": "uuid", "required": true } ] }
+
+  The author's intent is unambiguous -- a declared parameter, bound into the predicate. The schema
+  has a `parameters` property on `query`, so the DSL invites this.
+surface: kernel/concepts, dsl
+files:
+  - AppGen/apps/pack-sample/definition/model.json
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryPredicateCompiler.java
+detail: |
+  **What actually happened before LC-P0.** The old `ConceptQueryFilterSupport` split on the first
+  `==`, took `:storeId` as the literal text (unquoted and non-numeric, so returned verbatim), and
+  compared every `Sale.storeId` against the seven-character string `":storeId"`. Nothing matched.
+  **This query has returned zero rows for its whole life**, with no error at any layer -- and, being
+  the "returns nothing" variant of the silent-answer class, it looks exactly like "this store has no
+  sales" rather than like a bug.
+
+  **What happens after LC-P0.** The predicate is refused by name, quoting the offending literal and
+  saying a `$`/bind reference must be substituted before compiling. The query is still broken; the
+  author is now told. That is the whole thesis of LC-P0, and this item is its first real witness.
+
+  **Two things are missing, and they are separable:**
+
+  1. **Substitution.** `queries[].parameters` is declared, schema-valid, and bound by nothing. A
+     query parameter is a real feature the DSL advertises and the runtime does not implement.
+  2. **Validation.** Nothing checks that a `where` is compilable at MODEL level, so the shape passes
+     `validateModel` with 0 errors. LC-P0 put the refusal in the RUNTIME because that is where the
+     compiler lives (kernel); the DSL module cannot depend on the kernel, so it cannot reuse it.
+
+  **Fix shape**, in the order that keeps each step honest:
+    (a) decide the placeholder spelling ONCE -- `:name` (this model), `$name` (procedures' own
+        convention), or both -- and write it down; today two conventions exist in one platform;
+    (b) substitute declared parameters into the predicate before compiling, with a named error for
+        an unbound parameter (never a default answer -- X0's rule applies to substitution too);
+    (c) move `ConceptQueryPredicateCompiler` to a module both the DSL validator and the kernel can
+        use, so an uncompilable `where` is refused at authoring time and
+        `check-query-predicate-compilable.py` (which today mirrors the grammar in Python) can be
+        deleted rather than maintained in two languages.
+
+  **Not fixed here.** Wave 0.3's brief is "make a declared query actually filter, and fail loudly on
+  what it cannot compile" -- both done. Parameter substitution is a distinct feature, and widening
+  the grammar to *accept* `:storeId` without substituting it would put the silent wrong answer back,
+  which is the one thing LC-P0 exists to prevent.
+
+  The corpus instance is recorded in `scripts/quality/query-predicate-allowlist.json` citing this id,
+  so the detector measures NEW breakage rather than re-reporting a known, filed one.

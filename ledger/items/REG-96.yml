@@ -1,0 +1,100 @@
+id: REG-96
+title: "A procedure's condition/if step can only test a reference's TRUTHINESS -- there is no equality or comparison primitive -- so no aggregate onCommit hook can be guarded on 'the record reached state X', and a lifecycle-transition side effect cannot be expressed declaratively"
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found in Move 11 W5.2 (MOVE11_CLOSE_REMAINING_SPEC.md) while establishing whether
+  `autoPanel.transaction.hooks` already covers M11 (docs/MOVE3_G2_CHECKLISTS.md) -- the difference
+  between the Aggregate Workbench's generic lifecycle-transition button and the console's
+  `ConfirmarMovimentacao` flow, which also emits `MovimentoConfirmado`.
+
+  Established by reading the runtime, not assumed. `DefaultProcedureExecutor.ifThenElse`:
+
+      boolean condition = truthy(resolve(state, step.conditionRef()));
+
+  `conditionRef` is a REFERENCE, resolved and tested for truthiness. `$input.situacao` is truthy for
+  every one of Movimento's four states, so "only when situacao is Concluido" cannot be written.
+surface: kernel/procedures, dsl
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java
+detail: |
+  **What this blocks, concretely.** `aggregate.onCommit` runs a procedure inside the commit
+  transaction, and a procedure CAN `eventPublish`. So the mechanism for "emit MovimentoConfirmado as
+  part of the commit that concludes the movement" exists and would be strictly better than the flow's
+  version (atomic with the write rather than after it). What does not exist is the guard: an
+  unconditional emission would fire `MovimentoConfirmado` on every commit of every Movimento,
+  including Pendente ones, which is plainly wrong. The step that would gate it can only ask "is this
+  reference truthy", never "does it equal 'Concluido'".
+
+  Note this is narrower than "procedures cannot compare": `computeValue` has add/subtract (REG-78),
+  and `patchConcept`/`mapList` resolve `$ref`s. It is specifically the branch predicate that is
+  truthiness-only.
+
+  **Why M11 is nevertheless NOT a blocker for movimentacao-livre's conversion.** The original
+  console's Confirmar IS reproduced by a declared surface -- `MovimentoLivrePanel`'s row-scoped
+  `confirmarMovimentacao` action, `"binding": "flow", "flow": "ConfirmarMovimentacao"`,
+  `visibleWhen: tipo == 'MovtoLivre' && situacao == 'Pendente'` -- which invokes the real flow and
+  therefore does emit the event. That was verified live in Move 2 G4 (`status: OK`). M11's `differs`
+  verdict is about the Aggregate WORKBENCH offering a SECOND, generic transition path that writes the
+  field without the event; it was never that the behaviour is unreachable. So M11 stays `differs`,
+  as Move 3 recorded it, and it is not a `cannot-express`.
+
+  **Workarounds available today, both rejected here**:
+    (a) push the comparison into app-owned capability Java and call it from the procedure -- this is
+        the "rewriting the console's orchestration into capability Java" shape that
+        MOVE11_CLOSE_REMAINING_SPEC.md Part 2 names as the thing to avoid, and it would put a string
+        equality test in a WMS allocation capability;
+    (b) emit unconditionally from onCommit and let consumers filter -- moves the bug downstream and
+        makes the event mean something different from its own name.
+
+  **Fix shape when taken up**: give the `condition`/`if` step the same narrow, closed predicate
+  grammar `visibleWhen` already carries -- `$ref == '<literal>'` / `!=` -- rather than a general
+  expression language. That grammar already exists, is already validated, is already implemented
+  twice on the client side (`evaluateVisibleWhen` in workbench-page.html.mustache and the
+  `AutoPanelExpander` predicate), and extending the resolvable roots of an existing grammar rather
+  than inventing a second dialect is the standing convention (see Move 11 W6 for the same call).
+
+  ---
+
+  ## CLOSED, Wave 0.6 (2026-07-31, MASTER_AI_PLATFORM_PROGRAMME_v2.md)
+
+  Fixed exactly as the shape above named: the `condition`/`if` step now carries the SAME closed
+  grammar `visibleWhen` already uses, rather than a new dialect or a general expression language.
+
+      condition := ref | ref op literal
+      op        := == | != | >= | <= | > | <
+      literal   := 'text' | number | true | false | ref
+
+  `ProcedureConditionEvaluator` (kernel), called from `DefaultProcedureExecutor.ifThenElse`.
+
+  **A bare ref keeps its old truthiness meaning exactly**, so this is additive: no model changes
+  behaviour, and no `npdev migrate` codemod is owed. Operators are matched longest-first (`>=` is
+  never read as `>`) and quoted text is skipped, both being the mistakes LC-P0 had just finished
+  removing from the query engine one file over.
+
+  **A malformed condition is REFUSED** (`CONDITION_UNSUPPORTED`), not silently taken as the
+  else-branch -- X0's rule applied to the branch predicate itself. An ordered comparison against an
+  ABSENT operand is false rather than an error, which is a state answer, not a parse failure (the
+  same judgement the query engine makes for a missing field).
+
+  **Both sides may be refs.** `$a == $b` is the comparison `SyncOcupacaoProcedure`'s own description
+  records having had to push into Java ("procedures' own 'if' step has no comparison-expression
+  grammar ... so the equality test itself has to happen in Java"). That constraint is now lifted for
+  future procedures; SyncOcupacaoProcedure itself is left alone, since rewriting a working procedure
+  is not this wave's job.
+
+  **RED/GREEN.** `ProcedureConditionComparisonTest`, 7 cases. The RED half is kept as a live test
+  rather than a memory: `bareRefIsStillTruthinessOnly_theShapeThatForcedJava` asserts that all four
+  of Movimento's lifecycle states are truthy under a bare ref -- which is *why* the guard could not
+  be written -- while `equalityAgainstALifecycleStateNowDecidesTheBranch` shows the same predicate
+  now selecting correctly. Full kernel suite green.
+
+  **What this unblocks, and what it does not.** LC-B1's `having` no longer has to inherit a
+  truthiness-only predicate (the programme's F7). M11's guarded `onCommit` emission is now
+  expressible -- but it is NOT authored here: doing so would change WmsOffice's event behaviour, and
+  M11 is a `differs`, not a blocker (see REG-95's closure and docs/SCREEN_TAXONOMY.md footnote 9).

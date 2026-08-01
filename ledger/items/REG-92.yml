@@ -1,0 +1,100 @@
+id: REG-92
+title: "REG-76 was fixed for workbench inputFields but never mirrored to panel inputFields -- a declared Panel action still renders <input type=text>, which silently collapses newlines, so no panel action can take multi-line input"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found in Move 10 W1.2 (docs/MOVE10_CONSOLE_PARITY_SPEC.md) while establishing whether
+  `inventario.html`'s third wizard (Recebimento por Arquivo) could be expressed as a declared Panel
+  action -- its very first step is "give the server a multi-line CSV".
+
+  Proven live in a real headless browser against the running WmsOffice app, by typing a genuinely
+  3-line value into `InventarioHistoricoPanel`'s own `entidadeId` inputField and reading the DOM
+  back:
+
+    {"tagName":"INPUT","type":"text","value":"LINHA-1 LINHA-2 LINHA-3","newlines":0,"length":23}
+
+  Three lines in, one line out, zero newlines -- collapsed to spaces on assignment.
+surface: generator/business-ui, panel-runtime
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+detail: |
+  REG-76 (Move 3 G4) found that the AGGREGATE WORKBENCH's `inputFields` mini-form rendered a plain
+  `<input type="text">`, which silently strips embedded newlines, so a pasted multi-line CSV arrived
+  as one line and the parser's own header-row skip consumed the entire payload. It was fixed there
+  by rendering a `<textarea>` -- `workbench-page.html.mustache` still carries the full explanation
+  above that line.
+
+  `panelAction.inputFields` (Move 2 G3) is the *same mechanism on the Panel side*, added earlier and
+  never revisited. `business-ui-app.mustache` still does:
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = field;
+
+  Confirmed in the DEPLOYED bundle, not only the template:
+  `<app>/build/resources/main/static/npdev-business-ui/app.js` around the
+  `declared-panel-action-inputs` block.
+
+  **Consequence.** Any declared Panel action whose input is inherently multi-line -- a pasted CSV, an
+  XML document, a free-text note -- is silently broken: the value is accepted, visibly "typed", and
+  posted mangled. Silent corruption, not an error. It also means the Panel and the Workbench, two
+  surfaces with an explicitly mirrored `inputFields` declaration, behave differently for the same
+  model text, which no author would predict from the model.
+
+  **What it blocked here.** It is the FIRST of several blockers on expressing `inventario.html`'s
+  Recebimento por Arquivo wizard as a Panel action (see docs/MOVE10_W1_CHECKLISTS.md for the full
+  list -- the others are the preview table having no persisted-field home, and no mechanism to carry
+  parsed state from a preview action to a confirm action). Fixing this alone does not unblock that
+  wizard; it is filed on its own because it is a real, general, silent-corruption bug independent of
+  that console.
+
+  **Fix shape**: mirror the workbench's line exactly -- render a `<textarea rows="1">` with the same
+  inline styling, which preserves newlines and degrades fine for short single-line values. Then add
+  a `dsl-conformance-max` example with a multi-line panel-action input so the two surfaces cannot
+  drift apart again. Not done here: it needs a generator rebuild plus a full app rebuild to
+  re-verify, and Move 10's stop line is the end of Wave 1.
+
+  ---
+
+  ## CLOSED, Move 11 W3 (code) + Wave -1.1 (live proof), 2026-07-31
+
+  **Status resolved at Wave -1.2**, and the discrepancy is worth recording: Move 11 W3's own report
+  claimed "REG-92 -> DONE" while this file still read `status: OPEN`, because the code fix landed and
+  the ledger edit did not. The ledger is authoritative (CLAUDE.md). The status was NOT flipped when
+  the discrepancy was found -- it was flipped only after the DoD's own live-browser condition was
+  actually met, below.
+
+  **The fix.** One shared control, `createDeclaredPanelTextInput(field)`, rendering
+  `<textarea rows="1">` -- mirroring the Aggregate Workbench's rule EXACTLY, which is unconditional
+  (workbench-page.html.mustache has rendered a textarea here for every field since REG-76, with no
+  widget/type condition). Used by BOTH Panel mini-forms: the action `inputFields` form REG-92 names,
+  and `renderDeclaredPanelAddRowForm` ten lines above it, which had the identical
+  `input.type = "text"` and therefore the identical silent corruption. Fixing only the twin REG-92
+  happens to name would have repeated REG-76's own mistake. Inline styling hoisted to
+  `textarea.declared-panel-edit-input`.
+
+  **RED/GREEN.** `BusinessUiEmitterPanelInputNewlineTest` asserts the property on BOTH surfaces,
+  reading the RENDERED templates rather than the sources. With the Panel call sites reverted to
+  `input.type = "text"` it fails naming the exact mini-form; restored, 2/2 pass. (Its Workbench half
+  failed first on REG-76's own explanatory comment, which quotes the markup being asserted absent --
+  the assertion now matches on code only.)
+
+  **VERIFIED LIVE**, in a real headless browser against the rebuilt WmsOffice app, typing a genuinely
+  3-line value into `InventarioHistoricoPanel`'s `entidadeId` inputField and reading the DOM back:
+
+      {"tagName":"TEXTAREA","type":"textarea","value":"LINHA-1\nLINHA-2\nLINHA-3","newlines":2,"length":23}
+
+  Against this item's own original reading:
+
+      {"tagName":"INPUT","type":"text","value":"LINHA-1 LINHA-2 LINHA-3","newlines":0,"length":23}
+
+  Three lines in, three lines out. Evidence:
+  NPDev_General__OutsideRepo/move11/browser/move11-w3-w5-w6.json.
+
+  **What this does NOT unblock**, restated so it is not misread: `inventario.html`'s Recebimento por
+  Arquivo wizard had THREE blockers and this closes one. The other two (preview columns declared on
+  no concept; nothing carries parsed state from a preview action to a confirm action) are untouched.

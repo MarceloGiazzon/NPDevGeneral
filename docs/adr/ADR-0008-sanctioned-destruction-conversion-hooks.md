@@ -81,7 +81,7 @@ this ADR does not touch.
   hook 1 stays committed. A later boot re-runs only what the diff still says is unresolved — hooks
   should be written idempotently.
 - **v1 is SQL-only.** A Java `DataMigrationHook` (for conversions too complex for a script) is
-  deliberately deferred to the ADR-0003 code-bearing-objects track (not part of this decision).
+  deliberately deferred (not part of this decision) -- tracked as `ledger/items/REG-84.yml`.
 
 ## Decision block
 

@@ -1,0 +1,138 @@
+id: REG-91
+title: "MigrationClaimStore swallows every SQLException from its canonical-row seed as 'row already exists', then reads an unchecked empty ResultSet -- a claim table whose columns are NOT NULL makes the app permanently unbootable with the opaque message 'No data is available'"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found live during Move 10 W1 (docs/MOVE10_CONSOLE_PARITY_SPEC.md) while rebooting WmsOffice after
+  a model-only change. The app had booted cleanly from the same database an hour earlier; the
+  regenerated jar then refused to start, every boot, with:
+
+    Caused by: java.lang.IllegalStateException: Failed to claim the migration lock
+      at com.finalexec.db.MigrationClaimStore.claimH2(MigrationClaimStore.java:211)
+    Caused by: org.h2.jdbc.JdbcSQLNonTransientException: No data is available [2000-224]
+      at org.h2.jdbc.JdbcResultSet.getString(JdbcResultSet.java:283)
+      at com.finalexec.db.MigrationClaimStore.claimH2(MigrationClaimStore.java:196)
+
+  Nothing in that message names the actual problem, points at a table, or suggests a remedy.
+surface: runtimehost/db, schema-lifecycle
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationClaimStore.java
+detail: |
+  Three defects compose into an unbootable app with an undiagnosable error.
+
+  1. **`ensureCanonicalRow` swallows ALL SQLExceptions**, not just duplicate-key violations. Its
+     comment says the catch exists for "a concurrent bootstrap race, or on every non-first boot --
+     the row already exists". Any OTHER insert failure is silently treated as success.
+
+  2. **`claimH2` ignores `resultSet.next()`'s return value** and calls `getString(1)`
+     unconditionally, so an empty result set surfaces as H2's generic "No data is available"
+     rather than "the canonical claim row is missing".
+
+  3. Together: if the seed insert fails for a reason that is NOT a duplicate, the table stays
+     empty, `SELECT ... FOR UPDATE` returns no rows, and the boot dies pointing at the wrong thing.
+
+  **The live trigger.** In this database `npdev_schema_migration_claim` exists with
+  `claim_key`/`instance_id`/`claimed_at_utc` all `NOT NULL` and typed `character varying` -- NOT the
+  shape `ensureTable`'s own DDL declares (`claim_key TEXT PRIMARY KEY, instance_id TEXT, hostname
+  TEXT, claimed_at_utc BIGINT`, three of four nullable). `ensureCanonicalRow` seeds an UNHELD row as
+  `VALUES (?, NULL, NULL, NULL)`, which that table rejects:
+
+    org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException: NULL not allowed for column "instance_id"
+
+  Confirmed by running that exact INSERT by hand against the live database. `CREATE TABLE IF NOT
+  EXISTS` is a no-op against the pre-existing table, so the shape never self-heals.
+
+  **How the table came to have that shape is a SECOND, unresolved question** and the reason this
+  item is filed OPEN rather than fixed. `MigrationClaimStore` is the only code in the repo that
+  names the table, and its DDL cannot produce those constraints -- so something else rewrote it.
+  The most likely candidate is a prior destructive schema-lifecycle pass over this database (this
+  app survived exactly such a migration on 2026-07-28, REG-58/REG-59), i.e. the schema engine may be
+  treating a platform bookkeeping table as an NPDev-owned business table and recreating it with
+  NPDev's own all-columns-NOT-NULL conventions. If so, ANY app that undergoes a destructive
+  migration becomes unbootable afterwards -- which would make this considerably more severe than one
+  bad local database. That hypothesis is NOT yet verified; verifying it means reproducing a
+  destructive migration on a scratch database and re-inspecting the table, which was out of scope
+  for the move that found this.
+
+  **Workaround used to unblock** (not a fix): seed the row by hand with empty strings instead of
+  NULLs, which satisfies the NOT NULL constraints and still reads as unheld to `claimH2`'s own
+  `heldBy != null && !heldBy.isBlank()` check:
+
+    INSERT INTO npdev_schema_migration_claim (claim_key, instance_id, hostname, claimed_at_utc)
+    VALUES ('schema-migration', '', '', 0);
+
+  App booted immediately afterwards. `POST /api/admin/schema-migration/clear-claim` (the documented
+  remedy for a crashed holder) does not help here -- there is no holder to clear, the row is absent.
+
+  **Fix shape when taken up**: (a) narrow the catch in `ensureCanonicalRow` to duplicate-key /
+  integrity violations and rethrow anything else; (b) check `resultSet.next()` in `claimH2` and fail
+  with a message naming the table and the missing canonical row; (c) settle the second question
+  above -- whether the schema engine rewrites platform bookkeeping tables -- and, if it does, exclude
+  them from its scope.
+
+  ---
+
+  ## CLOSED, Move 11 W1 (2026-07-31)
+
+  **The second question is ANSWERED, and the hypothesis in it was WRONG.** The schema engine does not
+  touch this table -- `ownedTablesJson` derives ownership from the manifest's `businessTableColumns`
+  plus previously-recorded ownership, and `npdev_schema_migration_claim` appears in neither; nothing
+  in `db/schema-realization/*.sql` names it either. The strict shape is **this class's own earlier
+  DDL**. Commit `2404605` (REG-7.3 P3) declared:
+
+      claim_key TEXT PRIMARY KEY, instance_id TEXT NOT NULL, hostname TEXT, claimed_at_utc BIGINT NOT NULL
+
+  correct at the time, because the row was INSERTed per claim and DELETEd on release, so an unheld
+  slot was an absent row. Move 9 A1 made the row persist with a blanked holder and relaxed the DDL to
+  all-nullable -- but `CREATE TABLE IF NOT EXISTS` is a no-op against an existing table.
+
+  Verified against the live WmsOffice database over its H2 TCP server
+  (`jdbc:h2:tcp://localhost:9200/...npdev_wmsoffice`):
+
+      claim_key       character varying  nullable=NO
+      instance_id     character varying  nullable=NO
+      hostname        character varying  nullable=YES
+      claimed_at_utc  bigint             nullable=NO
+
+  -- the `2404605` DDL exactly (the original report's "claimed_at_utc typed character varying" was
+  imprecise; it is `bigint`, and `hostname` is the one nullable column, which is the DDL's signature).
+
+  **So this is not one bad local database: it is an upgrade-path regression that hits EVERY database
+  that ever booted a pre-A1 build.** That is more severe than the original hypothesis, not less, and
+  it needs no separate ledger item -- there is no second bug to file.
+
+  **What shipped**
+
+  1. `ensureCanonicalRow`'s catch narrowed to SQLState/error-code `23505` only, checked on the whole
+     `getNextException` chain, never on message text. Everything else is rethrown with the statement,
+     the bound values, the SQLState and the driver's own message attached. Deliberately NARROWER than
+     the spec's suggested "23505/23506 family": H2's `23506` is referential-integrity-parent-missing
+     and `23502` is NULL-not-allowed -- neither means "the row is already there", and admitting them
+     would leave exactly this hole open.
+  2. `claimH2` now checks `resultSet.next()` and raises a message naming the table, the claim key, the
+     likely cause and the recovery INSERT. `claimPostgres` had the identical unchecked-`next()` shape
+     on `pg_try_advisory_lock` and was fixed too.
+  3. The unheld holder is written as non-null sentinels (`''`/`''`/`0`) instead of `NULL`, in
+     `ensureCanonicalRow`, `release` AND `clear` -- all three wrote `NULL`. `release`'s failure was
+     swallowed into a log line (claim held forever, every later boot refused as a collision) and
+     `clear` -- the documented operator escape hatch -- threw outright. `current()` already treated a
+     blank holder as unheld, so both shapes read identically; a `NULL` holder left by a pre-fix
+     release still reads as unheld (asserted).
+  4. The table shape is deliberately NOT rewritten. Tolerating the old shape needs no DDL against a
+     database whose migration lock is by definition not yet held; an `ALTER ... DROP NOT NULL` sweep
+     would be schema surgery performed before the lock that exists to serialize schema surgery.
+
+  **RED/GREEN.** `MigrationClaimStoreLegacyTableShapeTest` (6 cases) recreates the verbatim `2404605`
+  DDL. Against the pre-fix code, 4 of 6 fail and every one of them reproduces this item's own live
+  stack trace exactly -- `IllegalStateException: Failed to claim the migration lock` caused by
+  `org.h2.jdbc.JdbcSQLNonTransientException: No data is available [2000-224]`. The 2 controls (the
+  current all-nullable shape; a NULL holder left by a pre-fix release) pass before and after. With the
+  fix, 6/6 pass. Move 9 A1's concurrency evidence (`SchemaLifecycleExecutorMigrationClaimTest`, 6
+  cases incl. "an existing claim refuses the boot" and "a refusal still releases its own claim")
+  re-run unchanged: 6/6.
+
+  Evidence: `NPDev_General__OutsideRepo/move11/move11-w1-claimstore.txt`.

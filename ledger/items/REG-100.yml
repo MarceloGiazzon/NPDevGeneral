@@ -1,0 +1,77 @@
+id: REG-100
+title: "Three more silent-answer sites found by the X0 audit: an unresolvable $ref writes null (while the SAME class throws for id refs), an unresolved runQuery name returns an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate is never validated"
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Wave 0.2's X0 silent-expression sweep (MASTER_AI_PLATFORM_PROGRAMME_v2.md §2.1), which asked every
+  expression evaluator in the platform one question: what does it do with input it cannot handle?
+  Full register: docs/X0_SILENT_EXPRESSION_REGISTER.md.
+
+  The programme opened X0 with two confirmed instances and predicted a third. The audit found five;
+  two were already filed (REG-95 fixed, REG-96 open) and one was found live during the same wave
+  (REG-99). This item carries the remaining three.
+surface: kernel/procedures, dsl, generator/workbench
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PanelValidation.java
+detail: |
+  **X0-6 — `resolve()` returns null for an unresolvable path, and the same class disagrees with itself.**
+
+  `DefaultProcedureExecutor.resolve(state, ref)` walks a dotted path and returns `null` the moment a
+  segment is missing. It backs `resolveSetValue`, which is what `patchConcept.set`, `mapList.select`
+  and `mapValue` all use. So a typo:
+
+      { "type": "patchConcept", "concept": "Lote", "id": "$loteId",
+        "set": { "quantidade": "$item.quantidad" } }
+
+  writes `quantidade: null`, with no error on any path.
+
+  What makes this a finding rather than a design choice: **the same class already disagrees with
+  itself.** `requireString` and `requireMap` call the same `resolve` and then THROW
+  `IllegalArgumentException` on null/blank. Id refs are loud; value refs are silent. One of the two
+  is wrong and nothing records which.
+
+  Interaction with REG-89's history worth naming: `patchConcept` + `createIfMissing` builds a new
+  record from `set` alone, so a typo'd ref there creates a record with a null field, and a governed
+  gateway then rejects it for a required-field violation naming a field the author never wrote --
+  the error surfaces one layer from its cause.
+
+  **X0-7 — an unresolved `runQuery` name returns an UNFILTERED list.** From the runtime's own comment:
+
+      // Absent from queriesByName -> unfiltered, same as before this fix.
+      CompiledQuery query = step.operation() == null ? null : queriesByName.get(...);
+
+  This is LC-P0's shape one layer up: LC-P0 is a declared `where` that does not filter; this is a
+  declared QUERY that does not filter because its name did not resolve. Already acknowledged in a
+  comment, which is the most dangerous state for this class -- known, written down, invisible to the
+  author. `PackValidation` does check that a `runQuery` step names a declared query, so the
+  model-level door is shut; the runtime lookup is keyed by a normalized name and falls back to
+  unfiltered rather than failing, so any drift between the two (pack-provided queries, a rename, a
+  normalization mismatch) reopens it silently.
+
+  **X0-6 and X0-7 should be fixed WITH LC-P0 in Wave 0.3, not separately** -- all three are one
+  sentence: a filter or reference that cannot be resolved is an error, never an empty filter or a
+  null value.
+
+  **X0-8 residual — `$root.<field>` visibleWhen predicates are never validated.** `evaluateVisibleWhen`
+  fails OPEN by design, and that reasoning is accepted (a hidden surface whose rows still commit is
+  the worse failure). But fail-open is only safe if a wrong predicate is caught at authoring time,
+  and only half are: Move 11 W6 added validation for `$ui.<name>` (undeclared control, or a literal
+  outside the control's declared values -> refused), while `$root.tpio == 'X'` validates clean and
+  then silently shows everything forever.
+
+  **Fix shape**: validate `$root.<field>` against the root concept's declared fields exactly as
+  `$ui.<name>` is now validated -- the code is a near-copy of `validateUiStateReference`. Small, and
+  it turns the accepted fail-open from a hazard into a genuinely safe default.
+
+  **The shape to converge on** is already in the codebase: `computeValue` refuses an unknown operator
+  at MODEL level, naming the legal set ("computeValue requires operation to be one of [add,
+  subtract], got: multiply"). No runtime default, no silent answer.
+
+  **Not audited, and the highest-value item left in X0**: `expression-cel` (invariants, `access.read`
+  /`access.write`, `defaultExpression`, `derivedExpression`) -- the only real expression engine in the
+  platform, and the one where a silent default matters most, since `access.*` is an authorization
+  answer. It deserves its own pass, not a paragraph.

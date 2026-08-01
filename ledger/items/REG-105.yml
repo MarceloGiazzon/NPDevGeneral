@@ -1,0 +1,37 @@
+id: REG-105
+title: "Move 10 B1's groupBy/aggregates query primitive is single-concept only -- no cross-concept join, so a dashboard rollup that needs one (e.g. WmsOffice's retired analytics.html 'Estoque por Produto' widget: sum LocalArmazenagemLote.quantidade grouped via a join through Lote to Produto) cannot be expressed"
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-01
+verification: NOT_VERIFIED
+source: |
+  Named while replacing WmsOffice's analytics.html with a real Move 10 B1/B2 aggregate-query +
+  gadget dashboard (MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 5, MOVE10_AI_LOWCODE_PLAN Part B.2).
+  analytics.html's provenance doc names 3 client-side rollups; 2 of the 3 ("Ocupacao por Rua",
+  "Movimentos por Tipo e Situacao") are single-concept groupBy/count and were faithfully
+  replaced with real query.groupBy + guidePageGadget declarations. The third ("Estoque por
+  Produto") sums LocalArmazenagemLote.quantidade grouped by Lote.produtoId -- two hops across
+  three concepts (LocalArmazenagemLote -> Lote -> Produto) -- which `query.groupBy`/
+  `query.aggregates` (Move 10 B1) cannot express: a query names exactly one `concept`, and
+  `groupBy`/`aggregates` operate only on that concept's own fields.
+
+  This is an ACCEPTED BOUNDARY, not an oversight: B1's own plan explicitly scoped joins out
+  ("translate access.read to SQL is a second expression compiler, not in this move" is the same
+  shape of decision -- a join translator is a comparable-sized undertaking). The old widget's
+  logic (fetch 3 endpoints, join client-side, sum) was deleted along with the rest of
+  analytics.html's hand-rolled JS; it is not silently kept as dead code, nor faked as "migrated."
+surface: dsl, kernel
+files: []
+detail: |
+  Trigger to lift: B1's aggregate query primitive gains either (a) a `join`/`via` clause letting
+  `groupBy`/`aggregates` reference a field on a referenced concept (e.g. `groupBy:
+  ["lote.produtoId"]` where `lote` is a declared reference field on LocalArmazenagemLote), or
+  (b) a denormalized field (e.g. a derived/computed `produtoId` copied onto
+  LocalArmazenagemLote at write time) that lets the existing single-concept query express the
+  same rollup without a real join. Neither exists today; do not attempt a partial join
+  (aggregating in the JVM after a manual multi-fetch) as a workaround inside the declarative
+  query primitive -- that reintroduces exactly the "hand-written arithmetic" this whole feature
+  exists to retire.
+
+  Full detail (byte metric, live verification, named parity gaps): move10-b2-charts.txt.

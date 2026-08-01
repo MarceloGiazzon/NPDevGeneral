@@ -6,12 +6,19 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**84 item(s) migrated: 3 open/partial, 81 done.**
+**107 item(s) migrated: 4 open/partial, 103 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
 | REG-1 | 9 app definitions remain on the deprecated blanket destructive posture (down from 27) | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-10 | LNCH-19: Linux CI observed green for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
+| REG-100 | Three more silent-answer sites found by the X0 audit: an unresolvable $ref writes null (while the SAME class throws for id refs), an unresolved runQuery name returns an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate is never validated | BUG | MEDIUM | OPEN | 2026-07-31 |
+| REG-101 | A declared query can carry parameters[] and a ':name' bind placeholder in its where, and NOTHING substitutes it -- pack-sample's SalesByStore has therefore returned zero rows since it was written, and the DSL accepts the shape with no error | BUG | MEDIUM | OPEN | 2026-07-31 |
+| REG-102 | npdev migration diff (and the MCP tool npdev_migration_diff that shells out to it) is completely non-functional -- it always throws CONFIG_MIGRATIONS_DISABLED, because it passes generator CLI flags that the generator's own arg parser unconditionally rejects | BUG | MEDIUM | DONE | 2026-07-31 |
+| REG-103 | RuntimeMetadataService's compiled-metadata.json/npdev/metadata/* catalogs (concept/panel UI labels among them) are classpath-only with no external-path override, unlike NPDevModelProvider's compiled-model.json -- a metadata-only model change cannot be hot-swapped into a running app without also touching these, or a static frontend asset | GAP | LOW | OPEN | 2026-08-01 |
+| REG-104 | RolePermissions.toRole() returned null for any app-defined role name and the caller loop `continue`d, so an app-declared role (e.g. WarehouseManager) silently granted nothing at the platform-permission layer -- no error, no log line (X0-5) | BUG | MEDIUM | DONE | 2026-08-01 |
+| REG-105 | Move 10 B1's groupBy/aggregates query primitive is single-concept only -- no cross-concept join, so a dashboard rollup that needs one (e.g. WmsOffice's retired analytics.html 'Estoque por Produto' widget: sum LocalArmazenagemLote.quantidade grouped via a join through Lote to Produto) cannot be expressed | GAP | LOW | OPEN | 2026-08-01 |
+| REG-106 | SchemaLifecycleExecutor.migrate() skipped flyway.repair() whenever the schema fingerprint was unchanged, but V1's generated migration SQL text can drift (comments/emission order) independently of the structural fingerprint -- a plain model.json edit with zero concept/table changes crashed the boot with a Flyway 'Migration checksum mismatch' on the next regeneration | BUG | MEDIUM | DONE | 2026-08-01 |
 | REG-11 | LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir) | GAP | LOW | DONE | 2026-07-21 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
@@ -89,11 +96,27 @@
 | REG-78 | Procedures have no find-by-non-id-fields lookup usable inline with patchConcept, and no arithmetic/accumulation primitive -- blocking SyncOcupacaoProcedure's real find-or-increment semantics (M8/M9) | GAP | LOW | DONE | 2026-07-30 |
 | REG-79 | A callCapability procedure step's args map is compiled with an unspecified, per-JVM-run-random iteration order (Map.copyOf), silently scrambling positional reflective dispatch for any multi-arg capability method | BUG | MEDIUM | DONE | 2026-07-30 |
 | REG-8 | LNCH-1-B9: schema-ahead detector blind to a pure column drop on rollback | BOUNDARY | — | DONE | 2026-07-21 |
-| REG-80 | field.sensitive is dead wiring -- parsed, compiled, and canonical-JSON round-tripped, but never consumed by anything, including its own documented external-AI-review-pack redaction purpose | GAP | MEDIUM | OPEN | 2026-07-30 |
-| REG-81 | ReleaseGateValidator.validatePromotion (concept.truthLevel promotion gating) is fully implemented and unit-tested but invoked by no real pipeline -- truth-level promotion is effectively dormant | GAP | LOW | OPEN | 2026-07-30 |
-| REG-82 | NPDevCliMainTest.idempotencyHitReturnsCachedResultMetadata fails deterministically (IOException loading its own temp model file) -- pre-existing, unrelated to Move 5 | BUG | LOW | OPEN | 2026-07-30 |
+| REG-80 | field.sensitive is dead wiring -- parsed, compiled, and canonical-JSON round-tripped, but never consumed by anything, including its own documented external-AI-review-pack redaction purpose | GAP | MEDIUM | DONE | 2026-07-30 |
+| REG-81 | ReleaseGateValidator.validatePromotion (concept.truthLevel promotion gating) is fully implemented and unit-tested but invoked by no real pipeline -- truth-level promotion is effectively dormant | GAP | LOW | DONE | 2026-07-30 |
+| REG-82 | NPDevCliMainTest.idempotencyHitReturnsCachedResultMetadata fails deterministically (IOException loading its own temp model file) -- pre-existing, unrelated to Move 5 | BUG | LOW | DONE | 2026-07-30 |
 | REG-83 | saveConcept's blank-idRef auto-generate fallback and patchConcept's createIfMissing create half both silently denied CONCEPT_FIELD_REQUIRED against a real governed ConceptGateway -- the auto-generated id was never folded into the write's own data map | BUG | HIGH | DONE | 2026-07-30 |
+| REG-84 | Java DataMigrationHook / code-bearing conversion hooks deferred by ADR-0008 to a never-written ADR-0003 | GAP | LOW | DONE | 2026-07-30 |
+| REG-85 | dsl-conformance-max fails ReleaseGateValidator's T2 promotion bar (7 concepts stuck at T1) | GAP | MEDIUM | DONE | 2026-07-31 |
+| REG-86 | procedure mapValue/return forced their value through a String ref-only path -- a literal array or object was impossible, only a $ref into procedure state could survive | GAP | LOW | DONE | 2026-07-31 |
+| REG-87 | B10: H2->Postgres promotion is a chosen product arc (A4.0 answer) -- build the real command | BOUNDARY | — | DONE | 2026-07-31 |
+| REG-88 | B15: await-inside-forEach investigated for closure -- hard stop fired, boundary kept | BOUNDARY | — | DONE | 2026-07-31 |
+| REG-89 | patchConcept's author-time 'id is required' rule was never relaxed for createIfMissing, so REG-77's shipped create-only runtime path was unreachable from any model | BUG | MEDIUM | DONE | 2026-07-31 |
 | REG-9 | LNCH-4: auth secrets management -- JWT key env-var delivery | GAP | HIGH | DONE | 2026-07-21 |
+| REG-90 | Rebuild-And-Restage.ps1 accepted -BuildRoot but never passed it to Build-NpdevApp.ps1 -- the wrapper generated one app and then gated a different one | BUG | MEDIUM | DONE | 2026-07-31 |
+| REG-91 | MigrationClaimStore swallows every SQLException from its canonical-row seed as 'row already exists', then reads an unchecked empty ResultSet -- a claim table whose columns are NOT NULL makes the app permanently unbootable with the opaque message 'No data is available' | BUG | HIGH | DONE | 2026-07-31 |
+| REG-92 | REG-76 was fixed for workbench inputFields but never mirrored to panel inputFields -- a declared Panel action still renders <input type=text>, which silently collapses newlines, so no panel action can take multi-line input | BUG | MEDIUM | DONE | 2026-07-31 |
+| REG-93 | The panel-provenance impact gate failed on manifests whose screen had been DELETED -- it has been RED since Move 8's crossdocking deletion, and structurally contradicted the bytes-deleted metric it is supposed to coexist with | BUG | MEDIUM | DONE | 2026-07-31 |
+| REG-94 | run-ai-knowledge-gate.ps1 has been RED on two independent steps and nobody noticed -- 11 untriaged security-pattern hits from the Moves 9-10 schema-engine work, and a script-inventory scan that walked into node_modules and failed on vendored third-party .js files | BUG | MEDIUM | DONE | 2026-07-31 |
+| REG-95 | The Aggregate Workbench's derived-field expression subset split its path on '.' before matching, so every filter(...) form -- including the subset's OWN documented example -- silently evaluated to 0; M6's balanced-quantity banner had been declared and shipping a wrong number since Move 6 | BUG | MEDIUM | DONE | 2026-07-31 |
+| REG-96 | A procedure's condition/if step can only test a reference's TRUTHINESS -- there is no equality or comparison primitive -- so no aggregate onCommit hook can be guarded on 'the record reached state X', and a lifecycle-transition side effect cannot be expressed declaratively | GAP | MEDIUM | DONE | 2026-07-31 |
+| REG-97 | CompiledModelCanonicalJson is not idempotent under write -> read -> write: the READER back-filled a concept invariant's empty fields[] from its field, so the CANONICAL form of a model depended on how many times it had been round-tripped | BUG | MEDIUM | DONE | 2026-07-31 |
+| REG-98 | Two differently-named concepts can compile to the SAME physical table and the model validates with zero errors -- SqlIdentifierSupport.toSnake() sanitizes by REPLACEMENT (every non-alphanumeric becomes '_'), and nothing checks the derived table names for collisions | BUG | HIGH | DONE | 2026-07-31 |
+| REG-99 | A band's transaction.visibleWhen was unreachable in EVERY spelling -- the validator accepts only the derived address 'collection.band', the expander read only the bare band name, so the predicate validated and was silently dropped | BUG | MEDIUM | DONE | 2026-07-31 |
 
 ## Detail
 
@@ -135,6 +158,463 @@ Caveat noted at closure: the green run was on an older branch line; confirming g
 line was a scheduled follow-up.
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-10`
+
+### REG-100 — Three more silent-answer sites found by the X0 audit: an unresolvable $ref writes null (while the SAME class throws for id refs), an unresolved runQuery name returns an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate is never validated
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Wave 0.2's X0 silent-expression sweep (MASTER_AI_PLATFORM_PROGRAMME_v2.md §2.1), which asked every
+expression evaluator in the platform one question: what does it do with input it cannot handle?
+Full register: docs/X0_SILENT_EXPRESSION_REGISTER.md.
+
+The programme opened X0 with two confirmed instances and predicted a third. The audit found five;
+two were already filed (REG-95 fixed, REG-96 open) and one was found live during the same wave
+(REG-99). This item carries the remaining three.
+
+**Surface:** `kernel/procedures, dsl, generator/workbench`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PanelValidation.java`
+
+**X0-6 — `resolve()` returns null for an unresolvable path, and the same class disagrees with itself.**
+
+`DefaultProcedureExecutor.resolve(state, ref)` walks a dotted path and returns `null` the moment a
+segment is missing. It backs `resolveSetValue`, which is what `patchConcept.set`, `mapList.select`
+and `mapValue` all use. So a typo:
+
+    { "type": "patchConcept", "concept": "Lote", "id": "$loteId",
+      "set": { "quantidade": "$item.quantidad" } }
+
+writes `quantidade: null`, with no error on any path.
+
+What makes this a finding rather than a design choice: **the same class already disagrees with
+itself.** `requireString` and `requireMap` call the same `resolve` and then THROW
+`IllegalArgumentException` on null/blank. Id refs are loud; value refs are silent. One of the two
+is wrong and nothing records which.
+
+Interaction with REG-89's history worth naming: `patchConcept` + `createIfMissing` builds a new
+record from `set` alone, so a typo'd ref there creates a record with a null field, and a governed
+gateway then rejects it for a required-field violation naming a field the author never wrote --
+the error surfaces one layer from its cause.
+
+**X0-7 — an unresolved `runQuery` name returns an UNFILTERED list.** From the runtime's own comment:
+
+    // Absent from queriesByName -> unfiltered, same as before this fix.
+    CompiledQuery query = step.operation() == null ? null : queriesByName.get(...);
+
+This is LC-P0's shape one layer up: LC-P0 is a declared `where` that does not filter; this is a
+declared QUERY that does not filter because its name did not resolve. Already acknowledged in a
+comment, which is the most dangerous state for this class -- known, written down, invisible to the
+author. `PackValidation` does check that a `runQuery` step names a declared query, so the
+model-level door is shut; the runtime lookup is keyed by a normalized name and falls back to
+unfiltered rather than failing, so any drift between the two (pack-provided queries, a rename, a
+normalization mismatch) reopens it silently.
+
+**X0-6 and X0-7 should be fixed WITH LC-P0 in Wave 0.3, not separately** -- all three are one
+sentence: a filter or reference that cannot be resolved is an error, never an empty filter or a
+null value.
+
+**X0-8 residual — `$root.<field>` visibleWhen predicates are never validated.** `evaluateVisibleWhen`
+fails OPEN by design, and that reasoning is accepted (a hidden surface whose rows still commit is
+the worse failure). But fail-open is only safe if a wrong predicate is caught at authoring time,
+and only half are: Move 11 W6 added validation for `$ui.<name>` (undeclared control, or a literal
+outside the control's declared values -> refused), while `$root.tpio == 'X'` validates clean and
+then silently shows everything forever.
+
+**Fix shape**: validate `$root.<field>` against the root concept's declared fields exactly as
+`$ui.<name>` is now validated -- the code is a near-copy of `validateUiStateReference`. Small, and
+it turns the accepted fail-open from a hazard into a genuinely safe default.
+
+**The shape to converge on** is already in the codebase: `computeValue` refuses an unknown operator
+at MODEL level, naming the legal set ("computeValue requires operation to be one of [add,
+subtract], got: multiply"). No runtime default, no silent answer.
+
+**Not audited, and the highest-value item left in X0**: `expression-cel` (invariants, `access.read`
+/`access.write`, `defaultExpression`, `derivedExpression`) -- the only real expression engine in the
+platform, and the one where a silent default matters most, since `access.*` is an authorization
+answer. It deserves its own pass, not a paragraph.
+
+### REG-101 — A declared query can carry parameters[] and a ':name' bind placeholder in its where, and NOTHING substitutes it -- pack-sample's SalesByStore has therefore returned zero rows since it was written, and the DSL accepts the shape with no error
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found by LC-P0's own detector on its first run (Wave 0.4,
+MASTER_AI_PLATFORM_PROGRAMME_v2.md) -- i.e. the corpus scan that exists precisely to find models
+whose declared filter never worked found one immediately:
+
+  $ python scripts\quality\check-query-predicate-compilable.py
+  Query-predicate compilability (29 corpus model(s))
+    14 declared predicate(s) checked, 1 uncompilable
+
+  FAIL: a declared `where` cannot be compiled ...
+    - AppGen/apps/pack-sample/definition/model.json: queries[SalesByStore].where =
+      'storeId == :storeId' -- literal ':storeId' is neither a quoted string, a number,
+      nor a boolean
+
+The declaration:
+
+    { "name": "SalesByStore", "concept": "Sale",
+      "where": "storeId == :storeId",
+      "orderBy": ["soldAt"],
+      "parameters": [ { "name": "storeId", "type": "uuid", "required": true } ] }
+
+The author's intent is unambiguous -- a declared parameter, bound into the predicate. The schema
+has a `parameters` property on `query`, so the DSL invites this.
+
+**Surface:** `kernel/concepts, dsl`
+**Files:**
+- `AppGen/apps/pack-sample/definition/model.json`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryPredicateCompiler.java`
+
+**What actually happened before LC-P0.** The old `ConceptQueryFilterSupport` split on the first
+`==`, took `:storeId` as the literal text (unquoted and non-numeric, so returned verbatim), and
+compared every `Sale.storeId` against the seven-character string `":storeId"`. Nothing matched.
+**This query has returned zero rows for its whole life**, with no error at any layer -- and, being
+the "returns nothing" variant of the silent-answer class, it looks exactly like "this store has no
+sales" rather than like a bug.
+
+**What happens after LC-P0.** The predicate is refused by name, quoting the offending literal and
+saying a `$`/bind reference must be substituted before compiling. The query is still broken; the
+author is now told. That is the whole thesis of LC-P0, and this item is its first real witness.
+
+**Two things are missing, and they are separable:**
+
+1. **Substitution.** `queries[].parameters` is declared, schema-valid, and bound by nothing. A
+   query parameter is a real feature the DSL advertises and the runtime does not implement.
+2. **Validation.** Nothing checks that a `where` is compilable at MODEL level, so the shape passes
+   `validateModel` with 0 errors. LC-P0 put the refusal in the RUNTIME because that is where the
+   compiler lives (kernel); the DSL module cannot depend on the kernel, so it cannot reuse it.
+
+**Fix shape**, in the order that keeps each step honest:
+  (a) decide the placeholder spelling ONCE -- `:name` (this model), `$name` (procedures' own
+      convention), or both -- and write it down; today two conventions exist in one platform;
+  (b) substitute declared parameters into the predicate before compiling, with a named error for
+      an unbound parameter (never a default answer -- X0's rule applies to substitution too);
+  (c) move `ConceptQueryPredicateCompiler` to a module both the DSL validator and the kernel can
+      use, so an uncompilable `where` is refused at authoring time and
+      `check-query-predicate-compilable.py` (which today mirrors the grammar in Python) can be
+      deleted rather than maintained in two languages.
+
+**Not fixed here.** Wave 0.3's brief is "make a declared query actually filter, and fail loudly on
+what it cannot compile" -- both done. Parameter substitution is a distinct feature, and widening
+the grammar to *accept* `:storeId` without substituting it would put the silent wrong answer back,
+which is the one thing LC-P0 exists to prevent.
+
+The corpus instance is recorded in `scripts/quality/query-predicate-allowlist.json` citing this id,
+so the detector measures NEW breakage rather than re-reporting a known, filed one.
+
+### REG-102 — npdev migration diff (and the MCP tool npdev_migration_diff that shells out to it) is completely non-functional -- it always throws CONFIG_MIGRATIONS_DISABLED, because it passes generator CLI flags that the generator's own arg parser unconditionally rejects
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found while scoping MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 1.2 (LC-C1: add METADATA_ONLY to "the
+existing classification (SAFE_ADDITIVE/BACKFILL_REQUIRED/MANUAL_REVIEW), already in npdev migration
+diff / MCP npdev_migration_diff"). Before extending that classification, tried to run it once to see
+its current output shape -- it does not run at all.
+
+Reproduced live:
+
+    $ python NPDevCli/npdev_cli.py migration diff --baseline <x> --current <x>
+    Exception in thread "main" java.lang.IllegalArgumentException: CONFIG_MIGRATIONS_DISABLED:
+      stateful upgrade management is not supported by this generation path (source: --migrationsDir).
+      Use recreate-style generation and schema realization instead.
+      at com.npdev.generator.GeneratorMain.migrationsDisabled(GeneratorMain.java:399)
+      at com.npdev.generator.GeneratorMain$Args.parse(GeneratorMain.java:730)
+    BUILD FAILED
+    npdev command failed with exit code 1
+
+**Surface:** `cli, mcp, generator`
+**Files:**
+- `NPDevCli/npdev_cli.py`
+- `NPDevMcp/server.py`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java`
+
+`run_migration_diff` (NPDevCli/npdev_cli.py:960) invokes `:generator:run` with
+`--migrationsDir`, `--migrationMode=additive-only`, `--migrationPlanOnly`,
+`--migrationRiskThreshold=...`, `--migrationDecisionReport` -- five flags, every one of them
+starting with the literal substring `--migration`.
+
+`GeneratorMain.Args.parse` (GeneratorMain.java:729) contains:
+
+    if (cur.startsWith("--migration") || cur.startsWith("--enableMigrations")) {
+        throw migrationsDisabled(cur);
+    }
+
+This check exists to reject the OLD, unsupported migration-management CONFIG surface (model.json
+declaring `migrationManagement`/`migrations`/`schemaEvolution` -- see
+`rejectUnsupportedMigrationManagement`, a different, correctly-scoped guard over the model JSON).
+But the CLI-ARGS version of the guard matches on a bare string prefix, so it ALSO catches the two
+real, supported migration-plan flags before they were renamed to dodge it
+(`--previousCompiledModel`, `--schemaMigrationPlanOut` -- see the comments at GeneratorMain.java
+~633,648 explaining exactly why those two were "deliberately named without a --migration prefix for
+this reason") -- and it catches `run_migration_diff`'s five flags, which were never renamed and so
+are caught on the very first one (`--migrationsDir`).
+
+**The generator has NO support at all today** for `--migrationMode`, `--migrationPlanOnly`,
+`--migrationRiskThreshold`, or `--migrationDecisionReport` -- grepped the whole `NPDevGenerator`
+tree for each name; zero hits. This is not a renamed-flag bug fixable by search-and-replace; the
+offline "classify this change as SAFE_ADDITIVE/BACKFILL_REQUIRED/MANUAL_REVIEW/METADATA_ONLY by
+diffing two model.json snapshots" feature the CLI subcommand and MCP tool both advertise has never
+been built. The REAL classification (`SafetyClass`, `SchemaDiffEngine`, `ClassificationReducer` in
+`NPDevRuntimeHost/src/main/java/com/finalexec/db/`) is computed only at APP BOOT TIME, diffing the
+compiled model against the LIVE database's stored schema history via `SchemaHistoryStore` -- there
+is no offline, two-model-snapshots equivalent.
+
+**Consequence for the programme.** Wave 1.2 (LC-C1) cannot honestly be scoped as "add METADATA_ONLY
+to the existing classification" -- there is no existing classification to add to at this layer.
+Wave 2's AC-4 ("MCP submit") and the contract's own diff-gate (AC-2) likely inherit the same
+dependency and should be re-verified live, not assumed working, before being built on.
+
+**Fix shape when taken up**: either (a) build the offline classifier for real -- a
+`ModelChangeClassifier` that diffs two `CompiledModel`s' concept/field/index shapes directly (no
+Gradle subprocess, no generator CLI involvement) and returns SAFE_ADDITIVE/BACKFILL_REQUIRED/
+MANUAL_REVIEW/METADATA_ONLY -- or (b) rename `run_migration_diff`'s five flags to route through the
+generator's real, already-supported `--previousCompiledModel`/`--schemaMigrationPlanOut` pair and
+reuse `MigrationPlanEmitter`'s existing diff, which does NOT currently classify by risk level at
+all (it only lists additive-vs-destructive migration items) -- so (b) still needs new classification
+logic layered on top, just via a different entry point. Neither is a small fix; do not attempt as a
+side effect of LC-C1.
+
+---
+
+## CLOSED (2026-07-31, MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 1.2, hybrid of fix shapes (a)+(b))
+
+Re-reading `MigrationPlanEmitter` (LNCH-1 Phase 6) found it is ALREADY the offline, no-database,
+pure model-vs-model diff engine fix shape (a) described building from scratch -- it just had no
+working CLI/MCP entry point (the actual root cause) and no coarse risk-level classification on top
+of its `PlanItem.Kind` vocabulary (ADD_TABLE/ADD_COLUMN/ADD_COLUMN_BACKFILL/RENAME_*/WIDEN_TYPE/
+ADD_UNIQUE_CONSTRAINT/DROP_COLUMN/DROP_TABLE/NARROW_TYPE/UNKNOWN). So the real fix reuses it rather
+than re-deriving a diff engine "no Gradle subprocess" would have required building twice:
+
+1. **`ModelChangeClassifier`** (new, `NPDevGenerator/generator/.../schemaevolution/`): maps
+   `PlanItem.Kind` to the coarse METADATA_ONLY/SAFE_ADDITIVE/BACKFILL_REQUIRED/MANUAL_REVIEW the
+   CLI/MCP surface advertises. `METADATA_ONLY` is definitionally exact, not approximated:
+   `MigrationPlanEmitter` diffs exactly the concept/field shape that feeds
+   `UserDatabaseDefinitionLoader#fingerprintInputs`'s business-table lines, so an empty item list
+   (on a non-fresh-install) means the fingerprint provably did not move. 16 unit tests (every
+   `PlanItem.Kind` -> `Level` mapping, worst-item-wins aggregation, fresh-install, no-change) plus
+   **2 corpus property tests** over all 10 in-repo `NPDevSamples/*/Input/model.json` models
+   (LC-C1's own DoD line: "a change to a concept field is never classified METADATA_ONLY --
+   property test over the corpus, not a single example") -- 20/20 tests green.
+2. **`ModelChangeClassifierMain`** + a new `:generator:classifyModelChange` Gradle task
+   (`-PcurrentPath=... -PbaselinePath=... -PreportOut=...`, mirroring `:validateModel`'s own
+   pattern) -- deliberately its OWN entry point, never a new `GeneratorMain` flag, since THAT
+   class's arg parser is the thing that rejected every one of the five broken flags. Every flag
+   here is named without the `--migration` prefix, matching the precedent
+   `--previousCompiledModel`/`--schemaMigrationPlanOut` already set.
+3. **`npdev_cli.py`'s `run_migration_diff`** rewired to call the new task instead of the broken
+   `:generator:run --migration*` invocation; the now-meaningless `--migrationRiskThreshold` input
+   (a threshold gating a classifier that never existed) removed from both the CLI arg parser and
+   the MCP tool schema/call -- the classifier now always reports its own level, the caller decides.
+
+**Verified live, all four layers, not just unit tests**: the exact repro command from this item's
+own `source:` block now runs clean --
+
+    $ python NPDevCli/npdev_cli.py migration diff --baseline user-minimal/model.json \
+          --current simple-contact-intake/model.json
+    migration diff classification: MANUAL_REVIEW
+      - [SAFE_ADDITIVE] New concept adds table 'contact_messages'.
+      - [MANUAL_REVIEW] Concept removed: table 'users' will be dropped ...
+
+and the MCP tool (`server.tool_migration_diff`, called directly, not mocked) returns
+`classification: METADATA_ONLY` for two identical models and `MANUAL_REVIEW` for the same
+destructive pair above.
+
+`:generator:test` (31 tasks, full suite) green after the change.
+
+### REG-103 — RuntimeMetadataService's compiled-metadata.json/npdev/metadata/* catalogs (concept/panel UI labels among them) are classpath-only with no external-path override, unlike NPDevModelProvider's compiled-model.json -- a metadata-only model change cannot be hot-swapped into a running app without also touching these, or a static frontend asset
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found while building MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 1.3 (LC-C2)'s metadata-only fast
+path (scripts/appgen/Update-AppMetadata.ps1). The fast path correctly hot-swaps the app's
+CompiledModel bean (NPDevModelProvider checks an external file path before its classpath
+fallback) and re-signs npdev-generated/ so StrictExecutionValidator accepts the change -- proven
+live: the app rebooted cleanly with the new compiled-model.json in place.
+
+But the plan's own chosen example for this feature -- "a panel-title change is live in the
+running app" -- is NOT satisfied. Live-verified in a real browser: changed the Recebimento
+concept's ui.label, ran the fast path successfully, confirmed the app rebooted with the new
+compiled-model.json and no StrictExecutionValidator failure, then checked two PanelRuntime/
+business-ui-rendered surfaces (the generic CRUD panel heading and the RecebimentoWorkbench.html
+page's <title>) -- both still showed the OLD label. Screenshots + full routine result:
+D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\move11\browser-lc-c2\.
+
+**Surface:** `runtimehost, generator`
+**Files:**
+- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/RuntimeMetadataService.java`
+- `NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-model-provider.mustache`
+
+`RuntimeMetadataService` loads `npdev/compiled-metadata.json` and `npdev/metadata/index.json`
+(plus the per-catalog manifest files) via `ClassPathResource` ONLY -- no `@Value`-injected external
+path, unlike `NPDevModelProvider` (the app's compiled-model loader), whose constructor explicitly
+checks a configurable external file (`npdev.compiled-model.path`/`npdev.model.path`) BEFORE its own
+classpath fallback. Grepped `RuntimeMetadataService` clean for any such override.
+
+Concept/panel UI label text (and everything else `RuntimeMetadataService`'s catalogs carry) is
+therefore baked into the packaged jar at generation time and cannot be refreshed by overwriting a
+file on disk -- only a full rebuild (or `jar --update` surgery on the packaged fat jar) updates it.
+The generated frontend's own static assets under `static/npdev-business-ui/`
+(`generated-ui-manifest.json`, `app.js`, `shell.js`) are a SEPARATE, likely also-static, likely
+also-affected surface -- not confirmed by this finding's own live check, which only exercised the
+two PanelRuntime-rendered pages named above, but named here as the same class of gap since both
+are pre-rendered at generation time rather than read from the CompiledModel bean per request.
+
+**Fix shape when taken up**: mirror `NPDevModelProvider`'s own pattern -- add a
+`@Value("${npdev.compiled-metadata.path:${npdev.metadata.path:<classpath-default>}}")`
+constructor parameter to `RuntimeMetadataService`, checking that external path before the existing
+`ClassPathResource` fallback, exactly the precedent already proven safe for the model itself. The
+static frontend assets are a materially different problem (client-side JS/JSON, not a Spring bean)
+and were not sized here.
+
+**Not a regression, not urgent** -- the fast path this finding was found while building is real,
+additive infrastructure (procedure/query/permission/validation-rule changes DO flow through the
+hot-swapped CompiledModel bean correctly); this item only narrows which subset of "metadata-only"
+changes the fast path currently makes visibly live. Rated LOW: the mechanism is safe (refuses
+correctly, never silently applies a schema-shaped change, never leaves the app unable to boot) --
+it is a completeness gap, not a correctness or safety one.
+
+### REG-104 — RolePermissions.toRole() returned null for any app-defined role name and the caller loop `continue`d, so an app-declared role (e.g. WarehouseManager) silently granted nothing at the platform-permission layer -- no error, no log line (X0-5)
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-01)
+**Verification:** VERIFIED_LIVE
+**Source:** Found and fixed while building MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 3 (RC-B1,
+MOVE11_RUNTIME_CONFIGURATION_PLAN Part B.1). Already named in
+docs/X0_SILENT_EXPRESSION_REGISTER.md as X0-5, filed OPEN with no REG id at the time that
+register was written (2026-07-31); this item is that fix, closing X0-5's OPEN status to
+FIXED.
+
+RolePermissions.hasPermission(context, permission) iterated context.roles(), called the
+private toRole(rawRole) helper, and on any name outside the closed USER/OPERATOR/ADMIN enum
+toRole returned null via a caught IllegalArgumentException -- the loop then `continue`d with
+no diagnostic anywhere. An app that declared its own role vocabulary in the model (which the
+DSL had no way to express at all before this fix) would have that role silently mean nothing
+once implemented naively, exactly the same "silent-wrong-answer" defect class as the
+platform's other X0 findings.
+
+**Surface:** `dsl, kernel, runtimehost`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/RoleAst.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ModelAst.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/RoleValidation.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledRole.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModel.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java`
+- `NPDevContract/schemas/model.schema.json`
+- `NPDevContract/schemas/authoring/model.schema.json`
+- `NPDevContract/dsl/src/main/resources/schema/model.schema.json`
+- `NPDevContract/dsl/resources/Schemas/model.schema.json`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/RolePermissions.java`
+- `NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/defaultpolicy/DefaultExecutionAuthorizationPolicy.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevAuthConfig.java`
+- `NPDevSamples/dsl-conformance-max/Input/model.json`
+- `scripts/quality/check-dsl-coverage.py`
+
+Fix shape: the model gained an optional top-level `roles[]` (name + grants, structurally
+validated -- non-blank name, unique names, non-empty/unique grants -- but grant names are NOT
+checked against the real Permission enum at the DSL layer, since dsl has no dependency on
+kernel). RolePermissions gained a model-aware 3-arg hasPermission(context, permission,
+appDeclaredRoles) overload: a role matching neither a built-in Role NOR an app-declared role
+now logs a named WARNING (actor, role, "neither built-in nor declared") before denying,
+instead of silently continuing. DefaultExecutionAuthorizationPolicy gained a constructor
+taking a CompiledModel, resolving every declared grant name against the real Permission enum
+at CONSTRUCTION (app boot) time -- an unrecognized grant name (a typo, a renamed permission)
+throws IllegalStateException at boot, not silently the first time an affected user makes a
+request.
+
+Live-verified: WmsOffice's model declared "WarehouseManager": ["EXECUTE_FLOW",
+"READ_EXECUTIONS", "READ_FLOW_DEFINITIONS"]; the app booted cleanly with real kernel jars
+built from source, and GET /api/admin/roles (the new RC-B2 vocabulary endpoint) round-tripped
+the declaration correctly through the full parse -> resolve -> validate -> compile ->
+canonical-JSON -> NPDevModelProvider boot-load -> REST chain. Full detail:
+D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\move11\move11-b1-app-roles.txt
+
+Regression coverage: RolePermissionsTest and DefaultExecutionAuthorizationPolicyTest both
+gained a test proving an app declaring NO roles (empty map / null CompiledModel -- what every
+pre-existing app is) behaves identically to the pre-fix code path for the built-in
+USER/OPERATOR/ADMIN trio.
+
+### REG-105 — Move 10 B1's groupBy/aggregates query primitive is single-concept only -- no cross-concept join, so a dashboard rollup that needs one (e.g. WmsOffice's retired analytics.html 'Estoque por Produto' widget: sum LocalArmazenagemLote.quantidade grouped via a join through Lote to Produto) cannot be expressed
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Verification:** NOT_VERIFIED
+**Source:** Named while replacing WmsOffice's analytics.html with a real Move 10 B1/B2 aggregate-query +
+gadget dashboard (MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 5, MOVE10_AI_LOWCODE_PLAN Part B.2).
+analytics.html's provenance doc names 3 client-side rollups; 2 of the 3 ("Ocupacao por Rua",
+"Movimentos por Tipo e Situacao") are single-concept groupBy/count and were faithfully
+replaced with real query.groupBy + guidePageGadget declarations. The third ("Estoque por
+Produto") sums LocalArmazenagemLote.quantidade grouped by Lote.produtoId -- two hops across
+three concepts (LocalArmazenagemLote -> Lote -> Produto) -- which `query.groupBy`/
+`query.aggregates` (Move 10 B1) cannot express: a query names exactly one `concept`, and
+`groupBy`/`aggregates` operate only on that concept's own fields.
+
+This is an ACCEPTED BOUNDARY, not an oversight: B1's own plan explicitly scoped joins out
+("translate access.read to SQL is a second expression compiler, not in this move" is the same
+shape of decision -- a join translator is a comparable-sized undertaking). The old widget's
+logic (fetch 3 endpoints, join client-side, sum) was deleted along with the rest of
+analytics.html's hand-rolled JS; it is not silently kept as dead code, nor faked as "migrated."
+
+**Surface:** `dsl, kernel`
+
+Trigger to lift: B1's aggregate query primitive gains either (a) a `join`/`via` clause letting
+`groupBy`/`aggregates` reference a field on a referenced concept (e.g. `groupBy:
+["lote.produtoId"]` where `lote` is a declared reference field on LocalArmazenagemLote), or
+(b) a denormalized field (e.g. a derived/computed `produtoId` copied onto
+LocalArmazenagemLote at write time) that lets the existing single-concept query express the
+same rollup without a real join. Neither exists today; do not attempt a partial join
+(aggregating in the JVM after a manual multi-fetch) as a workaround inside the declarative
+query primitive -- that reintroduces exactly the "hand-written arithmetic" this whole feature
+exists to retire.
+
+Full detail (byte metric, live verification, named parity gaps): move10-b2-charts.txt.
+
+### REG-106 — SchemaLifecycleExecutor.migrate() skipped flyway.repair() whenever the schema fingerprint was unchanged, but V1's generated migration SQL text can drift (comments/emission order) independently of the structural fingerprint -- a plain model.json edit with zero concept/table changes crashed the boot with a Flyway 'Migration checksum mismatch' on the next regeneration
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-01)
+**Verification:** VERIFIED_LIVE
+**Source:** Found and fixed while rebuilding WmsOffice for Move 10 B2 (LC-B2, MOVE10_AI_LOWCODE_PLAN Part
+B.2) live verification -- the model change that triggered it (3 new queries + 1 new
+guidePage, no concept/table changes at all) could not possibly have altered the schema
+structurally, yet the app failed to boot with:
+
+  org.flywaydb.core.api.exception.FlywayValidateException: Validate failed: Migrations have
+  failed validation
+  Migration checksum mismatch for migration version 1
+  -> Applied to database : -2143873802
+  -> Resolved locally    : -642233137
+
+SchemaLifecycleExecutor.migrate() already had a repair() call for exactly this class of
+problem (V1's SQL is regenerated from the full model on every generation pass, so its
+checksum "legitimately changes... even though it must not be re-executed"), but it was
+gated behind `recreation.safeAdditive()` -- true only when the schema FINGERPRINT changed in
+a known-additive way. When the fingerprint is UNCHANGED (the log even printed "stored schema
+fingerprint matches generated schema fingerprint; no destructive recreation required"), the
+code assumed the migration file's literal bytes were therefore also unchanged and skipped
+repair() entirely, going straight to a bare flyway.migrate() -- which then validated the
+freshly generated (but byte-different, e.g. comment/table-ordering drift accumulated across
+many generator runs over time) V1 file against the OLD checksum recorded in
+flyway_schema_history from whenever this database was last migrated, and failed.
+
+**Surface:** `runtimehost`
+**Files:**
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java`
+
+Fix: widened the repair() call from the `recreation.safeAdditive()`-only branch to the whole
+`else` (non-destructive-recreation) branch, i.e. whenever `recreation.performed()` is false.
+V1 is entirely generated, never hand-authored, so trusting the freshly generated file (via
+repair(), which only reconciles Flyway's bookkeeping checksums -- it does not re-execute or
+alter any table data) is correct whether the fingerprint changed additively or did not change
+at all; only the destructive-recreation branch (which already clears schema-realization
+history outright) needs no repair() call.
+
+Live-verified: WmsOffice failed to boot with the checksum-mismatch error on the first rebuild
+attempt after this session's Move 10 B2 model.json change; after the fix, the SAME database
+(not wiped, not recreated) booted clean on the next rebuild with the identical model. Full
+detail: move10-b2-charts.txt.
 
 ### REG-11 — LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir)
 
@@ -2426,8 +2906,8 @@ too. This item's DONE claim holds only with the REG-27 fix applied.
 
 ### REG-80 — field.sensitive is dead wiring -- parsed, compiled, and canonical-JSON round-tripped, but never consumed by anything, including its own documented external-AI-review-pack redaction purpose
 
-**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
-**Verification:** NOT_VERIFIED
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-07-30)
+**Verification:** VERIFIED_LIVE
 **Source:** docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5 (Tier 2 zero-witness sweep, item 7 "constraint:sensitive").
 Investigated while trying to author a real corpus declaration and confirm the feature actually
 redacts something -- found live via a targeted research pass rather than assumed from the plan's
@@ -2480,24 +2960,53 @@ actual protection anywhere -- not in a generated review pack, not in traces, not
 payloads. This is a real, if narrow, information-exposure risk for anyone relying on the flag as
 documented.
 
-**What would close it** (not attempted, scoped for a future session -- two independent, separately
-schedulable pieces): (a) wire `ReviewPackBuilder.java`/`build-review-pack.py` to redact a
-`sensitive`-marked concept field's value wherever a review pack embeds live/example record data
-(needs first confirming review packs actually embed such data today, vs. only source/doc
-artifacts -- not established here); (b) separately, extend `SensitiveKeyPolicy` (or a new
-model-aware policy) to also consult the compiled model's `sensitive` fields, not just its
-hardcoded key-name denylist, for trace/event redaction. Shipping either as a shortcut without the
-other would leave the schema's own documented claim (a) or the plan's assumption (b) still false;
-named both here rather than silently fixing just one and calling the feature closed.
+**Closed (Move 7 R80, docs/MOVE7_IMPLEMENTATION_SPEC.md) -- piece (a) is NOT_APPLICABLE, piece (b)
+is wired and live-proven:**
 
-Corpus/round-trip protection landed alongside this finding (not blocked by it): dsl-conformance-max
-now declares `WidgetOrder.customerEmail` as `sensitive: true`, protecting the parse/compile/
-canonical-JSON round trip from regressing even though downstream consumption remains unbuilt.
+**(a) NOT_APPLICABLE, with evidence, not silently skipped.** Confirmed by reading BOTH the real
+production caller (`ReviewAdminController.java`'s `/build-pack` endpoint) and `ReviewPackBuilder
+.build`'s own signature: a review pack's `sections` are `{label, text}` pairs supplied ENTIRELY by
+the calling operator (an admin pasting/uploading arbitrary prose or source code via the
+ControlPanel `_ops` UI) -- there is no code path anywhere that auto-populates a section from a
+concept's live record data. `field.sensitive` marks a FIELD on a CONCEPT; review packs never
+carry concept/record data in the first place, so there is nothing for this piece to redact. Wiring
+redaction into `ReviewPackBuilder` for a data shape (`{concept, field, value}`) that never actually
+reaches it would be dead code protecting against an input that cannot occur -- correctly marking
+this NOT_APPLICABLE rather than adding it anyway.
+
+**(b) Wired.** `SensitiveKeyPolicy.registerModelSensitiveFieldNames(Collection<String>)` (new,
+`NPDevKernel/adapters/tracing-redaction-default/.../SensitiveKeyPolicy.java`) adds a mutable,
+EXACT-match (not substring) field-name registry, OR'd into `isSensitiveKey` alongside (never
+replacing) the existing static substring denylist -- kept DSL-agnostic (no dependency on
+`CompiledModel`/`CompiledField`, which this adapter module does not otherwise depend on; the
+caller passes plain strings). `NpdevObservabilityConfig.java` (RuntimeHost template -- already the
+one class with BOTH `CompiledModel` and the tracing-redaction-default adapter types in scope, since
+its `StartupValidator` bean already depends on `CompiledModel`) gained a new `@Bean
+sensitiveFieldModelRegistration(CompiledModel)` that extracts every `field.isSensitive()` field
+name across every concept and registers them at boot, alongside the existing
+`traceRedactionPolicy`/`eventRedactionPolicy`/`executionRedactionPolicy` beans it already declared.
+
+**Verified live**, not just unit-tested: `tracing-redaction-default:test` 8/8 pass (2 new +
+`SensitiveKeyPolicyTest`'s existing 3, plus 3 more covering OR-not-replace and clear-on-empty).
+`NpdevObservabilityConfigSensitiveFieldTest` (new) proves the actual REG-80-named gap is closed --
+`isSensitiveKey("customerEmail")` is `false` before registration, `true` after -- using dsl-
+conformance-max's EXISTING `WidgetOrder.customerEmail` (`sensitive: true`) hand-mirrored as the
+test subject (no new corpus witness authored, per this task's own instruction; `CompiledModel` has
+no constructor that parses a model.json file by path, so it is hand-built the same way every other
+RuntimeHost config test already does, e.g. `RuntimeConceptGatewaySemanticPoliciesTest`). Run
+inside a real generated+booted app (WmsOffice, full `npdev-generated` mount present, avoiding the
+known "PanelRuntime-family tests don't compile outside a mount" gap this session's own memory
+already documents) -- confirmed 2/2 new tests pass AND the app's full suite (437 tests, 0
+failures) still passes with this change in place.
+
+Corpus/round-trip protection from the original finding is unchanged: dsl-conformance-max's
+`WidgetOrder.customerEmail` (`sensitive: true`) still protects the parse/compile/canonical-JSON
+round trip, and is now ALSO the live proof subject for piece (b), not just a round-trip fixture.
 
 ### REG-81 — ReleaseGateValidator.validatePromotion (concept.truthLevel promotion gating) is fully implemented and unit-tested but invoked by no real pipeline -- truth-level promotion is effectively dormant
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
-**Verification:** NOT_VERIFIED
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-07-30)
+**Verification:** VERIFIED_LIVE
 **Source:** docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 6 ("re-verify concept.truthLevel, actionMetadata.
 inputFormHint, field.connectable -- do not implement before establishing which is metadata-only
 vs. a real gap"). truthLevel itself came back fully wired (SemanticValidator's own
@@ -2530,16 +3039,35 @@ reaches a concept below its declared truth level, with T4+ evidence entirely une
 gate exists in source but never fires. Distinct from, and narrower than, REG-80 (field.sensitive):
 this is a complete, tested capability sitting unplugged, not missing logic.
 
-**What would close it** (not attempted, scoped for a future session): wire
-`ReleaseGateValidator.validatePromotion` into either `GeneratorMain`/`ModelValidatorMain` behind an
-explicit flag (e.g. `--releaseGate`/`--targetTruthLevel`), or a dedicated CI step analogous to the
-existing (differently-scoped) `npdev-release-gate.yml`. Left open rather than wired blind: doing so
-needs a decision on what target truth level/evidence source a real CI run should check against,
-which is a product decision outside this wave's scope, not a coding gap.
+**Closed (Move 7 R81, docs/MOVE7_IMPLEMENTATION_SPEC.md)**: wired into `ModelValidatorMain` only
+(not `GeneratorMain`, not any CI step, not `.github/workflows/npdev-release-gate.yml` -- all
+explicitly out of scope, since the target truth level/evidence source for an automatic CI check
+is a product decision this session did not make) behind three opt-in flags: `--releaseGate`
+(boolean), `--targetTruthLevel=<T0..T6>` (required together with `--releaseGate`, else a single
+usage diagnostic explaining the requirement), and optional repeatable `--evidencePath=<path>`
+wired to `ReleaseGateValidator.evidencePaths(...)` (falls back to `EvidenceProvider.none()` when
+omitted, matching the class's own tested default). `runReleaseGate` iterates every concept in the
+parsed model and calls `validatePromotion` per concept, mirroring
+`ReleaseGateValidatorTest.java:56`'s argument shape. `NPDevContract/dsl/build.gradle`'s
+`validateModel` task gained matching `-PreleaseGate -PtargetTruthLevel=... -PevidencePath=...`
+pass-through for manual/CI-adjacent invocation.
+
+Verified live: `:validateModel` with no new flags is byte-identical to before (0 diagnostics on
+`dsl-conformance-max`, confirming zero behavior change for every existing caller); with
+`-PreleaseGate -PtargetTruthLevel=T3` against the same model, every T1 concept in its bond
+closure now reports a real `truth_closure_below_target` diagnostic; `-PreleaseGate` alone (no
+target level) reports the usage diagnostic instead of silently doing nothing. 6 new unit tests in
+`ModelValidatorMainReleaseGateTest` (the CLI's first-ever test coverage) cover: all-concepts-pass,
+a real closure violation, T4+ missing-evidence, T4+ with matching evidence paths suppressing it,
+and both malformed-flag-usage cases. `docs/MOVE7_IMPLEMENTATION_SPEC.md`'s cited
+`docs/DSL_REFERENCE.md:60-63` overclaim was actually located at
+`NPDevContract/docs/MODEL-CONTRACT.md` (the ledger's own file citation was stale/wrong -- verified
+by grepping the exact quoted prose repo-wide) and has been corrected there to name the real,
+opt-in invocation surface instead of implying automatic enforcement.
 
 ### REG-82 — NPDevCliMainTest.idempotencyHitReturnsCachedResultMetadata fails deterministically (IOException loading its own temp model file) -- pre-existing, unrelated to Move 5
 
-**Type:** BUG · **Severity:** LOW · **Status:** OPEN
+**Type:** BUG · **Severity:** LOW · **Status:** DONE (2026-07-30)
 **Verification:** VERIFIED_LIVE
 **Source:** Surfaced incidentally while running scripts/quality/run-generator-gate.ps1 as a final regression
 check before committing Move 5 Wave 6 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md) -- the gate's full
@@ -2572,17 +3100,29 @@ commit ed4a48f (Wave 4, before Wave 5 existed). The failure predates Move 5 enti
 `executeAndTraceCommandsWorkWithSharedStoreDir`, which also calls `execute` against its own
 temp-file model. This rules out a broken/missing schema jar resource affecting every model load.
 
-**Not root-caused further** (deliberately, out of Wave 6's scope): whether this is specific to
-this test's exact model content (a `flows[].steps[].policy` with `retryCount`/`retryDelayMs`/
-`timeoutMs`/`idempotencyKeyField` but no circuit/bulkhead fields), a genuine Windows temp-file
-timing/lock race unique to this one test's file lifecycle, or something else, is not established
-here -- the underlying `IOException`'s own message/type was not captured (the CLI's top-level
-handler only surfaces the wrapper's static string, not the cause).
+**Root cause, found (Move 7 R82)**: neither a temp-file race nor an environment fault. The
+wrapper's message was fixed FIRST to fold the wrapped exception's own class name + message into
+the thrown `IllegalArgumentException` (`ModelBackedKernelRuntimeFactory.compileModel`, permanent
+diagnostic improvement, kept regardless), which immediately revealed the real cause:
+`com.npdev.dsl.v1.validation.ModelSchemaValidationException` -- `idempotencyModelJson()`'s own
+embedded fixture used the DSL 1.0 `capabilityCall` step field aliases `cap`/`op`/`out`, retired by
+the 2026-07-27 DSL 2.0 flowStep-vocabulary narrowing (`model.schema.json`'s `flowStep` definition
+now only accepts `capability`/`operation`/`output`) -- this ONE fixture was simply never migrated
+when that breaking change landed, unlike every git-tracked corpus model (which the DSL 2.0 commit
+did migrate; a hand-authored test fixture string isn't part of that corpus and the codemod has no
+way to reach it).
 
-**What would close it** (not attempted): re-run with a debugger/stack-trace-preserving harness to
-capture the WRAPPED `IOException`'s real type and message (the current wrapper swallows it into a
-generic string), which would immediately distinguish "malformed JSON" from "file not found" from
-a genuine environment-specific IO fault.
+**Fix**: `idempotencyModelJson()`'s step now uses `"capability"`/`"operation"`/`"output"` in place
+of `"cap"`/`"op"`/`"out"`. `ModelBackedKernelRuntimeFactory.compileModel`'s catch block permanently
+folds the wrapped `IOException`'s (here, `ModelSchemaValidationException`, which is NOT an
+`IOException` subtype but was being caught by the same generic `catch (IOException)` -- worth
+re-checking if `JsonModelParser.parse` should really declare schema-validation failures as
+`IOException` at all, not attempted here, out of scope) class name + message into the thrown
+message, so the next similar failure is diagnosable without a debugger.
+
+Verified: `idempotencyHitReturnsCachedResultMetadata` passes in isolation; all 6 tests in
+`NPDevCliMainTest` pass together; `scripts/quality/run-generator-gate.ps1` (the gate that
+originally surfaced this) passes end to end.
 
 ### REG-83 — saveConcept's blank-idRef auto-generate fallback and patchConcept's createIfMissing create half both silently denied CONCEPT_FIELD_REQUIRED against a real governed ConceptGateway -- the auto-generated id was never folded into the write's own data map
 
@@ -2638,6 +3178,268 @@ and confirmed all 3 pass. Also confirmed live: WmsOffice's new `SyncOcupacaoProc
 successfully created a real `LocalArmazenagemLote` row with no client-supplied id, verified via a
 direct REST GET showing the row persisted with the correct auto-generated id.
 
+### REG-84 — Java DataMigrationHook / code-bearing conversion hooks deferred by ADR-0008 to a never-written ADR-0003
+
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-07-31)
+**Verification:** NOT_VERIFIED
+**Source:** docs/adr/ADR-0008-sanctioned-destruction-conversion-hooks.md:84 defers this to
+"the ADR-0003 code-bearing objects" ADR, which has never existed (docs/adr/ holds
+ADR-0001 and ADR-0004..ADR-0010). Surfaced by the Move 8 record-drift sweep.
+
+**Surface:** `dsl/conversion-hooks`
+**Files:**
+- `docs/adr/ADR-0008-sanctioned-destruction-conversion-hooks.md`
+
+Records the deferred scope so it has a real home. See also docs/ACCEPTED_BOUNDARIES.md B13
+("Conversion hooks are SQL-only in v1"), which is the accepted boundary this deferral sits behind.
+Not scheduled; filed so the deferral is traceable rather than pointing at a missing document.
+
+### REG-85 — dsl-conformance-max fails ReleaseGateValidator's T2 promotion bar (7 concepts stuck at T1)
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Move 8 D1 (item G3, docs/MOVE8_CLOSE_TABLE_SPEC.md): wired ReleaseGateValidator into
+scripts/quality/run-generator-gate.ps1 (releaseGateT2 step) -- the smallest real check,
+running ModelValidatorMain --releaseGate --targetTruthLevel=T2 against
+NPDevSamples/dsl-conformance-max/Input/model.json. Before this the validator was invocable
+but called by nothing (R81, REG-81). Now wired and run for the first time, it genuinely
+fails: PromotedWidgetCatalogEntry, WidgetCatalogEntry, WidgetOrder, WidgetOrderAudit,
+WidgetOrderLine, WidgetOrderLineNote, and labeling::Label are all only T1 -- each blocks
+T2 promotion via truth_closure_below_target (a reachable bond dependency below the
+target level). Per the spec's own explicit instruction, the T2 bar was NOT lowered to
+make this pass -- the failure is reported here instead, and run-generator-gate.ps1 is
+genuinely red until this is closed.
+
+**Surface:** `dsl/release-gate`
+**Files:**
+- `scripts/quality/run-generator-gate.ps1`
+- `NPDevSamples/dsl-conformance-max/Input/model.json`
+
+This is dsl-conformance-max's own real maturity state, not a bug in ReleaseGateValidator or
+in the new gate step -- the fixture was built to exercise DSL SURFACE AREA (one witness per
+feature), not to carry T2-grade evidence for every concept. Promoting the 7 blocked
+concepts to T2 needs real evidence per ReleaseGateValidator.EvidenceProvider's contract
+(nothing supplied today falls back to ReleaseGateValidator.EvidenceProvider.none(), which
+T4+ always fails; T2's own bar is lower but still requires the concept's own truth level
+AND every reachable bond dependency to be at T2) -- a genuine, non-trivial maturity-closure
+task, not a quick fix, and out of Move 8's own scope (D1's job was to wire the check, not to
+promote the corpus). Leaving run-generator-gate.ps1 red is the intentionally chosen outcome
+per the spec's own absolute prohibition against lowering D1's T2 bar to force a pass.
+
+### REG-86 — procedure mapValue/return forced their value through a String ref-only path -- a literal array or object was impossible, only a $ref into procedure state could survive
+
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found during Move 8 D3, never filed (Move 9 C3, docs/MOVE9 spec Part C item C3). Same shape as
+the pre-patchConcept.set literal-constant gap that once forced a bespoke capability
+(crossDockingSync, since deleted -- see REG-75's closure) to inject one literal boolean.
+
+**Surface:** `kernel/procedure-runtime`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/ProcedureStep.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/ProcedureRunner.java`
+- `NPDevGenerator/tools/npdev-cli/src/main/java/com/npdev/cli/NPDevCliMain.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/DefaultProcedureExecutorLiteralValueTest.java`
+- `NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/ProcedureRunnerLiteralValueTest.java`
+- `NPDevSamples/dsl-conformance-max/Input/model.json`
+
+Two independent bugs, both required for the fix, confirmed by reading the executor directly
+rather than assumed:
+
+1. `DefaultProcedureExecutor.mapValue`/`returnValue` resolved their value via `resolve(state, ref)`
+   -- a function with NO literal fallback at all: it always treats its argument as a dotted path
+   into procedure state, stripping a leading "$" if present but never distinguishing "this is a
+   literal" from "this is a ref." A literal array/object handed to `mapValue`'s `value` therefore
+   could never survive even one hop through this function.
+2. `ProcedureRunner.toProcedureStep`/`NPDevCliMain.toProcedureStep` (the two identical adapters
+   converting a compiled DSL step into the kernel's `ProcedureStep`) additionally forced `step.value()`
+   through `refOf(Object, String)`, which calls `String.valueOf(value)` -- for a literal `List`/`Map`,
+   this produces a garbled, unusable string (e.g. `"[a, b]"`), not the original structure. Even if
+   bug 1 were fixed alone, this stringification would still have destroyed the literal before it
+   ever reached the executor.
+
+Confirmed by grepping every real DSL model.json in the corpus (dsl-conformance-max, every
+NPDevSamples fixture, every AppGen sample): every existing `mapValue`/`return` `value` in the
+whole tracked corpus is `$`-prefixed already -- zero fixtures relied on the old always-a-path
+behaviour for a bare (non-`$`) literal, so nothing in the real corpus depended on the broken
+shape. (A handful of `golden-ai-scenarios/*.json`/`custom-procedure.json` fixtures use a bare
+`"value": "summary"`-style string, but those are a separate ai-model intermediate schema consumed
+by a conversion script before reaching JsonModelParser, not real DSL model.json -- unaffected.)
+
+Fix: `mapValue`/`return` now resolve `value` via `DefaultProcedureExecutor#resolveSetValue`, the
+SAME literal-vs-`$ref` convention `patchConcept`'s `set`, `mapList`'s `select`, and `computeValue`'s
+`left`/`right` already use -- a literal by default (including an array/object, not just a scalar),
+a `"$"`-prefixed String resolves against procedure state, `"$$x"` escapes to the literal `"$x"`.
+`ProcedureStep.valueRef`/`returnRef` changed from `String` to `Object` to carry a literal
+array/object through; `ProcedureRunner`/`NPDevCliMain` no longer stringify `step.value()` --
+a new `literalOrRef` helper passes it through unchanged (only substituting a `$`-prefixed fallback
+ref, e.g. `"$input"`, when no value was declared at all).
+
+RED->GREEN proven at the kernel level: reverted both `DefaultProcedureExecutor` one-line fixes
+(back to the old always-a-path `resolve()` call), confirmed 3 of 4 new
+`DefaultProcedureExecutorLiteralValueTest` cases failed exactly as predicted (a literal array/object
+silently resolved to `null`), restored the fix, confirmed all 4 pass. `kernel:test` full procedure
+suite green (24 tests: DefaultProcedureExecutorTest, ...ComputeValueTest, ...MapListTest,
+...CreateIfMissingTest, KernelRunnerCallProcedureTest) after updating 6 pre-existing kernel test
+call sites that passed a bare (non-`$`) key expecting the OLD always-a-ref behaviour (e.g.
+`ProcedureStep.mapValue("copy-input", "input", "copied")`) -- now `"$input"`, matching the new
+literal-vs-`$ref` convention; none of these six were ever exercising a genuine literal, only relying
+on the old ambiguity.
+
+End-to-end proof through the REAL authoring pipeline (`ProcedureRunnerLiteralValueTest`,
+JsonModelParser -> ModelCompiler -> ProcedureRunner -> DefaultProcedureExecutor): a DSL-authored
+`mapValue` step with a literal array of objects as `value` parses, compiles, and executes,
+returning the literal unchanged -- no `capabilityCall` round-trip needed to construct it.
+`npdev-cli`'s identical adapter code path independently verified green via its own existing test
+suite (`NPDevCliMainTest`, 6/6). `dsl-conformance-max` gained a new fixture procedure
+(`ReturnLiteralCatalogSummaryProcedure`) demonstrating this; the whole corpus model still validates
+clean (`ModelValidatorMain`, 0 errors/warnings).
+
+Left open, honestly: `ProcedureRunnerLiteralValueTest` could not be run via RuntimeHost's own
+`./gradlew test` in this session -- unrelated to this fix, `com.finalexec.npdev.service.PanelRuntime`
+(and several of its sibling test classes) import `com.npdev.generated.runtime.service.KernelFacade`,
+a type that only exists inside a fully generated+mounted FinalApp; RuntimeHost's build.gradle
+deliberately excludes `PanelRuntime.java` from a bare standalone build
+(`generatedRuntimeMountPresent()` gates `generatedRuntimeDependentMainSources`), but several
+PanelRuntime-dependent TEST classes (that don't themselves textually reference
+`com.npdev.generated.`) are not excluded to match, so `compileTestJava` fails on those pre-existing
+files regardless of this change. Confirmed pre-existing and unrelated: `NPDevRuntimeHost/build.gradle`
+and `PanelRuntime.java` were untouched by this fix, `git status` already showed both modified before
+this session started, and the SAME failure reproduces after `./gradlew clean compileTestJava` with
+zero mapValue/return-related edits in play. Not filed as a new ledger item per this session's own
+scope discipline (Move 9 C3 is REG-86 only); worth a fresh item if it still reproduces once Move 9's
+own scope closes.
+
+### REG-87 — B10: H2->Postgres promotion is a chosen product arc (A4.0 answer) -- build the real command
+
+**Type:** BOUNDARY · **Severity:** — · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** docs/MOVE9_LOWCODE_BOUNDARIES_SPEC.md A4.0
+**Surface:** `runtimehost/schema-lifecycle`
+
+Move 9 A4's own spec explicitly prohibited building A4 before this product question was settled:
+"is prototype-on-H2 -> promote-to-Postgres a chosen product arc, or an artifact of the
+*-inproc/*-postgres adapter pairs? If the answer is 'start on Postgres,' this task becomes a
+documentation + default-config change." Asked the owner directly (AskUserQuestion, 2026-07-31).
+
+Answer: **build the real promotion path.** Prototype-on-H2-then-promote-to-Postgres is a chosen
+product arc NPDev should support as a first-class operator-driven command, not just steer new apps
+to start on Postgres and treat B10 as closed by documentation alone.
+
+This unblocks A4.1's scoped implementation: an operator-driven command (never automatic on boot),
+dry-run first always (per-table source/target counts + type-mapping attention items, writes
+nothing), schema realized on the target via the EXISTING lifecycle path (schema realization is
+already engine-agnostic per the engine-variant corpus families), typed row copy per concept driven
+by the compiled model's field types (never a generic SELECT *), a verification count per table that
+refuses to report success on any mismatch, and A1's migration lock taken on the target for the
+duration.
+
+### REG-88 — B15: await-inside-forEach investigated for closure -- hard stop fired, boundary kept
+
+**Type:** BOUNDARY · **Severity:** — · **Status:** DONE (2026-07-31)
+**Source:** docs/MOVE9_LOWCODE_BOUNDARIES_SPEC.md A5
+**Surface:** `kernel/flow-engine`
+
+Move 9 A5's own spec named this "the genuinely hard one" and built in an explicit hard-stop
+condition: "if per-iteration correlation cannot be made durable across a restart, do NOT ship it.
+Report the finding and leave the boundary." Per the spec's own instruction ("read that
+implementation before designing anything"), investigated the existing durable-flow correlation
+mechanism (AWAIT_EVENT) and the existing resumable forEach loop (LIFT-LOOP-P2) before attempting
+any design.
+
+Findings (full detail also recorded in docs/ACCEPTED_BOUNDARIES.md B15 and docs/FLOWS.md §6):
+
+- `FlowInstance` (NPDevKernel/kernel/src/main/java/com/npdev/kernel/execution/FlowInstance.java)
+  hard-codes exactly ONE `correlationId` (String), ONE `currentStepIndex` (int), ONE
+  `waitingForEventName` (String) per row -- one row = one correlation identity, one step position,
+  one waited-event name. No list/array/composite-key structure exists anywhere in this record or in
+  `npdev_flow_instance`'s columns (all singular, non-composite).
+- `AwaitEventStep`'s wait descriptor lives at ONE fixed state key (`_npdev.await`,
+  `FlowStateCodec.AWAIT_STATE_KEY`) inside ONE shared mutable state map per flow instance.
+- `ForEachStep` (LIFT-LOOP-P2)'s existing resumability is a single "next iteration index" integer
+  (`__forEachProgress.<stepName>`), checkpointed only at whole-iteration boundaries. Iterations run
+  strictly sequentially and synchronously -- one full iteration's nested steps complete before the
+  next starts. The nested-iteration executor passes `KernelRunner.NOOP_STEP_PROGRESS_RECORDER`:
+  nothing INSIDE an iteration is independently checkpointed/resumable today, only whole-iteration
+  boundaries are.
+- `npdev_correlation_owner`'s PK is `correlation_id` alone -- one owned correlation id per row,
+  globally, not scoped to a loop iteration.
+
+Conclusion: the wall is structural, not incidental. Making N loop iterations independently,
+out-of-order awaitable requires either (a) one `FlowInstance` row per iteration -- a new
+sub-execution concept, since `resumeExecution`/`executeSteps`/compensation/idempotency all assume
+one row = one flow -- or (b) turning `correlationId`/`currentStepIndex`/`waitingForEventName`/
+`_npdev.await` into per-iteration collections simultaneously across `FlowInstance`,
+`ResumeCoordinator`'s matching logic, the `npdev_flow_instance` DB schema, and the
+`ForEachStep`/`AwaitEventStep` contract. This is a multi-week subsystem redesign, not a bounded task,
+and attempting a half-measure (e.g. jamming a composite key into the single existing scalar fields
+without a coordinated schema/matching-logic redesign) risks exactly the failure mode the hard-stop
+exists to prevent: a resume matching the WRONG iteration's await, silently, which is worse than the
+current validation-time rejection.
+
+Per the spec's explicit prohibition ("do not remove FlowValidation's await-in-loop rejection before
+the runtime supports it"), `FlowValidation.java`'s rejection (lines 470-472, `containsAwaitStep` at
+513-525) was left completely untouched -- no code changed in the kernel or DSL validation for this
+item. `docs/ACCEPTED_BOUNDARIES.md` B15 row kept (not deleted), rewritten to record this finding and
+its exact revisit trigger (genuine demand to fund the full redesign). `docs/FLOWS.md`'s §6 also
+updated: fixed a stale cross-reference (`SemanticValidator.java:2453-2455`, which moved to
+`FlowValidation.java:513-525` during the earlier TREE1/DSL2 decomposition and was never corrected)
+and added this investigation's finding inline.
+
+### REG-89 — patchConcept's author-time 'id is required' rule was never relaxed for createIfMissing, so REG-77's shipped create-only runtime path was unreachable from any model
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found while authoring Move 10 W1.2 (docs/MOVE10_CONSOLE_PARITY_SPEC.md) -- WmsOffice's
+GerarTemplateContagemProcedure needed to create the `Gerado` InventarioArquivo header row the
+original inventario.html screen also created, with no id to look up (it is a brand-new record).
+The obvious, documented declaration -- patchConcept + createIfMissing + set, no id -- was rejected
+outright by the generator's semantic validation:
+  Semantic validation failed:
+   - Procedure GerarTemplateContagemProcedure step procedures[GerarTemplateContagemProcedure].steps[5]: id is required for patchConcept
+
+**Surface:** `dsl/validation, kernel/procedure-runtime`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java`
+- `NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ProcedurePatchConceptCreateIfMissingValidationTest.java`
+
+`PackValidation.validateProcedurePatchConcept` was written in Move 4 (REG-75), when `patchConcept`
+was patch-only and an `id` was genuinely always required. Move 5 Wave 1B then added
+`createIfMissing` (REG-77's create half) with the *explicit* contract, stated in
+`DefaultProcedureExecutor.patchConcept`'s own doc comment, that it:
+
+  "tolerates a blank/unresolved idRef (nothing to look up yet) and, on a miss, builds a brand-new
+   record from `set` alone with a freshly generated id -- deliberately NOT the (missing) lookup id,
+   so a caller that queried for a match first (e.g. via a prior `listConcepts` step) and found none
+   can still invoke this with a blank idRef."
+
+The validator was never updated to match. The result: the single scenario the flag was built for --
+create a record when the lookup found nothing -- could not be expressed, because the author-time
+check demanded the very id the runtime was designed to do without.
+
+**How it stayed invisible for two moves.** Every kernel test for `createIfMissing`
+(`DefaultProcedureExecutorCreateIfMissingTest`, `DefaultProcedureExecutorAutoIdSemanticPolicyTest`)
+builds `ProcedureStep` objects directly and never goes through `SemanticValidator` at all, so no
+amount of runtime testing could catch it. The only *model-level* coverage,
+`dsl-conformance-max`'s `EnsureWidgetOrderAuditProcedure`, silently encodes the workaround -- its
+own fixture comment reads "id references a key nothing populates", i.e. a deliberately dangling
+`$ref` declared solely to satisfy the validator and relied upon to resolve to null at runtime.
+A corpus fixture that has to lie to reach a shipped feature is the tell; it was read as an
+intentional test of the miss branch rather than as evidence of a blocked path.
+
+**Fix**: one condition -- `if (!hasText(step.id()) && !step.createIfMissing())`. Nothing else was
+weakened: a plain (non-upsert) `patchConcept` still requires `id`, a create still requires a
+non-empty `set`, and REG-71's undeclared-field check still runs on the create path.
+
+**RED/GREEN**: `ProcedurePatchConceptCreateIfMissingValidationTest` (5 cases). Against the
+unfixed validator exactly 1 failed -- `createIfMissingWithNoIdIsAccepted`, at the asserted line --
+while the 4 guard cases (id-present upsert, plain patch still needs id, create still needs set,
+create still checks field names) passed, confirming the test isolates the bug rather than the
+rule. With the fix, all 5 pass. Then proven end to end: the model that produced the error above
+now generates, builds, boots, and the created InventarioArquivo row was confirmed at the data
+layer via REST.
+
 ### REG-9 — LNCH-4: auth secrets management -- JWT key env-var delivery
 
 **Type:** GAP · **Severity:** HIGH · **Status:** DONE (2026-07-21)
@@ -2659,4 +3461,872 @@ WONTFIX (issued-not-supplied model preserved, reversible). Verified: 12/12 Start
 tests + 8/8 verify-only JwtAuthExternalBetaIT live on real Postgres.
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-9`
+
+### REG-90 — Rebuild-And-Restage.ps1 accepted -BuildRoot but never passed it to Build-NpdevApp.ps1 -- the wrapper generated one app and then gated a different one
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found while rebuilding WmsOffice for Move 10 W1 (docs/MOVE10_CONSOLE_PARITY_SPEC.md) into the
+build root the running instance already occupied
+(D:\WorkSpace\NPDev\Build\generated-finalapps-alt) rather than the script default, to reuse a warm
+Gradle cache instead of paying for a cold full build.
+
+**Surface:** `scripts/appgen, build-tooling`
+**Files:**
+- `scripts/appgen/Rebuild-And-Restage.ps1`
+
+`Rebuild-And-Restage.ps1` declares `-BuildRoot` (default
+`D:\WorkSpace\NPDev\Build\generated-finalapps`) and uses it in step 4 to locate the app's `_ops`
+directory for `Build-App.ps1` / `Start-App.ps1` / `Check-Provenance.ps1`. But step 3's splat --
+`@{ AppFolder; RuntimeHostLibsDir; SkipRuntimeHostLibs }` -- omitted it, so `Build-NpdevApp.ps1`
+silently fell back to its OWN identically-named default.
+
+With the default value the two halves coincide and nothing looks wrong. Pass any other value and
+they diverge: step 3 generates and assembles the app under `generated-finalapps\<app>`, then step
+4 builds, starts, and runs the provenance gate against `<BuildRoot>\<app>` -- a different,
+possibly stale, possibly nonexistent app. The failure is silent in the worst direction: if the
+target root happens to hold an older build, the wrapper reports success having verified the wrong
+jar.
+
+This is precisely the stale-build-root class of failure the wrapper exists to prevent -- its own
+header promises it "threads ONE shared -RuntimeHostLibsDir through steps 1 and 3 so the sync
+writes to, and the build reads from, the same directory -- the single most common cause of 'my
+change had no effect'." The same discipline was simply never applied to `-BuildRoot`, the other
+path parameter it accepts. `knowledge/cards/runtimehost-libs-dir-mismatch.json` names the libs-dir
+instance of this trap; this is the build-root twin of it, inside the fix itself.
+
+**Fix**: add `BuildRoot = $BuildRoot` to step 3's argument splat, and echo it in the step banner
+alongside the libs dir so a divergence would be visible in the log next time.
+
+**Evidence, stated precisely.** The fixed behaviour is verified live: with the fix,
+`-BuildRoot D:\WorkSpace\NPDev\Build\generated-finalapps-alt` logged
+`Out root : D:\WorkSpace\NPDev\Build\generated-finalapps-alt\wmsoffice` from step 3 and step 4
+then built/started/gated that same tree, end to end. The BROKEN behaviour is established by
+reading the pre-fix splat, not by a captured failing run -- the fix was applied before the first
+invocation, so no unfixed run with a non-default `-BuildRoot` was ever recorded. The pre-fix code
+is unambiguous (`-BuildRoot` appears in the `param()` block and at step 4 only, never in step 3's
+`$buildArgs`), but this is a read-derived diagnosis on the failing side, not a live RED.
+
+### REG-91 — MigrationClaimStore swallows every SQLException from its canonical-row seed as 'row already exists', then reads an unchecked empty ResultSet -- a claim table whose columns are NOT NULL makes the app permanently unbootable with the opaque message 'No data is available'
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found live during Move 10 W1 (docs/MOVE10_CONSOLE_PARITY_SPEC.md) while rebooting WmsOffice after
+a model-only change. The app had booted cleanly from the same database an hour earlier; the
+regenerated jar then refused to start, every boot, with:
+
+  Caused by: java.lang.IllegalStateException: Failed to claim the migration lock
+    at com.finalexec.db.MigrationClaimStore.claimH2(MigrationClaimStore.java:211)
+  Caused by: org.h2.jdbc.JdbcSQLNonTransientException: No data is available [2000-224]
+    at org.h2.jdbc.JdbcResultSet.getString(JdbcResultSet.java:283)
+    at com.finalexec.db.MigrationClaimStore.claimH2(MigrationClaimStore.java:196)
+
+Nothing in that message names the actual problem, points at a table, or suggests a remedy.
+
+**Surface:** `runtimehost/db, schema-lifecycle`
+**Files:**
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationClaimStore.java`
+
+Three defects compose into an unbootable app with an undiagnosable error.
+
+1. **`ensureCanonicalRow` swallows ALL SQLExceptions**, not just duplicate-key violations. Its
+   comment says the catch exists for "a concurrent bootstrap race, or on every non-first boot --
+   the row already exists". Any OTHER insert failure is silently treated as success.
+
+2. **`claimH2` ignores `resultSet.next()`'s return value** and calls `getString(1)`
+   unconditionally, so an empty result set surfaces as H2's generic "No data is available"
+   rather than "the canonical claim row is missing".
+
+3. Together: if the seed insert fails for a reason that is NOT a duplicate, the table stays
+   empty, `SELECT ... FOR UPDATE` returns no rows, and the boot dies pointing at the wrong thing.
+
+**The live trigger.** In this database `npdev_schema_migration_claim` exists with
+`claim_key`/`instance_id`/`claimed_at_utc` all `NOT NULL` and typed `character varying` -- NOT the
+shape `ensureTable`'s own DDL declares (`claim_key TEXT PRIMARY KEY, instance_id TEXT, hostname
+TEXT, claimed_at_utc BIGINT`, three of four nullable). `ensureCanonicalRow` seeds an UNHELD row as
+`VALUES (?, NULL, NULL, NULL)`, which that table rejects:
+
+  org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException: NULL not allowed for column "instance_id"
+
+Confirmed by running that exact INSERT by hand against the live database. `CREATE TABLE IF NOT
+EXISTS` is a no-op against the pre-existing table, so the shape never self-heals.
+
+**How the table came to have that shape is a SECOND, unresolved question** and the reason this
+item is filed OPEN rather than fixed. `MigrationClaimStore` is the only code in the repo that
+names the table, and its DDL cannot produce those constraints -- so something else rewrote it.
+The most likely candidate is a prior destructive schema-lifecycle pass over this database (this
+app survived exactly such a migration on 2026-07-28, REG-58/REG-59), i.e. the schema engine may be
+treating a platform bookkeeping table as an NPDev-owned business table and recreating it with
+NPDev's own all-columns-NOT-NULL conventions. If so, ANY app that undergoes a destructive
+migration becomes unbootable afterwards -- which would make this considerably more severe than one
+bad local database. That hypothesis is NOT yet verified; verifying it means reproducing a
+destructive migration on a scratch database and re-inspecting the table, which was out of scope
+for the move that found this.
+
+**Workaround used to unblock** (not a fix): seed the row by hand with empty strings instead of
+NULLs, which satisfies the NOT NULL constraints and still reads as unheld to `claimH2`'s own
+`heldBy != null && !heldBy.isBlank()` check:
+
+  INSERT INTO npdev_schema_migration_claim (claim_key, instance_id, hostname, claimed_at_utc)
+  VALUES ('schema-migration', '', '', 0);
+
+App booted immediately afterwards. `POST /api/admin/schema-migration/clear-claim` (the documented
+remedy for a crashed holder) does not help here -- there is no holder to clear, the row is absent.
+
+**Fix shape when taken up**: (a) narrow the catch in `ensureCanonicalRow` to duplicate-key /
+integrity violations and rethrow anything else; (b) check `resultSet.next()` in `claimH2` and fail
+with a message naming the table and the missing canonical row; (c) settle the second question
+above -- whether the schema engine rewrites platform bookkeeping tables -- and, if it does, exclude
+them from its scope.
+
+---
+
+## CLOSED, Move 11 W1 (2026-07-31)
+
+**The second question is ANSWERED, and the hypothesis in it was WRONG.** The schema engine does not
+touch this table -- `ownedTablesJson` derives ownership from the manifest's `businessTableColumns`
+plus previously-recorded ownership, and `npdev_schema_migration_claim` appears in neither; nothing
+in `db/schema-realization/*.sql` names it either. The strict shape is **this class's own earlier
+DDL**. Commit `2404605` (REG-7.3 P3) declared:
+
+    claim_key TEXT PRIMARY KEY, instance_id TEXT NOT NULL, hostname TEXT, claimed_at_utc BIGINT NOT NULL
+
+correct at the time, because the row was INSERTed per claim and DELETEd on release, so an unheld
+slot was an absent row. Move 9 A1 made the row persist with a blanked holder and relaxed the DDL to
+all-nullable -- but `CREATE TABLE IF NOT EXISTS` is a no-op against an existing table.
+
+Verified against the live WmsOffice database over its H2 TCP server
+(`jdbc:h2:tcp://localhost:9200/...npdev_wmsoffice`):
+
+    claim_key       character varying  nullable=NO
+    instance_id     character varying  nullable=NO
+    hostname        character varying  nullable=YES
+    claimed_at_utc  bigint             nullable=NO
+
+-- the `2404605` DDL exactly (the original report's "claimed_at_utc typed character varying" was
+imprecise; it is `bigint`, and `hostname` is the one nullable column, which is the DDL's signature).
+
+**So this is not one bad local database: it is an upgrade-path regression that hits EVERY database
+that ever booted a pre-A1 build.** That is more severe than the original hypothesis, not less, and
+it needs no separate ledger item -- there is no second bug to file.
+
+**What shipped**
+
+1. `ensureCanonicalRow`'s catch narrowed to SQLState/error-code `23505` only, checked on the whole
+   `getNextException` chain, never on message text. Everything else is rethrown with the statement,
+   the bound values, the SQLState and the driver's own message attached. Deliberately NARROWER than
+   the spec's suggested "23505/23506 family": H2's `23506` is referential-integrity-parent-missing
+   and `23502` is NULL-not-allowed -- neither means "the row is already there", and admitting them
+   would leave exactly this hole open.
+2. `claimH2` now checks `resultSet.next()` and raises a message naming the table, the claim key, the
+   likely cause and the recovery INSERT. `claimPostgres` had the identical unchecked-`next()` shape
+   on `pg_try_advisory_lock` and was fixed too.
+3. The unheld holder is written as non-null sentinels (`''`/`''`/`0`) instead of `NULL`, in
+   `ensureCanonicalRow`, `release` AND `clear` -- all three wrote `NULL`. `release`'s failure was
+   swallowed into a log line (claim held forever, every later boot refused as a collision) and
+   `clear` -- the documented operator escape hatch -- threw outright. `current()` already treated a
+   blank holder as unheld, so both shapes read identically; a `NULL` holder left by a pre-fix
+   release still reads as unheld (asserted).
+4. The table shape is deliberately NOT rewritten. Tolerating the old shape needs no DDL against a
+   database whose migration lock is by definition not yet held; an `ALTER ... DROP NOT NULL` sweep
+   would be schema surgery performed before the lock that exists to serialize schema surgery.
+
+**RED/GREEN.** `MigrationClaimStoreLegacyTableShapeTest` (6 cases) recreates the verbatim `2404605`
+DDL. Against the pre-fix code, 4 of 6 fail and every one of them reproduces this item's own live
+stack trace exactly -- `IllegalStateException: Failed to claim the migration lock` caused by
+`org.h2.jdbc.JdbcSQLNonTransientException: No data is available [2000-224]`. The 2 controls (the
+current all-nullable shape; a NULL holder left by a pre-fix release) pass before and after. With the
+fix, 6/6 pass. Move 9 A1's concurrency evidence (`SchemaLifecycleExecutorMigrationClaimTest`, 6
+cases incl. "an existing claim refuses the boot" and "a refusal still releases its own claim")
+re-run unchanged: 6/6.
+
+Evidence: `NPDev_General__OutsideRepo/move11/move11-w1-claimstore.txt`.
+
+### REG-92 — REG-76 was fixed for workbench inputFields but never mirrored to panel inputFields -- a declared Panel action still renders <input type=text>, which silently collapses newlines, so no panel action can take multi-line input
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found in Move 10 W1.2 (docs/MOVE10_CONSOLE_PARITY_SPEC.md) while establishing whether
+`inventario.html`'s third wizard (Recebimento por Arquivo) could be expressed as a declared Panel
+action -- its very first step is "give the server a multi-line CSV".
+
+Proven live in a real headless browser against the running WmsOffice app, by typing a genuinely
+3-line value into `InventarioHistoricoPanel`'s own `entidadeId` inputField and reading the DOM
+back:
+
+  {"tagName":"INPUT","type":"text","value":"LINHA-1 LINHA-2 LINHA-3","newlines":0,"length":23}
+
+Three lines in, one line out, zero newlines -- collapsed to spaces on assignment.
+
+**Surface:** `generator/business-ui, panel-runtime`
+**Files:**
+- `NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache`
+
+REG-76 (Move 3 G4) found that the AGGREGATE WORKBENCH's `inputFields` mini-form rendered a plain
+`<input type="text">`, which silently strips embedded newlines, so a pasted multi-line CSV arrived
+as one line and the parser's own header-row skip consumed the entire payload. It was fixed there
+by rendering a `<textarea>` -- `workbench-page.html.mustache` still carries the full explanation
+above that line.
+
+`panelAction.inputFields` (Move 2 G3) is the *same mechanism on the Panel side*, added earlier and
+never revisited. `business-ui-app.mustache` still does:
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = field;
+
+Confirmed in the DEPLOYED bundle, not only the template:
+`<app>/build/resources/main/static/npdev-business-ui/app.js` around the
+`declared-panel-action-inputs` block.
+
+**Consequence.** Any declared Panel action whose input is inherently multi-line -- a pasted CSV, an
+XML document, a free-text note -- is silently broken: the value is accepted, visibly "typed", and
+posted mangled. Silent corruption, not an error. It also means the Panel and the Workbench, two
+surfaces with an explicitly mirrored `inputFields` declaration, behave differently for the same
+model text, which no author would predict from the model.
+
+**What it blocked here.** It is the FIRST of several blockers on expressing `inventario.html`'s
+Recebimento por Arquivo wizard as a Panel action (see docs/MOVE10_W1_CHECKLISTS.md for the full
+list -- the others are the preview table having no persisted-field home, and no mechanism to carry
+parsed state from a preview action to a confirm action). Fixing this alone does not unblock that
+wizard; it is filed on its own because it is a real, general, silent-corruption bug independent of
+that console.
+
+**Fix shape**: mirror the workbench's line exactly -- render a `<textarea rows="1">` with the same
+inline styling, which preserves newlines and degrades fine for short single-line values. Then add
+a `dsl-conformance-max` example with a multi-line panel-action input so the two surfaces cannot
+drift apart again. Not done here: it needs a generator rebuild plus a full app rebuild to
+re-verify, and Move 10's stop line is the end of Wave 1.
+
+---
+
+## CLOSED, Move 11 W3 (code) + Wave -1.1 (live proof), 2026-07-31
+
+**Status resolved at Wave -1.2**, and the discrepancy is worth recording: Move 11 W3's own report
+claimed "REG-92 -> DONE" while this file still read `status: OPEN`, because the code fix landed and
+the ledger edit did not. The ledger is authoritative (CLAUDE.md). The status was NOT flipped when
+the discrepancy was found -- it was flipped only after the DoD's own live-browser condition was
+actually met, below.
+
+**The fix.** One shared control, `createDeclaredPanelTextInput(field)`, rendering
+`<textarea rows="1">` -- mirroring the Aggregate Workbench's rule EXACTLY, which is unconditional
+(workbench-page.html.mustache has rendered a textarea here for every field since REG-76, with no
+widget/type condition). Used by BOTH Panel mini-forms: the action `inputFields` form REG-92 names,
+and `renderDeclaredPanelAddRowForm` ten lines above it, which had the identical
+`input.type = "text"` and therefore the identical silent corruption. Fixing only the twin REG-92
+happens to name would have repeated REG-76's own mistake. Inline styling hoisted to
+`textarea.declared-panel-edit-input`.
+
+**RED/GREEN.** `BusinessUiEmitterPanelInputNewlineTest` asserts the property on BOTH surfaces,
+reading the RENDERED templates rather than the sources. With the Panel call sites reverted to
+`input.type = "text"` it fails naming the exact mini-form; restored, 2/2 pass. (Its Workbench half
+failed first on REG-76's own explanatory comment, which quotes the markup being asserted absent --
+the assertion now matches on code only.)
+
+**VERIFIED LIVE**, in a real headless browser against the rebuilt WmsOffice app, typing a genuinely
+3-line value into `InventarioHistoricoPanel`'s `entidadeId` inputField and reading the DOM back:
+
+    {"tagName":"TEXTAREA","type":"textarea","value":"LINHA-1\nLINHA-2\nLINHA-3","newlines":2,"length":23}
+
+Against this item's own original reading:
+
+    {"tagName":"INPUT","type":"text","value":"LINHA-1 LINHA-2 LINHA-3","newlines":0,"length":23}
+
+Three lines in, three lines out. Evidence:
+NPDev_General__OutsideRepo/move11/browser/move11-w3-w5-w6.json.
+
+**What this does NOT unblock**, restated so it is not misread: `inventario.html`'s Recebimento por
+Arquivo wizard had THREE blockers and this closes one. The other two (preview columns declared on
+no concept; nothing carries parsed state from a preview action to a confirm action) are untouched.
+
+### REG-93 — The panel-provenance impact gate failed on manifests whose screen had been DELETED -- it has been RED since Move 8's crossdocking deletion, and structurally contradicted the bytes-deleted metric it is supposed to coexist with
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found in Move 10 W1 (docs/MOVE10_CONSOLE_PARITY_SPEC.md) while establishing a clean baseline
+before deleting a second console. Running the gate against the live WmsOffice bundle, with NO
+changes of this move's own in play:
+
+  Panel provenance impact check
+
+  FAIL: 2 confirmed manifest(s) reference model elements that no longer exist:
+    - crossdocking.panel.json: references invocation 'flow:CancelarCrossDocking', which no longer exists
+    - crossdocking.panel.json: references invocation 'flow:ConcluirCrossDocking', which no longer exists
+
+  Either regenerate the screen against the current bundle, or update the model.
+
+**Surface:** `scripts/quality, provenance-gate`
+**Files:**
+- `scripts/quality/check-panel-provenance-impact.py`
+
+`check-panel-provenance-impact.py` walks every `*.panel.json` and fails the build when a
+CONFIRMED manifest names a field or invocation the model no longer has. Its purpose, stated in
+`docs/REMEDIATION_PLAN.md` R-G1, is that "a field rename goes through a rebuild; that is precisely
+the moment the check has to fire" -- i.e. protect a LIVE hand-written screen from silently
+breaking.
+
+It never asked whether the screen still exists.
+
+**Why that is not a nitpick: it directly contradicts the metric.** Move 3 §6 replaced the
+hand-written/model ratio with "bytes of `web/*.html` deleted after a console reaches full
+behavioural parity". Deleting a console is the SUCCESS condition. And per the crossdocking "two
+paths, one incomplete" finding (docs/SCREEN_TAXONOMY.md), the deletion must ALSO remove the flows
+that console was the only caller of -- otherwise a future author binds a panel action to an
+incomplete duplicate and silently loses behaviour. So every successful conversion necessarily
+leaves a manifest naming now-deleted flows, and therefore necessarily turned this gate red. The
+gate punished the metric for succeeding.
+
+**It had already fired, and been left red.** Move 8 Part A deleted `crossdocking.html` plus
+`ConcluirCrossDocking`/`CancelarCrossDocking` on 2026-07-30 and did not touch
+`crossdocking.panel.json`. The gate has failed on every run since -- roughly a day and three
+moves. It went unnoticed because `Rebuild-And-Restage.ps1` runs it as step 4, AFTER building and
+starting the app, and the intervening rebuilds either did not reach step 4 or were not run.
+
+**Fix**: treat a manifest whose `screen` file no longer exists as RETIRED -- reported as an
+advisory warning, never a blocking failure. The manifest is deliberately kept rather than deleted:
+it is the provenance record of what the frozen `*.original.html` reference touched. Everything
+else is unchanged; a manifest whose screen IS still on disk keeps the full-strength rule.
+
+**RED/GREEN**: the script's own `--calibrate` self-test gained a third control ("stale confirmed
+manifest, screen DELETED (retired)"), and the two pre-existing controls were tightened -- they
+previously never created the screen file at all, so before this change every calibration case was
+accidentally exercising the retired path without anyone noticing. With the fix, all 3 pass. With
+the one-line `and not retired` reverted in a scratch copy, exactly the new control fails
+("[FAIL] stale confirmed manifest, screen DELETED (retired) (fired)") and the other two still
+pass, confirming the control isolates this bug and does not weaken the real protection.
+
+**Verified live**: after the fix, the gate run against the live WmsOffice bundle that produced the
+FAIL above reports the crossdocking entries as `[warn] ... (retired -- screen deleted, nothing
+left to break)` and exits 0.
+
+### REG-94 — run-ai-knowledge-gate.ps1 has been RED on two independent steps and nobody noticed -- 11 untriaged security-pattern hits from the Moves 9-10 schema-engine work, and a script-inventory scan that walked into node_modules and failed on vendored third-party .js files
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found in Move 11 W2 (docs/MOVE11_CLOSE_REMAINING_SPEC.md O4) while hosting the two orphaned
+checkers -- i.e. found by running the gate that O4 exists to make runnable, on the first run after
+wiring it up. Neither failure is caused by Move 11's own changes; both were measured against the
+pre-Move-11 tree.
+
+Step [6/21], untriaged security-pattern hits:
+
+    -- 410 hit(s), 399 already cleared, 11 needing triage
+       conditional-guard-no-else:        14 total, 0 new
+       read-without-tenant-predicate:    83 total, 3 new
+       sql-string-building:             139 total, 8 new
+       swallowed-security-exception:     80 total, 0 new
+       unbounded-caller-input:           94 total, 0 new
+
+Step [19/19] (now [21/21]), script inventory:
+
+    - Script with no valid invocation declaration:
+      scripts/quality/json-schema-validator/node_modules/fast-uri/test/rfc-3986.test.js
+      (no invocation declaration in scripts/policy/script-invocation-declarations.json)
+    ... and ~40 more, all under node_modules/
+
+**Surface:** `scripts/quality, schema-engine`
+**Files:**
+- `scripts/quality/security-pattern-sweep-allowlist.json`
+- `scripts/quality/run-script-inventory-check.ps1`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/CrossEngineDataPromotion.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/ExpressionBackfillPreview.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaDropSnapshotRestorer.java`
+
+Two unrelated causes, filed together because they share one consequence and one lesson.
+
+**HALF A -- 11 untriaged security-pattern hits. Deliberately NOT triaged in Move 11 W2 (as filed); triaged in Wave 0.1, see the closure section below.**
+
+The sweep's blocking step demands that every new hit be triaged as (i) a genuine finding, (ii)
+safe-with-a-reason plus an allowlist fingerprint, or (iii) handed to the session that owns that
+surface. The 11 are in the schema-engine surface built across Moves 9-10:
+
+  CrossEngineDataPromotion.java:147,148,235   (Move 9 A4, H2->Postgres data promotion)
+  BackfillPass.java:350,433
+  DestructiveRecreationPass.java:225
+  ExpressionBackfillPreview.java:88
+  JdbcBusinessConceptStore.java:98,110
+  SchemaDropSnapshotRestorer.java:204,281
+
+Almost all are the `safeTable`/`columnList`/`placeholders` identifier-splicing shape that is
+already cleared 399 times elsewhere on the reasoning that identifiers go through
+`SchemaLifecycleExecutor.safeIdentifier()`. That similarity is exactly why they must NOT be
+batch-cleared from a plan that did not build them: the sweep's own rule is that a false "safe" is
+worse than a noisy hit, and the only value in this instrument is that each fingerprint means
+somebody actually traced that identifier to its source. Move 11 did not build this surface and has
+not traced them, so clearing them here would be the exact failure the instrument exists to prevent.
+This is option (iii): handed to whoever owns the schema-engine surface.
+
+Measured, not assumed: reverting only Move 11's own `MigrationClaimStore.java` change takes the
+count 12 -> 11, so Move 11 contributed exactly one hit, and that one was a false positive (a
+diagnostic string literal beginning with the word SELECT). It was fixed by rewording the message
+rather than by adding an allowlist entry -- the count is back to the pre-Move-11 baseline of 11.
+
+**HALF B -- the script-inventory scan walked into node_modules. FIXED in Move 11 W2.**
+
+`run-script-inventory-check.ps1` excluded `.git/.gradle/build/node_modules/...` when scanning
+*.md files for `manual-runbook` evidence, but applied NO directory exclusion at all when
+enumerating the scripts themselves. So after anyone ran `npm ci` in
+`scripts/quality/json-schema-validator/`, every vendored third-party `.js` file -- fast-uri's test
+suite, json-schema-traverse, require-from-string -- became "a script under scripts/ with no
+invocation declaration", and the gate failed. `node_modules` is gitignored and untracked, so a
+fresh CI checkout has none and passes.
+
+**That is the sharper half of this finding: a gate whose verdict depends on whether someone
+installed dependencies.** Green in CI, red locally, for a reason having nothing to do with the
+code under test -- which trains everyone to disregard its output, and is how the OTHER half
+(11 real untriaged hits) went unnoticed. Fixed by applying the same exclusion list to both scans.
+
+**Why one item.** Both were found by the same act -- running the whole gate once, honestly, end to
+end -- and both had been red for some time with nothing reporting it, which is O4's thesis
+(docs/MOVE11_CLOSE_REMAINING_SPEC.md) restated in a different artifact: a check that runs but whose
+RED nobody reads is worth about as much as a check nothing runs. Half B was closed on filing; Half A
+is closed below.
+
+---
+
+## CLOSED, Wave 0.1 (2026-07-31, MASTER_AI_PLATFORM_PROGRAMME_v2.md)
+
+**Half A -- the 11 untriaged hits: TRIAGED, not batch-cleared.** Every verdict was traced to the
+identifier's source rather than inferred from an already-cleared sibling. Seven `sql-string-building`
+hits route every spliced identifier through `SchemaLifecycleExecutor.safeIdentifier()`, which
+REFUSES (throws on) anything outside `[A-Za-z_][A-Za-z0-9_]*`; `CrossEngineDataPromotion` carries a
+second guard (its column list is intersected with the live columns of both databases first). One of
+the seven is a plain false positive -- `JdbcBusinessConceptStore.java:110` is a catch block's
+English message, and the UPDATE pattern matched the words "(for update)". The three
+`read-without-tenant-predicate` hits are genuinely tenant-independent, and for two of them a tenant
+predicate would BE the bug: whole-database promotion and drop-snapshot restore would each silently
+discard every other tenant's data. Rationale recorded in
+docs/SECURITY_PATTERN_SWEEP_2026-07.md §2.4, per the allowlist's own rule.
+
+    $ python scripts\quality\security-pattern-sweep.py --fail-on-new
+    -- 410 hit(s), 410 already cleared, 0 needing triage
+       conditional-guard-no-else: 14 total, 0 new
+       read-without-tenant-predicate: 83 total, 0 new
+       sql-string-building: 139 total, 0 new
+       swallowed-security-exception: 80 total, 0 new
+       unbounded-caller-input: 94 total, 0 new
+    EXIT=0
+
+**Half B** was already fixed when this item was filed (the inventory scan's missing directory
+exclusions).
+
+**The triage paid for itself with a finding the sweep could not see.** Tracing why
+`JdbcBusinessConceptStore`'s spliced `shape.tableName()` is safe showed that
+`SqlIdentifierSupport.toSnake()` sanitizes by REPLACEMENT rather than refusal -- which means two
+differently-named concepts can compile to the same physical table. Confirmed live: `OrderLine` and
+`Order Line` both become `order_lines`, with 0 validation errors. Filed as **REG-98** (HIGH).
+
+### REG-95 — The Aggregate Workbench's derived-field expression subset split its path on '.' before matching, so every filter(...) form -- including the subset's OWN documented example -- silently evaluated to 0; M6's balanced-quantity banner had been declared and shipping a wrong number since Move 6
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found in Move 11 W5.1 (MOVE11_CLOSE_REMAINING_SPEC.md), which said to "try to express M6 with
+transactionDerivedField first" before building anything. Trying it turned up something better than
+an authoring gap: M6 was ALREADY AUTHORED. WmsOffice's Movimento autoPanel has declared
+
+    "derivedFields": {
+      "origemTotal":  { "tier": "client", "expression": "sum(itens[].posicoes[].filter(papel=='Origem').quantidade)" },
+      "destinoTotal": { "tier": "client", "expression": "sum(itens[].posicoes[].filter(papel=='Destino').quantidade)" }
+    }
+
+since the derivedFields mechanism shipped -- and the banner has been rendering 0 for both, with no
+error, for as long as it has existed.
+
+**Surface:** `generator/workbench, aggregate-workbench`
+**Files:**
+- `NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache`
+
+`evaluateDerived` (Move 5 Wave 2B, written for M6 by name) does:
+
+    var segments = m[1].split(".");
+    ...
+    var filterMatch = /<the whole "<name>[].filter(<field>=='<literal>')" in ONE segment>/.exec(seg);
+
+The filter regex requires the WHOLE `<name>[].filter(<field>=='<literal>')` in one segment. But
+`split(".")` has already cut it in half at the dot between `posicoes[]` and `filter(...)`. So
+`filter(papel=='Origem')` arrives alone, matches neither the filter branch nor the array branch,
+falls through to the plain-path branch, resolves to `undefined` for every candidate, and the sum
+comes out **0**. Silently -- a display-only banner has no error channel.
+
+This is not an exotic input: it is the function's own second documented example,
+`sum(posicoes[].filter(papel=='Origem').quantidade)`, three lines above the bug.
+
+**RED, measured** -- the shipped `evaluateDerived` copied verbatim and run under node against an
+M6-shaped draft (2 items; 15 Origem, 13 Destino, 15 item total):
+
+    15  <- sum(itens[].quantidade)                                 (expected 15)  OK
+    28  <- sum(itens[].posicoes[].quantidade)                      (expected 28)  OK
+     0  <- sum(itens[].posicoes[].filter(papel=='Origem').quantidade)   (expected 15)
+     0  <- sum(itens[].posicoes[].filter(papel=='Destino').quantidade)  (expected 13)
+     0  <- sum(posicoes[].filter(papel=='Origem').quantidade), item as root (expected 10)
+
+Note which lines pass: the non-filter forms are fine, and summing across TWO nesting levels is
+fine. The subset was never short of the grammar M6 needs -- Move 3's "cannot-express" verdict for
+M6 named the wrong cause. Only the filter half was broken, and only in tokenization.
+
+**Fix**: tokenize instead of splitting. A `DERIVED_SEGMENT` regex matches whole segments
+(`<name>[].filter(<field>=='<literal>')` | `<name>[]` | `<name>`), and `derivedSegments()` walks
+the matches, requiring that only a `.` separate them and that the whole path be consumed --
+returning `null` (renders "—") for anything else, rather than guessing, since guessing is how a
+wrong number reaches a banner unannounced. Every evaluation branch is unchanged.
+
+**GREEN, same probe, same draft**:
+
+    15  <- sum(itens[].posicoes[].filter(papel=='Origem').quantidade)
+    13  <- sum(itens[].posicoes[].filter(papel=='Destino').quantidade)
+    10  <- sum(posicoes[].filter(papel=='Origem').quantidade), item as root
+
+**Consequence for the conversion metric.** M6 was `movimentacao-livre.html`'s ONLY
+`cannot-express` item (docs/MOVE3_G2_CHECKLISTS.md: M1/M2/M7/M11 are `differs`, M3/M4/M5/M8/M9/M10
+are `works`). With it closed, that console reaches 0 `cannot-express`.
+
+A third derived field, `itensTotal` (`sum(itens[].quantidade)`), was added to the model in the same
+change: M6's actual behaviour is a THREE-way comparison (Origem total == Destino total == item
+quantidade) and only two of the three were declared.
+
+### REG-96 — A procedure's condition/if step can only test a reference's TRUTHINESS -- there is no equality or comparison primitive -- so no aggregate onCommit hook can be guarded on 'the record reached state X', and a lifecycle-transition side effect cannot be expressed declaratively
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found in Move 11 W5.2 (MOVE11_CLOSE_REMAINING_SPEC.md) while establishing whether
+`autoPanel.transaction.hooks` already covers M11 (docs/MOVE3_G2_CHECKLISTS.md) -- the difference
+between the Aggregate Workbench's generic lifecycle-transition button and the console's
+`ConfirmarMovimentacao` flow, which also emits `MovimentoConfirmado`.
+
+Established by reading the runtime, not assumed. `DefaultProcedureExecutor.ifThenElse`:
+
+    boolean condition = truthy(resolve(state, step.conditionRef()));
+
+`conditionRef` is a REFERENCE, resolved and tested for truthiness. `$input.situacao` is truthy for
+every one of Movimento's four states, so "only when situacao is Concluido" cannot be written.
+
+**Surface:** `kernel/procedures, dsl`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java`
+
+**What this blocks, concretely.** `aggregate.onCommit` runs a procedure inside the commit
+transaction, and a procedure CAN `eventPublish`. So the mechanism for "emit MovimentoConfirmado as
+part of the commit that concludes the movement" exists and would be strictly better than the flow's
+version (atomic with the write rather than after it). What does not exist is the guard: an
+unconditional emission would fire `MovimentoConfirmado` on every commit of every Movimento,
+including Pendente ones, which is plainly wrong. The step that would gate it can only ask "is this
+reference truthy", never "does it equal 'Concluido'".
+
+Note this is narrower than "procedures cannot compare": `computeValue` has add/subtract (REG-78),
+and `patchConcept`/`mapList` resolve `$ref`s. It is specifically the branch predicate that is
+truthiness-only.
+
+**Why M11 is nevertheless NOT a blocker for movimentacao-livre's conversion.** The original
+console's Confirmar IS reproduced by a declared surface -- `MovimentoLivrePanel`'s row-scoped
+`confirmarMovimentacao` action, `"binding": "flow", "flow": "ConfirmarMovimentacao"`,
+`visibleWhen: tipo == 'MovtoLivre' && situacao == 'Pendente'` -- which invokes the real flow and
+therefore does emit the event. That was verified live in Move 2 G4 (`status: OK`). M11's `differs`
+verdict is about the Aggregate WORKBENCH offering a SECOND, generic transition path that writes the
+field without the event; it was never that the behaviour is unreachable. So M11 stays `differs`,
+as Move 3 recorded it, and it is not a `cannot-express`.
+
+**Workarounds available today, both rejected here**:
+  (a) push the comparison into app-owned capability Java and call it from the procedure -- this is
+      the "rewriting the console's orchestration into capability Java" shape that
+      MOVE11_CLOSE_REMAINING_SPEC.md Part 2 names as the thing to avoid, and it would put a string
+      equality test in a WMS allocation capability;
+  (b) emit unconditionally from onCommit and let consumers filter -- moves the bug downstream and
+      makes the event mean something different from its own name.
+
+**Fix shape when taken up**: give the `condition`/`if` step the same narrow, closed predicate
+grammar `visibleWhen` already carries -- `$ref == '<literal>'` / `!=` -- rather than a general
+expression language. That grammar already exists, is already validated, is already implemented
+twice on the client side (`evaluateVisibleWhen` in workbench-page.html.mustache and the
+`AutoPanelExpander` predicate), and extending the resolvable roots of an existing grammar rather
+than inventing a second dialect is the standing convention (see Move 11 W6 for the same call).
+
+---
+
+## CLOSED, Wave 0.6 (2026-07-31, MASTER_AI_PLATFORM_PROGRAMME_v2.md)
+
+Fixed exactly as the shape above named: the `condition`/`if` step now carries the SAME closed
+grammar `visibleWhen` already uses, rather than a new dialect or a general expression language.
+
+    condition := ref | ref op literal
+    op        := == | != | >= | <= | > | <
+    literal   := 'text' | number | true | false | ref
+
+`ProcedureConditionEvaluator` (kernel), called from `DefaultProcedureExecutor.ifThenElse`.
+
+**A bare ref keeps its old truthiness meaning exactly**, so this is additive: no model changes
+behaviour, and no `npdev migrate` codemod is owed. Operators are matched longest-first (`>=` is
+never read as `>`) and quoted text is skipped, both being the mistakes LC-P0 had just finished
+removing from the query engine one file over.
+
+**A malformed condition is REFUSED** (`CONDITION_UNSUPPORTED`), not silently taken as the
+else-branch -- X0's rule applied to the branch predicate itself. An ordered comparison against an
+ABSENT operand is false rather than an error, which is a state answer, not a parse failure (the
+same judgement the query engine makes for a missing field).
+
+**Both sides may be refs.** `$a == $b` is the comparison `SyncOcupacaoProcedure`'s own description
+records having had to push into Java ("procedures' own 'if' step has no comparison-expression
+grammar ... so the equality test itself has to happen in Java"). That constraint is now lifted for
+future procedures; SyncOcupacaoProcedure itself is left alone, since rewriting a working procedure
+is not this wave's job.
+
+**RED/GREEN.** `ProcedureConditionComparisonTest`, 7 cases. The RED half is kept as a live test
+rather than a memory: `bareRefIsStillTruthinessOnly_theShapeThatForcedJava` asserts that all four
+of Movimento's lifecycle states are truthy under a bare ref -- which is *why* the guard could not
+be written -- while `equalityAgainstALifecycleStateNowDecidesTheBranch` shows the same predicate
+now selecting correctly. Full kernel suite green.
+
+**What this unblocks, and what it does not.** LC-B1's `having` no longer has to inherit a
+truthiness-only predicate (the programme's F7). M11's guarded `onCommit` emission is now
+expressible -- but it is NOT authored here: doing so would change WmsOffice's event behaviour, and
+M11 is a `differs`, not a blocker (see REG-95's closure and docs/SCREEN_TAXONOMY.md footnote 9).
+
+### REG-97 — CompiledModelCanonicalJson is not idempotent under write -> read -> write: the READER back-filled a concept invariant's empty fields[] from its field, so the CANONICAL form of a model depended on how many times it had been round-tripped
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found in Move 11 W6 while writing the R0.3 round-trip assertion for the new
+`transaction.uiState` field ("Canonical JSON = writer AND reader"). The uiState half passes; the
+WHOLE-document equality assertion fails, on two lines that have nothing to do with it.
+
+Measured with a throwaway probe that diffs write1 vs write2 of the same compiled model:
+
+    line 98
+      write1:       "fields" : [ ]
+      write2:       "fields" : [ "id" ]
+    line 235
+      write1:       "fields" : [ ]
+      write2:       "fields" : [ "id" ]
+    total lines: 440 vs 440
+
+Nothing else differs across 440 lines, so this is one narrow defaulting asymmetry, not general
+drift.
+
+**Surface:** `dsl/compiled`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java`
+
+The compiler emits a panel with `fields: []`; the reader fills an empty `fields` with the root
+concept's id; a second write then emits `["id"]`. Whichever side is "right", they disagree, so
+`toJson(model) != toJson(fromJson(toJson(model)))`.
+
+**Why this is filed rather than shrugged at.** "Canonical" is load-bearing in this repo in two
+places that both assume a byte-stable form:
+
+  1. `npdev-generated/` is HASH-VERIFIED at app startup (see the workspace-menu/shell notes) --
+     anything that re-canonicalizes a compiled model on a path that later re-hashes it would
+     produce a spurious mismatch;
+  2. `npdev.schema.fingerprint` and the compiled-model comparison the schema engine performs are
+     both equality-over-canonical-form arguments.
+
+Neither is known to be broken today: the reader is used for reading models INTO tools, not on the
+generate-then-hash path, so the asymmetry has had nowhere to bite. That is why this is LOW and
+filed rather than fixed mid-move -- but a canonical form whose value depends on round-trip count
+is a latent trap, and the next feature that reads a compiled model back and re-emits it will hit
+it.
+
+**Fix shape when taken up**: decide which side owns the default (almost certainly the COMPILER --
+the reader should be a faithful parser and never invent content), then assert idempotence
+(`toJson(fromJson(toJson(m))) == toJson(m)`) as a real test over a rich fixture model, so this
+class cannot recur silently for the next field either.
+
+**Not hidden meanwhile**: `AutoPanelUiStateValidationTest` says in its own comment why its
+round-trip assertion is scoped to uiState instead of the whole document, and cites this id.
+
+---
+
+## CLOSED, Wave 1.1 (2026-07-31, MASTER_AI_PLATFORM_PROGRAMME_v2.md §3.4)
+
+**Re-rated LOW -> MEDIUM before fixing**, per the programme's F5: `LC-C2`'s central DoD is "the
+resulting metadata is byte-identical to what a full regeneration produces -- one test that runs
+both and compares". A canonical form whose value depends on how many round-trips a path has
+performed makes that test fail INTERMITTENTLY, which is worse than failing.
+
+**The divergence, located rather than guessed.** A probe that diffed write1 vs write2 with
+surrounding context named the owner: it is not a panel's `fields` (as the original report assumed)
+but a CONCEPT INVARIANT's:
+
+    "invariants" : [ { "ref" : "required(id)", "type" : "required", "field" : "id",
+                       "expression" : "",
+                       "fields" : [ ]        <- write1
+                       "fields" : [ "id" ]   <- write2
+
+`CompiledModelCanonicalJsonReader` back-filled it:
+
+    invariantFields.isEmpty() && field != null ? List.of(field) : invariantFields
+
+i.e. the reader invented content the document did not contain.
+
+**Which side was changed, and why it is the opposite of this item's own first guess.** The fix
+shape above said "almost certainly the COMPILER". That was written before the owner was known.
+Emitting `["id"]` from the compiler would have been equally idempotent -- and would have changed
+the canonical content of EVERY model, hence every `npdev.schema.fingerprint`, producing exactly
+the spurious schema-impact prompt (a migration that appears necessary and is not) that this item
+names as one of its two consequences. So the READER was made faithful instead: zero content
+change, zero fingerprint churn, and it is the side that was actually misbehaving -- a parser must
+never invent. Callers already receive an empty list from a freshly compiled model, so nothing that
+works today starts failing.
+
+**The assertion this item asked for exists**: `CanonicalJsonIdempotenceTest` --
+`toJson(fromJson(toJson(m))) == toJson(m)` over a fixture exercising concepts, invariants,
+aggregates, an aggregate-bound AutoPanel with uiState, and a hand-authored panel. It reports the
+first differing lines with line numbers on failure, because a whole-document diff in an assertion
+message is unreadable and the line number is what locates the field.
+
+**A workaround it forced is now removed**: `AutoPanelUiStateValidationTest`'s round-trip assertion
+was scoped to `uiState` alone while this was open, with a comment citing this id. It is back to
+the whole document -- which is the version that would catch a NEW field the writer knows about and
+the reader does not.
+
+### REG-98 — Two differently-named concepts can compile to the SAME physical table and the model validates with zero errors -- SqlIdentifierSupport.toSnake() sanitizes by REPLACEMENT (every non-alphanumeric becomes '_'), and nothing checks the derived table names for collisions
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found during Wave 0.1's REG-94 triage (MASTER_AI_PLATFORM_PROGRAMME_v2.md), while tracing whether
+`JdbcBusinessConceptStore`'s spliced `shape.tableName()` could carry SQL syntax. It cannot -- but
+the reason it cannot is what produces this bug.
+
+Reproduced with a two-concept model and the real validator:
+
+    concepts: [ { "name": "OrderLine",  fields: [id] },
+                { "name": "Order Line", fields: [id] } ]
+
+    $ .\gradlew.bat :NPDevContract:dsl:validateModel -PmodelPath=...\collide.json
+    "errors" : 0
+    BUILD SUCCESSFUL
+
+Both names pass through `SqlIdentifierSupport.toSnakePlural()` to the SAME table, `order_lines`.
+
+**Surface:** `dsl/compiled, schema-lifecycle`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/SqlIdentifierSupport.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java`
+- `NPDevContract/schemas/model.schema.json`
+
+`toSnake()` walks the name and appends `Character.toLowerCase(c)` for a letter or digit and `'_'`
+for **everything else**, then collapses runs of `_` and trims. So punctuation, spaces, quotes and
+semicolons are all mapped to the same character and then squeezed away. Every one of these
+compiles to `order_lines`:
+
+    OrderLine     Order Line     Order-Line     Order.Line     Order__Line     "Order Line "
+
+Two independent gaps compose:
+
+1. **The schema does not constrain a concept name.** `$defs.concept.properties.name` is
+   `{"type": "string", "minLength": 1}` -- no pattern. There is no `tableName` property at all.
+   (Confirmed live: a concept named `Ord"; DROP TABLE users; --` validates with 0 errors.)
+2. **Nothing checks derived table names for uniqueness.** Concept NAMES are checked for duplicates;
+   the physical names they compile to are not.
+
+**Consequence.** Two concepts silently share one table. Both write to it, both read from it, and
+each sees the other's rows as its own -- with column sets that may only partially overlap, so the
+second concept's required columns may not even exist. On a fresh database the schema engine
+realizes one table for two concepts; on an existing one the second concept's realization is an
+additive change against a table it does not own. Nothing anywhere reports a problem.
+
+**Why this is not an injection bug, and why that matters for the fix.** `toSnake()`'s replacement
+behaviour is exactly what makes `JdbcBusinessConceptStore`'s spliced identifiers safe (see
+docs/SECURITY_PATTERN_SWEEP_2026-07.md §2.4). So the fix must NOT be "make toSnake refuse" without
+care -- that would be a behavioural break for every existing model whose concept names contain a
+space or a hyphen. The two safe moves are additive:
+  (a) a validation rule that refuses a model in which two concepts derive the same physical table
+      name, naming both concepts and the collided name; and
+  (b) a schema `pattern` on concept `name` so the hostile-input case is refused at authoring time
+      rather than silently rewritten.
+
+(a) is the one that closes the data-integrity hole and can ship on its own; (b) is defence in
+depth and is the more likely to need a migration note, since a corpus model may already use a
+character the pattern would reject.
+
+**Rated HIGH, unlike its REG-94 siblings.** It needs no attacker: a plausible authoring slip
+(`Order Line` beside `OrderLine`) silently merges two concepts' data, and the failure is invisible
+at every layer that could have reported it -- schema, validator, compiler, schema engine.
+
+**Not fixed in Wave 0.1**, which the programme scopes as a reading task ("triage first"). Filed
+with the reproduction, the cause and the fix shape so it is not re-derived.
+
+---
+
+## CLOSED (2026-07-31, MASTER_AI_PLATFORM_PROGRAMME_v2.md §2.1, fix shape (a) only)
+
+`ConceptValidation.validateTableNameCollisions` (wired into `SemanticValidator.validate`,
+immediately after `indexEntities`) derives each concept's physical table name the SAME way
+`ModelCompiler` does -- `SqlIdentifierSupport.toSnakePlural(concept.getName())`, called directly
+rather than reimplemented, so the check can never drift from what actually compiles -- and refuses
+the model when two DIFFERENTLY-named concepts collide, naming both concepts and the collided table.
+A same-name duplicate (already caught by `indexEntities`) is not double-reported.
+
+Reproduced RED first (the ledger's own `OrderLine`/`Order Line` case, plus hyphen/dot variants),
+then GREEN: `TableNameCollisionValidationTest` (4 cases -- two colliding-name shapes, one genuinely
+distinct pair that must NOT trip it, one same-name duplicate that must still route through the
+existing duplicate-concept-name error only).
+
+**Verified against the real corpus, not asserted**: `python scripts/quality/validate-corpus.py`
+re-run after the change -- 29/29 models still parse. No existing corpus model collides, so this
+ships with no `npdev migrate` codemod and no `BREAKING.md` entry: nothing that validated before
+stops validating now.
+
+**Fix shape (b) (a schema `pattern` on concept `name`) deliberately NOT done** -- named in the
+item as defence-in-depth, not required to close the data-integrity hole, and more likely to need
+a corpus migration of its own. Left open as a follow-on if wanted, not re-filed as a new item.
+
+### REG-99 — A band's transaction.visibleWhen was unreachable in EVERY spelling -- the validator accepts only the derived address 'collection.band', the expander read only the bare band name, so the predicate validated and was silently dropped
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-07-31)
+**Verification:** VERIFIED_LIVE
+**Source:** Found by the Wave -1.1 live browser proof of Move 11 W6 -- i.e. by driving the feature in a real
+browser rather than by asserting on the descriptor. The `$ui` toggle rendered and switched
+correctly, and the `posicoes` band did not move:
+
+    w6_uistate_toggle_before = {"toggle":"Completo","options":["Completo","Resumo"],
+                                "bandTitles":["posicoes"],"bandRegions":1}
+    w6_uistate_toggle_switch = switched to:Resumo
+    w6_uistate_toggle_after  = {"toggle":"Resumo","bandTitles":["posicoes"],"bandRegions":1}
+
+The declared predicate was `{"itens.posicoes": "$ui.detalhe == 'Completo'"}`, and the model
+validated with 0 errors. Confirmed at the artifact: the generated `compiled-model.json` band
+descriptor carries `"address": "itens.posicoes"` and **no `visibleWhen` at all**.
+
+**Surface:** `dsl/compiler, aggregate-workbench`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java`
+
+Two halves of the same feature disagreed about the key, and each half was individually reasonable.
+
+`PanelValidation.derivedAddresses()` accepts exactly: `"header"`, a declared top-level collection
+name, or a declared `"<collection>.<band>"` pair. `AutoPanelExpander.sectionDescriptor()` looked a
+band's predicate up as `visibleWhen.get(child.name())` -- the BARE band name.
+
+So:
+
+  "itens.posicoes"  -> passes validation, and the expander never looks under that key. Dropped.
+  "posicoes"        -> the expander would read it, and validation rejects it as an unrecognized
+                       address before it ever gets there.
+
+**There is no spelling that works.** Band-level `visibleWhen` has been dead since Move 7 W1 typed
+`transaction.visibleWhen`, with no error on any path. Section-level (`"itens"`) always worked --
+the bare name and the derived address are the same string for a top-level collection, which is
+exactly why this survived: the feature demonstrably worked, on the half anyone tested.
+
+`attachRegion` one line below already used the dotted address for the same band, so the two
+sibling lookups in the same method disagreed with each other.
+
+**Fix**: look the band's predicate up by its derived address first, falling back to the bare name.
+The fallback is deliberate and secondary -- the retired untyped `transaction.metadata.visibleWhen`
+map predates derived addresses, so a model still on that spelling keeps working until it migrates.
+
+**This is a fourth instance of the X0 silent-answer class** (MASTER_AI_PLATFORM_PROGRAMME_v2.md
+§2.1), and a slightly different shape from the other three: not "an evaluator returns a default
+answer for input it cannot handle", but "a declaration the validator accepts never reaches the
+evaluator at all". Same consequence, same silence. Added to X0's register.
+
+**Why the descriptor-level test did not catch it and the browser did.** W6's own DSL test asserted
+the `uiState` control compiles into the workbench descriptor, which it did. Nothing asserted that
+the PREDICATE reached the band. The live run is what failed, and the assertion it produced
+(`AutoPanelUiStateValidationTest.bandVisibleWhenReachesTheBandDescriptor`) now pins both the
+address and the predicate on the band descriptor.
 

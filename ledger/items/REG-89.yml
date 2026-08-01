@@ -1,0 +1,56 @@
+id: REG-89
+title: "patchConcept's author-time 'id is required' rule was never relaxed for createIfMissing, so REG-77's shipped create-only runtime path was unreachable from any model"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found while authoring Move 10 W1.2 (docs/MOVE10_CONSOLE_PARITY_SPEC.md) -- WmsOffice's
+  GerarTemplateContagemProcedure needed to create the `Gerado` InventarioArquivo header row the
+  original inventario.html screen also created, with no id to look up (it is a brand-new record).
+  The obvious, documented declaration -- patchConcept + createIfMissing + set, no id -- was rejected
+  outright by the generator's semantic validation:
+    Semantic validation failed:
+     - Procedure GerarTemplateContagemProcedure step procedures[GerarTemplateContagemProcedure].steps[5]: id is required for patchConcept
+surface: dsl/validation, kernel/procedure-runtime
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ProcedurePatchConceptCreateIfMissingValidationTest.java
+detail: |
+  `PackValidation.validateProcedurePatchConcept` was written in Move 4 (REG-75), when `patchConcept`
+  was patch-only and an `id` was genuinely always required. Move 5 Wave 1B then added
+  `createIfMissing` (REG-77's create half) with the *explicit* contract, stated in
+  `DefaultProcedureExecutor.patchConcept`'s own doc comment, that it:
+
+    "tolerates a blank/unresolved idRef (nothing to look up yet) and, on a miss, builds a brand-new
+     record from `set` alone with a freshly generated id -- deliberately NOT the (missing) lookup id,
+     so a caller that queried for a match first (e.g. via a prior `listConcepts` step) and found none
+     can still invoke this with a blank idRef."
+
+  The validator was never updated to match. The result: the single scenario the flag was built for --
+  create a record when the lookup found nothing -- could not be expressed, because the author-time
+  check demanded the very id the runtime was designed to do without.
+
+  **How it stayed invisible for two moves.** Every kernel test for `createIfMissing`
+  (`DefaultProcedureExecutorCreateIfMissingTest`, `DefaultProcedureExecutorAutoIdSemanticPolicyTest`)
+  builds `ProcedureStep` objects directly and never goes through `SemanticValidator` at all, so no
+  amount of runtime testing could catch it. The only *model-level* coverage,
+  `dsl-conformance-max`'s `EnsureWidgetOrderAuditProcedure`, silently encodes the workaround -- its
+  own fixture comment reads "id references a key nothing populates", i.e. a deliberately dangling
+  `$ref` declared solely to satisfy the validator and relied upon to resolve to null at runtime.
+  A corpus fixture that has to lie to reach a shipped feature is the tell; it was read as an
+  intentional test of the miss branch rather than as evidence of a blocked path.
+
+  **Fix**: one condition -- `if (!hasText(step.id()) && !step.createIfMissing())`. Nothing else was
+  weakened: a plain (non-upsert) `patchConcept` still requires `id`, a create still requires a
+  non-empty `set`, and REG-71's undeclared-field check still runs on the create path.
+
+  **RED/GREEN**: `ProcedurePatchConceptCreateIfMissingValidationTest` (5 cases). Against the
+  unfixed validator exactly 1 failed -- `createIfMissingWithNoIdIsAccepted`, at the asserted line --
+  while the 4 guard cases (id-present upsert, plain patch still needs id, create still needs set,
+  create still checks field names) passed, confirming the test isolates the bug rather than the
+  rule. With the fix, all 5 pass. Then proven end to end: the model that produced the error above
+  now generates, builds, boots, and the created InventarioArquivo row was confirmed at the data
+  layer via REST.

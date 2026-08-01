@@ -1,0 +1,56 @@
+id: REG-88
+title: "B15: await-inside-forEach investigated for closure -- hard stop fired, boundary kept"
+type: BOUNDARY
+severity: null
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: null
+source: docs/MOVE9_LOWCODE_BOUNDARIES_SPEC.md A5
+surface: kernel/flow-engine
+detail: |
+  Move 9 A5's own spec named this "the genuinely hard one" and built in an explicit hard-stop
+  condition: "if per-iteration correlation cannot be made durable across a restart, do NOT ship it.
+  Report the finding and leave the boundary." Per the spec's own instruction ("read that
+  implementation before designing anything"), investigated the existing durable-flow correlation
+  mechanism (AWAIT_EVENT) and the existing resumable forEach loop (LIFT-LOOP-P2) before attempting
+  any design.
+
+  Findings (full detail also recorded in docs/ACCEPTED_BOUNDARIES.md B15 and docs/FLOWS.md §6):
+
+  - `FlowInstance` (NPDevKernel/kernel/src/main/java/com/npdev/kernel/execution/FlowInstance.java)
+    hard-codes exactly ONE `correlationId` (String), ONE `currentStepIndex` (int), ONE
+    `waitingForEventName` (String) per row -- one row = one correlation identity, one step position,
+    one waited-event name. No list/array/composite-key structure exists anywhere in this record or in
+    `npdev_flow_instance`'s columns (all singular, non-composite).
+  - `AwaitEventStep`'s wait descriptor lives at ONE fixed state key (`_npdev.await`,
+    `FlowStateCodec.AWAIT_STATE_KEY`) inside ONE shared mutable state map per flow instance.
+  - `ForEachStep` (LIFT-LOOP-P2)'s existing resumability is a single "next iteration index" integer
+    (`__forEachProgress.<stepName>`), checkpointed only at whole-iteration boundaries. Iterations run
+    strictly sequentially and synchronously -- one full iteration's nested steps complete before the
+    next starts. The nested-iteration executor passes `KernelRunner.NOOP_STEP_PROGRESS_RECORDER`:
+    nothing INSIDE an iteration is independently checkpointed/resumable today, only whole-iteration
+    boundaries are.
+  - `npdev_correlation_owner`'s PK is `correlation_id` alone -- one owned correlation id per row,
+    globally, not scoped to a loop iteration.
+
+  Conclusion: the wall is structural, not incidental. Making N loop iterations independently,
+  out-of-order awaitable requires either (a) one `FlowInstance` row per iteration -- a new
+  sub-execution concept, since `resumeExecution`/`executeSteps`/compensation/idempotency all assume
+  one row = one flow -- or (b) turning `correlationId`/`currentStepIndex`/`waitingForEventName`/
+  `_npdev.await` into per-iteration collections simultaneously across `FlowInstance`,
+  `ResumeCoordinator`'s matching logic, the `npdev_flow_instance` DB schema, and the
+  `ForEachStep`/`AwaitEventStep` contract. This is a multi-week subsystem redesign, not a bounded task,
+  and attempting a half-measure (e.g. jamming a composite key into the single existing scalar fields
+  without a coordinated schema/matching-logic redesign) risks exactly the failure mode the hard-stop
+  exists to prevent: a resume matching the WRONG iteration's await, silently, which is worse than the
+  current validation-time rejection.
+
+  Per the spec's explicit prohibition ("do not remove FlowValidation's await-in-loop rejection before
+  the runtime supports it"), `FlowValidation.java`'s rejection (lines 470-472, `containsAwaitStep` at
+  513-525) was left completely untouched -- no code changed in the kernel or DSL validation for this
+  item. `docs/ACCEPTED_BOUNDARIES.md` B15 row kept (not deleted), rewritten to record this finding and
+  its exact revisit trigger (genuine demand to fund the full redesign). `docs/FLOWS.md`'s §6 also
+  updated: fixed a stale cross-reference (`SemanticValidator.java:2453-2455`, which moved to
+  `FlowValidation.java:513-525` during the earlier TREE1/DSL2 decomposition and was never corrected)
+  and added this investigation's finding inline.

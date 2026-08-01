@@ -162,6 +162,62 @@ entry's `where` text — a real code move surfaces as an informational note so `
 honest, not as a re-triage demand. `path` in each entry stays informational prose describing where a
 reviewer actually looked, same as before.
 
+### 2.3 2026-07-30 — Move 7 W1 triaged 3 new hits under the existing B4 rule
+
+Move 7 W1 (`docs/MOVE7_IMPLEMENTATION_SPEC.md`) typed `transaction.actions`/`.visibleWhen`/
+`.bandPickers`, adding a second call site for `CompiledSettings.resolveString("action.select")`
+(`AutoPanelExpander.java`'s typed `bandPickers()` fallback, mirroring the pre-existing untyped one).
+Content-keyed fingerprinting means a literal it had never seen before — `"action.select"` itself,
+distinct from the bare `"select"` widget-type literal B4 already covered — read as brand new, plus
+two unrelated pre-existing NPDevContract/dsl hits the sweep had apparently never been run against
+before (`PlatformStrings.java`'s `"Select"` default label value, `PackValidation.java`'s `mapList`
+step validation message naming its own `select` field). All three are the exact class B4 already
+describes (`NPDevContract/dsl` has no `DataSource` at all; every hit is prose/a string key, never
+SQL) — re-cleared under B4, not a new rule, in `security-pattern-sweep-allowlist.json`
+(`608ee00abb10`, `f1deaeca3d08`, `686c826307c2`).
+
+### 2.4 2026-07-31 — Wave 0.1 triaged the 11 schema-engine hits that had accumulated across Moves 9–10 (REG-94)
+
+These 11 had been failing the AI-knowledge gate's step 6 for some time, unnoticed because the gate
+itself had a second, unrelated red (see REG-94's other half). Every verdict below was **traced to the
+identifier's source**, not inferred from a sibling that had already been cleared — the whole value of
+this instrument is that a fingerprint means somebody actually followed the value.
+
+**The `sql-string-building` seven** — `CrossEngineDataPromotion.java:147,148`, `BackfillPass.java:433`,
+`ExpressionBackfillPreview.java:88`, `SchemaDropSnapshotRestorer.java:204,281`,
+`JdbcBusinessConceptStore.java:98`. All spliced identifiers route through
+`SchemaLifecycleExecutor.safeIdentifier()`, which **refuses** anything outside
+`[A-Za-z_][A-Za-z0-9_]*` — it throws, it does not strip — so none can carry SQL syntax. Values are
+bound with `setObject` everywhere. `CrossEngineDataPromotion` carries a second, independent guard:
+its column list is intersected with the live columns of **both** databases before any SQL is built.
+
+`JdbcBusinessConceptStore.java:98` (`findByIdForUpdate`, added by Move 9 A2) is the one that needed
+real tracing rather than analogy with its already-cleared siblings at :67 and :119. `shape(conceptName)`
+is a lookup into a map built at construction from the compiled model and **throws** for an unknown
+concept, so `conceptName` is never spliced. `shape.tableName()` derives via
+`SqlIdentifierSupport.toSnake()`, which replaces every non-letter-or-digit with `_` — confirmed
+empirically, not by reading: a concept named `Ord"; DROP TABLE users; --` validates with 0 errors and
+compiles to a table name with no SQL syntax left in it.
+
+**One `sql-string-building` hit is a false positive**, and it is worth keeping on the record because
+the shape will recur: `JdbcBusinessConceptStore.java:110` is not SQL at all. It is a catch block's
+message, `"Failed reading (for update) concept " + conceptName + " from JDBC store"` — the
+UPDATE-statement pattern matched the English words `(for update)`.
+
+**The `read-without-tenant-predicate` three** — `CrossEngineDataPromotion.java:147`,
+`MigrationClaimStore.java:267`, `SchemaDropSnapshotRestorer.java:204`. Each is genuinely
+tenant-independent, and in two of the three **adding a tenant predicate would be the bug**:
+cross-engine promotion copies every row of every business table, and the drop-snapshot restore
+re-inserts every row a destructive migration removed — scoping either to the calling tenant would
+silently discard every other tenant's data mid-migration. `npdev_schema_migration_claim` holds
+exactly one row on a fixed key and has no tenant column; the migration lock is per-database.
+
+**What the triage turned up that the sweep could not see.** `toSnake()` sanitizes by
+*replacement* while `safeIdentifier()` refuses. Replacement means two distinct concept names can
+collide onto one physical table — confirmed live: `OrderLine` and `Order Line` both compile to
+`order_lines` with **0 validation errors**. That is a data-integrity bug, not an injection one, so it
+is filed as **REG-98** rather than cleared here.
+
 ---
 
 ## 3. (i) The one genuine finding — REG-43
@@ -269,6 +325,14 @@ no shortcut. Two concrete starting points it did surface:
 | `JdbcIdempotencyStore` / `JdbcCircuitBreakerStateStore` / `JdbcEventStore` / `JdbcAuditLogStore` | 28 | Unbounded binds. REG-36 covers the idempotency key specifically; check whether the same asymmetry exists in the others. |
 
 ---
+
+### 4.5 → 2026-08-01, Move 10 B1 (new code, not a prior-round finding)
+
+| Lead | Hits | Resolution |
+|---|---|---|
+| `ConceptAggregateEngine.toLocalDate` catches `DateTimeParseException` and returns `null` | 1 | Rule **H2** (general swallowed-exception, non-auth). Not a security verdict of any kind: this is a data-coercion helper turning a raw `groupBy` field value into a `LocalDate` for date bucketing (`day`/`week`/`month`/`quarter`/`year`). An unparseable value legitimately becomes "no bucket" (a `null` group key, grouped alongside any other un-parseable rows) rather than crashing the whole aggregate query for every caller over one bad row — the exact same fail-soft posture `ConceptQueryEngine.asNumber` already uses for a non-numeric comparison value. No permission, tenant-scope, or auth decision passes through this method at all.
+
+**Also this same session:** a botched `git checkout --` on `security-pattern-sweep-allowlist.json` (recovering from an unrelated bad edit) discarded 13 uncommitted "safe" verdicts that predated this session — `CrossEngineDataPromotion.java` (rule A3 + F1, 3 fingerprints), `SchemaDropSnapshotRestorer.java` (rule G5 + F1, 2 fingerprints), `MigrationClaimStore.java:267` (rule G5), `JdbcBusinessConceptStore.java:101/113` (rule F1 + one false-positive), `BackfillPass.java:433` (rule F1), `ExpressionBackfillPreview.java:88` (rule F1), and 3 false-positives on the English word "select"/"Select" appearing in non-SQL text (`PlatformStrings.java:28`, `AutoPanelExpander.java:643,678`, `PackValidation.java:463` — same class as rule J1's runbook false positive). All 13 were fully reconstructed from the gate's own next-run diagnostic output (which prints the matched text, file:line, and category for every "new" hit) cross-referenced against this document's own closure-record rules (§4.0) — none were re-triaged from scratch; each maps cleanly onto an already-established rule. Re-added with `where`/`why` noting the 2026-08-01 re-add. See the maintainer memory `feedback_git_checkout_uncommitted_schema_risk` for the process lesson (this is the second such incident in the same session).
 
 ## 5. Reproducing this
 

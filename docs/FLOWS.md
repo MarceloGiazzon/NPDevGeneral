@@ -334,16 +334,28 @@ Proven by `KernelRunnerForEachDurabilityTest.crashMidLoopThenResumeOnFreshRunner
 crash-injection technique as the compensation test, resumed on a fresh runner with no shared state,
 asserts every item ran exactly once in order.
 
-**The documented boundary:** `SemanticValidator` rejects a nested `AWAIT_EVENT` inside a `forEach`
-loop body **at compile time** —
-`containsAwaitStep` (`NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/SemanticValidator.java:2453-2455`),
-which also recurses into a `branch` nested inside the loop body, not just top-level steps
-(`:2495-2507`). This is a deliberate design decision, not a missing feature: durable resume of an
-*in-flight await inside an iteration* is a materially harder state problem than resuming a loop that
-never suspends, and it's deferred rather than half-supported. Own test:
+**The documented boundary:** `FlowValidation` (the sibling class `SemanticValidator` now delegates
+flow/event checks to, per the 2.B decomposition -- see `SemanticValidator.validateFlows`) rejects a
+nested `AWAIT_EVENT` inside a `forEach` loop body **at compile time** —
+`containsAwaitStep` (`NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java:513-525`),
+called from the rejection itself (`:470-472`), which also recurses into a `branch` nested inside the
+loop body, not just top-level steps. This is a deliberate design decision, not a missing feature:
+durable resume of an *in-flight await inside an iteration* is a materially harder state problem than
+resuming a loop that never suspends, and it's deferred rather than half-supported. Own test:
 `FlowForEachValidationTest.nestedAwaitInsideLoopBodyIsRejected`
 (`NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/FlowForEachValidationTest.java:102-114`).
-Tracked as accepted boundary B15 in `docs/ACCEPTED_BOUNDARIES.md`.
+Tracked as accepted boundary B15 in `docs/ACCEPTED_BOUNDARIES.md` -- Move 9 A5 (2026-07-31)
+investigated closing this boundary and confirmed the wall is structural: `FlowInstance` (one row per
+flow instance) hard-codes exactly one `correlationId`, one `currentStepIndex`, and one
+`waitingForEventName`, and `AwaitEventStep`'s wait descriptor lives at one fixed state key
+(`_npdev.await`) inside one shared mutable state map. Making N loop iterations independently,
+out-of-order awaitable needs either one `FlowInstance` row per iteration (a new sub-execution concept
+-- `resumeExecution`/`executeSteps`/compensation/idempotency all assume one row = one flow) or turning
+every one of those scalar fields into a per-iteration collection, simultaneously, across
+`FlowInstance`, `ResumeCoordinator`'s matching, the `npdev_flow_instance` schema, and the
+`ForEachStep`/`AwaitEventStep` contract. The boundary was left in place rather than half-built (Move
+9's own hard-stop rule: "a loop that resumes the wrong iteration is far worse than a validation
+error").
 
 ## 7. Scheduling — two mechanisms, same name, don't confuse them
 

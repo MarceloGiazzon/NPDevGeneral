@@ -1,0 +1,88 @@
+id: REG-86
+title: "procedure mapValue/return forced their value through a String ref-only path -- a literal array or object was impossible, only a $ref into procedure state could survive"
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: |
+  Found during Move 8 D3, never filed (Move 9 C3, docs/MOVE9 spec Part C item C3). Same shape as
+  the pre-patchConcept.set literal-constant gap that once forced a bespoke capability
+  (crossDockingSync, since deleted -- see REG-75's closure) to inject one literal boolean.
+surface: kernel/procedure-runtime
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/ProcedureStep.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/ProcedureRunner.java
+  - NPDevGenerator/tools/npdev-cli/src/main/java/com/npdev/cli/NPDevCliMain.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/DefaultProcedureExecutorLiteralValueTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/ProcedureRunnerLiteralValueTest.java
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+detail: |
+  Two independent bugs, both required for the fix, confirmed by reading the executor directly
+  rather than assumed:
+
+  1. `DefaultProcedureExecutor.mapValue`/`returnValue` resolved their value via `resolve(state, ref)`
+     -- a function with NO literal fallback at all: it always treats its argument as a dotted path
+     into procedure state, stripping a leading "$" if present but never distinguishing "this is a
+     literal" from "this is a ref." A literal array/object handed to `mapValue`'s `value` therefore
+     could never survive even one hop through this function.
+  2. `ProcedureRunner.toProcedureStep`/`NPDevCliMain.toProcedureStep` (the two identical adapters
+     converting a compiled DSL step into the kernel's `ProcedureStep`) additionally forced `step.value()`
+     through `refOf(Object, String)`, which calls `String.valueOf(value)` -- for a literal `List`/`Map`,
+     this produces a garbled, unusable string (e.g. `"[a, b]"`), not the original structure. Even if
+     bug 1 were fixed alone, this stringification would still have destroyed the literal before it
+     ever reached the executor.
+
+  Confirmed by grepping every real DSL model.json in the corpus (dsl-conformance-max, every
+  NPDevSamples fixture, every AppGen sample): every existing `mapValue`/`return` `value` in the
+  whole tracked corpus is `$`-prefixed already -- zero fixtures relied on the old always-a-path
+  behaviour for a bare (non-`$`) literal, so nothing in the real corpus depended on the broken
+  shape. (A handful of `golden-ai-scenarios/*.json`/`custom-procedure.json` fixtures use a bare
+  `"value": "summary"`-style string, but those are a separate ai-model intermediate schema consumed
+  by a conversion script before reaching JsonModelParser, not real DSL model.json -- unaffected.)
+
+  Fix: `mapValue`/`return` now resolve `value` via `DefaultProcedureExecutor#resolveSetValue`, the
+  SAME literal-vs-`$ref` convention `patchConcept`'s `set`, `mapList`'s `select`, and `computeValue`'s
+  `left`/`right` already use -- a literal by default (including an array/object, not just a scalar),
+  a `"$"`-prefixed String resolves against procedure state, `"$$x"` escapes to the literal `"$x"`.
+  `ProcedureStep.valueRef`/`returnRef` changed from `String` to `Object` to carry a literal
+  array/object through; `ProcedureRunner`/`NPDevCliMain` no longer stringify `step.value()` --
+  a new `literalOrRef` helper passes it through unchanged (only substituting a `$`-prefixed fallback
+  ref, e.g. `"$input"`, when no value was declared at all).
+
+  RED->GREEN proven at the kernel level: reverted both `DefaultProcedureExecutor` one-line fixes
+  (back to the old always-a-path `resolve()` call), confirmed 3 of 4 new
+  `DefaultProcedureExecutorLiteralValueTest` cases failed exactly as predicted (a literal array/object
+  silently resolved to `null`), restored the fix, confirmed all 4 pass. `kernel:test` full procedure
+  suite green (24 tests: DefaultProcedureExecutorTest, ...ComputeValueTest, ...MapListTest,
+  ...CreateIfMissingTest, KernelRunnerCallProcedureTest) after updating 6 pre-existing kernel test
+  call sites that passed a bare (non-`$`) key expecting the OLD always-a-ref behaviour (e.g.
+  `ProcedureStep.mapValue("copy-input", "input", "copied")`) -- now `"$input"`, matching the new
+  literal-vs-`$ref` convention; none of these six were ever exercising a genuine literal, only relying
+  on the old ambiguity.
+
+  End-to-end proof through the REAL authoring pipeline (`ProcedureRunnerLiteralValueTest`,
+  JsonModelParser -> ModelCompiler -> ProcedureRunner -> DefaultProcedureExecutor): a DSL-authored
+  `mapValue` step with a literal array of objects as `value` parses, compiles, and executes,
+  returning the literal unchanged -- no `capabilityCall` round-trip needed to construct it.
+  `npdev-cli`'s identical adapter code path independently verified green via its own existing test
+  suite (`NPDevCliMainTest`, 6/6). `dsl-conformance-max` gained a new fixture procedure
+  (`ReturnLiteralCatalogSummaryProcedure`) demonstrating this; the whole corpus model still validates
+  clean (`ModelValidatorMain`, 0 errors/warnings).
+
+  Left open, honestly: `ProcedureRunnerLiteralValueTest` could not be run via RuntimeHost's own
+  `./gradlew test` in this session -- unrelated to this fix, `com.finalexec.npdev.service.PanelRuntime`
+  (and several of its sibling test classes) import `com.npdev.generated.runtime.service.KernelFacade`,
+  a type that only exists inside a fully generated+mounted FinalApp; RuntimeHost's build.gradle
+  deliberately excludes `PanelRuntime.java` from a bare standalone build
+  (`generatedRuntimeMountPresent()` gates `generatedRuntimeDependentMainSources`), but several
+  PanelRuntime-dependent TEST classes (that don't themselves textually reference
+  `com.npdev.generated.`) are not excluded to match, so `compileTestJava` fails on those pre-existing
+  files regardless of this change. Confirmed pre-existing and unrelated: `NPDevRuntimeHost/build.gradle`
+  and `PanelRuntime.java` were untouched by this fix, `git status` already showed both modified before
+  this session started, and the SAME failure reproduces after `./gradlew clean compileTestJava` with
+  zero mapValue/return-related edits in play. Not filed as a new ledger item per this session's own
+  scope discipline (Move 9 C3 is REG-86 only); worth a fresh item if it still reproduces once Move 9's
+  own scope closes.

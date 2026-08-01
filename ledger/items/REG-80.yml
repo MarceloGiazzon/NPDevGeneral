@@ -2,9 +2,10 @@ id: REG-80
 title: "field.sensitive is dead wiring -- parsed, compiled, and canonical-JSON round-tripped, but never consumed by anything, including its own documented external-AI-review-pack redaction purpose"
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-07-30
-verification: NOT_VERIFIED
+closed: 2026-07-30
+verification: VERIFIED_LIVE
 source: |
   docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5 (Tier 2 zero-witness sweep, item 7 "constraint:sensitive").
   Investigated while trying to author a real corpus declaration and confirm the feature actually
@@ -57,16 +58,45 @@ detail: |
   payloads. This is a real, if narrow, information-exposure risk for anyone relying on the flag as
   documented.
 
-  **What would close it** (not attempted, scoped for a future session -- two independent, separately
-  schedulable pieces): (a) wire `ReviewPackBuilder.java`/`build-review-pack.py` to redact a
-  `sensitive`-marked concept field's value wherever a review pack embeds live/example record data
-  (needs first confirming review packs actually embed such data today, vs. only source/doc
-  artifacts -- not established here); (b) separately, extend `SensitiveKeyPolicy` (or a new
-  model-aware policy) to also consult the compiled model's `sensitive` fields, not just its
-  hardcoded key-name denylist, for trace/event redaction. Shipping either as a shortcut without the
-  other would leave the schema's own documented claim (a) or the plan's assumption (b) still false;
-  named both here rather than silently fixing just one and calling the feature closed.
+  **Closed (Move 7 R80, docs/MOVE7_IMPLEMENTATION_SPEC.md) -- piece (a) is NOT_APPLICABLE, piece (b)
+  is wired and live-proven:**
 
-  Corpus/round-trip protection landed alongside this finding (not blocked by it): dsl-conformance-max
-  now declares `WidgetOrder.customerEmail` as `sensitive: true`, protecting the parse/compile/
-  canonical-JSON round trip from regressing even though downstream consumption remains unbuilt.
+  **(a) NOT_APPLICABLE, with evidence, not silently skipped.** Confirmed by reading BOTH the real
+  production caller (`ReviewAdminController.java`'s `/build-pack` endpoint) and `ReviewPackBuilder
+  .build`'s own signature: a review pack's `sections` are `{label, text}` pairs supplied ENTIRELY by
+  the calling operator (an admin pasting/uploading arbitrary prose or source code via the
+  ControlPanel `_ops` UI) -- there is no code path anywhere that auto-populates a section from a
+  concept's live record data. `field.sensitive` marks a FIELD on a CONCEPT; review packs never
+  carry concept/record data in the first place, so there is nothing for this piece to redact. Wiring
+  redaction into `ReviewPackBuilder` for a data shape (`{concept, field, value}`) that never actually
+  reaches it would be dead code protecting against an input that cannot occur -- correctly marking
+  this NOT_APPLICABLE rather than adding it anyway.
+
+  **(b) Wired.** `SensitiveKeyPolicy.registerModelSensitiveFieldNames(Collection<String>)` (new,
+  `NPDevKernel/adapters/tracing-redaction-default/.../SensitiveKeyPolicy.java`) adds a mutable,
+  EXACT-match (not substring) field-name registry, OR'd into `isSensitiveKey` alongside (never
+  replacing) the existing static substring denylist -- kept DSL-agnostic (no dependency on
+  `CompiledModel`/`CompiledField`, which this adapter module does not otherwise depend on; the
+  caller passes plain strings). `NpdevObservabilityConfig.java` (RuntimeHost template -- already the
+  one class with BOTH `CompiledModel` and the tracing-redaction-default adapter types in scope, since
+  its `StartupValidator` bean already depends on `CompiledModel`) gained a new `@Bean
+  sensitiveFieldModelRegistration(CompiledModel)` that extracts every `field.isSensitive()` field
+  name across every concept and registers them at boot, alongside the existing
+  `traceRedactionPolicy`/`eventRedactionPolicy`/`executionRedactionPolicy` beans it already declared.
+
+  **Verified live**, not just unit-tested: `tracing-redaction-default:test` 8/8 pass (2 new +
+  `SensitiveKeyPolicyTest`'s existing 3, plus 3 more covering OR-not-replace and clear-on-empty).
+  `NpdevObservabilityConfigSensitiveFieldTest` (new) proves the actual REG-80-named gap is closed --
+  `isSensitiveKey("customerEmail")` is `false` before registration, `true` after -- using dsl-
+  conformance-max's EXISTING `WidgetOrder.customerEmail` (`sensitive: true`) hand-mirrored as the
+  test subject (no new corpus witness authored, per this task's own instruction; `CompiledModel` has
+  no constructor that parses a model.json file by path, so it is hand-built the same way every other
+  RuntimeHost config test already does, e.g. `RuntimeConceptGatewaySemanticPoliciesTest`). Run
+  inside a real generated+booted app (WmsOffice, full `npdev-generated` mount present, avoiding the
+  known "PanelRuntime-family tests don't compile outside a mount" gap this session's own memory
+  already documents) -- confirmed 2/2 new tests pass AND the app's full suite (437 tests, 0
+  failures) still passes with this change in place.
+
+  Corpus/round-trip protection from the original finding is unchanged: dsl-conformance-max's
+  `WidgetOrder.customerEmail` (`sensitive: true`) still protects the parse/compile/canonical-JSON
+  round trip, and is now ALSO the live proof subject for piece (b), not just a round-trip fixture.

@@ -539,7 +539,7 @@ trust assumption every self-bootstrapped NPDev bookkeeping table in this system 
 lost. This is a materially smaller gap than the pre-REG-8 state, where a pure column drop was
 *unconditionally* invisible regardless of history.
 
-## Snapshots (manual recovery only)
+## Snapshots and restore
 
 Every destructive drop — surgical or whole-schema — is preceded by a best-effort snapshot:
 `runtime-data/schema-snapshot-before-drop/<yyyyMMdd-HHmmss-SSS>/<table>.jsonl` (one JSON object per
@@ -548,11 +548,25 @@ retained; older ones are pruned automatically. A snapshot failure is logged loud
 (`DATA LOSS NOT SNAPSHOTTED`) but never blocks the drop it's protecting — a safety net that could
 itself crash the boot would be worse than none.
 
-**There is no automated restore.** Recovery is manual: read the `.jsonl` file(s) for the
-table/column you need, and re-insert via SQL, the seed-data mechanism
-(`docs/SEED_DATA.md`-equivalent, `SeedDataService`), or the REST API. This is a deliberate v1
-scoping decision — automating restore safely (conflict resolution against rows written since the
-drop, schema-shape reconciliation) is real, unstarted work; see Current limitations below.
+**Restoring (Move 9 B3, `SchemaDropSnapshotRestorer`).** An operator-driven ControlPanel command,
+never automatic and never "restore everything" — every call names one exact `(snapshot, table)`
+pair:
+
+- `GET /api/admin/schema-migration/snapshots` — every snapshot directory available, most recent first.
+- `GET /api/admin/schema-migration/snapshots/{snapshot}/tables` — every table that snapshot captured.
+- `GET /api/admin/schema-migration/snapshots/{snapshot}/tables/{table}/preview` — read-only: compares
+  the snapshot's rows against the CURRENTLY LIVE table by `id` and reports how many would be
+  inserted, how many already match live, and which ids **conflict** (present live with *different*
+  content since the drop).
+- `POST /api/admin/schema-migration/snapshots/{snapshot}/tables/{table}/restore` — inserts every
+  missing row. A row already live and identical is skipped; a **conflicting row is reported but never
+  overwritten** — that is always left for the operator to resolve by hand. Refuses outright if the
+  live table does not exist yet (restore is data-only, never schema — boot the app normally first so
+  the table exists).
+
+This deliberately does not attempt schema-shape reconciliation (a snapshot column since removed from
+the model is simply not restored; a live table's new required column since added is not backfilled by
+this path) or a bulk "restore every table" mode — see [Current limitations](#current-limitations).
 
 ## Platform-managed columns
 
@@ -721,12 +735,21 @@ missing):
 
 - **No automatic rename inference.** Every rename must be declared via `renamedFrom` — there is no
   identity-tracking (uid-based) mechanism that infers "this looks like the same field, renamed."
-- **No expression-valued backfills.** Only a literal `default` is backfilled automatically; a
-  `defaultExpression`-only required field on a populated table is refused, not evaluated.
-- **No automated snapshot restore.** The JSONL snapshots are a manual recovery artifact, not a
-  one-command undo.
-- **No cross-database data migration.** Moving data between database engines (e.g. H2 → Postgres) is
-  a different, unrelated feature — not something an app upgrade does.
+- **Expression-valued backfills require an explicit dry-run + acknowledgment (Move 9 B1).** A
+  `defaultExpression`-only required field on a populated table is no longer refused outright: `GET
+  .../expression-backfill-preview` reports what it WOULD compute for every existing row, and
+  `BackfillPass` only applies it once the operator acknowledges (same channel as a destructive
+  change) and a fresh re-evaluation still has zero rows that fail to produce a value. A row that
+  cannot be evaluated (a referenced field absent from it) still blocks the backfill entirely — see
+  [Snapshots and restore](#snapshots-and-restore) for the analogous data-recovery command.
+- **Snapshot restore is operator-driven, one table at a time (Move 9 B3).** `SchemaDropSnapshotRestorer`
+  restores exactly one `(snapshot, table)` pair per call — never "restore everything" — and never
+  overwrites a row that is live with content different from the snapshot; see
+  [Snapshots and restore](#snapshots-and-restore).
+- **H2→Postgres data promotion is a real command now (Move 9 A4), but data-only.** `CrossEngineDataPromotion`
+  (`POST /api/admin/schema-migration/promote/preview` then `/promote/apply`) copies rows typed per
+  column; it never realizes schema on the target and never reconciles a shape that has drifted since
+  the target's schema was last realized — that target table must already exist.
 - **`ExternallyManaged` compatibility verification is column-shaped only (REG-7.1).** It confirms
   every declared table/column exists live with a compatible SQL type; it does NOT check nullability,
   uniqueness constraints, indexes, or foreign keys. A schema that passes this check can still be
@@ -746,7 +769,7 @@ missing):
   migrated past this build, and refuses instead of letting the old jar boot and silently re-add the
   dropped column empty. This is a detection-vs-reconstruction distinction, not a full guarantee: the
   data the drop destroyed is still gone (recoverable only via the pre-drop snapshot or a backup, per
-  [Snapshots](#snapshots-manual-recovery-only)) — REG-8 makes the *situation visible and refused*, it
+  [Snapshots and restore](#snapshots-and-restore)) — REG-8 makes the *situation visible and refused*, it
   does not reconstruct the lost column. See [Refusals and rollback](#refusals-and-rollback) for
   Trigger C's exact scope and residual limitation.
 - **Dropping a concept needs one boot of ownership history first (`LNCH-1-B7`).** The executor only

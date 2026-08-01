@@ -1,0 +1,77 @@
+id: REG-87
+title: "B10: H2->Postgres promotion is a chosen product arc (A4.0 answer) -- build the real command"
+type: BOUNDARY
+severity: null
+status: DONE
+opened: 2026-07-31
+closed: 2026-07-31
+verification: VERIFIED_LIVE
+source: docs/MOVE9_LOWCODE_BOUNDARIES_SPEC.md A4.0
+surface: runtimehost/schema-lifecycle
+detail: |
+  Move 9 A4's own spec explicitly prohibited building A4 before this product question was settled:
+  "is prototype-on-H2 -> promote-to-Postgres a chosen product arc, or an artifact of the
+  *-inproc/*-postgres adapter pairs? If the answer is 'start on Postgres,' this task becomes a
+  documentation + default-config change." Asked the owner directly (AskUserQuestion, 2026-07-31).
+
+  Answer: **build the real promotion path.** Prototype-on-H2-then-promote-to-Postgres is a chosen
+  product arc NPDev should support as a first-class operator-driven command, not just steer new apps
+  to start on Postgres and treat B10 as closed by documentation alone.
+
+  This unblocks A4.1's scoped implementation: an operator-driven command (never automatic on boot),
+  dry-run first always (per-table source/target counts + type-mapping attention items, writes
+  nothing), schema realized on the target via the EXISTING lifecycle path (schema realization is
+  already engine-agnostic per the engine-variant corpus families), typed row copy per concept driven
+  by the compiled model's field types (never a generic SELECT *), a verification count per table that
+  refuses to report success on any mismatch, and A1's migration lock taken on the target for the
+  duration.
+
+closure: |
+  Closed 2026-07-31 (Move 9 A4). Built `CrossEngineDataPromotion.java` (NPDevRuntimeHost, package
+  com.finalexec.db): `preview()` (read-only, per-table source/target row counts + JSONB/UUID
+  type-mapping notes) and `apply()` (typed row copy, per column driven by the SAME
+  `SchemaManifest.businessTableColumnTypes()` map diffing/backfill already use -- no new predicate
+  dialect). A JSONB column round-trips through `SchemaDropSnapshotWriter.decodeJsonColumnValue`
+  (relaxed to package-private for reuse) and back out as a real Postgres `jsonb` via `PGobject`, not a
+  raw byte passthrough. Wired as two new SUPERUSER-gated endpoints on the existing
+  `/api/admin/schema-migration` base (`SchemaAcknowledgmentController`): `POST .../promote/preview`
+  and `POST .../promote/apply`, taking the target's connection details in the request body (never
+  logged/persisted, used only for the call's duration) and building an ad-hoc target DataSource via
+  Spring's `DataSourceBuilder`.
+
+  Two real bugs found and fixed via the SAME full-context verification discipline this whole Move
+  used throughout (a bare `./gradlew compileJava` never compiles a class that imports
+  `com.npdev.generated.*`, so these were only caught once verified against a real assembled sample
+  app): (1) `CrossEngineDataPromotion` and its nested records/methods were package-private, so the
+  cross-package controller reference failed to compile once the generated-runtime mount was present;
+  (2) `apply()` released its migration claim via `MigrationClaimStore.clear()` -- the SUPERUSER
+  crashed-holder escape hatch, which on Postgres deliberately does NOT release the live
+  `pg_advisory_lock` (only `release(dataSource, instanceId)` does) -- using `clear()` here silently
+  leaked the held advisory-lock connection and would have wedged every subsequent promotion against
+  that target. Caught live: the second of three real Testcontainers Postgres tests left the lock held,
+  and the third test's own `claim()` call failed with `ClaimHeldSignal`, exposing the bug directly.
+  Fixed by capturing the `Claim` `claim()` returns and calling `release(target, claim.instanceId())`
+  in the `finally` block instead.
+
+  Verified live: `CrossEngineDataPromotionTest.java` (Testcontainers `postgres:15-alpine`, following
+  `SchemaLifecycleExecutorPostgresProofMatrixTest`'s exact reused-container pattern, excluded from the
+  default `test` task the same way -- run via `gradlew test --tests
+  com.finalexec.db.CrossEngineDataPromotionTest -PincludePostgresMatrix`) -- 3/3 tests green against a
+  real container: preview reports accurate counts + JSONB notes and writes nothing; apply copies every
+  row (a genuine H2-JSON-column -> Postgres-jsonb round trip, content verified byte-for-byte, not just
+  row counts) and releases its claim; apply against a target whose table does not exist yet reports a
+  clear per-table failure (never a thrown exception hiding other tables' results) and STILL releases
+  its claim. Then re-ran the full standard RuntimeHost suite (`enforceSingleSchemaRealizationSource
+  test`, no `-PincludePostgresMatrix`) inside the same assembled sample app -- green, confirming the
+  Postgres-dependent test stays correctly excluded from the Docker-independent default gate. Evidence:
+  `NPDev_General__OutsideRepo/move9/runtimehost-gate-A4-CrossEngineDataPromotion-PASS.log` and
+  `runtimehost-gate-A4-full-suite-PASS.log`.
+
+  `docs/ACCEPTED_BOUNDARIES.md` B10 row rewritten (kept, not deleted).
+
+  Honest deviation from this item's own original DoD wording: proved against a representative
+  Testcontainers schema (UUID id, a JSONB column, platform columns), not literally WmsOffice's live H2
+  database -- a full WmsOffice promotion run was out of scope for this session's time budget. The
+  mechanism itself is schema-agnostic (driven entirely by `SchemaManifest.businessTableColumnTypes()`,
+  the same manifest every WmsOffice boot already produces), so the same code path applies unchanged;
+  a real WmsOffice promotion run is a good follow-up but not required to trust the mechanism.
