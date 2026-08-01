@@ -40,7 +40,7 @@ and the impact gate (F4) enforces it; `n/a` = no hand-written screen to manifest
 | WmsOffice | `novo-estabelecimento` | 16,347 | detail-form | AutoPanel Detail | generated-equivalent | confirmed |
 | WmsOffice | `relatorios` | 10,540 | dashboard | none | hand-written → contract (F2/F3) | confirmed |
 | WmsOffice | `seed-data` | 8,674 | admin-tool | ControlPanel (partial) | hand-written | confirmed |
-| WmsOffice | `usuarios-roles` | 9,500 | auth | generated login | generated-equivalent | confirmed |
+| WmsOffice | ~~`usuarios-roles`~~ | ~~9,500~~ | **auth** | ControlPanel Users section | **REPLACED — hand-written page DELETED, Move 11 W3 (RC-B2)** — the raw, ungoverned `identity_roles` picker (any table row, not just model-declared ones; a grant/revoke did not invalidate the user's live session) was replaced by the platform ControlPanel's Users section, which enforces the model's declared `roles[]` vocabulary and bumps `token_version` so a change is live on the user's very next request — a genuine security fix, not just a UI port. See `WmsOffice/README.md`. **Deleted without a frozen `.original.html` at the time** — restored retroactively, Move 12 P3.1 (item 9), from the pre-deletion backup at `NPDev_General__OutsideRepo/move11/wmsoffice-definition-backup-before-movlivre-deletion/web/usuarios-roles.html` (byte-identical, 9,500 B) | confirmed |
 | WordLab | *(none)* | — | — | — | **fully generated — no `web/` directory at all** | n/a |
 | Claude Support Desk | *(none)* | — | — | — | **fully generated — no `web/` directory at all** | n/a |
 
@@ -238,12 +238,15 @@ measured breakdown:
 - **2 of 5 (AuxScreen, Pigmentampa) have exactly one hand-written page each**, and both are
   classified `generated-equivalent` — present as a physical custom file, but shaped like something
   AutoPanel Detail already produces.
-- **1 of 5 (WmsOffice) carries real hand-written surface area**: 13 pages, 8 of which
-  (`operator-console` ×5, `dashboard` ×2, `spatial-map` ×1) have no generated equivalent today, plus
-  1 `admin-tool` page partially covered by ControlPanel. This is the one app where "custom business
-  screens are hand-written" is actually true and substantial — and it is the corpus F2/F3's contract
-  substrate (`invocations`, provenance, the impact gate) is built to bring under contract, not
-  replace.
+- **1 of 5 (WmsOffice) carries real hand-written surface area**: 13 pages ORIGINALLY, 8 of which
+  (`operator-console` ×5, `dashboard` ×2, `spatial-map` ×1) had no generated equivalent at the time
+  this breakdown was written, plus 1 `admin-tool` page partially covered by ControlPanel. This is
+  the one app where "custom business screens are hand-written" is actually true and substantial —
+  and it is the corpus F2/F3's contract substrate (`invocations`, provenance, the impact gate) is
+  built to bring under contract, not replace. **Stale as a live count** (this classification predates
+  the byte-metric restatement below): 4 of these 13 are now removed and 1 (`analytics`) is a shim —
+  see "Move 3 final metric" below for the current, reconciled figures. The class breakdown itself
+  (which primitive covers which shape) is unaffected by a given screen's current byte count.
 
 ## Ratio re-measurement (Move 2 G4 close, 2026-07-29)
 
@@ -284,33 +287,54 @@ moving to Move 3's contract-generation path for it instead.
 Move 3's own §6 (`docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md`) retired the hand-written/model **ratio**
 as the target metric — it rewards the model growing even when nothing is replaced, exactly what
 happened above (1.02x → 0.77x from panels being *added*, zero files shrinking). The replacement:
-**bytes of `web/*.html` deleted after a console reaches full behavioural parity** — a console's
-original is deleted **only** at parity; partial conversion counts zero, by design, so the metric
+**bytes of `web/*.html` removed after a console reaches full behavioural parity** — a console's
+original is removed **only** at parity; partial conversion counts zero, by design, so the metric
 cannot be gamed by partial work.
 
+**Eligible set, restated (Move 12 P3.2, 2026-08-01):** the console-only framing above (5 operator
+consoles, 117,930 B) was correct for its own scope but had gone silent on everything else — by this
+move, dashboards (`analytics`, LC-B2) and auth screens (`usuarios-roles`, RC-B2) had ALSO become
+convertible, and one of them (`usuarios-roles`) had already been converted without ever being added
+to this metric. The eligible set is now **all 13 originally hand-written `web/*.html` screens**,
+matching the byte figures the per-screen table above already carries:
+
 ```
-Eligible, by console (current as of Move 11 Wave −1, 2026-07-31):
-  crossdocking.html        12,748 B   DELETED 2026-07-30 (Move 8 Part A)  — see "Deletion verdict" below
-  conferencia-fiscal.html  22,897 B   DELETED 2026-07-31 (Move 10 W1.1)   — see ⁸ and docs/MOVE10_W1_CHECKLISTS.md
-  movimentacao-livre.html  23,392 B   DELETED 2026-07-31 (Move 11 W5 / Wave −1.3) — see ⁹
-  centro-trabalho.html     30,862 B   C1 (record-type toggle) CLOSED by Move 11 W6's transaction.uiState +
-                                      $ui.<name>; C2 (Planning layer) unattempted — not at parity
-  inventario.html          28,031 B   Historico + Importar Contagem + Gerar Template work; Recebimento por Arquivo
-                                      cannot-express — 2 blockers left (was 3; REG-92 closed one) — not at parity
-  ---------------------------------
-  Total eligible          117,930 B
-  Deleted                  12,748 B      crossdocking       (Move 8,  2026-07-30)
-                         + 22,897 B      conferencia-fiscal (Move 10, 2026-07-31)
-                         + 23,392 B      movimentacao-livre (Move 11, 2026-07-31)
-                          ---------
-                           59,037 B
-  Remaining eligible       58,893 B      centro-trabalho + inventario (both blocked on Part 2's decision)
+baseline (13 screens, original sizes, 2026-07-29 measurement)   210,689 B
+live today (AppGen/apps/_official/WmsOffice/web/*.html,
+            excluding *.original.html)                          131,803 B
+removed                                                           78,886 B   (= 210,689 - 131,803)
 ```
 
-**3 of 5 operator consoles are now fully converted and deleted** (was 2 of 5).
+**One tally, three columns — screen, bytes removed, mechanism.** Three distinct mechanisms exist and
+are now distinguished rather than folded into one "deleted" bucket:
 
-Live hand-written total across all of `AppGen/apps/_official/WmsOffice/web/*.html`, excluding frozen
-`*.original.html` references: **151,652 B** (was 175,044 B).
+| Screen | Bytes removed | Mechanism |
+|---|---|---|
+| `crossdocking` | 12,748 | deleted — frozen `.original.html` kept from the moment of deletion (Move 8 Part A, 2026-07-30) |
+| `conferencia-fiscal` | 22,897 | deleted — frozen `.original.html` kept from the moment of deletion (Move 10 W1.1, 2026-07-31) |
+| `movimentacao-livre` | 23,392 | deleted — frozen `.original.html` kept from the moment of deletion (Move 11 W5, 2026-07-31) |
+| `usuarios-roles` | 9,500 | deleted — **no** frozen `.original.html` at deletion time (Move 11 W3, RC-B2); restored retroactively from an outside-repo backup, Move 12 P3.1 (item 9) |
+| `analytics` | 10,349 | **shim** — reduced from 11,455 B to a 1,106 B guide-page host (`<meta name="npdev-guide-page">` + shell.css/shell.js), not deleted outright; the 1,106 B residual is still counted as live hand-written below (Move 10 B2, LC-B2, 2026-08-01) |
+| **Total removed** | **78,886** | reconciles exactly to `210,689 - 131,803` |
+
+**The shim judgment, stated explicitly (item 10):** does a shim count as "converted"? **Yes, for the
+screen class** — `analytics` no longer carries any hand-rolled dashboard logic; every number it
+shows is server-fed through `guidePageGadget`, the same primitive a from-scratch dashboard would
+use. **But the residual 1,106 B stays counted as live hand-written bytes**, not zeroed out — it is
+still a physical custom file, not a fully generated surface. This is deliberately un-gameable: an
+author cannot claim a screen "deleted" by shrinking it to a near-empty shell while leaving one byte
+on disk; the metric only ever credits the bytes actually removed, whatever remains still counts.
+
+**4 of 13 originally hand-written screens are now removed** (3 fully deleted-and-frozen, 1
+deleted-without-a-frozen-original-until-retroactively-restored) **and 1 reduced to a shim** — not "3
+of 5 operator consoles," which undercounted by ignoring the two non-operator-console classes this
+same session made convertible.
+
+**Per-screen table and tally agree** (verified by re-reading both after this edit): the per-screen
+table above shows `analytics` at its current 1,106 B with a REPLACED status, `crossdocking`/
+`conferencia-fiscal`/`movimentacao-livre`/`usuarios-roles` all struck through with their removed
+sizes, and every other screen's live size unchanged — the same numbers this tally's "live today"
+figure sums to.
 
 ⁹ **2026-07-31, Move 11 W5 + Wave −1.3** (`MOVE11_CLOSE_REMAINING_SPEC.md`,
 `MASTER_AI_PLATFORM_PROGRAMME_v2.md`). The last blocker was not what three moves of notes said it
