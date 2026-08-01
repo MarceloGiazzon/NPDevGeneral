@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "npdev-acceptance-scenario.v1",
+  "name": "A name filter (P0 pushdown) returns fewer rows than the unfiltered seed and only matching rows",
+  "approved": true,
+  "given": [
+    {
+      "path": "/api/concepts/users",
+      "rows": [
+        { "name": "ScenarioThreeAlice", "email": "three-alice-1@example.test" },
+        { "name": "ScenarioThreeAlice", "email": "three-alice-2@example.test" },
+        { "name": "ScenarioThreeBob", "email": "three-bob@example.test" }
+      ]
+    }
+  ],
+  "when": { "method": "GET", "path": "/api/concepts/users?where=name:eq:ScenarioThreeAlice" },
+  "then": [
+    { "path": "$.totalElements", "equals": 2 },
+    { "path": "$.totalElements", "lessThan": 3 },
+    { "path": "$.content[*].name", "allEqual": "ScenarioThreeAlice" }
+  ]
+}

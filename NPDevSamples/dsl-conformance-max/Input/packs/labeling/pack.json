@@ -10,6 +10,7 @@
   "concepts": [
     {
       "name": "Label",
+      "truthLevel": "T2",
       "ui": {
         "label": "Label"
       },

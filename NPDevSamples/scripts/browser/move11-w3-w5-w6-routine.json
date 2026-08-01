@@ -1,0 +1,69 @@
+{
+  "scenarioName": "move11-w3-panel-textarea-w5-derived-banner-w6-ui-state",
+  "targetPath": "/login.html",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl", "label": "Open the real login page" },
+    { "action": "waitForSelector", "selector": "#username", "state": "visible", "label": "Login form rendered" },
+    { "action": "fill", "selector": "#base", "value": "http://127.0.0.1:8100", "label": "Same-origin base (127.0.0.1, never localhost)" },
+    { "action": "fill", "selector": "#username", "value": "admin" },
+    { "action": "fill", "selector": "#password", "value": "admin123" },
+    { "action": "fill", "selector": "#tenant", "value": "trial" },
+    { "action": "click", "selector": "#loginBtn", "label": "Submit real login" },
+    { "action": "waitForSelector", "selector": "#tokenBox", "state": "visible", "label": "Login succeeded" },
+
+    { "action": "goto", "url": "http://127.0.0.1:8100/npdev-business-ui/", "label": "Open the generated business UI where declared Panels render" },
+    { "action": "waitForTimeout", "timeoutMs": 3000, "label": "Let the shell + panel manifest load" },
+    { "action": "click", "selector": "#sideNav >> text=Inventario - Historico", "label": "Open InventarioHistoricoPanel (scoped to the nav: the panel's own h2 repeats the text)" },
+    { "action": "waitForTimeout", "timeoutMs": 2500, "label": "Let the panel load its dataSources" },
+    { "action": "screenshot", "name": "shot_w3_panel", "label": "W3: the panel action's inline input" },
+
+    {
+      "action": "evaluate",
+      "name": "w3_reg92_multiline_paste",
+      "script": "var sec = document.querySelector(\"#concept-__panel-InventarioHistoricoPanel__\"); if (!sec) return 'NO_PANEL'; var box = sec.querySelector(\"[placeholder='entidadeId']\"); if (!box) return 'NO_INPUT'; box.focus(); var v = 'LINHA-1\\nLINHA-2\\nLINHA-3'; var setter = Object.getOwnPropertyDescriptor(box.constructor.prototype, 'value').set; setter.call(box, v); box.dispatchEvent(new Event('input', {bubbles:true})); return JSON.stringify({tagName: box.tagName, type: box.type, value: box.value, newlines: (box.value.match(/\\n/g)||[]).length, length: box.value.length});",
+      "label": "REG-92: assign a genuinely 3-line value to the declared panel action input and read the DOM back"
+    },
+    { "action": "screenshot", "name": "shot_w3_after_paste", "label": "W3: the control holding a 3-line value" },
+
+    { "action": "goto", "url": "http://127.0.0.1:8100/npdev-workbench/MovimentoWorkbench.html?id=8a2e05b0-292f-4acc-a9f9-e758750fabb6", "label": "Open a Movimento with real itens+posicoes (Origem 7, Destino 25) -- two distinct non-zero totals" },
+    { "action": "waitForTimeout", "timeoutMs": 3000, "label": "Let the selection panel load" },
+    { "action": "screenshot", "name": "shot_w5_selection", "label": "Movimento selection" },
+        { "action": "waitForTimeout", "timeoutMs": 3500, "label": "Let the depth-2 aggregate load" },
+    { "action": "screenshot", "name": "shot_w5_w6_workbench", "label": "W5 derived banner + W6 uiState toggle" },
+
+    {
+      "action": "evaluate",
+      "name": "w5_reg95_derived_banner",
+      "script": "var bars = Array.from(document.querySelectorAll('.derived')); if (!bars.length) return 'NO_BANNER'; var out = bars.map(function(bar){ return Array.from(bar.querySelectorAll('.item')).map(function(it){ var l = it.querySelector('.lbl'); var v = it.querySelector('.val'); var s = it.querySelector('select'); return (l?l.textContent:'?') + ' ' + (v ? v.textContent : (s ? '[select:' + s.value + ']' : '?')); }).join(' | '); }); return JSON.stringify(out);",
+      "label": "REG-95: read the derived banner's rendered values (Total Itens / Total Origem / Total Destino)"
+    },
+    {
+      "action": "evaluate",
+      "name": "select_iten_row",
+      "script": "var rows = Array.from(document.querySelectorAll('.r-items table tr')).slice(1); if (!rows.length) return 'NO_ROWS'; rows[0].click(); return 'clicked row 0 of ' + rows.length;",
+      "label": "Select an itens row -- the posicoes band only renders for a SELECTED row"
+    },
+    { "action": "waitForTimeout", "timeoutMs": 1200, "label": "Let the band render" },    {
+      "action": "evaluate",
+      "name": "w6_uistate_toggle_before",
+      "script": "var bandTitles = Array.from(document.querySelectorAll('.r-band h4')).map(function(h){return h.textContent;}); var sel = document.querySelector('.derived select'); if (!sel) return 'NO_TOGGLE'; return JSON.stringify({toggle: sel.value, options: Array.from(sel.options).map(function(o){return o.value;}), bandTitles: bandTitles, bandRegions: document.querySelectorAll('.r-band').length});",
+      "label": "W6: the declared toggle before switching"
+    },
+    {
+      "action": "evaluate",
+      "name": "w6_uistate_toggle_switch",
+      "script": "var sel = document.querySelector('.derived select'); if (!sel) return 'NO_TOGGLE'; var target = Array.from(sel.options).map(function(o){return o.value;}).filter(function(v){ return v !== sel.value; })[0]; sel.value = target; sel.dispatchEvent(new Event('change', {bubbles:true})); return 'switched to:' + target;",
+      "label": "W6: switch the declared toggle -- the visible surface set must change"
+    },
+    { "action": "waitForTimeout", "timeoutMs": 1200, "label": "Let the re-render settle" },
+    {
+      "action": "evaluate",
+      "name": "w6_uistate_toggle_after",
+      "script": "var bandTitles = Array.from(document.querySelectorAll('.r-band h4')).map(function(h){return h.textContent;}); var sel = document.querySelector('.derived select'); return JSON.stringify({toggle: sel ? sel.value : '?', bandTitles: bandTitles, bandRegions: document.querySelectorAll('.r-band').length});",
+      "label": "W6: the visible surface set after switching"
+    },
+    { "action": "screenshot", "name": "shot_w6_after_toggle", "label": "W6: posicoes band hidden by the $ui predicate" },
+    { "action": "collect", "what": ["domText", "console", "url"] }
+  ]
+}

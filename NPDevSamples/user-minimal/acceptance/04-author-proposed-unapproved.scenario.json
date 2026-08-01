@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "npdev-acceptance-scenario.v1",
+  "name": "Author-proposed scenario, not yet Owner-approved -- must be visible but excluded from the pass count",
+  "approved": false,
+  "given": [
+    {
+      "path": "/api/concepts/users",
+      "rows": [
+        { "name": "ScenarioFourUser", "email": "four@example.test" }
+      ]
+    }
+  ],
+  "when": { "method": "GET", "path": "/api/concepts/users?where=name:eq:ScenarioFourUser" },
+  "then": [
+    { "path": "$.totalElements", "equals": 1 }
+  ]
+}
