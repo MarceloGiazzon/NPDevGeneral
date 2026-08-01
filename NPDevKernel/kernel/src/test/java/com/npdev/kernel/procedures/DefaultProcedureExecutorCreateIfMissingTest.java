@@ -6,7 +6,8 @@ import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
-import com.npdev.kernel.concepts.DefaultConceptGateway;
+import com.npdev.kernel.concepts.GovernedTestGateways;
+import com.npdev.kernel.concepts.GovernedTestGateways.ConceptSpec;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
 import com.npdev.kernel.ports.EventBus;
 import org.junit.jupiter.api.Test;
@@ -32,13 +33,25 @@ class DefaultProcedureExecutorCreateIfMissingTest {
     private static final ExecutionContext CTX = ExecutionContext.of("tenant-a", "actor-a");
     private static final EventBus NOOP_EVENT_BUS = event -> { };
 
+    /**
+     * O5 (Move 11 W4): a GOVERNED gateway, not `new DefaultConceptGateway(store)`. These tests are
+     * REG-77/REG-89's own subject, and REG-83 -- an auto-generated id never folded back into the
+     * write's own data map -- shipped for nine commits precisely because they ran against a noop
+     * semantic policy that never asked for a required id. Under the real policy every write here
+     * must satisfy `id` exactly as a generated app demands.
+     */
+    private static final java.util.function.Supplier<ConceptGateway> GOVERNED = () ->
+            GovernedTestGateways.forConcepts(
+                    ConceptSpec.of("Widget", "label", "name"),
+                    ConceptSpec.of("WidgetLot", "quantity", "other", "label"));
+
     private static DefaultProcedureExecutor newExecutor(ConceptGateway gateway) {
         return new DefaultProcedureExecutor(gateway, (call, state) -> CapabilityResult.success(null), NOOP_EVENT_BUS);
     }
 
     @Test
     void saveConceptGeneratesAnIdWhenIdRefIsBlank() {
-        ConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ConceptGateway gateway = GOVERNED.get();
         DefaultProcedureExecutor executor = newExecutor(gateway);
         ProcedureDefinition definition = new ProcedureDefinition(
                 "CreateWidget",
@@ -60,7 +73,7 @@ class DefaultProcedureExecutorCreateIfMissingTest {
 
     @Test
     void patchConceptStillFailsConceptNotFoundWhenCreateIfMissingIsDefaultFalse() {
-        ConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ConceptGateway gateway = GOVERNED.get();
         DefaultProcedureExecutor executor = newExecutor(gateway);
         ProcedureDefinition definition = new ProcedureDefinition(
                 "PatchMissingWidget",
@@ -76,7 +89,7 @@ class DefaultProcedureExecutorCreateIfMissingTest {
 
     @Test
     void patchConceptCreatesANewRecordWithGeneratedIdWhenCreateIfMissingIsTrueAndNothingMatches() {
-        ConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ConceptGateway gateway = GOVERNED.get();
         DefaultProcedureExecutor executor = newExecutor(gateway);
         ProcedureDefinition definition = new ProcedureDefinition(
                 "EnsureWidgetLot",
@@ -104,7 +117,7 @@ class DefaultProcedureExecutorCreateIfMissingTest {
 
     @Test
     void patchConceptWithCreateIfMissingStillPatchesInPlaceWhenTheRecordAlreadyExists() {
-        ConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ConceptGateway gateway = GOVERNED.get();
         gateway.save(new ConceptWriteRequest("WidgetLot", "L1", "tenant-a",
                 Map.of("id", "L1", "quantity", "5", "other", "kept")), CTX);
         DefaultProcedureExecutor executor = newExecutor(gateway);

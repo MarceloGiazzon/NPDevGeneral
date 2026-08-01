@@ -1,11 +1,13 @@
 package com.npdev.kernel.concepts;
 
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.audit.AuditRecord;
 import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.ConceptStore;
 import com.npdev.kernel.ports.PermissionEvaluator;
 import com.npdev.kernel.ports.TenantIsolationPolicy;
+import com.npdev.kernel.ports.TransactionRunner;
 import com.npdev.kernel.security.PermissionDecision;
 import com.npdev.kernel.security.PermissionRequirement;
 import com.npdev.kernel.security.PermissionSubject;
@@ -27,9 +29,45 @@ public final class DefaultConceptGateway implements ConceptGateway {
     private final AuditLogStore auditLogStore;
     private final ConceptGatewaySemanticPolicy semanticPolicy;
     private final ConceptGatewayTraceSink traceSink;
+    private final TransactionRunner transactionRunner;
 
     public DefaultConceptGateway(ConceptStore store) {
         this(store, PermissionEvaluator.allowAll(), TenantIsolationPolicy.STRICT_EQUALS, AuditLogStore.noop());
+    }
+
+    /**
+     * Move 6 §7.5 (docs/MOVE6_TYPED_SURFACE_PLAN.md): builds a gateway wired with the REAL
+     * governed semantic policy compiled from {@code model} -- the SAME policy every generated app
+     * actually runs (see {@link ConfiguredConceptGatewaySemanticPolicy#fromCompiledModel}).
+     * <b>Prefer this over {@link #DefaultConceptGateway(ConceptStore)}</b> (which defaults to a
+     * noop policy -- no field-required/enum/lifecycle enforcement at all) whenever a test
+     * exercises save/patch/delete against a real compiled model: REG-83 shipped broken for nine
+     * commits because every existing unit test used a noop-policy gateway, so a real bug in the
+     * write path (an auto-generated id never folded back into the write's own data map) had
+     * nothing to trip over. "Fix the default test gateway once, rather than remembering per
+     * feature."
+     */
+    public static DefaultConceptGateway governedBy(ConceptStore store, CompiledModel model) {
+        return governedBy(store, model, TransactionRunner.none());
+    }
+
+    /**
+     * B18 (Move 9 A2): same as {@link #governedBy(ConceptStore, CompiledModel)}, with an explicit
+     * {@link TransactionRunner} -- for a test proving the row-authz race is closed when a real
+     * transaction manager is wired (mirroring {@code AggregateRuntimeCommitTransactionalTest}'s
+     * paired RED/GREEN precedent: {@link TransactionRunner#none()} documents today's degraded,
+     * non-atomic path; a real one closes it).
+     */
+    public static DefaultConceptGateway governedBy(ConceptStore store, CompiledModel model, TransactionRunner transactionRunner) {
+        return new DefaultConceptGateway(
+                store,
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                ConfiguredConceptGatewaySemanticPolicy.fromCompiledModel(model),
+                ConceptGatewayTraceSink.noop(),
+                transactionRunner
+        );
     }
 
     public DefaultConceptGateway(
@@ -56,12 +94,34 @@ public final class DefaultConceptGateway implements ConceptGateway {
             ConceptGatewaySemanticPolicy semanticPolicy,
             ConceptGatewayTraceSink traceSink
     ) {
+        this(store, permissionEvaluator, tenantIsolationPolicy, auditLogStore, semanticPolicy, traceSink,
+                TransactionRunner.none());
+    }
+
+    /**
+     * B18 (Move 9 A2, {@code docs/ACCEPTED_BOUNDARIES.md}): {@code transactionRunner} wraps {@link #save}/
+     * {@link #delete}'s check-then-act critical section (read-for-update through persist) in one
+     * transaction when a real one is supplied, closing the race window between evaluating
+     * {@code isRowWritable} and persisting a write based on it. {@link TransactionRunner#none()} (what
+     * every OTHER constructor above still defaults to) preserves today's behavior exactly -- no
+     * caller signature changes, no existing test needed modifying.
+     */
+    public DefaultConceptGateway(
+            ConceptStore store,
+            PermissionEvaluator permissionEvaluator,
+            TenantIsolationPolicy tenantIsolationPolicy,
+            AuditLogStore auditLogStore,
+            ConceptGatewaySemanticPolicy semanticPolicy,
+            ConceptGatewayTraceSink traceSink,
+            TransactionRunner transactionRunner
+    ) {
         this.store = Objects.requireNonNull(store, "store");
         this.permissionEvaluator = Objects.requireNonNull(permissionEvaluator, "permissionEvaluator");
         this.tenantIsolationPolicy = Objects.requireNonNull(tenantIsolationPolicy, "tenantIsolationPolicy");
         this.auditLogStore = Objects.requireNonNull(auditLogStore, "auditLogStore");
         this.semanticPolicy = Objects.requireNonNull(semanticPolicy, "semanticPolicy");
         this.traceSink = Objects.requireNonNull(traceSink, "traceSink");
+        this.transactionRunner = Objects.requireNonNull(transactionRunner, "transactionRunner");
     }
 
     @Override
@@ -185,6 +245,57 @@ public final class DefaultConceptGateway implements ConceptGateway {
         return new ConceptPage(visible, total, hasMore);
     }
 
+    /**
+     * Move 10 B1 (LC-B1, MOVE10_AI_LOWCODE_PLAN Part B): pushes the aggregation down to
+     * {@link ConceptStore#aggregate} (real SQL {@code GROUP BY} on a database-backed store) instead
+     * of the interface default's in-memory-over-{@code list()} evaluation.
+     *
+     * <p><b>The hard stop this method exists to enforce:</b> {@link #query} applies its row-level
+     * {@code access.read} filter AFTER {@code store.query(...)} returns (see that method's own
+     * comments) -- correct there because the filter runs before the caller ever sees a row.
+     * A {@code GROUP BY} pushed to SQL has no equivalent moment: the database computes a group's
+     * {@code sum}/{@code count}/etc. over EVERY matching row before this method gets anything back,
+     * so a caller could read a computed total that reveals information about rows their own
+     * {@code access.read} scope says they may not see individually -- the aggregate becomes the
+     * leak. The compile-time validator ({@code PackValidation#validateAggregateQuery}) already
+     * refuses a model that declares {@code groupBy}/{@code aggregates} on such a concept; this is
+     * the SAME refusal at runtime, for any query somehow reaching here without going through that
+     * validator (a hand-built {@link ConceptAggregateRequest}, a future caller). Accepted boundary
+     * until {@code access.read} gains a SQL translation (tracked in the same ledger item as the
+     * compile-time check) -- do not silently aggregate the unscoped rows instead.
+     */
+    @Override
+    public ConceptAggregateResult aggregate(ConceptAggregateRequest request, ExecutionContext context) {
+        ExecutionContext effectiveContext = normalizeContext(context);
+        String tenantId = enforceTenant(
+                request.tenantId(), effectiveContext, "CONCEPT_AGGREGATE", request.conceptName(), "*");
+        enforcePermission(effectiveContext, "concept.list", request.conceptName(), "CONCEPT_AGGREGATE", "*");
+
+        if (semanticPolicy.hasRowReadScope(request.conceptName())) {
+            throw new ConceptGatewayAccessDeniedException(
+                    "AGGREGATE_ACCESS_READ_UNSUPPORTED",
+                    "Concept " + request.conceptName() + " declares access.read; groupBy/aggregate "
+                            + "queries against it are refused (LC-B1 accepted boundary -- a pushed-down "
+                            + "GROUP BY would compute totals over rows access.read exists to hide).");
+        }
+
+        ConceptGatewayRequestContext requestContext = requestContext(
+                ConceptGatewayOperation.LIST,
+                request.conceptName(),
+                "*",
+                tenantId,
+                Map.of(),
+                effectiveContext,
+                Optional.empty()
+        );
+        ConceptSemanticDecision decision = evaluateRuleProfiles(requestContext, ruleProfilesForRead(effectiveContext));
+
+        ConceptAggregateResult result = store.aggregate(tenantId, request.conceptName(), request.query());
+        audit(effectiveContext, "CONCEPT_AGGREGATE", request.conceptName(), "*", "SUCCESS", "allowed", tenantId);
+        trace(requestContext, "SUCCESS", "allowed", decision);
+        return result;
+    }
+
     private static boolean matchesExact(ConceptRecord record, String field, String value) {
         if (field == null) {
             return true;
@@ -197,7 +308,19 @@ public final class DefaultConceptGateway implements ConceptGateway {
     public ConceptRecord save(ConceptWriteRequest request, ExecutionContext context) {
         ExecutionContext effectiveContext = normalizeContext(context);
         String tenantId = enforceTenant(request.tenantId(), effectiveContext, "CONCEPT_WRITE", request.conceptName(), request.id());
+        return transactionRunner.runInTransaction(() -> saveWithinTransaction(request, effectiveContext, tenantId));
+    }
 
+    /**
+     * B18 (Move 9 A2, {@code docs/ACCEPTED_BOUNDARIES.md}): the whole check-then-act body -- reading
+     * the row {@code isRowWritable} evaluates through to persisting the write based on that decision
+     * -- runs inside {@link #transactionRunner}'s transaction (a no-op wrapper by default; a real one
+     * when the host wires it). {@link ConceptStore#findByIdForUpdate} (not {@link ConceptStore#findById})
+     * locks the row for the remainder of the transaction on a store that supports it, so a concurrent
+     * writer's own {@code findByIdForUpdate} against the same row blocks until this transaction
+     * commits or rolls back -- closing the race window a plain {@code findById} left open.
+     */
+    private ConceptRecord saveWithinTransaction(ConceptWriteRequest request, ExecutionContext effectiveContext, String tenantId) {
         ConceptGatewayRequestContext requestContext = requestContext(
                 ConceptGatewayOperation.SAVE,
                 request.conceptName(),
@@ -207,7 +330,7 @@ public final class DefaultConceptGateway implements ConceptGateway {
                 effectiveContext,
                 Optional.empty()
         );
-        Optional<ConceptRecord> previous = store.findById(tenantId, request.conceptName(), request.id());
+        Optional<ConceptRecord> previous = store.findByIdForUpdate(tenantId, request.conceptName(), request.id());
         requestContext = requestContext.withPreviousRecord(previous);
 
         // REG-41 (LNCH13-F2, REG-16-resid Round 2): authorization must run BEFORE any semantic

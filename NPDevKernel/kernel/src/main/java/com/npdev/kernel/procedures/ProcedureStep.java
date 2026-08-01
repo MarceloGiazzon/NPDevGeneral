@@ -21,9 +21,9 @@ public record ProcedureStep(
         String conditionRef,
         String collectionRef,
         String itemKey,
-        String valueRef,
+        Object valueRef,
         String procedureName,
-        String returnRef,
+        Object returnRef,
         List<ProcedureStep> thenSteps,
         List<ProcedureStep> elseSteps,
         List<ProcedureStep> steps,
@@ -49,9 +49,9 @@ public record ProcedureStep(
         conditionRef = normalizeOptional(conditionRef);
         collectionRef = normalizeOptional(collectionRef);
         itemKey = normalizeOptional(itemKey);
-        valueRef = normalizeOptional(valueRef);
+        valueRef = normalizeOptionalValue(valueRef);
         procedureName = normalizeOptional(procedureName);
-        returnRef = normalizeOptional(returnRef);
+        returnRef = normalizeOptionalValue(returnRef);
         thenSteps = thenSteps == null ? List.of() : List.copyOf(thenSteps);
         elseSteps = elseSteps == null ? List.of() : List.copyOf(elseSteps);
         steps = steps == null ? List.of() : List.copyOf(steps);
@@ -208,7 +208,13 @@ public record ProcedureStep(
                 null, collectionRef, itemKey, null, null, null, List.of(), List.of(), List.of(), selectValues, false);
     }
 
-    public static ProcedureStep mapValue(String name, String valueRef, String outputKey) {
+    /**
+     * REG-86: {@code valueRef} resolves via the SAME literal-vs-{@code $ref} convention
+     * {@code patchConcept}'s {@code set} already uses ({@link DefaultProcedureExecutor#resolveSetValue})
+     * -- a literal by default (including an array/object, not just a scalar), a {@code "$"}-prefixed
+     * String resolves against procedure state, {@code "$$x"} escapes to the literal {@code "$x"}.
+     */
+    public static ProcedureStep mapValue(String name, Object valueRef, String outputKey) {
         return new ProcedureStep(name, ProcedureStepType.MAP_VALUE, null, null, null,
                 null, null, null, null, List.of(), outputKey, null, null,
                 null, null, null, valueRef, null, null, List.of(), List.of(), List.of(), Map.of(), false);
@@ -233,7 +239,8 @@ public record ProcedureStep(
                 null, null, null, null, null, null, List.of(), List.of(), List.of(), operands, false);
     }
 
-    public static ProcedureStep returnValue(String name, String returnRef) {
+    /** REG-86: {@code returnRef} follows the same literal-vs-{@code $ref} convention as {@link #mapValue}. */
+    public static ProcedureStep returnValue(String name, Object returnRef) {
         return new ProcedureStep(name, ProcedureStepType.RETURN, null, null, null,
                 null, null, null, null, List.of(), null, null, null,
                 null, null, null, null, null, returnRef, List.of(), List.of(), List.of(), Map.of(), false);
@@ -312,5 +319,18 @@ public record ProcedureStep(
         }
         String trimmed = value.trim();
         return trimmed.isBlank() ? null : trimmed;
+    }
+
+    /**
+     * REG-86: {@code valueRef}/{@code returnRef} are {@code Object}, not {@code String} -- a literal
+     * array/object/number/boolean passes through unchanged; only a {@code String} gets the same
+     * trim-to-null treatment {@link #normalizeOptional} already gives every other ref field.
+     */
+    private static Object normalizeOptionalValue(Object value) {
+        if (value instanceof String s) {
+            String trimmed = s.trim();
+            return trimmed.isBlank() ? null : trimmed;
+        }
+        return value;
     }
 }

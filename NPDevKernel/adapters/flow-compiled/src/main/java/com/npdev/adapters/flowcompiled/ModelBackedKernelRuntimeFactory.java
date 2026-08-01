@@ -38,7 +38,16 @@ public final class ModelBackedKernelRuntimeFactory {
             }
             return new ModelCompiler().compile(modelAst);
         } catch (IOException ioException) {
-            throw new IllegalArgumentException("Unable to load model file: " + modelPath, ioException);
+            // R82 (ledger/items/REG-82.yml): the cause was always attached, but the CLI's top-level
+            // handler only prints THIS message, not the wrapped cause -- so a real IOException
+            // subtype/detail (malformed JSON vs. file-not-found vs. a Windows lock race) never
+            // surfaced anywhere a caller could see it. Fold the cause's own type+message in here so
+            // it survives regardless of how a caller's handler reports the exception.
+            throw new IllegalArgumentException(
+                    "Unable to load model file: " + modelPath
+                            + " -- caused by " + ioException.getClass().getName()
+                            + ": " + ioException.getMessage(),
+                    ioException);
         }
     }
 

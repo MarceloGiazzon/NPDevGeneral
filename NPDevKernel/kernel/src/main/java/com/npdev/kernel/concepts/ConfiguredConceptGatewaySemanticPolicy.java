@@ -1,5 +1,14 @@
 package com.npdev.kernel.concepts;
 
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledConceptAccess;
+import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledInvariant;
+import com.npdev.dsl.v1.compiled.CompiledLifecycle;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledSchema;
+import com.npdev.dsl.v1.compiled.CompiledStateMachineState;
+import com.npdev.dsl.v1.compiled.CompiledStateTransition;
 import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.ExecutionContext;
 
@@ -29,6 +38,128 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
 
     public static ConfiguredConceptGatewaySemanticPolicy empty() {
         return new ConfiguredConceptGatewaySemanticPolicy(List.of());
+    }
+
+    /**
+     * Move 6 §7.5 (docs/MOVE6_TYPED_SURFACE_PLAN.md): builds the SAME governed policy every
+     * generated app actually runs, directly from a {@link CompiledModel} -- moved here (kernel
+     * already owns both this class and {@code CompiledModel}) from what had been RuntimeHost-only
+     * wiring ({@code RuntimeConceptGatewaySemanticPolicies.fromCompiledModel}, which now delegates
+     * to this), so it's reachable from a plain kernel-module unit test too, with no RuntimeHost
+     * dependency. REG-83 shipped broken for nine commits because every existing unit test used a
+     * gateway with no field-required/enum/lifecycle enforcement at all (a noop policy), so a real
+     * bug in the write path had nothing to trip over -- prefer this over {@link #empty()} whenever
+     * a test exercises save/patch/delete against a real compiled model.
+     */
+    public static ConfiguredConceptGatewaySemanticPolicy fromCompiledModel(CompiledModel compiledModel) {
+        if (compiledModel == null) {
+            return empty();
+        }
+        List<ConceptDefinition> definitions = new ArrayList<>();
+        for (CompiledConcept concept : compiledModel.getConcepts()) {
+            definitions.add(toConceptDefinition(concept));
+        }
+        return new ConfiguredConceptGatewaySemanticPolicy(definitions);
+    }
+
+    private static ConceptDefinition toConceptDefinition(CompiledConcept concept) {
+        Map<String, FieldDefinition> fields = new LinkedHashMap<>();
+        for (CompiledField field : concept.getFields()) {
+            fields.put(field.getName(), toFieldDefinition(field));
+        }
+        return new ConceptDefinition(
+                concept.getName(),
+                fields,
+                invariantsOf(concept),
+                lifecycleOf(concept.getLifecycle()),
+                hiddenFieldsOf(fields),
+                accessRulesOf(concept.getAccess())
+        );
+    }
+
+    private static AccessRules accessRulesOf(CompiledConceptAccess access) {
+        if (access == null) {
+            return null;
+        }
+        return new AccessRules(access.getRead(), access.getWrite());
+    }
+
+    private static FieldDefinition toFieldDefinition(CompiledField field) {
+        CompiledSchema schema = field.getSchema();
+        List<String> enumValues = new ArrayList<>(field.getEnumValues());
+        if (schema != null) {
+            for (String enumValue : schema.getEnumValues()) {
+                if (!enumValues.contains(enumValue)) {
+                    enumValues.add(enumValue);
+                }
+            }
+        }
+        return new FieldDefinition(
+                field.getName(),
+                field.isRequired(),
+                enumValues,
+                schema == null ? null : schema.getDefaultValue(),
+                schema == null ? null : schema.getDefaultExpression(),
+                schema == null ? null : schema.getDerivedExpression(),
+                false
+        );
+    }
+
+    private static List<InvariantDefinition> invariantsOf(CompiledConcept concept) {
+        List<InvariantDefinition> invariants = new ArrayList<>();
+        int index = 1;
+        for (String expression : concept.getExpressionInvariants()) {
+            if (hasText(expression)) {
+                invariants.add(new InvariantDefinition("expressionInvariant" + index, expression));
+                index++;
+            }
+        }
+        for (CompiledInvariant invariant : concept.getInvariants()) {
+            if (hasText(invariant.getExpression())) {
+                invariants.add(new InvariantDefinition(
+                        hasText(invariant.getRef()) ? invariant.getRef() : "compiledInvariant" + index,
+                        invariant.getExpression()));
+                index++;
+            }
+        }
+        return List.copyOf(invariants);
+    }
+
+    private static LifecycleDefinition lifecycleOf(CompiledLifecycle lifecycle) {
+        if (lifecycle == null || !hasText(lifecycle.getStatusField())) {
+            return null;
+        }
+        List<String> states = new ArrayList<>();
+        String initial = null;
+        for (CompiledStateMachineState state : lifecycle.getStates()) {
+            if (!hasText(state.getValue())) {
+                continue;
+            }
+            states.add(state.getValue());
+            if (state.isInitial()) {
+                initial = state.getValue();
+            }
+        }
+        if (initial == null && !states.isEmpty()) {
+            initial = states.get(0);
+        }
+        List<StateTransition> transitions = new ArrayList<>();
+        for (CompiledStateTransition transition : lifecycle.getTransitions()) {
+            if (hasText(transition.getFrom()) && hasText(transition.getTo())) {
+                transitions.add(new StateTransition(transition.getFrom(), transition.getTo()));
+            }
+        }
+        return LifecycleDefinition.of(lifecycle.getStatusField(), initial, states, transitions);
+    }
+
+    private static LinkedHashSet<String> hiddenFieldsOf(Map<String, FieldDefinition> fields) {
+        LinkedHashSet<String> hiddenFields = new LinkedHashSet<>();
+        for (FieldDefinition field : fields.values()) {
+            if (field.hidden()) {
+                hiddenFields.add(field.name());
+            }
+        }
+        return hiddenFields;
     }
 
     @Override
@@ -294,34 +425,11 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         return conceptsByName.get(normalizeKey(request.conceptName()));
     }
 
+    /** Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): delegates to the shared {@link ValueExpressionEvaluator}
+     * so a new row's default and an existing row's expression-default backfill preview compute
+     * identically -- pure extraction, no behavior change. */
     private static Object evaluateValueExpression(String expression, Map<String, Object> data) {
-        String text = expression == null ? "" : expression.trim();
-        if (text.isEmpty()) {
-            return null;
-        }
-        if ("now()".equalsIgnoreCase(text)) {
-            return Instant.EPOCH.toString();
-        }
-        if ("uuid()".equalsIgnoreCase(text)) {
-            return UUID.nameUUIDFromBytes("npdev-deterministic-concept-default".getBytes()).toString();
-        }
-        if (text.startsWith("$")) {
-            return data.get(text.substring(1));
-        }
-        if ((text.startsWith("'") && text.endsWith("'")) || (text.startsWith("\"") && text.endsWith("\""))) {
-            return text.substring(1, text.length() - 1);
-        }
-        if ("true".equalsIgnoreCase(text) || "false".equalsIgnoreCase(text)) {
-            return Boolean.parseBoolean(text);
-        }
-        try {
-            if (text.contains(".")) {
-                return Double.parseDouble(text);
-            }
-            return Long.parseLong(text);
-        } catch (NumberFormatException ignored) {
-            return text;
-        }
+        return ValueExpressionEvaluator.evaluate(expression, data);
     }
 
     private static final Pattern UNIQUE_BY_PATTERN =

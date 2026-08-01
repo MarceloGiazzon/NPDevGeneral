@@ -8,6 +8,8 @@ import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
 import com.npdev.kernel.concepts.DefaultConceptGateway;
+import com.npdev.kernel.concepts.GovernedTestGateways;
+import com.npdev.kernel.concepts.GovernedTestGateways.ConceptSpec;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
 import com.npdev.kernel.ports.CapabilityDispatcher;
 import com.npdev.kernel.ports.EventBus;
@@ -32,11 +34,11 @@ class DefaultProcedureExecutorQueryToCapabilityTest {
     private static final EventBus NOOP_BUS = event -> { };
 
     private static ConceptGateway seededGateway() {
-        DefaultConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        DefaultConceptGateway gateway = GovernedTestGateways.forConcepts(ConceptSpec.of("Order", "cliente", "total"));
         ExecutionContext ctx = ExecutionContext.of("dev", "operator");
-        gateway.save(new ConceptWriteRequest("Order", "o-1", null, Map.of("cliente", "acme", "total", 30)), ctx);
-        gateway.save(new ConceptWriteRequest("Order", "o-2", null, Map.of("cliente", "other", "total", 10)), ctx);
-        gateway.save(new ConceptWriteRequest("Order", "o-3", null, Map.of("cliente", "acme", "total", 20)), ctx);
+        gateway.save(new ConceptWriteRequest("Order", "o-1", null, Map.of("id", "o-1", "cliente", "acme", "total", 30)), ctx);
+        gateway.save(new ConceptWriteRequest("Order", "o-2", null, Map.of("id", "o-2", "cliente", "other", "total", 10)), ctx);
+        gateway.save(new ConceptWriteRequest("Order", "o-3", null, Map.of("id", "o-3", "cliente", "acme", "total", 20)), ctx);
         return gateway;
     }
 
@@ -44,7 +46,8 @@ class DefaultProcedureExecutorQueryToCapabilityTest {
     void filteredQueryRowsFlowIntoCapabilityCallUnmodified() {
         Map<String, CompiledQuery> queries = Map.of(
                 "OrdersByCliente", new CompiledQuery(
-                        "OrdersByCliente", "Order", "cliente == 'acme'", List.of(), null, List.of(), List.of(), null, null, Map.of())
+                        "OrdersByCliente", "Order", "cliente == 'acme'", List.of(), null, List.of(), List.of(), null, null, Map.of(),
+                        List.of(), List.of(), null)
         );
 
         // A capability that is structurally incapable of DB access -- it closes over nothing but
