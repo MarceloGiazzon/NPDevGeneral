@@ -13,6 +13,9 @@ import com.npdev.adapters.runtime.validation.StrictExecutionValidator;
 import com.npdev.adapters.tracing.redaction.DefaultEventRedactionPolicy;
 import com.npdev.adapters.tracing.redaction.DefaultExecutionRedactionPolicy;
 import com.npdev.adapters.tracing.redaction.DefaultTraceRedactionPolicy;
+import com.npdev.adapters.tracing.redaction.SensitiveKeyPolicy;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.ports.EventMetaStore;
@@ -38,10 +41,47 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 
 import javax.sql.DataSource;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Configuration
 public class NpdevObservabilityConfig {
+
+    /**
+     * R80 (ledger/items/REG-80.yml, docs/MOVE7_IMPLEMENTATION_SPEC.md): registers the model's own
+     * {@code field.sensitive: true} declarations into {@link SensitiveKeyPolicy}, OR'd in alongside
+     * (not replacing) its static key-name-substring denylist -- so {@code
+     * traceRedactionPolicy}/{@code eventRedactionPolicy}/{@code executionRedactionPolicy} below
+     * redact a model-declared sensitive field even when its name doesn't match any static
+     * substring. Wired here, not in {@code NpdevCapabilityBindingConfig}, because this class is
+     * where {@code CompiledModel} and the tracing-redaction-default adapter types are already both
+     * in scope (the {@code StartupValidator} bean below already depends on {@code CompiledModel}).
+     * The registration itself has no ordering requirement against the policy beans: {@code
+     * SensitiveKeyPolicy.isSensitiveKey} is only ever called in response to real request/event/trace
+     * activity, which cannot happen before Spring finishes constructing every singleton in this
+     * context -- so which of these independent {@code @Bean} methods Spring happens to run first
+     * does not matter.
+     */
+    @Bean
+    public String sensitiveFieldModelRegistration(CompiledModel compiledModel) {
+        Set<String> fieldNames = sensitiveFieldNames(compiledModel);
+        SensitiveKeyPolicy.registerModelSensitiveFieldNames(fieldNames);
+        return "registered " + fieldNames.size() + " model-declared sensitive field name(s)";
+    }
+
+    /** Extracted for direct unit testing (see {@code NpdevObservabilityConfigSensitiveFieldTest}). */
+    static Set<String> sensitiveFieldNames(CompiledModel compiledModel) {
+        Set<String> fieldNames = new LinkedHashSet<>();
+        for (CompiledConcept concept : compiledModel.getConcepts()) {
+            for (CompiledField field : concept.getFields()) {
+                if (field.isSensitive() && field.getName() != null) {
+                    fieldNames.add(field.getName());
+                }
+            }
+        }
+        return fieldNames;
+    }
 
     @Bean
     public TraceRedactionPolicy traceRedactionPolicy() {

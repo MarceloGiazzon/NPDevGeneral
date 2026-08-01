@@ -184,8 +184,12 @@ final class SchemaDropSnapshotWriter {
      * {@code "{\"carrier\":...}"}), not bare object/array text. Keep parsing while the result is a
      * String that still looks like JSON -- object, array, OR a quoted string -- bounded so a value
      * that legitimately is just a plain string (no further nesting) terminates after unwrapping it.
+     *
+     * <p>Package-private (Move 9 A4): {@code CrossEngineDataPromotion} reuses this exact decode logic
+     * when reading a JSONB-typed column from the source engine during an H2-&gt;Postgres data
+     * promotion -- one JSON-decode dialect, not a second copy of this reasoning.
      */
-    private static Object decodeJsonColumnValue(Object value) {
+    static Object decodeJsonColumnValue(Object value) {
         String json = value instanceof byte[] bytes ? new String(bytes, StandardCharsets.UTF_8) : String.valueOf(value);
         if (json.isBlank()) {
             return null;

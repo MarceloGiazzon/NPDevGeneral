@@ -1,18 +1,25 @@
 package com.finalexec.controlpanel;
 
 import com.finalexec.auth.IdentityPackSchemaException;
+import com.finalexec.auth.IdentityProvisioning;
 import com.finalexec.auth.PasswordHasher;
 import com.finalexec.auth.SqlSchemaErrors;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledRole;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.audit.AuditRecord;
+import com.npdev.kernel.auth.RolePermissions;
+import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.CapabilityDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,6 +38,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * ControlPanel read/maintenance surface over the people who can log in to each workspace (tenant).
@@ -54,6 +62,8 @@ public class ControlPanelTenantUsersController {
     private final RuntimeContextService runtimeContextService;
     private final CapabilityRegistry capabilityRegistry;
     private final CapabilityDispatcher capabilityDispatcher;
+    private final CompiledModel compiledModel;
+    private final AuditLogStore auditLogStore;
     private final String userTable;
     private final String userIdColumn;
     private final String usernameColumn;
@@ -67,6 +77,8 @@ public class ControlPanelTenantUsersController {
             RuntimeContextService runtimeContextService,
             CapabilityRegistry capabilityRegistry,
             CapabilityDispatcher capabilityDispatcher,
+            CompiledModel compiledModel,
+            AuditLogStore auditLogStore,
             @Value("${npdev.auth.login.user-table:identity_users}") String userTable,
             @Value("${npdev.auth.login.user-id-column:id}") String userIdColumn,
             @Value("${npdev.auth.login.username-column:username}") String usernameColumn,
@@ -79,6 +91,8 @@ public class ControlPanelTenantUsersController {
         this.runtimeContextService = runtimeContextService;
         this.capabilityRegistry = capabilityRegistry;
         this.capabilityDispatcher = capabilityDispatcher;
+        this.compiledModel = compiledModel;
+        this.auditLogStore = auditLogStore;
         this.userTable = userTable;
         this.userIdColumn = userIdColumn;
         this.usernameColumn = usernameColumn;
@@ -87,6 +101,7 @@ public class ControlPanelTenantUsersController {
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
     }
+
 
     @GetMapping
     public List<Map<String, Object>> list(@PathVariable String tenantId, HttpServletRequest httpRequest) {
@@ -206,6 +221,119 @@ public class ControlPanelTenantUsersController {
         }
     }
 
+    public record RoleGrantRequest(String role) {
+    }
+
+    /**
+     * Wave 3 (RC-B2, {@code MOVE11_RUNTIME_CONFIGURATION_PLAN} Part B.2): grants a role, writing
+     * {@code identity_user_roles} -- the table {@code IdentityAwareContextResolver} already treats
+     * as authoritative, so no separate "activation" step is needed; the grant is live the moment
+     * this commits. "The model owns the vocabulary; the administrator owns the binding" -- only a
+     * role name the app model itself declares (RC-B1's {@code roles[]}) may be granted here, checked
+     * against {@link CompiledModel#getRoles()} with the same case-insensitive normalization
+     * {@link RolePermissions} uses everywhere else. Does NOT bump {@code token_version}: unlike a
+     * password reset, a role never gets baked into the token -- {@code IdentityAwareContextResolver}
+     * re-derives roles from {@code identity_user_roles} on every request, live-verified (a grant
+     * showed up in the very next {@code GET .../users} call with the SAME token). Bumping it here
+     * would only force an unrelated, unwanted logout on the user's next request.
+     */
+    @PostMapping("/{username}/roles")
+    public ResponseEntity<Map<String, Object>> grantRole(
+            @PathVariable String tenantId, @PathVariable String username,
+            @RequestBody RoleGrantRequest request, HttpServletRequest httpRequest
+    ) {
+        ExecutionContext requester = requireSuperUser(httpRequest);
+        String requestedRole = request == null ? null : request.role();
+        CompiledRole declaredRole = findDeclaredRole(requestedRole);
+        if (declaredRole == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "role_not_declared_by_model",
+                    "declaredRoles", compiledModel.getRoles().stream().map(CompiledRole::name).toList()));
+        }
+        DataSource dataSource = requireDataSource();
+        try (Connection connection = dataSource.getConnection()) {
+            Object userId = findUserId(connection, tenantId, username);
+            if (userId == null) {
+                return ResponseEntity.status(404).body(Map.of("error", "user_not_found"));
+            }
+            UUID roleId = IdentityProvisioning.findOrCreateRole(connection, tenantId, declaredRole.name(), null);
+            IdentityProvisioning.insertUserRole(connection, UUID.fromString(String.valueOf(userId)), roleId, tenantId);
+            auditRoleChange(requester, tenantId, username, declaredRole.name(), "role.grant");
+            return ResponseEntity.ok(Map.of("ok", true, "username", username, "role", declaredRole.name()));
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "grant_role_failed");
+        }
+    }
+
+    /**
+     * Wave 3 (RC-B2): revokes a role -- removes the {@code identity_user_roles} row. Live-verified:
+     * takes effect on the user's very next request with the SAME token, because
+     * {@code IdentityAwareContextResolver} re-derives roles from {@code identity_user_roles} fresh on
+     * every request rather than trusting whatever the JWT was minted with. No {@code token_version}
+     * bump here either, for the same reason as {@link #grantRole} -- see its javadoc.
+     */
+    @DeleteMapping("/{username}/roles/{role}")
+    public ResponseEntity<Map<String, Object>> revokeRole(
+            @PathVariable String tenantId, @PathVariable String username, @PathVariable String role,
+            HttpServletRequest httpRequest
+    ) {
+        ExecutionContext requester = requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+        try (Connection connection = dataSource.getConnection()) {
+            Object userId = findUserId(connection, tenantId, username);
+            if (userId == null) {
+                return ResponseEntity.status(404).body(Map.of("error", "user_not_found"));
+            }
+            int deleted;
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM identity_user_roles WHERE user_id = ? AND tenant_id = ? AND role_id = "
+                            + "(SELECT id FROM identity_roles WHERE name = ? AND tenant_id = ?)")) {
+                ps.setObject(1, UUID.fromString(String.valueOf(userId)));
+                ps.setString(2, tenantId);
+                ps.setString(3, role);
+                ps.setString(4, tenantId);
+                deleted = ps.executeUpdate();
+            }
+            if (deleted == 0) {
+                return ResponseEntity.status(404).body(Map.of("error", "role_not_assigned"));
+            }
+            auditRoleChange(requester, tenantId, username, role, "role.revoke");
+            return ResponseEntity.ok(Map.of("ok", true, "username", username, "role", role));
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "revoke_role_failed");
+        }
+    }
+
+    private CompiledRole findDeclaredRole(String requestedRole) {
+        String normalized = RolePermissions.normalizeRoleName(requestedRole);
+        if (normalized == null) {
+            return null;
+        }
+        for (CompiledRole role : compiledModel.getRoles()) {
+            if (normalized.equals(RolePermissions.normalizeRoleName(role.name()))) {
+                return role;
+            }
+        }
+        return null;
+    }
+
+    /** Wave 3 (RC-B2): "audit every grant and revoke" is a DoD line item, not a nice-to-have -- this
+     *  is the permission trail an operator reviews after the fact via {@code READ_AUDIT}. */
+    private void auditRoleChange(ExecutionContext requester, String tenantId, String username, String role, String action) {
+        auditLogStore.append(AuditRecord.create(
+                tenantId,
+                requester.actorId(),
+                requester.roles(),
+                action,
+                "identity_user_role",
+                username + ":" + role,
+                "OK",
+                null,
+                Map.of("role", role, "targetUser", username),
+                Map.of()
+        ));
+    }
+
     private void notifyPasswordChanged(Connection connection, String tenantId, String username) {
         if (!capabilityRegistry.has("mail")) {
             return;
@@ -274,7 +402,7 @@ public class ControlPanelTenantUsersController {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT r.name FROM identity_user_roles ur JOIN identity_roles r ON r.id = ur.role_id"
                         + " WHERE ur.user_id = ? AND ur.tenant_id = ? ORDER BY r.name")) {
-            ps.setObject(1, java.util.UUID.fromString(userId));
+            ps.setObject(1, UUID.fromString(userId));
             ps.setString(2, tenantId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -293,7 +421,7 @@ public class ControlPanelTenantUsersController {
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             Object key;
             try {
-                key = java.util.UUID.fromString(userId);
+                key = UUID.fromString(userId);
             } catch (IllegalArgumentException notUuid) {
                 key = userId;
             }
@@ -308,11 +436,12 @@ public class ControlPanelTenantUsersController {
         }
     }
 
-    private void requireSuperUser(HttpServletRequest httpRequest) {
+    private ExecutionContext requireSuperUser(HttpServletRequest httpRequest) {
         ExecutionContext context = runtimeContextService.currentContext(httpRequest);
         if (!context.hasRole("SUPERUSER")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
         }
+        return context;
     }
 
     private DataSource requireDataSource() {

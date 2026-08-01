@@ -82,15 +82,25 @@ public class NpdevCapabilityBindingConfig {
     public ConceptGateway conceptGateway(
             CompiledModel compiledModel,
             ConceptStore conceptStore,
-            AuditLogStore auditLogStore
+            AuditLogStore auditLogStore,
+            ObjectProvider<org.springframework.transaction.PlatformTransactionManager> transactionManager
     ) {
+        // B18 (Move 9 A2, docs/ACCEPTED_BOUNDARIES.md): a real transaction manager (present against
+        // any real DataSource-backed profile) closes the row-authz check-then-act race; its absence
+        // (e.g. InMemory mode, no DataSource at all) degrades to today's behavior exactly, same as
+        // AggregateRuntime's identical ObjectProvider<PlatformTransactionManager> precedent.
+        var manager = transactionManager.getIfAvailable();
+        com.npdev.kernel.ports.TransactionRunner transactionRunner = manager == null
+                ? com.npdev.kernel.ports.TransactionRunner.none()
+                : new SpringTransactionRunner(manager);
         return new DefaultConceptGateway(
                 conceptStore,
                 PermissionEvaluator.allowAll(),
                 com.npdev.kernel.ports.TenantIsolationPolicy.STRICT_EQUALS,
                 auditLogStore,
                 RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(compiledModel),
-                new InMemoryConceptGatewayTraceSink()
+                new InMemoryConceptGatewayTraceSink(),
+                transactionRunner
         );
     }
 

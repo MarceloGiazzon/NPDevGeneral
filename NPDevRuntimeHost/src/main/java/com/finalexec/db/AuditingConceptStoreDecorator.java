@@ -33,6 +33,20 @@ public final class AuditingConceptStoreDecorator implements ConceptStore {
         return delegate.findById(tenantId, conceptName, id);
     }
 
+    /**
+     * B18 (Move 9 A2, {@code docs/ACCEPTED_BOUNDARIES.md}): forwards to the delegate's own real
+     * locking read (on {@link JdbcBusinessConceptStore}, a {@code SELECT ... FOR UPDATE}) rather than
+     * falling through to {@link ConceptStore}'s default (a plain, unlocked {@code findById}) -- the
+     * same "without this override, wrapping a concept in this decorator silently downgrades a
+     * capability" trap {@link #query} above already documents, now for the row lock the write path
+     * relies on to close the check-then-act race.
+     */
+    @Override
+    public Optional<ConceptRecord> findByIdForUpdate(String tenantId, String conceptName, String id) {
+        log("findByIdForUpdate", id);
+        return delegate.findByIdForUpdate(tenantId, conceptName, id);
+    }
+
     @Override
     public List<ConceptRecord> findAll(String tenantId, String conceptName) {
         log("findAll", "");
@@ -61,6 +75,19 @@ public final class AuditingConceptStoreDecorator implements ConceptStore {
     public ConceptPage query(String tenantId, String conceptName, ConceptQuery query) {
         log("query", "");
         return delegate.query(tenantId, conceptName, query);
+    }
+
+    /**
+     * Move 10 B1 (LC-B1): same reasoning as {@link #query} immediately above -- without this
+     * override, wrapping a JDBC-backed store in this decorator would silently downgrade every
+     * {@code groupBy}/aggregate query for this concept from a real SQL {@code GROUP BY} back to
+     * fetch-all-then-aggregate-in-the-JVM ({@link ConceptStore}'s default).
+     */
+    @Override
+    public com.npdev.kernel.concepts.ConceptAggregateResult aggregate(
+            String tenantId, String conceptName, com.npdev.kernel.concepts.ConceptAggregateQuery query) {
+        log("aggregate", "");
+        return delegate.aggregate(tenantId, conceptName, query);
     }
 
     private void log(String operation, String id) {

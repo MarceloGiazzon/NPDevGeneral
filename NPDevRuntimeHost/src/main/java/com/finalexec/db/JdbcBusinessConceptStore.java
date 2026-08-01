@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.kernel.concepts.ConceptAggregateEngine;
+import com.npdev.kernel.concepts.ConceptAggregateQuery;
+import com.npdev.kernel.concepts.ConceptAggregateResult;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
@@ -77,6 +80,37 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed reading concept " + conceptName + " from JDBC store", exception);
+        } finally {
+            releaseConnection(connection);
+        }
+    }
+
+    /**
+     * B18 (Move 9 A2, {@code docs/ACCEPTED_BOUNDARIES.md}): identical to {@link #findById}, except
+     * {@code FOR UPDATE} -- locks the row against a concurrent {@code findByIdForUpdate} for the
+     * remainder of the ambient transaction (see {@link #openConnection}'s {@code DataSourceUtils}
+     * join), closing the read-then-persist race window a plain {@code findById} left open. Only
+     * locks anything real when this call is actually inside a transaction (an unmanaged connection's
+     * own implicit auto-commit releases the lock the instant this statement finishes) -- callers
+     * relying on the lock surviving past this single read must be running inside one (see
+     * {@code DefaultConceptGateway}'s {@code TransactionRunner}).
+     */
+    @Override
+    public Optional<ConceptRecord> findByIdForUpdate(String tenantId, String conceptName, String id) {
+        ConceptShape shape = shape(conceptName);
+        String sql = "SELECT * FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ? FOR UPDATE";
+        Connection connection = openConnection();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, coerceId(id));
+            statement.setObject(2, tenantId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(toRecord(shape, tenantId, resultSet));
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed reading (for update) concept " + conceptName + " from JDBC store", exception);
         } finally {
             releaseConnection(connection);
         }
@@ -168,6 +202,137 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         } finally {
             releaseConnection(connection);
         }
+    }
+
+    /**
+     * Move 10 B1 (LC-B1, MOVE10_AI_LOWCODE_PLAN Part B): compiles a {@link ConceptAggregateQuery}
+     * to a real, parameterized SQL {@code GROUP BY} -- confirmed from the SQL log, not inferred
+     * (the plan's own DoD line). Every identifier in the generated SQL comes from
+     * {@link #requireColumn}, which only ever returns a column this concept's compiled shape
+     * declares -- never a caller-supplied string concatenated directly, the same discipline
+     * {@link #query} already follows for {@code WHERE}/{@code ORDER BY}.
+     *
+     * <p>A bucketed {@code groupBy} field is truncated in SQL via {@code DATE_TRUNC(unit, column)}
+     * (portable across H2 2.x and Postgres) and the truncated value is read back and formatted to
+     * this platform's own bucket-label convention via {@link ConceptAggregateEngine#bucketLabel} --
+     * the SAME formatting the in-memory adapter applies to a raw (untruncated) value -- so the two
+     * engines produce byte-identical group labels despite one truncating in SQL and the other in
+     * Java. {@code HAVING}/sort/limit are deliberately NOT pushed to SQL; see
+     * {@link ConceptAggregateEngine#applyHavingSortAndLimit} for why applying them once, in Java,
+     * over the (small) already-grouped result is the correct v1 simplification, not a shortcut.
+     */
+    @Override
+    public ConceptAggregateResult aggregate(String tenantId, String conceptName, ConceptAggregateQuery query) {
+        ConceptShape shape = shape(conceptName);
+
+        List<String> whereClauses = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        whereClauses.add("tenant_id = ?");
+        params.add(tenantId);
+        for (ConceptQuery.Filter filter : query.filters()) {
+            String column = requireColumn(shape, filter.field());
+            if (filter.operator() == ConceptQuery.Operator.CONTAINS) {
+                whereClauses.add("LOWER(CAST(" + column + " AS VARCHAR)) LIKE ? ESCAPE '\\'");
+                params.add("%" + likeEscape(String.valueOf(filter.value()).toLowerCase(Locale.ROOT)) + "%");
+                continue;
+            }
+            String dslType = shape.dslTypeByColumn().get(column.toLowerCase(Locale.ROOT));
+            whereClauses.add(column + " " + sqlOperator(filter.operator()) + " ?");
+            params.add(coerceValue(column, filter.value(), dslType));
+        }
+        String whereSql = String.join(" AND ", whereClauses);
+
+        List<String> groupByExprs = new ArrayList<>();
+        List<String> groupByAliases = new ArrayList<>();
+        for (ConceptAggregateQuery.GroupByField groupByField : query.groupBy()) {
+            String column = requireColumn(shape, groupByField.field());
+            String alias = "npdev_g" + groupByAliases.size();
+            if (groupByField.bucket() != null && !groupByField.bucket().isBlank()) {
+                groupByExprs.add("DATE_TRUNC('" + sqlBucketUnit(groupByField.bucket()) + "', " + column + ")");
+            } else {
+                groupByExprs.add(column);
+            }
+            groupByAliases.add(alias);
+        }
+
+        List<String> aggregateExprs = new ArrayList<>();
+        List<String> aggregateAliases = new ArrayList<>();
+        for (ConceptAggregateQuery.AggregateFunction aggregate : query.aggregates()) {
+            String alias = "npdev_a" + aggregateAliases.size();
+            String fn = aggregate.fn() == null ? "" : aggregate.fn().trim().toLowerCase(Locale.ROOT);
+            String expr = switch (fn) {
+                case "count" -> "COUNT(*)";
+                case "sum" -> "SUM(" + requireColumn(shape, aggregate.field()) + ")";
+                case "avg" -> "AVG(" + requireColumn(shape, aggregate.field()) + ")";
+                case "min" -> "MIN(" + requireColumn(shape, aggregate.field()) + ")";
+                case "max" -> "MAX(" + requireColumn(shape, aggregate.field()) + ")";
+                default -> throw new IllegalArgumentException("Unsupported aggregate fn: " + aggregate.fn());
+            };
+            aggregateExprs.add(expr);
+            aggregateAliases.add(alias);
+        }
+
+        List<String> selectItems = new ArrayList<>();
+        for (int i = 0; i < groupByExprs.size(); i++) {
+            selectItems.add(groupByExprs.get(i) + " AS " + groupByAliases.get(i));
+        }
+        for (int i = 0; i < aggregateExprs.size(); i++) {
+            selectItems.add(aggregateExprs.get(i) + " AS " + aggregateAliases.get(i));
+        }
+        StringBuilder sql = new StringBuilder("SELECT ")
+                .append(String.join(", ", selectItems))
+                .append(" FROM ").append(shape.tableName())
+                .append(" WHERE ").append(whereSql);
+        if (!groupByExprs.isEmpty()) {
+            sql.append(" GROUP BY ").append(String.join(", ", groupByExprs));
+        }
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        Connection connection = openConnection();
+        try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            bindParams(statement, params, 1);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    for (int i = 0; i < query.groupBy().size(); i++) {
+                        ConceptAggregateQuery.GroupByField groupByField = query.groupBy().get(i);
+                        Object raw = resultSet.getObject(groupByAliases.get(i));
+                        Object value = raw;
+                        if (groupByField.bucket() != null && !groupByField.bucket().isBlank()) {
+                            java.time.LocalDate date = ConceptAggregateEngine.toLocalDate(raw);
+                            value = date == null ? null
+                                    : ConceptAggregateEngine.bucketLabel(date, groupByField.bucket());
+                        }
+                        row.put(groupByField.field(), value);
+                    }
+                    for (int i = 0; i < query.aggregates().size(); i++) {
+                        row.put(query.aggregates().get(i).outputName(), resultSet.getObject(aggregateAliases.get(i)));
+                    }
+                    rows.add(row);
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException(
+                    "Failed aggregating concept " + conceptName + " from JDBC store", exception);
+        } finally {
+            releaseConnection(connection);
+        }
+
+        rows = ConceptAggregateEngine.applyHavingSortAndLimit(rows, query.having(), query.sorts(), query.limit());
+        return new ConceptAggregateResult(rows);
+    }
+
+    /** Move 10 B1: the closed {@code groupBy[].bucket} vocabulary maps 1:1 onto {@code DATE_TRUNC}'s
+     *  own unit literals on both H2 2.x and Postgres -- no translation needed beyond validating the
+     *  value came from the compiled model's own closed enum (already enforced at compile time by
+     *  {@code PackValidation#validateAggregateQuery}; re-checked here so this method can never emit
+     *  an arbitrary caller-supplied string into the SQL text). */
+    private static String sqlBucketUnit(String bucket) {
+        String normalized = bucket.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "day", "week", "month", "quarter", "year" -> normalized;
+            default -> throw new IllegalArgumentException("Unsupported groupBy bucket: " + bucket);
+        };
     }
 
     private String requireColumn(ConceptShape shape, String field) {

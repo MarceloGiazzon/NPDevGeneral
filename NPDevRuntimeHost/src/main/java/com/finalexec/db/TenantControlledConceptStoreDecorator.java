@@ -47,6 +47,14 @@ public final class TenantControlledConceptStoreDecorator implements ConceptStore
         return effectiveStore(tenantId).findById(tenantId, conceptName, id);
     }
 
+    /** B18 (Move 9 A2, {@code docs/ACCEPTED_BOUNDARIES.md}): same reasoning as {@link #query}'s own
+     * override -- must forward to the resolved delegate's real locking read, not fall through to
+     * {@link ConceptStore}'s unlocked default. */
+    @Override
+    public Optional<ConceptRecord> findByIdForUpdate(String tenantId, String conceptName, String id) {
+        return effectiveStore(tenantId).findByIdForUpdate(tenantId, conceptName, id);
+    }
+
     @Override
     public List<ConceptRecord> findAll(String tenantId, String conceptName) {
         return effectiveStore(tenantId).findAll(tenantId, conceptName);
@@ -66,6 +74,15 @@ public final class TenantControlledConceptStoreDecorator implements ConceptStore
     @Override
     public ConceptPage query(String tenantId, String conceptName, ConceptQuery query) {
         return effectiveStore(tenantId).query(tenantId, conceptName, query);
+    }
+
+    /** Move 10 B1 (LC-B1): same reasoning as {@link #query} immediately above -- forwards to the
+     *  resolved delegate's own real SQL {@code GROUP BY}, not {@link ConceptStore}'s
+     *  fetch-all-then-aggregate-in-the-JVM default. */
+    @Override
+    public com.npdev.kernel.concepts.ConceptAggregateResult aggregate(
+            String tenantId, String conceptName, com.npdev.kernel.concepts.ConceptAggregateQuery query) {
+        return effectiveStore(tenantId).aggregate(tenantId, conceptName, query);
     }
 
     private ConceptStore effectiveStore(String tenantId) {

@@ -10,6 +10,7 @@ import com.npdev.adapters.authcontext.jwt.JwtAuthenticatedContextResolver;
 import com.npdev.adapters.authz.defaultpolicy.DefaultExecutionAuthorizationPolicy;
 import com.npdev.adapters.authz.defaultpolicy.DefaultTenantIsolationPolicy;
 import com.npdev.adapters.runtime.validation.RuntimeSettings;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generated.runtime.config.RuntimeApiKeyAuthFilter;
 import com.npdev.kernel.ports.AuthenticatedContextResolver;
 import com.npdev.kernel.ports.ExecutionAuthorizationPolicy;
@@ -31,8 +32,12 @@ public class NpdevAuthConfig {
     }
 
     @Bean
-    public ExecutionAuthorizationPolicy executionAuthorizationPolicy(TenantIsolationPolicy tenantIsolationPolicy) {
-        return new DefaultExecutionAuthorizationPolicy(tenantIsolationPolicy);
+    public ExecutionAuthorizationPolicy executionAuthorizationPolicy(
+            TenantIsolationPolicy tenantIsolationPolicy, CompiledModel compiledModel) {
+        // Wave 3 (RC-B1): threads the app's declared roles[] (if any) through so a role that is
+        // neither USER/OPERATOR/ADMIN nor an app-declared role is denied with a logged diagnostic
+        // rather than silently -- see DefaultExecutionAuthorizationPolicy's own javadoc.
+        return new DefaultExecutionAuthorizationPolicy(tenantIsolationPolicy, compiledModel);
     }
 
     @Bean

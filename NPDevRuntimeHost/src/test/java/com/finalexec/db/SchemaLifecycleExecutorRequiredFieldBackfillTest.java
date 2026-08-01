@@ -202,6 +202,162 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
         }
     }
 
+    // ---- Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): acknowledged expression-default backfill ----
+
+    @Test
+    void unacknowledgedExpressionDefaultWithRealExpressionTextStillRefusesUnchanged() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), quantity BIGINT)");
+            statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (1, 'alpha', 10)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
+                Map.of("widgets", List.of("id", "name", "quantity", "auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "quantity", "BIGINT", "auditQuantity", "BIGINT")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("auditQuantity", "$quantity")));
+
+        // DoD (Move 9 B1): unacknowledged, an expression default still refuses the boot exactly as it
+        // did before this feature existed -- no ackToken submitted anywhere in this test.
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.afterMigrate(dataSource, manifest));
+        assertTrue(refusal.getMessage().contains("auditQuantity"), refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("unless explicitly acknowledged"), refusal.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasColumn(connection.getMetaData(), "widgets", "auditQuantity"),
+                    "an unacknowledged expression backfill must never add the column at all");
+        }
+    }
+
+    @Test
+    void acknowledgedExpressionDefaultBackfillsEachRowToItsOwnComputedValue() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), quantity BIGINT)");
+            statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (1, 'alpha', 10)");
+            statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (2, 'beta', 20)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
+                Map.of("widgets", List.of("id", "name", "quantity", "auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "quantity", "BIGINT", "auditQuantity", "BIGINT")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("auditQuantity", "$quantity")));
+
+        // The operator's preview (the same REST surface SchemaImpactController exposes) and the
+        // token they'd submit via the existing /acknowledge endpoint.
+        List<ExpressionBackfillPreview.Item> preview = ExpressionBackfillPreview.preview(dataSource, manifest);
+        assertEquals(1, preview.size());
+        ExpressionBackfillPreview.Item item = preview.get(0);
+        assertEquals(2, item.rowsAffected());
+        assertTrue(item.distinctValues().containsAll(List.of("10", "20")), item.distinctValues().toString());
+        assertFalse(item.hasFailures());
+        String ackToken = ExpressionBackfillPreview.expectedToken(manifest.schemaFingerprint(), preview);
+
+        PendingSchemaAcknowledgmentStore.insert(dataSource, manifest.schemaFingerprint(), ackToken, null, "test-operator");
+
+        executor.afterMigrate(dataSource, manifest);
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasColumn(metadata, "widgets", "auditQuantity"));
+            assertTrue(isNotNull(metadata, "widgets", "auditQuantity"));
+            // Each row backfilled to its OWN quantity -- proving a per-row computed value, not one
+            // literal shared by every row (the whole point of an expression default over a literal).
+            assertEquals(10L, readLong(connection, "auditQuantity", 1));
+            assertEquals(20L, readLong(connection, "auditQuantity", 2));
+        }
+    }
+
+    @Test
+    void acknowledgedExpressionDefaultWithAFailingRowRefusesAndAddsNoColumn() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'alpha')");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        // "$missingField" references a field that does not exist on any row -- every row must fail.
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
+                Map.of("widgets", List.of("id", "name", "auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "auditQuantity", "BIGINT")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("auditQuantity", "$missingField")));
+
+        List<ExpressionBackfillPreview.Item> preview = ExpressionBackfillPreview.preview(dataSource, manifest);
+        assertEquals(1, preview.size());
+        assertTrue(preview.get(0).hasFailures(), "a reference to a field absent from every row must be reported as a failure");
+        String ackToken = ExpressionBackfillPreview.expectedToken(manifest.schemaFingerprint(), preview);
+        PendingSchemaAcknowledgmentStore.insert(dataSource, manifest.schemaFingerprint(), ackToken, null, "test-operator");
+
+        // DoD (Move 9 B1): "rows where the expression fails are reported and BLOCK application" --
+        // even acknowledged, a failing row refuses the whole pass rather than partially applying.
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.afterMigrate(dataSource, manifest));
+        assertTrue(refusal.getMessage().contains("auditQuantity"), refusal.getMessage());
+        assertTrue(refusal.getMessage().contains("failed for row id"), refusal.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasColumn(connection.getMetaData(), "widgets", "auditQuantity"),
+                    "a failing acknowledged expression backfill must never add the column at all");
+        }
+    }
+
+    private static long readLong(Connection connection, String column, long id) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT " + column + " FROM widgets WHERE id = ?")) {
+            statement.setLong(1, id);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                assertTrue(resultSet.next());
+                return resultSet.getLong(1);
+            }
+        }
+    }
+
+    private static SchemaLifecycleExecutor.SchemaManifest manifestWithExpressionText(
+            Map<String, List<String>> businessTableColumns,
+            Map<String, List<String>> businessTableAdditiveColumns,
+            Map<String, Map<String, String>> businessTableColumnTypes,
+            Map<String, List<String>> businessTableRequiredColumns,
+            Map<String, List<String>> businessTableExpressionDefaultColumns,
+            Map<String, Map<String, String>> businessTableColumnDefaultExpressions) {
+        return new SchemaLifecycleExecutor.SchemaManifest(
+                "H2Local",
+                "jdbc",
+                true,
+                "sha256:new",
+                List.of(),
+                List.copyOf(businessTableColumns.keySet()),
+                businessTableColumns,
+                businessTableAdditiveColumns,
+                businessTableColumnTypes,
+                Map.of(),
+                Map.of(),
+                true,
+                "DropAndRecreateOnStructureChange",
+                "NpdevOwnedTablesOnly",
+                "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED",
+                "",
+                businessTableRequiredColumns,
+                Map.of(),
+                businessTableExpressionDefaultColumns,
+                Map.of(),
+                List.of(),
+                "NpdevManaged",
+                Map.of(),
+                Map.of(),
+                businessTableColumnDefaultExpressions
+        );
+    }
+
     private static String readStatus(Connection connection, long id) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("SELECT status FROM widgets WHERE id = ?")) {
             statement.setLong(1, id);
