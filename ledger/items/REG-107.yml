@@ -1,0 +1,44 @@
+id: REG-107
+title: "PanelRuntime.executeAction's conceptquery binding fetches an entire concept unbounded via ConceptGateway.list -- the same memory/scale defect LC-P0 fixed for the declared-Panel dataSource path, out of that fix's stated scope"
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-08-01
+closed: 2026-08-01
+verification: VERIFIED_LIVE
+source: |
+  Move 12 P1.5 (item 6 of MOVE12_CLOSE_ALL_14_SPEC.md). LC-P0
+  (MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 0) migrated the declared-Panel DATA-SOURCE path
+  (`PanelRuntime.loadDataSource`) from `ConceptGateway.list(...)` (fetch every row, filter/sort/page
+  in the JVM) to `ConceptGateway.query(...)` with the compiled predicate/orderBy/limit pushed down
+  to the store (PanelRuntime.java:439-445). `panelAction: "conceptQuery"` -- a distinct binding on a
+  PANEL ACTION button, not a data source -- was never touched: it still calls
+  `requireConceptGateway().list(new ConceptListRequest(conceptName, null), effectiveContext)`
+  (PanelRuntime.java:354, in the `"conceptquery"` action-binding branch), no filter, no limit, no
+  paging. Same memory/scale class LC-P0 fixed, in adjacent code, out of LC-P0's stated scope (data
+  sources only).
+surface: runtimehost
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PanelRuntime.java
+detail: |
+  Fix: the `"conceptquery"` action-binding branch now builds a `ConceptQuery` (no filters -- the
+  action binding declares none today, same as a data source with no bound query -- empty sorts, and
+  `PANEL_ROW_CAP` as the limit) and calls `ConceptGateway.query(...)`, mirroring
+  `loadDataSource`'s :439-445 pushdown exactly rather than reintroducing a second, divergent
+  bounded-fetch shape.
+
+  `ConceptGatewayOperation` has no distinct QUERY value -- `DefaultConceptGateway.query()` traces as
+  `LIST` too (confirmed: `PanelRuntimeTest`'s own existing `loadPanel` assertion already expects
+  `ConceptGatewayOperation.LIST` for a data-source query call) -- so "proven by SQL log or EXPLAIN"
+  is not available at this layer (no real JDBC adapter is wired into a kernel-level RuntimeHost
+  unit test); the achievable proof is row-count boundedness at real scale, genuinely RED/GREEN
+  tested rather than asserted from code reading alone.
+
+  Verified: `PanelRuntimeTest.conceptQueryActionBindingReturnsAtMostThePanelRowCapNotEveryRow`
+  seeds 1005 rows via a real in-memory `DefaultConceptGateway` and asserts the action returns
+  exactly 1000 (`PANEL_ROW_CAP`/`ConceptQuery.MAX_LIMIT`), not 1005. RED proven live: reverting the
+  fix to the original `ConceptGateway.list(...)` call in a generated app
+  (`D:\WorkSpace\NPDev\Build\generated-finalapps\pack-sample`) and rerunning made this exact test
+  fail with all 1005 rows returned; restoring the fix made it pass again. Full generated-app build
+  + all 9 `PanelRuntimeTest` cases green throughout (`:test` via the app's own Gradle wrapper, libs
+  synced via `scripts/runtimehost/sync-runtimehost-libs.ps1`).

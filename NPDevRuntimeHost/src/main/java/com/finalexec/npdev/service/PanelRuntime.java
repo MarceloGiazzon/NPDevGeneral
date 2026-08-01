@@ -12,7 +12,6 @@ import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ExecutionResult;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptGatewayTraceRecord;
-import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptQueryPredicateCompiler;
@@ -350,10 +349,17 @@ public class PanelRuntime {
                 response.put("result", result);
             }
         } else if ("conceptquery".equals(binding)) {
+            // REG-107 (Move 12 P1.5): mirrors loadDataSource's LC-P0 pushdown (:439-445) rather than
+            // the unbounded ConceptGateway.list() this branch used before -- a declared-Panel ACTION
+            // binding over a large concept was the one place that memory/scale fix didn't reach. This
+            // binding declares no filter/query today (same "no declared filter" case a bare dataSource
+            // hits), so the only difference from a raw list() is the pushed-down PANEL_ROW_CAP.
             String conceptName = firstNonBlank(action.concept(), primaryPanelConcept(panel));
-            List<ConceptRecord> records = requireConceptGateway().list(new ConceptListRequest(conceptName, null), effectiveContext);
+            ConceptPage page = requireConceptGateway().query(
+                    new ConceptQueryRequest(conceptName, new ConceptQuery(List.of(), List.of(), 0, PANEL_ROW_CAP)),
+                    effectiveContext);
             response.put("status", "OK");
-            response.put("result", records.stream().map(PanelRuntime::toRecordMap).toList());
+            response.put("result", page.items().stream().map(PanelRuntime::toRecordMap).toList());
         } else if ("conceptmutation".equals(binding)) {
             response.put("status", "OK");
             response.put("result", executeConceptMutation(action, panel, effectiveInput, effectiveContext));
