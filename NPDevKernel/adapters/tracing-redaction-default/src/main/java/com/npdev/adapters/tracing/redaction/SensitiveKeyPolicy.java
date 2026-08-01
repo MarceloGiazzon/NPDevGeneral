@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -20,13 +21,56 @@ import java.util.Set;
  * debt REG-6 already paid off once, moved one policy over. All four consumers now delegate here,
  * and here loads the one substring list from {@code sensitive-key-patterns.json} rather than
  * hardcoding it a fifth time.
+ *
+ * <p>R80 (ledger/items/REG-80.yml, docs/MOVE7_IMPLEMENTATION_SPEC.md): {@link
+ * #registerModelSensitiveFieldNames} adds a SECOND, OR'd-in source -- a model author's own {@code
+ * field.sensitive: true} declarations -- without replacing this class's static, key-name-substring
+ * denylist. Deliberately kept DSL-agnostic here (no dependency on {@code CompiledModel}/{@code
+ * CompiledField}, which this adapter module does not otherwise depend on): the caller extracts the
+ * field names and passes plain strings. See {@code NpdevObservabilityConfig} for the actual
+ * extraction + registration call, at the same {@code CompiledModel}-becomes-available boot point
+ * {@code DefaultConceptGateway.governedBy}'s caller uses.
  */
 public final class SensitiveKeyPolicy {
 
     private static final String RESOURCE_PATH = "/npdev/redaction/sensitive-key-patterns.json";
     private static final Set<String> KEY_SUBSTRINGS = loadKeySubstrings();
 
+    /** Exact (not substring) field names from {@code field.sensitive: true}, lowercased. Empty until
+     * {@link #registerModelSensitiveFieldNames} runs -- an app with no compiled model wired (e.g. a
+     * bare adapter unit test) behaves exactly as before this field existed. */
+    private static volatile Set<String> modelSensitiveFieldNames = Set.of();
+
     private SensitiveKeyPolicy() {
+    }
+
+    /**
+     * Registers the model's own declared sensitive field names, consulted by {@link
+     * #isSensitiveKey} as EXACT (not substring) matches -- a model author knows precisely which
+     * field is sensitive, so this does not need the static denylist's broader substring heuristic.
+     * Safe to call more than once (e.g. a test resetting state); the latest call wins. {@code null}
+     * or empty clears the registration back to "nothing model-declared".
+     *
+     * <p>Move 8 (item G7): redaction here is by FIELD NAME and applies globally -- marking any
+     * concept's field sensitive redacts that key name in traces and event payloads across all
+     * concepts, not just the declaring concept. This registry is a flat {@code Set<String>} with no
+     * concept scoping, and that is deliberate: trace records are flat key/value maps where the
+     * originating concept is frequently not available at redaction time, so making this per-concept
+     * would trade a safe over-redaction for a real risk of under-redaction. This is the fail-safe
+     * direction, not a bug.
+     */
+    public static void registerModelSensitiveFieldNames(Collection<String> fieldNames) {
+        if (fieldNames == null || fieldNames.isEmpty()) {
+            modelSensitiveFieldNames = Set.of();
+            return;
+        }
+        Set<String> normalized = new LinkedHashSet<>();
+        for (String fieldName : fieldNames) {
+            if (fieldName != null && !fieldName.isBlank()) {
+                normalized.add(fieldName.toLowerCase(Locale.ROOT));
+            }
+        }
+        modelSensitiveFieldNames = Set.copyOf(normalized);
     }
 
     public static boolean isSensitiveKey(String key) {
@@ -34,6 +78,9 @@ public final class SensitiveKeyPolicy {
             return false;
         }
         String normalized = key.toLowerCase(Locale.ROOT);
+        if (modelSensitiveFieldNames.contains(normalized)) {
+            return true;
+        }
         for (String substring : KEY_SUBSTRINGS) {
             if (normalized.contains(substring)) {
                 return true;

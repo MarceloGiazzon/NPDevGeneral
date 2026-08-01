@@ -1,5 +1,7 @@
 package com.npdev.adapters.authz.defaultpolicy;
 
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledRole;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.execution.FlowInstance;
 import com.npdev.kernel.execution.FlowInstanceStatus;
@@ -14,11 +16,22 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DefaultExecutionAuthorizationPolicyTest {
 
     private final DefaultExecutionAuthorizationPolicy policy = new DefaultExecutionAuthorizationPolicy();
+
+    private static CompiledModel compiledModelWithRoles(CompiledRole... roles) {
+        return new CompiledModel(
+                "ns", "2.0", "1.0.0", Map.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(),
+                null, null,
+                List.of(roles)
+        );
+    }
 
     @Test
     void deniesAnonymousDefaultRequester() {
@@ -182,5 +195,53 @@ class DefaultExecutionAuthorizationPolicyTest {
                 "no recorded owner means there is no owner for actor-scoping to protect");
         assertFalse(policy.canResumeExecution(otherTenant, ownerless),
                 "...but tenant isolation still applies");
+    }
+
+    /**
+     * Wave 3 (RC-B1): GREEN proof -- before the {@code CompiledModel}-aware constructor existed, a
+     * requester whose only role was an app-declared one (not USER/OPERATOR/ADMIN) was denied
+     * EVERY permission with no way to grant it short of a platform code change.
+     */
+    @Test
+    void appDeclaredRoleFromCompiledModelCanExecuteFlow() {
+        CompiledModel compiledModel = compiledModelWithRoles(
+                new CompiledRole("WAREHOUSE_MANAGER", List.of("EXECUTE_FLOW", "READ_EXECUTIONS")));
+        DefaultExecutionAuthorizationPolicy policyWithRoles =
+                new DefaultExecutionAuthorizationPolicy(new DefaultTenantIsolationPolicy(), compiledModel);
+
+        ExecutionContext warehouseManager = ExecutionContext.of("tenant-a", "actor-a")
+                .withRoles(Set.of("WAREHOUSE_MANAGER"));
+
+        assertTrue(policyWithRoles.canExecuteFlow(warehouseManager, "PickOrder"));
+        assertFalse(policyWithRoles.canReadAudit(warehouseManager),
+                "the declared role only grants EXECUTE_FLOW/READ_EXECUTIONS, not READ_AUDIT");
+
+        // Regression: the SAME requester against a policy built with no CompiledModel gets nothing,
+        // proving the grant genuinely comes from the app-declared role, not some other change.
+        assertFalse(policy.canExecuteFlow(warehouseManager, "PickOrder"));
+    }
+
+    /**
+     * Wave 3 (RC-B1): a role declaring a grant name that is not a real {@link
+     * com.npdev.kernel.auth.Permission} enum constant must fail loudly at construction (app boot),
+     * not silently grant nothing the first time a warehouse-manager user makes a request.
+     */
+    @Test
+    void unrecognizedGrantNameFailsAtConstructionNotAtRequestTime() {
+        CompiledModel compiledModel = compiledModelWithRoles(
+                new CompiledRole("WAREHOUSE_MANAGER", List.of("EXECUTE_FLOW", "TYPO_PERMISSION")));
+
+        assertThrows(IllegalStateException.class,
+                () -> new DefaultExecutionAuthorizationPolicy(new DefaultTenantIsolationPolicy(), compiledModel));
+    }
+
+    /** Wave 3 (RC-B1) regression: a null CompiledModel (what every pre-existing call site passes,
+     *  and what the two-arg constructor delegates to) behaves exactly like today. */
+    @Test
+    void nullCompiledModelBehavesLikeNoDeclaredRoles() {
+        DefaultExecutionAuthorizationPolicy policyWithNullModel =
+                new DefaultExecutionAuthorizationPolicy(new DefaultTenantIsolationPolicy(), null);
+        ExecutionContext admin = ExecutionContext.of("tenant-a", "actor-a").withRoles(Set.of("ADMIN"));
+        assertTrue(policyWithNullModel.canReadAudit(admin));
     }
 }

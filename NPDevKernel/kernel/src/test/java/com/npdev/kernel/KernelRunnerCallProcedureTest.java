@@ -4,6 +4,8 @@ import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
 import com.npdev.kernel.concepts.DefaultConceptGateway;
+import com.npdev.kernel.concepts.GovernedTestGateways;
+import com.npdev.kernel.concepts.GovernedTestGateways.ConceptSpec;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
 import com.npdev.kernel.procedures.DefaultProcedureExecutor;
 import com.npdev.kernel.procedures.ProcedureDefinition;
@@ -28,7 +30,7 @@ class KernelRunnerCallProcedureTest {
 
     @Test
     void flowCallProcedureReachesPatchConceptAndPreservesUnrelatedFields() {
-        ConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ConceptGateway gateway = GovernedTestGateways.forConcepts(ConceptSpec.of("Sibling", "label", "quantity", "status"));
         ExecutionContext ctx = ExecutionContext.of("tenant-a", "actor-a");
         gateway.save(new ConceptWriteRequest("Sibling", "S1", "tenant-a",
                 Map.of("id", "S1", "flag", "false", "other", "kept")), ctx);
@@ -104,7 +106,7 @@ class KernelRunnerCallProcedureTest {
     @Test
     void flowCallProcedureFailsCleanlyWhenProcedureNameIsUnknown() {
         DefaultProcedureExecutor procedureExecutor = new DefaultProcedureExecutor(
-                new DefaultConceptGateway(new InMemoryConceptStore()),
+                GovernedTestGateways.forConcepts(ConceptSpec.of("Sibling", "label", "quantity", "status")),
                 (call, state) -> CapabilityResult.success(null),
                 event -> { }
         );

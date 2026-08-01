@@ -1,3 +1,6 @@
 dependencies {
     implementation project(':kernel')
+    implementation project(':dsl')
+
+    testImplementation project(':dsl')
 }

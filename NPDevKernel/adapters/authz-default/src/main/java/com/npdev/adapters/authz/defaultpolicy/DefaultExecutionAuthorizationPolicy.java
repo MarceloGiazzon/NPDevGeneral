@@ -1,5 +1,7 @@
 package com.npdev.adapters.authz.defaultpolicy;
 
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledRole;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.auth.Permission;
 import com.npdev.kernel.auth.RolePermissions;
@@ -9,7 +11,12 @@ import com.npdev.kernel.ports.TenantIsolationPolicy;
 import com.npdev.kernel.ports.TraceQuery;
 import com.npdev.kernel.trace.FlowTrace;
 
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -17,13 +24,60 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
     private static final Logger LOG = Logger.getLogger(DefaultExecutionAuthorizationPolicy.class.getName());
 
     private final TenantIsolationPolicy tenantIsolationPolicy;
+    private final Map<String, Set<Permission>> appDeclaredRoles;
 
     public DefaultExecutionAuthorizationPolicy() {
         this(new DefaultTenantIsolationPolicy());
     }
 
     public DefaultExecutionAuthorizationPolicy(TenantIsolationPolicy tenantIsolationPolicy) {
+        this(tenantIsolationPolicy, null);
+    }
+
+    /**
+     * Wave 3 (RC-B1, {@code MOVE11_RUNTIME_CONFIGURATION_PLAN} Part B.1): {@code compiledModel} may
+     * be null (no app-declared roles -- behaves exactly as before this constructor existed). When
+     * present, every {@link CompiledRole#grants()} name is resolved against the real
+     * {@link Permission} enum HERE, at construction (boot) time, so a typo'd/renamed grant name
+     * fails loudly during app startup instead of silently granting nothing the first time a user
+     * with that role makes a request (the same "an input the evaluator cannot handle is an error"
+     * rule X0 established for every other evaluator in the platform).
+     */
+    public DefaultExecutionAuthorizationPolicy(TenantIsolationPolicy tenantIsolationPolicy, CompiledModel compiledModel) {
         this.tenantIsolationPolicy = Objects.requireNonNull(tenantIsolationPolicy, "tenantIsolationPolicy");
+        this.appDeclaredRoles = toAppDeclaredRoles(compiledModel);
+    }
+
+    private static Map<String, Set<Permission>> toAppDeclaredRoles(CompiledModel compiledModel) {
+        if (compiledModel == null) {
+            return Map.of();
+        }
+        Map<String, Set<Permission>> byName = new LinkedHashMap<>();
+        for (CompiledRole role : compiledModel.getRoles()) {
+            String normalizedName = RolePermissions.normalizeRoleName(role.name());
+            if (normalizedName == null) {
+                continue;
+            }
+            Set<Permission> permissions = new LinkedHashSet<>();
+            for (String grant : role.grants()) {
+                permissions.add(toPermission(role.name(), grant));
+            }
+            byName.put(normalizedName, permissions);
+        }
+        return Map.copyOf(byName);
+    }
+
+    private static Permission toPermission(String roleName, String grant) {
+        String normalized = grant == null ? "" : grant.trim().toUpperCase(Locale.ROOT);
+        try {
+            return Permission.valueOf(normalized);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException(
+                    "Role \"" + roleName + "\" declares grant \"" + grant + "\", which is not a "
+                            + "recognized platform permission (" + java.util.Arrays.toString(Permission.values())
+                            + "). Fix the app model's roles[] declaration.",
+                    exception);
+        }
     }
 
     @Override
@@ -175,7 +229,7 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
         return true;
     }
 
-    private static boolean hasPermission(ExecutionContext requester, Permission permission) {
-        return RolePermissions.hasPermission(requester, permission);
+    private boolean hasPermission(ExecutionContext requester, Permission permission) {
+        return RolePermissions.hasPermission(requester, permission, appDeclaredRoles);
     }
 }

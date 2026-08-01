@@ -23,6 +23,21 @@ public interface ConceptGateway {
         return ConceptQueryEngine.apply(all, request.query());
     }
 
+    /**
+     * Move 10 B1 (LC-B1): tenant- and permission-enforced grouped/aggregated query. The default
+     * evaluates it in memory over {@link #list} results -- since {@code list} already applies
+     * whatever row-level scoping the implementing gateway enforces BEFORE this aggregates over the
+     * result, this default is safe even for a concept declaring {@code access.read}.
+     * {@code DefaultConceptGateway} overrides this to push the aggregation down to the
+     * {@code ConceptStore} (and thus to SQL) for performance -- see ITS OWN javadoc for why that
+     * override must refuse an {@code access.read} concept instead of aggregating unscoped rows.
+     */
+    default ConceptAggregateResult aggregate(ConceptAggregateRequest request, ExecutionContext context) {
+        List<ConceptRecord> all = list(
+                new ConceptListRequest(request.conceptName(), request.tenantId(), null, null), context);
+        return ConceptAggregateEngine.apply(all, request.query());
+    }
+
     ConceptRecord save(ConceptWriteRequest request, ExecutionContext context);
 
     /**

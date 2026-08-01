@@ -37,7 +37,9 @@ public final class ConceptQueryEngine {
         return ConceptPage.of(page, total, from);
     }
 
-    private static boolean matchesAll(ConceptRecord record, List<ConceptQuery.Filter> filters) {
+    /** Package-visible (not private) so {@link ConceptAggregateEngine} reuses the SAME filter
+     *  evaluation for an aggregate query's pre-grouping {@code where}, rather than forking it. */
+    static boolean matchesAll(ConceptRecord record, List<ConceptQuery.Filter> filters) {
         for (ConceptQuery.Filter filter : filters) {
             if (!matches(record, filter)) {
                 return false;
@@ -82,7 +84,8 @@ public final class ConceptQueryEngine {
         return record.data() == null ? null : record.data().get(field);
     }
 
-    private static boolean valuesEqual(Object actual, Object expected) {
+    /** Package-visible for {@link ConceptAggregateEngine}'s own HAVING-clause evaluation. */
+    static boolean valuesEqual(Object actual, Object expected) {
         return Objects.equals(normalize(actual), normalize(expected));
     }
 
@@ -90,8 +93,12 @@ public final class ConceptQueryEngine {
      * Nulls sort last (ascending): a null field is treated as greater than any present value, so
      * {@code < x} never matches a null and ascending sorts push nulls to the end -- matching the
      * ConceptQueryFilterSupport orderBy behaviour this generalizes.
+     *
+     * <p>Package-visible so {@link ConceptAggregateEngine} sorts/compares aggregate output values
+     * with the SAME numeric-vs-lexicographic semantics, rather than a second, potentially-diverging
+     * comparison rule.
      */
-    private static int compare(Object left, Object right) {
+    static int compare(Object left, Object right) {
         if (left == null && right == null) {
             return 0;
         }
@@ -117,7 +124,8 @@ public final class ConceptQueryEngine {
         return value == null ? null : String.valueOf(value);
     }
 
-    private static BigDecimal asNumber(Object value) {
+    /** Package-visible for {@link ConceptAggregateEngine}'s own sum/avg accumulation. */
+    static BigDecimal asNumber(Object value) {
         if (value instanceof BigDecimal decimal) {
             return decimal;
         }

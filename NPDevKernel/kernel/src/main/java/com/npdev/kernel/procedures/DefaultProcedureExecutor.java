@@ -6,7 +6,10 @@ import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptListRequest;
-import com.npdev.kernel.concepts.ConceptQueryFilterSupport;
+import com.npdev.kernel.concepts.ConceptPage;
+import com.npdev.kernel.concepts.ConceptQuery;
+import com.npdev.kernel.concepts.ConceptQueryPredicateCompiler;
+import com.npdev.kernel.concepts.ConceptQueryRequest;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
@@ -330,18 +333,42 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         if (step.conceptName() == null || step.conceptName().isBlank()) {
             return ProcedureStepResult.failure(step, "QUERY_UNSUPPORTED", "Procedure query steps require conceptName in the current runtime.");
         }
-        List<ConceptRecord> records = conceptGateway.list(new ConceptListRequest(step.conceptName(), null), context);
         // LIFT-QUERY-P1: the query name is threaded through the (legacy-named) "operation" slot --
-        // see ProcedureStep.runQuery. Absent from queriesByName -> unfiltered, same as before this fix.
-        CompiledQuery query = step.operation() == null
+        // see ProcedureStep.runQuery.
+        String queryName = step.operation() == null ? null : step.operation().trim();
+        CompiledQuery query = queryName == null || queryName.isEmpty()
                 ? null
-                : queriesByName.get(step.operation().trim().toLowerCase(java.util.Locale.ROOT));
-        if (query != null) {
-            records = ConceptQueryFilterSupport.applyWhere(records, query.where());
-            records = ConceptQueryFilterSupport.applyOrderBy(records, query.orderBy());
-            records = ConceptQueryFilterSupport.applyLimit(records, query.limit(), DEFAULT_QUERY_ROW_CAP);
-        } else {
-            records = ConceptQueryFilterSupport.applyLimit(records, null, DEFAULT_QUERY_ROW_CAP);
+                : queriesByName.get(queryName.toLowerCase(java.util.Locale.ROOT));
+        // X0-7 (REG-100), fixed alongside LC-P0: a NAMED query that does not resolve used to fall
+        // through to "unfiltered", so a rename or a normalization mismatch silently returned every
+        // row. Naming a query and getting no filter is the same defect LC-P0 removes one layer down;
+        // an unresolvable name is now refused, while declaring no query at all stays a plain list.
+        if (query == null && queryName != null && !queryName.isEmpty()) {
+            return ProcedureStepResult.failure(step, "QUERY_NOT_FOUND",
+                    "Procedure query step names query '" + queryName + "', which is not declared in this model. "
+                            + "Refusing rather than returning every row unfiltered: a named query that silently "
+                            + "does not filter returns rows the author asked to exclude, with no error (LC-P0/X0-7). "
+                            + "Declared queries: " + queriesByName.keySet());
+        }
+        // LC-P0 scale half (MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 0): push the compiled predicate,
+        // sort, and limit down to ConceptGateway.query -- the store narrows (WHERE/LIMIT on SQL for
+        // the JDBC adapters) instead of fetching every row and filtering in the JVM.
+        List<ConceptRecord> records;
+        try {
+            List<ConceptQuery.Filter> filters = query == null
+                    ? List.of() : ConceptQueryPredicateCompiler.compile(query.where());
+            List<ConceptQuery.Sort> sorts = query == null
+                    ? List.of() : ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy());
+            Integer declaredLimit = query == null ? null : query.limit();
+            int limit = declaredLimit != null && declaredLimit > 0 ? declaredLimit : DEFAULT_QUERY_ROW_CAP;
+            ConceptQuery conceptQuery = new ConceptQuery(filters, sorts, 0, limit);
+            ConceptPage page = conceptGateway.query(new ConceptQueryRequest(step.conceptName(), conceptQuery), context);
+            records = page.items();
+        } catch (ConceptQueryPredicateCompiler.UnsupportedPredicateException unsupported) {
+            // LC-P0: surface it as a named STEP failure rather than letting it escape as an
+            // exception -- callers already branch on step failure codes, and a procedure whose
+            // query cannot be compiled is a modelling error, not a crash.
+            return ProcedureStepResult.failure(step, "QUERY_PREDICATE_UNSUPPORTED", unsupported.getMessage());
         }
         putOutput(state, step.outputKey(), records);
         return ProcedureStepResult.success(step);
@@ -445,7 +472,16 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             ProcedureExecutionScope scope,
             int recursionDepth
     ) {
-        boolean condition = truthy(resolve(state, step.conditionRef()));
+        // REG-96 (Wave 0.6): was truthy(resolve(...)) -- a bare reference tested for truthiness,
+        // which could never ask "does it equal 'Concluido'". A bare ref still means exactly what it
+        // used to; a comparison is now expressible using the SAME grammar visibleWhen carries.
+        boolean condition;
+        try {
+            condition = ProcedureConditionEvaluator.evaluate(
+                    step.conditionRef(), state, DefaultProcedureExecutor::resolve);
+        } catch (ProcedureConditionEvaluator.UnsupportedConditionException unsupported) {
+            return ProcedureStepResult.failure(step, "CONDITION_UNSUPPORTED", unsupported.getMessage());
+        }
         List<ProcedureStep> selectedSteps = condition ? step.thenSteps() : step.elseSteps();
         ProcedureStepResult nestedResult = executeNestedSteps(
                 definition,
@@ -555,8 +591,14 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         return ProcedureStepResult.success(step);
     }
 
+    /**
+     * REG-86: {@code valueRef} resolves via {@link #resolveSetValue}, the SAME literal-vs-{@code $ref}
+     * convention {@code patchConcept}'s {@code set} uses -- not the always-a-state-path {@link
+     * #resolve}, which a literal array/object could never survive (it would be treated as a dotted
+     * path and resolve to {@code null}).
+     */
     private ProcedureStepResult mapValue(ProcedureStep step, Map<String, Object> state) {
-        Object value = resolve(state, step.valueRef());
+        Object value = resolveSetValue(state, step.valueRef());
         putOutput(state, step.outputKey(), value);
         return ProcedureStepResult.success(step);
     }
@@ -634,8 +676,9 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         return stripped.doubleValue();
     }
 
+    /** REG-86: same {@link #resolveSetValue} literal-vs-{@code $ref} convention as {@link #mapValue}. */
     private ProcedureStepResult returnValue(ProcedureStep step, Map<String, Object> state) {
-        state.put("return", resolve(state, step.returnRef()));
+        state.put("return", resolveSetValue(state, step.returnRef()));
         return ProcedureStepResult.success(step);
     }
 

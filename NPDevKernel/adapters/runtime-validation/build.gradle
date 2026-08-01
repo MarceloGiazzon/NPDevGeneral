@@ -22,3 +22,20 @@ dependencies {
     // Fix for tests too
     testImplementation 'com.fasterxml.jackson.core:jackson-annotations:2.17.2'
 }
+
+// Wave 1.3 (LC-C2, MASTER_AI_PLATFORM_PROGRAMME_v2.md): re-sign an app's npdev-generated/ tree with
+// the SAME GeneratedFolderSignature.capture/write StrictExecutionValidator itself checks at boot,
+// after a sanctioned out-of-band write (today: the metadata-only fast path overwriting
+// compiled-model.json). No java-library `run` task exists on this module by default (java-library,
+// not application) -- registered directly, mirroring :NPDevContract:dsl:validateModel's JavaExec pattern.
+tasks.register('resignGeneratedFolder', JavaExec) {
+    group = 'verification'
+    description = 'Recompute and write the npdev-generated/ strict-execution signature after a sanctioned metadata-only write.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.adapters.runtime.validation.GeneratedFolderSignatureMain'
+    def cliArgs = []
+    if (project.hasProperty('generatedRoot')) {
+        cliArgs << '--generatedRoot' << project.getProperty('generatedRoot')
+    }
+    args = cliArgs
+}

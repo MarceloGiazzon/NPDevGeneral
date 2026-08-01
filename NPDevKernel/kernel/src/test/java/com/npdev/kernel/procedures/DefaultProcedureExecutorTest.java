@@ -3,7 +3,8 @@ package com.npdev.kernel.procedures;
 import com.npdev.kernel.CapabilityErrorKind;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ExecutionContext;
-import com.npdev.kernel.concepts.DefaultConceptGateway;
+import com.npdev.kernel.concepts.GovernedTestGateways;
+import com.npdev.kernel.concepts.GovernedTestGateways.ConceptSpec;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
 import com.npdev.kernel.ports.CapabilityDispatcher;
@@ -18,12 +19,23 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class DefaultProcedureExecutorTest {
 
+    /** O5 (Move 11 W4): the REAL governed semantic policy every generated app runs, not the noop
+     * default -- see GovernedTestGateways. A write-path test on a noop policy is a test that starts
+     * downstream of the layer REG-71/REG-83 both broke. */
+    private static GovernedTestGateways.ConceptSpec[] concepts() {
+        return new ConceptSpec[]{ ConceptSpec.of("ContactMessage", "message", "subject", "email", "name") };
+    }
+
+    private static com.npdev.kernel.concepts.ConceptGateway governedGateway() {
+        return GovernedTestGateways.forConcepts(concepts());
+    }
+
     @Test
     void executesConceptCapabilityAndEventStepsInOrder() {
         CapturingEventBus eventBus = new CapturingEventBus();
         CapabilityDispatcher dispatcher = (call, state) -> CapabilityResult.success(Map.of("sent", true, "args", call.args().size()));
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                new DefaultConceptGateway(new InMemoryConceptStore()),
+                governedGateway(),
                 dispatcher,
                 eventBus
         );
@@ -64,7 +76,7 @@ class DefaultProcedureExecutorTest {
                 Map.of()
         );
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                new DefaultConceptGateway(new InMemoryConceptStore()),
+                governedGateway(),
                 dispatcher,
                 eventBus
         );
@@ -93,7 +105,7 @@ class DefaultProcedureExecutorTest {
     @Test
     void executesBranchLoopListAndReturnStepsThroughConceptGateway() {
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                new DefaultConceptGateway(new InMemoryConceptStore()),
+                governedGateway(),
                 (call, state) -> CapabilityResult.success(Map.of()),
                 new CapturingEventBus()
         );
@@ -117,9 +129,9 @@ class DefaultProcedureExecutorTest {
                                                 ))
                                         ),
                                         ProcedureStep.listConcepts("list-expenses", "Expense", "records"),
-                                        ProcedureStep.returnValue("return-records", "records")
+                                        ProcedureStep.returnValue("return-records", "$records")
                                 ),
-                                List.of(ProcedureStep.returnValue("return-empty", "input"))
+                                List.of(ProcedureStep.returnValue("return-empty", "$input"))
                         )
                 )
         );
@@ -147,12 +159,12 @@ class DefaultProcedureExecutorTest {
         ProcedureDefinition child = new ProcedureDefinition(
                 "BuildPayload",
                 List.of(
-                        ProcedureStep.mapValue("copy-input", "input", "copied"),
-                        ProcedureStep.returnValue("return-copy", "copied")
+                        ProcedureStep.mapValue("copy-input", "$input", "copied"),
+                        ProcedureStep.returnValue("return-copy", "$copied")
                 )
         );
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                new DefaultConceptGateway(new InMemoryConceptStore()),
+                governedGateway(),
                 (call, state) -> CapabilityResult.success(Map.of()),
                 new CapturingEventBus(),
                 Map.of("BuildPayload", child)
@@ -161,7 +173,7 @@ class DefaultProcedureExecutorTest {
                 "Parent",
                 List.of(
                         ProcedureStep.callProcedure("call-child", "BuildPayload", "input", "childOutput"),
-                        ProcedureStep.returnValue("return-child", "childOutput")
+                        ProcedureStep.returnValue("return-child", "$childOutput")
                 )
         );
 
@@ -182,7 +194,7 @@ class DefaultProcedureExecutorTest {
                 List.of(ProcedureStep.callProcedure("again", "Recursive", "input", "out"))
         );
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                new DefaultConceptGateway(new InMemoryConceptStore()),
+                governedGateway(),
                 (call, state) -> CapabilityResult.success(Map.of()),
                 new CapturingEventBus(),
                 Map.of("Recursive", recursive),
@@ -202,7 +214,7 @@ class DefaultProcedureExecutorTest {
     @Test
     void failsDeterministicallyWhenProcedureLoopLimitIsExceeded() {
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                new DefaultConceptGateway(new InMemoryConceptStore()),
+                governedGateway(),
                 (call, state) -> CapabilityResult.success(Map.of()),
                 new CapturingEventBus(),
                 Map.of(),
@@ -214,7 +226,7 @@ class DefaultProcedureExecutorTest {
                         "limited-loop",
                         "items",
                         "item",
-                        List.of(ProcedureStep.mapValue("copy", "item", "last"))
+                        List.of(ProcedureStep.mapValue("copy", "$item", "last"))
                 ))
         );
 
