@@ -78,9 +78,9 @@ import java.util.stream.Collectors;
  * {@link ConceptValidation} (+ {@link DomainTypeValidation}, {@link ReferenceValidation},
  * {@link FieldValueValidation}, {@link LifecycleValidation} sub-boundaries),
  * {@link FlowValidation} (+ {@link OrchestrationValidation}), {@link PanelValidation}
- * (+ {@link UxMetadataValidation}), {@link AggregateValidation}, {@link PackValidation}, and
- * {@link ExpressionValidation}. {@link #normalize} and {@link #hasText} remain here as the shared
- * string-normalization utilities every section uses.
+ * (+ {@link UxMetadataValidation}), {@link AggregateValidation}, {@link PackValidation},
+ * {@link RoleValidation}, and {@link ExpressionValidation}. {@link #normalize} and
+ * {@link #hasText} remain here as the shared string-normalization utilities every section uses.
  */
 public final class SemanticValidator {
 
@@ -115,6 +115,7 @@ public final class SemanticValidator {
         ModelAst effectiveModel = resolvedModel.modelAst();
         ExpressionValidation.validateDslVersion(effectiveModel, errors);
         Map<String, ConceptAst> entitiesByLower = ConceptValidation.indexEntities(effectiveModel.getConcepts(), errors);
+        ConceptValidation.validateTableNameCollisions(effectiveModel, errors);
         ConceptValidation.validateConceptRenamedFrom(effectiveModel, entitiesByLower, errors, semanticWarnings);
 
         ConceptValidation.validateCapabilities(effectiveModel, errors);
@@ -140,6 +141,7 @@ public final class SemanticValidator {
         AggregateValidation.validateAggregates(effectiveModel, entitiesByLower, errors);
         PanelValidation.validateAutoPanels(effectiveModel, entitiesByLower, errors, warnings);
         PanelValidation.validateSelectors(effectiveModel, entitiesByLower, errors);
+        RoleValidation.validateRoles(effectiveModel, errors);
         errors = canonicalizeConceptTerminology(errors);
         semanticWarnings = canonicalizeConceptTerminology(semanticWarnings);
         for (String semanticWarning : semanticWarnings) {

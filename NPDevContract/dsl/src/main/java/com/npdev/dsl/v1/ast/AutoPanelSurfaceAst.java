@@ -15,7 +15,16 @@ public record AutoPanelSurfaceAst(
         List<String> fields,
         List<AutoPanelComputedAst> computed,
         String labelField,
-        Map<String, Object> metadata
+        Map<String, Object> metadata,
+        TransactionHooksAst hooks,
+        List<DerivedFieldAst> derivedFields,
+        Map<String, RegionMountAst> regions,
+        List<WorkbenchActionAst> actions,
+        Map<String, String> visibleWhen,
+        Map<String, WorkbenchBandPickerAst> bandPickers,
+        AutoPanelDataSourceAst dataSource,
+        /** Move 11 W6: declared transient UI state a {@code $ui.<name>} visibleWhen predicate reads. */
+        Map<String, UiStateControlAst> uiState
 ) {
     public AutoPanelSurfaceAst {
         filters = filters == null ? List.of() : List.copyOf(filters);
@@ -23,5 +32,11 @@ public record AutoPanelSurfaceAst(
         fields = fields == null ? List.of() : List.copyOf(fields);
         computed = computed == null ? List.of() : List.copyOf(computed);
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+        derivedFields = derivedFields == null ? List.of() : List.copyOf(derivedFields);
+        regions = regions == null ? Map.of() : Map.copyOf(regions);
+        actions = actions == null ? List.of() : List.copyOf(actions);
+        visibleWhen = visibleWhen == null ? Map.of() : Map.copyOf(visibleWhen);
+        bandPickers = bandPickers == null ? Map.of() : Map.copyOf(bandPickers);
+        uiState = uiState == null ? Map.of() : Map.copyOf(uiState);
     }
 }

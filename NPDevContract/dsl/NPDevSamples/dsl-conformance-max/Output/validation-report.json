@@ -1,0 +1,15 @@
+{
+  "contractVersion" : "npdev-validation-report.v2",
+  "status" : "failed",
+  "model" : "NPDevSamples\\dsl-conformance-max\\Input\\model.json",
+  "summary" : {
+    "errors" : 1,
+    "warnings" : 0
+  },
+  "diagnostics" : [ {
+    "layer" : "structural",
+    "severity" : "error",
+    "code" : "STRUCTURAL_ERROR",
+    "message" : "model.json not found: NPDevSamples\\dsl-conformance-max\\Input\\model.json"
+  } ]
+}

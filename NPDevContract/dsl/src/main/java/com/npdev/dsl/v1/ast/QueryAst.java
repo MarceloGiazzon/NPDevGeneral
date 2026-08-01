@@ -13,12 +13,23 @@ public record QueryAst(
         List<String> permissionRequirements,
         String tracePolicy,
         String auditPolicy,
-        Map<String, Object> metadata
+        Map<String, Object> metadata,
+        List<GroupByFieldAst> groupBy,
+        List<AggregateFunctionAst> aggregates,
+        String having
 ) {
     public QueryAst {
         orderBy = orderBy == null ? List.of() : List.copyOf(orderBy);
         parameters = parameters == null ? List.of() : List.copyOf(parameters);
         permissionRequirements = permissionRequirements == null ? List.of() : List.copyOf(permissionRequirements);
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+        groupBy = groupBy == null ? List.of() : List.copyOf(groupBy);
+        aggregates = aggregates == null ? List.of() : List.copyOf(aggregates);
+    }
+
+    /** Move 10 B1: a query with any groupBy/aggregates is an AGGREGATE query -- it returns rows of
+     *  aggregate output, not concept records (the compiled model must say so; see CompiledQuery). */
+    public boolean isAggregate() {
+        return !groupBy.isEmpty() || !aggregates.isEmpty();
     }
 }

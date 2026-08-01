@@ -3,10 +3,13 @@ package com.npdev.dsl.v1.cli;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.ModelAst;
+import com.npdev.dsl.v1.ast.TruthLevel;
 import com.npdev.dsl.v1.parser.DeprecationException;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.validation.ModelSchemaValidationException;
+import com.npdev.dsl.v1.validation.ReleaseGateValidator;
 import com.npdev.dsl.v1.validation.SemanticValidator;
 import com.npdev.dsl.v1.validation.ValidationDiagnostic;
 import com.npdev.dsl.v1.validation.ValidationLayer;
@@ -56,18 +59,28 @@ public final class ModelValidatorMain {
 
         String modelArg = null;
         String outArg = null;
+        boolean releaseGate = false;
+        String targetTruthLevelArg = null;
+        List<String> evidencePathArgs = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             String arg = args[i];
             if ("--out".equals(arg) && i + 1 < args.length) {
                 outArg = args[++i];
             } else if (arg.startsWith("--out=")) {
                 outArg = arg.substring("--out=".length());
+            } else if ("--releaseGate".equals(arg)) {
+                releaseGate = true;
+            } else if (arg.startsWith("--targetTruthLevel=")) {
+                targetTruthLevelArg = arg.substring("--targetTruthLevel=".length());
+            } else if (arg.startsWith("--evidencePath=")) {
+                evidencePathArgs.add(arg.substring("--evidencePath=".length()));
             } else if (!arg.startsWith("--")) {
                 modelArg = arg;
             }
         }
         if (modelArg == null) {
-            System.err.println("usage: ModelValidatorMain <model.json> [--out report.json]");
+            System.err.println("usage: ModelValidatorMain <model.json> [--out report.json] "
+                    + "[--releaseGate --targetTruthLevel=<T0..T6> [--evidencePath=<path>]...]");
             System.exit(64);
             return;
         }
@@ -85,6 +98,14 @@ public final class ModelValidatorMain {
             } catch (RuntimeException semanticError) {
                 diagnostics.add(structural(
                         "Semantic validation crashed: " + safeMessage(semanticError)));
+            }
+
+            // R81 (ledger/items/REG-81.yml): ReleaseGateValidator.validatePromotion is fully built
+            // and unit-tested but, before this, called by nothing except its own test -- truth-level
+            // promotion gating was dormant. Opt-in (both flags required together) so every existing
+            // caller of this CLI sees byte-identical behavior when it doesn't ask for this.
+            if (releaseGate) {
+                diagnostics.addAll(runReleaseGate(ast, targetTruthLevelArg, evidencePathArgs));
             }
         }
 
@@ -113,6 +134,43 @@ public final class ModelValidatorMain {
             diagnostics.add(structural(safeMessage(parseError)));
         }
         return null;
+    }
+
+    /**
+     * R81: promotes every concept in the model to {@code targetTruthLevelArg} via {@link
+     * ReleaseGateValidator#validatePromotion}, mirroring {@code ReleaseGateValidatorTest.java:56}'s
+     * argument shape. {@code --evidencePath} (repeatable, optional) feeds {@link
+     * ReleaseGateValidator#evidencePaths}; with none supplied, T4+ promotion always reports missing
+     * evidence (the class's own documented behavior for {@link
+     * ReleaseGateValidator.EvidenceProvider#none()}), not a bug in this wiring.
+     */
+    static List<ValidationDiagnostic> runReleaseGate(
+            ModelAst ast, String targetTruthLevelArg, List<String> evidencePathArgs) {
+        List<ValidationDiagnostic> diagnostics = new ArrayList<>();
+        TruthLevel target = TruthLevel.fromString(targetTruthLevelArg);
+        if (target == null) {
+            diagnostics.add(structural(
+                    "--releaseGate requires --targetTruthLevel=<T0..T6>; got: "
+                            + (targetTruthLevelArg == null ? "(none)" : targetTruthLevelArg)));
+            return diagnostics;
+        }
+        List<Path> evidencePaths = new ArrayList<>();
+        for (String evidencePathArg : evidencePathArgs) {
+            evidencePaths.add(Path.of(evidencePathArg));
+        }
+        ReleaseGateValidator.EvidenceProvider evidenceProvider = evidencePaths.isEmpty()
+                ? ReleaseGateValidator.EvidenceProvider.none()
+                : ReleaseGateValidator.evidencePaths(evidencePaths);
+        ReleaseGateValidator releaseGateValidator = new ReleaseGateValidator();
+        for (ConceptAst concept : ast.getConcepts()) {
+            if (concept == null || concept.getName() == null || concept.getName().isBlank()) {
+                continue;
+            }
+            ValidationResult result = releaseGateValidator.validatePromotion(
+                    ast, concept.getName(), target, evidenceProvider);
+            diagnostics.addAll(result.getDiagnostics());
+        }
+        return diagnostics;
     }
 
     /**

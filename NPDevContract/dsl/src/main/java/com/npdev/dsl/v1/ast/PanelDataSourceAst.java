@@ -13,7 +13,8 @@ public record PanelDataSourceAst(
         String parentField,
         String childField,
         List<String> rowOps,
-        List<String> addFormFields
+        List<String> addFormFields,
+        String onRowLoad
 ) {
     public PanelDataSourceAst {
         params = params == null ? Map.of() : Map.copyOf(params);

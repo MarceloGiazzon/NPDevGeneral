@@ -160,6 +160,7 @@ public final class JsonModelParser {
         List<AutoPanelAst> autoPanels = new ArrayList<>();
         List<SelectorAst> selectors = new ArrayList<>();
         List<DocumentAst> documents = new ArrayList<>();
+        List<com.npdev.dsl.v1.ast.RoleAst> roles = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
@@ -248,6 +249,7 @@ public final class JsonModelParser {
                         "concepts[" + name + "].fields[" + fname + "].ui"
                 );
                 FileMetadataAst fileMetadata = parseFileMetadata(f.get("file"));
+                FieldPickerAst picker = parseFieldPicker(f.get("picker"));
 
                 fields.add(new FieldAst(
                         fname,
@@ -265,7 +267,8 @@ public final class JsonModelParser {
                         connectable,
                         renamedFrom,
                         fileMetadata,
-                        sensitive
+                        sensitive,
+                        picker
                 ));
             }
 
@@ -546,6 +549,8 @@ public final class JsonModelParser {
         selectors.addAll(parseSelectors(root.get("selectors")));
         documents.addAll(parseDocuments(root.get("documents")));
         ExternalAiAst externalAi = parseExternalAi(root.get("externalAi"));
+        SettingsAst settings = parseSettings(root.get("settings"));
+        roles.addAll(parseRoles(root.get("roles")));
 
         return new ModelAst(
                 namespace,
@@ -568,8 +573,31 @@ public final class JsonModelParser {
                 selectors,
                 documents,
                 parserWarnings,
-                externalAi
+                externalAi,
+                settings,
+                roles
         );
+    }
+
+    /** Wave 3 (RC-B1): parses the optional top-level {@code roles} array -- {@code name} +
+     *  {@code grants} (a list of platform permission names, checked structurally here only; see
+     *  {@link com.npdev.dsl.v1.ast.RoleAst}'s own javadoc for why the DSL module cannot validate
+     *  against the real Permission enum). */
+    private static List<com.npdev.dsl.v1.ast.RoleAst> parseRoles(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.RoleAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("roles must be an array");
+        }
+        for (JsonNode roleNode : node) {
+            out.add(new com.npdev.dsl.v1.ast.RoleAst(
+                    requiredText(roleNode, "name"),
+                    parseTextArray(roleNode.get("grants"))
+            ));
+        }
+        return out;
     }
 
     /** ADR-0009: parses the optional app-level externalAi block; null if the model declares none. */
@@ -583,6 +611,40 @@ public final class JsonModelParser {
         String egress = readText(node, "egress");
         List<String> vendors = parseTextArray(node.get("vendors"));
         return new ExternalAiAst(egress, vendors);
+    }
+
+    /** Move 6 Move A: parses the optional app-level settings block; null if the model declares none. */
+    private static SettingsAst parseSettings(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("settings must be an object");
+        }
+        String locale = readText(node, "locale");
+        Map<String, String> strings = new LinkedHashMap<>();
+        JsonNode stringsNode = node.get("strings");
+        if (stringsNode != null && stringsNode.isObject()) {
+            Iterator<String> keys = stringsNode.fieldNames();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                String value = readText(stringsNode, key);
+                if (value != null) {
+                    strings.put(key, value);
+                }
+            }
+        }
+        Integer pageRows = null;
+        String dateFormat = null;
+        JsonNode uiNode = node.get("ui");
+        if (uiNode != null && uiNode.isObject()) {
+            JsonNode pageRowsNode = uiNode.get("pageRows");
+            if (pageRowsNode != null && pageRowsNode.isNumber()) {
+                pageRows = pageRowsNode.asInt();
+            }
+            dateFormat = readText(uiNode, "dateFormat");
+        }
+        return new SettingsAst(locale, strings, pageRows, dateFormat);
     }
 
     private static List<QueryAst> parseQueries(JsonNode node) throws IOException {
@@ -605,8 +667,51 @@ public final class JsonModelParser {
                     parseTextArray(queryNode.get("permissionRequirements")),
                     readText(queryNode, "tracePolicy"),
                     readText(queryNode, "auditPolicy"),
-                    parseObjectMap(queryNode.get("metadata"))
+                    parseObjectMap(queryNode.get("metadata")),
+                    parseGroupByFields(queryNode.get("groupBy")),
+                    parseAggregateFunctions(queryNode.get("aggregates")),
+                    readText(queryNode, "having")
             ));
+        }
+        return out;
+    }
+
+    /** Move 10 B1: query.groupBy[] accepts either a bare field-name string or
+     *  {"field", "bucket"} for date/datetime bucketing -- normalized to one AST shape here. */
+    private static List<com.npdev.dsl.v1.ast.GroupByFieldAst> parseGroupByFields(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.GroupByFieldAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("query.groupBy must be an array");
+        }
+        for (JsonNode entry : node) {
+            if (entry.isTextual()) {
+                out.add(new com.npdev.dsl.v1.ast.GroupByFieldAst(entry.asText(), null));
+            } else if (entry.isObject()) {
+                out.add(new com.npdev.dsl.v1.ast.GroupByFieldAst(
+                        requiredText(entry, "field"), readText(entry, "bucket")));
+            } else {
+                throw new IOException("query.groupBy entries must be a string or {field, bucket} object");
+            }
+        }
+        return out;
+    }
+
+    /** Move 10 B1: query.aggregates[] -- {name, fn, field?}. */
+    private static List<com.npdev.dsl.v1.ast.AggregateFunctionAst> parseAggregateFunctions(JsonNode node)
+            throws IOException {
+        List<com.npdev.dsl.v1.ast.AggregateFunctionAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("query.aggregates must be an array");
+        }
+        for (JsonNode entry : node) {
+            out.add(new com.npdev.dsl.v1.ast.AggregateFunctionAst(
+                    requiredText(entry, "name"), requiredText(entry, "fn"), readText(entry, "field")));
         }
         return out;
     }
@@ -932,8 +1037,191 @@ public final class JsonModelParser {
                 parseTextArray(node.get("fields")),
                 parseAutoPanelComputed(node.get("computed")),
                 readText(node, "labelField"),
-                parseObjectMap(node.get("metadata"))
+                parseObjectMap(node.get("metadata")),
+                parseTransactionHooks(node.get("hooks")),
+                parseDerivedFields(node.get("derivedFields")),
+                parseRegions(node.get("regions")),
+                parseWorkbenchActions(node.get("actions")),
+                parseVisibleWhen(node.get("visibleWhen")),
+                parseBandPickers(node.get("bandPickers")),
+                parseAutoPanelDataSource(node.get("dataSource")),
+                parseUiState(node.get("uiState"))
         );
+    }
+
+    /** Move 11 W6: parses transaction.uiState, an object keyed by UI-state name. */
+    private static Map<String, UiStateControlAst> parseUiState(JsonNode node) throws IOException {
+        Map<String, UiStateControlAst> out = new LinkedHashMap<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isObject()) {
+            throw new IOException("transaction uiState must be an object keyed by UI-state name");
+        }
+        Iterator<String> names = node.fieldNames();
+        while (names.hasNext()) {
+            String name = names.next();
+            JsonNode stateNode = node.get(name);
+            out.put(name, new UiStateControlAst(
+                    name,
+                    readText(stateNode, "label"),
+                    parseTextArray(stateNode.get("values")),
+                    readText(stateNode, "default")
+            ));
+        }
+        return out;
+    }
+
+    /**
+     * Move 8 D3 (item G6): parses a surface's {@code dataSource.procedure} -- the typed hook that
+     * replaces the generated row source with a procedure's output instead of the bound concept's
+     * table (the {@code produce} disposition {@code PanelRuntime} already executes).
+     */
+    private static AutoPanelDataSourceAst parseAutoPanelDataSource(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("autoPanel surface dataSource must be an object");
+        }
+        return new AutoPanelDataSourceAst(readText(node, "procedure"));
+    }
+
+    /** Move 7 W1: parses transaction.actions, typed replacement for metadata.actions. */
+    private static List<WorkbenchActionAst> parseWorkbenchActions(JsonNode node) throws IOException {
+        List<WorkbenchActionAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("transaction actions must be an array");
+        }
+        for (JsonNode actionNode : node) {
+            out.add(new WorkbenchActionAst(
+                    requiredText(actionNode, "procedure"),
+                    readText(actionNode, "label"),
+                    parseTextArray(actionNode.get("inputFields")),
+                    parseWorkbenchActionApplyTo(actionNode.get("applyTo")),
+                    readText(actionNode, "afterAction"),
+                    readText(actionNode, "visibleWhen")
+            ));
+        }
+        return out;
+    }
+
+    private static WorkbenchActionApplyToAst parseWorkbenchActionApplyTo(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("transaction actions[].applyTo must be an object");
+        }
+        return new WorkbenchActionApplyToAst(
+                requiredText(node, "collection"),
+                requiredText(node, "mode"),
+                parseStringMap(node.get("map"))
+        );
+    }
+
+    /** Move 7 W1: parses transaction.visibleWhen, typed replacement for metadata.visibleWhen. */
+    private static Map<String, String> parseVisibleWhen(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return Map.of();
+        }
+        if (!node.isObject()) {
+            throw new IOException("transaction visibleWhen must be an object keyed by collection/band name");
+        }
+        return parseStringMap(node);
+    }
+
+    /** Move 7 W1: parses transaction.bandPickers, typed replacement for metadata.bandPickers. */
+    private static Map<String, WorkbenchBandPickerAst> parseBandPickers(JsonNode node) throws IOException {
+        Map<String, WorkbenchBandPickerAst> out = new LinkedHashMap<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isObject()) {
+            throw new IOException("transaction bandPickers must be an object keyed by band collection name");
+        }
+        Iterator<String> names = node.fieldNames();
+        while (names.hasNext()) {
+            String name = names.next();
+            JsonNode pickerNode = node.get(name);
+            String panel = readText(pickerNode, "panel");
+            String filter = readText(pickerNode, "filter");
+            boolean multiSelect = pickerNode.has("multiSelect") && pickerNode.get("multiSelect").asBoolean(false);
+            // B16/B19 (Move 9 A3): filter/multiSelect are the same two properties a plain FK field's
+            // picker declares -- structurally optional here; PanelValidation.validateBandPickers is
+            // the single source of truth for "panel is still required" (not relaxed in this pass).
+            out.put(name, new WorkbenchBandPickerAst(
+                    panel,
+                    readText(pickerNode, "label"),
+                    parseTextArray(pickerNode.get("columns")),
+                    filter,
+                    multiSelect
+            ));
+        }
+        return out;
+    }
+
+
+    /** Move 6 Move D: parses transaction.regions, an object keyed by derived region address. */
+    private static Map<String, RegionMountAst> parseRegions(JsonNode node) throws IOException {
+        Map<String, RegionMountAst> out = new LinkedHashMap<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isObject()) {
+            throw new IOException("transaction regions must be an object keyed by region address");
+        }
+        Iterator<String> addresses = node.fieldNames();
+        while (addresses.hasNext()) {
+            String address = addresses.next();
+            JsonNode regionNode = node.get(address);
+            out.put(address, new RegionMountAst(readText(regionNode, "render"), readText(regionNode, "component")));
+        }
+        return out;
+    }
+
+    /** Move 6 Move B: parses the optional closed-enum transaction.hooks block; null if absent. */
+    private static TransactionHooksAst parseTransactionHooks(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("transaction hooks must be an object");
+        }
+        return new TransactionHooksAst(
+                readText(node, "onLoad"),
+                readText(node, "onFieldChange"),
+                readText(node, "beforeAction"),
+                readText(node, "onValidate"),
+                readText(node, "onCommit")
+        );
+    }
+
+    /** Move 6 Move B: parses transaction.derivedFields, an object keyed by field name. */
+    private static List<DerivedFieldAst> parseDerivedFields(JsonNode node) throws IOException {
+        List<DerivedFieldAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isObject()) {
+            throw new IOException("transaction derivedFields must be an object keyed by field name");
+        }
+        Iterator<String> names = node.fieldNames();
+        while (names.hasNext()) {
+            String name = names.next();
+            JsonNode fieldNode = node.get(name);
+            out.add(new DerivedFieldAst(
+                    name,
+                    readText(fieldNode, "label"),
+                    readText(fieldNode, "tier"),
+                    readText(fieldNode, "expression"),
+                    readText(fieldNode, "procedure")
+            ));
+        }
+        return out;
     }
 
     private static List<AutoPanelComputedAst> parseAutoPanelComputed(JsonNode node) throws IOException {
@@ -1036,7 +1324,11 @@ public final class JsonModelParser {
             out.add(new GuidePageGadgetAst(
                     requiredText(gadgetNode, "name"),
                     requiredText(gadgetNode, "type"),
-                    readText(gadgetNode, "title")
+                    readText(gadgetNode, "title"),
+                    readText(gadgetNode, "query"),
+                    readText(gadgetNode, "x"),
+                    readText(gadgetNode, "y"),
+                    readText(gadgetNode, "series")
             ));
         }
         return out;
@@ -1061,7 +1353,8 @@ public final class JsonModelParser {
                     readText(dataSourceNode, "parentField"),
                     readText(dataSourceNode, "childField"),
                     parseTextArray(dataSourceNode.get("rowOps")),
-                    parseTextArray(dataSourceNode.get("addFormFields"))
+                    parseTextArray(dataSourceNode.get("addFormFields")),
+                    readText(dataSourceNode, "onRowLoad")
             ));
         }
         return out;
@@ -1243,6 +1536,16 @@ public final class JsonModelParser {
         Long maxSizeBytes = maxSizeNode != null && maxSizeNode.isNumber() ? maxSizeNode.asLong() : null;
         boolean multiple = node.has("multiple") && node.get("multiple").asBoolean(false);
         return new FileMetadataAst(contentTypes, maxSizeBytes, multiple);
+    }
+
+    /** B16/B19 (Move 9 A3): parses a field's `picker: {filter, multiSelect}` block. */
+    private static FieldPickerAst parseFieldPicker(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        String filter = readText(node, "filter");
+        boolean multiSelect = node.has("multiSelect") && node.get("multiSelect").asBoolean(false);
+        return new FieldPickerAst(filter, multiSelect);
     }
 
     /**

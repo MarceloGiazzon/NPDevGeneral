@@ -305,9 +305,91 @@
     },
     "externalAi": {
       "$ref": "#/$defs/externalAi"
+    },
+    "settings": {
+      "$ref": "#/$defs/settings"
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/role"
+      }
     }
   },
   "$defs": {
+    "role": {
+      "type": "object",
+      "required": [
+        "name",
+        "grants"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "grants": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Platform permission names (e.g. EXECUTE_FLOW, READ_EXECUTIONS) this role MAY hold -- a declared ceiling, not an assignment. Validated against the real Permission enum at runtime boot, not by this schema (the schema layer has no dependency on the kernel module)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Move 6 Move A: app-level locale/string-catalogue/ui settings. Absent entirely = the platform's own English string catalogue and defaults apply everywhere -- the fix for a fault line where generated apps mixed platform-default English with literal-fallback Portuguese baked into the compiler/templates (docs/MOVE6_TYPED_SURFACE_PLAN.md).",
+      "properties": {
+        "locale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Informational locale tag (e.g. \"pt-BR\"); does not itself select translations -- `strings` below is what actually overrides text."
+        },
+        "strings": {
+          "type": "object",
+          "description": "Overrides a subset of the platform's closed string-id catalogue. An id not listed here keeps the platform's English default.",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "propertyNames": {
+            "enum": [
+              "workbench.header",
+              "workbench.readOnly",
+              "workbench.editingDisabled",
+              "workbench.revert",
+              "workbench.revertTitle",
+              "workbench.saved",
+              "state.phase",
+              "action.select",
+              "action.add",
+              "action.cancel",
+              "action.save",
+              "action.delete",
+              "action.new"
+            ]
+          }
+        },
+        "ui": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pageRows": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "dateFormat": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
     "externalAi": {
       "type": "object",
       "additionalProperties": false,
@@ -514,11 +596,284 @@
           "type": "string",
           "minLength": 1
         },
+        "hooks": {
+          "$ref": "#/$defs/transactionHooks"
+        },
+        "derivedFields": {
+          "type": "object",
+          "description": "Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md): display-only values recomputed from the current Aggregate Workbench draft, keyed by field name. Retires the untyped transaction.metadata.derived list.",
+          "additionalProperties": {
+            "$ref": "#/$defs/transactionDerivedField"
+          }
+        },
+        "regions": {
+          "type": "object",
+          "description": "Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md §5): how an addressable region of the Aggregate Workbench is filled, keyed by the region's address DERIVED from the aggregate's own composition tree (e.g. \"itens\", \"itens.posicoes\"; \"header\" for the root header region) -- addresses are never authored, only referenced here. A region absent from this map renders generated (the platform default).",
+          "additionalProperties": {
+            "$ref": "#/$defs/regionMount"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workbenchAction"
+          },
+          "description": "Move 7 W1: typed replacement for transaction.metadata.actions. A typo'd key here now fails at schema time."
+        },
+        "visibleWhen": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Move 7 W1: typed replacement for transaction.metadata.visibleWhen. Keyed by collection/band name -> a client-tier predicate (e.g. \"$root.tipo != 'CANCELLED'\") gating whether that region renders. Presentation-only -- a hidden collection's rows still commit unchanged; this never gates persistence or authorization."
+        },
+        "uiState": {
+          "type": "object",
+          "description": "Move 11 W6: declared transient UI state, keyed by name, that a $ui.<name> visibleWhen predicate on this surface can read. Presentation-only -- never part of the commit payload.",
+          "additionalProperties": {
+            "$ref": "#/$defs/transactionUiState"
+          }
+        },
+        "bandPickers": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/workbenchBandPicker"
+          },
+          "description": "Move 7 W1: typed replacement for transaction.metadata.bandPickers. Keyed by band collection name. Move 8 item G2: intentionally unused today (1 fixture, 0 apps) -- typed-and-dormant is an acceptable resting state pending a real use case; do not manufacture artificial usage to close this out."
+        },
+        "dataSource": {
+          "$ref": "#/$defs/autoPanelDataSource"
+        },
         "metadata": {
           "type": "object"
         }
       },
       "additionalProperties": false
+    },
+    "autoPanelDataSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "procedure"
+      ],
+      "description": "Move 8 D3 (item G6, docs/MOVE8_CLOSE_TABLE_SPEC.md / Move 6 §B.7): on the Selection surface, REPLACES the generated row source with a procedure's output instead of the bound concept's table -- the `produce` disposition PanelRuntime already executes for hand-authored panels. Distinct from a data source's onRowLoad (Move 6 Move C), which ENRICHES rows the gateway already produced rather than replacing the row source.",
+      "properties": {
+        "procedure": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A declared procedure whose return value becomes this surface's rows."
+        }
+      }
+    },
+    "workbenchActionApplyTo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "collection",
+        "mode"
+      ],
+      "properties": {
+        "collection": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the collection in the draft that this action's result folds into."
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "appendRow"
+          ],
+          "description": "Only 'appendRow' is implemented. Prefer the action's `afterAction` procedure for anything else."
+        },
+        "map": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Target field name -> source path in the procedure result (e.g. \"localArmazenagemId\": \"$resultado.localArmazenagemId\")."
+        }
+      }
+    },
+    "workbenchAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "procedure"
+      ],
+      "properties": {
+        "procedure": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Declared procedure this action invokes over the draft."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Button caption. Defaults to the procedure name when omitted."
+        },
+        "inputFields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Scalar inputs collected from the user before invoking."
+        },
+        "applyTo": {
+          "$ref": "#/$defs/workbenchActionApplyTo"
+        },
+        "afterAction": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Procedure receiving {draft, result} and returning a patched draft. More general than applyTo; prefer it."
+        },
+        "visibleWhen": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Client-tier predicate, e.g. \"$root.tipo == 'Expedicao'\"."
+        }
+      }
+    },
+    "workbenchBandPicker": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "B16/B19 (Move 9 A3): filter/multiSelect are the same two properties a plain FK field's picker declares -- one shape for both surfaces. panel remains required (enforced by PanelValidation, not relaxed in this pass): a panel-less no-panel fetch path targeting the band's own concept directly is a real, precisely-named residual, not yet wired.",
+      "properties": {
+        "panel": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source Selection panel the client offers as a modal row picker (C6 \"Seleciona Ruas\")."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "filter": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Same picker.filter shape a plain FK field declares -- a single-clause predicate constraining candidate rows, enforced server-side."
+        },
+        "multiSelect": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "regionMount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "render"
+      ],
+      "description": "Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md §5): a mounted component edits THROUGH the store, never around it -- the client passes it a narrowed api (rows/columns/editRow/addRow/deleteRow/isDirty/revert/readOnly/invoke), never the whole draft or sibling regions, and it has no direct persistence path (Workbench Save commits the whole tree atomically).",
+      "properties": {
+        "render": {
+          "type": "string",
+          "enum": [
+            "generated",
+            "component"
+          ],
+          "description": "\"generated\" (the platform default; no need to declare it) renders the built-in grid/header. \"component\" mounts an app-owned JS component (see `component`) in place of the generated rendering for this region."
+        },
+        "component": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required when render is \"component\": the name registered via window.npdev.regions.register(name, {mount, update, unmount}) in the app's own web/regions/<name>.js (served the same way shell.js auto-injects an app-owned web/theme.css -- never inside npdev-generated/, which is hash-guarded)."
+        }
+      }
+    },
+    "transactionHooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md): closed-enum lifecycle hooks for an aggregate-bound AutoPanel's Aggregate Workbench transaction surface. onValidate/onCommit here are an alternate spelling of the aggregate-level onValidate/onCommit fields (a direct aggregate.onValidate/onCommit always wins if both are declared).",
+      "properties": {
+        "onLoad": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Invoked once after the workbench draft is first loaded, before the first render; the returned state becomes the initial draft."
+        },
+        "onFieldChange": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Retires transaction.metadata.recompute. Invoked (debounced) on every cell edit; the returned state patches the draft."
+        },
+        "beforeAction": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A guard invoked before any declared workbench action's procedure runs; a non-ok result aborts the action with no invoke."
+        },
+        "onValidate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "onCommit": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "transactionDerivedField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tier": {
+          "type": "string",
+          "enum": [
+            "client",
+            "server"
+          ],
+          "default": "client",
+          "description": "client (default): `expression` is evaluated locally by the browser (the same narrow expression language the retired `derived` key used). server: `procedure` is invoked over the draft."
+        },
+        "expression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "procedure": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "transactionUiState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "values"
+      ],
+      "description": "Move 11 W6 (C1, docs/MOVE3_G2_CHECKLISTS.md): one piece of declared TRANSIENT UI state on an Aggregate Workbench surface -- a record-type toggle and its kind. transaction.visibleWhen's grammar ($root.<field> == '<literal>') reads persisted root fields only, and a record-type toggle is not a persisted field of anything, so there was nothing for the predicate to read. This adds a second resolvable ROOT for the SAME grammar ($ui.<name>), not a second dialect. PRESENTATION-ONLY: UI state never reaches the commit payload and must never gate persistence or authorization -- a surface hidden by $ui.* whose rows exist still commits them unchanged.",
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "The closed set of values this control offers; a $ui.<name> predicate may only compare against one of these."
+        },
+        "default": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Seeded on load. Defaults to values[0] when absent."
+        }
+      }
     },
     "selector": {
       "type": "object",
@@ -807,7 +1162,7 @@
         "sensitive": {
           "type": "boolean",
           "default": false,
-          "description": "ADR-0009: marks this field for redaction before it may appear in any external-AI review pack (docs/adr/ADR-0009-external-ai-delegation.md). Authoring-time, and specific to pack building -- independent of the platform's runtime EventRedactionPolicy family."
+          "description": "ADR-0009: marks this field for redaction before it may appear in any external-AI review pack (docs/adr/ADR-0009-external-ai-delegation.md). Authoring-time, and specific to pack building -- independent of the platform's runtime EventRedactionPolicy family. Redaction is by FIELD NAME and applies globally: marking any concept's field sensitive redacts that key name in traces and event payloads across all concepts. Deliberately over-redacts rather than risk missing an occurrence."
         },
         "connectable": {
           "type": "string",
@@ -818,6 +1173,22 @@
         "renamedFrom": {
           "type": "string",
           "description": "Declares this field is a rename of a previously-existing column with this name, so a regeneration's schema-lifecycle classifies it as a rename instead of an unrelated remove+add."
+        },
+        "picker": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "B16/B19 (Move 9 A3): declares a filter/multiSelect for this field's auto-picker (a reference field's browse/pick dialog). Same two properties a band's bandPickers entry accepts -- one picker shape for both surfaces.",
+          "properties": {
+            "filter": {
+              "type": "string",
+              "minLength": 1,
+              "description": "A single-clause predicate (\"field == literal\" / \"field != literal\", the same grammar visibleWhen/query.where already use) constraining the picker's candidate rows. Enforced server-side against the query, not client-side decoration."
+            },
+            "multiSelect": {
+              "type": "boolean",
+              "default": false
+            }
+          }
         },
         "file": {
           "type": "object",
@@ -2564,6 +2935,82 @@
         },
         "metadata": {
           "type": "object"
+        },
+        "groupBy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/groupByField"
+          }
+        },
+        "aggregates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/aggregateFunction"
+          }
+        },
+        "having": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "groupByField": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "required": [
+            "field",
+            "bucket"
+          ],
+          "properties": {
+            "field": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bucket": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "aggregateFunction": {
+      "type": "object",
+      "required": [
+        "name",
+        "fn"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fn": {
+          "type": "string",
+          "enum": [
+            "count",
+            "sum",
+            "avg",
+            "min",
+            "max"
+          ]
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false
@@ -3034,6 +3481,11 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "onRowLoad": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Move 6 Move C (docs/MOVE6_TYPED_SURFACE_PLAN.md §4): a procedure that ENRICHES the rows this data source produced -- adds fields, never reorders/adds/drops rows (a count or id mismatch is a hard runtime failure, not silent truncation). Distinct from `procedure` above, which REPLACES the row source entirely."
         }
       },
       "additionalProperties": false
@@ -3354,9 +3806,33 @@
         },
         "type": {
           "type": "string",
-          "minLength": 1
+          "enum": [
+            "recent-items",
+            "context-info",
+            "page-fragment",
+            "kpi",
+            "bar",
+            "line",
+            "table"
+          ]
         },
         "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "x": {
+          "type": "string",
+          "minLength": 1
+        },
+        "y": {
+          "type": "string",
+          "minLength": 1
+        },
+        "series": {
           "type": "string",
           "minLength": 1
         }

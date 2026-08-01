@@ -76,6 +76,17 @@ tasks.register('validateModel', JavaExec) {
     if (project.hasProperty('reportOut')) {
         cliArgs << '--out' << project.getProperty('reportOut')
     }
+    // R81 (ledger/items/REG-81.yml): opt-in pass-through for ReleaseGateValidator.validatePromotion,
+    // wired into ModelValidatorMain behind --releaseGate/--targetTruthLevel (both required together).
+    if (project.hasProperty('releaseGate')) {
+        cliArgs << '--releaseGate'
+    }
+    if (project.hasProperty('targetTruthLevel')) {
+        cliArgs << "--targetTruthLevel=${project.getProperty('targetTruthLevel')}"
+    }
+    if (project.hasProperty('evidencePath')) {
+        cliArgs << "--evidencePath=${project.getProperty('evidencePath')}"
+    }
     args cliArgs
 }
 

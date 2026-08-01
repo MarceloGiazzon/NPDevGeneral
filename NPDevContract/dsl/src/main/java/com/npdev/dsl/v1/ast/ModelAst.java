@@ -29,6 +29,8 @@ public final class ModelAst {
     private final List<DocumentAst> documents;
     private final List<String> parserWarnings;
     private final ExternalAiAst externalAi;
+    private final SettingsAst settings;
+    private final List<RoleAst> roles;
 
     public ModelAst(String namespace, String version, List<? extends EntityAst> entities) {
         this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -258,7 +260,7 @@ public final class ModelAst {
                 selectors, documents, parserWarnings, null);
     }
 
-    /** ADR-0009: canonical constructor, adds {@code externalAi} (app-level egress settings). */
+    /** ADR-0009: adds {@code externalAi} (app-level egress settings). */
     public ModelAst(
             String namespace,
             String dslVersion,
@@ -282,6 +284,68 @@ public final class ModelAst {
             List<String> parserWarnings,
             ExternalAiAst externalAi
     ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                selectors, documents, parserWarnings, externalAi, null);
+    }
+
+    /** Move 6 Move A: adds {@code settings} (app-level locale/strings/ui). */
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<SelectorAst> selectors,
+            List<DocumentAst> documents,
+            List<String> parserWarnings,
+            ExternalAiAst externalAi,
+            SettingsAst settings
+    ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                selectors, documents, parserWarnings, externalAi, settings, List.of());
+    }
+
+    /** Wave 3 (RC-B1): canonical constructor, adds {@code roles} (app-defined role -> permission
+     *  ceiling declarations). */
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<SelectorAst> selectors,
+            List<DocumentAst> documents,
+            List<String> parserWarnings,
+            ExternalAiAst externalAi,
+            SettingsAst settings,
+            List<RoleAst> roles
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -303,6 +367,8 @@ public final class ModelAst {
         this.documents = new ArrayList<>(documents);
         this.parserWarnings = new ArrayList<>(parserWarnings);
         this.externalAi = externalAi;
+        this.settings = settings;
+        this.roles = roles == null ? new ArrayList<>() : new ArrayList<>(roles);
     }
 
     public String getNamespace() { return namespace; }
@@ -388,6 +454,17 @@ public final class ModelAst {
     /** ADR-0009: app-level external-AI delegation settings, or null if the model declares none (denied by default). */
     public ExternalAiAst getExternalAi() {
         return externalAi;
+    }
+
+    /** Move 6 Move A: app-level settings, or null if the model declares none (platform defaults only). */
+    public SettingsAst getSettings() {
+        return settings;
+    }
+
+    /** Wave 3 (RC-B1): app-defined roles, empty when the model declares none (the built-in
+     *  USER/OPERATOR/ADMIN trio then behaves exactly as before this feature existed). */
+    public List<RoleAst> getRoles() {
+        return Collections.unmodifiableList(roles);
     }
 
     private static List<ConceptAst> toConcepts(List<? extends EntityAst> source) {

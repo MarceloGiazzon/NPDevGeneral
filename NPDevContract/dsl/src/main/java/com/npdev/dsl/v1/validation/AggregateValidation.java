@@ -26,6 +26,7 @@ import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
 import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
+import com.npdev.dsl.v1.ast.TransactionHooksAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
@@ -103,8 +104,43 @@ final class AggregateValidation {
                     entitiesByLower,
                     new HashSet<>(),
                     errors);
-            validateOnCommit(aggregate, proceduresByLower, errors);
-            validateOnValidate(aggregate, proceduresByLower, errors);
+            // Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2): an aggregate-bound AutoPanel's
+            // transaction.hooks is an alternate spelling for onValidate/onCommit -- validate whichever
+            // one actually takes effect (a direct aggregate.onValidate/onCommit always wins), and
+            // separately validate the three hook positions with no aggregate-level equivalent.
+            TransactionHooksAst hooks = transactionHooksFor(aggregate.name(), modelAst.getAutoPanels());
+            validateOnCommit(aggregate, hooks, proceduresByLower, errors);
+            validateOnValidate(aggregate, hooks, proceduresByLower, errors);
+            validateHookProcedure(aggregate.name(), "onLoad",
+                    hooks == null ? null : hooks.onLoad(), proceduresByLower, errors);
+            validateHookProcedure(aggregate.name(), "onFieldChange",
+                    hooks == null ? null : hooks.onFieldChange(), proceduresByLower, errors);
+            validateHookProcedure(aggregate.name(), "beforeAction",
+                    hooks == null ? null : hooks.beforeAction(), proceduresByLower, errors);
+        }
+    }
+
+    private static TransactionHooksAst transactionHooksFor(String aggregateName, List<AutoPanelAst> autoPanels) {
+        if (aggregateName == null) {
+            return null;
+        }
+        for (AutoPanelAst autoPanel : autoPanels) {
+            if (aggregateName.equalsIgnoreCase(autoPanel.aggregate()) && autoPanel.transaction() != null) {
+                return autoPanel.transaction().hooks();
+            }
+        }
+        return null;
+    }
+
+    private static void validateHookProcedure(
+            String aggregateName, String position, String procedureName,
+            Map<String, ProcedureAst> proceduresByLower, List<String> errors) {
+        if (!hasText(procedureName)) {
+            return;
+        }
+        if (!proceduresByLower.containsKey(normalize(procedureName))) {
+            errors.add("Aggregate " + aggregateName + ": transaction.hooks." + position
+                    + " names a procedure not found: " + procedureName);
         }
     }
 
@@ -122,18 +158,21 @@ final class AggregateValidation {
      * {@code maxRecursionDepth} runtime guard (DefaultProcedureExecutor) rather than solved here.
      */
     private static void validateOnCommit(
-            AggregateAst aggregate, Map<String, ProcedureAst> proceduresByLower, List<String> errors) {
-        if (!hasText(aggregate.onCommit())) {
+            AggregateAst aggregate, TransactionHooksAst hooks, Map<String, ProcedureAst> proceduresByLower,
+            List<String> errors) {
+        String onCommit = hasText(aggregate.onCommit())
+                ? aggregate.onCommit() : (hooks == null ? null : hooks.onCommit());
+        if (!hasText(onCommit)) {
             return;
         }
-        String normalized = normalize(aggregate.onCommit());
+        String normalized = normalize(onCommit);
         ProcedureAst procedure = proceduresByLower.get(normalized);
         if (procedure == null) {
-            errors.add("Aggregate " + aggregate.name() + ": onCommit names a procedure not found: " + aggregate.onCommit());
+            errors.add("Aggregate " + aggregate.name() + ": onCommit names a procedure not found: " + onCommit);
             return;
         }
         if (callsProcedure(procedure.steps(), normalized)) {
-            errors.add("Aggregate " + aggregate.name() + ": onCommit procedure " + aggregate.onCommit()
+            errors.add("Aggregate " + aggregate.name() + ": onCommit procedure " + onCommit
                     + " directly calls itself (recursive onCommit is not allowed)");
         }
     }
@@ -146,18 +185,21 @@ final class AggregateValidation {
      * same direct-self-recursion linting check as {@code onCommit}, for the same reason.
      */
     private static void validateOnValidate(
-            AggregateAst aggregate, Map<String, ProcedureAst> proceduresByLower, List<String> errors) {
-        if (!hasText(aggregate.onValidate())) {
+            AggregateAst aggregate, TransactionHooksAst hooks, Map<String, ProcedureAst> proceduresByLower,
+            List<String> errors) {
+        String onValidate = hasText(aggregate.onValidate())
+                ? aggregate.onValidate() : (hooks == null ? null : hooks.onValidate());
+        if (!hasText(onValidate)) {
             return;
         }
-        String normalized = normalize(aggregate.onValidate());
+        String normalized = normalize(onValidate);
         ProcedureAst procedure = proceduresByLower.get(normalized);
         if (procedure == null) {
-            errors.add("Aggregate " + aggregate.name() + ": onValidate names a procedure not found: " + aggregate.onValidate());
+            errors.add("Aggregate " + aggregate.name() + ": onValidate names a procedure not found: " + onValidate);
             return;
         }
         if (callsProcedure(procedure.steps(), normalized)) {
-            errors.add("Aggregate " + aggregate.name() + ": onValidate procedure " + aggregate.onValidate()
+            errors.add("Aggregate " + aggregate.name() + ": onValidate procedure " + onValidate
                     + " directly calls itself (recursive onValidate is not allowed)");
         }
     }

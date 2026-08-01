@@ -272,6 +272,167 @@ class AggregateWorkbenchExpansionTest {
     }
 
     /**
+     * Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2): the typed transaction.hooks block
+     * (onLoad/onFieldChange/beforeAction) surfaces onto the workbench descriptor the same way the
+     * retired transaction.metadata.recompute always projected onto {@code wb.get("recompute")} --
+     * onFieldChange is this move's typed spelling of that same key.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void typedHooksSurfaceOntoTheWorkbenchDescriptor() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.hooks2", "version": "1.0",
+              "concepts": [
+                { "name": "Movimento", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                { "name": "MovimentoItem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "movimentoId", "type": "uuid" } ] }
+              ],
+              "procedures": [
+                { "name": "SeedContext", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] },
+                { "name": "RecalcularTotais", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] },
+                { "name": "ValidarSugestao", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
+              ],
+              "aggregates": [
+                { "name": "Movimento", "root": "Movimento",
+                  "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
+                  ] }
+              ],
+              "autoPanels": [ { "aggregate": "Movimento",
+                "transaction": { "hooks": {
+                  "onLoad": "SeedContext",
+                  "onFieldChange": "RecalcularTotais",
+                  "beforeAction": "ValidarSugestao"
+                } } } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        CompiledPanel workbench = model.getPanels().stream()
+                .filter(p -> "MovimentoWorkbench".equals(p.name())).findFirst()
+                .orElseThrow(() -> new AssertionError("expected MovimentoWorkbench"));
+        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
+
+        assertEquals("SeedContext", wb.get("onLoad"));
+        assertEquals("RecalcularTotais", wb.get("recompute"),
+                "hooks.onFieldChange projects onto the SAME wb.recompute key metadata.recompute always used");
+        assertEquals("ValidarSugestao", wb.get("beforeAction"));
+    }
+
+    /**
+     * Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4): a typed transaction.derivedFields entry
+     * carries its declared tier onto the workbench descriptor -- "client" (default) keeps the
+     * expression the browser evaluates locally; "server" instead carries the procedure to invoke.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void typedDerivedFieldsCarryTierAndServerProcedure() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.derived2", "version": "1.0",
+              "concepts": [
+                { "name": "Movimento", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                { "name": "MovimentoItem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "movimentoId", "type": "uuid" } ] }
+              ],
+              "procedures": [
+                { "name": "CalcularSaldoFiscal", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
+              ],
+              "aggregates": [
+                { "name": "Movimento", "root": "Movimento",
+                  "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
+                  ] }
+              ],
+              "autoPanels": [ { "aggregate": "Movimento",
+                "transaction": { "derivedFields": {
+                  "origemTotal": { "expression": "sum(itens[].quantidade)" },
+                  "saldoFiscal": { "tier": "server", "procedure": "CalcularSaldoFiscal", "label": "Saldo Fiscal" }
+                } } } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        CompiledPanel workbench = model.getPanels().stream()
+                .filter(p -> "MovimentoWorkbench".equals(p.name())).findFirst()
+                .orElseThrow(() -> new AssertionError("expected MovimentoWorkbench"));
+        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
+        List<Map<String, Object>> derived = (List<Map<String, Object>>) wb.get("derived");
+        assertEquals(2, derived.size());
+
+        Map<String, Object> origemTotal = derived.stream()
+                .filter(d -> "origemTotal".equals(d.get("name"))).findFirst().orElseThrow();
+        assertEquals("client", origemTotal.get("tier"), "tier defaults to client when not declared");
+        assertEquals("sum(itens[].quantidade)", origemTotal.get("expression"));
+        assertNull(origemTotal.get("procedure"), "a client-tier field carries no procedure");
+
+        Map<String, Object> saldoFiscal = derived.stream()
+                .filter(d -> "saldoFiscal".equals(d.get("name"))).findFirst().orElseThrow();
+        assertEquals("server", saldoFiscal.get("tier"));
+        assertEquals("CalcularSaldoFiscal", saldoFiscal.get("procedure"));
+        assertEquals("Saldo Fiscal", saldoFiscal.get("label"));
+        assertNull(saldoFiscal.get("expression"), "a server-tier field carries no expression");
+    }
+
+    /**
+     * Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4): afterAction is declared PER-ACTION
+     * (unlike the other, transaction-wide hooks) because different actions fold their invoke()
+     * results differently -- the same reason applyTo always has been per-action. It must survive
+     * compilation alongside an unrelated action's applyTo untouched.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void perActionAfterActionSurvivesAlongsideApplyTo() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.afteraction", "version": "1.0",
+              "concepts": [
+                { "name": "Movimento", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                { "name": "MovimentoItem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "movimentoId", "type": "uuid" } ] }
+              ],
+              "aggregates": [
+                { "name": "Movimento", "root": "Movimento",
+                  "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
+                  ] }
+              ],
+              "autoPanels": [ { "aggregate": "Movimento",
+                "transaction": { "metadata": { "actions": [
+                  { "label": "Aplicar Sugestao", "procedure": "SugerirDestino", "afterAction": "AplicarSugestao" },
+                  { "label": "Sugerir", "procedure": "Sugerir",
+                    "applyTo": { "collection": "itens", "mode": "appendRow", "map": { "a": "$b" } } },
+                  { "label": "Neither", "procedure": "Plain" }
+                ] } } } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        CompiledPanel workbench = model.getPanels().stream()
+                .filter(p -> "MovimentoWorkbench".equals(p.name())).findFirst()
+                .orElseThrow(() -> new AssertionError("expected MovimentoWorkbench"));
+        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
+        List<Map<String, Object>> actions = (List<Map<String, Object>>) wb.get("actions");
+        assertEquals(3, actions.size());
+
+        assertEquals("AplicarSugestao", actions.get(0).get("afterAction"));
+        assertNull(actions.get(0).get("applyTo"), "an action with afterAction need not also declare applyTo");
+
+        assertNull(actions.get(1).get("afterAction"), "an action with only applyTo has no afterAction");
+        assertNotNull(actions.get(1).get("applyTo"), "an unrelated action's applyTo survives untouched");
+
+        assertNull(actions.get(2).get("afterAction"));
+        assertNull(actions.get(2).get("applyTo"));
+    }
+
+    /**
      * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2C / Gap 2, docs/MOVE3_G2_CHECKLISTS.md): a
      * declared visibleWhen predicate must survive the compiler on a top-level section, a nested
      * band, AND an action -- all keyed off the same {@code transaction.metadata.visibleWhen} map
@@ -343,5 +504,191 @@ class AggregateWorkbenchExpansionTest {
         assertEquals("$root.tipo == 'RECEBIMENTO'", actions.get(0).get("visibleWhen"),
                 "a declared action visibleWhen must survive verbatim");
         assertNull(actions.get(1).get("visibleWhen"), "an action without visibleWhen has none -- always shown");
+    }
+
+    /**
+     * Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md §5): every region -- header, each top-level
+     * section, each band -- gets a DERIVED address stamped on it unconditionally, and a
+     * transaction.regions entry for that address attaches render/component onto the SAME
+     * descriptor node the client already reads. An address with no declared entry stays
+     * "generated" (no render/component keys at all -- the workbench descriptor for an app using
+     * none of this is unchanged).
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void regionsCarryDerivedAddressesAndDeclaredComponentMounts() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.regions", "version": "1.0",
+              "concepts": [
+                { "name": "Movimento", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                { "name": "MovimentoItem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "movimentoId", "type": "uuid" } ] },
+                { "name": "Posicao", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "itemId", "type": "uuid" } ] }
+              ],
+              "aggregates": [
+                { "name": "Movimento", "root": "Movimento",
+                  "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned",
+                      "collections": [
+                        { "name": "posicoes", "concept": "Posicao", "childField": "itemId", "ownership": "owned" }
+                      ] }
+                  ] }
+              ],
+              "autoPanels": [ { "aggregate": "Movimento",
+                "transaction": { "regions": {
+                  "itens.posicoes": { "render": "component", "component": "posicao-grid" }
+                } } } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        CompiledPanel workbench = model.getPanels().stream()
+                .filter(p -> "MovimentoWorkbench".equals(p.name())).findFirst()
+                .orElseThrow(() -> new AssertionError("expected MovimentoWorkbench"));
+        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
+
+        Map<String, Object> header = (Map<String, Object>) wb.get("header");
+        assertEquals("header", header.get("address"));
+        assertNull(header.get("render"), "header stays generated -- no render/component keys at all");
+
+        List<Map<String, Object>> sections = (List<Map<String, Object>>) wb.get("sections");
+        Map<String, Object> itens = sections.get(0);
+        assertEquals("itens", itens.get("address"));
+        assertNull(itens.get("render"), "itens has no declared region entry -- stays generated");
+
+        List<Map<String, Object>> bands = (List<Map<String, Object>>) itens.get("bands");
+        Map<String, Object> posicoes = bands.get(0);
+        assertEquals("itens.posicoes", posicoes.get("address"));
+        assertEquals("component", posicoes.get("render"));
+        assertEquals("posicao-grid", posicoes.get("component"));
+    }
+
+    /**
+     * Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): the typed transaction.actions/visibleWhen/
+     * bandPickers surface onto the SAME workbench descriptor keys the untyped
+     * transaction.metadata.actions/visibleWhen/bandPickers always projected onto -- a typo'd key
+     * here now fails at schema time instead of silently doing nothing.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void typedActionsVisibleWhenAndBandPickersSurviveOntoTheWorkbenchDescriptor() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.typed7", "version": "1.0",
+              "concepts": [
+                { "name": "Expedicao", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "tipo", "type": "string" } ] },
+                { "name": "ExpedicaoItem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "expedicaoId", "type": "uuid" } ] },
+                { "name": "MovtoOrigem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "itemSeq", "type": "uuid" }, { "name": "local", "type": "string" } ] }
+              ],
+              "procedures": [
+                { "name": "GerarDemanda", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
+              ],
+              "aggregates": [
+                { "name": "Expedicao", "root": "Expedicao",
+                  "collections": [
+                    { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
+                      "collections": [
+                        { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" }
+                      ] }
+                  ] }
+              ],
+              "autoPanels": [ { "aggregate": "Expedicao",
+                "transaction": {
+                  "actions": [
+                    { "procedure": "GerarDemanda", "label": "Gerar Demanda", "inputFields": ["tipo"],
+                      "visibleWhen": "$root.tipo == 'RECEBIMENTO'",
+                      "applyTo": { "collection": "itens", "mode": "appendRow", "map": { "expedicaoId": "$resultado.id" } } }
+                  ],
+                  "visibleWhen": {
+                    "itens": "$root.tipo == 'RECEBIMENTO'",
+                    "origens": "$root.tipo != 'CANCELADA'"
+                  },
+                  "bandPickers": {
+                    "origens": { "panel": "MovtoOrigemSelection", "label": "Seleciona Ruas", "columns": ["local"] }
+                  }
+                } } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        CompiledPanel workbench = model.getPanels().stream()
+                .filter(p -> "ExpedicaoWorkbench".equals(p.name())).findFirst()
+                .orElseThrow(() -> new AssertionError("expected ExpedicaoWorkbench"));
+        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
+
+        List<Map<String, Object>> actions = (List<Map<String, Object>>) wb.get("actions");
+        assertEquals(1, actions.size());
+        Map<String, Object> action = actions.get(0);
+        assertEquals("GerarDemanda", action.get("procedure"));
+        assertEquals("Gerar Demanda", action.get("label"));
+        assertEquals(List.of("tipo"), action.get("inputFields"));
+        assertEquals("$root.tipo == 'RECEBIMENTO'", action.get("visibleWhen"));
+        Map<String, Object> applyTo = (Map<String, Object>) action.get("applyTo");
+        assertNotNull(applyTo, "a valid typed applyTo must survive compilation");
+        assertEquals("itens", applyTo.get("collection"));
+
+        List<Map<String, Object>> sections = (List<Map<String, Object>>) wb.get("sections");
+        Map<String, Object> itens = sections.get(0);
+        assertEquals("$root.tipo == 'RECEBIMENTO'", itens.get("visibleWhen"));
+        List<Map<String, Object>> bands = (List<Map<String, Object>>) itens.get("bands");
+        Map<String, Object> origens = bands.get(0);
+        assertEquals("$root.tipo != 'CANCELADA'", origens.get("visibleWhen"));
+        Map<String, Object> picker = (Map<String, Object>) origens.get("picker");
+        assertNotNull(picker, "typed bandPickers entry must survive compilation");
+        assertEquals("MovtoOrigemSelection", picker.get("panel"));
+        assertEquals(List.of("local"), picker.get("columns"));
+    }
+
+    /**
+     * Move 7 W1: when BOTH the typed and untyped spellings are declared on the same surface, the
+     * typed one wins entirely (same precedence rule Move 6 established for hooks/derivedFields) --
+     * the untyped metadata is ignored outright, not merged.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void typedActionsWinOverUntypedMetadataWhenBothDeclared() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.typed7prec", "version": "1.0",
+              "concepts": [
+                { "name": "Movimento", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                { "name": "MovimentoItem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "movimentoId", "type": "uuid" } ] }
+              ],
+              "aggregates": [
+                { "name": "Movimento", "root": "Movimento",
+                  "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
+                  ] }
+              ],
+              "autoPanels": [ { "aggregate": "Movimento",
+                "transaction": {
+                  "actions": [ { "procedure": "TypedProcedure", "label": "Typed Wins" } ],
+                  "metadata": { "actions": [ { "procedure": "UntypedProcedure", "label": "Untyped Loses" } ] }
+                } } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        CompiledPanel workbench = model.getPanels().stream()
+                .filter(p -> "MovimentoWorkbench".equals(p.name())).findFirst()
+                .orElseThrow(() -> new AssertionError("expected MovimentoWorkbench"));
+        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
+        List<Map<String, Object>> actions = (List<Map<String, Object>>) wb.get("actions");
+        assertEquals(1, actions.size(), "typed actions replace the untyped list entirely, not merge with it");
+        assertEquals("TypedProcedure", actions.get(0).get("procedure"));
     }
 }

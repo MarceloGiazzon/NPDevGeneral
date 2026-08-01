@@ -16,6 +16,14 @@ import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
 import com.npdev.dsl.v1.compiled.CompiledPanelLayout;
+import com.npdev.dsl.v1.compiled.CompiledSettings;
+import com.npdev.dsl.v1.compiled.CompiledTransactionHooks;
+import com.npdev.dsl.v1.compiled.CompiledDerivedField;
+import com.npdev.dsl.v1.compiled.CompiledRegionMount;
+import com.npdev.dsl.v1.compiled.CompiledUiStateControl;
+import com.npdev.dsl.v1.compiled.CompiledWorkbenchAction;
+import com.npdev.dsl.v1.compiled.CompiledWorkbenchActionApplyTo;
+import com.npdev.dsl.v1.compiled.CompiledWorkbenchBandPicker;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -46,9 +54,12 @@ final class AutoPanelExpander {
      * @param autoPanel        a concept-bound compiled AutoPanel
      * @param fields           declared fields of the bound concept, in order
      * @param promptsByConcept normalized-concept-name -> its Prompt picker (for FK auto-wiring on forms)
+     * @param settings         Move 6 Move A: resolves default action labels (Save/Delete/New) from the
+     *                         app's string catalogue instead of a literal baked in here
      */
     static List<CompiledPanel> expand(
-            CompiledAutoPanel autoPanel, List<FieldAst> fields, Map<String, PromptRef> promptsByConcept) {
+            CompiledAutoPanel autoPanel, List<FieldAst> fields, Map<String, PromptRef> promptsByConcept,
+            CompiledSettings settings) {
         List<CompiledPanel> panels = new ArrayList<>();
         String concept = autoPanel.concept();
         if (concept == null || concept.isBlank()) {
@@ -68,13 +79,14 @@ final class AutoPanelExpander {
                 : "/" + concept.toLowerCase(Locale.ROOT);
 
         if (surfaceEnabled(autoPanel, "selection")) {
-            panels.add(selectionPanel(autoPanel, concept, base, baseRoute, fieldNames));
+            panels.add(selectionPanel(autoPanel, concept, base, baseRoute, fieldNames, settings));
         }
         if (surfaceEnabled(autoPanel, "detail")) {
             panels.add(detailPanel(autoPanel, concept, base, baseRoute, fieldNames));
         }
         if (surfaceEnabled(autoPanel, "transaction")) {
-            panels.add(transactionPanel(autoPanel, concept, base, baseRoute, fields, idField, promptsByConcept));
+            panels.add(transactionPanel(
+                    autoPanel, concept, base, baseRoute, fields, idField, promptsByConcept, settings));
         }
         if (surfaceEnabled(autoPanel, "prompt")) {
             panels.add(promptPanel(autoPanel, concept, base, baseRoute, fieldNames, idField));
@@ -95,7 +107,7 @@ final class AutoPanelExpander {
      */
     static List<CompiledPanel> expandAggregateWorkbench(
             CompiledAutoPanel autoPanel, CompiledAggregate aggregate, Map<String, List<String>> fieldsByConcept,
-            Map<String, ConceptAst> conceptsByName) {
+            Map<String, ConceptAst> conceptsByName, CompiledSettings settings) {
         String base = hasText(autoPanel.name()) ? autoPanel.name() : aggregate.name();
         String baseRoute = hasText(autoPanel.route())
                 ? autoPanel.route()
@@ -107,19 +119,35 @@ final class AutoPanelExpander {
         Map<String, Object> workbench = new LinkedHashMap<>();
         workbench.put("aggregate", aggregate.name());
         workbench.put("root", rootConcept);
+        // Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md §5): addressable regions -- addresses are
+        // DERIVED from the aggregate's own composition tree ("header", each top-level collection
+        // name, each "<collection>.<band>" pair), never authored. transaction.regions (keyed by
+        // that derived address) declares how a region not rendered generated is filled.
+        Map<String, CompiledRegionMount> regions = autoPanel.transaction() == null
+                ? Map.of() : autoPanel.transaction().regions();
         Map<String, Object> header = new LinkedHashMap<>();
         header.put("fields", columnsFor(fieldsByConcept, rootConcept));
+        attachRegion(header, "header", regions);
         workbench.put("header", header);
         // Per-band pickers (C6 "Seleciona …"): declared under transaction.metadata.bandPickers keyed by band
         // collection name; each attaches a source Selection panel the client offers as a modal row picker.
-        Map<String, Map<String, Object>> bandPickers = bandPickers(autoPanel.transaction());
+        Map<String, Map<String, Object>> bandPickers = bandPickers(autoPanel.transaction(), settings);
         // Conditional surface by toggle (Move 5, Wave 2C / Gap 2, docs/MOVE3_G2_CHECKLISTS.md): declared
         // under transaction.metadata.visibleWhen keyed by collection/band name, same untyped mechanism as
         // bandPickers above. PRESENTATION-ONLY -- see visibleWhenByCollection()'s own doc comment.
         Map<String, String> visibleWhen = visibleWhenByCollection(autoPanel.transaction());
+        // Move 11 W6 (C1, docs/MOVE3_G2_CHECKLISTS.md): declared TRANSIENT UI state -- a record-type
+        // toggle and its kind -- so the SAME predicate grammar above can resolve a second root,
+        // `$ui.<name>`, alongside `$root.<field>`. The grammar is unchanged; only its resolvable
+        // roots widen from {root} to {root, ui}. Presentation-only, exactly like visibleWhen itself:
+        // the client holds this outside the draft, so it can never reach a commit payload.
+        List<Map<String, Object>> uiState = uiStateControls(autoPanel.transaction());
+        if (!uiState.isEmpty()) {
+            workbench.put("uiState", uiState);
+        }
         List<Map<String, Object>> sections = new ArrayList<>();
         for (CompiledAggregateCollection collection : aggregate.collections()) {
-            sections.add(sectionDescriptor(collection, fieldsByConcept, bandPickers, visibleWhen));
+            sections.add(sectionDescriptor(collection, fieldsByConcept, bandPickers, visibleWhen, regions));
         }
         workbench.put("sections", sections);
         // Lifecycle gating (ADR-0005 / P5): the root concept's declared state machine drives the
@@ -135,11 +163,20 @@ final class AutoPanelExpander {
         if (!actions.isEmpty()) {
             workbench.put("actions", actions);
         }
-        // Reactive recompute (C7/P3): a procedure named under transaction.metadata.recompute is invoked
-        // (debounced) by the client on every cell edit, patching derived fields as the user types.
+        // Reactive recompute (C7/P3): a procedure named under transaction.hooks.onFieldChange (or the
+        // retired transaction.metadata.recompute) is invoked (debounced) by the client on every cell
+        // edit, patching derived fields as the user types.
         String recompute = recomputeProcedure(autoPanel.transaction());
         if (recompute != null) {
             workbench.put("recompute", recompute);
+        }
+        // Move 6 Move B: transaction.hooks.onLoad/beforeAction (docs/MOVE6_TYPED_SURFACE_PLAN.md).
+        CompiledTransactionHooks hooks = autoPanel.transaction() == null ? null : autoPanel.transaction().hooks();
+        if (hooks != null && hasText(hooks.onLoad())) {
+            workbench.put("onLoad", hooks.onLoad().trim());
+        }
+        if (hooks != null && hasText(hooks.beforeAction())) {
+            workbench.put("beforeAction", hooks.beforeAction().trim());
         }
         // Derived display fields (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 2B / M6's "balanced
         // banner", docs/MOVE3_G2_CHECKLISTS.md): a display-only value the client computes from the
@@ -172,7 +209,7 @@ final class AutoPanelExpander {
         CompiledPanel selectionPanel = new CompiledPanel(
                 selectionPanelName, baseRoute, rootConcept,
                 List.of(conceptDataSource(rootConcept)), selLayout, List.of(), null, null,
-                List.of(newRecordAction(rootConcept)), Map.of(),
+                List.of(newRecordAction(rootConcept, settings)), Map.of(),
                 surfaceMetadata(base, "selection", rootConcept), null);
 
         return List.of(workbenchPanel, selectionPanel);
@@ -194,6 +231,34 @@ final class AutoPanelExpander {
     private static List<Map<String, Object>> workbenchActions(CompiledAutoPanelSurface transaction) {
         List<Map<String, Object>> actions = new ArrayList<>();
         if (transaction == null) {
+            return actions;
+        }
+        // Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): transaction.actions (typed, schema-validated
+        // -- a typo'd key now fails at schema time) is the typed spelling; the untyped
+        // transaction.metadata.actions list is retired but still accepted when actions is absent (one
+        // release of dual support, migrated by `npdev migrate`).
+        if (!transaction.actions().isEmpty()) {
+            for (CompiledWorkbenchAction typedAction : transaction.actions()) {
+                if (!hasText(typedAction.procedure())) {
+                    continue;
+                }
+                Map<String, Object> action = new LinkedHashMap<>();
+                action.put("label", hasText(typedAction.label())
+                        ? typedAction.label().trim() : typedAction.procedure().trim());
+                action.put("procedure", typedAction.procedure().trim());
+                action.put("inputFields", new ArrayList<>(typedAction.inputFields()));
+                Map<String, Object> applyTo = typedWorkbenchActionApplyTo(typedAction.applyTo());
+                if (applyTo != null) {
+                    action.put("applyTo", applyTo);
+                }
+                if (hasText(typedAction.afterAction())) {
+                    action.put("afterAction", typedAction.afterAction().trim());
+                }
+                if (hasText(typedAction.visibleWhen())) {
+                    action.put("visibleWhen", typedAction.visibleWhen().trim());
+                }
+                actions.add(action);
+            }
             return actions;
         }
         Object declared = transaction.metadata().get("actions");
@@ -225,6 +290,15 @@ final class AutoPanelExpander {
             Map<String, Object> applyTo = workbenchActionApplyTo(map.get("applyTo"));
             if (applyTo != null) {
                 action.put("applyTo", applyTo);
+            }
+            // Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4): per-action afterAction subsumes
+            // applyTo -- instead of a static client-side field mapping, a procedure receiving
+            // {draft, result} and returning a patched draft. Declared per-action (unlike the other,
+            // transaction-wide hooks) because different actions fold their results differently, same
+            // as applyTo always has been.
+            String afterAction = workbenchActionAfterAction(map.get("afterAction"));
+            if (afterAction != null) {
+                action.put("afterAction", afterAction);
             }
             Object visibleWhen = map.get("visibleWhen");
             if (visibleWhen != null && !String.valueOf(visibleWhen).isBlank()) {
@@ -274,9 +348,44 @@ final class AutoPanelExpander {
         return applyTo;
     }
 
+    /** Move 7 W1: the typed-record twin of {@link #workbenchActionApplyTo(Object)}, same validation. */
+    private static Map<String, Object> typedWorkbenchActionApplyTo(CompiledWorkbenchActionApplyTo applyTo) {
+        if (applyTo == null || !hasText(applyTo.collection()) || !"appendRow".equals(applyTo.mode())) {
+            return null;
+        }
+        Map<String, String> fieldMap = new LinkedHashMap<>(applyTo.map());
+        if (fieldMap.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> descriptor = new LinkedHashMap<>();
+        descriptor.put("collection", applyTo.collection().trim());
+        descriptor.put("mode", "appendRow");
+        descriptor.put("map", fieldMap);
+        return descriptor;
+    }
+
+    /**
+     * Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4): an action's declared afterAction
+     * procedure name, accepted as either a bare string or {@code {procedure}} object (the same
+     * dual shape {@code transaction.hooks} entries could take, kept consistent here even though
+     * afterAction itself lives per-action rather than in {@code hooks}). Null if undeclared.
+     */
+    private static String workbenchActionAfterAction(Object raw) {
+        if (raw instanceof Map<?, ?> map) {
+            Object procedure = map.get("procedure");
+            return procedure == null || String.valueOf(procedure).isBlank()
+                    ? null : String.valueOf(procedure).trim();
+        }
+        if (raw == null || String.valueOf(raw).isBlank()) {
+            return null;
+        }
+        return String.valueOf(raw).trim();
+    }
+
     private static Map<String, Object> sectionDescriptor(
             CompiledAggregateCollection collection, Map<String, List<String>> fieldsByConcept,
-            Map<String, Map<String, Object>> bandPickers, Map<String, String> visibleWhen) {
+            Map<String, Map<String, Object>> bandPickers, Map<String, String> visibleWhen,
+            Map<String, CompiledRegionMount> regions) {
         Map<String, Object> section = new LinkedHashMap<>();
         section.put("collection", collection.name());
         section.put("concept", collection.concept());
@@ -286,6 +395,7 @@ final class AutoPanelExpander {
         if (sectionVisibleWhen != null) {
             section.put("visibleWhen", sectionVisibleWhen);
         }
+        attachRegion(section, collection.name(), regions);
         List<Map<String, Object>> bands = new ArrayList<>();
         for (CompiledAggregateCollection child : collection.collections()) {
             Map<String, Object> band = new LinkedHashMap<>();
@@ -297,14 +407,45 @@ final class AutoPanelExpander {
             if (picker != null) {
                 band.put("picker", picker);
             }
-            String bandVisibleWhen = visibleWhen.get(child.name());
+            // REG-99 (found live, Move 11 Wave -1.1): a band's visibleWhen must be looked up by its
+            // DERIVED ADDRESS -- "<collection>.<band>" -- which is the only spelling
+            // PanelValidation.derivedAddresses() accepts, and the same address attachRegion uses one
+            // line below. This read the BARE band name, so the two halves never met: the dotted key
+            // validated and was then silently dropped here, while a bare key would have been read
+            // here and rejected by validation as an unrecognized address. Band-level visibleWhen was
+            // unreachable in every spelling from the day Move 7 W1 typed it.
+            //
+            // The bare-name fallback is kept deliberately, and only as a fallback: the retired
+            // untyped transaction.metadata.visibleWhen map predates derived addresses, so a model
+            // still on that spelling keeps working until it migrates.
+            String bandVisibleWhen = visibleWhen.get(collection.name() + "." + child.name());
+            if (bandVisibleWhen == null) {
+                bandVisibleWhen = visibleWhen.get(child.name());
+            }
             if (bandVisibleWhen != null) {
                 band.put("visibleWhen", bandVisibleWhen);
             }
+            attachRegion(band, collection.name() + "." + child.name(), regions);
             bands.add(band);
         }
         section.put("bands", bands);
         return section;
+    }
+
+    /**
+     * Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md §5): stamps {@code address} onto every
+     * region descriptor unconditionally (so the client can key its mount registry precisely, even
+     * for a generated region), and {@code render}/{@code component} only when the address has a
+     * declared, non-generated {@code transaction.regions} entry -- an app that uses none of this
+     * gets a workbench descriptor byte-for-byte identical to before this move.
+     */
+    private static void attachRegion(Map<String, Object> descriptor, String address, Map<String, CompiledRegionMount> regions) {
+        descriptor.put("address", address);
+        CompiledRegionMount region = regions.get(address);
+        if (region != null && "component".equals(region.render())) {
+            descriptor.put("render", "component");
+            descriptor.put("component", region.component());
+        }
     }
 
     /**
@@ -320,9 +461,49 @@ final class AutoPanelExpander {
      * skips rendering the region -- it never touches {@code store.toDraft()}'s contents). Anything
      * stronger (e.g. clearing hidden rows) would silently delete data via the reconcile path.
      */
+    /**
+     * Move 11 W6: the declared {@code transaction.uiState} controls, as an ordered descriptor list
+     * the client renders (one control per entry) and seeds from {@code default}. Entries with a
+     * blank key or no declared values are skipped -- a toggle with nothing to toggle between would
+     * render an empty control and make every {@code $ui.<name>} predicate on it unsatisfiable.
+     */
+    private static List<Map<String, Object>> uiStateControls(CompiledAutoPanelSurface transaction) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (transaction == null || transaction.uiState().isEmpty()) {
+            return out;
+        }
+        for (Map.Entry<String, CompiledUiStateControl> entry : transaction.uiState().entrySet()) {
+            CompiledUiStateControl control = entry.getValue();
+            if (!hasText(entry.getKey()) || control == null || control.values().isEmpty()) {
+                continue;
+            }
+            Map<String, Object> descriptor = new LinkedHashMap<>();
+            descriptor.put("name", entry.getKey().trim());
+            descriptor.put("label", hasText(control.label()) ? control.label().trim() : entry.getKey().trim());
+            descriptor.put("values", new ArrayList<>(control.values()));
+            descriptor.put("default", hasText(control.defaultValue())
+                    ? control.defaultValue().trim() : control.values().get(0));
+            out.add(descriptor);
+        }
+        return out;
+    }
+
     private static Map<String, String> visibleWhenByCollection(CompiledAutoPanelSurface transaction) {
         Map<String, String> out = new LinkedHashMap<>();
         if (transaction == null) {
+            return out;
+        }
+        // Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): transaction.visibleWhen (typed,
+        // schema-validated) is the typed spelling; the untyped transaction.metadata.visibleWhen map
+        // is retired but still accepted when visibleWhen is absent (one release of dual support,
+        // migrated by `npdev migrate`).
+        if (!transaction.visibleWhen().isEmpty()) {
+            for (Map.Entry<String, String> entry : transaction.visibleWhen().entrySet()) {
+                if (!hasText(entry.getKey()) || !hasText(entry.getValue())) {
+                    continue;
+                }
+                out.put(entry.getKey().trim(), entry.getValue().trim());
+            }
             return out;
         }
         Object declared = transaction.metadata().get("visibleWhen");
@@ -350,6 +531,12 @@ final class AutoPanelExpander {
         if (transaction == null) {
             return null;
         }
+        // Move 6 Move B: transaction.hooks.onFieldChange is the typed spelling; the untyped
+        // transaction.metadata.recompute is retired but still accepted (docs/MOVE6_TYPED_SURFACE_PLAN.md
+        // §B.5 -- one release of dual support, migrated by `npdev migrate`).
+        if (transaction.hooks() != null && hasText(transaction.hooks().onFieldChange())) {
+            return transaction.hooks().onFieldChange().trim();
+        }
         Object declared = transaction.metadata().get("recompute");
         if (declared instanceof Map<?, ?> map) {
             declared = map.get("procedure");
@@ -376,6 +563,32 @@ final class AutoPanelExpander {
         if (transaction == null) {
             return out;
         }
+        // Move 6 Move B: transaction.derivedFields (typed, keyed by name, tier-aware) is the typed
+        // spelling; the untyped transaction.metadata.derived list is retired but still accepted when
+        // derivedFields is absent (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.5).
+        if (!transaction.derivedFields().isEmpty()) {
+            for (CompiledDerivedField d : transaction.derivedFields()) {
+                if (!hasText(d.name())) {
+                    continue;
+                }
+                String tier = hasText(d.tier()) ? d.tier().trim() : "client";
+                boolean server = "server".equals(tier);
+                if (server ? !hasText(d.procedure()) : !hasText(d.expression())) {
+                    continue; // missing the value the declared tier actually needs
+                }
+                Map<String, Object> field = new LinkedHashMap<>();
+                field.put("name", d.name().trim());
+                field.put("label", hasText(d.label()) ? d.label().trim() : d.name().trim());
+                field.put("tier", tier);
+                if (server) {
+                    field.put("procedure", d.procedure().trim());
+                } else {
+                    field.put("expression", d.expression().trim());
+                }
+                out.add(field);
+            }
+            return out;
+        }
         Object declared = transaction.metadata().get("derived");
         if (!(declared instanceof List<?> list)) {
             return out;
@@ -395,6 +608,7 @@ final class AutoPanelExpander {
             field.put("name", String.valueOf(name).trim());
             field.put("label", label == null || String.valueOf(label).isBlank()
                     ? String.valueOf(name).trim() : String.valueOf(label).trim());
+            field.put("tier", "client");
             field.put("expression", String.valueOf(expression).trim());
             out.add(field);
         }
@@ -407,9 +621,42 @@ final class AutoPanelExpander {
      * offers as a modal picker (C6 "Seleciona Ruas"). Entries lacking a panel are skipped.
      */
     @SuppressWarnings("unchecked")
-    private static Map<String, Map<String, Object>> bandPickers(CompiledAutoPanelSurface transaction) {
+    private static Map<String, Map<String, Object>> bandPickers(
+            CompiledAutoPanelSurface transaction, CompiledSettings settings) {
         Map<String, Map<String, Object>> pickers = new LinkedHashMap<>();
         if (transaction == null) {
+            return pickers;
+        }
+        // Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): transaction.bandPickers (typed,
+        // schema-validated) is the typed spelling; the untyped transaction.metadata.bandPickers map
+        // is retired but still accepted when bandPickers is absent (one release of dual support,
+        // migrated by `npdev migrate`).
+        if (!transaction.bandPickers().isEmpty()) {
+            for (Map.Entry<String, CompiledWorkbenchBandPicker> entry : transaction.bandPickers().entrySet()) {
+                CompiledWorkbenchBandPicker typedPicker = entry.getValue();
+                if (!hasText(typedPicker.panel())) {
+                    continue;
+                }
+                Map<String, Object> picker = new LinkedHashMap<>();
+                picker.put("panel", typedPicker.panel().trim());
+                picker.put("label", hasText(typedPicker.label())
+                        ? typedPicker.label().trim() : settings.resolveString("action.select"));
+                if (!typedPicker.columns().isEmpty()) {
+                    picker.put("columns", new ArrayList<>(typedPicker.columns()));
+                }
+                // B16/B19 (Move 9 A3): the SAME two properties a plain FK field's picker declares
+                // (schema/AST/compiled layer accepts a panel-less entry too -- PanelValidation still
+                // requires panel today, so that shape never reaches here; a no-panel fetch path
+                // targeting the band's own concept directly is a real, precisely-named residual, not
+                // yet wired). With a panel given, filter/multiSelect ride along as declared metadata.
+                if (hasText(typedPicker.filter())) {
+                    picker.put("filter", typedPicker.filter().trim());
+                }
+                if (typedPicker.multiSelect()) {
+                    picker.put("multiSelect", true);
+                }
+                pickers.put(entry.getKey(), picker);
+            }
             return pickers;
         }
         Object declared = transaction.metadata().get("bandPickers");
@@ -428,7 +675,7 @@ final class AutoPanelExpander {
             picker.put("panel", String.valueOf(panel).trim());
             Object label = spec.get("label");
             picker.put("label", label == null || String.valueOf(label).isBlank()
-                    ? "Selecionar" : String.valueOf(label));
+                    ? settings.resolveString("action.select") : String.valueOf(label));
             Object columns = spec.get("columns");
             if (columns instanceof List<?> cols) {
                 picker.put("columns", cols.stream().map(String::valueOf).toList());
@@ -520,16 +767,29 @@ final class AutoPanelExpander {
     }
 
     private static CompiledPanel selectionPanel(
-            CompiledAutoPanel autoPanel, String concept, String base, String baseRoute, List<String> fieldNames) {
+            CompiledAutoPanel autoPanel, String concept, String base, String baseRoute, List<String> fieldNames,
+            CompiledSettings settings) {
         List<String> columns = override(autoPanel.selection(), CompiledAutoPanelSurface::columns, fieldNames);
         Map<String, Object> metadata = surfaceMetadata(base, "selection", concept);
         List<String> layoutCols = withComputed(autoPanel.selection(), columns, metadata);
         CompiledPanelLayout layout = new CompiledPanelLayout("table", List.of(), layoutCols, Map.of());
         return new CompiledPanel(
                 base + "Selection", baseRoute, concept,
-                List.of(conceptDataSource(concept)), layout, List.of(), null, null,
-                List.of(newRecordAction(concept)),
+                List.of(conceptDataSource(concept, selectionDataSourceProcedure(autoPanel))),
+                layout, List.of(), null, null,
+                List.of(newRecordAction(concept, settings)),
                 Map.of(), metadata, null);
+    }
+
+    /**
+     * Move 8 D3 (item G6): the declared {@code selection.dataSource.procedure}, or null if the
+     * Selection surface's generated row source stays concept-bound (unchanged default behavior).
+     */
+    private static String selectionDataSourceProcedure(CompiledAutoPanel autoPanel) {
+        if (autoPanel.selection() == null || autoPanel.selection().dataSource() == null) {
+            return null;
+        }
+        return autoPanel.selection().dataSource().procedure();
     }
 
     private static CompiledPanel detailPanel(
@@ -572,7 +832,8 @@ final class AutoPanelExpander {
 
     private static CompiledPanel transactionPanel(
             CompiledAutoPanel autoPanel, String concept, String base, String baseRoute,
-            List<FieldAst> fields, String idField, Map<String, PromptRef> promptsByConcept) {
+            List<FieldAst> fields, String idField, Map<String, PromptRef> promptsByConcept,
+            CompiledSettings settings) {
         List<String> defaultEditable = new ArrayList<>();
         for (FieldAst field : fields) {
             if (idField == null || !field.getName().equalsIgnoreCase(idField)) {
@@ -582,8 +843,8 @@ final class AutoPanelExpander {
         List<String> formFields = override(autoPanel.transaction(), CompiledAutoPanelSurface::fields, defaultEditable);
         List<CompiledPanelFieldBinding> bindings = bindings(formFields, true);
         List<CompiledPanelAction> actions = List.of(
-                mutationAction("save", "Save", concept, "save"),
-                mutationAction("delete", "Delete", concept, "delete"));
+                mutationAction("save", settings.resolveString("action.save"), concept, "save"),
+                mutationAction("delete", settings.resolveString("action.delete"), concept, "delete"));
 
         Map<String, Object> metadata = surfaceMetadata(base, "transaction", concept);
         // Computed columns are read-only display fields on the form (no editable binding).
@@ -682,7 +943,19 @@ final class AutoPanelExpander {
     }
 
     private static CompiledPanelDataSource conceptDataSource(String concept) {
-        return new CompiledPanelDataSource("rows", concept, null, null, Map.of(), null, null, null);
+        return conceptDataSource(concept, null);
+    }
+
+    /**
+     * Move 8 D3 (item G6): {@code procedure}, when declared, threads through as the {@code produce}
+     * disposition {@code PanelRuntime} already executes for hand-authored panels -- it REPLACES the
+     * row source the concept table would otherwise supply. {@code concept} is still carried
+     * unconditionally (unchanged precedent: {@link com.npdev.dsl.v1.compiler.ModelCompiler}'s own
+     * {@code compilePanelDataSources} does the same for hand-authored panels, where {@code concept}
+     * and {@code procedure} may coexist).
+     */
+    private static CompiledPanelDataSource conceptDataSource(String concept, String procedure) {
+        return new CompiledPanelDataSource("rows", concept, null, procedure, Map.of(), null, null, null);
     }
 
     private static List<CompiledPanelFieldBinding> bindings(List<String> fields, boolean editable) {
@@ -693,8 +966,8 @@ final class AutoPanelExpander {
         return out;
     }
 
-    private static CompiledPanelAction newRecordAction(String concept) {
-        return mutationAction("new", "New", concept, "create");
+    private static CompiledPanelAction newRecordAction(String concept, CompiledSettings settings) {
+        return mutationAction("new", settings.resolveString("action.new"), concept, "create");
     }
 
     private static CompiledPanelAction mutationAction(String name, String label, String concept, String operation) {
