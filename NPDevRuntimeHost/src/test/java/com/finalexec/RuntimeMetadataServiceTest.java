@@ -3,7 +3,10 @@ package com.finalexec;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finalexec.npdev.service.RuntimeMetadataService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -104,5 +107,40 @@ class RuntimeMetadataServiceTest {
                 "compiled-metadata.json's catalog set has drifted from metadata/index.json's -- one of "
                         + "the two fixtures was regenerated and the other was not. Regenerate both from "
                         + "the same compiled model (see docs/REMEDIATION_PLAN.md R-D3).");
+    }
+
+    /**
+     * REG-103 (Move 12 P2.1): LC-C2's premise is writing metadata into a RUNNING app, but this
+     * service loaded both catalogs from the classpath ONLY -- baked into the jar, so a label/panel
+     * edit could never become visible without a rebuild. Proves the external-path override (mirroring
+     * {@code NPDevModelProvider}'s own convention) actually takes precedence over the classpath copy,
+     * for BOTH files -- not just one accidentally matching by coincidence.
+     */
+    @Test
+    void externalCompiledMetadataAndIndexFilesOverrideTheClasspathCopy(@TempDir Path tempDir) throws Exception {
+        Path compiledMetadataFile = tempDir.resolve("compiled-metadata.json");
+        Path metadataIndexFile = tempDir.resolve("index.json");
+        Files.writeString(compiledMetadataFile,
+                "{\"namespace\":\"external-override-ns\",\"dslVersion\":\"9.9.9\",\"version\":\"1.2.3\"}");
+        Files.writeString(metadataIndexFile,
+                "{\"metadataManifestVersion\":\"ext-v1\",\"metadataVersion\":\"ext-v2\"}");
+
+        RuntimeMetadataService externallyConfigured = new RuntimeMetadataService(
+                new ObjectMapper(), compiledMetadataFile.toString(), metadataIndexFile.toString());
+
+        Map<String, Object> overview = externallyConfigured.overview();
+
+        assertEquals("external-override-ns", overview.get("namespace"),
+                "an external compiled-metadata.json at the configured path must win over the classpath copy");
+        assertEquals("9.9.9", overview.get("dslVersion"));
+        assertEquals("1.2.3", overview.get("modelVersion"));
+        assertEquals("ext-v1", overview.get("metadataManifestVersion"),
+                "an external metadata/index.json at the configured path must win over the classpath copy");
+        assertEquals("ext-v2", overview.get("metadataVersion"));
+
+        // The control: this service's own sibling test (loadsRuntimeMetadataOverviewFromGeneratedClasspathArtifacts,
+        // using the 1-arg constructor -- exactly what all other call sites in this suite already use)
+        // asserts namespace "canonical.clinicdemo" from the classpath fixture, still passing unchanged
+        // -- proving "no property set" behaviour is byte-identical to before this fix.
     }
 }

@@ -2,10 +2,15 @@ package com.finalexec.npdev.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -55,15 +60,40 @@ public class RuntimeMetadataService {
             Map.entry("invocations", "invocations")
     );
 
-    private final ObjectMapper objectMapper;
+    // REG-103 (Move 12 P2.1): LC-C2's premise is writing metadata into a RUNNING app, but this
+    // service loaded npdev/compiled-metadata.json and npdev/metadata/index.json via ClassPathResource
+    // ONLY -- baked into the jar at build time, so a label/panel edit could never become visible
+    // without a rebuild. Mirrors NPDevModelProvider's own external-path-with-classpath-fallback
+    // convention exactly (same relative-path shape, same "external wins if present" order) rather
+    // than inventing a second configuration convention.
+    private static final String COMPILED_METADATA_PATH_DEFAULT =
+            "npdev-generated/src/main/resources/npdev/compiled-metadata.json";
+    private static final String METADATA_INDEX_PATH_DEFAULT =
+            "npdev-generated/src/main/resources/npdev/metadata/index.json";
 
+    private final ObjectMapper objectMapper;
+    private final Path externalCompiledMetadataPath;
+    private final Path externalMetadataIndexPath;
+
+    /** Byte-identical to the pre-REG-103 behaviour: no external path configured, classpath only. */
     public RuntimeMetadataService(ObjectMapper objectMapper) {
+        this(objectMapper, COMPILED_METADATA_PATH_DEFAULT, METADATA_INDEX_PATH_DEFAULT);
+    }
+
+    @Autowired
+    public RuntimeMetadataService(
+            ObjectMapper objectMapper,
+            @Value("${npdev.compiled-metadata.path:" + COMPILED_METADATA_PATH_DEFAULT + "}") String compiledMetadataPath,
+            @Value("${npdev.metadata-index.path:" + METADATA_INDEX_PATH_DEFAULT + "}") String metadataIndexPath
+    ) {
         this.objectMapper = objectMapper;
+        this.externalCompiledMetadataPath = Paths.get(compiledMetadataPath).toAbsolutePath().normalize();
+        this.externalMetadataIndexPath = Paths.get(metadataIndexPath).toAbsolutePath().normalize();
     }
 
     public Map<String, Object> overview() {
-        Map<String, Object> compiledMetadata = loadJsonMap(COMPILED_METADATA_CLASSPATH);
-        Map<String, Object> index = loadJsonMap(METADATA_INDEX_CLASSPATH);
+        Map<String, Object> compiledMetadata = loadJsonMap(COMPILED_METADATA_CLASSPATH, externalCompiledMetadataPath);
+        Map<String, Object> index = loadJsonMap(METADATA_INDEX_CLASSPATH, externalMetadataIndexPath);
         List<Map<String, Object>> catalogs = extractCatalogEntries(index);
 
         Map<String, Object> response = baseResponse();
@@ -81,7 +111,7 @@ public class RuntimeMetadataService {
     }
 
     public Map<String, Object> metadataIndex() {
-        Map<String, Object> index = new LinkedHashMap<>(loadJsonMap(METADATA_INDEX_CLASSPATH));
+        Map<String, Object> index = new LinkedHashMap<>(loadJsonMap(METADATA_INDEX_CLASSPATH, externalMetadataIndexPath));
         index.put("endpointVersion", ENDPOINT_VERSION);
         index.put("catalogCount", extractCatalogEntries(index).size());
         index.put("metadataIndexPath", METADATA_INDEX_CLASSPATH);
@@ -458,6 +488,24 @@ public class RuntimeMetadataService {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to load runtime metadata classpath resource: " + classpathLocation, e);
         }
+    }
+
+    /**
+     * REG-103: the same {@code classpathLocation} fallback as {@link #loadJsonMap(String)}, but an
+     * {@code externalPath} that exists on disk wins -- same precedence order as
+     * {@code NPDevModelProvider}. Only {@code compiled-metadata.json} and {@code metadata/index.json}
+     * (the two catalogs the ledger item names) get an external override; {@link #loadManifest} and
+     * {@code schema-realization-manifest.json} stay classpath-only, out of this item's scope.
+     */
+    private Map<String, Object> loadJsonMap(String classpathLocation, Path externalPath) {
+        if (externalPath != null && Files.exists(externalPath)) {
+            try (InputStream inputStream = Files.newInputStream(externalPath)) {
+                return objectMapper.readValue(inputStream, new TypeReference<LinkedHashMap<String, Object>>() {});
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to load runtime metadata external file: " + externalPath, e);
+            }
+        }
+        return loadJsonMap(classpathLocation);
     }
 
     private Map<String, Object> castMap(Object value) {

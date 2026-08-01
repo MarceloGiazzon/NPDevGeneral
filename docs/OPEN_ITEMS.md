@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**108 item(s) migrated: 2 open/partial, 106 done.**
+**108 item(s) migrated: 1 open/partial, 107 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -15,7 +15,7 @@
 | REG-100 | CLOSED -- three silent-answer sites found by the X0 audit, now fixed: a $ref that could not resolve wrote null (while the SAME class threw for id refs), a runQuery step naming an undeclared query returned an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate went unvalidated | BUG | MEDIUM | DONE | 2026-07-31 |
 | REG-101 | A declared query can carry parameters[] and a ':name' bind placeholder in its where, and NOTHING substitutes it -- pack-sample's SalesByStore has therefore returned zero rows since it was written, and the DSL accepts the shape with no error | BUG | MEDIUM | DONE | 2026-07-31 |
 | REG-102 | npdev migration diff (and the MCP tool npdev_migration_diff that shells out to it) is completely non-functional -- it always throws CONFIG_MIGRATIONS_DISABLED, because it passes generator CLI flags that the generator's own arg parser unconditionally rejects | BUG | MEDIUM | DONE | 2026-07-31 |
-| REG-103 | RuntimeMetadataService's compiled-metadata.json/npdev/metadata/* catalogs (concept/panel UI labels among them) are classpath-only with no external-path override, unlike NPDevModelProvider's compiled-model.json -- a metadata-only model change cannot be hot-swapped into a running app without also touching these, or a static frontend asset | GAP | LOW | OPEN | 2026-08-01 |
+| REG-103 | RuntimeMetadataService's compiled-metadata.json/npdev/metadata/* catalogs (concept/panel UI labels among them) are classpath-only with no external-path override, unlike NPDevModelProvider's compiled-model.json -- a metadata-only model change cannot be hot-swapped into a running app without also touching these, or a static frontend asset | GAP | LOW | DONE | 2026-08-01 |
 | REG-104 | RolePermissions.toRole() returned null for any app-defined role name and the caller loop `continue`d, so an app-declared role (e.g. WarehouseManager) silently granted nothing at the platform-permission layer -- no error, no log line (X0-5) | BUG | MEDIUM | DONE | 2026-08-01 |
 | REG-105 | Move 10 B1's groupBy/aggregates query primitive is single-concept only -- no cross-concept join, so a dashboard rollup that needs one (e.g. WmsOffice's retired analytics.html 'Estoque por Produto' widget: sum LocalArmazenagemLote.quantidade grouped via a join through Lote to Produto) cannot be expressed | GAP | LOW | OPEN | 2026-08-01 |
 | REG-106 | SchemaLifecycleExecutor.migrate() skipped flyway.repair() whenever the schema fingerprint was unchanged, but V1's generated migration SQL text can drift (comments/emission order) independently of the structural fingerprint -- a plain model.json edit with zero concept/table changes crashed the boot with a Flyway 'Migration checksum mismatch' on the next regeneration | BUG | MEDIUM | DONE | 2026-08-01 |
@@ -495,7 +495,7 @@ destructive pair above.
 
 ### REG-103 — RuntimeMetadataService's compiled-metadata.json/npdev/metadata/* catalogs (concept/panel UI labels among them) are classpath-only with no external-path override, unlike NPDevModelProvider's compiled-model.json -- a metadata-only model change cannot be hot-swapped into a running app without also touching these, or a static frontend asset
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-08-01)
 **Verification:** VERIFIED_LIVE
 **Source:** Found while building MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 1.3 (LC-C2)'s metadata-only fast
 path (scripts/appgen/Update-AppMetadata.ps1). The fast path correctly hot-swaps the app's
@@ -544,6 +544,48 @@ hot-swapped CompiledModel bean correctly); this item only narrows which subset o
 changes the fast path currently makes visibly live. Rated LOW: the mechanism is safe (refuses
 correctly, never silently applies a schema-shaped change, never leaves the app unable to boot) --
 it is a completeness gap, not a correctness or safety one.
+
+---
+
+**Move 12 P2.1 closure (2026-08-01):** implemented the fix shape named above, for the two
+top-level catalogs (`compiled-metadata.json`, `metadata/index.json`). Added a second, `@Autowired`
+constructor taking
+`@Value("${npdev.compiled-metadata.path:npdev-generated/src/main/resources/npdev/compiled-metadata.json}")`
+and `@Value("${npdev.metadata-index.path:npdev-generated/src/main/resources/npdev/metadata/index.json}")`
+-- the SAME `npdev-generated/src/main/resources/npdev/...` relative-path convention
+`NPDevModelProvider`'s own default (`compiledModelPathDefault`) uses, confirmed against a real
+generated app's directory layout. `loadJsonMap` gained a `(classpathLocation, externalPath)`
+overload: `Files.exists(externalPath)` wins, else falls back to the original
+`ClassPathResource(classpathLocation)` unchanged. The pre-existing single-arg
+`RuntimeMetadataService(ObjectMapper)` constructor now delegates to the new one with the same
+default path strings, so its behavior is unchanged for all 12 existing call sites (none of which
+have `npdev-generated/` at their working directory, so `Files.exists` is false and every call
+falls through to classpath exactly as before).
+
+**Narrowed, not fully closed**, and said so rather than overclaimed: `loadManifest`'s per-catalog
+manifest files (`npdev/metadata/*.manifest.json`, e.g. `panels.manifest.json` -- where an
+individual field/panel LABEL actually lives) and `schema-realization-manifest.json` stay
+classpath-only, out of THIS item's named scope (only `compiled-metadata.json` and
+`metadata/index.json` were named). The static frontend assets
+(`static/npdev-business-ui/generated-ui-manifest.json`, `app.js`, `shell.js`) remain unaddressed,
+as this item's own text already said when filed. `sourceRoot`/`generatedFrom` in the response
+payload still say "classpath:/npdev" unconditionally even when the external path was used -- a
+cosmetic gap, not fixed here. So the panel-title-not-live browser finding this item documents is
+NOT yet resolved end-to-end; this closes the prerequisite (the loading mechanism), not the whole
+chain.
+
+Verified live against a real generated app
+(`D:\WorkSpace\NPDev\Build\generated-finalapps\pack-sample`, RuntimeHost libs synced via
+`scripts/runtimehost/sync-runtimehost-libs.ps1`): `compileJava`/`compileTestJava` succeed; the new
+`RuntimeMetadataServiceTest.externalCompiledMetadataAndIndexFilesOverrideTheClasspathCopy` (a real
+temp-dir JSON file, pointed at via the new constructor directly) proves the external file wins for
+BOTH catalogs; the file's other 5 pre-existing tests (via the unchanged 1-arg constructor) still
+pass -- except `loadsRuntimeMetadataOverviewFromGeneratedClasspathArtifacts`, which fails in THIS
+SPECIFIC app for an unrelated, pre-existing reason (that test's own fixture assumes the
+"canonical.clinicdemo" model; pack-sample's real compiled-metadata.json says "StoreManagement"
+instead -- this test is normally excluded from every generated app's `test` task for exactly this
+reason, and is meant to run against `NPDevSamples/canonical-demo`, confirmed by the failure message
+and the static, checked-in `src/test/resources/npdev/compiled-metadata.json` fixture).
 
 ### REG-104 — RolePermissions.toRole() returned null for any app-defined role name and the caller loop `continue`d, so an app-declared role (e.g. WarehouseManager) silently granted nothing at the platform-permission layer -- no error, no log line (X0-5)
 
