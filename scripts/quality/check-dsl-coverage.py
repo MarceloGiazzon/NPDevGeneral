@@ -452,6 +452,10 @@ FEATURE_DETECTORS = {
     # Wave 3 (RC-B1, MOVE11_RUNTIME_CONFIGURATION_PLAN Part B.1): app-defined role -> permission-
     # ceiling declarations, a new top-level array sibling of settings/selectors.
     "roles": lambda m: _nonempty(m, "roles"),
+    # Wave 6 (RC-A1, MOVE11_RUNTIME_CONFIGURATION_PLAN Part A.1): the scoped-property cascade's
+    # declaration layer -- two new top-level arrays, siblings of roles/settings.
+    "propertyScopes": lambda m: _nonempty(m, "propertyScopes"),
+    "properties": lambda m: _nonempty(m, "properties"),
     "aggregates": lambda m: _nonempty(m, "aggregates"),
     "autoPanels": lambda m: _nonempty(m, "autoPanels"),
     "documents": lambda m: _nonempty(m, "documents"),

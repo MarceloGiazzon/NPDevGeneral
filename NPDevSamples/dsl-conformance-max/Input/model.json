@@ -26,6 +26,21 @@
     }
   ],
 
+  "propertyScopes": [
+    { "name": "tenant" },
+    { "name": "user", "from": "$user.id" }
+  ],
+
+  "properties": [
+    { "name": "pageRows", "type": "int", "default": 25,
+      "settableAt": ["tenant", "user"], "label": "Rows per page" },
+    { "name": "requireConferenciaDupla", "type": "boolean", "default": false,
+      "settableAt": ["tenant"], "securityRelevant": true,
+      "label": "Require double-check on receipt" },
+    { "name": "locale", "type": "string", "default": "en-US",
+      "settableAt": ["tenant", "user"], "label": "Locale" }
+  ],
+
   "packs": [
     { "$ref": "packs/labeling/pack.json", "as": "labeling" }
   ],
