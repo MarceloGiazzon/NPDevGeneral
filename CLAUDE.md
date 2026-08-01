@@ -69,7 +69,7 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
 - **Quality gates — "all gates green" means ONE command:**
   `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1`. It runs the five, in this order, and
   keeps going past a failure so you see every red in one run:
-  `run-ai-knowledge-gate.ps1` (static, seconds; hosts all 14 `check-*.py`) → `run-generator-gate.ps1`
+  `run-ai-knowledge-gate.ps1` (static, seconds; hosts all 15 `check-*.py`) → `run-generator-gate.ps1`
   → `run-runtimehost-gate.ps1` → `run-frontend-gate.ps1` → `run-beta-release-gate.ps1`.
   Run one with `-Only aiKnowledge`. **Never report "gates green" from a single gate** — that claim
   was made in three consecutive move reports while a checker sat red, which is what
@@ -119,6 +119,22 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
 - **Adding a DSL feature?** Add a real example to `NPDevSamples/dsl-conformance-max` in the same
   commit — `scripts/quality/check-dsl-coverage.py` (wired in `run-ai-knowledge-gate.ps1`) fails any
   DSL feature with zero corpus coverage.
+- **Adding a new top-level model array field** (like `roles`, `propertyScopes`, `properties`)? It has
+  to be threaded through **four** places, not one, or a pack/fragment that declares it gets the field
+  silently dropped with no error anywhere (REG-108): (1) `ModelSourceResolver.MODEL_ARRAY_KEYS` —
+  the JSON-level pack/fragment composer only concatenates pack- or fragment-contributed content for
+  keys in this set; a field missing from it is silently discarded for anyone but the app's own model
+  root (the root has its own separate "pass through any unrecognized key" fallback, which is why this
+  class of bug hides for a long time — root-only usage works by accident); (2) both copies of
+  `pack.schema.json` (`NPDevContract/schemas/` and `NPDevContract/dsl/src/main/resources/schema/`) —
+  `additionalProperties:false` rejects a pack file that tries to declare the field before the composer
+  even runs; (3) `ModelResolver.resolve()` — the AST-level specialization resolver's constructor call
+  must actually pass the new field through to the resolved `ModelAst`; (4) the canonical JSON
+  writer/reader pair (`CompiledModelCanonicalJson`/`CompiledModelCanonicalJsonReader`) — the generator
+  only ever reads canonical JSON, so a field that survives resolution but never reaches the canonical
+  round-trip is just as invisible downstream. `REG-108`'s root cause was (1)+(2) only — `roles`
+  (RC-B1) and `propertyScopes`/`properties` (RC-A1) had (3)/(4) from day one but were never added to
+  (1)/(2), so a pack (not an app root) declaring any of the three silently lost it.
 - **Adding a script under `scripts/`?** It needs both a classification (pattern-matched in
   `scripts/policy/script-inventory-policy.json`) and a declared `invocation` in
   `scripts/policy/script-invocation-declarations.json`; `run-script-inventory-check.ps1` enforces

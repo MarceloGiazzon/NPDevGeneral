@@ -1,0 +1,93 @@
+{
+  "$comment": "Move 13 P6: machine-checked twin of docs/X0_SILENT_EXPRESSION_REGISTER.md's table. Every X0-n id in that doc's table must have exactly one entry here, and vice versa (check-x0-evaluator-coverage.py enforces both directions). A FIXED or CLEAN entry must name a real class + test + testMarker; the checker verifies the test file exists and contains the marker (a regression-proof, not just an existence check). An entry whose classGlob matches a file that no OTHER entry's classGlob/class already claims is a genuinely new evaluator-shaped class with no X0 audit -- the checker fails on that, which is the concrete 'new evaluator/resolver class has no test' gate the spec asks for.",
+  "evaluatorShapedGlobs": [
+    "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/Default*Executor.java",
+    "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/*ConditionEvaluator.java",
+    "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/*FilterSupport.java",
+    "NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/RolePermissions.java",
+    "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java",
+    "NPDevKernel/adapters/expression-cel/src/main/java/**/*Evaluator.java"
+  ],
+  "entries": [
+    {
+      "id": "X0-1",
+      "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryFilterSupport.java",
+      "verdict": "OPEN",
+      "note": "declared queries[].where outside one field==literal passes every row through unfiltered; tracked by LC-P0/Wave 0.3, not required to pass a must-error test yet."
+    },
+    {
+      "id": "X0-2",
+      "class": "NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache",
+      "verdict": "FIXED",
+      "fixedBy": "REG-95",
+      "test": null,
+      "testExemptReason": "REG-95's fix (tokenize instead of split) was verified live by an ad hoc node probe, not a committed automated test -- there is no checked-in regression test for evaluateDerived/derivedSegments, the mustache-embedded JS function itself. Recorded here explicitly (not silently passed) as a residual: this class has no regression protection against the exact bug it once shipped. Left open by Move 13 P6 rather than force-built -- a real fix needs a JS test harness for mustache-template-embedded code, which does not exist yet and is a bigger task than this gate."
+    },
+    {
+      "id": "X0-3",
+      "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/ProcedureConditionEvaluator.java",
+      "verdict": "OPEN",
+      "note": "truthiness-only; '== X' is inexpressible. Tracked by REG-96, not required to pass a must-error test yet."
+    },
+    {
+      "id": "X0-4",
+      "class": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java",
+      "verdict": "FIXED",
+      "fixedBy": "REG-99",
+      "test": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/AutoPanelUiStateValidationTest.java",
+      "testMarker": "bandVisibleWhenReachesTheBandDescriptor"
+    },
+    {
+      "id": "X0-5",
+      "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/RolePermissions.java",
+      "verdict": "FIXED",
+      "fixedBy": "REG-104",
+      "test": "NPDevKernel/kernel/src/test/java/com/npdev/kernel/auth/RolePermissionsTest.java",
+      "testMarker": "undeclaredRoleIsDeniedNotThrown"
+    },
+    {
+      "id": "X0-6",
+      "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java",
+      "verdict": "OPEN",
+      "note": "resolve() returns null for an unresolvable $ref path instead of throwing (resolveSetValue's consumers: patchConcept.set/mapList.select/mapValue). Filed in the register itself, no REG id yet."
+    },
+    {
+      "id": "X0-7",
+      "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java",
+      "verdict": "OPEN",
+      "note": "runQuery with a query name absent from queriesByName returns an unfiltered list. Filed in the register itself, no REG id yet. Same class as X0-6 (DefaultProcedureExecutor) -- listed separately because the register documents them as two distinct methods/findings."
+    },
+    {
+      "id": "X0-8",
+      "class": "NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache",
+      "verdict": "ACCEPTED",
+      "note": "evaluateVisibleWhen fails OPEN (surface stays visible) deliberately -- reasoned and accepted, not a defect. One accepted gap inside it: $root.<field> predicates aren't validated against the root concept's declared fields the way $ui.<name> now is (Move 11 W6) -- a typo validates clean and silently shows everything. Bounded follow-up, not required by this gate."
+    },
+    {
+      "id": "X0-9",
+      "class": "NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache",
+      "verdict": "ACCEPTED",
+      "note": "enabledWhen (business-ui evaluateWhen), same grammar/family/rationale as X0-8."
+    },
+    {
+      "id": "X0-10",
+      "class": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java",
+      "verdict": "CLEAN",
+      "test": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ProcedureComputeValueValidationTest.java",
+      "testMarker": "unknownOperatorIsRejected",
+      "note": "computeValue refuses an unknown operator at MODEL level (PackValidation) -- the shape every other row should converge on."
+    },
+    {
+      "id": "X0-11",
+      "class": "NPDevKernel/adapters/expression-cel/src/main/java",
+      "verdict": "NOT_AUDITED",
+      "note": "expression-cel (invariants, access.read/access.write, defaultExpression, derivedExpression) -- the largest evaluator in the platform, not yet audited. Highest-value single item left in X0 per the register's own words (access.* silently defaulting either way is a security-relevant failure mode). Not required by this gate until audited; recorded so it cannot be silently dropped from view."
+    },
+    {
+      "id": "X0-12",
+      "class": null,
+      "verdict": "NOT_BUILT",
+      "note": "having (LC-B1), proposed. Must be born loud -- when it is authored, it needs a registry entry with verdict FIXED/CLEAN and a real must-error test in the SAME commit, not added here in advance of the code existing."
+    }
+  ]
+}

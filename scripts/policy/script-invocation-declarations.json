@@ -166,6 +166,9 @@
     "scripts/quality/check-workflow-yaml-syntax.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-x0-evaluator-coverage.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/fix-statezip-visible-timestamps.ps1": {
       "invocation": "manual-runbook"
     },
