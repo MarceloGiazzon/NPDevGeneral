@@ -146,6 +146,78 @@ class PanelRuntimeTest {
         assertEquals("ConceptGateway", loaded.get("governedDataAccess"));
     }
 
+    /**
+     * REG-107 (Move 12 P1.5): a {@code panelAction: "conceptQuery"} binding used to call
+     * {@code ConceptGateway.list(...)} unbounded -- the same memory/scale defect LC-P0 fixed for the
+     * declared-Panel DATA-SOURCE path (loadDataSource, PanelRuntime.java:439-445), left standing in
+     * this adjacent action-binding branch. Proven by seeding more rows than {@code PANEL_ROW_CAP}
+     * (1000, {@code ConceptQuery.MAX_LIMIT}) and asserting the action returns exactly the cap, not
+     * every row -- if the fix regressed to {@code list()}, this would return 1005, not 1000.
+     */
+    @Test
+    void conceptQueryActionBindingReturnsAtMostThePanelRowCapNotEveryRow() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(
+                new InMemoryConceptStore(),
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                ConceptGatewaySemanticPolicy.noop(),
+                new CollectingTraceSink()
+        );
+        ExecutionContext context = ExecutionContext.of("dev", "operator").withRoles(Set.of("OPERATOR"));
+        int seeded = 1005;
+        for (int index = 0; index < seeded; index++) {
+            String id = "widget-" + index;
+            gateway.save(new ConceptWriteRequest("Widget", id, null, Map.of("id", id, "name", "Widget " + index)), context);
+        }
+        PanelRuntime runtime = new PanelRuntime(metadataService, null, conceptQueryActionPanelModel(), gateway, null, null);
+
+        Map<String, Object> result = runtime.executeAction("WidgetPanel", "browse", Map.of(), context);
+
+        assertEquals("OK", result.get("status"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) result.get("result");
+        assertEquals(1000, rows.size(),
+                "a conceptQuery action must cap at PANEL_ROW_CAP (1000), not return every seeded row (1005): "
+                        + "an uncapped result means the fix regressed to the unbounded list() call");
+    }
+
+    private static CompiledModel conceptQueryActionPanelModel() {
+        CompiledPanel panel = new CompiledPanel(
+                "WidgetPanel",
+                "/widgets",
+                "Widgets",
+                List.of(new CompiledPanelDataSource("widgets", "Widget", null, null, Map.of(), null, null, null)),
+                new CompiledPanelLayout("table", List.of(), List.of("name"), Map.of()),
+                List.of(),
+                null,
+                null,
+                List.of(new CompiledPanelAction(
+                        "browse", "Browse", "conceptQuery", "Widget", null, null, null,
+                        null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null
+                )),
+                Map.of(),
+                Map.of(),
+                null
+        );
+        return new CompiledModel(
+                "panel.runtime.conceptquery",
+                "1.0.0",
+                "1.0.0",
+                Map.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(panel)
+        );
+    }
+
     @Test
     void rendersFallbackUiWhenCustomPanelDataSourceCannotHydrate() {
         PanelRuntime runtime = new PanelRuntime(

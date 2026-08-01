@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**107 item(s) migrated: 2 open/partial, 105 done.**
+**108 item(s) migrated: 2 open/partial, 106 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -19,6 +19,7 @@
 | REG-104 | RolePermissions.toRole() returned null for any app-defined role name and the caller loop `continue`d, so an app-declared role (e.g. WarehouseManager) silently granted nothing at the platform-permission layer -- no error, no log line (X0-5) | BUG | MEDIUM | DONE | 2026-08-01 |
 | REG-105 | Move 10 B1's groupBy/aggregates query primitive is single-concept only -- no cross-concept join, so a dashboard rollup that needs one (e.g. WmsOffice's retired analytics.html 'Estoque por Produto' widget: sum LocalArmazenagemLote.quantidade grouped via a join through Lote to Produto) cannot be expressed | GAP | LOW | OPEN | 2026-08-01 |
 | REG-106 | SchemaLifecycleExecutor.migrate() skipped flyway.repair() whenever the schema fingerprint was unchanged, but V1's generated migration SQL text can drift (comments/emission order) independently of the structural fingerprint -- a plain model.json edit with zero concept/table changes crashed the boot with a Flyway 'Migration checksum mismatch' on the next regeneration | BUG | MEDIUM | DONE | 2026-08-01 |
+| REG-107 | PanelRuntime.executeAction's conceptquery binding fetches an entire concept unbounded via ConceptGateway.list -- the same memory/scale defect LC-P0 fixed for the declared-Panel dataSource path, out of that fix's stated scope | BUG | LOW | DONE | 2026-08-01 |
 | REG-11 | LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir) | GAP | LOW | DONE | 2026-07-21 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
@@ -685,6 +686,47 @@ Live-verified: WmsOffice failed to boot with the checksum-mismatch error on the 
 attempt after this session's Move 10 B2 model.json change; after the fix, the SAME database
 (not wiped, not recreated) booted clean on the next rebuild with the identical model. Full
 detail: move10-b2-charts.txt.
+
+### REG-107 — PanelRuntime.executeAction's conceptquery binding fetches an entire concept unbounded via ConceptGateway.list -- the same memory/scale defect LC-P0 fixed for the declared-Panel dataSource path, out of that fix's stated scope
+
+**Type:** BUG · **Severity:** LOW · **Status:** DONE (2026-08-01)
+**Verification:** VERIFIED_LIVE
+**Source:** Move 12 P1.5 (item 6 of MOVE12_CLOSE_ALL_14_SPEC.md). LC-P0
+(MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 0) migrated the declared-Panel DATA-SOURCE path
+(`PanelRuntime.loadDataSource`) from `ConceptGateway.list(...)` (fetch every row, filter/sort/page
+in the JVM) to `ConceptGateway.query(...)` with the compiled predicate/orderBy/limit pushed down
+to the store (PanelRuntime.java:439-445). `panelAction: "conceptQuery"` -- a distinct binding on a
+PANEL ACTION button, not a data source -- was never touched: it still calls
+`requireConceptGateway().list(new ConceptListRequest(conceptName, null), effectiveContext)`
+(PanelRuntime.java:354, in the `"conceptquery"` action-binding branch), no filter, no limit, no
+paging. Same memory/scale class LC-P0 fixed, in adjacent code, out of LC-P0's stated scope (data
+sources only).
+
+**Surface:** `runtimehost`
+**Files:**
+- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PanelRuntime.java`
+
+Fix: the `"conceptquery"` action-binding branch now builds a `ConceptQuery` (no filters -- the
+action binding declares none today, same as a data source with no bound query -- empty sorts, and
+`PANEL_ROW_CAP` as the limit) and calls `ConceptGateway.query(...)`, mirroring
+`loadDataSource`'s :439-445 pushdown exactly rather than reintroducing a second, divergent
+bounded-fetch shape.
+
+`ConceptGatewayOperation` has no distinct QUERY value -- `DefaultConceptGateway.query()` traces as
+`LIST` too (confirmed: `PanelRuntimeTest`'s own existing `loadPanel` assertion already expects
+`ConceptGatewayOperation.LIST` for a data-source query call) -- so "proven by SQL log or EXPLAIN"
+is not available at this layer (no real JDBC adapter is wired into a kernel-level RuntimeHost
+unit test); the achievable proof is row-count boundedness at real scale, genuinely RED/GREEN
+tested rather than asserted from code reading alone.
+
+Verified: `PanelRuntimeTest.conceptQueryActionBindingReturnsAtMostThePanelRowCapNotEveryRow`
+seeds 1005 rows via a real in-memory `DefaultConceptGateway` and asserts the action returns
+exactly 1000 (`PANEL_ROW_CAP`/`ConceptQuery.MAX_LIMIT`), not 1005. RED proven live: reverting the
+fix to the original `ConceptGateway.list(...)` call in a generated app
+(`D:\WorkSpace\NPDev\Build\generated-finalapps\pack-sample`) and rerunning made this exact test
+fail with all 1005 rows returned; restoring the fix made it pass again. Full generated-app build
++ all 9 `PanelRuntimeTest` cases green throughout (`:test` via the app's own Gradle wrapper, libs
+synced via `scripts/runtimehost/sync-runtimehost-libs.ps1`).
 
 ### REG-11 — LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir)
 
