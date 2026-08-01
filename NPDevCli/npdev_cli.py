@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import tempfile
@@ -795,6 +796,662 @@ def run_generate(args: argparse.Namespace) -> None:
         subprocess.run(command, cwd=generator_root, check=True)
 
 
+# ---------------------------------------------------------------------------
+# Move 10 D1 (LC-D1): `npdev run app` -- generate + build + boot + health-check, one command,
+# structured JSON output, five named failure classes, guaranteed teardown.
+# ---------------------------------------------------------------------------
+
+# Process this invocation started and is responsible for tearing down, reachable from the signal
+# handler below (which can only take (signum, frame) -- no closure access to a local variable).
+_RUN_APP_CHILD_PROCESS: subprocess.Popen | None = None
+
+
+def _run_app_signal_handler(signum, _frame) -> None:  # noqa: ANN001 - signal handler signature
+    if _RUN_APP_CHILD_PROCESS is not None and _RUN_APP_CHILD_PROCESS.poll() is None:
+        _RUN_APP_CHILD_PROCESS.kill()
+        _RUN_APP_CHILD_PROCESS.wait(timeout=10)
+    raise SystemExit(130 if signum == signal.SIGINT else 143)
+
+
+def _diag(phase: str, code: str, message: str, suggested_fix: str | None = None,
+          help_key: str | None = None) -> dict:
+    """One diagnostic vocabulary across validate/build/boot (D1's own DoD line): same shape as
+    ValidationDiagnostic (code/message/suggestedFix/helpKey), so an agent needs no second parser."""
+    return {
+        "phase": phase,
+        "code": code,
+        "message": message,
+        "suggestedFix": suggested_fix,
+        "helpKey": help_key,
+    }
+
+
+def _is_port_in_use(port: int) -> bool:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _classify_build_failure(output: str) -> dict | None:
+    # STALE_CACHE: NPDevKernel/adapters/runtime-validation's verifyNpdevRuntimeHostLibs task
+    # (build.gradle) refuses to build against a runtimehost-libs directory with no manifest --
+    # exactly the error this session hit directly regenerating WmsOffice after -SkipLibs.
+    if "Missing NPDev RuntimeHost libs manifest" in output:
+        return _diag(
+            "BUILD", "STALE_CACHE",
+            "The runtimehost-libs cache this build root points at has no manifest (missing or "
+            "wiped by a regenerate).",
+            suggested_fix="Run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars, or "
+                           "scripts/appgen/Rebuild-And-Restage.ps1, before retrying.",
+            help_key="runtimehost-libs-dir-mismatch",
+        )
+    return None
+
+
+def _classify_boot_failure(log_text: str) -> dict | None:
+    # SCHEMA_IMPACT_UNACKNOWLEDGED: SchemaLifecycleExecutor's boot-time refusal for a destructive
+    # schema change with no matching acknowledgment token (LNCH-1 Phase 4).
+    if "requiring an explicit, itemized acknowledgment" in log_text:
+        return _diag(
+            "BOOT", "SCHEMA_IMPACT_UNACKNOWLEDGED",
+            "The model change includes destructive schema item(s) with no matching acknowledgment "
+            "token.",
+            suggested_fix="See docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes -- set the "
+                           "generated manifest's destructiveAcknowledgment to the token the boot log "
+                           "names, or submit it via the ControlPanel schema-migration screen.",
+            help_key="schema-impact-unacknowledged",
+        )
+    # MIGRATION_CLAIM_HELD: MigrationClaimStore refuses a concurrent migration (REG-7.3/B4).
+    if "Another NPDev instance is currently migrating this database" in log_text:
+        return _diag(
+            "BOOT", "MIGRATION_CLAIM_HELD",
+            "Another NPDev instance already holds the migration claim on this database.",
+            suggested_fix="Wait for it to finish, or if it crashed mid-migration, clear the stale "
+                           "claim via POST /api/admin/schema-migration/clear-claim (SUPERUSER) or the "
+                           "ControlPanel schema-migration screen.",
+            help_key="migration-claim-held",
+        )
+    if "Web server failed to start" in log_text and "port" in log_text.lower():
+        return _diag(
+            "BOOT", "PORT_IN_USE",
+            "The target port was already bound by another process when the JVM tried to start "
+            "(race: the pre-flight check passed but something else grabbed it first).",
+            suggested_fix="Pick a different --port, or stop whatever is already listening.",
+            help_key="port-in-use",
+        )
+    return None
+
+
+def _log_excerpt(text: str, around: str | None = None, window: int = 40) -> str:
+    lines = text.splitlines()
+    if around:
+        for i, line in enumerate(lines):
+            if around in line:
+                start = max(0, i - window // 2)
+                return "\n".join(lines[start:i + window // 2])
+    return "\n".join(lines[-window:])
+
+
+def run_app(args: argparse.Namespace) -> dict:
+    """Move 10 D1 (LC-D1, `npdev_build_and_run`): GENERATE -> BUILD -> BOOT -> READY, one command,
+    structured output, five named failure classes, bounded with guaranteed teardown."""
+    global _RUN_APP_CHILD_PROCESS
+    import time
+    import urllib.error
+    import urllib.request
+
+    result: dict = {"phase": "GENERATE", "ok": False, "diagnostics": [], "baseUrl": None, "logExcerpt": None}
+    deadline = time.monotonic() + args.timeout
+    root = repo_root()
+    final_app_out = Path(args.output).expanduser().resolve()
+    boot_proc: subprocess.Popen | None = None
+
+    old_handlers = {}
+    for sig in (getattr(signal, "SIGINT", None), getattr(signal, "SIGTERM", None)):
+        if sig is not None:
+            try:
+                old_handlers[sig] = signal.signal(sig, _run_app_signal_handler)
+            except (ValueError, OSError):
+                pass  # not the main thread / unsupported on this platform -- best-effort only
+
+    try:
+        # --- Optional C2 fast path: METADATA_ONLY change against an explicit baseline -----------
+        if args.baseline_model and final_app_out.exists():
+            classification = _classify_model_change(root, Path(args.baseline_model).expanduser().resolve(),
+                                                      Path(args.model).expanduser().resolve(), deadline)
+            if classification == "METADATA_ONLY":
+                fast_ok, fast_message = _metadata_only_fast_path(
+                    root, Path(args.model).expanduser().resolve(), final_app_out, deadline)
+                if fast_ok:
+                    result["phase"] = "BOOT"
+                else:
+                    result["diagnostics"].append(_diag(
+                        "GENERATE", "METADATA_ONLY_FAST_PATH_FAILED", fast_message))
+                    return result
+
+        if result["phase"] == "GENERATE":
+            # --- PORT_IN_USE pre-flight (before spending any time generating/building) ----------
+            if not args.keep_running and _is_port_in_use(args.port):
+                result["diagnostics"].append(_diag(
+                    "BOOT", "PORT_IN_USE",
+                    f"Port {args.port} is already in use before this run even started.",
+                    suggested_fix="Pick a different --port, or stop whatever is already listening.",
+                    help_key="port-in-use",
+                ))
+                return result
+
+            # --- GENERATE --------------------------------------------------------------------
+            gen_ok, gen_output = _generate_phase_captured(root, args, final_app_out, deadline)
+            if not gen_ok:
+                result["diagnostics"].append(_diag(
+                    "GENERATE", "GENERATE_FAILED", "The generator did not produce a final app.",
+                    suggested_fix="See logExcerpt for the generator's own error.",
+                ))
+                result["logExcerpt"] = _log_excerpt(gen_output)
+                return result
+
+            # --- BUILD ---------------------------------------------------------------------
+            result["phase"] = "BUILD"
+            build_ok, build_output, jar_path = _build_phase(final_app_out, deadline)
+            if not build_ok:
+                classified = _classify_build_failure(build_output)
+                result["diagnostics"].append(classified or _diag(
+                    "BUILD", "BUILD_FAILED", "gradlew clean build failed.",
+                    suggested_fix="See logExcerpt for the build's own error.",
+                ))
+                result["logExcerpt"] = _log_excerpt(build_output)
+                return result
+            if jar_path is None:
+                result["diagnostics"].append(_diag(
+                    "BUILD", "JAR_NOT_FOUND",
+                    "Build reported success but no runnable FinalExec-*.jar was found under build/libs.",
+                    suggested_fix="Check for a bootJar/assemble task misconfiguration.",
+                ))
+                result["logExcerpt"] = _log_excerpt(build_output)
+                return result
+
+        else:
+            jar_path = _find_jar(final_app_out)
+            if jar_path is None:
+                result["phase"] = "BUILD"
+                result["diagnostics"].append(_diag(
+                    "BUILD", "JAR_NOT_FOUND",
+                    "METADATA_ONLY fast path expected a previously-built jar but found none.",
+                ))
+                return result
+
+        # --- BOOT ------------------------------------------------------------------------
+        result["phase"] = "BOOT"
+        base_url = f"http://127.0.0.1:{args.port}"
+        log_path = final_app_out / "npdev-run-app-boot.log"
+        with open(log_path, "w", encoding="utf-8") as log_file:
+            boot_proc = subprocess.Popen(
+                ["java", "-jar", str(jar_path), f"--server.port={args.port}",
+                 f"--spring.profiles.active={args.profile}"],
+                cwd=str(final_app_out), stdout=log_file, stderr=subprocess.STDOUT,
+            )
+        _RUN_APP_CHILD_PROCESS = boot_proc
+
+        healthy = False
+        while time.monotonic() < deadline:
+            if boot_proc.poll() is not None:
+                break  # JVM exited on its own -- definitely not healthy
+            try:
+                request = urllib.request.Request(f"{base_url}/actuator/health")
+                with urllib.request.urlopen(request, timeout=3) as response:
+                    body = json.loads(response.read().decode("utf-8"))
+                    if body.get("status") == "UP":
+                        healthy = True
+                        break
+            except (urllib.error.URLError, OSError, json.JSONDecodeError):
+                pass
+            time.sleep(2)
+
+        log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
+        if not healthy:
+            classified = _classify_boot_failure(log_text)
+            result["diagnostics"].append(classified or _diag(
+                "BOOT", "BOOT_TIMEOUT" if boot_proc.poll() is None else "BOOT_FAILED",
+                "The app did not report /actuator/health status UP within the time budget."
+                if boot_proc.poll() is None else
+                f"The JVM exited on its own (code {boot_proc.returncode}) before reporting healthy.",
+                suggested_fix="See logExcerpt for the boot log around the first error.",
+            ))
+            result["logExcerpt"] = _log_excerpt(log_text, around="ERROR") or _log_excerpt(log_text)
+            return result
+
+        # --- READY -------------------------------------------------------------------------
+        result["phase"] = "READY"
+        result["ok"] = True
+        result["baseUrl"] = base_url
+        _RUN_APP_CHILD_PROCESS = None  # READY: intentionally leave it running, not this run's to kill
+        return result
+    finally:
+        for sig, handler in old_handlers.items():
+            try:
+                signal.signal(sig, handler)
+            except (ValueError, OSError):
+                pass
+        # Guaranteed teardown: any path that returned before READY (or the boot loop's own
+        # `break`/timeout falling through) must not leave an orphaned JVM behind.
+        if boot_proc is not None and _RUN_APP_CHILD_PROCESS is boot_proc and boot_proc.poll() is None:
+            boot_proc.kill()
+            try:
+                boot_proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+        _RUN_APP_CHILD_PROCESS = None
+
+
+class _DeadlineExceeded(Exception):
+    """Raised by _run_bounded when the overall --timeout budget is already spent."""
+
+
+def _run_bounded(command: list[str], cwd, deadline: float, **kwargs) -> subprocess.CompletedProcess:
+    """subprocess.run with its timeout derived from the run's own overall deadline, so GENERATE/
+    BUILD/classify subprocesses can never overrun --timeout even though they're not the boot health
+    loop -- D1's own DoD line ("Bounded: a timeout, a hard kill, and a guaranteed teardown") applies
+    to the whole pipeline, not just the final health-poll."""
+    import time
+
+    remaining = deadline - time.monotonic()
+    if remaining <= 1:
+        raise _DeadlineExceeded()
+    try:
+        return subprocess.run(command, cwd=cwd, capture_output=True, text=True,
+                               timeout=remaining, **kwargs)
+    except subprocess.TimeoutExpired as exc:
+        raise _DeadlineExceeded() from exc
+
+
+def _generate_phase_captured(
+        root: Path, args: argparse.Namespace, final_app_out: Path, deadline: float) -> tuple[bool, str]:
+    """Same command shape as run_generate(), but captures output instead of streaming/raising so a
+    failure becomes a GENERATE-phase diagnostic instead of an uncaught CalledProcessError."""
+    generator_root = root / "NPDevGenerator"
+    wrapper = gradle_wrapper(generator_root)
+    if not wrapper.exists():
+        return False, f"Gradle wrapper not found: {wrapper}"
+    model = Path(args.model).expanduser().resolve()
+    config = Path(args.config).expanduser().resolve()
+    artifact_out = final_app_out.parent / "ArtifactNP"
+    schema_realization = artifact_out / "schema-realization"
+    runtime_host = root / "NPDevRuntimeHost"
+    if not runtime_host.exists():
+        return False, f"NPDevRuntimeHost not found: {runtime_host}"
+
+    with contextlib.ExitStack() as stack:
+        db_definition = config.parent / "db.definition.json"
+        if not db_definition.exists():
+            if getattr(args, "require_db_definition", False):
+                return False, f"db.definition.json not found alongside config: {db_definition}"
+            temp_dir = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="npdev-default-db-")))
+            db_definition = temp_dir / "db.definition.json"
+            db_definition.write_text(json.dumps(DEFAULT_DB_DEFINITION, indent=2) + "\n", encoding="utf-8")
+
+        generator_args = [
+            "--config", str(config),
+            "--model", str(model),
+            "--out", str(artifact_out),
+            "--dbDefinitionPath", str(db_definition),
+            "--schemaRealizationDir", str(schema_realization),
+            "--runtimeHostTemplate", str(runtime_host),
+            "--finalAppOut", str(final_app_out),
+            "--assembleFinalApp",
+            "--clean",
+            "--cleanFinalApp",
+        ]
+        args_str = " ".join(f'"{item}"' if " " in item else item for item in generator_args)
+        command = [str(wrapper), ":generator:run", "--no-daemon", "--console=plain", f"--args={args_str}"]
+        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+            command = ["cmd.exe", "/c"] + command
+        try:
+            completed = _run_bounded(command, generator_root, deadline)
+        except _DeadlineExceeded:
+            return False, "GENERATE exceeded the overall --timeout budget."
+        output = (completed.stdout or "") + (completed.stderr or "")
+        return completed.returncode == 0, output
+
+
+def _find_jar(app_root: Path) -> Path | None:
+    for candidate in app_root.rglob("FinalExec-*.jar"):
+        if "build" + os.sep + "libs" in str(candidate) and not candidate.name.endswith("-plain.jar"):
+            return candidate
+    return None
+
+
+def _build_phase(app_root: Path, deadline: float) -> tuple[bool, str, Path | None]:
+    wrapper = app_root / ("gradlew.bat" if os.name == "nt" else "gradlew")
+    if not wrapper.exists():
+        return False, f"Gradle wrapper not found in generated app: {wrapper}", None
+    env = dict(os.environ)
+    env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs")))
+    command = [str(wrapper), "--no-daemon", "--console=plain", "clean", "build", "-x", "test"]
+    try:
+        completed = _run_bounded(command, str(app_root), deadline, env=env)
+    except _DeadlineExceeded:
+        return False, "BUILD exceeded the overall --timeout budget.", None
+    output = (completed.stdout or "") + (completed.stderr or "")
+    if completed.returncode != 0:
+        return False, output, None
+    return True, output, _find_jar(app_root)
+
+
+def _classify_model_change(root: Path, baseline: Path, current: Path, deadline: float) -> str | None:
+    """Move 10 C1 (already implemented, Wave 1.2): shells out to the existing, real
+    ModelChangeClassifierMain (:generator:classifyModelChange) rather than reimplementing the diff.
+    That task reads its arguments as Gradle PROPERTIES (-PcurrentPath=...), not JavaExec `args`."""
+    generator_root = root / "NPDevGenerator"
+    wrapper = gradle_wrapper(generator_root)
+    if not wrapper.exists():
+        return None
+    with tempfile.TemporaryDirectory(prefix="npdev-classify-") as tmp:
+        report_path = Path(tmp) / "classification.json"
+        command = [
+            str(wrapper), ":generator:classifyModelChange", "--no-daemon", "--console=plain",
+            f"-PcurrentPath={current}", f"-PbaselinePath={baseline}", f"-PreportOut={report_path}",
+        ]
+        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+            command = ["cmd.exe", "/c"] + command
+        try:
+            _run_bounded(command, generator_root, deadline)
+        except _DeadlineExceeded:
+            return None
+        if not report_path.exists():
+            return None
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return None
+        return report.get("classification")
+
+
+def _metadata_only_fast_path(
+        root: Path, current_model: Path, final_app_out: Path, deadline: float) -> tuple[bool, str]:
+    """Move 10 C2 (already implemented, Wave 1.3): swaps compiled-model.json + re-signs the
+    generated-folder signature, skipping GENERATE+BUILD entirely for a METADATA_ONLY change.
+    Both underlying tasks read Gradle PROPERTIES, not JavaExec `args` -- see their own build.gradle
+    registrations (classifyModelChange / resignGeneratedFolder)."""
+    generator_root = root / "NPDevGenerator"
+    wrapper = gradle_wrapper(generator_root)
+    generated_root = final_app_out / "npdev-generated"
+    compiled_model_path = generated_root / "src" / "main" / "resources" / "npdev" / "compiled-model.json"
+    with tempfile.TemporaryDirectory(prefix="npdev-metadata-only-") as tmp:
+        report_path = Path(tmp) / "classification.json"
+        command = [
+            str(wrapper), ":generator:classifyModelChange", "--no-daemon", "--console=plain",
+            f"-PcurrentPath={current_model}", f"-PbaselinePath={current_model}",
+            f"-PreportOut={report_path}", f"-PemitCompiledModelTo={compiled_model_path}",
+        ]
+        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+            command = ["cmd.exe", "/c"] + command
+        try:
+            completed = _run_bounded(command, generator_root, deadline)
+        except _DeadlineExceeded:
+            return False, "classifyModelChange exceeded the overall --timeout budget."
+        if completed.returncode != 0:
+            return False, (completed.stdout or "") + (completed.stderr or "")
+
+    kernel_root = root / "NPDevKernel"
+    kernel_wrapper = gradle_wrapper(kernel_root)
+    sign_command = [
+        str(kernel_wrapper), ":adapters:runtime-validation:resignGeneratedFolder",
+        "--no-daemon", "--console=plain", f"-PgeneratedRoot={generated_root}",
+    ]
+    if os.name == "nt" and kernel_wrapper.suffix.lower() == ".bat":
+        sign_command = ["cmd.exe", "/c"] + sign_command
+    try:
+        completed = _run_bounded(sign_command, kernel_root, deadline)
+    except _DeadlineExceeded:
+        return False, "resignGeneratedFolder exceeded the overall --timeout budget."
+    if completed.returncode != 0:
+        return False, (completed.stdout or "") + (completed.stderr or "")
+    return True, "metadata-only fast path applied"
+
+
+# ---------------------------------------------------------------------------
+# Move 10 D2 (LC-D2): declarative acceptance scenarios -- boots via D1, seeds `given` through the
+# generic concept CRUD API, executes `when`, asserts `then` with a minimal JSONPath grammar, and
+# reports in a shape that generalizes golden-ai-scenarios/*/ai-verification-report.json (the same
+# schemaVersion FAMILY -- checks/scenarios with real per-assertion actual values, not a second
+# vocabulary reinvented from scratch).
+# ---------------------------------------------------------------------------
+
+_ACCEPTANCE_OPERATORS = ("equals", "allEqual", "lessThan", "greaterThan", "count")
+
+
+def _resolve_json_path(root: object, path: str) -> list:
+    """Minimal JSONPath: $ / $status / $.a.b / $.a[*].b / $.a[2].b -- always returns a list of
+    matches (a non-wildcard scalar path returns a 1-element list, or 0 if any segment misses)."""
+    if path == "$status":
+        return [root] if not isinstance(root, (dict, list)) else []
+    if not path.startswith("$"):
+        raise ValueError(f"path must start with $ or be the literal $status: {path}")
+    tokens = re.findall(r"\.([^.\[\]]+)|\[(\*|\d+)\]", path[1:])
+    current = [root]
+    for name, index in tokens:
+        nxt = []
+        for item in current:
+            if name:
+                if isinstance(item, dict) and name in item:
+                    nxt.append(item[name])
+            elif index == "*":
+                if isinstance(item, list):
+                    nxt.extend(item)
+            elif index:
+                idx = int(index)
+                if isinstance(item, list) and idx < len(item):
+                    nxt.append(item[idx])
+        current = nxt
+    return current
+
+
+def _eval_assertion(root: object, assertion: dict) -> dict:
+    path = assertion["path"]
+    op = next((k for k in _ACCEPTANCE_OPERATORS if k in assertion), None)
+    if op is None:
+        return {"path": path, "operator": None, "expected": None, "actual": None, "passed": False,
+                "error": f"no recognized operator (one of {_ACCEPTANCE_OPERATORS})"}
+    expected = assertion[op]
+    resolved = _resolve_json_path(root, path)
+    if op == "equals":
+        actual = resolved[0] if len(resolved) == 1 else resolved
+        passed = actual == expected
+    elif op == "allEqual":
+        actual = resolved
+        passed = len(resolved) > 0 and all(v == expected for v in resolved)
+    elif op == "count":
+        actual = len(resolved)
+        passed = actual == expected
+    elif op == "lessThan":
+        actual = resolved[0] if resolved else None
+        passed = actual is not None and actual < expected
+    else:  # greaterThan
+        actual = resolved[0] if resolved else None
+        passed = actual is not None and actual > expected
+    return {"path": path, "operator": op, "expected": expected, "actual": actual, "passed": passed}
+
+
+def _run_one_scenario(base_url: str, scenario: dict, filename: str, api_key: str = "") -> dict:
+    import urllib.error
+    import urllib.request
+
+    name = scenario.get("name", filename)
+    approved = bool(scenario.get("approved", False))
+    result: dict = {"name": name, "file": filename, "approved": approved, "outcome": "ERROR",
+                     "assertions": [], "error": None}
+    auth_headers = {"X-Api-Key": api_key} if api_key else {}
+
+    for given in scenario.get("given", []):
+        seed_path = given["path"]
+        for row in given.get("rows", []):
+            body = json.dumps(row).encode("utf-8")
+            req = urllib.request.Request(base_url + seed_path, data=body, method="POST",
+                                          headers={"Content-Type": "application/json", **auth_headers})
+            try:
+                urllib.request.urlopen(req, timeout=10)
+            except urllib.error.HTTPError as exc:
+                result["error"] = (f"seed POST {seed_path} failed: HTTP {exc.code} "
+                                    f"{exc.read().decode('utf-8', 'replace')[:300]}")
+                return result
+            except urllib.error.URLError as exc:
+                result["error"] = f"seed POST {seed_path} failed: {exc.reason}"
+                return result
+
+    when = scenario["when"]
+    method = when.get("method", "GET").upper()
+    when_path = when["path"]
+    when_body = json.dumps(when["body"]).encode("utf-8") if "body" in when else None
+    headers = {**auth_headers, **(when.get("headers") or {})}
+    if when_body is not None:
+        headers.setdefault("Content-Type", "application/json")
+    req = urllib.request.Request(base_url + when_path, data=when_body, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            status = response.status
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        raw = exc.read().decode("utf-8", "replace")
+    except urllib.error.URLError as exc:
+        result["error"] = f"when {method} {when_path} failed: {exc.reason}"
+        return result
+    try:
+        response_body = json.loads(raw) if raw else None
+    except json.JSONDecodeError:
+        response_body = None
+
+    all_passed = True
+    for assertion in scenario.get("then", []):
+        root = status if assertion["path"] == "$status" else response_body
+        evaluated = _eval_assertion(root, assertion)
+        result["assertions"].append(evaluated)
+        if not evaluated["passed"]:
+            all_passed = False
+    result["outcome"] = "PASS" if all_passed else "FAIL"
+    return result
+
+
+def run_acceptance(args: argparse.Namespace) -> dict:
+    """Move 10 D2 (LC-D2): boots via D1 (run_app), then runs every *.scenario.json under
+    --scenarios against the live app. Unapproved scenarios still execute (informational -- an
+    Author's proposal is visible) but are excluded from the pass/fail summary (D2's own DoD:
+    "Unapproved scenarios are visibly excluded from the pass count")."""
+    boot_args = argparse.Namespace(
+        model=args.model, config=args.config, output=args.output,
+        require_db_definition=getattr(args, "require_db_definition", False),
+        port=args.port, timeout=args.timeout,
+        profile=getattr(args, "profile", "dev"),
+        baseline_model=getattr(args, "baseline_model", None),
+        keep_running=getattr(args, "keep_running", False),
+    )
+    boot_result = run_app(boot_args)
+    if not boot_result.get("ok"):
+        return {
+            "schemaVersion": "npdev-acceptance-report.v1",
+            "ok": False,
+            "boot": boot_result,
+            "scenarios": [],
+            "summary": {"total": 0, "approvedTotal": 0, "passed": 0, "failed": 0, "excludedUnapproved": 0},
+        }
+
+    base_url = boot_result["baseUrl"]
+    scenarios_dir = Path(args.scenarios).expanduser().resolve()
+    scenario_files = sorted(scenarios_dir.glob("*.scenario.json"))
+    api_key = getattr(args, "api_key", "dev-key")
+    results = [
+        _run_one_scenario(base_url, json.loads(sf.read_text(encoding="utf-8")), sf.name, api_key)
+        for sf in scenario_files
+    ]
+    approved = [r for r in results if r["approved"]]
+    passed = sum(1 for r in approved if r["outcome"] == "PASS")
+    failed = len(approved) - passed
+    return {
+        "schemaVersion": "npdev-acceptance-report.v1",
+        "ok": failed == 0 and boot_result.get("ok", False),
+        "baseUrl": base_url,
+        "boot": boot_result,
+        "scenarios": results,
+        "summary": {
+            "total": len(results), "approvedTotal": len(approved),
+            "passed": passed, "failed": failed, "excludedUnapproved": len(results) - len(approved),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Move 10 D3 (LC-D3): wire the closed loop -- diff-gate -> validate -> classify -> run+acceptance,
+# stopping at the EARLIEST gate that catches a problem. Pure integration: every step below reuses
+# an already-built, already-proven piece (E2's AuthoringDiffGate, ModelValidatorMain, C1's
+# ModelChangeClassifierMain, D1's run_app, D2's run_acceptance) in-process -- no new gate logic.
+# ---------------------------------------------------------------------------
+
+def run_closed_loop(args: argparse.Namespace) -> dict:
+    report: dict = {
+        "schemaVersion": "npdev-closed-loop-report.v1",
+        "ok": False,
+        "stoppedAt": None,
+        "diffGate": None,
+        "validate": None,
+        "classification": None,
+        "run": None,
+        "acceptance": None,
+    }
+
+    # 1. diff-gate (contract E2) -- refuses undiffed/undeclared changes.
+    diff_gate_args = argparse.Namespace(
+        previous=args.previous, submitted=args.submitted, manifest=getattr(args, "manifest", None),
+        output=getattr(args, "diff_gate_output", None),
+    )
+    diff_report = _run_authoring_gate(diff_gate_args, archive_dir=None)
+    report["diffGate"] = diff_report
+    if diff_report.get("status") != "passed":
+        report["stoppedAt"] = "diffGate"
+        return report
+
+    # 2. validate model -- refuses an illegal model (schema + full semantic validation).
+    with tempfile.TemporaryDirectory(prefix="npdev-loop-validate-") as tmp:
+        validate_report_path = Path(tmp) / "validation-report.json"
+        exit_code = run_validate_semantic(Path(args.submitted), validate_report_path)
+        report["validate"] = read_json(validate_report_path) if validate_report_path.exists() else None
+        if exit_code != 0:
+            report["stoppedAt"] = "validate"
+            return report
+
+    # 3. classify (C1) -- informational; also threaded into run+acceptance as --baseline-model so
+    #    a METADATA_ONLY change automatically takes the C2 fast path.
+    import time
+
+    root = repo_root()
+    deadline = time.monotonic() + args.timeout
+    report["classification"] = _classify_model_change(
+        root, Path(args.previous).expanduser().resolve(), Path(args.submitted).expanduser().resolve(), deadline)
+
+    # 4/5. run app (D1) + acceptance (D2) -- run_acceptance() already does both: it boots via
+    # run_app() internally, then executes every scenario against the live app.
+    acceptance_args = argparse.Namespace(
+        model=args.submitted, config=args.config, output=args.output,
+        require_db_definition=getattr(args, "require_db_definition", False),
+        port=args.port, timeout=args.timeout, profile=getattr(args, "profile", "dev"),
+        baseline_model=args.previous, keep_running=getattr(args, "keep_running", False),
+        scenarios=args.scenarios, api_key=getattr(args, "api_key", "dev-key"),
+    )
+    acceptance_report = run_acceptance(acceptance_args)
+    report["run"] = acceptance_report.get("boot")
+    report["acceptance"] = acceptance_report
+    if not acceptance_report.get("boot", {}).get("ok"):
+        report["stoppedAt"] = "run"
+        return report
+    if not acceptance_report.get("ok"):
+        report["stoppedAt"] = "acceptance"
+        return report
+
+    report["ok"] = True
+    return report
+
+
 def _fetch_json(url: str, headers: dict[str, str]) -> dict:
     import urllib.error
     import urllib.request
@@ -958,6 +1615,18 @@ def run_generate_screen(args: argparse.Namespace) -> int:
 
 
 def run_migration_diff(args: argparse.Namespace) -> None:
+    """REG-102 fix: route through the REAL, working `:generator:classifyModelChange` Gradle task
+    (ModelChangeClassifierMain, MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 1.2), which diffs two
+    model.json snapshots via MigrationPlanEmitter (no live database) and classifies the result as
+    METADATA_ONLY / SAFE_ADDITIVE / BACKFILL_REQUIRED / MANUAL_REVIEW.
+
+    Previously this called `:generator:run` with five `--migration*`-prefixed flags
+    (`--migrationsDir`, `--migrationMode`, `--migrationPlanOnly`, `--migrationRiskThreshold`,
+    `--migrationDecisionReport`) that GeneratorMain's own arg parser unconditionally rejects (a
+    guard against a different, retired thing -- model.json declaring migrationManagement/
+    migrations/schemaEvolution config keys). Reproduced live: every invocation threw
+    CONFIG_MIGRATIONS_DISABLED on the first flag. See ledger/items/REG-102.yml.
+    """
     root = repo_root()
     generator_root = root / "NPDevGenerator"
     wrapper = gradle_wrapper(generator_root)
@@ -967,8 +1636,6 @@ def run_migration_diff(args: argparse.Namespace) -> None:
     baseline = Path(args.baseline).expanduser().resolve()
     current = Path(args.current).expanduser().resolve()
     output = Path(args.output).expanduser().resolve() if args.output else root / "build" / "npdev-migration-diff"
-    migrations = output / "db" / "migration"
-    snapshot_dir = output / "db" / "schema-snapshots"
     decision_report = Path(args.decision_report).expanduser().resolve() if args.decision_report else output / "migration-diff-decision.json"
 
     if not baseline.exists():
@@ -976,29 +1643,19 @@ def run_migration_diff(args: argparse.Namespace) -> None:
     if not current.exists():
         raise CliError(f"current model not found: {current}")
 
-    snapshot_dir.mkdir(parents=True, exist_ok=True)
-    migrations.mkdir(parents=True, exist_ok=True)
-    baseline_json = read_json(baseline)
-    (snapshot_dir / "latest-storage-schema.json").write_text(json.dumps(baseline_json, indent=2) + "\n", encoding="utf-8")
+    decision_report.parent.mkdir(parents=True, exist_ok=True)
 
     generator_args = [
-        "--model",
+        "--current",
         str(current),
+        "--baseline",
+        str(baseline),
         "--out",
-        str(output),
-        "--migrationsDir",
-        str(migrations),
-        "--migrationMode=additive-only",
-        "--migrationPlanOnly",
-        "--migrationRiskThreshold=" + args.migrationRiskThreshold,
-        "--migrationDecisionReport",
         str(decision_report),
-        "--no-assembleFinalApp",
-        "--no-clean",
     ]
     command = [
         str(wrapper),
-        ":generator:run",
+        ":generator:classifyModelChange",
         "--no-daemon",
         "--console=plain",
         "--args=" + gradle_args_value(generator_args),
@@ -1006,8 +1663,114 @@ def run_migration_diff(args: argparse.Namespace) -> None:
     if os.name == "nt" and wrapper.suffix.lower() == ".bat":
         command = ["cmd.exe", "/c"] + command
     subprocess.run(command, cwd=generator_root, check=True)
-    print(f"migration diff decision: {decision_report}")
-    print(f"migration diff dry-run SQL: {output / 'db' / 'migration-plans' / 'latest-model-delta.sql'}")
+    report = read_json(decision_report)
+    print(f"migration diff classification: {report.get('classification')}")
+    for reason in report.get("classificationReasons", []):
+        print(f"  - {reason}")
+    print(f"migration diff decision report: {decision_report}")
+
+
+def _run_authoring_gate(args: argparse.Namespace, archive_dir: Path | None) -> dict:
+    """Shared by `author diff-gate` and `author submit`: invokes
+    `:generator:authorDiffGate` (AuthoringDiffGate, AI_AUTHORING_CONTRACT-2026-07-31.md Part 9,
+    piece E2 -- "the load-bearing piece") and returns the parsed report. Raises CliError with the
+    report's own diagnostics on failure -- never a bare non-zero exit with no explanation (C7:
+    diff-gate failures must be structured, actionable diagnostics, not prose).
+    """
+    root = repo_root()
+    generator_root = root / "NPDevGenerator"
+    wrapper = gradle_wrapper(generator_root)
+    if not wrapper.exists():
+        raise CliError(f"Gradle wrapper not found: {wrapper}")
+
+    previous = Path(args.previous).expanduser().resolve()
+    submitted = Path(args.submitted).expanduser().resolve()
+    manifest = Path(args.manifest).expanduser().resolve() if args.manifest else None
+    output = Path(args.output).expanduser().resolve() if args.output else root / "build" / "npdev-authoring"
+    decision_report = output / "authoring-diff-gate-report.json"
+
+    if not previous.exists():
+        raise CliError(f"previous model not found: {previous}")
+    if not submitted.exists():
+        raise CliError(f"submitted model not found: {submitted}")
+    if manifest is not None and not manifest.exists():
+        raise CliError(f"manifest not found: {manifest}")
+    decision_report.parent.mkdir(parents=True, exist_ok=True)
+
+    generator_args = ["--previous", str(previous), "--submitted", str(submitted), "--out", str(decision_report)]
+    if manifest is not None:
+        generator_args += ["--manifest", str(manifest)]
+    if archive_dir is not None:
+        generator_args += ["--archiveDir", str(archive_dir)]
+
+    command = [
+        str(wrapper),
+        ":generator:authorDiffGate",
+        "--no-daemon",
+        "--console=plain",
+        "--args=" + gradle_args_value(generator_args),
+    ]
+    if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+        command = ["cmd.exe", "/c"] + command
+    subprocess.run(command, cwd=generator_root, check=True)
+
+    if not decision_report.exists():
+        raise CliError(f"diff gate did not produce a report at {decision_report} -- see Gradle output above.")
+    return read_json(decision_report)
+
+
+def run_author_diff_gate(args: argparse.Namespace) -> int:
+    """E2: `npdev author diff-gate --previous <m> --submitted <m> [--manifest <j>]` -- a pure
+    check, no archival. Use `author submit` once the change is ready to accept.
+
+    Returns 0 when the gate passes, 2 when it refuses (same convention as `validate model`:
+    a refusal is a valid, loopable result an Author self-corrects against, not a system error --
+    CliError/exit 1 is reserved for a genuine usage problem, e.g. a missing file).
+    """
+    report = _run_authoring_gate(args, archive_dir=None)
+    _print_authoring_report(report)
+    return 0 if report.get("status") == "passed" else 2
+
+
+def run_author_submit(args: argparse.Namespace) -> int:
+    """E4: `npdev author submit --previous <m> --submitted <m> --manifest <j> [--archiveDir <d>]`
+    -- wraps E2 so an Author literally cannot submit without a manifest (--manifest is required,
+    unlike the bare diff-gate check), and archives the previous model on acceptance (E5). Does
+    NOT itself write the submitted model into place or contact a live app -- that is the caller's
+    job once this gate has passed; C5 requires routing a MANUAL_REVIEW/BACKFILL_REQUIRED result
+    through the EXISTING SchemaAcknowledgmentController flow, not a second acknowledgment
+    mechanism built here.
+
+    Returns 0/2 by the same convention as run_author_diff_gate.
+    """
+    if not args.manifest:
+        raise CliError("author submit requires --manifest (C1: an Author cannot submit without one).")
+    archive_dir = Path(args.archive_dir).expanduser().resolve() if args.archive_dir else (
+        Path(args.previous).expanduser().resolve().parent.parent / "model-history"
+    )
+    report = _run_authoring_gate(args, archive_dir=archive_dir)
+    _print_authoring_report(report)
+    if report.get("status") != "passed":
+        print("REFUSED: the previous model was NOT archived and nothing was accepted.", file=sys.stderr)
+        return 2
+    archived_to = report.get("archivedPreviousModelTo")
+    if archived_to:
+        print(f"previous model archived: {archived_to}")
+    print("Gate passed. This tool does not itself apply the submitted model or contact a live app -- "
+          "route the result per C4/C5 (METADATA_ONLY/SAFE_ADDITIVE may proceed; BACKFILL_REQUIRED/"
+          "MANUAL_REVIEW need Owner acknowledgment through the existing SchemaAcknowledgmentController).")
+    return 0
+
+
+def _print_authoring_report(report: dict) -> None:
+    print(f"authoring diff gate: {report.get('status')}")
+    for diag in report.get("diagnostics", []):
+        code = diag.get("code", "")
+        message = diag.get("message", "")
+        suggested = diag.get("suggestedFix")
+        print(f"  [{diag.get('severity', '?')}] {code}: {message}")
+        if suggested:
+            print(f"      fix: {suggested}")
 
 
 def run_report_bootstrap() -> None:
@@ -1200,7 +1963,22 @@ def build_parser() -> argparse.ArgumentParser:
     migration_diff.add_argument("--current", required=True)
     migration_diff.add_argument("--output")
     migration_diff.add_argument("--decision-report", dest="decision_report")
-    migration_diff.add_argument("--migrationRiskThreshold", choices=["SAFE_ADDITIVE", "BACKFILL_REQUIRED", "MANUAL_REVIEW"], default="SAFE_ADDITIVE")
+
+    # AI_AUTHORING_CONTRACT-2026-07-31.md Part 9 (E2/E4/E5): the Custodian's diff gate.
+    author = subparsers.add_parser("author")
+    author_sub = author.add_subparsers(dest="author_command")
+    author_diff_gate = author_sub.add_parser("diff-gate")
+    author_diff_gate.add_argument("--previous", required=True)
+    author_diff_gate.add_argument("--submitted", required=True)
+    author_diff_gate.add_argument("--manifest", help="Submission manifest (npdev-authoring-submission.v1). Omitting it is itself refused (C1).")
+    author_diff_gate.add_argument("--output", help="Directory the report is written under (default build/npdev-authoring).")
+    author_submit = author_sub.add_parser("submit")
+    author_submit.add_argument("--previous", required=True)
+    author_submit.add_argument("--submitted", required=True)
+    author_submit.add_argument("--manifest", required=True, help="Required (E4/C1): an Author cannot submit without one.")
+    author_submit.add_argument("--output", help="Directory the report is written under (default build/npdev-authoring).")
+    author_submit.add_argument("--archive-dir", dest="archive_dir",
+                                help="Where the previous model is archived on acceptance (E5). Default: <previous's app root>/model-history/.")
 
     inspect = subparsers.add_parser("inspect")
     inspect_sub = inspect.add_subparsers(dest="inspect_command")
@@ -1223,6 +2001,88 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Fail if db.definition.json is missing instead of defaulting to an InMemory database definition.",
     )
+
+    run = subparsers.add_parser("run")
+    run_sub = run.add_subparsers(dest="run_command")
+    run_app = run_sub.add_parser(
+        "app", help="Move 10 D1 (LC-D1): generate + build + boot + health-check an app in one command."
+    )
+    run_app.add_argument("--model", required=True)
+    run_app.add_argument("--config", required=True)
+    run_app.add_argument("--output", required=True)
+    run_app.add_argument(
+        "--require-db-definition",
+        action="store_true",
+        help="Fail if db.definition.json is missing instead of defaulting to an InMemory database definition.",
+    )
+    run_app.add_argument("--port", type=int, default=8180, help="Server port to boot on (default 8180).")
+    run_app.add_argument(
+        "--profile", default="dev",
+        help="Spring profile to activate at boot (--spring.profiles.active=<profile>). Default 'dev' -- "
+             "the generated app's dev-key API-key mapping and other dev-only conveniences live in "
+             "application-dev.yml/.properties and are NOT loaded under no active profile at all.",
+    )
+    run_app.add_argument(
+        "--timeout", type=int, default=420,
+        help="Overall wall-clock budget in seconds across GENERATE+BUILD+BOOT (default 420). Exceeding it "
+             "is reported as a BOOT_TIMEOUT diagnostic and guarantees teardown of any JVM this run started.",
+    )
+    run_app.add_argument(
+        "--baseline-model",
+        help="Optional: a previously-generated model.json to diff --model against. If the change "
+             "classifies as METADATA_ONLY (Move 10 C1), takes the C2 fast path (swap compiled-model.json "
+             "+ re-sign, skip full BUILD) instead of a full GENERATE+BUILD. Omit for a first-time "
+             "generation or when you want the full pipeline unconditionally.",
+    )
+    run_app.add_argument(
+        "--keep-running", action="store_true",
+        help="Do not stop a pre-existing instance already listening on --port before attempting to boot "
+             "(default: PORT_IN_USE is refused outright, matching a fresh CI-style run's expectations).",
+    )
+
+    acceptance = subparsers.add_parser("acceptance")
+    acceptance_sub = acceptance.add_subparsers(dest="acceptance_command")
+    acceptance_run = acceptance_sub.add_parser(
+        "run", help="Move 10 D2 (LC-D2): boot an app (via D1) and run declarative *.scenario.json acceptance scenarios against it."
+    )
+    acceptance_run.add_argument("--model", required=True)
+    acceptance_run.add_argument("--config", required=True)
+    acceptance_run.add_argument("--output", required=True)
+    acceptance_run.add_argument("--scenarios", required=True, help="Directory containing *.scenario.json files.")
+    acceptance_run.add_argument(
+        "--require-db-definition", action="store_true",
+        help="Fail if db.definition.json is missing instead of defaulting to an InMemory database definition.",
+    )
+    acceptance_run.add_argument("--port", type=int, default=8180)
+    acceptance_run.add_argument("--timeout", type=int, default=420)
+    acceptance_run.add_argument("--profile", default="dev")
+    acceptance_run.add_argument(
+        "--api-key", default="dev-key",
+        help="X-Api-Key header value used for every seed/when HTTP call (default 'dev-key', which "
+             "the 'dev' profile maps to a developer/admin identity). Empty string sends no header.",
+    )
+    acceptance_run.add_argument("--baseline-model")
+    acceptance_run.add_argument("--keep-running", action="store_true")
+
+    loop = subparsers.add_parser("loop")
+    loop_sub = loop.add_subparsers(dest="loop_command")
+    loop_run = loop_sub.add_parser(
+        "run", help="Move 10 D3 (LC-D3): the closed AI loop end to end -- diff-gate -> validate -> "
+                    "classify -> run+acceptance, stopping at the earliest gate that refuses."
+    )
+    loop_run.add_argument("--previous", required=True, help="The app's currently-live/previously-accepted model.json.")
+    loop_run.add_argument("--submitted", required=True, help="The Author's newly-submitted model.json.")
+    loop_run.add_argument("--manifest", help="Submission manifest (npdev-authoring-submission.v1). Omitting it is itself refused at the diff-gate (C1).")
+    loop_run.add_argument("--diff-gate-output", help="Directory the diff-gate's own report is written under.")
+    loop_run.add_argument("--config", required=True)
+    loop_run.add_argument("--output", required=True)
+    loop_run.add_argument("--scenarios", required=True, help="Directory containing *.scenario.json acceptance scenarios.")
+    loop_run.add_argument("--require-db-definition", action="store_true")
+    loop_run.add_argument("--port", type=int, default=8180)
+    loop_run.add_argument("--timeout", type=int, default=420)
+    loop_run.add_argument("--profile", default="dev")
+    loop_run.add_argument("--api-key", default="dev-key")
+    loop_run.add_argument("--keep-running", action="store_true")
 
     generate_screen = generate_sub.add_parser(
         "screen", help="Generate one hand-written screen against a live app's UI contract (R-P4)."
@@ -1292,6 +2152,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "migration" and args.migration_command == "diff":
             run_migration_diff(args)
             return 0
+        if args.command == "author" and args.author_command == "diff-gate":
+            return run_author_diff_gate(args)
+        if args.command == "author" and args.author_command == "submit":
+            return run_author_submit(args)
         if args.command == "inspect" and args.inspect_command == "bonds":
             inspect_bonds(args)
             return 0
@@ -1301,6 +2165,21 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "generate" and args.generate_command == "app":
             run_generate(args)
             return 0
+        if args.command == "run" and args.run_command == "app":
+            result = run_app(args)
+            print(json.dumps(result, indent=2))
+            # Matches the platform's established run_cli convention (0 = fully ok, 2 = ran fine and
+            # reported a real, structured problem -- never exit 1 for a diagnosed failure, only for
+            # a genuinely unexpected exception, which the except clauses below still catch).
+            return 0 if result.get("ok") else 2
+        if args.command == "acceptance" and args.acceptance_command == "run":
+            result = run_acceptance(args)
+            print(json.dumps(result, indent=2))
+            return 0 if result.get("ok") else 2
+        if args.command == "loop" and args.loop_command == "run":
+            result = run_closed_loop(args)
+            print(json.dumps(result, indent=2))
+            return 0 if result.get("ok") else 2
         if args.command == "generate" and args.generate_command == "screen":
             return run_generate_screen(args)
         if args.command == "report" and args.report_command == "bootstrap":

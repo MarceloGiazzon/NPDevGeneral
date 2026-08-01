@@ -225,6 +225,282 @@ class OrchestrationRuleMigrationTest(unittest.TestCase):
         self.assertEqual("send", action["operation"])
 
 
+class AutoPanelTransactionHooksMigrationTest(unittest.TestCase):
+    """Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4/§B.5)."""
+
+    def _model_with_autopanel(self, transaction: dict) -> dict:
+        return {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [],
+            "autoPanels": [{"aggregate": "Movimento", "transaction": transaction}],
+        }
+
+    def test_recompute_migrates_to_hooks_on_field_change(self):
+        doc = self._model_with_autopanel({"metadata": {"recompute": "RecalcularTotais"}})
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        transaction = doc["autoPanels"][0]["transaction"]
+        self.assertEqual("RecalcularTotais", transaction["hooks"]["onFieldChange"])
+        self.assertNotIn("recompute", transaction["metadata"])
+
+    def test_recompute_object_shape_with_procedure_key_also_migrates(self):
+        doc = self._model_with_autopanel({"metadata": {"recompute": {"procedure": "RecalcularTotais"}}})
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        self.assertEqual("RecalcularTotais", doc["autoPanels"][0]["transaction"]["hooks"]["onFieldChange"])
+
+    def test_recompute_is_idempotent(self):
+        doc = self._model_with_autopanel({"metadata": {"recompute": "RecalcularTotais"}})
+        migrate_document(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual("RecalcularTotais", doc["autoPanels"][0]["transaction"]["hooks"]["onFieldChange"])
+
+    def test_recompute_and_hooks_with_same_value_drops_redundant_alias(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"recompute": "RecalcularTotais"},
+            "hooks": {"onFieldChange": "RecalcularTotais"},
+        })
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        self.assertNotIn("recompute", doc["autoPanels"][0]["transaction"]["metadata"])
+
+    def test_recompute_and_hooks_with_different_values_is_left_untouched_and_reported(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"recompute": "RecalcularTotais"},
+            "hooks": {"onFieldChange": "OutraCoisa"},
+        })
+        before = copy.deepcopy(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual(before, doc)
+        self.assertTrue(any("different values" in a for a in result.ambiguities))
+
+    def test_no_recompute_declared_is_a_no_op(self):
+        doc = self._model_with_autopanel({"metadata": {}})
+        before = copy.deepcopy(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual(before, doc)
+
+    def test_derived_list_migrates_to_derived_fields_object(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"derived": [
+                {"name": "origemTotal", "expression": "sum(itens[].quantidade)"},
+                {"name": "destinoTotal", "expression": "sum(itens[].outro)", "label": "Destino Total"},
+            ]},
+        })
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        transaction = doc["autoPanels"][0]["transaction"]
+        self.assertNotIn("derived", transaction["metadata"])
+        fields = transaction["derivedFields"]
+        self.assertEqual({"tier": "client", "expression": "sum(itens[].quantidade)"}, fields["origemTotal"])
+        self.assertEqual(
+            {"tier": "client", "expression": "sum(itens[].outro)", "label": "Destino Total"},
+            fields["destinoTotal"])
+
+    def test_derived_list_with_malformed_entries_drops_them_and_reports(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"derived": [
+                {"name": "origemTotal", "expression": "sum(itens[].quantidade)"},
+                {"expression": "sum(itens[].outro)"},  # no name
+                {"name": "noExpression"},  # no expression
+            ]},
+        })
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        fields = doc["autoPanels"][0]["transaction"]["derivedFields"]
+        self.assertEqual(1, len(fields))
+        self.assertIn("origemTotal", fields)
+        self.assertTrue(any("dropped 2 malformed" in c for c in result.changes))
+
+    def test_derived_is_idempotent(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"derived": [{"name": "origemTotal", "expression": "sum(itens[].quantidade)"}]},
+        })
+        migrate_document(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+
+    def test_derived_list_and_existing_derived_fields_is_left_untouched_and_reported(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"derived": [{"name": "origemTotal", "expression": "sum(itens[].quantidade)"}]},
+            "derivedFields": {"saldoFiscal": {"tier": "server", "procedure": "CalcularSaldoFiscal"}},
+        })
+        before = copy.deepcopy(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual(before, doc)
+        self.assertTrue(any("both transaction.metadata.derived and transaction.derivedFields" in a
+                             for a in result.ambiguities))
+
+    def test_concept_bound_autopanel_with_no_transaction_is_a_no_op(self):
+        doc = {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [],
+            "autoPanels": [{"concept": "Widget"}],
+        }
+        before = copy.deepcopy(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual(before, doc)
+
+
+class WorkbenchTypedSurfaceMigrationTest(unittest.TestCase):
+    """Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): actions/visibleWhen/bandPickers."""
+
+    def _model_with_autopanel(self, transaction: dict) -> dict:
+        return {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [],
+            "autoPanels": [{"aggregate": "Movimento", "transaction": transaction}],
+        }
+
+    # -- actions --------------------------------------------------------------------------------
+
+    def test_actions_list_migrates_to_typed_actions(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"actions": [
+                {"label": "Gerar Demanda", "procedure": "GerarDemanda"},
+                {"procedure": "Recalcular"},
+            ]},
+        })
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        transaction = doc["autoPanels"][0]["transaction"]
+        self.assertNotIn("actions", transaction["metadata"])
+        actions = transaction["actions"]
+        self.assertEqual(2, len(actions))
+        self.assertEqual({"label": "Gerar Demanda", "procedure": "GerarDemanda"}, actions[0])
+        self.assertEqual({"procedure": "Recalcular"}, actions[1])
+
+    def test_actions_with_apply_to_and_after_action_migrate(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"actions": [
+                {"procedure": "Sugerir",
+                 "applyTo": {"collection": "itens", "mode": "appendRow", "map": {"a": "$b"}}},
+                {"procedure": "Aplicar", "afterAction": {"procedure": "PosProcessar"}},
+            ]},
+        })
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        actions = doc["autoPanels"][0]["transaction"]["actions"]
+        self.assertEqual({"collection": "itens", "mode": "appendRow", "map": {"a": "$b"}}, actions[0]["applyTo"])
+        self.assertEqual("PosProcessar", actions[1]["afterAction"], "object-shape afterAction unwraps to a string")
+
+    def test_actions_malformed_apply_to_is_dropped_but_action_survives(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"actions": [
+                {"procedure": "Sugerir", "applyTo": {"mode": "appendRow", "map": {"a": "$b"}}},  # no collection
+            ]},
+        })
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        actions = doc["autoPanels"][0]["transaction"]["actions"]
+        self.assertEqual(1, len(actions))
+        self.assertNotIn("applyTo", actions[0])
+
+    def test_actions_entry_missing_procedure_is_dropped_and_reported(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"actions": [
+                {"procedure": "Real"},
+                {"label": "no-op"},  # no procedure
+            ]},
+        })
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        actions = doc["autoPanels"][0]["transaction"]["actions"]
+        self.assertEqual(1, len(actions))
+        self.assertTrue(any("dropped 1 malformed" in c for c in result.changes))
+
+    def test_actions_is_idempotent(self):
+        doc = self._model_with_autopanel({"metadata": {"actions": [{"procedure": "Real"}]}})
+        migrate_document(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+
+    def test_actions_list_and_existing_actions_is_left_untouched_and_reported(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"actions": [{"procedure": "Untyped"}]},
+            "actions": [{"procedure": "Typed"}],
+        })
+        before = copy.deepcopy(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual(before, doc)
+        self.assertTrue(any("both transaction.metadata.actions and transaction.actions" in a
+                             for a in result.ambiguities))
+
+    # -- visibleWhen ------------------------------------------------------------------------------
+
+    def test_visible_when_map_migrates_to_typed_visible_when(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"visibleWhen": {"itens": "$root.tipo == 'A'", "avulsos": ""}},
+        })
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        transaction = doc["autoPanels"][0]["transaction"]
+        self.assertNotIn("visibleWhen", transaction["metadata"])
+        self.assertEqual({"itens": "$root.tipo == 'A'"}, transaction["visibleWhen"])
+        self.assertTrue(any("dropped 1 malformed" in c for c in result.changes))
+
+    def test_visible_when_is_idempotent(self):
+        doc = self._model_with_autopanel({"metadata": {"visibleWhen": {"itens": "$root.tipo == 'A'"}}})
+        migrate_document(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+
+    def test_visible_when_and_existing_visible_when_is_left_untouched_and_reported(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"visibleWhen": {"itens": "untyped"}},
+            "visibleWhen": {"itens": "typed"},
+        })
+        before = copy.deepcopy(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual(before, doc)
+        self.assertTrue(any("both transaction.metadata.visibleWhen and transaction.visibleWhen" in a
+                             for a in result.ambiguities))
+
+    # -- bandPickers ------------------------------------------------------------------------------
+
+    def test_band_pickers_map_migrates_to_typed_band_pickers(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"bandPickers": {
+                "origens": {"panel": "MovtoOrigemSelection", "label": "Seleciona Ruas", "columns": ["local"]},
+                "semvias": {"label": "ignored -- no panel"},
+            }},
+        })
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        transaction = doc["autoPanels"][0]["transaction"]
+        self.assertNotIn("bandPickers", transaction["metadata"])
+        pickers = transaction["bandPickers"]
+        self.assertEqual(1, len(pickers))
+        self.assertEqual(
+            {"panel": "MovtoOrigemSelection", "label": "Seleciona Ruas", "columns": ["local"]},
+            pickers["origens"])
+        self.assertTrue(any("dropped 1 malformed" in c for c in result.changes))
+
+    def test_band_pickers_is_idempotent(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"bandPickers": {"origens": {"panel": "MovtoOrigemSelection"}}},
+        })
+        migrate_document(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+
+    def test_band_pickers_and_existing_band_pickers_is_left_untouched_and_reported(self):
+        doc = self._model_with_autopanel({
+            "metadata": {"bandPickers": {"origens": {"panel": "Untyped"}}},
+            "bandPickers": {"origens": {"panel": "Typed"}},
+        })
+        before = copy.deepcopy(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual(before, doc)
+        self.assertTrue(any("both transaction.metadata.bandPickers and transaction.bandPickers" in a
+                             for a in result.ambiguities))
+
+
 class CompiledModelDetectionTest(unittest.TestCase):
     def test_compiled_step_shape_is_detected_and_left_untouched(self):
         doc = {

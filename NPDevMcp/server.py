@@ -17,6 +17,7 @@ that exposes the NPDev authoring pipeline as typed tools. It wraps the portable 
   - npdev_check_support   : is a feature a known gap/constraint/lifted boundary? (queries the ledger projection)
   - npdev_migration_diff : classify a schema change as safe-additive vs destructive
   - npdev_generate       : run the real generator (slow/mutating -- gate in your client)
+  - npdev_build_and_run  : GENERATE + BUILD + BOOT + health-check in one call (Move 10 D1)
 
 Zero third-party deps on purpose: it runs under any Python 3.9+ with no install step, and is
 deterministically testable by piping JSON-RPC frames to stdin.
@@ -316,9 +317,41 @@ def tool_migration_diff(arguments: dict[str, Any]) -> dict[str, Any]:
     if not baseline or not current:
         return _text_error("baseline and current are required")
     args = ["migration", "diff", "--baseline", baseline, "--current", current]
-    threshold = arguments.get("risk_threshold")
-    if threshold:
-        args += ["--migrationRiskThreshold", threshold]
+    result = run_cli(args)
+    return _passthrough(result)
+
+
+def tool_author_submit(arguments: dict[str, Any]) -> dict[str, Any]:
+    """AI_AUTHORING_CONTRACT-2026-07-31.md Part 9, E4: wraps `npdev author submit` (the E2 diff
+    gate + E5 archival) so an Author literally cannot submit a model change against an existing
+    app without a manifest -- `manifest` is a REQUIRED argument here, not merely encouraged.
+    """
+    previous = arguments.get("previous")
+    submitted = arguments.get("submitted")
+    manifest = arguments.get("manifest")
+    if not (previous and submitted and manifest):
+        return _text_error("previous, submitted and manifest are all required (C1: an Author "
+                            "cannot submit without a manifest).")
+    args = ["author", "submit", "--previous", previous, "--submitted", submitted, "--manifest", manifest]
+    if arguments.get("archive_dir"):
+        args += ["--archive-dir", arguments["archive_dir"]]
+    result = run_cli(args)
+    return _passthrough(result)
+
+
+def tool_author_diff_gate(arguments: dict[str, Any]) -> dict[str, Any]:
+    """A pure check with no archival -- for an Author to test a candidate submission before
+    committing to `npdev_author_submit`. `manifest` is optional here (omitting it still runs the
+    gate, which itself reports the C1 refusal) so an Author can also see what a bare, undiffed
+    submission looks like without that being a tool-level error.
+    """
+    previous = arguments.get("previous")
+    submitted = arguments.get("submitted")
+    if not (previous and submitted):
+        return _text_error("previous and submitted are required.")
+    args = ["author", "diff-gate", "--previous", previous, "--submitted", submitted]
+    if arguments.get("manifest"):
+        args += ["--manifest", arguments["manifest"]]
     result = run_cli(args)
     return _passthrough(result)
 
@@ -330,6 +363,33 @@ def tool_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     if not (model and config and output):
         return _text_error("model, config and output are required")
     result = run_cli(["generate", "app", "--model", model, "--config", config, "--output", output])
+    return _passthrough(result)
+
+
+def tool_build_and_run(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Move 10 D1 (LC-D1): wraps `npdev run app` -- the CLI is the real implementation (testable
+    without an MCP client); this tool just runs it and passes its structured JSON straight through.
+    """
+    model = arguments.get("model")
+    config = arguments.get("config")
+    output = arguments.get("output")
+    if not (model and config and output):
+        return _text_error("model, config and output are required")
+    args = ["run", "app", "--model", model, "--config", config, "--output", output]
+    port = arguments.get("port")
+    if port:
+        args += ["--port", str(port)]
+    timeout = int(arguments.get("timeout") or 420)
+    args += ["--timeout", str(timeout)]
+    if arguments.get("baseline_model"):
+        args += ["--baseline-model", arguments["baseline_model"]]
+    if arguments.get("keep_running"):
+        args += ["--keep-running"]
+    # A few seconds of slack over the CLI's own --timeout so run_cli's OWN timeout (which would
+    # produce an unstructured {"ok": false, "error": "cli timed out..."} envelope, not this tool's
+    # richer phase/diagnostics shape) never fires first -- the CLI's own bounded teardown should
+    # always be what ends an over-budget run.
+    result = run_cli(args, timeout=timeout + 60)
     return _passthrough(result)
 
 
@@ -526,21 +586,59 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "npdev_migration_diff",
         "description": (
-            "Classify a schema change (baseline storage snapshot -> current model) as safe-additive "
-            "vs backfill-required vs manual-review, and produce a dry-run migration plan. Use before "
-            "changing an existing app's concepts."
+            "Classify a model change (baseline model.json -> current model.json) as METADATA_ONLY / "
+            "SAFE_ADDITIVE / BACKFILL_REQUIRED / MANUAL_REVIEW, with a per-item reason list -- no live "
+            "database involved, no app build. Use before changing an existing app's concepts/fields."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "baseline": {"type": "string", "description": "Path to the baseline storage-schema snapshot."},
-                "current": {"type": "string", "description": "Path to the current model.json."},
-                "risk_threshold": {
-                    "type": "string",
-                    "enum": ["SAFE_ADDITIVE", "BACKFILL_REQUIRED", "MANUAL_REVIEW"],
-                },
+                "baseline": {"type": "string", "description": "Path to the previous model.json the app was last generated from."},
+                "current": {"type": "string", "description": "Path to the current (candidate) model.json."},
             },
             "required": ["baseline", "current"],
+        },
+    },
+    {
+        "name": "npdev_author_diff_gate",
+        "description": (
+            "AI Authoring Contract Custodian check (pure, no archival): verifies a candidate model.json "
+            "against its previous version and a submission manifest -- every removed concept/field is "
+            "accounted for by a renamedFrom marker or a declared removal, no hallucinated renames, no "
+            "rename bundled with a shape change, version strictly increased, no undeclared access/"
+            "permissionRequirements/invariant/sensitive change. Use to self-correct BEFORE calling "
+            "npdev_author_submit. manifest is optional here -- omitting it just reports the refusal "
+            "that would happen anyway."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "previous": {"type": "string", "description": "Path to the previous model.json (I1)."},
+                "submitted": {"type": "string", "description": "Path to the candidate model.json."},
+                "manifest": {"type": "string", "description": "Path to a npdev-authoring-submission.v1 manifest JSON file."},
+            },
+            "required": ["previous", "submitted"],
+        },
+    },
+    {
+        "name": "npdev_author_submit",
+        "description": (
+            "AI Authoring Contract submission (E4): runs the same check as npdev_author_diff_gate, and "
+            "on a PASS archives the previous model verbatim (so the next iteration can diff against it). "
+            "manifest is REQUIRED -- an Author literally cannot call this without one (C1). Does NOT "
+            "itself write the submitted model into place or contact a live app: a passing result still "
+            "needs Owner acknowledgment for BACKFILL_REQUIRED/MANUAL_REVIEW changes (route via the "
+            "app's existing schema-acknowledgment flow, not a second mechanism)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "previous": {"type": "string", "description": "Path to the previous model.json (I1)."},
+                "submitted": {"type": "string", "description": "Path to the candidate model.json."},
+                "manifest": {"type": "string", "description": "Path to a npdev-authoring-submission.v1 manifest JSON file."},
+                "archive_dir": {"type": "string", "description": "Where the previous model is archived on acceptance. Default: <app root>/model-history/."},
+            },
+            "required": ["previous", "submitted", "manifest"],
         },
     },
     {
@@ -611,6 +709,54 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "npdev_build_and_run",
+        "description": (
+            "Move 10 D1: GENERATE -> BUILD -> BOOT -> READY in one call -- the AI loop's missing "
+            "half (npdev_generate stops at GENERATE and never builds/boots/health-checks). Returns "
+            "structured JSON: {phase, ok, diagnostics[{phase,code,message,suggestedFix,helpKey}], "
+            "baseUrl, logExcerpt}. Five named failure codes an agent can branch on without parsing a "
+            "stack trace: PORT_IN_USE, SCHEMA_IMPACT_UNACKNOWLEDGED, JAR_NOT_FOUND, STALE_CACHE, "
+            "MIGRATION_CLAIM_HELD (anything else falls back to GENERATE_FAILED/BUILD_FAILED/"
+            "BOOT_TIMEOUT/BOOT_FAILED). Bounded by --timeout across the WHOLE pipeline (not just "
+            "boot) with guaranteed teardown -- a run that fails or times out before READY never "
+            "leaves an orphaned JVM. On READY the JVM is deliberately left running (that's the "
+            "point) at baseUrl. Slow and writes to disk -- gate this behind confirmation in your "
+            "client, same as npdev_generate."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string", "description": "Path to a validated model.json."},
+                "config": {
+                    "type": "string",
+                    "description": "Path to an ai-generator-config.v1 JSON file -- same shape npdev_generate takes.",
+                },
+                "output": {
+                    "type": "string",
+                    "description": "Directory to assemble the final generated app into (same meaning as npdev_generate's own 'output').",
+                },
+                "port": {"type": "integer", "description": "Server port to boot on. Default 8180."},
+                "timeout": {
+                    "type": "integer",
+                    "description": "Overall wall-clock budget in seconds across GENERATE+BUILD+BOOT. Default 420.",
+                },
+                "baseline_model": {
+                    "type": "string",
+                    "description": (
+                        "Optional: a previously-generated model.json to diff 'model' against. If the "
+                        "change classifies as METADATA_ONLY (Move 10 C1), takes the C2 fast path "
+                        "(swap compiled-model.json + re-sign, skip the full build) automatically."
+                    ),
+                },
+                "keep_running": {
+                    "type": "boolean",
+                    "description": "Skip the PORT_IN_USE pre-flight refusal (default: refused outright if something is already listening on 'port').",
+                },
+            },
+            "required": ["model", "config", "output"],
+        },
+    },
+    {
         "name": "npdev_ingest_review_verdict",
         "description": (
             "ADR-0009: validates a verdict JSON file (must carry recordKind:'external-ai-verdict', "
@@ -644,7 +790,10 @@ TOOL_HANDLERS = {
     "npdev_search_fix": tool_search_fix,
     "npdev_check_support": tool_check_support,
     "npdev_migration_diff": tool_migration_diff,
+    "npdev_author_diff_gate": tool_author_diff_gate,
+    "npdev_author_submit": tool_author_submit,
     "npdev_generate": tool_generate,
+    "npdev_build_and_run": tool_build_and_run,
     "npdev_build_review_pack": tool_build_review_pack,
     "npdev_ingest_review_verdict": tool_ingest_review_verdict,
 }

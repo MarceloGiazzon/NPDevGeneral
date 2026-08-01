@@ -242,6 +242,275 @@ def _migrate_orchestration_rule(rule: dict, where: str, result: MigrationResult)
         _migrate_orchestration_action(action, f"{where}.actions[{i}]", result)
 
 
+def _migrate_transaction_recompute(transaction: dict, where: str, result: MigrationResult) -> None:
+    """Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4): rewrites the untyped
+    `transaction.metadata.recompute` (a bare procedure name, or `{procedure}`) to the typed
+    `transaction.hooks.onFieldChange`. Left untouched (reported) if both are present with
+    different procedure names -- a same-value pair is simply redundant and the alias is dropped."""
+    metadata = transaction.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+    legacy = metadata.get("recompute")
+    procedure = legacy.get("procedure") if isinstance(legacy, dict) else legacy
+    if not isinstance(procedure, str) or not procedure.strip():
+        return
+    hooks = transaction.get("hooks")
+    existing = hooks.get("onFieldChange") if isinstance(hooks, dict) else None
+    if isinstance(existing, str) and existing.strip():
+        if existing == procedure:
+            del metadata["recompute"]
+            result.changed = True
+            result.changes.append(
+                f"{where}: dropped redundant transaction.metadata.recompute (== hooks.onFieldChange)")
+            return
+        result.ambiguities.append(
+            f"{where}: both transaction.metadata.recompute={procedure!r} and "
+            f"transaction.hooks.onFieldChange={existing!r} present with different values -- "
+            f"left untouched, resolve by hand"
+        )
+        return
+    if not isinstance(hooks, dict):
+        hooks = {}
+        transaction["hooks"] = hooks
+    hooks["onFieldChange"] = procedure
+    del metadata["recompute"]
+    result.changed = True
+    result.changes.append(f"{where}: migrated transaction.metadata.recompute -> transaction.hooks.onFieldChange")
+
+
+def _migrate_transaction_derived(transaction: dict, where: str, result: MigrationResult) -> None:
+    """Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4): rewrites the untyped
+    `transaction.metadata.derived` (a list of `{name, expression, label?}`) to the typed
+    `transaction.derivedFields` (an object keyed by name, guaranteeing uniqueness by
+    construction). Every migrated entry gets `tier: "client"` -- the only tier the retired list
+    ever supported. An entry missing a usable name/expression is dropped, matching the compiler's
+    own long-standing tolerance for malformed legacy entries (AutoPanelExpander.derivedFields).
+    Left untouched (reported) if `derivedFields` is already non-empty -- which one is authoritative
+    is not something this tool decides."""
+    metadata = transaction.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+    legacy = metadata.get("derived")
+    if not isinstance(legacy, list) or not legacy:
+        return
+    if isinstance(transaction.get("derivedFields"), dict) and transaction["derivedFields"]:
+        result.ambiguities.append(
+            f"{where}: both transaction.metadata.derived and transaction.derivedFields are present "
+            f"-- left untouched, resolve by hand which one is authoritative"
+        )
+        return
+    derived_fields: dict = {}
+    dropped = 0
+    for entry in legacy:
+        name = entry.get("name") if isinstance(entry, dict) else None
+        expression = entry.get("expression") if isinstance(entry, dict) else None
+        if not isinstance(name, str) or not name.strip() or not isinstance(expression, str) or not expression.strip():
+            dropped += 1
+            continue
+        migrated_field: dict = {"tier": "client", "expression": expression}
+        label = entry.get("label")
+        if isinstance(label, str) and label.strip():
+            migrated_field["label"] = label
+        derived_fields[name] = migrated_field
+    if not derived_fields:
+        return
+    transaction["derivedFields"] = derived_fields
+    del metadata["derived"]
+    result.changed = True
+    plural = "y" if len(derived_fields) == 1 else "ies"
+    message = (f"{where}: migrated {len(derived_fields)} entr{plural} from transaction.metadata.derived "
+               f"(list) to transaction.derivedFields (object)")
+    if dropped:
+        message += f", dropped {dropped} malformed entr{'y' if dropped == 1 else 'ies'}"
+    result.changes.append(message)
+
+
+def _migrate_action_entry(entry) -> "dict | None":
+    """Normalizes one untyped transaction.metadata.actions[] entry to the typed `workbenchAction`
+    shape, applying the exact same tolerance AutoPanelExpander.workbenchActions has always had for
+    malformed sub-fields -- an entry with no usable procedure is dropped entirely (None); a
+    malformed applyTo (missing/blank collection, a non-"appendRow" mode, an empty map) is dropped
+    from the entry alone rather than carried over as a now schema-invalid value, since the typed
+    `workbenchActionApplyTo` def requires collection+mode. `afterAction` accepts the same dual
+    shape (bare string or `{procedure}`) the untyped form always did."""
+    if not isinstance(entry, dict):
+        return None
+    procedure = entry.get("procedure")
+    if not isinstance(procedure, str) or not procedure.strip():
+        return None
+    migrated: dict = {"procedure": procedure.strip()}
+    label = entry.get("label")
+    if isinstance(label, str) and label.strip():
+        migrated["label"] = label.strip()
+    input_fields = entry.get("inputFields")
+    if isinstance(input_fields, list):
+        cleaned = [str(f).strip() for f in input_fields if isinstance(f, str) and f.strip()]
+        if cleaned:
+            migrated["inputFields"] = cleaned
+    apply_to = entry.get("applyTo")
+    if isinstance(apply_to, dict):
+        collection = apply_to.get("collection")
+        mode = apply_to.get("mode")
+        field_map = apply_to.get("map")
+        if (isinstance(collection, str) and collection.strip()
+                and mode == "appendRow"
+                and isinstance(field_map, dict) and field_map):
+            migrated["applyTo"] = {
+                "collection": collection.strip(),
+                "mode": "appendRow",
+                "map": {str(k): str(v) for k, v in field_map.items() if k is not None and v is not None},
+            }
+    after_action = entry.get("afterAction")
+    if isinstance(after_action, dict):
+        after_action = after_action.get("procedure")
+    if isinstance(after_action, str) and after_action.strip():
+        migrated["afterAction"] = after_action.strip()
+    visible_when = entry.get("visibleWhen")
+    if isinstance(visible_when, str) and visible_when.strip():
+        migrated["visibleWhen"] = visible_when.strip()
+    return migrated
+
+
+def _migrate_transaction_actions(transaction: dict, where: str, result: MigrationResult) -> None:
+    """Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): rewrites the untyped
+    `transaction.metadata.actions` (a list) to the typed `transaction.actions` (schema-validated,
+    same shape) -- a typo'd key in the untyped bag silently did nothing; the typed slot fails at
+    schema time instead. An entry missing `procedure` entirely is dropped, same as the compiler
+    always silently skipped it. Left untouched (reported) if `actions` is already non-empty."""
+    metadata = transaction.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+    legacy = metadata.get("actions")
+    if not isinstance(legacy, list) or not legacy:
+        return
+    if isinstance(transaction.get("actions"), list) and transaction["actions"]:
+        result.ambiguities.append(
+            f"{where}: both transaction.metadata.actions and transaction.actions are present "
+            f"-- left untouched, resolve by hand which one is authoritative"
+        )
+        return
+    migrated_actions = []
+    dropped = 0
+    for entry in legacy:
+        migrated = _migrate_action_entry(entry)
+        if migrated is None:
+            dropped += 1
+            continue
+        migrated_actions.append(migrated)
+    if not migrated_actions:
+        return
+    transaction["actions"] = migrated_actions
+    del metadata["actions"]
+    result.changed = True
+    plural = "" if len(migrated_actions) == 1 else "s"
+    message = (f"{where}: migrated {len(migrated_actions)} action{plural} from "
+               f"transaction.metadata.actions to transaction.actions")
+    if dropped:
+        message += f", dropped {dropped} malformed entr{'y' if dropped == 1 else 'ies'}"
+    result.changes.append(message)
+
+
+def _migrate_transaction_visible_when(transaction: dict, where: str, result: MigrationResult) -> None:
+    """Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): rewrites the untyped
+    `transaction.metadata.visibleWhen` (an object keyed by collection/band name, values a client
+    predicate string) to the typed `transaction.visibleWhen` -- same shape, now schema-validated.
+    A blank key or non-string value is dropped, matching
+    AutoPanelExpander.visibleWhenByCollection's own long-standing tolerance. Left untouched
+    (reported) if `visibleWhen` is already non-empty."""
+    metadata = transaction.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+    legacy = metadata.get("visibleWhen")
+    if not isinstance(legacy, dict) or not legacy:
+        return
+    if isinstance(transaction.get("visibleWhen"), dict) and transaction["visibleWhen"]:
+        result.ambiguities.append(
+            f"{where}: both transaction.metadata.visibleWhen and transaction.visibleWhen are present "
+            f"-- left untouched, resolve by hand which one is authoritative"
+        )
+        return
+    migrated: dict = {}
+    dropped = 0
+    for key, value in legacy.items():
+        if not isinstance(key, str) or not key.strip() or not isinstance(value, str) or not value.strip():
+            dropped += 1
+            continue
+        migrated[key.strip()] = value.strip()
+    if not migrated:
+        return
+    transaction["visibleWhen"] = migrated
+    del metadata["visibleWhen"]
+    result.changed = True
+    message = (f"{where}: migrated {len(migrated)} entr{'y' if len(migrated) == 1 else 'ies'} from "
+               f"transaction.metadata.visibleWhen to transaction.visibleWhen")
+    if dropped:
+        message += f", dropped {dropped} malformed entr{'y' if dropped == 1 else 'ies'}"
+    result.changes.append(message)
+
+
+def _migrate_transaction_band_pickers(transaction: dict, where: str, result: MigrationResult) -> None:
+    """Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): rewrites the untyped
+    `transaction.metadata.bandPickers` (an object keyed by band collection name, values
+    `{panel, label?, columns?}`) to the typed `transaction.bandPickers` -- same shape, now
+    schema-validated. An entry missing `panel` is dropped, matching AutoPanelExpander.bandPickers'
+    own long-standing tolerance. Left untouched (reported) if `bandPickers` is already non-empty."""
+    metadata = transaction.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+    legacy = metadata.get("bandPickers")
+    if not isinstance(legacy, dict) or not legacy:
+        return
+    if isinstance(transaction.get("bandPickers"), dict) and transaction["bandPickers"]:
+        result.ambiguities.append(
+            f"{where}: both transaction.metadata.bandPickers and transaction.bandPickers are present "
+            f"-- left untouched, resolve by hand which one is authoritative"
+        )
+        return
+    migrated: dict = {}
+    dropped = 0
+    for key, spec in legacy.items():
+        if not isinstance(key, str) or not key.strip() or not isinstance(spec, dict):
+            dropped += 1
+            continue
+        panel = spec.get("panel")
+        if not isinstance(panel, str) or not panel.strip():
+            dropped += 1
+            continue
+        migrated_picker: dict = {"panel": panel.strip()}
+        label = spec.get("label")
+        if isinstance(label, str) and label.strip():
+            migrated_picker["label"] = label.strip()
+        columns = spec.get("columns")
+        if isinstance(columns, list):
+            cleaned_columns = [str(c).strip() for c in columns if isinstance(c, str) and c.strip()]
+            if cleaned_columns:
+                migrated_picker["columns"] = cleaned_columns
+        migrated[key.strip()] = migrated_picker
+    if not migrated:
+        return
+    transaction["bandPickers"] = migrated
+    del metadata["bandPickers"]
+    result.changed = True
+    message = (f"{where}: migrated {len(migrated)} picker{'' if len(migrated) == 1 else 's'} from "
+               f"transaction.metadata.bandPickers to transaction.bandPickers")
+    if dropped:
+        message += f", dropped {dropped} malformed entr{'y' if dropped == 1 else 'ies'}"
+    result.changes.append(message)
+
+
+def _migrate_autopanel(autopanel: dict, where: str, result: MigrationResult) -> None:
+    if not isinstance(autopanel, dict):
+        return
+    transaction = autopanel.get("transaction")
+    if not isinstance(transaction, dict):
+        return
+    _migrate_transaction_recompute(transaction, where, result)
+    _migrate_transaction_derived(transaction, where, result)
+    _migrate_transaction_actions(transaction, where, result)
+    _migrate_transaction_visible_when(transaction, where, result)
+    _migrate_transaction_band_pickers(transaction, where, result)
+
+
 def migrate_document(doc: dict) -> MigrationResult:
     """Migrates `doc` IN PLACE to DSL 2.0 canonical spellings. Returns what happened."""
     result = MigrationResult()
@@ -267,5 +536,8 @@ def migrate_document(doc: dict) -> MigrationResult:
 
     for i, rule in enumerate(doc.get("orchestrationRules", None) or []):
         _migrate_orchestration_rule(rule, f"orchestrationRules[{i}] ({rule.get('name', '?')})", result)
+
+    for i, autopanel in enumerate(doc.get("autoPanels", None) or []):
+        _migrate_autopanel(autopanel, f"autoPanels[{i}] ({autopanel.get('name') or autopanel.get('aggregate') or '?'})", result)
 
     return result
