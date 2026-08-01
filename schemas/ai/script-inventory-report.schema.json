@@ -20,6 +20,7 @@
     "releaseCriticalViolations",
     "unknownInvocationScripts",
     "invocationMismatchScripts",
+    "orphanedGateCheckers",
     "scripts"
   ],
   "properties": {
@@ -76,6 +77,10 @@
     },
     "invocationMismatchScripts": {
       "type": "array"
+    },
+    "orphanedGateCheckers": {
+      "type": "array",
+      "description": "Move 11 W2 (O4): scripts/quality/check-*.py named by no scripts/quality/run-*.ps1 -- a check that exists and correctly detects its target, which running the gates never exercises."
     },
     "scripts": {
       "type": "array",
