@@ -1,0 +1,58 @@
+id: REG-110
+title: "LC-D2 (the acceptance-scenario runner) and LC-D3 (the closed authoring loop) were already fully implemented in NPDevCli/npdev_cli.py -- apparently from an earlier Move 10 session -- but had never been run, tested, or documented anywhere; a closure spec (Move 13) re-described them as needing to be built"
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-08-01
+closed: 2026-08-01
+verification: VERIFIED_LIVE
+source: |
+  MOVE13_CLOSE_EVERYTHING_SPEC.md's Phase P2 described LC-D2 as "the format and fixtures already
+  exist; nothing runs them" and LC-D3 as "every piece exists. This is integration" -- both phrased as
+  if the runner/loop logic itself needed to be authored. Reading NPDevCli/npdev_cli.py before writing
+  any new code found `run_acceptance` (~line 1337) and `run_closed_loop` (~line 1391), both complete,
+  both wired into real `npdev acceptance run` / `npdev loop run` CLI subcommands with full argument
+  parsing already in place. Grepping the whole repo for "run_acceptance", "run_closed_loop", "LC-D2",
+  "LC-D3" outside npdev_cli.py itself found zero hits -- no test, no doc, no ledger item. This is the
+  "claimed/assumed done, never verified live" pattern this project's culture repeatedly names (see
+  e.g. REG-93's three move-reports claiming "gates green" while a checker sat red) -- here the failure
+  mode is milder (nobody claimed it worked; a later spec just assumed it needed building because
+  nothing recorded that it already existed and worked).
+surface: cli
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevSamples/user-minimal/Input/config.json
+detail: |
+  Verified live rather than assumed, closing Move 13 P2.1/P2.2 as verification (not construction):
+
+  LC-D2: `npdev acceptance run` against NPDevSamples/user-minimal (a real generate+build+boot, port
+  8181) ran all 4 existing *.scenario.json fixtures over real HTTP. Real results: 01 passed (status
+  200, totalElements=2, allEqual name), 02 failed for its designed reason (expected 999, actual 1 --
+  the report names the exact assertion and actual value), 03 proved a WHERE-clause pushdown filter
+  really filters (2 rows returned out of 3 seeded, allEqual on the filtered set), 04 (unapproved) ran
+  but was excluded from the pass count (`summary.excludedUnapproved: 1`). NPDevSamples/user-minimal
+  had a model.json and acceptance/ fixtures but NO Input/config.json, so it could not previously be
+  generated/run at all -- added one (modeled on simple-user-registry's), the one real gap this item's
+  investigation found and fixed.
+
+  LC-D3: `npdev loop run` tested three ways, proving the diffGate -> validate -> classify ->
+  run+acceptance ordering is real, not decorative:
+    (A) no --manifest -> stops at diffGate (AUTHORING_MANIFEST_MISSING), nothing downstream runs
+    (B) a manifest but a submitted model with a flow step referencing a nonexistent invariant name
+        -> diffGate passes (correctly -- the diff itself was properly authorized), stops at validate
+        with the exact semantic error named, nothing downstream (classify/run/acceptance) runs
+    (C) a real additive change (User gains an optional phone field, v1->v2, correct manifest) -> the
+        FULL pipeline actually executes: diffGate passed, validate passed (0 errors), classification
+        correctly computed SAFE_ADDITIVE (Move 10 C1's real classifier), a second real generate+
+        build+boot succeeded (port 8183), all 4 acceptance fixtures ran again with the same real
+        result as LC-D2's own run -- overall ok:false/stoppedAt:acceptance, which is the CORRECT
+        honest answer (fixture 02 is deliberately wrong by its own design), not a defect in the loop.
+
+  Full evidence, commands, and complete JSON output for all four runs:
+  D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\move13\p2-lc-d2-d3-verification.md
+
+  Not done here, named as residual: no automated regression test exists for run_acceptance/
+  run_closed_loop/the JSONPath-lite evaluator -- this closure is a live-verified proof, not a
+  checked-in test suite. A future session should add one (e.g. against a lightweight HTTP stub for
+  the JSONPath/assertion logic specifically) so this does not silently regress the way it silently
+  went unverified for however long it has existed.
