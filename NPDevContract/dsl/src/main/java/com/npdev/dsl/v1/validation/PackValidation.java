@@ -40,6 +40,7 @@ import com.npdev.dsl.v1.ast.PresentationMetadataAst;
 import com.npdev.dsl.v1.ast.ProcedureAst;
 import com.npdev.dsl.v1.ast.ProcedureParameterAst;
 import com.npdev.dsl.v1.ast.ProcedureStepAst;
+import com.npdev.dsl.v1.query.QueryPredicateGrammar;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
 import com.npdev.dsl.v1.ast.RuleProfileAst;
@@ -134,8 +135,50 @@ final class PackValidation {
                 errors.add("Query " + query.name() + ": concept not found: " + query.concept());
             }
             validateParameterNames("Query " + query.name(), query.parameters(), errors);
+            validateQueryWhereCompiles(query, errors);
             if (query.isAggregate() && concept != null) {
                 validateAggregateQuery(query, concept, errors);
+            }
+        }
+    }
+
+    /**
+     * Move 12 P1.4 (item 2 / REG-101, fix shape (c)): {@code where} is now refused at AUTHORING
+     * time, not just at runtime -- the durable fix the ledger item's own detail names
+     * ("move the compiler to a module both the DSL validator and the kernel can use"). Reuses the
+     * SAME grammar the kernel's {@code ConceptQueryPredicateCompiler} compiles with
+     * ({@link QueryPredicateGrammar}, lifted into this module for exactly this reuse), so a
+     * predicate refused here is refused identically at runtime -- one grammar, not two drifting
+     * copies (the honest limitation {@code check-query-predicate-compilable.py}'s own docstring
+     * named and this move retires).
+     *
+     * <p>A {@code :name} bind placeholder is valid grammar (REG-101 fix shape (b)/(c)), but only
+     * when {@code name} is one of the query's own declared {@code parameters[]} -- a placeholder
+     * naming nothing declared is a typo or a forgotten declaration, and X0's rule applies here too:
+     * refuse it rather than silently compare every row against the seven-character literal
+     * {@code ":name"} (REG-101's own corpus witness, before this fix).
+     */
+    private static void validateQueryWhereCompiles(QueryAst query, List<String> errors) {
+        if (!hasText(query.where())) {
+            return;
+        }
+        List<QueryPredicateGrammar.Clause> clauses;
+        try {
+            clauses = QueryPredicateGrammar.parse(query.where());
+        } catch (QueryPredicateGrammar.UnsupportedPredicateException unsupported) {
+            errors.add("Query " + query.name() + ": where cannot be compiled -- " + unsupported.getMessage());
+            return;
+        }
+        Set<String> declaredParameters = query.parameters().stream()
+                .map(ProcedureParameterAst::name)
+                .map(SemanticValidator::normalize)
+                .collect(Collectors.toSet());
+        for (QueryPredicateGrammar.Clause clause : clauses) {
+            if (clause.literal() instanceof QueryPredicateGrammar.Literal.Placeholder placeholder
+                    && !declaredParameters.contains(normalize(placeholder.name()))) {
+                errors.add("Query " + query.name() + ": where references bind placeholder :" + placeholder.name()
+                        + ", which is not declared in this query's parameters[] (declared: "
+                        + (declaredParameters.isEmpty() ? "none" : new TreeSet<>(declaredParameters)) + ")");
             }
         }
     }

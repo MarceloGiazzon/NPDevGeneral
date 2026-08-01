@@ -161,7 +161,7 @@ final class PanelValidation {
                 AggregateAst aggregate = aggregatesByNormalizedName.get(normalize(autoPanel.aggregate()));
                 validateRegions(here, autoPanel, aggregate, errors);
                 validateWorkbenchActions(here, autoPanel, procedureNames, errors);
-                validateVisibleWhen(here, autoPanel, aggregate, errors);
+                validateVisibleWhen(here, autoPanel, aggregate, entitiesByLower, errors);
                 validateBandPickers(here, autoPanel, aggregate, errors);
             }
         }
@@ -221,7 +221,8 @@ final class PanelValidation {
      * pair), since both key off the same aggregate composition tree.
      */
     private static void validateVisibleWhen(
-            String panelLabel, AutoPanelAst autoPanel, AggregateAst aggregate, List<String> errors) {
+            String panelLabel, AutoPanelAst autoPanel, AggregateAst aggregate,
+            Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         AutoPanelSurfaceAst transaction = autoPanel.transaction();
         if (transaction == null || transaction.visibleWhen().isEmpty() || aggregate == null) {
             return;
@@ -234,9 +235,12 @@ final class PanelValidation {
                         + "\"<collection>.<band>\" pair");
             }
         }
+        ConceptAst rootConcept = aggregate.root() == null
+                ? null : entitiesByLower.get(normalize(aggregate.root()));
         for (Map.Entry<String, String> entry : transaction.visibleWhen().entrySet()) {
-            validateUiStateReference(panelLabel + " transaction.visibleWhen['" + entry.getKey() + "']",
-                    entry.getValue(), transaction, errors);
+            String label = panelLabel + " transaction.visibleWhen['" + entry.getKey() + "']";
+            validateUiStateReference(label, entry.getValue(), transaction, errors);
+            validateRootFieldReference(label, entry.getValue(), rootConcept, errors);
         }
     }
 
@@ -249,7 +253,7 @@ final class PanelValidation {
      * Move 7 gave them typed replacements.
      *
      * <p>Anything that is not a {@code $ui.} predicate is left alone here: {@code $root.<field>}
-     * predicates are the pre-existing form and are not newly validated by this pass.
+     * predicates are validated separately by {@link #validateRootFieldReference}.
      */
     private static void validateUiStateReference(
             String label, String expression, AutoPanelSurfaceAst transaction, List<String> errors) {
@@ -279,6 +283,42 @@ final class PanelValidation {
     /** The SAME grammar visibleWhen already carries, with {@code ui} as the root instead of {@code root}. */
     private static final Pattern UI_STATE_PREDICATE =
             Pattern.compile("^\\$?ui\\.([A-Za-z_][A-Za-z0-9_]*)\\s*(==|!=)\\s*'([^']*)'$");
+
+    /**
+     * Move 12 P1.3 (item 1 / REG-100 X0-8): the near-copy of {@link #validateUiStateReference} the
+     * ledger item asked for -- a {@code $root.<field>} predicate must name a field declared on the
+     * aggregate's root concept. {@code evaluateVisibleWhen} fails OPEN by design (a hidden surface
+     * whose rows still commit is the worse failure than a wrongly-visible one), and that is only a
+     * safe default if a wrong predicate is caught here, at authoring time -- otherwise a typo like
+     * {@code $root.tpio == 'X'} validates clean and then silently shows everything forever, which is
+     * exactly the failure {@code $ui.<name>} was closed against in Move 11 W6. Unlike {@code $ui},
+     * there is no fixed value set to check literals against -- root concept fields are typed, open
+     * domains -- so this only checks that the field itself is declared, not the literal.
+     */
+    private static void validateRootFieldReference(
+            String label, String expression, ConceptAst rootConcept, List<String> errors) {
+        if (expression == null || expression.isBlank() || rootConcept == null) {
+            return;
+        }
+        Matcher matcher = ROOT_FIELD_PREDICATE.matcher(expression.trim());
+        if (!matcher.matches()) {
+            return;
+        }
+        String name = matcher.group(1);
+        Set<String> fieldNames = rootConcept.getFields().stream()
+                .map(FieldAst::getName)
+                .map(SemanticValidator::normalize)
+                .collect(Collectors.toSet());
+        if (!fieldNames.contains(normalize(name))) {
+            errors.add(label + ": predicate references $root." + name
+                    + ", which is not a declared field on root concept " + rootConcept.getName()
+                    + " (declared: " + (fieldNames.isEmpty() ? "none" : new TreeSet<>(fieldNames)) + ")");
+        }
+    }
+
+    /** The SAME grammar visibleWhen already carries, with {@code root} as the root instead of {@code ui}. */
+    private static final Pattern ROOT_FIELD_PREDICATE =
+            Pattern.compile("^\\$?root\\.([A-Za-z_][A-Za-z0-9_]*)\\s*(==|!=)\\s*'([^']*)'$");
 
     /**
      * Move 7 W1: typed replacement for {@code transaction.metadata.bandPickers} -- keys must name a

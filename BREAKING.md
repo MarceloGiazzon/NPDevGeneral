@@ -5,6 +5,29 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-01 — `queries[].where` grammar now accepts `:name` bind placeholders bound against a declared `parameters[]` (REG-101, Move 12 P1.4)
+
+Widens, not breaks, the LC-P0 grammar directly below: a `:name` literal (previously always refused
+as "neither a quoted string, a number, nor a boolean") now parses as a bind placeholder, resolved
+against the query's declared `parameters[]` at compile time and against a caller-supplied value map
+at runtime (`ConceptQueryPredicateCompiler.compile(where, parameters, boundParameters)`). An
+unbound or undeclared placeholder is still refused by name (X0), never defaulted. No existing valid
+`where` stops compiling — every accepted-before shape is still accepted — so no `npdev migrate`
+codemod is needed; only new grammar became legal.
+
+The grammar itself moved to `NPDevContract/dsl` (`com.npdev.dsl.v1.query.QueryPredicateGrammar`) so
+`PackValidation.validateQueries` can refuse an uncompilable `where` at AUTHORING time, not just at
+runtime — the durable fix REG-101's own detail asked for. `scripts/quality/check-query-predicate-compilable.py`
+(the Python reimplementation of the same grammar, AI-knowledge gate step 22) and
+`scripts/quality/query-predicate-allowlist.json` are both **deleted**: the corpus-wide check that
+script existed for is now done by the real Java validator via `scripts/quality/validate-corpus.py`,
+which already runs `SemanticValidator` over every corpus model.
+
+`pack-sample`'s `SalesByStore` (`where: "storeId == :storeId"`, REG-101's own witness, filed
+2026-07-31) is the proof: it now compiles clean and, once bound, returns exactly the matching
+store's rows — proven live in
+`ConceptQueryPredicateCompilerParameterSubstitutionTest`. REG-101 → DONE.
+
 ## 2026-07-31 — a declared `queries[].where` the engine cannot compile is now an ERROR, not silently unenforced (LC-P0)
 
 `ConceptQueryFilterSupport` used to hand-parse a `where` with `indexOf("==")` and, per its own
@@ -32,11 +55,12 @@ is no correct automatic rewrite for "your filter never worked"; the author has t
 meant. What ships instead is a **detector**:
 `scripts/quality/check-query-predicate-compilable.py` (AI-knowledge gate step 22) fails on any
 corpus `where` that will now be refused, so this is found by a gate rather than by a running app.
+(**Superseded 2026-08-01** — see the entry above this one: the detector and its allowlist are both
+deleted, their job now done by the real Java validator at authoring time.)
 
 Its first run found one: `pack-sample`'s `SalesByStore` declares `where: "storeId == :storeId"`
 with a matching `parameters[]` entry that **nothing substitutes** — so that query has returned zero
-rows for its whole life. Filed as **REG-101** and recorded in
-`scripts/quality/query-predicate-allowlist.json` (printed on every run, never silent).
+rows for its whole life. Filed as **REG-101**, closed 2026-08-01.
 
 Three prior behaviours are pinned as a before/after table in
 `ConceptQueryFilterSupportRedTest`, including the one the finding itself got wrong: a 2-clause

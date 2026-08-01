@@ -2,8 +2,9 @@ id: REG-101
 title: "A declared query can carry parameters[] and a ':name' bind placeholder in its where, and NOTHING substitutes it -- pack-sample's SalesByStore has therefore returned zero rows since it was written, and the DSL accepts the shape with no error"
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-07-31
+closed: 2026-08-01
 verification: VERIFIED_LIVE
 source: |
   Found by LC-P0's own detector on its first run (Wave 0.4,
@@ -69,3 +70,37 @@ detail: |
 
   The corpus instance is recorded in `scripts/quality/query-predicate-allowlist.json` citing this id,
   so the detector measures NEW breakage rather than re-reporting a known, filed one.
+
+  ---
+
+  **Move 12 P1.4 closure (2026-08-01):** (a) already settled -- `:name` (this model's own convention,
+  matching the corpus witness and this item's own text) over `$name` (procedures'). Did (b) and (c):
+
+  - **(b) substitution.** `ConceptQueryPredicateCompiler.compile(String, List<CompiledProcedureParameter>,
+    Map<String,Object>)` -- a new overload alongside the original single-string one (which stays
+    strict: no bound values means a `:name` placeholder is still refused, unchanged). Resolves a
+    `:name` literal against the query's declared `parameters[]` (an undeclared name is refused) and a
+    caller-supplied value map (an unbound declared name is refused -- X0's rule: never default to
+    null or drop the clause). RED/GREEN proven against the real corpus shape --
+    `pack-sample`'s `SalesByStore` (`storeId == :storeId`) -- seeded rows, bound `storeId=store-a`,
+    and a real `ConceptGateway.query()` call returning exactly that store's 2 rows, not 0 and not all
+    3 (`ConceptQueryPredicateCompilerParameterSubstitutionTest`, `NPDevKernel`).
+  - **(c) shared module.** The grammar (tokenizing `where` into field/operator/literal, now
+    recognizing `:name` as a `Literal.Placeholder` instead of failing) moved to
+    `NPDevContract/dsl`'s new `com.npdev.dsl.v1.query.QueryPredicateGrammar` -- kernel already
+    depends on `dsl` (not the reverse), so this is usable from both sides without kernel-side types
+    (`ConceptQuery.Filter`) leaking into the DSL module. `ConceptQueryPredicateCompiler` now maps the
+    shared grammar's output onto kernel types; `PackValidation.validateQueries` calls the SAME
+    grammar directly, so `where` is refused at AUTHORING time
+    (`QueryWhereCompilabilityValidationTest`, `NPDevContract/dsl`, through the real
+    `JsonModelParser`+`SemanticValidator` front door per the REG-89 lesson). Confirmed live via
+    `:NPDevContract:dsl:validateModel` against the real `pack-sample/definition/model.json`: 0
+    errors (28 unrelated ux-metadata warnings).
+
+  `check-query-predicate-compilable.py` and `query-predicate-allowlist.json` are both **deleted**
+  (`scripts/reports/out/*` regenerate on next gate run) -- the corpus-wide check they existed for is
+  now done by the real Java validator via `scripts/quality/validate-corpus.py`, which already runs
+  `SemanticValidator` over every corpus model. `check-allowlist-citations.py`'s `ENFORCED` tuple and
+  `run-ai-knowledge-gate.ps1`'s step numbering (23 -> 22 steps) updated to match; see `BREAKING.md`
+  2026-08-01 for the grammar-widening note (no `npdev migrate` codemod needed -- every previously
+  accepted `where` still compiles unchanged, only new grammar became legal).

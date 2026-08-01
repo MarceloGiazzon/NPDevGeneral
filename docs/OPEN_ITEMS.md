@@ -6,14 +6,14 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**107 item(s) migrated: 4 open/partial, 103 done.**
+**107 item(s) migrated: 2 open/partial, 105 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
 | REG-1 | 9 app definitions remain on the deprecated blanket destructive posture (down from 27) | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-10 | LNCH-19: Linux CI observed green for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
-| REG-100 | Three more silent-answer sites found by the X0 audit: an unresolvable $ref writes null (while the SAME class throws for id refs), an unresolved runQuery name returns an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate is never validated | BUG | MEDIUM | OPEN | 2026-07-31 |
-| REG-101 | A declared query can carry parameters[] and a ':name' bind placeholder in its where, and NOTHING substitutes it -- pack-sample's SalesByStore has therefore returned zero rows since it was written, and the DSL accepts the shape with no error | BUG | MEDIUM | OPEN | 2026-07-31 |
+| REG-100 | CLOSED -- three silent-answer sites found by the X0 audit, now fixed: a $ref that could not resolve wrote null (while the SAME class threw for id refs), a runQuery step naming an undeclared query returned an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate went unvalidated | BUG | MEDIUM | DONE | 2026-07-31 |
+| REG-101 | A declared query can carry parameters[] and a ':name' bind placeholder in its where, and NOTHING substitutes it -- pack-sample's SalesByStore has therefore returned zero rows since it was written, and the DSL accepts the shape with no error | BUG | MEDIUM | DONE | 2026-07-31 |
 | REG-102 | npdev migration diff (and the MCP tool npdev_migration_diff that shells out to it) is completely non-functional -- it always throws CONFIG_MIGRATIONS_DISABLED, because it passes generator CLI flags that the generator's own arg parser unconditionally rejects | BUG | MEDIUM | DONE | 2026-07-31 |
 | REG-103 | RuntimeMetadataService's compiled-metadata.json/npdev/metadata/* catalogs (concept/panel UI labels among them) are classpath-only with no external-path override, unlike NPDevModelProvider's compiled-model.json -- a metadata-only model change cannot be hot-swapped into a running app without also touching these, or a static frontend asset | GAP | LOW | OPEN | 2026-08-01 |
 | REG-104 | RolePermissions.toRole() returned null for any app-defined role name and the caller loop `continue`d, so an app-declared role (e.g. WarehouseManager) silently granted nothing at the platform-permission layer -- no error, no log line (X0-5) | BUG | MEDIUM | DONE | 2026-08-01 |
@@ -159,9 +159,9 @@ line was a scheduled follow-up.
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-10`
 
-### REG-100 — Three more silent-answer sites found by the X0 audit: an unresolvable $ref writes null (while the SAME class throws for id refs), an unresolved runQuery name returns an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate is never validated
+### REG-100 — CLOSED -- three silent-answer sites found by the X0 audit, now fixed: a $ref that could not resolve wrote null (while the SAME class threw for id refs), a runQuery step naming an undeclared query returned an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate went unvalidated
 
-**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-01)
 **Verification:** VERIFIED_LIVE
 **Source:** Wave 0.2's X0 silent-expression sweep (MASTER_AI_PLATFORM_PROGRAMME_v2.md §2.1), which asked every
 expression evaluator in the platform one question: what does it do with input it cannot handle?
@@ -234,9 +234,45 @@ subtract], got: multiply"). No runtime default, no silent answer.
 platform, and the one where a silent default matters most, since `access.*` is an authorization
 answer. It deserves its own pass, not a paragraph.
 
+---
+
+**Move 12 P1.1-P1.3 closure (2026-08-01):**
+
+- **X0-6** -- added `DefaultProcedureExecutor.resolveStrict`, a strict counterpart to `resolve()`
+  used by `resolveSetValue` (so it covers every consumer in one choke point: `patchConcept.set`
+  x2, `mapList.select`, `mapValue`, `computeValue`'s left/right, `return`'s valueRef -- not just the
+  three named in the original finding). Throws a new `UnresolvableReferenceException`, caught in
+  `executeStepWithBudget` and surfaced as a named `REF_UNRESOLVABLE` step failure carrying the ref
+  and step name -- the same exception-based propagation shape `requireString` already uses, just
+  with a specific code instead of the generic `PROCEDURE_STEP_FAILED` fallback. Distinguishes "key
+  never bound" (refused) from "key bound to an explicit null" (still a legitimately resolved value)
+  via `containsKey`, not a null check -- otherwise the fix would trade one silent defect for a
+  spurious failure on real nulls. `patchConcept`'s own `idRef` resolution stays on the LENIENT
+  `resolve()` by design (Move 5 Wave 1B's `createIfMissing`: an unresolved/blank idRef means
+  "nothing to look up yet, create new", not a typo) -- the one legitimate-absence site point 3
+  asked to name. RED/GREEN proof:
+  `NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/DefaultProcedureExecutorRefUnresolvableTest.java`
+  (6 tests, governed gateway per R4), full kernel suite re-run green after the change.
+- **X0-7** -- found already implemented in the uncommitted Move 12 P0 tree (runtime `QUERY_NOT_FOUND`
+  in `DefaultProcedureExecutor.runQuery`, author-time `PackValidation.validateProcedureSteps`'s
+  `PROCEDURE_QUERY_STEP_TYPES` check), just never marked DONE here nor covered by a model-level
+  test. Added the missing DoD piece: `ProcedureRunQueryUndeclaredNameValidationTest` in
+  `NPDevContract/dsl`, going through the real `JsonModelParser` + `SemanticValidator` front door
+  per the REG-89 lesson (kernel-only tests build a `ProcedureStep` directly and cannot see a
+  validator gap).
+- **X0-8** -- added `PanelValidation.validateRootFieldReference` (near-copy of
+  `validateUiStateReference`, as the finding specified), wired into `validateVisibleWhen` alongside
+  the existing `$ui.` check. A `$root.<field>` predicate must now name a field declared on the
+  aggregate's root concept; unlike `$ui.` there is no fixed value set (root fields are typed, open
+  domains), so only the field name is checked, not the literal. Full DSL suite re-run green
+  (472 tests, 106 classes, 0 failures) -- existing `visibleWhen` fixtures already used real field
+  names (`tipo`), so nothing broke.
+
+Left open for a future pass, not attempted here: the `expression-cel` audit named above.
+
 ### REG-101 — A declared query can carry parameters[] and a ':name' bind placeholder in its where, and NOTHING substitutes it -- pack-sample's SalesByStore has therefore returned zero rows since it was written, and the DSL accepts the shape with no error
 
-**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-01)
 **Verification:** VERIFIED_LIVE
 **Source:** Found by LC-P0's own detector on its first run (Wave 0.4,
 MASTER_AI_PLATFORM_PROGRAMME_v2.md) -- i.e. the corpus scan that exists precisely to find models
@@ -302,6 +338,40 @@ which is the one thing LC-P0 exists to prevent.
 
 The corpus instance is recorded in `scripts/quality/query-predicate-allowlist.json` citing this id,
 so the detector measures NEW breakage rather than re-reporting a known, filed one.
+
+---
+
+**Move 12 P1.4 closure (2026-08-01):** (a) already settled -- `:name` (this model's own convention,
+matching the corpus witness and this item's own text) over `$name` (procedures'). Did (b) and (c):
+
+- **(b) substitution.** `ConceptQueryPredicateCompiler.compile(String, List<CompiledProcedureParameter>,
+  Map<String,Object>)` -- a new overload alongside the original single-string one (which stays
+  strict: no bound values means a `:name` placeholder is still refused, unchanged). Resolves a
+  `:name` literal against the query's declared `parameters[]` (an undeclared name is refused) and a
+  caller-supplied value map (an unbound declared name is refused -- X0's rule: never default to
+  null or drop the clause). RED/GREEN proven against the real corpus shape --
+  `pack-sample`'s `SalesByStore` (`storeId == :storeId`) -- seeded rows, bound `storeId=store-a`,
+  and a real `ConceptGateway.query()` call returning exactly that store's 2 rows, not 0 and not all
+  3 (`ConceptQueryPredicateCompilerParameterSubstitutionTest`, `NPDevKernel`).
+- **(c) shared module.** The grammar (tokenizing `where` into field/operator/literal, now
+  recognizing `:name` as a `Literal.Placeholder` instead of failing) moved to
+  `NPDevContract/dsl`'s new `com.npdev.dsl.v1.query.QueryPredicateGrammar` -- kernel already
+  depends on `dsl` (not the reverse), so this is usable from both sides without kernel-side types
+  (`ConceptQuery.Filter`) leaking into the DSL module. `ConceptQueryPredicateCompiler` now maps the
+  shared grammar's output onto kernel types; `PackValidation.validateQueries` calls the SAME
+  grammar directly, so `where` is refused at AUTHORING time
+  (`QueryWhereCompilabilityValidationTest`, `NPDevContract/dsl`, through the real
+  `JsonModelParser`+`SemanticValidator` front door per the REG-89 lesson). Confirmed live via
+  `:NPDevContract:dsl:validateModel` against the real `pack-sample/definition/model.json`: 0
+  errors (28 unrelated ux-metadata warnings).
+
+`check-query-predicate-compilable.py` and `query-predicate-allowlist.json` are both **deleted**
+(`scripts/reports/out/*` regenerate on next gate run) -- the corpus-wide check they existed for is
+now done by the real Java validator via `scripts/quality/validate-corpus.py`, which already runs
+`SemanticValidator` over every corpus model. `check-allowlist-citations.py`'s `ENFORCED` tuple and
+`run-ai-knowledge-gate.ps1`'s step numbering (23 -> 22 steps) updated to match; see `BREAKING.md`
+2026-08-01 for the grammar-widening note (no `npdev migrate` codemod needed -- every previously
+accepted `where` still compiles unchanged, only new grammar became legal).
 
 ### REG-102 — npdev migration diff (and the MCP tool npdev_migration_diff that shells out to it) is completely non-functional -- it always throws CONFIG_MIGRATIONS_DISABLED, because it passes generator CLI flags that the generator's own arg parser unconditionally rejects
 

@@ -182,6 +182,11 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         }
         try {
             return executeStep(definition, step, stepIndex, state, context, scope, recursionDepth);
+        } catch (UnresolvableReferenceException exception) {
+            // X0-6 (REG-100): named separately from the generic catch below so callers can branch on
+            // "REF_UNRESOLVABLE" specifically, the same way QUERY_NOT_FOUND (X0-7) is named rather
+            // than folded into a generic step failure.
+            return ProcedureStepResult.failure(step, "REF_UNRESOLVABLE", exception.getMessage());
         } catch (RuntimeException exception) {
             return ProcedureStepResult.failure(
                     step,
@@ -289,7 +294,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         String newId = idProvider.nextId(step.conceptName());
         Map<String, Object> created = new LinkedHashMap<>();
         created.put("id", newId);
-        step.setValues().forEach((key, raw) -> created.put(key, resolveSetValue(state, raw)));
+        step.setValues().forEach((key, raw) -> created.put(key, resolveSetValue(state, raw, step.name(), key)));
         ConceptRecord saved = conceptGateway.save(new ConceptWriteRequest(step.conceptName(), newId, null, created), context);
         putOutput(state, step.outputKey(), saved);
         return ProcedureStepResult.success(step);
@@ -299,16 +304,25 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             ProcedureStep step, Map<String, Object> state, ExecutionContext context, String id, ConceptRecord existing
     ) {
         Map<String, Object> merged = new LinkedHashMap<>(existing.data());
-        step.setValues().forEach((key, raw) -> merged.put(key, resolveSetValue(state, raw)));
+        step.setValues().forEach((key, raw) -> merged.put(key, resolveSetValue(state, raw, step.name(), key)));
         ConceptRecord saved = conceptGateway.save(new ConceptWriteRequest(step.conceptName(), id, null, merged), context);
         putOutput(state, step.outputKey(), saved);
         return ProcedureStepResult.success(step);
     }
 
-    /** Literal by default; a "$"-prefixed String resolves from state; "$$x" escapes to the literal "$x". */
-    private static Object resolveSetValue(Map<String, Object> state, Object raw) {
+    /**
+     * Literal by default; a "$"-prefixed String resolves from state; "$$x" escapes to the literal
+     * "$x". X0-6 (REG-100): the "$ref" branch resolves STRICTLY -- a path that cannot be traversed
+     * (missing segment, non-container mid-path) throws {@link UnresolvableReferenceException} rather
+     * than silently producing {@code null}. A key present in state/a map with an explicit
+     * {@code null} value is still a legitimate resolved null, not a failure -- only genuine absence
+     * (a typo'd field, a rename) is refused. This single choke point covers every {@code
+     * resolveSetValue} consumer (patchConcept.set, mapList.select, mapValue, computeValue's
+     * left/right, return's valueRef) rather than special-casing three of the five.
+     */
+    private static Object resolveSetValue(Map<String, Object> state, Object raw, String stepName, String field) {
         if (raw instanceof String s && s.startsWith("$")) {
-            return s.startsWith("$$") ? s.substring(1) : resolve(state, s);
+            return s.startsWith("$$") ? s.substring(1) : resolveStrict(state, s, stepName, field);
         }
         return raw;
     }
@@ -577,7 +591,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
                 }
                 state.put(itemKey, item);
                 Map<String, Object> selected = new LinkedHashMap<>();
-                step.setValues().forEach((key, raw) -> selected.put(key, resolveSetValue(state, raw)));
+                step.setValues().forEach((key, raw) -> selected.put(key, resolveSetValue(state, raw, step.name(), key)));
                 mapped.add(selected);
             }
         } finally {
@@ -598,7 +612,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
      * path and resolve to {@code null}).
      */
     private ProcedureStepResult mapValue(ProcedureStep step, Map<String, Object> state) {
-        Object value = resolveSetValue(state, step.valueRef());
+        Object value = resolveSetValue(state, step.valueRef(), step.name(), "valueRef");
         putOutput(state, step.outputKey(), value);
         return ProcedureStepResult.success(step);
     }
@@ -615,8 +629,8 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
      * {@code Long} when it has no fractional part, a {@code Double} otherwise.
      */
     private ProcedureStepResult computeValue(ProcedureStep step, Map<String, Object> state) {
-        Object leftRaw = resolveSetValue(state, step.setValues().get("left"));
-        Object rightRaw = resolveSetValue(state, step.setValues().get("right"));
+        Object leftRaw = resolveSetValue(state, step.setValues().get("left"), step.name(), "left");
+        Object rightRaw = resolveSetValue(state, step.setValues().get("right"), step.name(), "right");
         BigDecimal left;
         BigDecimal right;
         try {
@@ -678,7 +692,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
 
     /** REG-86: same {@link #resolveSetValue} literal-vs-{@code $ref} convention as {@link #mapValue}. */
     private ProcedureStepResult returnValue(ProcedureStep step, Map<String, Object> state) {
-        state.put("return", resolveSetValue(state, step.returnRef()));
+        state.put("return", resolveSetValue(state, step.returnRef(), step.name(), "returnRef"));
         return ProcedureStepResult.success(step);
     }
 
@@ -789,6 +803,55 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             }
         }
         return current;
+    }
+
+    /**
+     * X0-6 (REG-100): the strict counterpart to {@link #resolve}, used wherever a {@code "$ref"}
+     * names a value that is about to be WRITTEN somewhere (a concept field, a mapped-list item, a
+     * return value). {@code resolve} treats "path segment missing" and "path segment present but
+     * null" identically -- both produce {@code null} -- which is exactly what let a typo'd {@code
+     * $item.quantidad} write {@code quantidade: null} into a real column with no error anywhere.
+     * This version distinguishes them via {@code containsKey}: an explicit null already stored in
+     * state is a legitimately resolved value; a key that was never bound is refused.
+     */
+    private static Object resolveStrict(Map<String, Object> state, String ref, String stepName, String field) {
+        if (ref == null || ref.isBlank()) {
+            return null;
+        }
+        String normalized = ref.trim();
+        if (normalized.startsWith("$")) {
+            normalized = normalized.substring(1);
+        }
+        if (state.containsKey(normalized)) {
+            return state.get(normalized);
+        }
+        String[] parts = normalized.split("\\.");
+        if (!state.containsKey(parts[0])) {
+            throw new UnresolvableReferenceException(stepName, field, ref);
+        }
+        Object current = state.get(parts[0]);
+        for (int index = 1; index < parts.length; index++) {
+            if (current instanceof ConceptRecord record) {
+                current = record.data();
+            }
+            if (current instanceof Map<?, ?> map) {
+                if (!map.containsKey(parts[index])) {
+                    throw new UnresolvableReferenceException(stepName, field, ref);
+                }
+                current = map.get(parts[index]);
+            } else {
+                throw new UnresolvableReferenceException(stepName, field, ref);
+            }
+        }
+        return current;
+    }
+
+    /** X0-6 (REG-100): named failure for a {@code "$ref"} whose path cannot be resolved. */
+    static final class UnresolvableReferenceException extends RuntimeException {
+        UnresolvableReferenceException(String stepName, String field, String ref) {
+            super("Procedure step " + stepName + " cannot resolve " + field + " reference " + ref
+                    + ": no such path in the current procedure state");
+        }
     }
 
     private static String correlationId(ExecutionContext context) {
