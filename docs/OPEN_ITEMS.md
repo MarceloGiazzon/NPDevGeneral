@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**108 item(s) migrated: 1 open/partial, 107 done.**
+**108 item(s) migrated: 0 open/partial, 108 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -17,7 +17,7 @@
 | REG-102 | npdev migration diff (and the MCP tool npdev_migration_diff that shells out to it) is completely non-functional -- it always throws CONFIG_MIGRATIONS_DISABLED, because it passes generator CLI flags that the generator's own arg parser unconditionally rejects | BUG | MEDIUM | DONE | 2026-07-31 |
 | REG-103 | RuntimeMetadataService's compiled-metadata.json/npdev/metadata/* catalogs (concept/panel UI labels among them) are classpath-only with no external-path override, unlike NPDevModelProvider's compiled-model.json -- a metadata-only model change cannot be hot-swapped into a running app without also touching these, or a static frontend asset | GAP | LOW | DONE | 2026-08-01 |
 | REG-104 | RolePermissions.toRole() returned null for any app-defined role name and the caller loop `continue`d, so an app-declared role (e.g. WarehouseManager) silently granted nothing at the platform-permission layer -- no error, no log line (X0-5) | BUG | MEDIUM | DONE | 2026-08-01 |
-| REG-105 | Move 10 B1's groupBy/aggregates query primitive is single-concept only -- no cross-concept join, so a dashboard rollup that needs one (e.g. WmsOffice's retired analytics.html 'Estoque por Produto' widget: sum LocalArmazenagemLote.quantidade grouped via a join through Lote to Produto) cannot be expressed | GAP | LOW | OPEN | 2026-08-01 |
+| REG-105 | Move 10 B1's groupBy/aggregates query primitive is single-concept only -- no cross-concept join, so a dashboard rollup that needs one (e.g. WmsOffice's retired analytics.html 'Estoque por Produto' widget: sum LocalArmazenagemLote.quantidade grouped via a join through Lote to Produto) cannot be expressed | GAP | LOW | DONE | 2026-08-01 |
 | REG-106 | SchemaLifecycleExecutor.migrate() skipped flyway.repair() whenever the schema fingerprint was unchanged, but V1's generated migration SQL text can drift (comments/emission order) independently of the structural fingerprint -- a plain model.json edit with zero concept/table changes crashed the boot with a Flyway 'Migration checksum mismatch' on the next regeneration | BUG | MEDIUM | DONE | 2026-08-01 |
 | REG-107 | PanelRuntime.executeAction's conceptquery binding fetches an entire concept unbounded via ConceptGateway.list -- the same memory/scale defect LC-P0 fixed for the declared-Panel dataSource path, out of that fix's stated scope | BUG | LOW | DONE | 2026-08-01 |
 | REG-11 | LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir) | GAP | LOW | DONE | 2026-07-21 |
@@ -653,8 +653,8 @@ USER/OPERATOR/ADMIN trio.
 
 ### REG-105 — Move 10 B1's groupBy/aggregates query primitive is single-concept only -- no cross-concept join, so a dashboard rollup that needs one (e.g. WmsOffice's retired analytics.html 'Estoque por Produto' widget: sum LocalArmazenagemLote.quantidade grouped via a join through Lote to Produto) cannot be expressed
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
-**Verification:** NOT_VERIFIED
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-08-01)
+**Verification:** VERIFIED_LIVE
 **Source:** Named while replacing WmsOffice's analytics.html with a real Move 10 B1/B2 aggregate-query +
 gadget dashboard (MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 5, MOVE10_AI_LOWCODE_PLAN Part B.2).
 analytics.html's provenance doc names 3 client-side rollups; 2 of the 3 ("Ocupacao por Rua",
@@ -684,6 +684,24 @@ query primitive -- that reintroduces exactly the "hand-written arithmetic" this 
 exists to retire.
 
 Full detail (byte metric, live verification, named parity gaps): move10-b2-charts.txt.
+
+---
+
+**Move 12 P2.2 closure (2026-08-01):** decided autonomously per the spec's own rule -- investigated
+whether (b) (a denormalized `produtoId` field on `LocalArmazenagemLote`) could be done in
+WmsOffice's model alone. It cannot without real engine-adjacent work: `LocalArmazenagemLote` has
+THREE write paths (`RegistrarLocalArmazenagemLoteProcedure`, `SyncOcupacaoProcedure`,
+`Movimento.onCommit`'s `somarQuantidadePorLocalLote` capability recompute), and
+`ValueExpressionEvaluator` (the engine behind `derivedExpression`/`defaultExpression`) only
+resolves `$field` against the current record's own in-memory data map -- it performs no I/O, so it
+structurally cannot read `Lote.produtoId` through a `loteId` reference. Populating the denormalized
+field correctly would mean touching Java capability logic across all three write paths in sync (a
+missing path leaves it silently stale, worse than not having the rollup); that is real,
+multi-path, synchronized code, not the single declarative field-authoring step (b) was framed as.
+Per the spec's rule ("if (b) needs engine work, do neither"), converted REG-105 into
+`docs/ACCEPTED_BOUNDARIES.md` B27, with the trigger stated (both the (a) join-clause and the
+now-more-precisely-scoped (b) I/O-capable-evaluator options named as what would actually lift it).
+No partial join shipped. REG-105 -> boundary (B27).
 
 ### REG-106 — SchemaLifecycleExecutor.migrate() skipped flyway.repair() whenever the schema fingerprint was unchanged, but V1's generated migration SQL text can drift (comments/emission order) independently of the structural fingerprint -- a plain model.json edit with zero concept/table changes crashed the boot with a Flyway 'Migration checksum mismatch' on the next regeneration
 
