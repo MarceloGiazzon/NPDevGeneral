@@ -415,13 +415,14 @@ async function toggleUsersRow(tenantId, tr, btn) {
     if (!users || !users.length) {
       cell.innerHTML = '<span class="muted">No logins in this workspace yet &mdash; add one below under "Add another login".</span>';
     } else {
+      const declaredRoles = await loadDeclaredRoles();
       const inner = document.createElement('table');
       inner.innerHTML = '<thead><tr><th>Username</th><th>Name</th><th>Roles</th><th>Password</th></tr></thead>';
       const tb = document.createElement('tbody');
       users.forEach(function (u) {
         const r = document.createElement('tr');
-        r.innerHTML = '<td>' + escHtml(u.username) + '</td><td>' + escHtml(u.displayName || '') + '</td><td>'
-          + escHtml((u.roles || []).join(', ')) + '</td><td></td>';
+        r.innerHTML = '<td>' + escHtml(u.username) + '</td><td>' + escHtml(u.displayName || '') + '</td><td></td><td></td>';
+        renderUserRolesCell(r.children[2], tenantId, u, declaredRoles);
         const reset = document.createElement('button');
         reset.className = 'small';
         reset.textContent = u.hasPassword ? 'Set new password' : 'Set password';
@@ -451,6 +452,88 @@ async function resetUserPassword(tenantId, username) {
       { method: 'PUT', body: JSON.stringify({ password: pwd }) });
     alert('Password updated for "' + username + '".');
   } catch (e) { alert('Failed: ' + e.message); }
+}
+
+// Move 11 W3 (RC-B2): the model owns which roles exist (declared in roles[]); this page just
+// offers them for assignment. Fetched once per page load, not once per row.
+let _declaredRolesCache = null;
+async function loadDeclaredRoles() {
+  if (_declaredRolesCache) return _declaredRolesCache;
+  try {
+    const roles = await api('/api/admin/roles');
+    _declaredRolesCache = Array.isArray(roles) ? roles : [];
+  } catch (e) {
+    _declaredRolesCache = [];
+  }
+  return _declaredRolesCache;
+}
+
+function renderUserRolesCell(cell, tenantId, user, declaredRoles) {
+  cell.innerHTML = '';
+  const assigned = user.roles || [];
+  assigned.forEach(function (roleName) {
+    const pill = document.createElement('span');
+    pill.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:#242424;border:1px solid #3a3a3a;border-radius:12px;padding:2px 4px 2px 9px;margin:0 5px 4px 0;font-size:12px';
+    pill.textContent = roleName;
+    const x = document.createElement('button');
+    x.textContent = '×';
+    x.title = 'Revoke this role';
+    x.style.cssText = 'background:none;border:0;color:#e05252;cursor:pointer;font-size:13px;line-height:1;padding:2px 5px';
+    x.onclick = function () { revokeUserRole(tenantId, user.username, roleName, cell, declaredRoles); };
+    pill.appendChild(x);
+    cell.appendChild(pill);
+  });
+  const assignable = declaredRoles.filter(function (r) { return assigned.indexOf(r.name) === -1; });
+  if (!declaredRoles.length) {
+    const note = document.createElement('div');
+    note.className = 'muted';
+    note.textContent = "(this app's model declares no roles)";
+    cell.appendChild(note);
+    return;
+  }
+  if (!assignable.length) {
+    return;
+  }
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;gap:4px;margin-top:2px';
+  const select = document.createElement('select');
+  select.style.cssText = 'width:auto;min-width:120px;padding:3px 4px;font-size:12px';
+  assignable.forEach(function (r) {
+    const opt = document.createElement('option');
+    opt.value = r.name;
+    opt.textContent = r.name;
+    select.appendChild(opt);
+  });
+  const addBtn = document.createElement('button');
+  addBtn.className = 'small';
+  addBtn.textContent = '+ Add';
+  addBtn.onclick = function () { grantUserRole(tenantId, user.username, select.value, cell, declaredRoles, user); };
+  wrap.appendChild(select);
+  wrap.appendChild(addBtn);
+  cell.appendChild(wrap);
+}
+
+async function grantUserRole(tenantId, username, role, cell, declaredRoles, user) {
+  try {
+    await api('/api/admin/tenants/' + encodeURIComponent(tenantId) + '/users/' + encodeURIComponent(username) + '/roles',
+      { method: 'POST', body: JSON.stringify({ role: role }) });
+    user.roles = (user.roles || []).concat([role]);
+    renderUserRolesCell(cell, tenantId, user, declaredRoles);
+  } catch (e) { alert('Could not grant role: ' + e.message); }
+}
+
+async function revokeUserRole(tenantId, username, role, cell, declaredRoles) {
+  if (!confirm('Revoke role "' + role + '" from "' + username + '"? This takes effect on their next request.')) return;
+  try {
+    const user = { username: username, roles: [] };
+    await api('/api/admin/tenants/' + encodeURIComponent(tenantId) + '/users/' + encodeURIComponent(username)
+      + '/roles/' + encodeURIComponent(role), { method: 'DELETE' });
+    // Re-derive the pill list from the DOM rather than refetching the whole user list.
+    const remaining = Array.from(cell.querySelectorAll('span')).map(function (s) { return s.firstChild.textContent; })
+      .filter(function (name) { return name !== role; });
+    user.roles = remaining;
+    renderUserRolesCell(cell, tenantId, user, declaredRoles);
+  } catch (e) { alert('Could not revoke role: ' + e.message); }
 }
 
 async function toggleTenant(tenantId, action) {

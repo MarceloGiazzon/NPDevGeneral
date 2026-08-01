@@ -82,8 +82,14 @@ try {
     }
 
     # Step 3: generate + build the app, reading the SAME libs dir the sync just wrote.
-    Write-Stage "Step 3/3: building app '$AppFolder' (libs: $RuntimeHostLibsDir)"
-    $buildArgs = @{ AppFolder = $AppFolder; RuntimeHostLibsDir = $RuntimeHostLibsDir; SkipRuntimeHostLibs = $true }
+    # REG-90: -BuildRoot MUST be threaded into Build-NpdevApp.ps1 too. It used to be read only by
+    # step 4 (the provenance gate), while step 3 silently fell back to Build-NpdevApp's own default
+    # -- so `-BuildRoot <alt>` generated the app into `generated-finalapps` and then looked for its
+    # _ops under `<alt>`, i.e. the two halves of this wrapper disagreed about which app they were
+    # operating on. That is precisely the stale-build-root class of failure this wrapper exists to
+    # prevent, reproduced inside the wrapper itself.
+    Write-Stage "Step 3/3: building app '$AppFolder' (libs: $RuntimeHostLibsDir, buildRoot: $BuildRoot)"
+    $buildArgs = @{ AppFolder = $AppFolder; RuntimeHostLibsDir = $RuntimeHostLibsDir; SkipRuntimeHostLibs = $true; BuildRoot = $BuildRoot }
     if ($GenerateOnly) { $buildArgs.GenerateOnly = $true }
     & (Join-Path $repoRoot 'scripts/appgen/Build-NpdevApp.ps1') @buildArgs
     if ($LASTEXITCODE -ne 0) { throw "Build-NpdevApp failed (exit $LASTEXITCODE)" }

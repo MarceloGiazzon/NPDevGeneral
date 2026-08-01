@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "Reviewed exemptions for scripts/quality/check-query-predicate-compilable.py. Each entry means: a",
+    "human looked at this declared `where`, confirmed it does NOT compile under the grammar the runtime",
+    "now enforces (LC-P0), and filed the finding -- so the detector measures NEW breakage instead of",
+    "re-reporting a known one. The key is '<corpus label>::<location>', so renaming the model or moving",
+    "the query invalidates the exemption and it resurfaces for re-review -- which is the point.",
+    "An entry REQUIRES a REG-nn/B-nn citation. An exempted predicate is still broken at runtime: it is",
+    "refused by name, not silently applied. Exempting it here suppresses the GATE, never the error."
+  ],
+  "cleared": {
+    "AppGen/apps/pack-sample::queries[SalesByStore].where": {
+      "where": "storeId == :storeId",
+      "why": "REG-101 -- declares queries[].parameters and a ':storeId' bind placeholder that NOTHING substitutes. Under the old engine this compared every Sale.storeId against the literal seven-character string ':storeId', so the query has returned zero rows for its whole life with no error anywhere; under LC-P0 it is refused by name. Widening the grammar to ACCEPT ':storeId' without substituting it would restore exactly the silent wrong answer LC-P0 exists to remove, so the shape stays refused until parameter substitution is implemented (REG-101 fix shape (a)-(c))."
+    }
+  }
+}

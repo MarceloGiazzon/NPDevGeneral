@@ -126,6 +126,57 @@ $dslReferenceEvidence = [pscustomobject]@{
 }
 $gateReport | Add-Member -NotePropertyName dslReferenceDrift -NotePropertyValue $dslReferenceEvidence -Force
 
+# Move 8 D1 (item G3, docs/MOVE8_CLOSE_TABLE_SPEC.md): ReleaseGateValidator.validatePromotion is
+# fully built and unit-tested (R81, ledger/items/REG-81.yml) but was invoked by nothing except its
+# own test -- truth-level promotion gating was dormant. Wires the smallest real check: run
+# ModelValidatorMain's --releaseGate/--targetTruthLevel=T2 pass (via the existing :NPDevContract:
+# dsl:validateModel Gradle task) against NPDevSamples\dsl-conformance-max\Input\model.json. T2 is
+# a deliberately low bar meant to prove the gate fires, not a real release-bar product decision --
+# but the bar is not lowered further just to make this pass (see below).
+$releaseGateModelPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevSamples\dsl-conformance-max\Input\model.json"
+$releaseGateReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\release-gate-t2-report.json"
+$rootGradleWrapperPath = Get-NPDevGradleWrapperExecutable $WorkspaceRoot
+$releaseGateError = $null
+$releaseGateReport = $null
+try {
+    & $rootGradleWrapperPath ":NPDevContract:dsl:validateModel" `
+        "-PmodelPath=$releaseGateModelPath" `
+        "-PreleaseGate" `
+        "-PtargetTruthLevel=T2" `
+        "-PreportOut=$releaseGateReportPath" `
+        "--console=plain" | Out-Null
+    if (Test-Path -LiteralPath $releaseGateReportPath -PathType Leaf) {
+        $releaseGateReport = Get-Content -LiteralPath $releaseGateReportPath -Raw | ConvertFrom-Json
+    }
+    else {
+        $releaseGateError = "validateModel did not produce a report at $releaseGateReportPath"
+    }
+}
+catch {
+    $releaseGateError = $_.Exception.Message
+    if (Test-Path -LiteralPath $releaseGateReportPath -PathType Leaf) {
+        try {
+            $releaseGateReport = Get-Content -LiteralPath $releaseGateReportPath -Raw | ConvertFrom-Json
+        }
+        catch {
+            $releaseGateReport = $null
+        }
+    }
+}
+$releaseGateStatus = if ($null -eq $releaseGateReport) { "failed" } else { [string]$releaseGateReport.status }
+# Deliberately NOT lowering targetTruthLevel to make this pass if it fails (Move 8 H.2 prohibition):
+# a failure here means the release gate found something real -- report it, do not mask it.
+$releaseGatePassed = ($null -eq $releaseGateError) -and ($releaseGateStatus -ne "failed")
+$releaseGateEvidence = [pscustomobject]@{
+    overallStatus = if ($releaseGatePassed) { "passed" } else { "failed" }
+    modelPath = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $releaseGateModelPath
+    targetTruthLevel = "T2"
+    reportPath = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $releaseGateReportPath
+    validationStatus = $releaseGateStatus
+    error = $releaseGateError
+}
+$gateReport | Add-Member -NotePropertyName releaseGateT2 -NotePropertyValue $releaseGateEvidence -Force
+
 if (
     -not [string]::IsNullOrWhiteSpace($deterministicGenerationError) -or
     -not [string]::IsNullOrWhiteSpace($generatorGovernanceError) -or
@@ -133,7 +184,8 @@ if (
     ([string]$deterministicGenerationReport.overallStatus -ne "passed") -or
     ($null -eq $generatorGovernanceReport) -or
     ([string]$generatorGovernanceReport.overallStatus -ne "passed") -or
-    (-not $dslReferencePassed)
+    (-not $dslReferencePassed) -or
+    (-not $releaseGatePassed)
 ) {
     $gateReport.overallStatus = "failed"
     $gateReport.failureReasons = @(
@@ -153,6 +205,14 @@ if (
             }
             if (-not $dslReferencePassed) {
                 "docs/DSL_REFERENCE.md is stale -- run 'python scripts/docs/generate_dsl_reference.py' and commit the result."
+            }
+            if (-not $releaseGatePassed) {
+                if (-not [string]::IsNullOrWhiteSpace($releaseGateError)) {
+                    "Release gate (T2, dsl-conformance-max) invocation error: " + $releaseGateError
+                }
+                else {
+                    "Release gate (T2, dsl-conformance-max) returned status '" + $releaseGateStatus + "' -- see " + (Get-NPDevWorkspaceRelativePath $WorkspaceRoot $releaseGateReportPath) + "."
+                }
             }
         )
     )

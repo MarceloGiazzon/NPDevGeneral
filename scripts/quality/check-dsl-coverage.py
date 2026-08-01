@@ -137,6 +137,37 @@ def _has_sensitive_field(model: dict) -> bool:
     return False
 
 
+def _has_field_picker_filter(model: dict) -> bool:
+    """B16/B19 (Move 9 A3): a field's picker.filter -- the reference field's own single-clause
+    predicate constraining its auto-picker's candidate rows."""
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for field in (concept.get("fields", None) or []):
+            picker = field.get("picker") if isinstance(field, dict) else None
+            if isinstance(picker, dict) and picker.get("filter"):
+                return True
+    return False
+
+
+def _has_band_picker_filter(model: dict) -> bool:
+    """B16/B19 (Move 9 A3): a bandPickers entry's filter/multiSelect -- the SAME two properties a
+    plain FK field's picker declares, reused on a band collection's own picker."""
+    for panel in (model.get("autoPanels", None) or []):
+        if not isinstance(panel, dict):
+            continue
+        transaction = panel.get("transaction")
+        if not isinstance(transaction, dict):
+            continue
+        band_pickers = transaction.get("bandPickers")
+        if not isinstance(band_pickers, dict):
+            continue
+        for picker in band_pickers.values():
+            if isinstance(picker, dict) and (picker.get("filter") or picker.get("multiSelect")):
+                return True
+    return False
+
+
 def _has_concept_access(model: dict) -> bool:
     for concept in (model.get("concepts", None) or []):
         if not isinstance(concept, dict):
@@ -214,40 +245,186 @@ def _has_procedure_create_if_missing(model: dict) -> bool:
     )
 
 
-def _workbench_transaction_metadatas(model: dict):
+def _workbench_transactions(model: dict):
     for auto_panel in (model.get("autoPanels", None) or []):
         if not isinstance(auto_panel, dict):
             continue
         transaction = auto_panel.get("transaction")
-        if not isinstance(transaction, dict):
-            continue
+        if isinstance(transaction, dict):
+            yield transaction
+
+
+def _workbench_transaction_metadatas(model: dict):
+    for transaction in _workbench_transactions(model):
         metadata = transaction.get("metadata")
         if isinstance(metadata, dict):
             yield metadata
 
 
-def _has_workbench_apply_to(model: dict) -> bool:
+def _workbench_actions(model: dict):
+    """Yields every action dict from BOTH the untyped transaction.metadata.actions[] list and its
+    Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md) typed replacement, transaction.actions[] -- same
+    underlying capability, re-spelled; a model migrated to the typed form must not silently drop
+    coverage of any sub-feature (applyTo/afterAction/visibleWhen) detected off of it."""
     for metadata in _workbench_transaction_metadatas(model):
         for action in (metadata.get("actions", None) or []):
-            if isinstance(action, dict) and isinstance(action.get("applyTo"), dict):
+            if isinstance(action, dict):
+                yield action
+    for transaction in _workbench_transactions(model):
+        for action in (transaction.get("actions", None) or []):
+            if isinstance(action, dict):
+                yield action
+
+
+def _has_workbench_apply_to(model: dict) -> bool:
+    for action in _workbench_actions(model):
+        if isinstance(action.get("applyTo"), dict):
+            return True
+    return False
+
+
+def _has_workbench_after_action(model: dict) -> bool:
+    # Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4): per-action afterAction, declared
+    # alongside (not inside) applyTo -- recognizes both the untyped transaction.metadata.actions[]
+    # bag and its Move 7 W1 typed replacement, transaction.actions[].
+    for action in _workbench_actions(model):
+        if action.get("afterAction"):
+            return True
+    return False
+
+
+def _has_transaction_hook(model: dict, position: str) -> bool:
+    # Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2): the typed, closed-enum
+    # transaction.hooks block -- onLoad/onFieldChange/beforeAction/onValidate/onCommit.
+    for transaction in _workbench_transactions(model):
+        hooks = transaction.get("hooks")
+        if isinstance(hooks, dict) and hooks.get(position):
+            return True
+    return False
+
+
+def _has_panel_data_source_on_row_load(model: dict) -> bool:
+    # Move 6 Move C (docs/MOVE6_TYPED_SURFACE_PLAN.md §4): a panel dataSource's onRowLoad --
+    # enriches rows the gateway produced, distinct from `procedure` (which replaces the row
+    # source entirely).
+    for panel in (model.get("panels", None) or []):
+        if not isinstance(panel, dict):
+            continue
+        for data_source in (panel.get("dataSources", None) or []):
+            if isinstance(data_source, dict) and data_source.get("onRowLoad"):
                 return True
     return False
 
 
+def _has_autopanel_selection_data_source_procedure(model: dict) -> bool:
+    # Move 8 D3 (item G6, docs/MOVE8_CLOSE_TABLE_SPEC.md / Move 6 §B.7): an AutoPanel's Selection
+    # surface declaring dataSource.procedure -- REPLACES the generated row source with a
+    # procedure's output instead of the bound concept's table, distinct from
+    # panelDataSource.onRowLoad above (which enriches rows a hand-authored panel's gateway already
+    # produced, on a Panel, not an AutoPanel).
+    for auto_panel in (model.get("autoPanels", None) or []):
+        if not isinstance(auto_panel, dict):
+            continue
+        selection = auto_panel.get("selection")
+        if not isinstance(selection, dict):
+            continue
+        data_source = selection.get("dataSource")
+        if isinstance(data_source, dict) and data_source.get("procedure"):
+            return True
+    return False
+
+
+def _has_region_component_mount(model: dict) -> bool:
+    # Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md §5): a transaction.regions entry declaring
+    # render:"component" -- an addressable region mounting an app-owned JS component.
+    for transaction in _workbench_transactions(model):
+        regions = transaction.get("regions")
+        if not isinstance(regions, dict):
+            continue
+        for region in regions.values():
+            if isinstance(region, dict) and region.get("render") == "component":
+                return True
+    return False
+
+
+def _has_settings(model: dict) -> bool:
+    # Move 6 Move A (docs/MOVE6_TYPED_SURFACE_PLAN.md §2): the typed top-level app settings block
+    # (locale/strings/ui) -- retires the untyped mix of platform-default English and hardcoded
+    # Portuguese literal fallbacks a generated app's Aggregate Workbench page used to render.
+    settings = model.get("settings")
+    return isinstance(settings, dict) and len(settings) > 0
+
+
 def _has_workbench_derived(model: dict) -> bool:
+    # Recognizes BOTH the retired transaction.metadata.derived list and its Move 6 Move B typed
+    # replacement, transaction.derivedFields (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4) -- the same
+    # underlying capability, re-spelled; a model migrated to the new spelling must not silently
+    # drop this feature's only corpus witness.
     for metadata in _workbench_transaction_metadatas(model):
         if metadata.get("derived", None):
+            return True
+    for transaction in _workbench_transactions(model):
+        if transaction.get("derivedFields", None):
             return True
     return False
 
 
 def _has_workbench_visible_when(model: dict) -> bool:
+    # Recognizes the untyped transaction.metadata.visibleWhen map AND its Move 7 W1 typed
+    # replacement, transaction.visibleWhen (same shape, now schema-validated) -- plus either
+    # form's per-action visibleWhen key.
     for metadata in _workbench_transaction_metadatas(model):
         if isinstance(metadata.get("visibleWhen"), dict) and metadata["visibleWhen"]:
             return True
-        for action in (metadata.get("actions", None) or []):
-            if isinstance(action, dict) and action.get("visibleWhen"):
-                return True
+    for transaction in _workbench_transactions(model):
+        if isinstance(transaction.get("visibleWhen"), dict) and transaction["visibleWhen"]:
+            return True
+    for action in _workbench_actions(model):
+        if action.get("visibleWhen"):
+            return True
+    return False
+
+
+def _has_workbench_ui_state(model: dict) -> bool:
+    # Move 11 W6 (C1, docs/MOVE3_G2_CHECKLISTS.md): transaction.uiState declares transient screen
+    # state -- a record-type toggle -- that a `$ui.<name>` visibleWhen predicate resolves. Requires
+    # BOTH halves to count as covered: a declared control nothing references proves the schema
+    # accepts it and nothing more, and a `$ui.` predicate over an undeclared control does not
+    # validate at all. Only the pair exercises the feature.
+    declared = False
+    referenced = False
+    for transaction in _workbench_transactions(model):
+        if isinstance(transaction.get("uiState"), dict) and transaction["uiState"]:
+            declared = True
+        for expression in (transaction.get("visibleWhen") or {}).values():
+            if isinstance(expression, str) and expression.strip().lstrip("$").startswith("ui."):
+                referenced = True
+    for action in _workbench_actions(model):
+        expression = action.get("visibleWhen")
+        if isinstance(expression, str) and expression.strip().lstrip("$").startswith("ui."):
+            referenced = True
+    return declared and referenced
+
+
+def _has_workbench_band_pickers(model: dict) -> bool:
+    # Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): recognizes the untyped
+    # transaction.metadata.bandPickers map AND its typed replacement, transaction.bandPickers.
+    for metadata in _workbench_transaction_metadatas(model):
+        if isinstance(metadata.get("bandPickers"), dict) and metadata["bandPickers"]:
+            return True
+    for transaction in _workbench_transactions(model):
+        if isinstance(transaction.get("bandPickers"), dict) and transaction["bandPickers"]:
+            return True
+    return False
+
+
+def _has_typed_workbench_actions(model: dict) -> bool:
+    # Move 7 W1: specifically the TYPED transaction.actions[] slot (not its untyped predecessor) --
+    # tracked separately so a regression to JUST the typed spelling still fails the build, same
+    # discipline autoPanel.hooks.* already applies per-position.
+    for transaction in _workbench_transactions(model):
+        if transaction.get("actions", None):
+            return True
     return False
 
 
@@ -272,11 +449,20 @@ FEATURE_DETECTORS = {
     "externalAi": lambda m: "externalAi" in m,
     "domainTypes": lambda m: _nonempty(m, "domainTypes"),
     "selectors": lambda m: _nonempty(m, "selectors"),
+    # Wave 3 (RC-B1, MOVE11_RUNTIME_CONFIGURATION_PLAN Part B.1): app-defined role -> permission-
+    # ceiling declarations, a new top-level array sibling of settings/selectors.
+    "roles": lambda m: _nonempty(m, "roles"),
     "aggregates": lambda m: _nonempty(m, "aggregates"),
     "autoPanels": lambda m: _nonempty(m, "autoPanels"),
     "documents": lambda m: _nonempty(m, "documents"),
     "guidePages": lambda m: _nonempty(m, "guidePages"),
     "queries": lambda m: _nonempty(m, "queries"),
+    # Move 10 B1 (LC-B1, MOVE10_AI_LOWCODE_PLAN Part B): query.groupBy/aggregates/having --
+    # distinct from the top-level "aggregates" (Aggregate Workbench) array above, so named
+    # "query.*" to avoid the collision.
+    "query.groupBy": lambda m: any(q.get("groupBy") for q in (m.get("queries", None) or [])),
+    "query.aggregates": lambda m: any(q.get("aggregates") for q in (m.get("queries", None) or [])),
+    "query.having": lambda m: any(q.get("having") for q in (m.get("queries", None) or [])),
     "procedures": lambda m: _nonempty(m, "procedures"),
     "panels": lambda m: _nonempty(m, "panels"),
     "ruleProfiles": lambda m: _nonempty(m, "ruleProfiles"),
@@ -350,6 +536,13 @@ FEATURE_DETECTORS = {
     # including its own documented external-AI-review-pack redaction purpose. Tracked here to protect
     # the round-trip itself from regressing while the real consumption gap (REG-80) stays open.
     "constraint.sensitive": _has_sensitive_field,
+    # Move 9 A3 (docs/ACCEPTED_BOUNDARIES.md B16/B19): a field's picker.filter -- folds into the same
+    # server-enforced defaultFilterExpression/where mechanism the FK auto-picker's REST endpoint
+    # already applies against real rows, not client-side decoration.
+    "field.picker.filter": _has_field_picker_filter,
+    # Move 9 A3 (docs/ACCEPTED_BOUNDARIES.md B16/B19): a bandPickers entry's filter/multiSelect --
+    # the same two properties a plain FK field's picker declares, unifying the two picker shapes.
+    "bandPicker.filter": _has_band_picker_filter,
     "aggregate.onCommit": _has_aggregate_on_commit,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3B / Gap 8): onValidate is a sibling of
     # onCommit, not a flag on it -- tracked separately so a regression to just this field still
@@ -373,6 +566,33 @@ FEATURE_DETECTORS = {
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2C / Gap 2): conditional surface by toggle --
     # transaction.metadata.visibleWhen (collections/bands) or an action's own visibleWhen key.
     "workbench.visibleWhen": _has_workbench_visible_when,
+    # Move 11 W6 (C1): transaction.uiState + a `$ui.<name>` predicate -- the SAME visibleWhen
+    # grammar with a second resolvable root, so transient screen state (a record-type toggle) can
+    # gate which surfaces render. Presentation-only; never part of a commit payload.
+    "workbench.uiState": _has_workbench_ui_state,
+    # Move 6 Move A (docs/MOVE6_TYPED_SURFACE_PLAN.md §2): the typed top-level settings block.
+    "settings": _has_settings,
+    # Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2): the typed, closed-enum
+    # transaction.hooks positions -- each tracked separately so a regression to just one still
+    # fails the build, same discipline as aggregate.onCommit/onValidate above.
+    "autoPanel.hooks.onLoad": lambda m: _has_transaction_hook(m, "onLoad"),
+    "autoPanel.hooks.onFieldChange": lambda m: _has_transaction_hook(m, "onFieldChange"),
+    "autoPanel.hooks.beforeAction": lambda m: _has_transaction_hook(m, "beforeAction"),
+    # Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4): per-action afterAction, which subsumes
+    # applyTo -- a procedure receiving {draft, result} and returning a patched draft.
+    "workbench.afterAction": _has_workbench_after_action,
+    # Move 6 Move C (docs/MOVE6_TYPED_SURFACE_PLAN.md §4).
+    "panelDataSource.onRowLoad": _has_panel_data_source_on_row_load,
+    # Move 8 D3 (item G6): the produce disposition, reachable from an AutoPanel for the first time.
+    "autoPanel.selection.dataSource.procedure": _has_autopanel_selection_data_source_procedure,
+    # Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md §5).
+    "workbench.region.component": _has_region_component_mount,
+    # Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): the typed, schema-validated replacements for
+    # the untyped transaction.metadata.actions/.bandPickers -- tracked separately from
+    # workbench.applyTo/afterAction/visibleWhen above (which recognize either spelling) so a
+    # regression to JUST the typed slot still fails the build.
+    "autoPanel.actions": _has_typed_workbench_actions,
+    "autoPanel.bandPickers": _has_workbench_band_pickers,
 }
 
 

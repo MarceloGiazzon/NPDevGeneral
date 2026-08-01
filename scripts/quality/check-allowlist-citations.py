@@ -15,7 +15,7 @@ is empty again; the governance gap this script closes is real regardless of that
 
 SCOPE -- three files enforced, two reported only
 --------------------------------------------------
-`corpus-parse-allowlist.json`, `test-task-coverage-allowlist.json`, and `dsl-coverage-allowlist.json`
+`corpus-parse-allowlist.json`, `test-task-coverage-allowlist.json`, `dsl-coverage-allowlist.json` and`n`query-predicate-allowlist.json` (LC-P0)
 each already state in their own `_comment` header: "Add an entry here only for a genuine, reviewed
 exception with a REG id." That promise was never machine-checked. This script enforces it: every
 entry's `why` must contain a `REG-nn` or `B-nn` citation, or the check fails. All three are empty
@@ -58,6 +58,9 @@ CITATION_RE = re.compile(r"\b(?:REG|B)-\d+\b")
 # Files whose own _comment header already promises a REG id -- enforced.
 ENFORCED = (
     "corpus-parse-allowlist.json",
+    # LC-P0 (Wave 0.4): its own _comment header states "An entry REQUIRES a REG-nn/B-nn citation",
+    # so it joins the enforced set the moment it exists rather than after its first entry drifts.
+    "scripts/quality/query-predicate-allowlist.json",
     "scripts/quality/test-task-coverage-allowlist.json",
     "scripts/quality/dsl-coverage-allowlist.json",
 )
