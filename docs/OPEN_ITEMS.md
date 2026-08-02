@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**113 item(s) migrated: 1 open/partial, 112 done.**
+**113 item(s) migrated: 0 open/partial, 113 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -24,7 +24,7 @@
 | REG-109 | generated-ui-manifest.json (and the rest of static/npdev-business-ui/*) was baked into the packaged jar at generation time with no external-path override, the same class of gap REG-103 fixed for RuntimeMetadataService's JSON catalogs -- named but explicitly not sized by REG-103, given the same external-path-before-classpath fix here | GAP | LOW | DONE | 2026-08-01 |
 | REG-11 | LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir) | GAP | LOW | DONE | 2026-07-21 |
 | REG-110 | LC-D2 (the acceptance-scenario runner) and LC-D3 (the closed authoring loop) were already fully implemented in NPDevCli/npdev_cli.py -- apparently from an earlier Move 10 session -- but had never been run, tested, or documented anywhere; a closure spec (Move 13) re-described them as needing to be built | GAP | LOW | DONE | 2026-08-01 |
-| REG-111 | Long-running generate/build/boot cycles (Build-NpdevApp.ps1, Rebuild-And-Restage.ps1, npdev run app, plain gradlew clean build) emit no incremental progress signal -- whatever is waiting on one (a human operator, an AI agent, a CI step) cannot tell 'still working normally' apart from 'silently stuck' without reaching past the tool into raw filesystem/process state | GAP | LOW | PARTIAL | 2026-08-01 |
+| REG-111 | Long-running generate/build/boot cycles (Build-NpdevApp.ps1, Rebuild-And-Restage.ps1, npdev run app, plain gradlew clean build) emit no incremental progress signal -- whatever is waiting on one (a human operator, an AI agent, a CI step) cannot tell 'still working normally' apart from 'silently stuck' without reaching past the tool into raw filesystem/process state | GAP | LOW | DONE | 2026-08-01 |
 | REG-112 | PanelRuntimeTest.java (single-arg RuntimeMetadataService constructor, hardcoded 'Appointment'/'AppointmentPanel' fixture data that exists in no corpus model) was missing from build.gradle's modelSpecificGeneratedAppTests exclusion list, unlike its sibling RuntimeMetadataServiceTest.java -- fails with NoSuchElementException whenever :test runs inside a generated app whose own model has no matching concept/panel | BUG | LOW | DONE | 2026-08-02 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
@@ -1050,7 +1050,7 @@ went unverified for however long it has existed.
 
 ### REG-111 — Long-running generate/build/boot cycles (Build-NpdevApp.ps1, Rebuild-And-Restage.ps1, npdev run app, plain gradlew clean build) emit no incremental progress signal -- whatever is waiting on one (a human operator, an AI agent, a CI step) cannot tell 'still working normally' apart from 'silently stuck' without reaching past the tool into raw filesystem/process state
 
-**Type:** GAP · **Severity:** LOW · **Status:** PARTIAL
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-08-02)
 **Verification:** VERIFIED_LIVE
 **Source:** Surfaced directly during Move 13 (MOVE13_CLOSE_EVERYTHING_SPEC.md) Phase P1's execution, not by
 design review. A delegated agent running a real WmsOffice regenerate+build+boot cycle had its
@@ -1107,12 +1107,45 @@ METADATA_ONLY-fast-path-specific transitions), best-effort (a write failure neve
 itself). Closes the gap for `npdev run app` specifically: a caller can now poll or `tail` that file
 instead of reaching past the tool into jar mtimes/log tails/health endpoints.
 
-**Not closed, still open**: `Build-NpdevApp.ps1` and `Rebuild-And-Restage.ps1` (this item's other
-two named files) still emit no equivalent sidecar -- they are separate PowerShell entry points,
-not touched by this Python-side fix, and were out of this pass's scope. The third suggested shape
-(a written-down "how to check progress independently" recipe) was also not done. Rated PARTIAL,
+**Not closed, still open (at the time)**: `Build-NpdevApp.ps1` and `Rebuild-And-Restage.ps1` (this
+item's other two named files) still emit no equivalent sidecar -- they are separate PowerShell entry
+points, not touched by this Python-side fix, and were out of this pass's scope. The third suggested
+shape (a written-down "how to check progress independently" recipe) was also not done. Rated PARTIAL,
 not DONE: the specific, cheapest-cited shape landed and is real, but two of the three named
 surfaces in this item's own title are still exactly as blind as when it was filed.
+
+---
+
+**Move 14 item A2 closure (2026-08-02, DONE):** extended the SAME sidecar shape (no second phase
+model invented) to the two remaining named entry points, closing the gap for real:
+
+- `Build-NpdevApp.ps1` writes `GENERATE` to `<FinalAppRoot>/npdev-run-app-progress.json` right
+  before invoking the generator (the same file path `npdev run app` already uses for that app's
+  output root, so one file is tailable regardless of which entry point drove the run).
+- The `Build-App.ps1`/`Start-App.ps1` scripts `Build-NpdevApp.ps1` emits into every app's `_ops/`
+  now themselves write `BUILD` (before `gradlew clean build`), `BOOT` (once the process is started,
+  before the health-check wait), and `READY` (once `/actuator/health` confirms UP) to that same
+  sidecar file -- so a plain `.\Build-App.ps1; .\Start-App.ps1` sequence, run standalone with no
+  `Rebuild-And-Restage.ps1` involved, still produces a continuous GENERATE->BUILD->BOOT->READY trail.
+- `Rebuild-And-Restage.ps1` writes its own `GENERATE` marker at the very start (before step 1,
+  resolving the app's output root from its own `config.json`), so the sidecar exists and reads
+  GENERATE through steps 1-2 (runtimehost-libs restage + generator-runtime refresh) -- the
+  ~345s-of-573s slice that dominates a cold run and previously had no signal of any kind. Steps
+  3-4 come for free: step 3 calls `Build-NpdevApp.ps1` (rewrites GENERATE, harmless no-op), step 4
+  calls the same emitted `Build-App.ps1`/`Start-App.ps1` above.
+
+**Live-verified** (not just written): one full `Rebuild-And-Restage.ps1 -AppFolder .../pack-sample`
+run (no `-Skip*`/`-TryFastPath`), watched via the sidecar file itself rather than waiting blindly.
+Phases advanced GENERATE (06:11:46.77Z) -> BUILD (06:12:34.10Z, +47.3s) -> BOOT (06:12:54.29Z,
++20.2s) -> READY (06:13:06.78Z, +12.5s), all in `npdev-run-app-progress.json`, across all three
+scripts in sequence. Raw evidence + a first attempt's transient VS Code file-lock failure (and its
+recovery) recorded in
+`__OutsideRepo/move-fastlane/rebuild-calibration-2026-08-01.txt`. The written-down "how to check
+progress independently" recipe (the third suggested shape, still not done as of the PARTIAL note
+above) now exists too, in the emitted `_ops/README.md`.
+
+Status raised PARTIAL -> DONE: all three named entry points (`npdev run app`, `Build-NpdevApp.ps1`,
+`Rebuild-And-Restage.ps1`) now write the same sidecar shape.
 
 ### REG-112 — PanelRuntimeTest.java (single-arg RuntimeMetadataService constructor, hardcoded 'Appointment'/'AppointmentPanel' fixture data that exists in no corpus model) was missing from build.gradle's modelSpecificGeneratedAppTests exclusion list, unlike its sibling RuntimeMetadataServiceTest.java -- fails with NoSuchElementException whenever :test runs inside a generated app whose own model has no matching concept/panel
 

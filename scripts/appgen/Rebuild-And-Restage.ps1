@@ -78,8 +78,35 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 function Write-Stage { param([string]$m) Write-Host "==> $m" -ForegroundColor Cyan }
 
+# REG-111 (Fast Lane plan item 4b/A2): same sidecar shape `npdev run app` and Build-NpdevApp.ps1
+# already write (npdev-run-app-progress.json: schemaVersion/phase/updatedAt/pid, GENERATE/BUILD/
+# BOOT/READY) -- written here too so a caller tailing App\npdev-run-app-progress.json sees it exist
+# and stay on GENERATE through steps 1-2 (the ~345s of the measured 573s that dominate a full run,
+# well before Build-NpdevApp.ps1 gets to step 3 and would write its own GENERATE marker). Step 4
+# below calls the emitted Build-App.ps1/Start-App.ps1 directly, so BUILD/BOOT/READY come for free
+# from those scripts' own writes -- no separate phase model invented here.
+function Write-NpdevRunAppProgress {
+  param([string]$AppRoot, [string]$Phase)
+  try {
+    New-Item -ItemType Directory -Force -Path $AppRoot | Out-Null
+    $payload = [ordered]@{
+      schemaVersion = 'npdev-run-app-progress.v1'
+      phase         = $Phase
+      updatedAt     = (Get-Date).ToUniversalTime().ToString('o')
+      pid           = $PID
+    }
+    ($payload | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $AppRoot 'npdev-run-app-progress.json') -Encoding UTF8
+  } catch { }
+}
+
 Push-Location $repoRoot
 try {
+    try {
+        $rebuildProgressCfg = Get-Content -Raw -LiteralPath (Join-Path $AppFolder 'definition\config.json') | ConvertFrom-Json
+        $rebuildProgressAppRoot = Join-Path $BuildRoot "$($rebuildProgressCfg.scenario.name)\App"
+        Write-NpdevRunAppProgress -AppRoot $rebuildProgressAppRoot -Phase 'GENERATE'
+    } catch { }
+
     # Item 8 (Fast Lane plan, 2026-08-01): try the METADATA_ONLY fast path (item 1a) before paying
     # for any of the four steps below, when asked to. Only applies when the app is ALREADY built
     # (there is a deployed baseline to diff against) and a candidate model.json is where

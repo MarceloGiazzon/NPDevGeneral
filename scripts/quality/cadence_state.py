@@ -48,6 +48,7 @@ STALENESS_TO_TIMEDELTA = {
     "1-wave": timedelta(days=2),
     "1-move": timedelta(days=7),
     "7-days": timedelta(days=7),
+    "30-days": timedelta(days=30),
 }
 
 
