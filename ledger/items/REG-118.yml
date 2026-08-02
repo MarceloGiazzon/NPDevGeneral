@@ -1,0 +1,40 @@
+id: REG-118
+title: "C1's own plan guidance ('bind $prop.<name> where $user.* is already bound') points at a binding site that the SAME item's hard rule makes permanently dead code -- ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule's scope is used EXCLUSIVELY by access.read/access.write, the one place $prop.* is now compile-time forbidden"
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-02
+verification: VERIFIED_LIVE
+surface: kernel
+source: |
+  Found while implementing Move 14 Phase C item C1 (RC-A4). The plan's implementation hint reads:
+  "Bind $prop.<name> where $user.* is already bound -- ConfiguredConceptGatewaySemanticPolicy, anchor
+  scope.put(\"$user.id\", effectiveContext.actorId()); One binding site." A kernel-wide research pass
+  (grepping every expression-evaluation surface: CelInvariantEngine, KernelRunner's flow-branch
+  evaluator, DefaultProcedureExecutor's condition evaluator, and the one that matters here,
+  ConfiguredConceptGatewaySemanticPolicy) confirmed that binding site's scope map is constructed in
+  exactly one method, evaluateAccessRule, and that method has exactly one family of callers: the
+  access.read/access.write evaluation path -- the same path C1's own hard rule (already shipped,
+  ConceptValidation.validateAccessExpression, this same commit) makes it a COMPILE-TIME ERROR to
+  reference $prop.* inside. So literally following the plan's own binding hint would add a
+  scope.put("$prop.<name>", ...) line that can never be exercised by any model that passes validation
+  -- dead code guarded by the very rule it was meant to feed.
+  No other expression-evaluation surface in the kernel binds $user.* today, so "bind it where $user.*
+  is already bound" has no OTHER site to mean. Making $prop.* usable somewhere legitimate (invariants
+  via CelInvariantEngine/GeneratedCrudRuntimeSupport -- closest candidate, already has both
+  CompiledModel and ExecutionContext reachable; flow branch conditions in KernelRunner; procedure
+  conditions in DefaultProcedureExecutor) would require threading ExecutionContext and/or CompiledModel
+  through port contracts that do not carry them today, i.e. new plumbing, not a one-line bind.
+files:
+  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/kernel/adapters/expressioncel/ConfiguredConceptGatewaySemanticPolicy.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java
+detail: |
+  Not fixed here, deliberately -- C1's own bolded acceptance criterion is only the hard rule ("$prop.*
+  is FORBIDDEN inside access.read/access.write. Compile-time error, verified RED on both keys"), which
+  is DONE and verified (ConceptAccessValidationTest#propReferenceInAccessReadIsRefused/
+  propReferenceInAccessWriteIsRefused, full :dsl:test green, all 31 corpus models still parse clean).
+  The plan's binding hint was implementation guidance, not a separate mandatory deliverable, and this
+  finding documents why following that specific hint literally would be pointless under the current
+  architecture -- left here as a signpost for whoever next wants $prop.* usable in a legitimate,
+  non-authorization expression surface (invariants is the closest candidate; see the three-surface
+  comparison above), rather than silently rediscovering the same dead end.

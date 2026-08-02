@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**118 item(s) migrated: 1 open/partial, 117 done.**
+**119 item(s) migrated: 2 open/partial, 117 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -31,6 +31,7 @@
 | REG-115 | A new com.finalexec.api.*Controller added to NPDevRuntimeHost compiles into every OTHER app fine but silently produces 404-on-every-route with zero errors anywhere unless its simple class name is also added to runtime-supported-controllers.json's allowedControllers -- an allowlist gate with no companion check that a new controller was actually added to it | GAP | LOW | DONE | 2026-08-02 |
 | REG-116 | dsl-conformance-max's own propertyScopes declaration (the RC-A1 corpus witness) listed the implicit root scope (tenant, no 'from') BEFORE the more specific 'user' scope -- compiled clean and validated clean since Wave 6, but silently inverts cascade precedence, undetected until Move 14's PropertyResolver (RC-A3) finally read propertyScopes' order for the first time | BUG | MEDIUM | DONE | 2026-08-02 |
 | REG-117 | The generated business UI's hardcoded 'My Preferences' panel (business-ui-app.mustache/shell.js.mustache) references the now-retired workspace::Preference concept and its old userId/category/prefKey/prefValue fields -- silently vanishes from the nav (no crash, no error) for the one app that had it, WmsOffice, since RC-A2 (Move 14 item B1) renamed the concept to PropertyValue with a different shape | GAP | MEDIUM | OPEN | 2026-08-02 |
+| REG-118 | C1's own plan guidance ('bind $prop.<name> where $user.* is already bound') points at a binding site that the SAME item's hard rule makes permanently dead code -- ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule's scope is used EXCLUSIVELY by access.read/access.write, the one place $prop.* is now compile-time forbidden | GAP | LOW | OPEN | 2026-08-02 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
@@ -1498,6 +1499,44 @@ Two real options for whoever picks this up, neither attempted here:
 Either way: WmsOffice's app-specific web/ pages should be checked for any hand-authored link to the
 old "Preferencias" nav target before whichever fix ships, in case something outside the generated
 shell itself also points at it.
+
+### REG-118 — C1's own plan guidance ('bind $prop.<name> where $user.* is already bound') points at a binding site that the SAME item's hard rule makes permanently dead code -- ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule's scope is used EXCLUSIVELY by access.read/access.write, the one place $prop.* is now compile-time forbidden
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found while implementing Move 14 Phase C item C1 (RC-A4). The plan's implementation hint reads:
+"Bind $prop.<name> where $user.* is already bound -- ConfiguredConceptGatewaySemanticPolicy, anchor
+scope.put(\"$user.id\", effectiveContext.actorId()); One binding site." A kernel-wide research pass
+(grepping every expression-evaluation surface: CelInvariantEngine, KernelRunner's flow-branch
+evaluator, DefaultProcedureExecutor's condition evaluator, and the one that matters here,
+ConfiguredConceptGatewaySemanticPolicy) confirmed that binding site's scope map is constructed in
+exactly one method, evaluateAccessRule, and that method has exactly one family of callers: the
+access.read/access.write evaluation path -- the same path C1's own hard rule (already shipped,
+ConceptValidation.validateAccessExpression, this same commit) makes it a COMPILE-TIME ERROR to
+reference $prop.* inside. So literally following the plan's own binding hint would add a
+scope.put("$prop.<name>", ...) line that can never be exercised by any model that passes validation
+-- dead code guarded by the very rule it was meant to feed.
+No other expression-evaluation surface in the kernel binds $user.* today, so "bind it where $user.*
+is already bound" has no OTHER site to mean. Making $prop.* usable somewhere legitimate (invariants
+via CelInvariantEngine/GeneratedCrudRuntimeSupport -- closest candidate, already has both
+CompiledModel and ExecutionContext reachable; flow branch conditions in KernelRunner; procedure
+conditions in DefaultProcedureExecutor) would require threading ExecutionContext and/or CompiledModel
+through port contracts that do not carry them today, i.e. new plumbing, not a one-line bind.
+
+**Surface:** `kernel`
+**Files:**
+- `NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/kernel/adapters/expressioncel/ConfiguredConceptGatewaySemanticPolicy.java`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java`
+
+Not fixed here, deliberately -- C1's own bolded acceptance criterion is only the hard rule ("$prop.*
+is FORBIDDEN inside access.read/access.write. Compile-time error, verified RED on both keys"), which
+is DONE and verified (ConceptAccessValidationTest#propReferenceInAccessReadIsRefused/
+propReferenceInAccessWriteIsRefused, full :dsl:test green, all 31 corpus models still parse clean).
+The plan's binding hint was implementation guidance, not a separate mandatory deliverable, and this
+finding documents why following that specific hint literally would be pointless under the current
+architecture -- left here as a signpost for whoever next wants $prop.* usable in a legitimate,
+non-authorization expression surface (invariants is the closest candidate; see the three-surface
+comparison above), rather than silently rediscovering the same dead end.
 
 ### REG-12 — LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped
 
