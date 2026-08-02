@@ -172,6 +172,9 @@
     "scripts/quality/check-test-task-coverage.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-twin-pair-consistency.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-workflow-yaml-syntax.py": {
       "invocation": "ci-gate"
     },
