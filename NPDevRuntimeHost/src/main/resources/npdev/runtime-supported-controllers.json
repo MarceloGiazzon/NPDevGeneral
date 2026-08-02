@@ -6,6 +6,7 @@
   "allowedControllers": [
     "AggregateApiController",
     "ConceptQueryController",
+    "PropertyResolverController",
     "DirectExecutionGatewayController",
     "ExecutionMonitorController",
     "RuntimeMetadataController",

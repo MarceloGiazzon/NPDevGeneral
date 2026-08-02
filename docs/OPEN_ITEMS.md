@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**114 item(s) migrated: 0 open/partial, 114 done.**
+**116 item(s) migrated: 0 open/partial, 116 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -27,6 +27,8 @@
 | REG-111 | Long-running generate/build/boot cycles (Build-NpdevApp.ps1, Rebuild-And-Restage.ps1, npdev run app, plain gradlew clean build) emit no incremental progress signal -- whatever is waiting on one (a human operator, an AI agent, a CI step) cannot tell 'still working normally' apart from 'silently stuck' without reaching past the tool into raw filesystem/process state | GAP | LOW | DONE | 2026-08-01 |
 | REG-112 | PanelRuntimeTest.java (single-arg RuntimeMetadataService constructor, hardcoded 'Appointment'/'AppointmentPanel' fixture data that exists in no corpus model) was missing from build.gradle's modelSpecificGeneratedAppTests exclusion list, unlike its sibling RuntimeMetadataServiceTest.java -- fails with NoSuchElementException whenever :test runs inside a generated app whose own model has no matching concept/panel | BUG | LOW | DONE | 2026-08-02 |
 | REG-113 | NPDevRuntimeHost/build.gradle.template silently shadowed the actively-maintained NPDevRuntimeHost/build.gradle in every assembled/generated app -- FinalAppAssembler.materializeRootTemplate() prefers *.template over the legacy file whenever both exist, but nothing has kept .template in sync since before commit 067b987 ('Moves 6-11'), so every FinalApp assembled since then (including the very REG-112 fix landed earlier this same session) got a build.gradle missing everything written after that point | BUG | MEDIUM | DONE | 2026-08-02 |
+| REG-114 | workspace::PropertyValue (RC-A2's cascade storage) inherited blanket admin-only CRUD permissions from isAdminConcept()'s built-in-pack default, with no carve-out for a user to read their own resolved property values -- the same latent-bug class workspace::Menu already needed a carve-out for, now reproduced on a newer built-in-pack concept | BUG | MEDIUM | DONE | 2026-08-02 |
+| REG-115 | A new com.finalexec.api.*Controller added to NPDevRuntimeHost compiles into every OTHER app fine but silently produces 404-on-every-route with zero errors anywhere unless its simple class name is also added to runtime-supported-controllers.json's allowedControllers -- an allowlist gate with no companion check that a new controller was actually added to it | GAP | LOW | DONE | 2026-08-02 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
@@ -1278,6 +1280,97 @@ Left open / not attempted here (out of Move 14 Phase A's scope, flagged for Phas
   etc.) is running on a build compiled against the stale template's content in some way that matters
   beyond test exclusions (e.g. a dependency version, a plugin block) -- this fix only guarantees the
   NEXT assembly of any app picks up current build.gradle; it does not retroactively rebuild anything.
+
+### REG-114 — workspace::PropertyValue (RC-A2's cascade storage) inherited blanket admin-only CRUD permissions from isAdminConcept()'s built-in-pack default, with no carve-out for a user to read their own resolved property values -- the same latent-bug class workspace::Menu already needed a carve-out for, now reproduced on a newer built-in-pack concept
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-02)
+**Verification:** VERIFIED_LIVE
+**Source:** Move 14 Phase B item B3 (RC-A5)'s own gating instruction: "Built-in-pack reads are believed
+admin-gated. A user must be able to read their own preferences. Confirm the current gating first;
+if it is admin-only, fixing it is part of RC-A5." Confirmed live, not assumed:
+
+Booted WmsOffice (the one app in the corpus including the workspace pack), logged in as the
+existing admin (POST /api/auth/login, tenant "trial", roles=["ADMIN"]), created a fresh non-admin
+account via POST /api/auth/create-user (roleName="USER"), logged in as it too. Issued the IDENTICAL
+read (GET /api/concepts/workspace_property_values) as both:
+  ADMIN     -> HTTP 200  {"content":[],...}
+  NON-ADMIN -> HTTP 403  {"status":403,"error":"Forbidden",...}
+
+Root cause (read, not just observed): NPDevGenerator/generator/src/main/java/com/npdev/generator/
+emitters/RuntimeApiEmitter.java's generatePermissionManifest() grants create/update/delete/read/list
+on every built-in-pack concept (isAdminConcept(), true for any "workspace::"/"identity::"-namespaced
+concept) ONLY to the configured superuser role. The one existing exception is workspace::Menu
+(read/list opened to role "user" -- "a platform-default navigation source read by every logged-in
+user's own shell/UI, not an admin surface", per that fix's own comment, dated 2026-07-05 per
+[[workspace_menu_shell_platform_default]]). workspace::PropertyValue (added this same Move, RC-A2)
+never got an equivalent carve-out -- a newer built-in-pack concept did not automatically inherit
+Menu's reasoning, only the surrounding code it was declared next to. Evidence recorded at
+__OutsideRepo/move13-helpers/rc-a5-admin-gating-evidence.txt.
+
+**Surface:** `generator, runtimehost, security`
+**Files:**
+- `NPDevRuntimeHost/src/main/java/com/finalexec/api/PropertyResolverController.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevCapabilityBindingConfig.java`
+
+Fix folded into RC-A5 (B3), not treated as a footnote. Rather than widening the raw generic-CRUD
+"read:workspace::propertyvalue" grant to role "user" the way Menu's fix did -- which here would let
+ANY authenticated user list/read EVERY row of the table, including other users' own "user"-scope
+rows, a real privacy regression PropertyValue's row-level design specifically exists to avoid (see
+RC-A2/BREAKING.md's own scopeType/scopeId shape) -- added a DEDICATED REST surface instead:
+GET/PUT /api/properties/{key}, open to every authenticated user regardless of role, backed by
+PropertyResolver.resolve()/.explain()/.set(). Because PropertyResolver only ever resolves/mutates
+the CALLER's own ExecutionContext-derived cascade (tenant/user/tag-scoped, never an arbitrary row by
+id), opening it to every role cannot leak another user's or tenant's data the way opening the raw
+CRUD grant would. The raw generic-CRUD grant on workspace::PropertyValue is left admin-only,
+unchanged -- an admin/superuser can still use it for bulk inspection/cleanup -- but it is no longer
+the only read path, so its admin-only posture is no longer a user-facing bug.
+
+Left open / not attempted here: auditing every OTHER built-in-pack concept for the same
+"needs-a-carve-out-but-never-got-one" pattern (this finding is a second confirmed instance after
+Menu -- Phase E's item U2 mirror-rule gate, already scoped to catch a few other twin-pairs, should
+arguably grow a check for "every built-in-pack concept either has an explicit carve-out or an
+explicit comment saying why it doesn't need one" rather than this being found by hand a third time).
+
+### REG-115 — A new com.finalexec.api.*Controller added to NPDevRuntimeHost compiles into every OTHER app fine but silently produces 404-on-every-route with zero errors anywhere unless its simple class name is also added to runtime-supported-controllers.json's allowedControllers -- an allowlist gate with no companion check that a new controller was actually added to it
+
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-08-02)
+**Verification:** VERIFIED_LIVE
+**Source:** Found live while building Move 14 Phase B item B3's fix (REG-114): added
+NPDevRuntimeHost/src/main/java/com/finalexec/api/PropertyResolverController.java, wired its bean,
+regenerated + built WmsOffice cleanly (BUILD SUCCESSFUL, no warnings), booted it healthy -- but
+every /api/properties/* route 404'd. `jar tf` on the built FinalExec jar confirmed the class was
+simply ABSENT (not a routing/Spring-scanning problem -- the .class file never existed).
+
+Root cause: NPDevRuntimeHost/build.gradle's sourceSets.main.java block computes
+`unsupportedRuntimeHostControllerSources` -- every `com/finalexec/api/*Controller.java` whose
+simple name is NOT in `runtime-supported-controllers.json`'s `allowedControllers` array -- and
+`exclude`s it from compilation UNCONDITIONALLY (not gated on generatedRuntimeMountPresent() the way
+the OTHER two exclusion mechanisms in the same file are). A new controller under
+com.finalexec.api/ is invisible-by-default; it must be explicitly opted into the allowlist, and
+nothing checks that every controller FILE has a corresponding allowlist ENTRY (the inverse check --
+"does every allowlist entry name a real file" -- may or may not exist; not audited here). The
+failure mode is a plain compileJava skip with no diagnostic of any kind: no warning at generate
+time, no error at build time (BUILD SUCCESSFUL), no error at boot time (the app starts healthy) --
+only a 404 on whatever routes that controller was supposed to serve, discoverable only by actually
+calling them.
+
+**Surface:** `runtimehost, generator`
+**Files:**
+- `NPDevRuntimeHost/build.gradle`
+- `NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json`
+
+Immediate fix: added "PropertyResolverController" to allowedControllers (same commit as
+PropertyResolverController.java itself). Verified live: rebuilt WmsOffice, `jar tf` confirmed the
+class now compiles into the jar, and its routes now respond (200, not 404).
+
+Left open / not attempted here (out of Move 14 Phase B's scope, flagged for whoever next touches
+this manifest or Phase E's item U2): no gate currently checks the OTHER direction -- that every
+`com/finalexec/api/*Controller.java` file in the repo has a matching
+allowedControllers/deferredControllers/testOnlyControllers entry. A check-*.py comparing the file
+tree against the three arrays (flag any controller present in neither) would close this
+"silent-by-default" trap the same way run-script-inventory-check.py already closes the analogous
+"an orphaned check-*.py nothing calls" trap for gate scripts -- the identical shape of bug, one
+layer up.
 
 ### REG-12 — LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped
 

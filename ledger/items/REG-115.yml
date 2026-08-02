@@ -1,0 +1,44 @@
+id: REG-115
+title: "A new com.finalexec.api.*Controller added to NPDevRuntimeHost compiles into every OTHER app fine but silently produces 404-on-every-route with zero errors anywhere unless its simple class name is also added to runtime-supported-controllers.json's allowedControllers -- an allowlist gate with no companion check that a new controller was actually added to it"
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-08-02
+closed: 2026-08-02
+verification: VERIFIED_LIVE
+surface: runtimehost, generator
+source: |
+  Found live while building Move 14 Phase B item B3's fix (REG-114): added
+  NPDevRuntimeHost/src/main/java/com/finalexec/api/PropertyResolverController.java, wired its bean,
+  regenerated + built WmsOffice cleanly (BUILD SUCCESSFUL, no warnings), booted it healthy -- but
+  every /api/properties/* route 404'd. `jar tf` on the built FinalExec jar confirmed the class was
+  simply ABSENT (not a routing/Spring-scanning problem -- the .class file never existed).
+
+  Root cause: NPDevRuntimeHost/build.gradle's sourceSets.main.java block computes
+  `unsupportedRuntimeHostControllerSources` -- every `com/finalexec/api/*Controller.java` whose
+  simple name is NOT in `runtime-supported-controllers.json`'s `allowedControllers` array -- and
+  `exclude`s it from compilation UNCONDITIONALLY (not gated on generatedRuntimeMountPresent() the way
+  the OTHER two exclusion mechanisms in the same file are). A new controller under
+  com.finalexec.api/ is invisible-by-default; it must be explicitly opted into the allowlist, and
+  nothing checks that every controller FILE has a corresponding allowlist ENTRY (the inverse check --
+  "does every allowlist entry name a real file" -- may or may not exist; not audited here). The
+  failure mode is a plain compileJava skip with no diagnostic of any kind: no warning at generate
+  time, no error at build time (BUILD SUCCESSFUL), no error at boot time (the app starts healthy) --
+  only a 404 on whatever routes that controller was supposed to serve, discoverable only by actually
+  calling them.
+files:
+  - NPDevRuntimeHost/build.gradle
+  - NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json
+detail: |
+  Immediate fix: added "PropertyResolverController" to allowedControllers (same commit as
+  PropertyResolverController.java itself). Verified live: rebuilt WmsOffice, `jar tf` confirmed the
+  class now compiles into the jar, and its routes now respond (200, not 404).
+
+  Left open / not attempted here (out of Move 14 Phase B's scope, flagged for whoever next touches
+  this manifest or Phase E's item U2): no gate currently checks the OTHER direction -- that every
+  `com/finalexec/api/*Controller.java` file in the repo has a matching
+  allowedControllers/deferredControllers/testOnlyControllers entry. A check-*.py comparing the file
+  tree against the three arrays (flag any controller present in neither) would close this
+  "silent-by-default" trap the same way run-script-inventory-check.py already closes the analogous
+  "an orphaned check-*.py nothing calls" trap for gate scripts -- the identical shape of bug, one
+  layer up.

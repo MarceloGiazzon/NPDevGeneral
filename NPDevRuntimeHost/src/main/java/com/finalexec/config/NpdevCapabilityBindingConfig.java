@@ -104,6 +104,18 @@ public class NpdevCapabilityBindingConfig {
         );
     }
 
+    /**
+     * RC-A3 (Move 14 Phase B item B2/B3, REG-114): resolves the scoped-property cascade against
+     * {@code workspace::PropertyValue} through the SAME {@code conceptGateway} bean above -- tenant
+     * isolation/permissions/audit for the underlying rows come from there, exactly like every other
+     * consumer of this gateway.
+     */
+    @Bean
+    public com.npdev.kernel.properties.PropertyResolver propertyResolver(
+            ConceptGateway conceptGateway, AuditLogStore auditLogStore, CompiledModel compiledModel) {
+        return new com.npdev.kernel.properties.DefaultPropertyResolver(conceptGateway, auditLogStore, compiledModel);
+    }
+
     @Bean
     public RuntimeInvariantEngineFactory runtimeInvariantEngineFactory(CompiledModel compiledModel) {
         return new RuntimeInvariantEngineFactory() {
