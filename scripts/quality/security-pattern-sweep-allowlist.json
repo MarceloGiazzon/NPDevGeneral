@@ -1481,6 +1481,11 @@
       "rule": "B2",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:268",
       "why": "REG-61(b): countAffectedRows counts rows for a boot-time schema-migration refusal decision (does a literal-default backfill collide with a UNIQUE constraint), the same class of schema-lifecycle count already covered by B2 (SchemaLifecycleExecutor, ImpactReport, SchemaDeltaReport, et al.) -- not a tenant-scoped business-data read. Deliberately global rather than per-tenant (see the method's own javadoc): conservative, never unsafe, since a global count can only refuse a case a per-tenant count would have allowed."
+    },
+    "bf4d6c979293": {
+      "rule": "H6",
+      "where": "NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/defaultpolicy/IdentityPermissionOverrideLookup.java:80",
+      "why": "Move 14 Phase C item C2 (RC-B3). The checker's regex only recognizes .error(/.warn( as 'logged' -- this catch DOES log, at LOG.severe(...), on a schema mismatch (isSchemaMismatch(exception), the same SQLState-42-prefix check and .severe(...) style IdentityRoleLookup.tokenVersion already established), the checker just cannot see it syntactically. The fail-open direction (empty map -> 'no override configured' -> the role's full declared ceiling applies) is deliberately the SAME as H4's reasoning one module over (IdentityRoleLookup.rolesFor, fingerprint ddbcb35ee7ee): the worst case of a lookup fault is identical to 'this admin never configured a runtime restriction here', which is exactly today's pre-C2 behavior for every app that hasn't adopted the feature -- never a widened grant, only a narrowing that fails to apply. RolePermissions' own ceiling intersection (a separate, independently-tested control) is what actually enforces 'never beyond the ceiling'; this lookup only ever supplies an optional narrowing on top of it."
     }
   }
 }

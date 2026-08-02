@@ -1,5 +1,6 @@
 package com.npdev.adapters.authz.defaultpolicy;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -9,11 +10,18 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -24,6 +32,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class IdentityPermissionOverrideLookupTest {
 
     private DataSource dataSource;
+    private CapturingHandler capturingHandler;
+    private Logger logger;
+
+    @BeforeEach
+    void setUpLogCapture() {
+        logger = Logger.getLogger(IdentityPermissionOverrideLookup.class.getName());
+        capturingHandler = new CapturingHandler();
+        logger.addHandler(capturingHandler);
+    }
+
+    @AfterEach
+    void tearDownLogCapture() {
+        logger.removeHandler(capturingHandler);
+    }
 
     @BeforeEach
     void setUp() throws SQLException {
@@ -86,9 +108,44 @@ class IdentityPermissionOverrideLookupTest {
         assertTrue(IdentityPermissionOverrideLookup.overridesFor(noTables, "tenantx", "charlie").isEmpty());
     }
 
+    /**
+     * The security-pattern-sweep gate's own rule (REG-39's shape): a swallowed SQLException that
+     * silently resolves to "no restriction" must still be OBSERVABLE, not indistinguishable from an
+     * app that genuinely never configured an override. Mirrors
+     * IdentityRoleLookupSchemaMismatchTest#staleSchemaMissingTokenVersionReturnsZeroButLogsLoudly.
+     */
+    @Test
+    void absentTablesFailOpenButLogSeverely() {
+        DataSource noTables = new SingleConnectionUrlDataSource(
+                "jdbc:h2:mem:empty" + System.nanoTime() + ";DB_CLOSE_DELAY=-1");
+
+        IdentityPermissionOverrideLookup.overridesFor(noTables, "tenantx", "charlie");
+
+        assertTrue(capturingHandler.records.stream().anyMatch(r ->
+                        r.getLevel() == Level.SEVERE && r.getMessage() != null
+                                && r.getMessage().toLowerCase().contains("identity_user_role_permissions")),
+                "a schema mismatch must be logged loudly, not silently swallowed: " + capturingHandler.records);
+    }
+
+    @Test
+    void freshSchemaReadsOverridesWithoutSeverelyLogging() {
+        IdentityPermissionOverrideLookup.overridesFor(dataSource, "tenantx", "charlie");
+
+        assertFalse(capturingHandler.records.stream().anyMatch(r -> r.getLevel() == Level.SEVERE),
+                "the fresh-schema path must not log a schema-mismatch severity");
+    }
+
     @Test
     void nullDataSourceYieldsEmptyMap() {
         assertTrue(IdentityPermissionOverrideLookup.overridesFor(null, "tenantx", "charlie").isEmpty());
+    }
+
+    private static final class CapturingHandler extends Handler {
+        private final List<LogRecord> records = new ArrayList<>();
+
+        @Override public void publish(LogRecord record) { records.add(record); }
+        @Override public void flush() { }
+        @Override public void close() { }
     }
 
     private static final class SingleConnectionUrlDataSource implements DataSource {
