@@ -20,12 +20,21 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * RC-A3's reference implementation of {@link PropertyResolver}, reading/writing the
  * {@code workspace::PropertyValue} concept (RC-A2) generically through {@link ConceptGateway} --
  * tenant isolation, permission checks, and row-level scoping all come for free from whichever
  * gateway is injected, exactly like every other RuntimeHost service built on it.
+ *
+ * <p>Vector 15: resolutions are cached per (tenantId, propertyKey, resolved scope-key tuple,
+ * {@code version}) -- {@code version} is a single counter bumped on every {@link #set}, so a write
+ * invalidates every cached resolution at once rather than needing per-key eviction. Read this file's
+ * own concurrency test ({@code PropertyResolverCacheConcurrencyTest}) for the proof, not just the
+ * shape: a cache that merely compiles is not the same claim as one proven safe under concurrent
+ * reads racing a write.
  */
 public final class DefaultPropertyResolver implements PropertyResolver {
 
@@ -36,6 +45,8 @@ public final class DefaultPropertyResolver implements PropertyResolver {
     private final ConceptGateway conceptGateway;
     private final AuditLogStore auditLogStore;
     private final CompiledModel compiledModel;
+    private final AtomicLong version = new AtomicLong();
+    private final Map<CacheKey, PropertyExplanation> cache = new ConcurrentHashMap<>();
 
     public DefaultPropertyResolver(ConceptGateway conceptGateway, AuditLogStore auditLogStore, CompiledModel compiledModel) {
         this.conceptGateway = Objects.requireNonNull(conceptGateway, "conceptGateway");
@@ -60,6 +71,19 @@ public final class DefaultPropertyResolver implements PropertyResolver {
             resolvedScopeIds.add(resolveScopeId(scope, context));
         }
 
+        // The cache key snapshots `version` BEFORE doing any gateway work: a `set()` that lands
+        // between this read and the cache.put below simply produces a key nobody will ever look up
+        // again (the next explain() call reads the bumped version), not a stale hit -- see the
+        // concurrency test for the race this shape was chosen to survive.
+        // NOT List.copyOf(): a scope the context cannot supply resolves to a genuine null (vector 12),
+        // and List.copyOf/List.of both reject null elements.
+        List<String> scopeKeyTuple = java.util.Collections.unmodifiableList(new ArrayList<>(resolvedScopeIds));
+        CacheKey cacheKey = new CacheKey(context.tenantId(), propertyKey, scopeKeyTuple, version.get());
+        PropertyExplanation cached = cache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
         int winningIndex = -1;
         Object winningRawValue = null;
         for (int i = 0; i < scopes.size(); i++) {
@@ -80,7 +104,10 @@ public final class DefaultPropertyResolver implements PropertyResolver {
 
         if (winningIndex < 0) {
             // Nothing stored anywhere -- the model's own default wins, nothing to override.
-            return new PropertyExplanation(propertyKey, property.defaultValue(), PropertyExplanation.ScopeRef.DEFAULT, List.of());
+            PropertyExplanation explanation = new PropertyExplanation(
+                    propertyKey, property.defaultValue(), PropertyExplanation.ScopeRef.DEFAULT, List.of());
+            cache.put(cacheKey, explanation);
+            return explanation;
         }
 
         List<PropertyExplanation.OverriddenScope> overrode = new ArrayList<>();
@@ -101,8 +128,10 @@ public final class DefaultPropertyResolver implements PropertyResolver {
         String winningScopeType = scopes.get(winningIndex).name();
         String winningScopeId = resolvedScopeIds.get(winningIndex);
         Object value = coerce(property.type(), winningRawValue);
-        return new PropertyExplanation(propertyKey, value,
+        PropertyExplanation explanation = new PropertyExplanation(propertyKey, value,
                 new PropertyExplanation.ScopeRef(winningScopeType, winningScopeId), overrode);
+        cache.put(cacheKey, explanation);
+        return explanation;
     }
 
     @Override
@@ -124,6 +153,12 @@ public final class DefaultPropertyResolver implements PropertyResolver {
         data.put("propValue", propertyValue == null ? null : String.valueOf(propertyValue));
 
         conceptGateway.save(new ConceptWriteRequest(CONCEPT_NAME, id, context.tenantId(), data), context);
+        // Bump BEFORE clearing: any explain() racing this set() either snapshots the OLD version (its
+        // eventual cache.put is keyed by a version nobody will look up again once the bump below is
+        // visible) or the NEW one (a genuine post-write read) -- never a version that could serve a
+        // stale value under the NEW key. See PropertyResolverCacheConcurrencyTest for the proof.
+        version.incrementAndGet();
+        cache.clear();
         audit(scopeType, scopeId, propertyKey, existing.isPresent(), oldRawValue, propertyValue, context);
     }
 
@@ -190,5 +225,9 @@ public final class DefaultPropertyResolver implements PropertyResolver {
             case "boolean" -> Boolean.valueOf(raw);
             default -> raw; // string, enum, date -- stored and returned verbatim
         };
+    }
+
+    /** {@code resolvedScopeIds} is already an immutable snapshot (List.copyOf at the explain() call site). */
+    private record CacheKey(String tenantId, String propertyKey, List<String> resolvedScopeIds, long version) {
     }
 }
