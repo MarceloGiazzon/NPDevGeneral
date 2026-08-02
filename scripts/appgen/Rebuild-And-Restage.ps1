@@ -28,12 +28,33 @@
     neither; a kernel change needs libs; a generator change needs generator-runtime). Skip the
     provenance check with -SkipProvenanceCheck.
 
+    Fast Lane plan item 8 (2026-08-01): -TryFastPath makes the METADATA_ONLY win (item 1a) automatic
+    rather than remembered. When the app is already built, classifies the candidate model
+    (AppFolder/definition/model.json) against the currently-deployed baseline via the SAME
+    classifier Update-AppMetadata.ps1 itself uses; a METADATA_ONLY result runs that fast path
+    (classify -> emit compiled-model.json + compiled-metadata.json + metadata/*.manifest.json ->
+    re-sign -> restart) and returns WITHOUT touching steps 1-4 below -- seconds instead of minutes.
+    Anything else (fresh install, non-METADATA_ONLY diff, or the fast path itself failing) falls
+    through to the full four-step rebuild unchanged. Off by default: this script's other switches
+    all opt IN to skipping something, and -TryFastPath follows that same convention rather than
+    silently changing what a bare invocation does.
+
+.PARAMETER TryFastPath
+    Classify the candidate model first; route through the METADATA_ONLY fast path
+    (scripts/appgen/Update-AppMetadata.ps1) instead of a full rebuild when it applies. See item 8
+    above. Never a substitute for T2 -- the fast path only ever changes what the running app already
+    has loaded, it does not (and cannot) prove the other 29 corpus models still build.
+
 .EXAMPLE
     pwsh -File scripts/appgen/Rebuild-And-Restage.ps1 -AppFolder D:\WorkSpace\NPDev\AppGen\apps\wmsoffice
 
 .EXAMPLE
     # generator-only change: skip the libs restage
     pwsh -File scripts/appgen/Rebuild-And-Restage.ps1 -AppFolder ...\wmsoffice -SkipLibs
+
+.EXAMPLE
+    # let the script decide: fast path if the diff is METADATA_ONLY, full rebuild otherwise
+    pwsh -File scripts/appgen/Rebuild-And-Restage.ps1 -AppFolder ...\wmsoffice -TryFastPath
 #>
 param(
     [Parameter(Mandatory = $true)]
@@ -48,7 +69,8 @@ param(
     # gate against its live bundle by default -- "a field rename goes through a rebuild; that is
     # precisely the moment the check has to fire." Opt out for a generate/build-only pass (CI, or
     # an app with no web/ manifests to check -- Check-Provenance.ps1 itself is a no-op then anyway).
-    [switch]$SkipProvenanceCheck
+    [switch]$SkipProvenanceCheck,
+    [switch]$TryFastPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,6 +80,40 @@ function Write-Stage { param([string]$m) Write-Host "==> $m" -ForegroundColor Cy
 
 Push-Location $repoRoot
 try {
+    # Item 8 (Fast Lane plan, 2026-08-01): try the METADATA_ONLY fast path (item 1a) before paying
+    # for any of the four steps below, when asked to. Only applies when the app is ALREADY built
+    # (there is a deployed baseline to diff against) and a candidate model.json is where
+    # Build-NpdevApp.ps1 itself expects one (AppFolder/definition/model.json) -- anything else
+    # (fresh install, no candidate model) falls straight through to the full rebuild, unchanged.
+    if ($TryFastPath -and -not $GenerateOnly) {
+        $candidateModelPath = Join-Path $AppFolder 'definition\model.json'
+        $configPath = Join-Path $AppFolder 'definition\config.json'
+        $fastPathAttempted = $false
+        if ((Test-Path -LiteralPath $candidateModelPath) -and (Test-Path -LiteralPath $configPath)) {
+            $cfg = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
+            $appId = $cfg.scenario.name
+            $opsDir = Join-Path $BuildRoot "$appId\_ops"
+            $appPlanPath = Join-Path $opsDir 'app-plan.json'
+            if (Test-Path -LiteralPath $appPlanPath) {
+                $fastPathAttempted = $true
+                Write-Stage "TryFastPath: '$appId' is already built -- classifying the candidate model against its deployed baseline..."
+                $updateScript = Join-Path $repoRoot 'scripts/appgen/Update-AppMetadata.ps1'
+                & $updateScript -AppOpsRoot $opsDir -CurrentModelPath $candidateModelPath
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host ''
+                    Write-Stage "TryFastPath: METADATA_ONLY -- fast path applied, full rebuild SKIPPED."
+                    Write-Host 'Not a substitute for T2: this only changed what the running app has loaded, it does not prove the other 29 corpus models still build.' -ForegroundColor Yellow
+                    Pop-Location
+                    exit 0
+                }
+                Write-Stage "TryFastPath: not METADATA_ONLY (or the fast path itself failed, exit $LASTEXITCODE) -- falling through to a full rebuild."
+            }
+        }
+        if (-not $fastPathAttempted) {
+            Write-Stage "TryFastPath: no deployed baseline yet (first build) or no candidate model.json found -- falling through to a full rebuild."
+        }
+    }
+
     # Step 1: restage runtimehost libs (kernel/adapter jars the app compiles against).
     if ($SkipLibs) {
         Write-Stage "SKIP step 1/3: runtimehost-libs restage"

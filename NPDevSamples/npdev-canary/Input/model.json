@@ -1,0 +1,132 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.npdevcanary",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "T1 fast-gate canary: minimal, pipeline-complete fixture proving generate->build->boot->serve->flow->panel end to end. Frozen -- see dsl-conformance-max for feature coverage."
+  },
+  "concepts": [
+    {
+      "name": "CanaryTask",
+      "ui": { "label": "Canary task" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } },
+        { "name": "priority", "type": "integer", "required": true, "ui": { "label": "Priority" } },
+        { "name": "status", "type": "string", "required": true, "ui": { "label": "Status" } }
+      ],
+      "invariants": [
+        { "name": "CanaryTaskTitleRequired", "expr": "title != null && title != ''" }
+      ]
+    },
+    {
+      "name": "CanaryOwner",
+      "ui": { "label": "Canary owner" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "ui": { "label": "Name" } }
+      ],
+      "invariants": [
+        { "name": "CanaryOwnerNameRequired", "expr": "name != null && name != ''" }
+      ]
+    }
+  ],
+  "capabilities": [
+    { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById"] }
+  ],
+  "bindings": [
+    { "capability": "persistence", "adapter": "repository" },
+    { "capability": "eventBus", "adapter": "inproc" }
+  ],
+  "queries": [
+    {
+      "name": "OpenHighPriorityCanaryTasks",
+      "concept": "CanaryTask",
+      "where": "status == 'OPEN' && priority >= 2",
+      "orderBy": ["priority"],
+      "tracePolicy": "summary",
+      "auditPolicy": "read"
+    }
+  ],
+  "procedures": [
+    {
+      "name": "SaveCanaryTaskProcedure",
+      "description": "Saves a canary task through the Concept Gateway and returns the governed record.",
+      "parameters": [
+        { "name": "id", "type": "uuid", "required": true }
+      ],
+      "steps": [
+        {
+          "name": "save-canary-task-through-gateway",
+          "type": "saveConcept",
+          "concept": "CanaryTask",
+          "id": "$id",
+          "data": { "input": "$input" },
+          "target": "savedTask",
+          "trace": true,
+          "audit": true
+        },
+        { "name": "return-saved-task", "type": "return", "value": "$savedTask", "trace": true }
+      ],
+      "tracePolicy": "detailed",
+      "auditPolicy": "write"
+    }
+  ],
+  "panels": [
+    {
+      "name": "CanaryPanel",
+      "route": "/canary/tasks",
+      "title": "Canary tasks",
+      "dataSources": [
+        { "name": "openHighPriorityTasks", "query": "OpenHighPriorityCanaryTasks" }
+      ],
+      "layout": {
+        "type": "table",
+        "fields": ["title", "priority", "status"]
+      },
+      "fieldBindings": [
+        { "field": "title", "source": "openHighPriorityTasks.title" },
+        { "field": "priority", "source": "openHighPriorityTasks.priority" },
+        { "field": "status", "source": "openHighPriorityTasks.status" }
+      ],
+      "actions": [
+        {
+          "name": "SaveCanaryTask",
+          "binding": "procedure",
+          "procedure": "SaveCanaryTaskProcedure",
+          "label": "Save canary task",
+          "explainability": {
+            "semanticPath": "PanelRuntime -> ProcedureExecutor -> ConceptGateway"
+          }
+        }
+      ],
+      "explainability": {
+        "governedDataAccess": "ConceptGateway",
+        "ruleProfile": "always"
+      }
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateCanaryTask",
+      "input": { "concept": "CanaryTask", "mode": "create" },
+      "steps": [
+        {
+          "name": "validate-canary-task",
+          "type": "invariantCheck",
+          "scope": "CanaryTask",
+          "invariants": ["CanaryTaskTitleRequired"]
+        },
+        {
+          "name": "save-canary-task",
+          "type": "createConcept",
+          "scope": "CanaryTask",
+          "input": "$input",
+          "output": "$saved"
+        },
+        { "name": "return-canary-task", "type": "return", "value": "$saved" }
+      ]
+    }
+  ]
+}

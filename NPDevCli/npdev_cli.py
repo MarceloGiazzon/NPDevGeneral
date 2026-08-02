@@ -826,6 +826,32 @@ def _diag(phase: str, code: str, message: str, suggested_fix: str | None = None,
     }
 
 
+def _write_run_app_progress(final_app_out: Path, phase: str) -> None:
+    """REG-111 fix (Fast Lane plan item 4b, 2026-08-01): `npdev run app`'s own phase field
+    (GENERATE/BUILD/BOOT/READY) was already computed for the final JSON result, but only ever
+    visible once the whole call returns -- an agent or human waiting on a long generate/build/boot
+    cycle had no way to tell "still working normally" from "silently stuck" without reaching past
+    the tool into raw filesystem/process state. Writes that same field to a small sidecar file on
+    every transition -- something a caller can tail -f or poll cheaply -- reusing the shape that
+    already exists (result["phase"]) rather than inventing a new one. Best-effort: a failure to
+    write progress must never fail the run itself.
+    """
+    try:
+        final_app_out.mkdir(parents=True, exist_ok=True)
+        sidecar = final_app_out / "npdev-run-app-progress.json"
+        sidecar.write_text(
+            json.dumps({
+                "schemaVersion": "npdev-run-app-progress.v1",
+                "phase": phase,
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+                "pid": os.getpid(),
+            }, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
 def _is_port_in_use(port: int) -> bool:
     import socket
 
@@ -907,6 +933,7 @@ def run_app(args: argparse.Namespace) -> dict:
     root = repo_root()
     final_app_out = Path(args.output).expanduser().resolve()
     boot_proc: subprocess.Popen | None = None
+    _write_run_app_progress(final_app_out, result["phase"])
 
     old_handlers = {}
     for sig in (getattr(signal, "SIGINT", None), getattr(signal, "SIGTERM", None)):
@@ -926,6 +953,7 @@ def run_app(args: argparse.Namespace) -> dict:
                     root, Path(args.model).expanduser().resolve(), final_app_out, deadline)
                 if fast_ok:
                     result["phase"] = "BOOT"
+                    _write_run_app_progress(final_app_out, result["phase"])
                 else:
                     result["diagnostics"].append(_diag(
                         "GENERATE", "METADATA_ONLY_FAST_PATH_FAILED", fast_message))
@@ -954,6 +982,7 @@ def run_app(args: argparse.Namespace) -> dict:
 
             # --- BUILD ---------------------------------------------------------------------
             result["phase"] = "BUILD"
+            _write_run_app_progress(final_app_out, result["phase"])
             build_ok, build_output, jar_path = _build_phase(final_app_out, deadline)
             if not build_ok:
                 classified = _classify_build_failure(build_output)
@@ -976,6 +1005,7 @@ def run_app(args: argparse.Namespace) -> dict:
             jar_path = _find_jar(final_app_out)
             if jar_path is None:
                 result["phase"] = "BUILD"
+                _write_run_app_progress(final_app_out, result["phase"])
                 result["diagnostics"].append(_diag(
                     "BUILD", "JAR_NOT_FOUND",
                     "METADATA_ONLY fast path expected a previously-built jar but found none.",
@@ -984,6 +1014,7 @@ def run_app(args: argparse.Namespace) -> dict:
 
         # --- BOOT ------------------------------------------------------------------------
         result["phase"] = "BOOT"
+        _write_run_app_progress(final_app_out, result["phase"])
         base_url = f"http://127.0.0.1:{args.port}"
         log_path = final_app_out / "npdev-run-app-boot.log"
         with open(log_path, "w", encoding="utf-8") as log_file:
@@ -1026,6 +1057,7 @@ def run_app(args: argparse.Namespace) -> dict:
         result["phase"] = "READY"
         result["ok"] = True
         result["baseUrl"] = base_url
+        _write_run_app_progress(final_app_out, result["phase"])
         _RUN_APP_CHILD_PROCESS = None  # READY: intentionally leave it running, not this run's to kill
         return result
     finally:
@@ -1781,6 +1813,79 @@ def run_report_bootstrap() -> None:
     subprocess.run(["pwsh", "-NoProfile", "-File", str(script)], cwd=root, check=True)
 
 
+def run_verify(args: argparse.Namespace) -> dict:
+    """Fast Lane plan item 6 (2026-08-01): one entry point for all four verification tiers,
+    reading the same staleness ledger every tier writes to (scripts/quality/cadence_state.py)
+    rather than leaving "green" to mean whichever script someone happened to run -- the
+    invocation-topology class again, one level up.
+
+    T0/T1 shell out to run-fast-gate.ps1 (-Tier T0 skips the canary+corpus checks). T2 shells out
+    to run-all-gates.ps1 (betaRelease deferred by default, per item 4). T3 shells out to
+    run-beta-release-gate.ps1 directly -- -GenerateReports also runs the ~540s evidence
+    orchestration, not just an evaluate-what-exists pass.
+    """
+    root = repo_root()
+    tier = args.tier
+    py = sys.executable or "python"
+    cadence_script = root / "scripts" / "quality" / "cadence_state.py"
+
+    if tier in ("T0", "T1"):
+        script = root / "scripts" / "quality" / "run-fast-gate.ps1"
+        if not script.exists():
+            raise CliError(f"fast gate script not found: {script}")
+        cmd = ["pwsh", "-NoProfile", "-File", str(script), "-Tier", tier]
+        if getattr(args, "model_path", None):
+            cmd += ["-ModelPath", args.model_path]
+        if getattr(args, "dsl_test_filter", None):
+            cmd += ["-DslTestFilter", args.dsl_test_filter]
+        exit_code = subprocess.run(cmd, cwd=root).returncode
+    elif tier == "T2":
+        script = root / "scripts" / "quality" / "run-all-gates.ps1"
+        if not script.exists():
+            raise CliError(f"run-all-gates.ps1 not found: {script}")
+        exit_code = subprocess.run(["pwsh", "-NoProfile", "-File", str(script)], cwd=root).returncode
+    elif tier == "T3":
+        script = root / "scripts" / "quality" / "run-beta-release-gate.ps1"
+        if not script.exists():
+            raise CliError(f"run-beta-release-gate.ps1 not found: {script}")
+        cmd = ["pwsh", "-NoProfile", "-File", str(script)]
+        generate_reports = bool(getattr(args, "generate_reports", False))
+        if generate_reports:
+            cmd.append("-GenerateReports")
+        exit_code = subprocess.run(cmd, cwd=root).returncode
+        gate_result = "passed" if exit_code == 0 else "failed"
+        subprocess.run(
+            [py, str(cadence_script), "record", "--id", "betaRelease", "--tier", "T3", "--result", gate_result],
+            cwd=root, check=False,
+        )
+        if generate_reports:
+            subprocess.run(
+                [py, str(cadence_script), "record", "--id", "beta-release-evidence", "--tier", "T3", "--result", gate_result],
+                cwd=root, check=False,
+            )
+    else:
+        raise CliError(f"unknown tier: {tier}")
+
+    report_proc = subprocess.run(
+        [py, str(cadence_script), "report", "--tier", tier, "--json"],
+        cwd=root, capture_output=True, text=True, check=False,
+    )
+    cadence_report = None
+    if report_proc.stdout.strip():
+        try:
+            cadence_report = json.loads(report_proc.stdout)
+        except json.JSONDecodeError:
+            cadence_report = None
+
+    cadence_passed = bool(cadence_report) and cadence_report.get("status") == "passed"
+    return {
+        "ok": exit_code == 0 and cadence_passed,
+        "tier": tier,
+        "gateExitCode": exit_code,
+        "cadence": cadence_report,
+    }
+
+
 def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
     """Run full structural + semantic validation via the standalone Java validator.
 
@@ -2107,6 +2212,16 @@ def build_parser() -> argparse.ArgumentParser:
     report_sub = report.add_subparsers(dest="report_command")
     report_sub.add_parser("bootstrap")
 
+    verify = subparsers.add_parser("verify")
+    verify.add_argument("--tier", required=True, choices=["T0", "T1", "T2", "T3"],
+                         help="Fast Lane plan tiers -- T0 inner loop, T1 fast gate (one canary app), "
+                              "T2 full gate (run-all-gates.ps1), T3 release ceremony.")
+    verify.add_argument("--model-path", help="T0/T1: the model.json currently being edited.")
+    verify.add_argument("--dsl-test-filter", help="T0/T1: --tests filter for gradlew :NPDevContract:dsl:test.")
+    verify.add_argument("--generate-reports", action="store_true",
+                         help="T3 only: also run the ~540s release-evidence orchestration, not just "
+                              "evaluate what evidence already exists.")
+
     review = subparsers.add_parser("review")
     review_sub = review.add_subparsers(dest="review_command")
     review_pack = review_sub.add_parser("pack")
@@ -2185,6 +2300,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "report" and args.report_command == "bootstrap":
             run_report_bootstrap()
             return 0
+        if args.command == "verify":
+            result = run_verify(args)
+            print(json.dumps(result, indent=2))
+            return 0 if result.get("ok") else 2
         if args.command == "review" and args.review_command == "pack":
             run_review_pack(args)
             return 0

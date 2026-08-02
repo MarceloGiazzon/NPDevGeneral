@@ -1,0 +1,115 @@
+{
+  "_comment": [
+    "Fast Lane plan Sec.7 (2026-08-01): the staleness ledger that makes tiering safe instead of a way",
+    "to quietly skip checks. Granularity is the ENTRY POINT a human or agent actually invokes, not",
+    "every nested check-*.py -- run-ai-knowledge-gate.ps1 already enforces (via",
+    "run-script-inventory-check.ps1's orphaned-gate-checker rule) that no check-*.py is invoked by",
+    "nothing; this ledger tracks WHEN each entry point last ran, and every check nested inside an",
+    "entry point is covered transitively by that entry point's own run record.",
+    "",
+    "Every entry point run-all-gates.ps1 knows about, plus every check named explicitly in Sec.4/Sec.6",
+    "of the Fast Lane plan (T0's model-editing checks, T1's canary checks, T3's release evidence),",
+    "MUST appear here -- enforced by check-cadence-coverage.py (wired into run-ai-knowledge-gate.ps1).",
+    "",
+    "maxStaleness values: 'every-run' (T0 -- re-evaluated on every invocation, staleness is meaningless),",
+    "'1-wave', '1-move', '7-days' (also read as any release/tag/publish action, whichever is sooner).",
+    "",
+    "Rule (Sec.7.3.5): deadlines are only ever shortened, never extended, to make something pass."
+  ],
+  "schemaVersion": "npdev-verification-cadence.v1",
+  "checks": [
+    {
+      "id": "check-schema-mirror-consistency",
+      "tier": "T0",
+      "maxStaleness": "every-run",
+      "invokedBy": "scripts/quality/check-schema-mirror-consistency.py",
+      "description": "The 4 model.schema.json copies stay semantically identical. Cheap enough to run on every edit."
+    },
+    {
+      "id": "model-validate-touched",
+      "tier": "T0",
+      "maxStaleness": "every-run",
+      "contextDependent": true,
+      "invokedBy": "scripts/quality/run-fast-gate.ps1 -Tier T0 -ModelPath <the model being edited>",
+      "description": "npdev validate model against the specific model.json being edited. Context-dependent -- only runs (and only counts as overdue) when a -ModelPath was ever given; never-run is not blocking on its own."
+    },
+    {
+      "id": "dsl-test-touched-area",
+      "tier": "T0",
+      "maxStaleness": "every-run",
+      "contextDependent": true,
+      "invokedBy": "scripts/quality/run-fast-gate.ps1 -Tier T0 -DslTestFilter <pattern>",
+      "description": "gradlew :NPDevContract:dsl:test --tests <touched area>. Context-dependent -- only runs (and only counts as overdue) when a -DslTestFilter was ever given; never-run is not blocking on its own."
+    },
+    {
+      "id": "canary-build-boot-smoke",
+      "tier": "T1",
+      "maxStaleness": "1-wave",
+      "invokedBy": "scripts/quality/run-fast-gate.ps1",
+      "description": "Generate + build + boot npdev-canary (the ONE frozen T1 fixture, Sec.5) and run its REST smoke plan (health, one flow, one panel)."
+    },
+    {
+      "id": "check-dsl-coverage",
+      "tier": "T1",
+      "maxStaleness": "1-wave",
+      "invokedBy": "scripts/quality/run-fast-gate.ps1",
+      "description": "Every DSL feature detector has at least one corpus model exercising it."
+    },
+    {
+      "id": "check-panel-provenance-impact",
+      "tier": "T1",
+      "maxStaleness": "1-wave",
+      "invokedBy": "scripts/quality/run-fast-gate.ps1",
+      "description": "A field/panel rename does not silently break a hand-written screen, discovered against whatever is currently built under the Build root."
+    },
+    {
+      "id": "dsl-conformance-max-generate",
+      "tier": "T1",
+      "maxStaleness": "1-wave",
+      "invokedBy": "scripts/quality/run-fast-gate.ps1",
+      "description": "dsl-conformance-max still emits cleanly (NPDevSamples/scripts/generate-sample-app.ps1 -SampleId dsl-conformance-max -NoAssembleFinalApp -- emission only, no build/boot)."
+    },
+    {
+      "id": "aiKnowledge",
+      "tier": "T2",
+      "maxStaleness": "1-move",
+      "invokedBy": "scripts/quality/run-all-gates.ps1 (gate: aiKnowledge)",
+      "description": "run-ai-knowledge-gate.ps1 -- static instrument checks + all in-repo check-*.py, including the script-inventory rule that fails if any checker is hosted by no gate."
+    },
+    {
+      "id": "generator",
+      "tier": "T2",
+      "maxStaleness": "1-move",
+      "invokedBy": "scripts/quality/run-all-gates.ps1 (gate: generator)",
+      "description": "run-generator-gate.ps1 -- the codegen engine, including the full 30-model corpus."
+    },
+    {
+      "id": "runtimeHost",
+      "tier": "T2",
+      "maxStaleness": "1-move",
+      "invokedBy": "scripts/quality/run-all-gates.ps1 (gate: runtimeHost)",
+      "description": "run-runtimehost-gate.ps1 -- an assembled sample app + its test suite, including WmsOffice-class interaction surfaces."
+    },
+    {
+      "id": "frontend",
+      "tier": "T2",
+      "maxStaleness": "1-move",
+      "invokedBy": "scripts/quality/run-all-gates.ps1 (gate: frontend)",
+      "description": "run-frontend-gate.ps1 -- the authoring UI (vitest + Playwright)."
+    },
+    {
+      "id": "betaRelease",
+      "tier": "T3",
+      "maxStaleness": "7-days",
+      "invokedBy": "scripts/quality/run-all-gates.ps1 (gate: betaRelease, opt-in since item 4) / npdev verify --tier T3",
+      "description": "run-beta-release-gate.ps1 evaluate-only pass (fast: does the evidence that already exists say the release is ready)."
+    },
+    {
+      "id": "beta-release-evidence",
+      "tier": "T3",
+      "maxStaleness": "7-days",
+      "invokedBy": "scripts/quality/run-beta-release-evidence-orchestration.ps1 / run-beta-release-gate.ps1 -GenerateReports",
+      "description": "The ~540s, ~10-producer release-ceremony evidence set (sample-matrix, stateful-additive-migrations, etc)."
+    }
+  ]
+}

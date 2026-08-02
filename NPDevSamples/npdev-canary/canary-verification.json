@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "ai-verification-report.v1",
+  "scenarioId": "npdev-canary",
+  "baseUrlVariable": "NPDEV_GENERATED_APP_BASE_URL",
+  "checks": [
+    {
+      "id": "health-ok",
+      "type": "http",
+      "method": "GET",
+      "path": "/actuator/health",
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "status": "UP"
+      },
+      "coversSurfaces": ["rest-smoke"]
+    },
+    {
+      "id": "create-canary-task-flow",
+      "type": "http",
+      "method": "POST",
+      "path": "/api/flows/CreateCanaryTask/execute",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "title": "Canary smoke task",
+        "priority": 3,
+        "status": "OPEN"
+      },
+      "expectedStatus": 200,
+      "expectedJsonContains": {
+        "status": "OK"
+      },
+      "coversSurfaces": ["workflow-engine"]
+    },
+    {
+      "id": "load-canary-panel",
+      "type": "http",
+      "method": "GET",
+      "path": "/api/runtime/metadata/ui/panels/CanaryPanel",
+      "expectedStatus": 200,
+      "coversSurfaces": ["custom-ui-panels"]
+    }
+  ],
+  "requiredSurfaceCoverage": ["rest-smoke", "workflow-engine", "custom-ui-panels"]
+}
