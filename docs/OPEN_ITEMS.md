@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**111 item(s) migrated: 1 open/partial, 110 done.**
+**112 item(s) migrated: 2 open/partial, 110 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -24,6 +24,7 @@
 | REG-109 | generated-ui-manifest.json (and the rest of static/npdev-business-ui/*) is baked into the packaged jar at generation time with no external-path override, the same class of gap REG-103 fixed for RuntimeMetadataService's JSON catalogs -- named but explicitly not sized by REG-103, sized (not fixed) here | GAP | LOW | OPEN | 2026-08-01 |
 | REG-11 | LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir) | GAP | LOW | DONE | 2026-07-21 |
 | REG-110 | LC-D2 (the acceptance-scenario runner) and LC-D3 (the closed authoring loop) were already fully implemented in NPDevCli/npdev_cli.py -- apparently from an earlier Move 10 session -- but had never been run, tested, or documented anywhere; a closure spec (Move 13) re-described them as needing to be built | GAP | LOW | DONE | 2026-08-01 |
+| REG-111 | Long-running generate/build/boot cycles (Build-NpdevApp.ps1, Rebuild-And-Restage.ps1, npdev run app, plain gradlew clean build) emit no incremental progress signal -- whatever is waiting on one (a human operator, an AI agent, a CI step) cannot tell 'still working normally' apart from 'silently stuck' without reaching past the tool into raw filesystem/process state | GAP | LOW | OPEN | 2026-08-01 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
@@ -971,6 +972,54 @@ run_closed_loop/the JSONPath-lite evaluator -- this closure is a live-verified p
 checked-in test suite. A future session should add one (e.g. against a lightweight HTTP stub for
 the JSONPath/assertion logic specifically) so this does not silently regress the way it silently
 went unverified for however long it has existed.
+
+### REG-111 — Long-running generate/build/boot cycles (Build-NpdevApp.ps1, Rebuild-And-Restage.ps1, npdev run app, plain gradlew clean build) emit no incremental progress signal -- whatever is waiting on one (a human operator, an AI agent, a CI step) cannot tell 'still working normally' apart from 'silently stuck' without reaching past the tool into raw filesystem/process state
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Source:** Surfaced directly during Move 13 (MOVE13_CLOSE_EVERYTHING_SPEC.md) Phase P1's execution, not by
+design review. A delegated agent running a real WmsOffice regenerate+build+boot cycle had its
+wrapper shell call killed by the harness with an empty output buffer AFTER the underlying Gradle
+build had already finished successfully -- so there was no clean signal, to the agent or to the
+session waiting on it, that the work was done. This happened twice in the same session. The only
+way either side could tell real state was by reaching past the tool boundary: comparing a jar
+file's mtime against a baseline, tailing `_ops/app.out.log`/`_logs/generator-direct-java.log`
+directly, and curling `/actuator/health`. Nothing in the generate/build/boot pipeline itself emits
+a structured, polls-cleanly "still alive, currently in phase X" signal -- the closest thing,
+`npdev run app`'s own `result.phase` field (GENERATE/BUILD/BOOT/READY), only exists in the FINAL
+JSON result once the whole call returns; there is no live/incremental readout of it while the call
+is still in flight.
+
+Generalizes beyond this one session: the same blindness would recur for any human operator running
+`Build-NpdevApp.ps1`/`Rebuild-And-Restage.ps1` directly in a terminal and wondering, after several
+quiet minutes, whether it is building or hung -- not just for an AI agent delegating to another
+agent. Filed as its own platform-shaped item rather than left as a one-off session annoyance,
+per the user's own explicit framing: "this is a gap... have to deliver a better experience on this."
+
+**Surface:** `appgen, cli, docs`
+**Files:**
+- `scripts/appgen/Build-NpdevApp.ps1`
+- `scripts/appgen/Rebuild-And-Restage.ps1`
+- `NPDevCli/npdev_cli.py`
+
+Not sized or fixed here -- this is a filed observation, not a design. A few shapes worth weighing
+when this is picked up (not a commitment to any of them):
+
+- A structured, append-only progress log every phase writes a line to as it ENTERS the phase (not
+  just a final result blob) -- something a caller can `tail -f` or poll cheaply, independent of
+  whether the wrapping process/tool call itself survives to report a clean exit.
+- `npdev run app`'s own internal phases (GENERATE/BUILD/BOOT/READY) are already named in
+  `result["phase"]` -- the gap is narrower than "no phase model exists," it is "the phase model is
+  only visible in the final return value, never while still in flight." Making it write that same
+  field to a small sidecar file on each transition would close most of the gap cheaply, reusing a
+  shape that already exists rather than inventing one.
+- Document, for anyone (human or agent) invoking these scripts, an explicit "how to check real
+  progress independently" recipe (jar mtime, `_ops/*.log` tails, health endpoint) -- even without
+  a code change, writing this down once turns "reach for whatever seems plausible under time
+  pressure" into a known, reliable recipe.
+
+Left deliberately unsized on scope/cost -- the point of filing this now is that it stays visible
+and does not silently disappear the way an unfiled frustration would, not that it is ready to be
+picked up as a bounded task yet.
 
 ### REG-12 — LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped
 
