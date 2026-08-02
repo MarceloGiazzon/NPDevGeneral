@@ -72,6 +72,52 @@ class ConceptAccessValidationTest {
                 "expected a syntax error, got: " + errors);
     }
 
+    /**
+     * RC-A4 hard rule (Move 14 Phase C item C1): {@code $prop.*} must never be usable inside
+     * {@code access.read}/{@code access.write} -- a property (even a non-securityRelevant one, per
+     * PropertyResolverController#authorizeWrite's own design, is mutable by a non-admin user for
+     * their own scope) must never be able to flip an authorization decision, or the authoring
+     * contract's rule A9 has a hole with a UI on it. "Verified RED on both keys" per the rule's own
+     * instruction -- the two tests below are that proof, not just one shared assertion.
+     */
+    private static String modelWithAccessAndProperty(String accessJson) {
+        return """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.access", "version": "1.0",
+              "propertyScopes": [ { "name": "tenant" } ],
+              "properties": [
+                { "name": "pageRows", "type": "int", "default": 25, "settableAt": ["tenant"] }
+              ],
+              "concepts": [
+                { "name": "Order", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "ownerId", "type": "string" },
+                  { "name": "siteId", "type": "string" },
+                  { "name": "total", "type": "integer" } ],
+                  "access": %s }
+              ]
+            }
+            """.formatted(accessJson);
+    }
+
+    @Test
+    void propReferenceInAccessReadIsRefused() throws Exception {
+        List<String> errors = validate(modelWithAccessAndProperty(
+                "{\"read\": \"total > $prop.pageRows\"}"));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("access.read") && e.contains("$prop.pageRows")
+                        && e.contains("forbidden")),
+                "expected $prop.* to be refused in access.read, got: " + errors);
+    }
+
+    @Test
+    void propReferenceInAccessWriteIsRefused() throws Exception {
+        List<String> errors = validate(modelWithAccessAndProperty(
+                "{\"write\": \"total > $prop.pageRows\"}"));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("access.write") && e.contains("$prop.pageRows")
+                        && e.contains("forbidden")),
+                "expected $prop.* to be refused in access.write, got: " + errors);
+    }
+
     @Test
     void modelWithNoAccessBlockHasNoAccessErrors() throws Exception {
         List<String> errors = validate("""
