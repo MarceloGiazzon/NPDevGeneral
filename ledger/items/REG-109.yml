@@ -1,5 +1,5 @@
 id: REG-109
-title: "generated-ui-manifest.json (and the rest of static/npdev-business-ui/*) is baked into the packaged jar at generation time with no external-path override, the same class of gap REG-103 fixed for RuntimeMetadataService's JSON catalogs -- named but explicitly not sized by REG-103, sized (not fixed) here"
+title: "generated-ui-manifest.json (and the rest of static/npdev-business-ui/*) was baked into the packaged jar at generation time with no external-path override, the same class of gap REG-103 fixed for RuntimeMetadataService's JSON catalogs -- named but explicitly not sized by REG-103, given the same external-path-before-classpath fix here"
 type: GAP
 severity: LOW
 status: DONE
