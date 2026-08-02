@@ -47,6 +47,18 @@
         { "name": "expiresAt", "type": "datetime", "required": true },
         { "name": "usedAt", "type": "datetime", "required": false }
       ]
+    },
+    {
+      "name": "UserRolePermission",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "userRoleId", "type": "reference", "required": true,
+          "reference": { "target": "UserRole", "onDelete": "cascade" } },
+        { "name": "permission", "type": "string", "required": true, "maxLength": 60 }
+      ],
+      "indexes": [
+        { "name": "ux_user_role_permission", "fields": ["userRoleId", "permission"], "unique": true }
+      ]
     }
   ]
 }

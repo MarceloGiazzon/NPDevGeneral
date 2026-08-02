@@ -11,9 +11,17 @@ import com.npdev.kernel.trace.FlowTraceMeta;
 import com.npdev.kernel.trace.StepOutcome;
 import org.junit.jupiter.api.Test;
 
+import javax.sql.DataSource;
+import java.io.PrintWriter;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -243,5 +251,108 @@ class DefaultExecutionAuthorizationPolicyTest {
                 new DefaultExecutionAuthorizationPolicy(new DefaultTenantIsolationPolicy(), null);
         ExecutionContext admin = ExecutionContext.of("tenant-a", "actor-a").withRoles(Set.of("ADMIN"));
         assertTrue(policyWithNullModel.canReadAudit(admin));
+    }
+
+    /**
+     * Move 14 Phase C item C2 (RC-B3), end-to-end through the real constructor + a real (in-memory)
+     * identity schema: a runtime-bound permission subset narrows what the declared role grants, and
+     * -- the critical safety property -- an override row naming a permission OUTSIDE the role's
+     * declared ceiling (READ_AUDIT is not one of WAREHOUSE_MANAGER's two declared grants) still grants
+     * nothing beyond the ceiling. Not merely a unit test of {@code RolePermissions} in isolation: this
+     * exercises the actual JDBC lookup + the actual policy object together, the same path a real
+     * generated app's {@code KernelFacade} calls on every flow-execution/trace/resume request.
+     */
+    @Test
+    void runtimeOverrideNarrowsButNeverExceedsTheDeclaredCeilingThroughTheRealJdbcPath() throws SQLException {
+        DataSource dataSource = identitySchemaWithOverride(
+                "WarehouseManager", Set.of("EXECUTE_FLOW", "READ_AUDIT"));
+        CompiledModel compiledModel = compiledModelWithRoles(
+                new CompiledRole("WarehouseManager", List.of("EXECUTE_FLOW", "READ_EXECUTIONS")));
+        DefaultExecutionAuthorizationPolicy policyWithOverride = new DefaultExecutionAuthorizationPolicy(
+                new DefaultTenantIsolationPolicy(), compiledModel, () -> dataSource);
+
+        ExecutionContext warehouseManager = ExecutionContext.of("tenantx", "charlie")
+                .withRoles(Set.of("WarehouseManager"));
+
+        assertTrue(policyWithOverride.canExecuteFlow(warehouseManager, "PickOrder"),
+                "EXECUTE_FLOW is in both the ceiling and the override");
+        assertFalse(policyWithOverride.canReadAudit(warehouseManager),
+                "READ_AUDIT is outside WAREHOUSE_MANAGER's declared ceiling -- the override row must not grant it");
+        assertFalse(policyWithOverride.canReadFailures(warehouseManager),
+                "canReadFailures needs READ_FAILURES, which is neither in the ceiling nor the override");
+    }
+
+    /** A role with no override rows at all keeps its full declared ceiling -- the DataSource is real
+     *  and reachable, it simply has nothing configured for this actor. */
+    @Test
+    void noOverrideRowsMeansFullCeilingEvenWithARealReachableDataSource() throws SQLException {
+        DataSource dataSource = identitySchemaWithOverride("WarehouseManager", Set.of());
+        CompiledModel compiledModel = compiledModelWithRoles(
+                new CompiledRole("WarehouseManager", List.of("EXECUTE_FLOW", "READ_EXECUTIONS")));
+        DefaultExecutionAuthorizationPolicy policyWithOverride = new DefaultExecutionAuthorizationPolicy(
+                new DefaultTenantIsolationPolicy(), compiledModel, () -> dataSource);
+
+        ExecutionContext warehouseManager = ExecutionContext.of("tenantx", "charlie")
+                .withRoles(Set.of("WarehouseManager"));
+
+        assertTrue(policyWithOverride.canExecuteFlow(warehouseManager, "PickOrder"));
+        assertTrue(policyWithOverride.canListExecutions(warehouseManager, "tenantx"));
+    }
+
+    /** {@code Supplier::get} returning null (no DataSource bean available -- InMemory mode) must
+     *  behave exactly like the pre-C2 constructors, never throw. */
+    @Test
+    void nullDataSourceFromSupplierBehavesLikeNoOverride() {
+        CompiledModel compiledModel = compiledModelWithRoles(
+                new CompiledRole("WAREHOUSE_MANAGER", List.of("EXECUTE_FLOW")));
+        DefaultExecutionAuthorizationPolicy policyWithOverride = new DefaultExecutionAuthorizationPolicy(
+                new DefaultTenantIsolationPolicy(), compiledModel, () -> null);
+
+        ExecutionContext warehouseManager = ExecutionContext.of("tenant-a", "actor-a")
+                .withRoles(Set.of("WAREHOUSE_MANAGER"));
+        assertTrue(policyWithOverride.canExecuteFlow(warehouseManager, "PickOrder"));
+    }
+
+    private static DataSource identitySchemaWithOverride(String roleName, Set<String> overridePermissions)
+            throws SQLException {
+        String url = "jdbc:h2:mem:" + DefaultExecutionAuthorizationPolicyTest.class.getSimpleName()
+                + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
+        DataSource dataSource = new SingleConnectionUrlDataSource(url);
+        try (Connection c = dataSource.getConnection(); Statement s = c.createStatement()) {
+            s.execute("CREATE TABLE identity_users (id UUID PRIMARY KEY, username VARCHAR(120), active BOOLEAN, tenant_id VARCHAR(120))");
+            s.execute("CREATE TABLE identity_roles (id UUID PRIMARY KEY, name VARCHAR(120), tenant_id VARCHAR(120))");
+            s.execute("CREATE TABLE identity_user_roles (id UUID PRIMARY KEY, user_id UUID, role_id UUID, tenant_id VARCHAR(120))");
+            s.execute("CREATE TABLE identity_user_role_permissions (id UUID PRIMARY KEY, user_role_id UUID, permission VARCHAR(60), tenant_id VARCHAR(120))");
+            s.execute("INSERT INTO identity_users VALUES ('11111111-1111-1111-1111-111111111111','charlie',TRUE,'tenantx')");
+            s.execute("INSERT INTO identity_roles VALUES ('22222222-2222-2222-2222-222222222222','" + roleName + "','tenantx')");
+            s.execute("INSERT INTO identity_user_roles VALUES "
+                    + "('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111',"
+                    + "'22222222-2222-2222-2222-222222222222','tenantx')");
+            int i = 0;
+            for (String permission : overridePermissions) {
+                String rowId = String.format("cccccccc-cccc-cccc-cccc-%012d", i++);
+                s.execute("INSERT INTO identity_user_role_permissions VALUES "
+                        + "('" + rowId + "','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','" + permission + "','tenantx')");
+            }
+        }
+        return dataSource;
+    }
+
+    private static final class SingleConnectionUrlDataSource implements DataSource {
+        private final String url;
+
+        private SingleConnectionUrlDataSource(String url) {
+            this.url = url;
+        }
+
+        @Override public Connection getConnection() throws SQLException { return DriverManager.getConnection(url); }
+        @Override public Connection getConnection(String u, String p) throws SQLException { return DriverManager.getConnection(url, u, p); }
+        @Override public PrintWriter getLogWriter() { return null; }
+        @Override public void setLogWriter(PrintWriter out) { }
+        @Override public void setLoginTimeout(int seconds) { }
+        @Override public int getLoginTimeout() { return 0; }
+        @Override public Logger getParentLogger() { return Logger.getLogger(getClass().getName()); }
+        @Override public <T> T unwrap(Class<T> iface) throws SQLException { throw new SQLException("not a wrapper"); }
+        @Override public boolean isWrapperFor(Class<?> iface) { return false; }
     }
 }

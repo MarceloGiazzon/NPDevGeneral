@@ -11,6 +11,7 @@ import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.audit.AuditRecord;
+import com.npdev.kernel.auth.Permission;
 import com.npdev.kernel.auth.RolePermissions;
 import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.CapabilityDispatcher;
@@ -302,6 +303,229 @@ public class ControlPanelTenantUsersController {
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "revoke_role_failed");
         }
+    }
+
+    public record PermissionOverrideRequest(String permission) {
+    }
+
+    /**
+     * Move 14 Phase C item C2 (RC-B3): the read side of the runtime permission-subset override --
+     * what an admin has explicitly bound for this (user, role) pair, if anything. Empty list means
+     * "no override configured, the role's full declared ceiling applies" (never ambiguous with "every
+     * permission explicitly re-granted" -- that state cannot be produced through this API at all,
+     * since {@link #grantPermissionOverride} rejects any permission outside the ceiling).
+     */
+    @GetMapping("/{username}/roles/{role}/permissions")
+    public ResponseEntity<Map<String, Object>> listPermissionOverrides(
+            @PathVariable String tenantId, @PathVariable String username, @PathVariable String role,
+            HttpServletRequest httpRequest
+    ) {
+        requireSuperUser(httpRequest);
+        CompiledRole declaredRole = findDeclaredRole(role);
+        if (declaredRole == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "role_not_declared_by_model"));
+        }
+        DataSource dataSource = requireDataSource();
+        try (Connection connection = dataSource.getConnection()) {
+            UUID userRoleId = findUserRoleId(connection, tenantId, username, declaredRole.name());
+            if (userRoleId == null) {
+                return ResponseEntity.status(404).body(Map.of("error", "role_not_assigned_to_user"));
+            }
+            List<String> permissions = new ArrayList<>();
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT permission FROM identity_user_role_permissions "
+                            + "WHERE user_role_id = ? AND tenant_id = ? ORDER BY permission")) {
+                ps.setObject(1, userRoleId);
+                ps.setString(2, tenantId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        permissions.add(rs.getString(1));
+                    }
+                }
+            }
+            return ResponseEntity.ok(Map.of(
+                    "username", username, "role", declaredRole.name(),
+                    "declaredCeiling", declaredRole.grants(),
+                    "overridePermissions", permissions,
+                    "restricted", !permissions.isEmpty()));
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "list_permission_overrides_failed");
+        }
+    }
+
+    /**
+     * Move 14 Phase C item C2 (RC-B3): binds ONE permission, within the role's declared ceiling, to a
+     * SPECIFIC user's assignment of that role -- the runtime-mutable narrowing the plan calls for.
+     * "An admin may grant any subset at runtime; never anything outside" is enforced HERE structurally
+     * (400 if the requested permission is not a member of {@code declaredRole.grants()}), and again,
+     * independently, at read time by {@link RolePermissions}'s ceiling intersection -- so even a row
+     * that reached the table some other way (a hand edit, a downgraded model) can never grant more
+     * than the model itself declares that role may hold.
+     *
+     * <p>Requires the target user to already HOLD the role ({@link #grantRole}) -- a permission
+     * override narrows an existing assignment, it does not imply or create one.</p>
+     */
+    @PostMapping("/{username}/roles/{role}/permissions")
+    public ResponseEntity<Map<String, Object>> grantPermissionOverride(
+            @PathVariable String tenantId, @PathVariable String username, @PathVariable String role,
+            @RequestBody PermissionOverrideRequest request, HttpServletRequest httpRequest
+    ) {
+        ExecutionContext requester = requireSuperUser(httpRequest);
+        CompiledRole declaredRole = findDeclaredRole(role);
+        if (declaredRole == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "role_not_declared_by_model"));
+        }
+        String requestedPermission = request == null ? null : request.permission();
+        Permission permission = toRecognizedPermission(requestedPermission);
+        if (permission == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "not_a_recognized_permission",
+                    "recognizedPermissions", java.util.Arrays.stream(Permission.values()).map(Enum::name).toList()));
+        }
+        if (!declaredRoleGrants(declaredRole, permission)) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "permission_outside_role_ceiling",
+                    "role", declaredRole.name(),
+                    "declaredCeiling", declaredRole.grants()));
+        }
+        DataSource dataSource = requireDataSource();
+        try (Connection connection = dataSource.getConnection()) {
+            UUID userRoleId = findUserRoleId(connection, tenantId, username, declaredRole.name());
+            if (userRoleId == null) {
+                return ResponseEntity.status(404).body(Map.of("error", "role_not_assigned_to_user"));
+            }
+            if (!overrideRowExists(connection, tenantId, userRoleId, permission.name())) {
+                try (PreparedStatement ps = connection.prepareStatement(
+                        "INSERT INTO identity_user_role_permissions (id, user_role_id, permission, tenant_id) "
+                                + "VALUES (?, ?, ?, ?)")) {
+                    ps.setObject(1, UUID.randomUUID());
+                    ps.setObject(2, userRoleId);
+                    ps.setString(3, permission.name());
+                    ps.setString(4, tenantId);
+                    ps.executeUpdate();
+                }
+            }
+            auditPermissionOverrideChange(requester, tenantId, username, declaredRole.name(), permission.name(),
+                    "permission_override.grant");
+            return ResponseEntity.ok(Map.of(
+                    "ok", true, "username", username, "role", declaredRole.name(), "permission", permission.name()));
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "grant_permission_override_failed");
+        }
+    }
+
+    /**
+     * Move 14 Phase C item C2 (RC-B3): removes one bound permission. Takes effect on the actor's very
+     * next request with the SAME token -- {@link com.npdev.adapters.authz.defaultpolicy
+     * .DefaultExecutionAuthorizationPolicy} re-derives overrides fresh from this same table on every
+     * permission check, never caching, mirroring {@link #revokeRole}'s already-verified freshness.
+     * Revoking the LAST bound permission does not restore the full ceiling implicitly in some other
+     * state -- it simply leaves zero override rows, which {@code RolePermissions} already treats as
+     * "no restriction" (the same as never having configured one).
+     */
+    @DeleteMapping("/{username}/roles/{role}/permissions/{permission}")
+    public ResponseEntity<Map<String, Object>> revokePermissionOverride(
+            @PathVariable String tenantId, @PathVariable String username, @PathVariable String role,
+            @PathVariable String permission, HttpServletRequest httpRequest
+    ) {
+        ExecutionContext requester = requireSuperUser(httpRequest);
+        CompiledRole declaredRole = findDeclaredRole(role);
+        if (declaredRole == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "role_not_declared_by_model"));
+        }
+        DataSource dataSource = requireDataSource();
+        try (Connection connection = dataSource.getConnection()) {
+            UUID userRoleId = findUserRoleId(connection, tenantId, username, declaredRole.name());
+            if (userRoleId == null) {
+                return ResponseEntity.status(404).body(Map.of("error", "role_not_assigned_to_user"));
+            }
+            int deleted;
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM identity_user_role_permissions "
+                            + "WHERE user_role_id = ? AND permission = ? AND tenant_id = ?")) {
+                ps.setObject(1, userRoleId);
+                ps.setString(2, permission.trim().toUpperCase(java.util.Locale.ROOT));
+                ps.setString(3, tenantId);
+                deleted = ps.executeUpdate();
+            }
+            if (deleted == 0) {
+                return ResponseEntity.status(404).body(Map.of("error", "override_not_found"));
+            }
+            auditPermissionOverrideChange(requester, tenantId, username, declaredRole.name(),
+                    permission.trim().toUpperCase(java.util.Locale.ROOT), "permission_override.revoke");
+            return ResponseEntity.ok(Map.of(
+                    "ok", true, "username", username, "role", declaredRole.name(), "permission", permission));
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "revoke_permission_override_failed");
+        }
+    }
+
+    private static Permission toRecognizedPermission(String requested) {
+        if (requested == null || requested.isBlank()) {
+            return null;
+        }
+        try {
+            return Permission.valueOf(requested.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException notRecognized) {
+            return null;
+        }
+    }
+
+    private static boolean declaredRoleGrants(CompiledRole declaredRole, Permission permission) {
+        for (String grant : declaredRole.grants()) {
+            if (grant != null && permission.name().equalsIgnoreCase(grant.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private UUID findUserRoleId(Connection connection, String tenantId, String username, String roleName)
+            throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT ur.id FROM identity_user_roles ur "
+                        + "JOIN identity_users u ON u.id = ur.user_id "
+                        + "JOIN identity_roles r ON r.id = ur.role_id "
+                        + "WHERE u.username = ? AND u.tenant_id = ? AND ur.tenant_id = ? "
+                        + "AND r.name = ? AND r.tenant_id = ?")) {
+            ps.setString(1, username);
+            ps.setString(2, tenantId);
+            ps.setString(3, tenantId);
+            ps.setString(4, roleName);
+            ps.setString(5, tenantId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? (UUID) rs.getObject(1) : null;
+            }
+        }
+    }
+
+    private boolean overrideRowExists(Connection connection, String tenantId, UUID userRoleId, String permissionName)
+            throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT 1 FROM identity_user_role_permissions WHERE user_role_id = ? AND permission = ? AND tenant_id = ?")) {
+            ps.setObject(1, userRoleId);
+            ps.setString(2, permissionName);
+            ps.setString(3, tenantId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    private void auditPermissionOverrideChange(
+            ExecutionContext requester, String tenantId, String username, String role, String permission, String action) {
+        auditLogStore.append(AuditRecord.create(
+                tenantId,
+                requester.actorId(),
+                requester.roles(),
+                action,
+                "identity_user_role_permission",
+                username + ":" + role + ":" + permission,
+                "OK",
+                null,
+                Map.of("role", role, "permission", permission, "targetUser", username),
+                Map.of()
+        ));
     }
 
     private CompiledRole findDeclaredRole(String requestedRole) {

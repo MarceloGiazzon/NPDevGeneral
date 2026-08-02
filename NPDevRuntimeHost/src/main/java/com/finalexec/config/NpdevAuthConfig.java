@@ -33,11 +33,18 @@ public class NpdevAuthConfig {
 
     @Bean
     public ExecutionAuthorizationPolicy executionAuthorizationPolicy(
-            TenantIsolationPolicy tenantIsolationPolicy, CompiledModel compiledModel) {
+            TenantIsolationPolicy tenantIsolationPolicy, CompiledModel compiledModel,
+            org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider) {
         // Wave 3 (RC-B1): threads the app's declared roles[] (if any) through so a role that is
         // neither USER/OPERATOR/ADMIN nor an app-declared role is denied with a logged diagnostic
         // rather than silently -- see DefaultExecutionAuthorizationPolicy's own javadoc.
-        return new DefaultExecutionAuthorizationPolicy(tenantIsolationPolicy, compiledModel);
+        //
+        // Move 14 Phase C item C2 (RC-B3): dataSourceProvider::getIfAvailable is resolved fresh on
+        // every permission check (never cached at bean-construction time) -- an InMemory-mode app
+        // (no DataSource bean at all) gets null, which DefaultExecutionAuthorizationPolicy already
+        // treats as "no override ever configured," identical to behavior before C2 existed.
+        return new DefaultExecutionAuthorizationPolicy(
+                tenantIsolationPolicy, compiledModel, dataSourceProvider::getIfAvailable);
     }
 
     @Bean

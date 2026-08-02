@@ -3,4 +3,8 @@ dependencies {
     implementation project(':dsl')
 
     testImplementation project(':dsl')
+    // Move 14 Phase C item C2 (RC-B3): IdentityPermissionOverrideLookupTest exercises the real
+    // identity_user_role_permissions JDBC query against an in-memory H2 schema, mirroring the
+    // pattern NPDevRuntimeHost's IdentityAwareContextResolverTest already established.
+    testImplementation 'com.h2database:h2:2.2.224'
 }

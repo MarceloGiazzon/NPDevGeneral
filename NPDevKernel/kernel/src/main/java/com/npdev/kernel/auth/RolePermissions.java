@@ -107,6 +107,109 @@ public final class RolePermissions {
     }
 
     /**
+     * Move 14 Phase C item C2 (RC-B3): overload that additionally applies a runtime-bound permission
+     * SUBSET, if one is configured for the actor's role -- never a superset. {@code
+     * actorPermissionOverrides} is keyed by role name (any casing; normalized internally the same way
+     * {@code appDeclaredRoles} is) to the exact set of permission-name strings an administrator bound
+     * at runtime for that (actor, role) pair, e.g. via {@code IdentityPermissionOverrideLookup}.
+     *
+     * <p><b>The ceiling is enforced structurally, not by convention:</b> a role's effective permission
+     * set is always {@code declaredCeiling ∩ override} when an override is present for that role --
+     * never the override alone, never a union. A row that names a permission outside the role's
+     * declared {@code grants} (a bug, a hand-edited row, a downgraded model since the override was
+     * written) is silently dropped by the intersection; it can never grant anything the model itself
+     * doesn't already allow that role to hold. A role with NO entry in {@code actorPermissionOverrides}
+     * is completely unaffected -- its full declared ceiling applies, exactly as before this overload
+     * existed. This is what makes "an admin may grant any subset at runtime; never anything outside"
+     * (the plan's own framing for RC-B3) a property of the code, not a promise about how the write side
+     * behaves.</p>
+     */
+    public static boolean hasPermission(
+            ExecutionContext context, Permission permission,
+            Map<String, Set<Permission>> appDeclaredRoles,
+            Map<String, Set<String>> actorPermissionOverrides) {
+        if (context == null || permission == null) {
+            return false;
+        }
+        Set<String> roles = context.roles();
+        if (roles == null || roles.isEmpty()) {
+            return false;
+        }
+        Map<String, Set<Permission>> declared = appDeclaredRoles == null ? Map.of() : appDeclaredRoles;
+        Map<String, Set<String>> normalizedOverrides = normalizeOverrideKeys(actorPermissionOverrides);
+        for (String rawRole : roles) {
+            Set<Permission> ceiling;
+            Role builtIn = toRole(rawRole);
+            if (builtIn != null) {
+                ceiling = ROLE_TO_PERMISSIONS.get(builtIn);
+            } else {
+                String normalized = normalizeRoleName(rawRole);
+                if (normalized == null) {
+                    continue;
+                }
+                ceiling = declared.get(normalized);
+                if (ceiling == null) {
+                    LOGGER.warning(() -> "Denying permission " + permission + " for actor '" + context.actorId()
+                            + "': role '" + rawRole + "' is neither a built-in role (USER/OPERATOR/ADMIN) "
+                            + "nor declared in the app model's roles[]");
+                    continue;
+                }
+            }
+            if (ceiling == null || ceiling.isEmpty()) {
+                continue;
+            }
+            if (effectivePermissions(rawRole, ceiling, normalizedOverrides).contains(permission)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Map<String, Set<String>> normalizeOverrideKeys(Map<String, Set<String>> actorPermissionOverrides) {
+        if (actorPermissionOverrides == null || actorPermissionOverrides.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Set<String>> normalized = new java.util.HashMap<>();
+        for (Map.Entry<String, Set<String>> entry : actorPermissionOverrides.entrySet()) {
+            String key = normalizeRoleName(entry.getKey());
+            if (key != null) {
+                normalized.put(key, entry.getValue());
+            }
+        }
+        return normalized;
+    }
+
+    /**
+     * {@code ceiling ∩ override} when an override exists for this role; {@code ceiling} unchanged
+     * otherwise. An unrecognized permission NAME in an override row (never a recognized {@link
+     * Permission} constant) is dropped rather than failing the whole lookup -- it can only ever narrow
+     * the effective set further, never widen it, so silently ignoring it is safe.
+     */
+    private static Set<Permission> effectivePermissions(
+            String rawRole, Set<Permission> ceiling, Map<String, Set<String>> normalizedOverrides) {
+        String normalizedRole = normalizeRoleName(rawRole);
+        Set<String> override = normalizedRole == null ? null : normalizedOverrides.get(normalizedRole);
+        if (override == null) {
+            return ceiling;
+        }
+        EnumSet<Permission> intersected = EnumSet.noneOf(Permission.class);
+        for (String permissionName : override) {
+            if (permissionName == null) {
+                continue;
+            }
+            try {
+                Permission requested = Permission.valueOf(permissionName.trim().toUpperCase(Locale.ROOT));
+                if (ceiling.contains(requested)) {
+                    intersected.add(requested);
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Not a recognized platform permission -- never grants anything; safe to ignore.
+            }
+        }
+        return intersected;
+    }
+
+    /**
      * Wave 3 (RC-B1): normalizes an app-declared {@code RoleAst.name()}/{@code CompiledRole.name()}
      * to the same key form {@link #hasPermission(ExecutionContext, Permission, Map)} looks roles up
      * by, so callers building the {@code appDeclaredRoles} map need not duplicate this rule.

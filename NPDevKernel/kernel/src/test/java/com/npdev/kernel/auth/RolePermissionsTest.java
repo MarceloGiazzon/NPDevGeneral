@@ -91,4 +91,73 @@ class RolePermissionsTest {
             assertTrue(RolePermissions.hasPermission(admin, permission, Map.of()));
         }
     }
+
+    /**
+     * Move 14 Phase C item C2 (RC-B3): the core safety property. An override is intersected against
+     * the role's declared ceiling -- it is NOT trusted verbatim. Even though the override row here
+     * names READ_AUDIT (a permission WAREHOUSE_MANAGER never declares), the actor never gains it: the
+     * ceiling wins. This is what "an admin may grant any subset at runtime; never anything outside"
+     * means as code, not as a promise about the write side's own validation.
+     */
+    @Test
+    void runtimeOverrideCanNeverExceedTheDeclaredCeilingEvenIfTheRowNamesAPermissionOutsideIt() {
+        ExecutionContext warehouseManager = ExecutionContext.of("tenant-a", "actor-a")
+                .withRoles(Set.of("warehouse_manager"));
+        Map<String, Set<Permission>> appDeclaredRoles = Map.of(
+                "WAREHOUSE_MANAGER",
+                Set.of(Permission.EXECUTE_FLOW, Permission.READ_EXECUTIONS, Permission.READ_FLOW_DEFINITIONS));
+        Map<String, Set<String>> overrides = Map.of(
+                "WAREHOUSE_MANAGER", Set.of("EXECUTE_FLOW", "READ_AUDIT"));
+
+        assertTrue(RolePermissions.hasPermission(
+                warehouseManager, Permission.EXECUTE_FLOW, appDeclaredRoles, overrides));
+        assertFalse(RolePermissions.hasPermission(
+                warehouseManager, Permission.READ_AUDIT, appDeclaredRoles, overrides),
+                "READ_AUDIT is outside WAREHOUSE_MANAGER's declared ceiling -- the override must not grant it");
+        assertFalse(RolePermissions.hasPermission(
+                warehouseManager, Permission.READ_EXECUTIONS, appDeclaredRoles, overrides),
+                "the override narrows to {EXECUTE_FLOW, READ_AUDIT} -- READ_EXECUTIONS was not re-granted");
+    }
+
+    /** A role with no override entry at all is unaffected: its full declared ceiling still applies. */
+    @Test
+    void roleWithNoConfiguredOverrideKeepsItsFullCeiling() {
+        ExecutionContext warehouseManager = ExecutionContext.of("tenant-a", "actor-a")
+                .withRoles(Set.of("WAREHOUSE_MANAGER"));
+        Map<String, Set<Permission>> appDeclaredRoles = Map.of(
+                "WAREHOUSE_MANAGER",
+                Set.of(Permission.EXECUTE_FLOW, Permission.READ_EXECUTIONS, Permission.READ_FLOW_DEFINITIONS));
+
+        assertTrue(RolePermissions.hasPermission(
+                warehouseManager, Permission.READ_EXECUTIONS, appDeclaredRoles, Map.of()));
+        assertTrue(RolePermissions.hasPermission(
+                warehouseManager, Permission.READ_FLOW_DEFINITIONS, appDeclaredRoles, null));
+    }
+
+    /** An override row with an unrecognized permission name is dropped, not thrown -- it can only
+     *  narrow further, never widen, so it is safe to ignore rather than fail the whole check. */
+    @Test
+    void unrecognizedPermissionNameInOverrideRowIsIgnoredNotThrown() {
+        ExecutionContext warehouseManager = ExecutionContext.of("tenant-a", "actor-a")
+                .withRoles(Set.of("WAREHOUSE_MANAGER"));
+        Map<String, Set<Permission>> appDeclaredRoles = Map.of(
+                "WAREHOUSE_MANAGER", Set.of(Permission.EXECUTE_FLOW));
+        Map<String, Set<String>> overrides = Map.of(
+                "WAREHOUSE_MANAGER", Set.of("EXECUTE_FLOW", "NOT_A_REAL_PERMISSION"));
+
+        assertTrue(RolePermissions.hasPermission(
+                warehouseManager, Permission.EXECUTE_FLOW, appDeclaredRoles, overrides));
+    }
+
+    /** Built-in roles (USER/OPERATOR/ADMIN) can also be narrowed by a runtime override -- the ceiling
+     *  intersection applies uniformly, not only to app-declared roles. */
+    @Test
+    void builtInRoleCanAlsoBeNarrowedByARuntimeOverride() {
+        ExecutionContext admin = ExecutionContext.of("tenant-a", "actor-a").withRoles(Set.of("ADMIN"));
+        Map<String, Set<String>> overrides = Map.of("ADMIN", Set.of("READ_TRACES"));
+
+        assertTrue(RolePermissions.hasPermission(admin, Permission.READ_TRACES, Map.of(), overrides));
+        assertFalse(RolePermissions.hasPermission(admin, Permission.READ_AUDIT, Map.of(), overrides),
+                "ADMIN's full ceiling includes READ_AUDIT, but the runtime override narrowed to READ_TRACES only");
+    }
 }
