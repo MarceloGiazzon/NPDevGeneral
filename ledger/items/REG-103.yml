@@ -95,3 +95,46 @@ detail: |
   instead -- this test is normally excluded from every generated app's `test` task for exactly this
   reason, and is meant to run against `NPDevSamples/canonical-demo`, confirmed by the failure message
   and the static, checked-in `src/test/resources/npdev/compiled-metadata.json` fixture).
+
+  ---
+
+  **Move 13 P5.1 (2026-08-01, commit bccab1d — retroactive ledger note):** the code widened this
+  item's own "narrowed, not fully closed" gap further, but this file was not updated at the time,
+  which the Fast Lane plan's research pass caught while grounding item 1a below (`git log --
+  ledger/items/REG-103.yml` showed only the Move 12 P2.1 commit touching this file, despite
+  `RuntimeMetadataService.java`'s own class javadoc citing "Move 13 P5.1" for a third external-path
+  parameter). Recorded now for accuracy: `RuntimeMetadataService` gained a generic
+  `externalPathFor(classpathLocation)` derivation plus a `npdev.generated-resources.path`
+  `@Value` (default `npdev-generated/src/main/resources`), so `loadManifest`'s per-catalog manifest
+  files (`npdev/metadata/*.manifest.json`) and `schema-realization-manifest.json` now ALSO check an
+  external path before their classpath fallback -- not just the two top-level catalogs Move 12 P2.1
+  named. The 3-arg constructor was kept, delegating to a new 4-arg one with the root defaulted, so
+  behavior is unchanged with no property set. This also sized (did not fix) the static-frontend-asset
+  half as its own item, filed as REG-109.
+
+  **Fast Lane plan item 1a (2026-08-01):** the fix shape this item named ("mirror
+  `NPDevModelProvider`'s own pattern") was live in the runtime since Move 12 P2.1/13 P5.1 above, but
+  nothing on the WRITE side fed it -- `scripts/appgen/Update-AppMetadata.ps1` (LC-C2's fast-path
+  script) only ever wrote `compiled-model.json`, leaving the three REG-103 paths above unused. Closed
+  that gap: `ModelChangeClassifierMain` gained a matching `--emitMetadataTo <dir>` flag (same
+  METADATA_ONLY-gated refusal contract as the existing `--emitCompiledModelTo`) that writes
+  `compiled-metadata.json` (via the same `CompiledMetadataCanonicalJson.toJson` call
+  `RuntimeApiEmitter` uses) and every `metadata/*.manifest.json` catalog + `metadata/index.json` (via
+  the unchanged `MetadataManifestAssetEmitter`) directly from the already-in-memory `CompiledModel` --
+  no `GeneratorFacade.generate()`, no Java source/UI bundle emission, no Gradle build of the app.
+  `Update-AppMetadata.ps1` now calls this alongside `--emitCompiledModelTo`, copies both outputs onto
+  the app's own `npdev-generated/src/main/resources/npdev/` tree, and re-signs once (the existing
+  `resignGeneratedFolder` step already covers the whole tree, so no second re-sign was needed).
+
+  Verified live, same `pack-sample` app REG-103 itself used: changed `Store`'s `ui.label` to
+  `"Store (fast-lane-item1a-test)"`, ran `Update-AppMetadata.ps1 -SkipRestart`; classification came
+  back `METADATA_ONLY`; `compiled-model.json`, `compiled-metadata.json`, and
+  `metadata/concepts.manifest.json` all landed the new label on disk (confirmed by direct read of
+  each file's `Store` entry); `resignGeneratedFolder` succeeded (no `StrictExecutionViolationException`
+  would occur at next boot). New test `ModelChangeClassifierMainTest` (generator module) covers
+  `--emitMetadataTo`'s happy path against a real in-repo corpus model. Unit test suite green
+  (`:generator:test`).
+
+  Both REG-103's own residual gaps are now closed: the loading mechanism (Move 12/13) and the write
+  side that feeds it (this item). The only remaining piece from REG-103's original text is the
+  static frontend bundle, tracked as its own item, REG-109.

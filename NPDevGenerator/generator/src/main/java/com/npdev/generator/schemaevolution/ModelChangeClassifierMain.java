@@ -13,6 +13,9 @@ import com.npdev.generator.dbconfig.SchemaLifecyclePolicy;
 import com.npdev.generator.dbconfig.SchemaLifecycleStrategy;
 import com.npdev.generator.dbconfig.UserDatabaseDefinition;
 import com.npdev.generator.dbconfig.UserDatabaseDefinitionLoader;
+import com.npdev.generator.emitters.MetadataManifestAssetEmitter;
+import com.npdev.generator.output.GeneratedSourceWriter;
+import com.npdev.generator.strategy.RegenerationPolicy;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -38,9 +41,10 @@ import java.util.List;
  * mapping over that engine's output) -- no new diffing logic, one grammar.
  *
  * <p>Usage: {@code --current <model.json> [--baseline <model.json>] [--out <report.json>]
- * [--emitCompiledModelTo <compiled-model.json>]}. {@code --baseline} omitted means "fresh install"
- * (matches {@link MigrationPlanEmitter}'s own {@code previousModelOrNull} contract). The report is
- * always printed to stdout; {@code --out} also writes it to a file.
+ * [--emitCompiledModelTo <compiled-model.json>] [--emitMetadataTo <dir>]}. {@code --baseline}
+ * omitted means "fresh install" (matches {@link MigrationPlanEmitter}'s own
+ * {@code previousModelOrNull} contract). The report is always printed to stdout; {@code --out} also
+ * writes it to a file.
  *
  * <p>{@code --emitCompiledModelTo} (Wave 1.3, LC-C2's fast path): writes
  * {@code CompiledModelCanonicalJson.toJson(current)} to that path ONLY when the classification is
@@ -50,11 +54,26 @@ import java.util.List;
  * BEFORE its classpath-baked fallback, so overwriting it and restarting the app's JVM is enough to
  * make {@code PanelRuntime}/{@code AggregateRuntime}/{@code ProcedureRunner} (everything that reads
  * the injected {@code CompiledModel} bean) see the change -- no Gradle, no codegen, no jar surgery.
- * {@code RuntimeMetadataService}'s separate {@code compiled-metadata.json}/{@code npdev/metadata/*}
- * catalogs (a DIFFERENT projection, used for AI-authoring introspection, not by the panel/procedure
- * runtime) have no such external-path override and are NOT refreshed by this flag -- a named,
- * out-of-scope-for-now gap (see the class's own follow-up note in the programme handoff), not an
- * oversight.
+ *
+ * <p>{@code --emitMetadataTo <dir>} (Fast Lane plan item 1a, REG-103 follow-up): the other half of
+ * the same fast path. Writes {@code <dir>/src/main/resources/npdev/compiled-metadata.json} (the
+ * same bytes {@code RuntimeApiEmitter} would emit, via the same
+ * {@code CompiledMetadataCanonicalJson.toJson(modelSourcePath, current)} call) plus
+ * {@code <dir>/src/main/resources/npdev/metadata/*.manifest.json} and {@code .../metadata/index.json}
+ * (via {@link MetadataManifestAssetEmitter}, unchanged) -- ONLY when the classification is
+ * {@code METADATA_ONLY}, same refusal contract as {@code --emitCompiledModelTo}. Deliberately calls
+ * these two emitters directly rather than {@code GeneratorFacade.generate()}: {@code current} is
+ * already compiled in memory for classification, and this flag exists precisely so a caller does not
+ * need the rest of the pipeline (Java source, static UI bundle, schema realization) to refresh these
+ * two catalogs. {@code RuntimeMetadataService} (REG-103, Move 13 P5.1) already checks
+ * {@code npdev.compiled-metadata.path}/{@code npdev.metadata-index.path}/
+ * {@code npdev.generated-resources.path} before its classpath fallback and, by default, resolves all
+ * three relative to the app's own working directory as
+ * {@code npdev-generated/src/main/resources/...} -- the same relative layout this flag writes under
+ * {@code <dir>} -- so a caller only needs to copy {@code <dir>/src/main/resources/npdev/} onto the
+ * app's own {@code npdev-generated/src/main/resources/npdev/} and re-sign, exactly as
+ * {@code scripts/appgen/Update-AppMetadata.ps1} now does. The static frontend assets under
+ * {@code static/npdev-business-ui/} remain a separate, not-yet-fixed problem (REG-109).
  */
 public final class ModelChangeClassifierMain {
 
@@ -66,14 +85,16 @@ public final class ModelChangeClassifierMain {
         String currentPath = null;
         String outPath = null;
         String emitCompiledModelTo = null;
+        String emitMetadataTo = null;
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--baseline" -> baselinePath = args[++i];
                 case "--current" -> currentPath = args[++i];
                 case "--out" -> outPath = args[++i];
                 case "--emitCompiledModelTo" -> emitCompiledModelTo = args[++i];
+                case "--emitMetadataTo" -> emitMetadataTo = args[++i];
                 default -> throw new IllegalArgumentException("Unrecognized argument: " + args[i]
-                        + " (supported: --current, --baseline, --out, --emitCompiledModelTo)");
+                        + " (supported: --current, --baseline, --out, --emitCompiledModelTo, --emitMetadataTo)");
             }
         }
         if (currentPath == null || currentPath.isBlank()) {
@@ -105,6 +126,26 @@ public final class ModelChangeClassifierMain {
             }
             com.npdev.dsl.v1.compiled.CompiledModelCanonicalJson.write(Path.of(emitCompiledModelTo), current);
             System.out.println("Compiled model written to " + emitCompiledModelTo);
+        }
+
+        if (emitMetadataTo != null && !emitMetadataTo.isBlank()) {
+            if (classification.level() != ModelChangeClassifier.Level.METADATA_ONLY) {
+                System.err.println("REFUSED: --emitMetadataTo requires classification METADATA_ONLY, got "
+                        + classification.level() + " -- " + classification.reasons());
+                System.exit(2);
+            }
+            Path modelSourcePath = Path.of(currentPath);
+            GeneratedSourceWriter writer = new GeneratedSourceWriter(Path.of(emitMetadataTo), new RegenerationPolicy());
+            writer.writeRelative(
+                    "src/main/resources/npdev/compiled-metadata.json",
+                    com.npdev.dsl.v1.compiled.CompiledMetadataCanonicalJson.toJson(modelSourcePath, current)
+            );
+            try {
+                new MetadataManifestAssetEmitter(writer).emit(current, null, modelSourcePath);
+            } catch (Exception e) {
+                throw new IOException("Failed emitting per-catalog metadata manifests to " + emitMetadataTo, e);
+            }
+            System.out.println("Metadata catalogs written to " + emitMetadataTo);
         }
     }
 

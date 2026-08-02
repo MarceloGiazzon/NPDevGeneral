@@ -37,6 +37,12 @@ tasks.register('classifyModelChange', JavaExec) {
     if (project.hasProperty('emitCompiledModelTo')) {
         cliArgs << '--emitCompiledModelTo' << project.getProperty('emitCompiledModelTo')
     }
+    // Fast Lane plan item 1a (REG-103 follow-up): same METADATA_ONLY-gated contract as
+    // emitCompiledModelTo above, but for RuntimeMetadataService's compiled-metadata.json +
+    // per-catalog metadata/*.manifest.json catalogs -- see ModelChangeClassifierMain's javadoc.
+    if (project.hasProperty('emitMetadataTo')) {
+        cliArgs << '--emitMetadataTo' << project.getProperty('emitMetadataTo')
+    }
     args = cliArgs
 }
 
