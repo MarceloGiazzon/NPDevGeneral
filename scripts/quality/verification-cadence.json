@@ -110,6 +110,13 @@
       "maxStaleness": "7-days",
       "invokedBy": "scripts/quality/run-beta-release-evidence-orchestration.ps1 / run-beta-release-gate.ps1 -GenerateReports",
       "description": "The ~540s, ~10-producer release-ceremony evidence set (sample-matrix, stateful-additive-migrations, etc)."
+    },
+    {
+      "id": "rebuild-calibration",
+      "tier": "T3",
+      "maxStaleness": "30-days",
+      "invokedBy": "manual-runbook: time a full scripts/appgen/Rebuild-And-Restage.ps1 run (no -SkipLibs/-SkipGeneratorRuntime/-TryFastPath), record in __OutsideRepo/move-fastlane/rebuild-calibration-*.txt, then `python scripts/quality/cadence_state.py record --id rebuild-calibration --tier T3 --result passed`",
+      "description": "Move 14 A1: the full-rebuild wall-clock baseline (measured 573s on 2026-08-01) the entire fast-lane tiering plan justifies itself against. A build-time regression is exactly the slow drift this ledger exists to surface -- re-time it periodically rather than letting the one number the plan rests on go stale and unverified."
     }
   ]
 }

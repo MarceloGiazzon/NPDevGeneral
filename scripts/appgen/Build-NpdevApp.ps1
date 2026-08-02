@@ -88,6 +88,23 @@ function Set-JsonProp {
   param([object]$Object, [string]$Name, [object]$Value)
   if ($null -ne $Object) { $Object | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force }
 }
+# REG-111 (Fast Lane plan item 4b/A2): same sidecar shape `npdev run app` already writes
+# (npdev-run-app-progress.json: schemaVersion/phase/updatedAt/pid, GENERATE/BUILD/BOOT/READY
+# vocabulary) -- so one file, at the app root, can be tailed across all three entry points
+# regardless of which one a caller used. Best-effort: a write failure never fails the run.
+function Write-NpdevRunAppProgress {
+  param([string]$AppRoot, [string]$Phase)
+  try {
+    New-Item -ItemType Directory -Force -Path $AppRoot | Out-Null
+    $payload = [ordered]@{
+      schemaVersion = 'npdev-run-app-progress.v1'
+      phase         = $Phase
+      updatedAt     = (Get-Date).ToUniversalTime().ToString('o')
+      pid           = $PID
+    }
+    ($payload | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $AppRoot 'npdev-run-app-progress.json') -Encoding UTF8
+  } catch { }
+}
 
 # LNCH-1 P6 (task 6.2c). Renders a migration-plan.json object (MigrationPlanEmitter's schema --
 # see NPDevContract\schemas\migration-plan.schema.json) as a readable console table: SAFE items
@@ -321,6 +338,7 @@ Write-JsonFile $Model  $ModelPath
 # the wrapper always adds the latter two since Build-NpdevApp.ps1 never passes -NoAssembleFinalApp/
 # -NoCleanFinalApp), plus the new flags.
 $UsesDirectGeneratorFlags = [bool]$PlanOnly -or [bool]$Upgrade -or (-not [string]::IsNullOrWhiteSpace($AcknowledgeDestructive))
+Write-NpdevRunAppProgress -AppRoot $FinalAppRoot -Phase 'GENERATE'
 if (-not $UsesDirectGeneratorFlags) {
   Write-Step 'Calling prepared NPDev generator runtime (direct Java; no Gradle).'
   & $RuntimeInvoker -ConfigPath $ConfigPath -ModelPath $ModelPath -OutRoot $OutRoot -DbDefinitionPath $DbDefinitionPath -RuntimeHostTemplate $RuntimeHostTemplate -Clean
@@ -706,6 +724,10 @@ if ($running.Count -gt 0) {
   Start-Sleep -Seconds 2
 }
 
+try {
+  $npdevProgress = [ordered]@{ schemaVersion = 'npdev-run-app-progress.v1'; phase = 'BUILD'; updatedAt = (Get-Date).ToUniversalTime().ToString('o'); pid = $PID }
+  ($npdevProgress | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $plan.appRoot 'npdev-run-app-progress.json') -Encoding UTF8
+} catch { }
 Set-Location $plan.appRoot
 Write-Host "Building $($plan.appName) at $($plan.appRoot)"
 $env:NPDEV_RUNTIMEHOST_LIBS_DIR = $plan.runtimeHostLibsDir
@@ -754,6 +776,10 @@ $args = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.
 $proc = Start-Process -FilePath 'java' -ArgumentList $args -WorkingDirectory $plan.appRoot -PassThru -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $PSScriptRoot 'app.err.log') -WindowStyle Hidden
 $proc.Id | Set-Content -LiteralPath $pidFile -Encoding ascii
 Write-Host "Started PID $($proc.Id). Logs: $logFile"
+try {
+  $npdevProgress = [ordered]@{ schemaVersion = 'npdev-run-app-progress.v1'; phase = 'BOOT'; updatedAt = (Get-Date).ToUniversalTime().ToString('o'); pid = $PID }
+  ($npdevProgress | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $plan.appRoot 'npdev-run-app-progress.json') -Encoding UTF8
+} catch { }
 Write-Host 'Waiting for health...'
 # /actuator/health, not /api/flows -- it needs no credential under any auth.mode (apiKey or jwt),
 # unlike /api/flows which 401s once an app switches to jwt (X-Api-Key stops being valid), which
@@ -763,7 +789,13 @@ for ($i = 0; $i -lt 60; $i++) {
   Start-Sleep -Seconds 2
   try { $h = Invoke-RestMethod -Method GET -Uri "$($plan.baseUrl)/actuator/health" -TimeoutSec 3; if ($h.status -eq 'UP') { $ok = $true; break } } catch { }
 }
-if ($ok) { Write-Host "App is UP at $($plan.baseUrl)/actuator/health" } else { Write-Host 'App did not report healthy in time; check logs.' -ForegroundColor Yellow }
+if ($ok) {
+  Write-Host "App is UP at $($plan.baseUrl)/actuator/health"
+  try {
+    $npdevProgress = [ordered]@{ schemaVersion = 'npdev-run-app-progress.v1'; phase = 'READY'; updatedAt = (Get-Date).ToUniversalTime().ToString('o'); pid = $PID }
+    ($npdevProgress | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $plan.appRoot 'npdev-run-app-progress.json') -Encoding UTF8
+  } catch { }
+} else { Write-Host 'App did not report healthy in time; check logs.' -ForegroundColor Yellow }
 # On a first-ever boot, SuperUserBootstrapper writes the one-time Super User key to
 # SUPER_USER_KEY.txt in the app's own working directory (it doesn't know about _ops). Relocate it
 # here so there's exactly ONE fixed, documented place to look -- the same path control-panel.html's
@@ -991,7 +1023,7 @@ foreach ($shimPair in @(@('Build-FinalApp.ps1', $buildShim), @('Run-FinalApp.ps1
   if (Test-Path -LiteralPath $shimTarget) { Set-Content -LiteralPath $shimTarget -Value $shimPair[1] -Encoding UTF8 }
 }
 
-$OpsReadme = "# $AppId - operations toolbox`n`nAll scripts read app-plan.json and run with no arguments. Port $ServerPort, base http://localhost:$ServerPort.`n`n| Script | Purpose |`n| --- | --- |`n| Build-App.ps1 | gradle clean build -> FinalExec jar |`n| Start-App.ps1 | start in background, wait for /api/flows |`n| Stop-App.ps1 | stop background app |`n| Status-App.ps1 | report up/down |`n| Test-App.ps1 | data-driven smoke (reads Input\smoke-plan.json) |`n| Check-Provenance.ps1 | panel-provenance impact gate against the live bundle (docs/REMEDIATION_PLAN.md R-G1); needs the app running (Start-App.ps1 first) |`n`n``````powershell`n.\Build-App.ps1; .\Start-App.ps1; .\Test-App.ps1; .\Check-Provenance.ps1; .\Stop-App.ps1`n```````n"
+$OpsReadme = "# $AppId - operations toolbox`n`nAll scripts read app-plan.json and run with no arguments. Port $ServerPort, base http://localhost:$ServerPort.`n`n| Script | Purpose |`n| --- | --- |`n| Build-App.ps1 | gradle clean build -> FinalExec jar |`n| Start-App.ps1 | start in background, wait for /api/flows |`n| Stop-App.ps1 | stop background app |`n| Status-App.ps1 | report up/down |`n| Test-App.ps1 | data-driven smoke (reads Input\smoke-plan.json) |`n| Check-Provenance.ps1 | panel-provenance impact gate against the live bundle (docs/REMEDIATION_PLAN.md R-G1); needs the app running (Start-App.ps1 first) |`n`n``````powershell`n.\Build-App.ps1; .\Start-App.ps1; .\Test-App.ps1; .\Check-Provenance.ps1; .\Stop-App.ps1`n```````n`nREG-111: while a step above is running, `App\npdev-run-app-progress.json` (schemaVersion npdev-run-app-progress.v1: phase/updatedAt/pid) advances GENERATE -> BUILD -> BOOT -> READY -- the same shape and file 'npdev run app' writes, so one 'tail -f' works regardless of which entry point is driving the run. Best-effort only; a stalled file that stops updating for longer than the step normally takes is the 'stuck, not just slow' signal.`n"
 Set-Content -LiteralPath (Join-Path $OpsDir 'README.md') -Value $OpsReadme -Encoding UTF8
 
 # ---- emit interactive app-info page (Property/Value table + copy/open) -----
