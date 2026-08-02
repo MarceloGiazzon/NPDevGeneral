@@ -26,11 +26,18 @@ Reuses three things that already exist rather than re-deriving them:
      with the validator's own algorithm (:adapters:runtime-validation:resignGeneratedFolder) is
      "I re-derived this file through a tool that reasoned about why it's safe," not a bypass.
 
-Deliberately narrower than "every model.json edit becomes hot": RuntimeMetadataService's separate
-compiled-metadata.json / npdev/metadata/* catalogs (AI-authoring introspection, not read by the
-panel/procedure runtime) are classpath-only with no external-path override, so this script does NOT
-refresh them -- a named, out-of-scope-for-now follow-up, not an oversight (see the class-level
-javadoc on ModelChangeClassifierMain).
+Fast Lane plan item 1a (REG-103 follow-up, 2026-08-01): RuntimeMetadataService's separate
+compiled-metadata.json / npdev/metadata/* catalogs (AI-authoring introspection, concept/panel/field
+UI labels among them) now DO get refreshed here too. REG-103 (Move 13 P5.1) already wired
+RuntimeMetadataService to check the same external-path-before-classpath-fallback convention for all
+three of npdev.compiled-metadata.path / npdev.metadata-index.path / npdev.generated-resources.path;
+this script's own classifier task grew a matching --emitMetadataTo flag (same METADATA_ONLY-gated
+refusal contract as --emitCompiledModelTo) that writes those exact files to a scratch directory,
+which step 4b below copies onto the app's own npdev-generated/src/main/resources/npdev/ tree before
+the SAME re-signing step already used for compiled-model.json. Still deliberately narrower than
+"every model.json edit becomes hot": the generated static frontend bundle
+(static/npdev-business-ui/{app.js,shell.js,generated-ui-manifest.json}) has no external-path
+override yet -- tracked separately as REG-109, not attempted here.
 
 Refuses (exit 1, no file touched, no restart) unless the classification is METADATA_ONLY.
 
@@ -81,6 +88,7 @@ $CurrentModelPath = (Resolve-Path -LiteralPath $CurrentModelPath).Path
 $BaselineModelPath = (Resolve-Path -LiteralPath $BaselineModelPath).Path
 
 $reportPath = Join-Path ([System.IO.Path]::GetTempPath()) ("npdev-metadata-fastpath-" + [Guid]::NewGuid().ToString("N") + ".json")
+$metadataScratchDir = Join-Path ([System.IO.Path]::GetTempPath()) ("npdev-metadata-fastpath-catalogs-" + [Guid]::NewGuid().ToString("N"))
 
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -91,6 +99,7 @@ $gradleArgs = @(
     "-PbaselinePath=$BaselineModelPath",
     "-PreportOut=$reportPath",
     "-PemitCompiledModelTo=$compiledModelDest",
+    "-PemitMetadataTo=$metadataScratchDir",
     "--console=plain"
 )
 Push-Location $generatorRoot
@@ -120,6 +129,31 @@ if (-not (Test-Path -LiteralPath $compiledModelDest)) {
 }
 Write-Host ""
 Write-Host "compiled-model.json updated: $compiledModelDest" -ForegroundColor Green
+
+# Item 1a (REG-103 follow-up): copy compiled-metadata.json + every metadata/*.manifest.json catalog
+# --emitMetadataTo just wrote to the scratch dir, onto the app's OWN npdev-generated tree, at exactly
+# the relative paths RuntimeMetadataService's external-path defaults already resolve
+# (npdev-generated/src/main/resources/npdev/{compiled-metadata.json,metadata/*}) -- same "external
+# wins over classpath" mechanism REG-103 (Move 13 P5.1) already shipped, now actually fed.
+$metadataScratchNpdevRoot = Join-Path $metadataScratchDir "src\main\resources\npdev"
+$compiledMetadataScratchPath = Join-Path $metadataScratchNpdevRoot "compiled-metadata.json"
+$metadataCatalogScratchDir = Join-Path $metadataScratchNpdevRoot "metadata"
+if (-not (Test-Path -LiteralPath $compiledMetadataScratchPath)) {
+    throw "Classifier reported METADATA_ONLY but did not write $compiledMetadataScratchPath -- this is a real bug, not a refusal."
+}
+if (-not (Test-Path -LiteralPath $metadataCatalogScratchDir)) {
+    throw "Classifier reported METADATA_ONLY but did not write $metadataCatalogScratchDir -- this is a real bug, not a refusal."
+}
+$appNpdevRoot = Join-Path $appRoot "npdev-generated\src\main\resources\npdev"
+$compiledMetadataDest = Join-Path $appNpdevRoot "compiled-metadata.json"
+$metadataCatalogDestDir = Join-Path $appNpdevRoot "metadata"
+Copy-Item -LiteralPath $compiledMetadataScratchPath -Destination $compiledMetadataDest -Force
+New-Item -ItemType Directory -Force -Path $metadataCatalogDestDir | Out-Null
+Get-ChildItem -LiteralPath $metadataCatalogScratchDir -File | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $metadataCatalogDestDir $_.Name) -Force
+}
+Remove-Item -LiteralPath $metadataScratchDir -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host "compiled-metadata.json + metadata/*.manifest.json catalogs updated: $appNpdevRoot" -ForegroundColor Green
 
 $generatedRoot = Join-Path $appRoot "npdev-generated"
 Write-Host "Re-signing $generatedRoot (StrictExecutionValidator checks this at every boot)..."
