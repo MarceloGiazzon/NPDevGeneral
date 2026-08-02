@@ -178,7 +178,12 @@ try {
             $overallFailed = $true
         }
         else {
-            Write-Section "T1: build + boot + REST smoke npdev-canary"
+            # Move 14 Phase D item D1: "the acceptance runner IS a T1-shaped tool -- fold it in."
+            # invoke-ai-beta-app-smoke.ps1's own -AcceptanceScenariosPath reuses THIS boot (no
+            # second generate+build+boot) to also run NPDevSamples\npdev-canary\acceptance's real
+            # seed->query->assert scenarios, so canary-build-boot-smoke now covers behavioural
+            # assertions too, not just structural health/flow/panel reachability.
+            Write-Section "T1: build + boot + REST smoke + acceptance scenarios npdev-canary"
             $env:NPDEV_RUNTIMEHOST_LIBS_DIR = $RuntimeHostLibsDir
             $smokeReportPath = Join-Path $repoRoot "scripts\reports\out\fast-gate-canary-smoke.json"
             & pwsh -NoProfile -File (Join-Path $repoRoot "scripts\quality\invoke-ai-beta-app-smoke.ps1") `
@@ -187,7 +192,8 @@ try {
                 -ReportPath $smokeReportPath `
                 -Port 8103 `
                 -Profiles "dev,trial" `
-                -BootTimeoutSeconds $CanaryBootTimeoutSeconds | Out-Host
+                -BootTimeoutSeconds $CanaryBootTimeoutSeconds `
+                -AcceptanceScenariosPath (Join-Path $repoRoot "NPDevSamples\npdev-canary\acceptance") | Out-Host
             $smokeExit = $LASTEXITCODE
             $result = if ($smokeExit -eq 0) { "passed" } else { "failed" }
             Record-Cadence -Id "canary-build-boot-smoke" -Tier "T1" -Result $result

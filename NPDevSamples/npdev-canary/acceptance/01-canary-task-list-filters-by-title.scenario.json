@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "npdev-acceptance-scenario.v1",
+  "name": "Move 14 Phase D item D1: canary tasks filtered by title return only matching rows",
+  "approved": true,
+  "given": [
+    {
+      "path": "/api/flows/CreateCanaryTask/execute",
+      "rows": [
+        { "title": "FastGateCanaryScenarioTask", "priority": 1, "status": "OPEN" },
+        { "title": "FastGateCanaryScenarioOtherTask", "priority": 1, "status": "OPEN" }
+      ]
+    }
+  ],
+  "when": { "method": "GET", "path": "/api/concepts/canary_tasks?where=title:eq:FastGateCanaryScenarioTask" },
+  "then": [
+    { "path": "$status", "equals": 200 },
+    { "path": "$.totalElements", "greaterThan": 0 },
+    { "path": "$.content[*].title", "allEqual": "FastGateCanaryScenarioTask" }
+  ]
+}
