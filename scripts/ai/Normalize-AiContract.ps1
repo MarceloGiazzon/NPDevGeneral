@@ -262,16 +262,16 @@ function New-OfficialModel {
         $flowSteps = @(
             [ordered]@{
                 name = "enforce-invariants"
-                type = "enforceInvariants"
+                type = "invariantCheck"
                 scope = [string]$flow.entity
             },
             [ordered]@{
                 name = "save-" + (Convert-ToSlug ([string]$flow.entity))
                 type = "capabilityCall"
-                cap = "persistence"
-                op = "save"
+                capability = "persistence"
+                operation = "save"
                 args = @('$input')
-                out = '$saved'
+                output = '$saved'
             },
             [ordered]@{
                 name = "emit-created"
