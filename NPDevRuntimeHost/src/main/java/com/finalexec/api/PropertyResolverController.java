@@ -93,17 +93,43 @@ public class PropertyResolverController {
     public Map<String, Object> set(HttpServletRequest request, @PathVariable String key, @RequestBody SetPropertyRequest body) {
         ExecutionContext context = runtimeContextService.currentContext(request);
         CompiledProperty property = declaredProperty(key);
-        authorizeWrite(property, body.scopeType(), body.scopeId(), context);
+        String scopeId = (body.scopeId() == null || body.scopeId().isBlank())
+                ? resolveOwnScopeId(body.scopeType(), context)
+                : body.scopeId();
+        authorizeWrite(property, body.scopeType(), scopeId, context);
         try {
-            propertyResolver.set(body.scopeType(), body.scopeId(), key, body.value(), context);
+            propertyResolver.set(body.scopeType(), scopeId, key, body.value(), context);
         } catch (PropertyNotSettableAtScopeException notSettable) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, notSettable.getMessage());
         }
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("key", key);
         response.put("scopeType", body.scopeType());
-        response.put("scopeId", body.scopeId());
+        response.put("scopeId", scopeId);
         return response;
+    }
+
+    /**
+     * Lets a caller (typically the generated admin surface) omit {@code scopeId} entirely and get
+     * "my own identity at this scope" without needing to know its shape -- the SAME resolution
+     * {@link PropertyResolver} itself uses for reads (a {@code $user.id}-derived scope resolves to
+     * {@link ExecutionContext#actorId()}, a {@code $user.<tag>}-derived scope to that tag, the
+     * implicit root scope to {@link ExecutionContext#tenantId()}), so "set my own value" always means
+     * exactly what "read my own value" already means.
+     */
+    private String resolveOwnScopeId(String scopeType, ExecutionContext context) {
+        CompiledPropertyScope scope = compiledModel.getPropertyScopes().stream()
+                .filter(s -> s.name().equals(scopeType))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown scope '" + scopeType + "'."));
+        String from = scope.from();
+        if (from == null || "$ctx.tenantId".equals(from)) {
+            return context.tenantId();
+        }
+        if ("$user.id".equals(from)) {
+            return context.actorId();
+        }
+        return context.tags().get(from.substring("$user.".length()));
     }
 
     private CompiledProperty declaredProperty(String key) {
