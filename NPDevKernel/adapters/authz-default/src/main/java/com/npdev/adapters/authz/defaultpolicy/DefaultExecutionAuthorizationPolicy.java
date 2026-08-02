@@ -11,12 +11,14 @@ import com.npdev.kernel.ports.TenantIsolationPolicy;
 import com.npdev.kernel.ports.TraceQuery;
 import com.npdev.kernel.trace.FlowTrace;
 
+import javax.sql.DataSource;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -25,6 +27,7 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
 
     private final TenantIsolationPolicy tenantIsolationPolicy;
     private final Map<String, Set<Permission>> appDeclaredRoles;
+    private final Supplier<DataSource> dataSourceSupplier;
 
     public DefaultExecutionAuthorizationPolicy() {
         this(new DefaultTenantIsolationPolicy());
@@ -44,8 +47,27 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
      * rule X0 established for every other evaluator in the platform).
      */
     public DefaultExecutionAuthorizationPolicy(TenantIsolationPolicy tenantIsolationPolicy, CompiledModel compiledModel) {
+        this(tenantIsolationPolicy, compiledModel, () -> null);
+    }
+
+    /**
+     * Move 14 Phase C item C2 (RC-B3): {@code dataSourceSupplier} is consulted FRESH on every
+     * {@link #hasPermission(ExecutionContext, Permission)} call, never cached -- the same
+     * "re-derive every request" contract {@code IdentityRoleLookup}/{@code token_version} already
+     * established, so a runtime permission-subset revoke takes effect on the actor's very next
+     * request. A {@code Supplier} (not a bare {@link DataSource}) because this module has no
+     * dependency on Spring's {@code ObjectProvider}, and the caller (RuntimeHost's
+     * {@code NpdevAuthConfig}) already holds one whose {@code getIfAvailable()} this can wrap
+     * directly. {@code () -> null} (this class's own default, and every pre-existing caller that
+     * still uses the two-arg constructor) means "no override ever configured" -- identical to
+     * behavior before this constructor existed.
+     */
+    public DefaultExecutionAuthorizationPolicy(
+            TenantIsolationPolicy tenantIsolationPolicy, CompiledModel compiledModel,
+            Supplier<DataSource> dataSourceSupplier) {
         this.tenantIsolationPolicy = Objects.requireNonNull(tenantIsolationPolicy, "tenantIsolationPolicy");
         this.appDeclaredRoles = toAppDeclaredRoles(compiledModel);
+        this.dataSourceSupplier = dataSourceSupplier == null ? () -> null : dataSourceSupplier;
     }
 
     private static Map<String, Set<Permission>> toAppDeclaredRoles(CompiledModel compiledModel) {
@@ -230,6 +252,10 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
     }
 
     private boolean hasPermission(ExecutionContext requester, Permission permission) {
-        return RolePermissions.hasPermission(requester, permission, appDeclaredRoles);
+        Map<String, Set<String>> overrides = requester == null
+                ? Map.of()
+                : IdentityPermissionOverrideLookup.overridesFor(
+                        dataSourceSupplier.get(), requester.tenantId(), requester.actorId());
+        return RolePermissions.hasPermission(requester, permission, appDeclaredRoles, overrides);
     }
 }

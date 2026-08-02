@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**119 item(s) migrated: 2 open/partial, 117 done.**
+**120 item(s) migrated: 3 open/partial, 117 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -32,6 +32,7 @@
 | REG-116 | dsl-conformance-max's own propertyScopes declaration (the RC-A1 corpus witness) listed the implicit root scope (tenant, no 'from') BEFORE the more specific 'user' scope -- compiled clean and validated clean since Wave 6, but silently inverts cascade precedence, undetected until Move 14's PropertyResolver (RC-A3) finally read propertyScopes' order for the first time | BUG | MEDIUM | DONE | 2026-08-02 |
 | REG-117 | The generated business UI's hardcoded 'My Preferences' panel (business-ui-app.mustache/shell.js.mustache) references the now-retired workspace::Preference concept and its old userId/category/prefKey/prefValue fields -- silently vanishes from the nav (no crash, no error) for the one app that had it, WmsOffice, since RC-A2 (Move 14 item B1) renamed the concept to PropertyValue with a different shape | GAP | MEDIUM | OPEN | 2026-08-02 |
 | REG-118 | C1's own plan guidance ('bind $prop.<name> where $user.* is already bound') points at a binding site that the SAME item's hard rule makes permanently dead code -- ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule's scope is used EXCLUSIVELY by access.read/access.write, the one place $prop.* is now compile-time forbidden | GAP | LOW | OPEN | 2026-08-02 |
+| REG-119 | An app-declared role (RC-B1 roles[]/grants[]) holding EXECUTE_FLOW can never actually call the generated POST /api/flows/{name}/execute endpoint unless the actor ALSO independently holds the built-in 'user' role or the configured super-user role -- RuntimeApiEmitter's static permission manifest only ever grants the 'flow.execute' permission to those two role names, never to any app-declared one | GAP | MEDIUM | OPEN | 2026-08-02 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
@@ -1537,6 +1538,59 @@ finding documents why following that specific hint literally would be pointless 
 architecture -- left here as a signpost for whoever next wants $prop.* usable in a legitimate,
 non-authorization expression surface (invariants is the closest candidate; see the three-surface
 comparison above), rather than silently rediscovering the same dead end.
+
+### REG-119 — An app-declared role (RC-B1 roles[]/grants[]) holding EXECUTE_FLOW can never actually call the generated POST /api/flows/{name}/execute endpoint unless the actor ALSO independently holds the built-in 'user' role or the configured super-user role -- RuntimeApiEmitter's static permission manifest only ever grants the 'flow.execute' permission to those two role names, never to any app-declared one
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found live while verifying Move 14 Phase C item C2 (RC-B3, runtime permission-subset binding) on
+WmsOffice. Granted the app-declared role WarehouseManager (grants: EXECUTE_FLOW, READ_EXECUTIONS,
+READ_FLOW_DEFINITIONS) to a test user (nonadmin1) who also still held the built-in USER role, and
+POST /api/flows/ConfirmarMovimentacao/execute worked (reached deep into the flow, failing later on an
+unrelated capability permission). Revoked USER, leaving WarehouseManager as the actor's ONLY role, and
+the exact same call was refused at the OUTER gate with "Permission 'flow.execute' denied for
+actor='nonadmin1', tenant='trial'" -- a completely different error shape than
+DefaultExecutionAuthorizationPolicy's own canExecuteFlow denial (a bare 403 with no such message),
+which was the tell that a SECOND, EARLIER, unrelated gate was actually the one firing.
+
+Root cause, confirmed by reading RuntimeApiEmitter.generatePermissionManifest
+(NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java, ~line
+418-543): this method builds a STATIC, compile-time-baked PermissionGrant list (consumed at runtime
+by StaticPermissionEvaluator) that is COMPLETELY SEPARATE from the kernel-level Permission-enum
+ceiling (RolePermissions/DefaultExecutionAuthorizationPolicy/ExecutionAuthorizationPolicy, the
+mechanism RC-B1's roles[]/grants[] and this same session's C2 both extend). "flow.execute" is granted
+to exactly two role keys: the hardcoded string "user" (line ~483) and whatever the app configures as
+its super-user role key (line ~467, ~516 -- every collected permission, unconditionally). No code
+path in this method ever reads model.getRoles() (the app-declared roles[] CompiledRole list) to grant
+"flow.execute" (or any other collected permission) to an app-declared role name. So RC-B1's entire
+"app-declared roles can hold platform permissions" feature has -- since RC-B1 shipped, this is not a
+C2 regression -- never actually let a role OTHER than the built-in "user"/super-user reach the
+generated flow-execution HTTP endpoint at all, regardless of what that role's grants[] declares.
+DefaultExecutionAuthorizationPolicy's own kernel-level check (which DOES honor app-declared roles, and
+which C2 extends) never even gets reached for such an actor -- the static manifest gate is earlier in
+the request path and denies first.
+
+**Surface:** `generator/runtimehost`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java`
+
+Not fixed here, deliberately -- this is a real, separate gap in RC-B1 (a prior Move), not something
+C2 introduced or is responsible for closing, and a correct fix (deciding whether/how an app-declared
+role's grants[] should also translate into static PermissionGrantSpec rows -- e.g. granting
+"flow.execute" to any app-declared role whose CompiledRole.grants() includes EXECUTE_FLOW) needs its
+own design and verification pass, not a same-session patch appended to an unrelated item's closing.
+
+Practical implication for anyone using RC-B1 today: an app-declared role is fully honored by every
+KERNEL-level operation reached directly (trace read/search, resume, list executions, audit, admin
+ops, debug view -- i.e. everything DefaultExecutionAuthorizationPolicy itself gates, including C2's
+new runtime permission-subset narrowing), but NOT by the generated HTTP flow-EXECUTE endpoint
+specifically, unless the actor also separately holds "user" or the super-user role. This was
+confirmed to NOT affect C2's own verification: C2's live proof used the kernel-level
+GET /api/executions endpoint (ExecutionQueryController -> KernelFacade.listExecutions ->
+canListExecutions -> READ_EXECUTIONS), which has no such static gate and cleanly demonstrated both
+the reject-outside-ceiling proof (400 on POST .../permissions with a permission outside the role's
+declared grants) and the live narrowing-takes-effect proof (403 once READ_EXECUTIONS was narrowed
+away, restored to 200 once the WarehouseManager-only test role held it again).
 
 ### REG-12 — LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped
 
