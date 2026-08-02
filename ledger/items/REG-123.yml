@@ -1,0 +1,57 @@
+id: REG-123
+title: "doc-entrypoint-validation fails on ~20+ stale script-path references and unmapped report references scattered across historical/archived docs (docs/beta/*, docs/architecture/*, docs/NEXT_EXECUTION_PLAN.md, etc.) -- a documentation-drift backlog, not a single defect, that has never been triaged since this checker's own scope was expanded to cover the full docs/ tree"
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-02
+verification: VERIFIED_LIVE
+surface: docs
+source: |
+  Found re-checking the betaRelease (T3) gate for Move 14 Phase E item E2, via the same full
+  evidence-orchestration run that produced REG-121/REG-122. scripts/reports/out/
+  doc-entrypoint-validation-report.json's own `failures` list (scanned 149 documents) names ~20+
+  distinct violations, three shapes:
+    1. "references missing release-relevant script <path>" -- e.g. docs/beta/
+       sample-browser-verification-methodology.md:59 points at scripts/generate-sample-app.ps1,
+       which now lives at NPDevSamples/scripts/generate-sample-app.ps1 (moved at some point, the doc
+       never updated); similarly scripts/run-durable-resume-demo.ps1,
+       scripts/packs/export-concept-to-pack.ps1, scripts/browser/scrapforai-harness.ps1 (now
+       NPDevSamples/scripts/browser/), scripts/superuser-admin-console/demonstrate-*.ps1 -- several
+       distinct historical script moves/removals, never reconciled against every doc that names them.
+    2. "references blocking report with unresolved mapping <path>" -- e.g.
+       docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md:18-20 names three report files
+       (box-object-truth-report.json, code-bearing-object-resource-report.json,
+       box-object-promotion-evidence-closure-report.json) that no current script or policy entry
+       produces or maps -- either aspirational/never-built reports from an early architecture doc, or
+       reports that were produced under different names since.
+    3. Downstream: final-regression-coverage-audit's own failure (see REG-121's detail) is a
+       reflection of this same finding, not independent.
+files:
+  - scripts/reports/out/doc-entrypoint-validation-report.json
+  - docs/beta/sample-browser-verification-methodology.md
+  - docs/beta/beta1-vision-spine-status-and-handoff.md
+  - docs/beta/beta1-gap-analysis-vs-original-vision.md
+  - docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md
+  - docs/CLOSEOUT_PLAN.md
+  - docs/EXECUTION_TREES.md
+  - docs/NEXT_EXECUTION_PLAN.md
+  - docs/NPDEV_OPEN_ITEMS_REGISTER.md
+  - docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md
+detail: |
+  Not fixed here, deliberately -- this is Move 14 Phase E item E2's own explicitly permitted outcome
+  ("name each report that cannot be generated and why... a red gate honestly reported is the correct
+  outcome"), not a quick patch. This is genuinely a documentation-triage backlog, not a single root
+  cause: each reference needs a real decision (is the referencing doc a live, currently-relevant
+  entrypoint that should be corrected to the script's new path, or a historical/archived planning doc
+  whose stale reference is acceptable and should be excluded from this checker's scope instead --
+  docs/POST_PUBLIC_PLAN.md's own precedent for "fingerprints survive a file move by design" is the
+  right shape of fix for category 1, but applying it needs a person to look at each doc, not a bulk
+  script-path rewrite that might silently paper over a doc that SHOULD have been updated in
+  substance, not just re-pointed). Prohibited by this Move's own item text from being resolved by
+  removing these reports from the required list or allowlisting the violations away.
+
+  Recommended next step for whoever picks this up: triage each of the ~20 failures into (a) update
+  the doc's stale path (the script/report genuinely still exists, just moved/renamed), (b) mark the
+  doc's own status as archived/historical in scripts/policy/doc-entrypoint-classification-policy.json
+  if it is not meant to be currently accurate, or (c) file a distinct REG-nn if the referenced
+  report/script was a real, never-fulfilled commitment.

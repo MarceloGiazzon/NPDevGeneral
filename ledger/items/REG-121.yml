@@ -1,0 +1,72 @@
+id: REG-121
+title: "Two release-evidence producers (run-ai-beta-gate.ps1, run-trusted-source-beta0-proof.ps1) still invoke `:generator:run` with the disabled `--migrationsDir` flag -- GeneratorMain.migrationsDisabled() rejects it outright (CONFIG_MIGRATIONS_DISABLED), so every ai-beta-gate scenario whose model reaches generation fails there, cascading into expanded-beta0-evidence, sample-matrix, docker-linux-parity, and final-regression-coverage-audit"
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-02
+verification: VERIFIED_LIVE
+surface: quality-gates/ai-beta-pipeline
+source: |
+  Found re-checking the betaRelease (T3) gate for Move 14 Phase E item E2 -- last verified at Move
+  12 (red on 23 missing + stale evidence). Ran `run-beta-release-gate.ps1 -GenerateReports` (the
+  full ~540s-935s evidence orchestration) for the first time since then: went from 25 precondition
+  blockers + 5 real failures to 0 failed-no-evidence (every producer now runs and writes real
+  evidence) + 19, then 21, real check failures -- a genuinely more honest state, per REG-3's own
+  exit-code distinction (PRECONDITION-UNMET vs CHECK-FAILED).
+
+  Fixed one real bug in the same session (REG-122): the AI-authoring contract normalizer was
+  emitting `enforceInvariants`/`cap`/`op`/`out` (DSL 1.0 step syntax, retired when DSL 2.0 shipped)
+  instead of `invariantCheck`/`capability`/`operation`/`output`, failing official JSON Schema
+  validation for every golden scenario with a `flows[]` declaration. Fixing that took 22 of 28
+  ai-beta-gate scenarios from failing at official-validation (a cheap, early, uninformative stage)
+  to correctly reaching and failing (or passing) at their own DESIGNED stage -- 22 now pass entirely
+  (negative scenarios correctly matching their expected failure stage), confirming the fix is
+  correct, not just less-early-failing.
+
+  The REMAINING failures (6 positive scenarios: base-ai-loop, custom-panel-unsupported,
+  tenant-approval-portal, tenant-service-desk, tenant-workflow-ops, and one more) now correctly pass
+  official-validation too, but fail at the NEXT stage, "generation", with:
+    java.lang.IllegalArgumentException: CONFIG_MIGRATIONS_DISABLED: stateful upgrade management is
+    not supported by this generation path (source: --migrationsDir). Use recreate-style generation
+    and schema realization instead.
+      at com.npdev.generator.GeneratorMain.migrationsDisabled(GeneratorMain.java:399)
+  `run-ai-beta-gate.ps1` (and `run-trusted-source-beta0-proof.ps1`, which passed only because its
+  own scenario apparently never reaches this code path) still construct the `:generator:run`
+  invocation with `--migrationsDir <path>`, a generation mode `GeneratorMain` now refuses
+  unconditionally -- every other invocation path in this repo (Build-NpdevApp.ps1,
+  generate-sample-app.ps1, and everything this session's own work generated/built/booted, e.g.
+  npdev-canary, dsl-conformance-max, WmsOffice) already uses the current "recreate-style generation
+  + schema realization" contract instead. This is the SAME "one place updated, its twin not
+  mirrored" class Move 14 Phase E item E1 (U2) just built a permanent gate for -- not yet added as
+  a registry rule there because the correct twin-pair locations (which exact flags the current
+  generation contract expects) were not fully mapped in this investigation.
+
+  docker-linux-parity's own failure is this SAME root cause, one layer down: its `docker-run-ai-beta-gate`
+  command literally runs `run-ai-beta-gate.ps1` inside the Linux container (Docker build/version
+  both passed cleanly -- real Docker infrastructure works), so it fails identically.
+  final-regression-coverage-audit's failure is a downstream reflection of doc-entrypoint-validation's
+  (a separate, unrelated finding -- see REG-122) and ai-beta-gate's own failed status, not an
+  independent third root cause.
+files:
+  - scripts/quality/run-ai-beta-gate.ps1
+  - scripts/quality/run-trusted-source-beta0-proof.ps1
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java
+detail: |
+  Not fixed here, deliberately -- per this Move's own explicit instruction for E2 ("Run it, then
+  either regenerate the missing evidence or name each report that cannot be generated and why...
+  Prohibited: removing a report from the required list, extending the staleness window, or
+  allowlisting. A red gate honestly reported is the correct outcome"). Understanding and updating
+  run-ai-beta-gate.ps1's generator invocation to the current recreate-style/schema-realization
+  contract is a real, separate, bounded fix, but the AI-beta pipeline is a widely-depended-on shared
+  producer (feeds ai-beta-gate, expanded-beta0-evidence, sample-matrix, docker-linux-parity, and
+  final-regression-coverage-audit all at once) and deserves its own dedicated verification pass
+  (regenerate the ~10 minute evidence orchestration again after the change, confirm all 6 positive
+  scenarios now reach boot/smoke, confirm no negative scenario's expected-failure-stage shifted)
+  rather than a rushed same-session patch on top of an already very long session.
+
+  Recommended next step for whoever picks this up: read Build-NpdevApp.ps1's or
+  generate-sample-app.ps1's own `:generator:run` invocation (both already migrated) to find the
+  exact replacement flag set for `--migrationsDir`, apply it to both listed scripts, then add a new
+  rule to scripts/quality/twin-pair-registry.json (E1's mirror-rule gate) tracking "the generator's
+  currently-supported CLI flags" against every script that invokes `:generator:run` directly, so a
+  FUTURE generator CLI contract change cannot silently strand one of these evidence producers again.

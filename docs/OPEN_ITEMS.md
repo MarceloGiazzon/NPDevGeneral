@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**121 item(s) migrated: 4 open/partial, 117 done.**
+**124 item(s) migrated: 6 open/partial, 118 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -35,6 +35,9 @@
 | REG-119 | An app-declared role (RC-B1 roles[]/grants[]) holding EXECUTE_FLOW can never actually call the generated POST /api/flows/{name}/execute endpoint unless the actor ALSO independently holds the built-in 'user' role or the configured super-user role -- RuntimeApiEmitter's static permission manifest only ever grants the 'flow.execute' permission to those two role names, never to any app-declared one | GAP | MEDIUM | OPEN | 2026-08-02 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-120 | A concept whose create is delegated to a declared Flow (input.mode: create) AND is also exposed via the generic CRUD create endpoint gets DOUBLE-PERSISTED on every create -- the flow's own createConcept step writes the row through the kernel persistence capability, then the SAME generated service method immediately writes it AGAIN via saveWithIntegrityMapping -- and the two writes can race, throwing a spurious 500 (or, when they don't race, silently perform a wasted redundant write) | BUG | MEDIUM | OPEN | 2026-08-02 |
+| REG-121 | Two release-evidence producers (run-ai-beta-gate.ps1, run-trusted-source-beta0-proof.ps1) still invoke `:generator:run` with the disabled `--migrationsDir` flag -- GeneratorMain.migrationsDisabled() rejects it outright (CONFIG_MIGRATIONS_DISABLED), so every ai-beta-gate scenario whose model reaches generation fails there, cascading into expanded-beta0-evidence, sample-matrix, docker-linux-parity, and final-regression-coverage-audit | BUG | MEDIUM | OPEN | 2026-08-02 |
+| REG-122 | Normalize-AiContract.ps1 emitted retired pre-DSL-2.0 flow-step syntax (enforceInvariants / cap / op / out) for every AI-authored model's generated flow, failing official JSON Schema validation for every golden AI scenario that declares flows[] -- masking the true outcome of ~20 of 28 ai-beta-gate scenarios behind an early, uninformative official-validation failure instead of their own designed stage | BUG | MEDIUM | DONE | 2026-08-02 |
+| REG-123 | doc-entrypoint-validation fails on ~20+ stale script-path references and unmapped report references scattered across historical/archived docs (docs/beta/*, docs/architecture/*, docs/NEXT_EXECUTION_PLAN.md, etc.) -- a documentation-drift backlog, not a single defect, that has never been triaged since this checker's own scope was expanded to cover the full docs/ tree | GAP | LOW | OPEN | 2026-08-02 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
@@ -1681,6 +1684,177 @@ Workaround used to unblock Move 14 Phase D item D1 (NOT a fix): the canary accep
 through the direct flow endpoint (POST /api/flows/CreateCanaryTask/execute) instead of the raw CRUD
 create endpoint, since only the CRUD path double-writes. Confirms the bug is specific to the CRUD
 wrapper, not the flow itself or the persistence capability.
+
+### REG-121 — Two release-evidence producers (run-ai-beta-gate.ps1, run-trusted-source-beta0-proof.ps1) still invoke `:generator:run` with the disabled `--migrationsDir` flag -- GeneratorMain.migrationsDisabled() rejects it outright (CONFIG_MIGRATIONS_DISABLED), so every ai-beta-gate scenario whose model reaches generation fails there, cascading into expanded-beta0-evidence, sample-matrix, docker-linux-parity, and final-regression-coverage-audit
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found re-checking the betaRelease (T3) gate for Move 14 Phase E item E2 -- last verified at Move
+12 (red on 23 missing + stale evidence). Ran `run-beta-release-gate.ps1 -GenerateReports` (the
+full ~540s-935s evidence orchestration) for the first time since then: went from 25 precondition
+blockers + 5 real failures to 0 failed-no-evidence (every producer now runs and writes real
+evidence) + 19, then 21, real check failures -- a genuinely more honest state, per REG-3's own
+exit-code distinction (PRECONDITION-UNMET vs CHECK-FAILED).
+
+Fixed one real bug in the same session (REG-122): the AI-authoring contract normalizer was
+emitting `enforceInvariants`/`cap`/`op`/`out` (DSL 1.0 step syntax, retired when DSL 2.0 shipped)
+instead of `invariantCheck`/`capability`/`operation`/`output`, failing official JSON Schema
+validation for every golden scenario with a `flows[]` declaration. Fixing that took 22 of 28
+ai-beta-gate scenarios from failing at official-validation (a cheap, early, uninformative stage)
+to correctly reaching and failing (or passing) at their own DESIGNED stage -- 22 now pass entirely
+(negative scenarios correctly matching their expected failure stage), confirming the fix is
+correct, not just less-early-failing.
+
+The REMAINING failures (6 positive scenarios: base-ai-loop, custom-panel-unsupported,
+tenant-approval-portal, tenant-service-desk, tenant-workflow-ops, and one more) now correctly pass
+official-validation too, but fail at the NEXT stage, "generation", with:
+  java.lang.IllegalArgumentException: CONFIG_MIGRATIONS_DISABLED: stateful upgrade management is
+  not supported by this generation path (source: --migrationsDir). Use recreate-style generation
+  and schema realization instead.
+    at com.npdev.generator.GeneratorMain.migrationsDisabled(GeneratorMain.java:399)
+`run-ai-beta-gate.ps1` (and `run-trusted-source-beta0-proof.ps1`, which passed only because its
+own scenario apparently never reaches this code path) still construct the `:generator:run`
+invocation with `--migrationsDir <path>`, a generation mode `GeneratorMain` now refuses
+unconditionally -- every other invocation path in this repo (Build-NpdevApp.ps1,
+generate-sample-app.ps1, and everything this session's own work generated/built/booted, e.g.
+npdev-canary, dsl-conformance-max, WmsOffice) already uses the current "recreate-style generation
++ schema realization" contract instead. This is the SAME "one place updated, its twin not
+mirrored" class Move 14 Phase E item E1 (U2) just built a permanent gate for -- not yet added as
+a registry rule there because the correct twin-pair locations (which exact flags the current
+generation contract expects) were not fully mapped in this investigation.
+
+docker-linux-parity's own failure is this SAME root cause, one layer down: its `docker-run-ai-beta-gate`
+command literally runs `run-ai-beta-gate.ps1` inside the Linux container (Docker build/version
+both passed cleanly -- real Docker infrastructure works), so it fails identically.
+final-regression-coverage-audit's failure is a downstream reflection of doc-entrypoint-validation's
+(a separate, unrelated finding -- see REG-122) and ai-beta-gate's own failed status, not an
+independent third root cause.
+
+**Surface:** `quality-gates/ai-beta-pipeline`
+**Files:**
+- `scripts/quality/run-ai-beta-gate.ps1`
+- `scripts/quality/run-trusted-source-beta0-proof.ps1`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java`
+
+Not fixed here, deliberately -- per this Move's own explicit instruction for E2 ("Run it, then
+either regenerate the missing evidence or name each report that cannot be generated and why...
+Prohibited: removing a report from the required list, extending the staleness window, or
+allowlisting. A red gate honestly reported is the correct outcome"). Understanding and updating
+run-ai-beta-gate.ps1's generator invocation to the current recreate-style/schema-realization
+contract is a real, separate, bounded fix, but the AI-beta pipeline is a widely-depended-on shared
+producer (feeds ai-beta-gate, expanded-beta0-evidence, sample-matrix, docker-linux-parity, and
+final-regression-coverage-audit all at once) and deserves its own dedicated verification pass
+(regenerate the ~10 minute evidence orchestration again after the change, confirm all 6 positive
+scenarios now reach boot/smoke, confirm no negative scenario's expected-failure-stage shifted)
+rather than a rushed same-session patch on top of an already very long session.
+
+Recommended next step for whoever picks this up: read Build-NpdevApp.ps1's or
+generate-sample-app.ps1's own `:generator:run` invocation (both already migrated) to find the
+exact replacement flag set for `--migrationsDir`, apply it to both listed scripts, then add a new
+rule to scripts/quality/twin-pair-registry.json (E1's mirror-rule gate) tracking "the generator's
+currently-supported CLI flags" against every script that invokes `:generator:run` directly, so a
+FUTURE generator CLI contract change cannot silently strand one of these evidence producers again.
+
+### REG-122 — Normalize-AiContract.ps1 emitted retired pre-DSL-2.0 flow-step syntax (enforceInvariants / cap / op / out) for every AI-authored model's generated flow, failing official JSON Schema validation for every golden AI scenario that declares flows[] -- masking the true outcome of ~20 of 28 ai-beta-gate scenarios behind an early, uninformative official-validation failure instead of their own designed stage
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-02)
+**Verification:** VERIFIED_LIVE
+**Source:** Found re-checking the betaRelease (T3) gate for Move 14 Phase E item E2. The ai-beta-gate
+producer's own report showed every scenario with a `flows[]` declaration failing at
+"official-validation" with real JSON Schema errors: `/flows/0/steps/0/type enum: must be equal to
+one of the allowed values`, `/flows/0/steps/1 required: must have required property 'capability'`,
+`.../'operation'`, plus cascading `additionalProperties`/`oneOf` errors one level up at the flow
+object itself (ajv's own multi-branch error reporting for a `oneOf` that matched neither
+candidate schema).
+
+Root-caused to scripts/ai/Normalize-AiContract.ps1:261-296, which hardcodes each AI-authored
+flow's generated step sequence using DSL 1.0 spellings retired when DSL 2.0 shipped (see
+BREAKING.md / NPDevCli/dsl_v2_migration.py, which migrates exactly this class of rename in a
+checked-in model, but golden-ai-scenarios/*/ai-model.json is not part of the migrated corpus since
+it's the AI-authoring INPUT contract, not a DSL model file itself -- the normalizer that turns it
+INTO a DSL model was simply never updated when DSL 2.0's canonical spellings shipped): `type:
+"enforceInvariants"` (canonical: `invariantCheck`), and a capabilityCall step using `cap`/`op`/`out`
+(canonical: `capability`/`operation`/`output`, confirmed against NPDevSamples/dsl-conformance-max's
+own working capabilityCall steps and NPDevContract/schemas/model.schema.json's flowStep `allOf`
+requirements).
+
+**Surface:** `quality-gates/ai-beta-pipeline`
+**Files:**
+- `scripts/ai/Normalize-AiContract.ps1`
+
+Fix: renamed the four fields at the exact two step declarations (lines 264-274) to their DSL 2.0
+canonical spellings. No other logic changed.
+
+Verified two ways:
+1. Isolated: re-ran Normalize-AiContract.ps1 against golden-ai-scenarios/behavior-mismatch (the
+   scenario whose report first surfaced the schema error), then Invoke-JsonSchemaValidation.ps1
+   against the resulting model.json -- 0 errors, 0 failures (previously 12 schema violations).
+2. End to end: re-ran the full ~540-935s betaRelease evidence orchestration before and after.
+   Before: ai-beta-gate's 28 scenarios showed widespread official-validation failures masking
+   their real designed outcome. After: 22 of 28 scenarios now pass cleanly, including EVERY
+   negative scenario correctly reaching and matching its own declared `expectedFailureStage`
+   (proving the fix didn't just relax validation, it let each scenario's real behavior surface --
+   a scenario designed to fail at "smoke-verification" now genuinely reaches that stage instead of
+   failing three stages earlier for an unrelated schema reason).
+
+Residual, NOT fixed here (filed separately as REG-121): the remaining 6 scenarios that reach
+official-validation cleanly now fail one stage later, at "generation", for a completely different,
+unrelated root cause (a disabled `--migrationsDir` generator flag two other scripts still use).
+
+### REG-123 — doc-entrypoint-validation fails on ~20+ stale script-path references and unmapped report references scattered across historical/archived docs (docs/beta/*, docs/architecture/*, docs/NEXT_EXECUTION_PLAN.md, etc.) -- a documentation-drift backlog, not a single defect, that has never been triaged since this checker's own scope was expanded to cover the full docs/ tree
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found re-checking the betaRelease (T3) gate for Move 14 Phase E item E2, via the same full
+evidence-orchestration run that produced REG-121/REG-122. scripts/reports/out/
+doc-entrypoint-validation-report.json's own `failures` list (scanned 149 documents) names ~20+
+distinct violations, three shapes:
+  1. "references missing release-relevant script <path>" -- e.g. docs/beta/
+     sample-browser-verification-methodology.md:59 points at scripts/generate-sample-app.ps1,
+     which now lives at NPDevSamples/scripts/generate-sample-app.ps1 (moved at some point, the doc
+     never updated); similarly scripts/run-durable-resume-demo.ps1,
+     scripts/packs/export-concept-to-pack.ps1, scripts/browser/scrapforai-harness.ps1 (now
+     NPDevSamples/scripts/browser/), scripts/superuser-admin-console/demonstrate-*.ps1 -- several
+     distinct historical script moves/removals, never reconciled against every doc that names them.
+  2. "references blocking report with unresolved mapping <path>" -- e.g.
+     docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md:18-20 names three report files
+     (box-object-truth-report.json, code-bearing-object-resource-report.json,
+     box-object-promotion-evidence-closure-report.json) that no current script or policy entry
+     produces or maps -- either aspirational/never-built reports from an early architecture doc, or
+     reports that were produced under different names since.
+  3. Downstream: final-regression-coverage-audit's own failure (see REG-121's detail) is a
+     reflection of this same finding, not independent.
+
+**Surface:** `docs`
+**Files:**
+- `scripts/reports/out/doc-entrypoint-validation-report.json`
+- `docs/beta/sample-browser-verification-methodology.md`
+- `docs/beta/beta1-vision-spine-status-and-handoff.md`
+- `docs/beta/beta1-gap-analysis-vs-original-vision.md`
+- `docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md`
+- `docs/CLOSEOUT_PLAN.md`
+- `docs/EXECUTION_TREES.md`
+- `docs/NEXT_EXECUTION_PLAN.md`
+- `docs/NPDEV_OPEN_ITEMS_REGISTER.md`
+- `docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md`
+
+Not fixed here, deliberately -- this is Move 14 Phase E item E2's own explicitly permitted outcome
+("name each report that cannot be generated and why... a red gate honestly reported is the correct
+outcome"), not a quick patch. This is genuinely a documentation-triage backlog, not a single root
+cause: each reference needs a real decision (is the referencing doc a live, currently-relevant
+entrypoint that should be corrected to the script's new path, or a historical/archived planning doc
+whose stale reference is acceptable and should be excluded from this checker's scope instead --
+docs/POST_PUBLIC_PLAN.md's own precedent for "fingerprints survive a file move by design" is the
+right shape of fix for category 1, but applying it needs a person to look at each doc, not a bulk
+script-path rewrite that might silently paper over a doc that SHOULD have been updated in
+substance, not just re-pointed). Prohibited by this Move's own item text from being resolved by
+removing these reports from the required list or allowlisting the violations away.
+
+Recommended next step for whoever picks this up: triage each of the ~20 failures into (a) update
+the doc's stale path (the script/report genuinely still exists, just moved/renamed), (b) mark the
+doc's own status as archived/historical in scripts/policy/doc-entrypoint-classification-policy.json
+if it is not meant to be currently accurate, or (c) file a distinct REG-nn if the referenced
+report/script was a real, never-fulfilled commitment.
 
 ### REG-13 — LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time
 

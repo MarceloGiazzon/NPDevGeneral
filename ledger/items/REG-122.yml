@@ -1,0 +1,49 @@
+id: REG-122
+title: "Normalize-AiContract.ps1 emitted retired pre-DSL-2.0 flow-step syntax (enforceInvariants / cap / op / out) for every AI-authored model's generated flow, failing official JSON Schema validation for every golden AI scenario that declares flows[] -- masking the true outcome of ~20 of 28 ai-beta-gate scenarios behind an early, uninformative official-validation failure instead of their own designed stage"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-02
+closed: 2026-08-02
+verification: VERIFIED_LIVE
+surface: quality-gates/ai-beta-pipeline
+source: |
+  Found re-checking the betaRelease (T3) gate for Move 14 Phase E item E2. The ai-beta-gate
+  producer's own report showed every scenario with a `flows[]` declaration failing at
+  "official-validation" with real JSON Schema errors: `/flows/0/steps/0/type enum: must be equal to
+  one of the allowed values`, `/flows/0/steps/1 required: must have required property 'capability'`,
+  `.../'operation'`, plus cascading `additionalProperties`/`oneOf` errors one level up at the flow
+  object itself (ajv's own multi-branch error reporting for a `oneOf` that matched neither
+  candidate schema).
+
+  Root-caused to scripts/ai/Normalize-AiContract.ps1:261-296, which hardcodes each AI-authored
+  flow's generated step sequence using DSL 1.0 spellings retired when DSL 2.0 shipped (see
+  BREAKING.md / NPDevCli/dsl_v2_migration.py, which migrates exactly this class of rename in a
+  checked-in model, but golden-ai-scenarios/*/ai-model.json is not part of the migrated corpus since
+  it's the AI-authoring INPUT contract, not a DSL model file itself -- the normalizer that turns it
+  INTO a DSL model was simply never updated when DSL 2.0's canonical spellings shipped): `type:
+  "enforceInvariants"` (canonical: `invariantCheck`), and a capabilityCall step using `cap`/`op`/`out`
+  (canonical: `capability`/`operation`/`output`, confirmed against NPDevSamples/dsl-conformance-max's
+  own working capabilityCall steps and NPDevContract/schemas/model.schema.json's flowStep `allOf`
+  requirements).
+files:
+  - scripts/ai/Normalize-AiContract.ps1
+detail: |
+  Fix: renamed the four fields at the exact two step declarations (lines 264-274) to their DSL 2.0
+  canonical spellings. No other logic changed.
+
+  Verified two ways:
+  1. Isolated: re-ran Normalize-AiContract.ps1 against golden-ai-scenarios/behavior-mismatch (the
+     scenario whose report first surfaced the schema error), then Invoke-JsonSchemaValidation.ps1
+     against the resulting model.json -- 0 errors, 0 failures (previously 12 schema violations).
+  2. End to end: re-ran the full ~540-935s betaRelease evidence orchestration before and after.
+     Before: ai-beta-gate's 28 scenarios showed widespread official-validation failures masking
+     their real designed outcome. After: 22 of 28 scenarios now pass cleanly, including EVERY
+     negative scenario correctly reaching and matching its own declared `expectedFailureStage`
+     (proving the fix didn't just relax validation, it let each scenario's real behavior surface --
+     a scenario designed to fail at "smoke-verification" now genuinely reaches that stage instead of
+     failing three stages earlier for an unrelated schema reason).
+
+  Residual, NOT fixed here (filed separately as REG-121): the remaining 6 scenarios that reach
+  official-validation cleanly now fail one stage later, at "generation", for a completely different,
+  unrelated root cause (a disabled `--migrationsDir` generator flag two other scripts still use).
