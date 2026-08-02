@@ -29,11 +29,11 @@ and the impact gate (F4) enforces it; `n/a` = no hand-written screen to manifest
 | AuxScreen | `aux-screen` | 6,071 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
 | Pigmentampa | `pigmentampa-editor` | 14,341 | detail-form | AutoPanel Detail | generated-equivalent | confirmed ¹ |
 | WmsOffice | ~~`analytics`~~ | ~~11,455~~ | **dashboard** | `guidePageGadget` ¹⁰ (kpi/bar/table) | **REPLACED 2026-08-01** (Move 10 B2, LC-B2) — now a ~1.1 KB thin host page (`<meta name="npdev-guide-page">` + shell.css/shell.js, zero page-specific JS). Behavioural parity: 2 of 3 original widgets replaced faithfully (Ocupacao por Rua → table gadget; Movimentos por Tipo e Situacao → bar gadget) + 1 new (Locais Ocupados kpi) · 1 named cannot-express (Estoque por Produto needs a cross-concept join B1's single-concept aggregate query does not support — **REG-105**, accepted boundary). Frozen reference kept as `analytics.original.html`. See `move10-b2-charts.txt` | confirmed |
-| WmsOffice | `centro-trabalho` | 30,862 | operator-console | none (evaluated ⁶, not authored) | hand-written → contract; Aggregate Workbench answers the 2-level nesting and the stock-ledger side effect (closed by Move 8 `onCommit`, see ⁶). **Corrected 2026-08-01 (Move 12 P6, item 14):** this row had drifted from ⁶'s own "Superseded" update below (C1 closed by Move 11 W6's `transaction.uiState`) — **blocked only by C2** (Planning layer, not attempted; a plain 1-level addable list, no platform gap). The Sugerir auto-apply residual's status is genuinely unclear from this doc's own history (see `NPDev_General__OutsideRepo/move12/part2-decision-package.md`) and is not asserted either way here | confirmed |
+| WmsOffice | ~~`centro-trabalho`~~ | ~~30,862~~ | **operator-console** | `panel` ⁴ (Movimento header/item half, unchanged) + Aggregate Workbench ⁶ (2-level Movimento nesting + Sugerir, unchanged; NEW: `RecebimentoWorkbench`/`ExpedicaoWorkbench` with Planning-layer `lotes`/`itens` add-row, lifecycle transitions, `Criar Movimento`) | **REPLACED — hand-written page DELETED 2026-08-01** (Move 13 P1.2). C2 (Planning layer) CLOSED: `RecebimentoLote`/`ExpedicaoItem` add-row live-verified via REST+DB (create, invariant-gated lifecycle transitions) and real-browser screenshot on both aggregates — zero new platform primitive, exactly the "plain 1-level addable list" this doc's own prior entry predicted. C1 (record-type toggle) is now **moot by design**, not "closed by `transaction.uiState`" as this row previously claimed — that claim was itself imprecise: Move 11 W6/REG-99 shipped a DIFFERENT toggle (`Movimento`'s own `$ui.detalhe` Completo/Resumo control, confirmed against REG-99's own predicate/options in `docs/OPEN_ITEMS.md`), not a Recebimento/Expedicao record-type selector. Since Recebimento and Expedicao now live on two SEPARATE generated Workbench panels, no single surface ever needs a client-side toggle between them — the shape C1 worried about no longer exists. "Sugerir auto-apply" is CLOSED, not unclear: `Movimento`'s existing `SugerirDestino`/`SugerirOrigem` actions already declare `applyTo: {mode:"appendRow"}` (shipped Move 3 G2, confirmed by reading `model.json` directly), which auto-applies the suggestion into a new position row with no manual copy-paste step. Frozen reference kept as `centro-trabalho.original.html`. See `NPDev_General__OutsideRepo/move13/p1-console-conversion-report.md` | confirmed |
 | WmsOffice | ~~`conferencia-fiscal`~~ | ~~22,897~~ | **operator-console** | `panel` ⁴ (History halves) + Aggregate Workbench ⁷ ⁸ (both Import wizards) | **REPLACED — hand-written page DELETED 2026-07-31** (Move 10 W1.1). Behavioural parity: 10 works · 3 differs (cosmetic) · 1 n/a · **0 cannot-express**. Romaneio Import authored this move as a direct mirror of NF-e Import. Frozen reference kept as `conferencia-fiscal.original.html`. See `docs/MOVE10_W1_CHECKLISTS.md` | confirmed |
 | WmsOffice | ~~`crossdocking`~~ | ~~12,748~~ | **operator-console** ² | `panel` ³ | **REPLACED — hand-written page DELETED 2026-07-30** (Move 8 Part A). Behavioural parity: 15 works · 4 cosmetic differs · 1 n/a · **0 cannot-express**. C10 fully closed (Move 4 `patchConcept` + Move 5 `callProcedure`). Frozen reference kept as `crossdocking.original.html`. See "Checklist re-run after Moves 4–7" below | confirmed |
 | WmsOffice | `excluir-estabelecimento` | 9,820 | detail-form | AutoPanel Detail | generated-equivalent | confirmed |
-| WmsOffice | `inventario` | 28,031 | operator-console | `panel` ⁴ (Historico half) + Aggregate Workbench ⁷ (Importar Contagem) | **partially converted** — Historico + Importar Contagem work; Gerar Template completed and live-verified Move 10 W1.2 ⁸ (it was declared but behaviourally incomplete: empty `produtoId` column, no zero-qty filter, and it never created the `Gerado` header row wizard 2 selects). Recebimento por Arquivo remains **cannot-express** — 3 named blockers, see ⁸. Not at parity | confirmed |
+| WmsOffice | ~~`inventario`~~ | ~~28,031~~ | **operator-console** | `panel` ⁴ (Historico half) + Aggregate Workbench ⁷ ⁸ (Importar Contagem, Gerar Template, Recebimento por Arquivo) | **REPLACED — hand-written page DELETED 2026-08-01** (Move 13 P1.1). Recebimento por Arquivo's 3 previously-named blockers (REG-92 multi-line input, no concept-level home for preview columns, no propose→commit state carry) all closed exactly the way ⁸'s own re-assessment predicted: an `AnalisarArquivoRecebimentoDraftProcedure` propose step + `InventarioArquivoAggregate.onCommit`'s new `ProcessarRecebimentoArquivoOnCommitProcedure`, no new platform primitive. 4 real, distinct bugs found and fixed along the way (all app-layer authoring, not platform code): `InventarioArquivoLinha` was missing 2 persisted fields the capability's own parse result already returned (`quantidade`, `ruaId` — silently dropped on commit, the second one causing the allocation step to see every candidate bin as a null-vs-null non-match), `quantidadeEsperada` was schema-required for a field only the OTHER wizard populates, and a capability parameter typed `String` (`encontrarOcupacao`) hit the same "value sourced from listConcepts/mapList isn't guaranteed to be `java.lang.String`" type mismatch this codebase's own `somarQuantidadePorLocalLote` doc comment already named — fixed by folding the lookup into the new `alocarRecebimentoPorRua` capability method (`Object`-typed) instead of a second capabilityCall. Live-verified via REST+DB (Lote find-or-create by natural key, bin allocation in the correct rua, `LocalArmazenagem.situacao` flip to `Ocupado`, bad rows correctly producing zero side effects) and real-browser (the `csvText` action field is a real `<textarea>`, confirming REG-92 does not recur here; preview correctly renders one `OK!` row and one alerted row). **0 `cannot-express`.** Frozen reference kept as `inventario.original.html`. See `NPDev_General__OutsideRepo/move13/p1-console-conversion-report.md` | confirmed |
 | WmsOffice | `login` | 6,773 | auth | generated login | generated-equivalent | confirmed |
 | WmsOffice | `mapa-armazem` | 19,650 | spatial-map | none | hand-written → contract (F2/F3) | confirmed |
 | WmsOffice | `movimentacao-livre` | 23,392 | operator-console | `panel` ⁴ (header+item half) + Aggregate Workbench ⁶ (2-level nesting + Sugerir + M6 banner) | **CONVERTED and DELETED 2026-07-31 (Move 11 W5 / Wave −1.3)** ⁹ — 0 `cannot-express`. M6's balanced-quantity banner was never an authoring gap: it was already declared and silently rendering 0 (REG-95). M11 is `differs`, not `cannot-express` — the flow IS reachable from `MovimentoLivrePanel.confirmarMovimentacao` | confirmed |
@@ -148,6 +148,29 @@ declared banner was silently rendering 0 (REG-95); M11 is `differs`, not a parit
 C1 is closed by `transaction.uiState` + `$ui.<name>` (Move 11 W6). `movimentacao-livre` is DELETED;
 `centro-trabalho` remains, blocked only by C2.
 
+**Superseded 2026-08-01 (Move 13 P1.2) — `centro-trabalho` DELETED, and this footnote's own C1 claim
+corrected.** C2 (Planning layer) closed: `Recebimento`/`Expedicao` autoPanels gained a
+`transaction` block, giving `RecebimentoLote`/`ExpedicaoItem` generic add-row editing — live-verified
+via REST+DB (create, then invariant-gated lifecycle transitions through to the terminal stage) and a
+real-browser screenshot showing the `+ add row` control, the lifecycle button, and a new
+`Criar Movimento` action on both aggregates' Workbench panels. **The "C1 is closed by
+`transaction.uiState`" line directly above is corrected, not just superseded**: re-checking what
+Move 11 W6/REG-99 actually shipped (`docs/OPEN_ITEMS.md`'s own REG-99 entry: predicate
+`$ui.detalhe == 'Completo'`, options `["Completo","Resumo"]`) shows it is `Movimento`'s own
+Completo/Resumo detail-density toggle, not a Recebimento/Expedicao record-type selector — this
+footnote conflated the two. The actual resolution for C1 is simpler: Recebimento and Expedicao now
+have their OWN separate Workbench panels (`RecebimentoWorkbench`/`ExpedicaoWorkbench`), so no single
+surface ever needs a client-side toggle between "Destino-only" and "Origem-only" positions — the
+shape C1 worried about doesn't arise. "Sugerir auto-apply" (named "open" two updates above, then
+"genuinely unclear" per `NPDev_General__OutsideRepo/move12/part2-decision-package.md`) is confirmed
+CLOSED, not unclear: `Movimento`'s existing `SugerirDestino`/`SugerirOrigem` actions already declare
+`applyTo: {mode:"appendRow", collection:"posicoes", map:{...}}` (shipped Move 3 G2 itself, per this
+footnote's own opening paragraph — "closed a previously-unused generator seam... to wire the
+suggestions as real clickable Workbench buttons" — confirmed by reading `model.json` directly, this
+move). Both consoles this footnote covers are now fully accounted for: `movimentacao-livre` DELETED
+(Move 11), `centro-trabalho` DELETED (Move 13 P1.2). Full detail:
+`NPDev_General__OutsideRepo/move13/p1-console-conversion-report.md`.
+
 ⁷ **2026-07-29, `CAPABILITY_ROADMAP.md` Move 3 G3-G4** (`docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md`,
 results in `docs/MOVE3_G3_FINDINGS.md` / `docs/MOVE3_G4_FINDINGS.md` /
 `docs/MOVE3_G4_INVENTARIO_FINDINGS.md`). G3 composed the propose->review->commit triad for real for
@@ -209,6 +232,27 @@ crossdocking deletion, structurally punishing the bytes-deleted metric for succe
 (fixed — `Rebuild-And-Restage.ps1` accepted `-BuildRoot` but never passed it to the build step),
 and **REG-91** (open — a claim table with NOT NULL columns makes an app permanently unbootable
 behind the opaque message "No data is available").
+
+**Superseded 2026-08-01 (Move 13 P1.1) — `inventario` DELETED, all three named blockers closed.**
+Following `NPDev_General__OutsideRepo/move12/part2-decision-package.md`'s re-assessment (all three
+re-classified authoring-only, no new primitive needed), Recebimento por Arquivo was actually authored
+against the Aggregate Workbench pattern: (1) REG-92 does not recur here — a fresh action
+(`AnalisarArquivoRecebimentoDraftProcedure`'s `csvText` inputField) renders as a real `<textarea>`,
+confirmed live in a real browser (Playwright `fill` against `textarea[placeholder='csvText']`
+succeeded, which a single-line `<input>` could not have matched); (2) the preview columns
+(`ruaCodigo`, `produtoCodigo`, `dataValidade`, `alerta`, `ok`, `quantidade`, `quantidadeAvulsa`,
+`posicoes`, `linha`, `ruaId`) are now declared fields on `InventarioArquivoLinha`, so the aggregate's
+`linhas` band renders them directly — live-verified via browser screenshot (2 rows, one `OK!`, one
+alerted); (3) state carries from propose to commit via the Aggregate Workbench draft exactly as
+`ImportarContagemProcedure` already proved, with a new `origem` discriminator field on
+`InventarioArquivo` letting the shared `onCommit` hook (`ProcessarRecebimentoArquivoOnCommitProcedure`)
+tell this commit apart from the other two wizards' (a null/missing `origem` is a pure no-op, so
+Importar Contagem/Gerar Template are byte-for-byte unaffected). Live-verified end to end via REST+DB:
+an accepted row correctly finds-or-creates its `Lote` by natural key, allocates a bin in the correct
+rua, upserts `LocalArmazenagemLote`, and flips `LocalArmazenagem.situacao` to `Ocupado`; a
+simultaneously-rejected row (bad rua code) correctly produces zero side effects. **0 `cannot-express`.**
+Full detail, including the 4 real app-layer bugs found and fixed along the way, in
+`NPDev_General__OutsideRepo/move13/p1-console-conversion-report.md`.
 
 **Mechanically: zero candidates.** No hand-written class reaches ≥ 2 apps — every genuinely
 hand-written screen in the measured corpus (`operator-console`, `dashboard`, `spatial-map`,
@@ -301,9 +345,13 @@ matching the byte figures the per-screen table above already carries:
 ```
 baseline (13 screens, original sizes, 2026-07-29 measurement)   210,689 B
 live today (AppGen/apps/_official/WmsOffice/web/*.html,
-            excluding *.original.html)                          131,803 B
-removed                                                           78,886 B   (= 210,689 - 131,803)
+            excluding *.original.html, 2026-08-01 Move 13 P1
+            re-measurement)                                      72,910 B
+removed                                                          137,779 B   (= 210,689 - 72,910)
 ```
+
+(Prior measurement, before Move 13 P1's two conversions: live 131,803 B, removed 78,886 B — both
+superseded by the figures above.)
 
 **One tally, three columns — screen, bytes removed, mechanism.** Three distinct mechanisms exist and
 are now distinguished rather than folded into one "deleted" bucket:
@@ -315,7 +363,9 @@ are now distinguished rather than folded into one "deleted" bucket:
 | `movimentacao-livre` | 23,392 | deleted — frozen `.original.html` kept from the moment of deletion (Move 11 W5, 2026-07-31) |
 | `usuarios-roles` | 9,500 | deleted — **no** frozen `.original.html` at deletion time (Move 11 W3, RC-B2); restored retroactively from an outside-repo backup, Move 12 P3.1 (item 9) |
 | `analytics` | 10,349 | **shim** — reduced from 11,455 B to a 1,106 B guide-page host (`<meta name="npdev-guide-page">` + shell.css/shell.js), not deleted outright; the 1,106 B residual is still counted as live hand-written below (Move 10 B2, LC-B2, 2026-08-01) |
-| **Total removed** | **78,886** | reconciles exactly to `210,689 - 131,803` |
+| `inventario` | 28,031 | deleted — frozen `.original.html` kept from the moment of deletion (Move 13 P1.1, 2026-08-01) |
+| `centro-trabalho` | 30,862 | deleted — frozen `.original.html` kept from the moment of deletion (Move 13 P1.2, 2026-08-01) |
+| **Total removed** | **137,779** | reconciles exactly to `210,689 - 72,910` |
 
 **The shim judgment, stated explicitly (item 10):** does a shim count as "converted"? **Yes, for the
 screen class** — `analytics` no longer carries any hand-rolled dashboard logic; every number it
@@ -325,16 +375,19 @@ still a physical custom file, not a fully generated surface. This is deliberatel
 author cannot claim a screen "deleted" by shrinking it to a near-empty shell while leaving one byte
 on disk; the metric only ever credits the bytes actually removed, whatever remains still counts.
 
-**4 of 13 originally hand-written screens are now removed** (3 fully deleted-and-frozen, 1
+**6 of 13 originally hand-written screens are now removed** (5 fully deleted-and-frozen, 1
 deleted-without-a-frozen-original-until-retroactively-restored) **and 1 reduced to a shim** — not "3
 of 5 operator consoles," which undercounted by ignoring the two non-operator-console classes this
-same session made convertible.
+same session made convertible. **Move 13 P1 (2026-08-01) closes out the operator-console class
+entirely: all 5 of 5 are now converted** (`crossdocking`, `conferencia-fiscal`, `movimentacao-livre`
+earlier; `inventario`, `centro-trabalho` this move) — zero operator consoles remain hand-written.
 
 **Per-screen table and tally agree** (verified by re-reading both after this edit): the per-screen
 table above shows `analytics` at its current 1,106 B with a REPLACED status, `crossdocking`/
-`conferencia-fiscal`/`movimentacao-livre`/`usuarios-roles` all struck through with their removed
-sizes, and every other screen's live size unchanged — the same numbers this tally's "live today"
-figure sums to.
+`conferencia-fiscal`/`movimentacao-livre`/`usuarios-roles`/`inventario`/`centro-trabalho` all struck
+through with their removed sizes, and every other screen's live size unchanged — the same numbers
+this tally's "live today" figure sums to (verified live: `72,910` B, measured directly from
+`AppGen/apps/_official/WmsOffice/web/*.html` excluding `*.original.html`, 2026-08-01).
 
 ⁹ **2026-07-31, Move 11 W5 + Wave −1.3** (`MOVE11_CLOSE_REMAINING_SPEC.md`,
 `MASTER_AI_PLATFORM_PROGRAMME_v2.md`). The last blocker was not what three moves of notes said it
