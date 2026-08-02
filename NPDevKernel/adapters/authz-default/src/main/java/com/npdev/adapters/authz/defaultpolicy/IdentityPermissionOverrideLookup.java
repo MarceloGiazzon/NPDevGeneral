@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  * Move 14 Phase C item C2 (RC-B3): resolves any runtime-bound permission-subset override the
@@ -29,6 +30,8 @@ import java.util.Set;
  * ceiling allows no matter what this lookup returns.</p>
  */
 final class IdentityPermissionOverrideLookup {
+
+    private static final Logger LOG = Logger.getLogger(IdentityPermissionOverrideLookup.class.getName());
 
     private static final String OVERRIDE_QUERY = """
             SELECT r.name, p.permission
@@ -78,8 +81,25 @@ final class IdentityPermissionOverrideLookup {
             // Same fail-open contract as IdentityRoleLookup.rolesFor -- a schema mismatch or absent
             // table must not block flow execution; the caller falls back to "no override" (full
             // ceiling), which is never MORE permissive than today's pre-C2 behavior for any app that
-            // hasn't adopted this feature.
+            // hasn't adopted this feature. But REG-39's rule applies here too: an infrastructure fault
+            // silently resolving to "no restriction" must not ALSO be silent to the operator -- a
+            // schema mismatch (identity_user_role_permissions absent, e.g. a pre-C2 app that hasn't
+            // regenerated) is logged loudly, mirroring IdentityRoleLookup.tokenVersion exactly, so
+            // "an admin configured a restriction and it silently never applied" is discoverable
+            // instead of indistinguishable from "no restriction was ever configured."
+            if (isSchemaMismatch(exception)) {
+                LOG.severe("Permission-override lookup failed: identity_user_role_permissions schema "
+                        + "mismatch or missing table (app not yet regenerated with the UserRolePermission "
+                        + "concept?) -- falling back to 'no override configured' (full role ceiling "
+                        + "applies) for tenant='" + tenantId + "', actor='" + actorId + "': "
+                        + exception.getMessage());
+            }
             return Map.of();
         }
+    }
+
+    private static boolean isSchemaMismatch(SQLException exception) {
+        String state = exception.getSQLState();
+        return state != null && state.startsWith("42");
     }
 }

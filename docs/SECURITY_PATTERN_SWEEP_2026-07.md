@@ -276,6 +276,7 @@ This is the section sessions 2 and 3 exist to consume. Counts are hits, not find
 | **G5** | schema/claim/mark/publication stores | **Round 5 §4** — deliberately not tenant-scoped: the schema belongs to the database |
 | **H1** | 15 × generated-CRUD swallowed exceptions | **Round 3** — data-integrity probes with a database-constraint backstop, not authorization verdicts |
 | **H5** | `TenantRegistryService` | **REG-43's own fix** — the flagged `return false` is now the deliberate fail-**closed** branch |
+| **H6** | `IdentityPermissionOverrideLookup.overridesFor` (Move 14 Phase C, RC-B3) | **New, 2026-08-02** — same class as H4 one module over (`IdentityRoleLookup.rolesFor`): a swallowed `SQLException` fails open to "no runtime override configured", so the role's full declared ceiling applies. It DOES log at `LOG.severe(...)` on a schema mismatch (mirrors `IdentityRoleLookup.tokenVersion`'s own style exactly) — the checker's regex just doesn't recognize `.severe(`, only `.error(`/`.warn(`. The fail-open direction can only ever skip an optional *narrowing*; `RolePermissions`'s own ceiling intersection is the actual, separately-tested enforcement of "never beyond the ceiling". |
 | **I1** | idempotency / circuit stores | **REG-36** |
 | **I2** | 29 × correlation-id binds | **REG-47 — NEW, found by this closure** |
 | **J1** | `OperationalRunbookEmitter` | False positive: SQL-shaped words inside an emitted PowerShell runbook |
