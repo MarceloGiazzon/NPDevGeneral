@@ -4,7 +4,7 @@
   "pack": "workspace",
   "version": "1.0.0",
   "namespace": "com.npdev.workspace",
-  "description": "Built-in NPDev workspace tables: navigation Menus (internal NPDev UI, business UIs, and hand-authored companion pages) and per-user Preferences. Generic by design so they can evolve with system maturity. userId / parentMenuId / requiredRole are soft references (plain strings) to the identity pack and to other menus; they harden into bonds when the built-in packs compose into an app. Menu.kind: INTERNAL targets a fixed platform surface (preferences/store/boxview/promotion), BUSINESS targets a concept or declared Panel by name, PAGE targets a literal relative URL to a hand-authored static page, GROUP is a non-navigable label node whose children (via parentMenuId) form a submenu -- its target is unused and seeds as an empty string.",
+  "description": "Built-in NPDev workspace tables: navigation Menus (internal NPDev UI, business UIs, and hand-authored companion pages) and the scoped-property cascade's storage (PropertyValue -- one row per (scopeType, scopeId, propKey), row PRESENCE is the is-set signal against the declared properties[]/propertyScopes[] cascade; see RC-A3's PropertyResolver). Generic by design so they can evolve with system maturity. userId / parentMenuId / requiredRole are soft references (plain strings) to the identity pack and to other menus; they harden into bonds when the built-in packs compose into an app. Menu.kind: INTERNAL targets a fixed platform surface (preferences/store/boxview/promotion), BUSINESS targets a concept or declared Panel by name, PAGE targets a literal relative URL to a hand-authored static page, GROUP is a non-navigable label node whose children (via parentMenuId) form a submenu -- its target is unused and seeds as an empty string.",
   "category": "web-ui",
   "author": "NPDev",
   "concepts": [
@@ -22,13 +22,16 @@
       ]
     },
     {
-      "name": "Preference",
+      "name": "PropertyValue",
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "userId", "type": "string", "required": false, "maxLength": 64 },
-        { "name": "category", "type": "string", "required": true, "maxLength": 80 },
-        { "name": "prefKey", "type": "string", "required": true, "maxLength": 120 },
-        { "name": "prefValue", "type": "string", "required": false, "maxLength": 2000 }
+        { "name": "scopeType", "type": "string", "required": true, "maxLength": 40 },
+        { "name": "scopeId", "type": "string", "required": true, "maxLength": 120 },
+        { "name": "propKey", "type": "string", "required": true, "maxLength": 120 },
+        { "name": "propValue", "type": "string", "required": false, "maxLength": 2000 }
+      ],
+      "indexes": [
+        { "name": "ux_property_value_scope_key", "fields": ["scopeType", "scopeId", "propKey"], "unique": true }
       ]
     }
   ]

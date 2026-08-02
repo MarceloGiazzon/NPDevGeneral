@@ -5,6 +5,42 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-02 — built-in `workspace` pack: `Preference` concept retired in favor of `PropertyValue` (RC-A2, Move 14 Phase B item B1)
+
+`Preference(id, userId, category, prefKey, prefValue)` is replaced by
+`PropertyValue(id, scopeType, scopeId, propKey, propValue)`, with a new unique index
+`(tenant_id, scopeType, scopeId, propKey)` (`tenant_id` implicit, generator-injected on every
+composite unique like all business tables). This is the storage layer for the scoped-property
+cascade RC-A1 already declared in the DSL (`properties[]`/`propertyScopes[]`, Wave 6) but had
+nothing to resolve against yet.
+
+**Why the shape had to change, not just the name:** `Preference`'s `category`/`userId` pair could
+not express the cascade's core rule — row presence is the is-set signal (a row with
+`propValue = NULL` means explicitly set to null at that scope; no row at all means inherit from the
+next-least-specific scope) — because nothing distinguished "this scope never declared an opinion"
+from "this scope explicitly declared no value." `scopeType`/`scopeId` name an arbitrary declared
+`propertyScopes[].name` and its resolved instance id directly, which is what RC-A3's resolver
+(`PropertyResolver.resolve()`/`.explain()`, not yet built — next item) needs to walk the cascade
+correctly.
+
+**No `npdev migrate` codemod, deliberately** — same posture as the 2026-07-28 aggregate-boundary
+entry below: there is nothing to mechanically rewrite because there are no witnesses. Measured, not
+assumed, before writing this entry (Move 14 Phase B item B0, `__OutsideRepo/move13-helpers/
+rc-a2-row-count-evidence-2026-08-02.txt`): zero corpus models (`AppGen/apps/**`, `NPDevSamples/**`)
+declare `"Preference"` anywhere, and a live row count against every H2 database that actually
+realizes the table (`wmsoffice`, plus a leftover `reg39-healthy-control` REG-39 fixture) returned 0
+rows in both. `Preference` was realized as a table purely because the built-in `workspace` pack
+declared it and `WmsOffice` includes that pack — nothing ever read or wrote it (no resolver existed
+to). The next boot of any app including the `workspace` pack will see the old `workspace_preferences`
+table as an orphaned/destructive schema diff through the existing schema-lifecycle acknowledgment
+mechanism (LNCH-1 P6) — expected and correct, not a gap this entry needs to paper over.
+
+**Swept:** the one private copy of the `workspace` pack (`AppGen/apps/_official/WmsOffice/
+definition/packs/workspace/pack.json`, confirmed byte-identical to the built-in before this change —
+Move 13's REG-39 drift hazard needs multiple copies and/or existing drift, neither present) was
+updated identically in the same commit; `rc-a2-preflight.py`'s private-copy comparison confirms
+`[IDENTICAL]` again after the sweep.
+
 ## 2026-08-01 — `queries[].where` grammar now accepts `:name` bind placeholders bound against a declared `parameters[]` (REG-101, Move 12 P1.4)
 
 Widens, not breaks, the LC-P0 grammar directly below: a `:name` literal (previously always refused
