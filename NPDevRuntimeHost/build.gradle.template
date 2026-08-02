@@ -153,6 +153,7 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/ModelSyncStatusControllerIntegrationTest.java',
         'com/finalexec/ModelSyncStatusControllerStandaloneTest.java',
         'com/finalexec/NonDefaultRuntimeSurfaceProfileIntegrationTest.java',
+        'com/finalexec/PanelRuntimeTest.java',
         'com/finalexec/PermissionAwareUiMetadataServiceTest.java',
         'com/finalexec/PublicationChainTenantReferenceValidationTest.java',
         'com/finalexec/PublicationRollbackE2EIT.java',
@@ -218,6 +219,31 @@ def generatedRuntimeDependentTestSources = fileTree('src/test/java') {
     include '**/*.java'
 }.files.findAll { sourceFile ->
     sourceFile.text.contains('com.npdev.generated.')
+}.collect { sourceFile -> relativeJavaSourcePath(testJavaSourceRoot, sourceFile) }
+
+/**
+ * Move 11 W1. Tests that reference a MAIN class which is itself excluded when the generated-runtime
+ * mount is absent. Those tests contain no `com.npdev.generated.` text of their own, so
+ * generatedRuntimeDependentTestSources cannot see them -- they simply fail compileTestJava with
+ * "cannot find symbol", breaking `gradlew test` for the whole bare template (the documented
+ * GATE-H2/GATE-PG workflow in docs/SCHEMA_ENGINE_REBUILD_PLAN.md).
+ *
+ * This was previously a hand-maintained list of two names below. It went stale the moment Panel/
+ * Workbench runtime tests were added (6 files, none listed), and a hand-list of a transitively
+ * DERIVABLE fact will go stale again. So derive it: any test source naming an excluded main class,
+ * matched on the class's simple name at a word boundary. Deliberately conservative in the
+ * over-exclusion direction -- this applies ONLY when the mount is absent, and the assembled-app gate
+ * (mount present, run-runtimehost-gate.ps1) compiles and runs every one of them exactly as before.
+ */
+def excludedMainSimpleNames = generatedRuntimeDependentMainSources
+        .collect { it.tokenize('/').last().replace('.java', '') }
+        .toSet()
+
+def testsReferencingExcludedMainSources = fileTree('src/test/java') {
+    include '**/*.java'
+}.files.findAll { sourceFile ->
+    String text = sourceFile.text
+    excludedMainSimpleNames.any { simpleName -> text =~ /\b${java.util.regex.Pattern.quote(simpleName)}\b/ }
 }.collect { sourceFile -> relativeJavaSourcePath(testJavaSourceRoot, sourceFile) }
 
 def matchesSupportedPattern = { String simpleName, List<String> patterns ->
@@ -288,16 +314,23 @@ sourceSets {
                 exclude 'com/finalexec/db/schemastate/CurrentSchemaReaderPostgresTest.java'
                 // SER-P7.5: the conversion-hook Postgres twin (Testcontainers) -- same rule.
                 exclude 'com/finalexec/db/ConversionHookRunnerPostgresTest.java'
+                // Move 9 A4: the H2->Postgres data-promotion proof -- same rule (real Testcontainers
+                // Postgres container, must not run or compile as part of the plain `test` task).
+                exclude 'com/finalexec/db/CrossEngineDataPromotionTest.java'
             }
-            // These two tests exercise MAIN classes that import com.npdev.generated.* (ConceptQueryController
-            // -> RuntimeContextService; ActuatorAdminGuardFilter), so those main classes are excluded from
-            // compilation when the generated-runtime mount is absent (a bare-template checkout, e.g. running
-            // GATE-H2/GATE-PG directly per docs/SCHEMA_ENGINE_REBUILD_PLAN.md). The test files themselves
-            // contain no com.npdev.generated. text, so the generatedRuntimeDependentTestSources heuristic
-            // above cannot catch them, and they fail compileTestJava with "cannot find symbol". Exclude them
-            // ONLY when the mount is absent, so the assembled-app gate (mount present) still compiles and runs
-            // them exactly as before -- a transitive-dependency gap the text heuristic can't see.
+            // Tests that exercise MAIN classes excluded when the generated-runtime mount is absent (a
+            // bare-template checkout, e.g. running GATE-H2/GATE-PG directly per
+            // docs/SCHEMA_ENGINE_REBUILD_PLAN.md). They contain no com.npdev.generated. text, so the
+            // generatedRuntimeDependentTestSources heuristic above cannot catch them, and they fail
+            // compileTestJava with "cannot find symbol" -- a transitive-dependency gap the text heuristic
+            // can't see. Excluded ONLY when the mount is absent, so the assembled-app gate (mount present)
+            // still compiles and runs them exactly as before.
             if (!generatedRuntimeMountPresent()) {
+                // Derived (Move 11 W1) -- see testsReferencingExcludedMainSources above.
+                testsReferencingExcludedMainSources.each { exclude it }
+                // Second-order, and therefore NOT derivable from the rule above: these two name main
+                // classes that are themselves fine, but which transitively import an excluded one
+                // (ConceptQueryController -> RuntimeContextService; ActuatorAdminGuardFilter).
                 exclude 'com/finalexec/api/ConceptQueryControllerTest.java'
                 exclude 'com/finalexec/config/ActuatorAdminGuardFilterTest.java'
             }

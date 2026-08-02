@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**113 item(s) migrated: 0 open/partial, 113 done.**
+**114 item(s) migrated: 0 open/partial, 114 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -26,6 +26,7 @@
 | REG-110 | LC-D2 (the acceptance-scenario runner) and LC-D3 (the closed authoring loop) were already fully implemented in NPDevCli/npdev_cli.py -- apparently from an earlier Move 10 session -- but had never been run, tested, or documented anywhere; a closure spec (Move 13) re-described them as needing to be built | GAP | LOW | DONE | 2026-08-01 |
 | REG-111 | Long-running generate/build/boot cycles (Build-NpdevApp.ps1, Rebuild-And-Restage.ps1, npdev run app, plain gradlew clean build) emit no incremental progress signal -- whatever is waiting on one (a human operator, an AI agent, a CI step) cannot tell 'still working normally' apart from 'silently stuck' without reaching past the tool into raw filesystem/process state | GAP | LOW | DONE | 2026-08-01 |
 | REG-112 | PanelRuntimeTest.java (single-arg RuntimeMetadataService constructor, hardcoded 'Appointment'/'AppointmentPanel' fixture data that exists in no corpus model) was missing from build.gradle's modelSpecificGeneratedAppTests exclusion list, unlike its sibling RuntimeMetadataServiceTest.java -- fails with NoSuchElementException whenever :test runs inside a generated app whose own model has no matching concept/panel | BUG | LOW | DONE | 2026-08-02 |
+| REG-113 | NPDevRuntimeHost/build.gradle.template silently shadowed the actively-maintained NPDevRuntimeHost/build.gradle in every assembled/generated app -- FinalAppAssembler.materializeRootTemplate() prefers *.template over the legacy file whenever both exist, but nothing has kept .template in sync since before commit 067b987 ('Moves 6-11'), so every FinalApp assembled since then (including the very REG-112 fix landed earlier this same session) got a build.gradle missing everything written after that point | BUG | MEDIUM | DONE | 2026-08-02 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
@@ -1200,6 +1201,83 @@ if it is meant to be a real regression test for panel rendering, it should event
 use the external-path override directly rather than relying on classpath-fallback timing. Not
 attempted here -- out of the Fast Lane plan's scope, and the existing sibling
 (`RuntimeMetadataServiceTest`) has carried the same limitation without anyone picking it up.
+
+### REG-113 — NPDevRuntimeHost/build.gradle.template silently shadowed the actively-maintained NPDevRuntimeHost/build.gradle in every assembled/generated app -- FinalAppAssembler.materializeRootTemplate() prefers *.template over the legacy file whenever both exist, but nothing has kept .template in sync since before commit 067b987 ('Moves 6-11'), so every FinalApp assembled since then (including the very REG-112 fix landed earlier this same session) got a build.gradle missing everything written after that point
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-02)
+**Verification:** VERIFIED_LIVE
+**Source:** Found re-running Move 14 Phase A's mandatory T2 gate sweep (run-all-gates.ps1) after REG-111's
+closure: run-runtimehost-gate.ps1 failed with the EXACT same PanelRuntimeTest NoSuchElementException
+REG-112 (opened and closed earlier this same session, commit 904fae1) already fixed by adding
+'com/finalexec/PanelRuntimeTest.java' to build.gradle's modelSpecificGeneratedAppTests list.
+
+Root cause: NPDevGenerator's FinalAppAssembler.materializeRootTemplate() (assembly/FinalAppAssembler.java)
+copies the bootstrap build.gradle into every assembled app via:
+    Path template = sourceRoot.resolve(fileName + ".template");
+    Path legacy = sourceRoot.resolve(fileName);
+    Path source = Files.exists(template) ? template : legacy;
+i.e. it prefers NPDevRuntimeHost/build.gradle.template over NPDevRuntimeHost/build.gradle whenever
+the .template twin exists -- copied byte-for-byte, no token substitution happens (materializeRootTemplate
+is a plain Files.copy), so the ".template" naming carries no templating behavior at all; it is purely
+a stale-twin trap.
+
+git log confirms the drift's age: build.gradle.template's last real commit was fbf3319 (an old
+SER-P7.3+P7.5 commit), while build.gradle (the file everyone has actually been editing) was updated
+by 067b987 ("feat(Moves 6-11): RuntimeHost -- typed surfaces, silent-answer fixes, query pushdown")
+and then 904fae1 (REG-112, same session) with neither commit touching .template. So EVERY app
+assembled by NPDevGenerator since 067b987 -- every AppGen FinalApp, every NPDevSamples fixture,
+every T1/T2 gate's own generated fixture -- has been built from a build.gradle missing at least
+Moves 6-11's RuntimeHost changes, not just REG-112's one line. Confirmed by diffing the two files:
+build.gradle had 41 lines with no counterpart in .template (real content: the Move 11 W1 derived-
+exclusion mechanism, REG-112's PanelRuntimeTest line, etc.); .template had 8 lines with no counterpart
+in build.gradle, all an older wording of ONE comment block build.gradle later reworded -- i.e.
+build.gradle is a strict functional superset, .template is purely behind, never ahead.
+
+This is the same "rule applied in one place, not mirrored to its twin" family MOVE14_AGILE_SPEC.md's
+Phase E item U2 already names three instances of (REG-89: runtime createIfMissing vs. the validator;
+REG-104: parser/compiler/canonical vs. ModelResolver; REG-112: one test-exclusion list vs. its
+sibling). This is a fourth, more severe instance: not a single omitted line but an entire file nobody
+realized was still load-bearing, silently overriding its own more-current twin for an unknown number
+of prior moves.
+
+**Surface:** `generator, runtimehost`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java`
+- `NPDevRuntimeHost/build.gradle`
+- `NPDevRuntimeHost/build.gradle.template`
+
+Fix applied (minimal, safe): synced build.gradle.template's content from build.gradle (a straight
+copy -- confirmed build.gradle is a strict superset first, see source above) rather than changing
+FinalAppAssembler's copy-preference logic or deleting .template outright. Chosen because several
+OTHER gate scripts read NPDevRuntimeHost/build.gradle.template directly as their own source of truth
+(grepped: scripts/quality/run-runtime-surface-evidence.ps1, scripts/hygiene/check-csrf-posture.ps1,
+scripts/quality/run-runtimehost-staged-jar-preflight.ps1,
+scripts/quality/run-runtimehost-integration-infrastructure-check.ps1) -- deleting the file outright
+risked breaking those on a file-not-found rather than fixing the actual defect (those checks were
+ALSO silently reading stale content this whole time; syncing content fixes them for free, without a
+wider audit of each one's tolerance for the file's absence).
+
+Verified live: re-ran run-runtimehost-gate.ps1 (T2, part of Move 14 Phase A's mandatory phase-boundary
+sweep) against simple-contact-intake after the sync -- PASSED, no PanelRuntimeTest failure. The other
+three run-all-gates.ps1 gates (aiKnowledge, generator, frontend) had already passed in the same T2
+sweep before this fix, so the fix was verified with the minimal necessary re-run rather than a full
+re-sweep.
+
+Left open / not attempted here (out of Move 14 Phase A's scope, flagged for Phase E's U2 item):
+- The underlying twin-drift MECHANISM is not fixed, only this one instance of its damage. Nothing
+  stops build.gradle.template from silently going stale again the next time someone edits
+  build.gradle without remembering its shadow twin exists. Phase E's U2 mirror-rule gate (already
+  scoped to cover REG-89/104/112's twin-pairs) should add this exact pair
+  (NPDevRuntimeHost/build.gradle vs. build.gradle.template) as a fourth check, or -- arguably the
+  better structural fix -- FinalAppAssembler.materializeRootTemplate() should stop supporting a
+  silently-preferred .template twin at all (it performs no actual template substitution, so the
+  distinction serves no purpose Files.copy(build.gradle) doesn't already serve) and
+  NPDevRuntimeHost/build.gradle.template should be deleted once every script that reads it directly
+  is confirmed to tolerate that.
+- Not audited: whether any PREVIOUSLY-assembled, already-deployed FinalApp (AppGen apps, WmsOffice,
+  etc.) is running on a build compiled against the stale template's content in some way that matters
+  beyond test exclusions (e.g. a dependency version, a plugin block) -- this fix only guarantees the
+  NEXT assembly of any app picks up current build.gradle; it does not retroactively rebuild anything.
 
 ### REG-12 — LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped
 
