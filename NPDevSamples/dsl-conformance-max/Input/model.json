@@ -27,8 +27,8 @@
   ],
 
   "propertyScopes": [
-    { "name": "tenant" },
-    { "name": "user", "from": "$user.id" }
+    { "name": "user", "from": "$user.id" },
+    { "name": "tenant" }
   ],
 
   "properties": [
@@ -38,7 +38,9 @@
       "settableAt": ["tenant"], "securityRelevant": true,
       "label": "Require double-check on receipt" },
     { "name": "locale", "type": "string", "default": "en-US",
-      "settableAt": ["tenant", "user"], "label": "Locale" }
+      "settableAt": ["tenant", "user"], "label": "Locale" },
+    { "name": "dateFormat", "type": "string", "default": "yyyy-MM-dd",
+      "settableAt": ["tenant", "user"], "label": "Date format" }
   ],
 
   "packs": [

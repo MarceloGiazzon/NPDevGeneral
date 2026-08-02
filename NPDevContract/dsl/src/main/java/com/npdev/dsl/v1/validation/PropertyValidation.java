@@ -41,7 +41,9 @@ final class PropertyValidation {
 
     static void validatePropertyScopesAndProperties(ModelAst modelAst, List<String> errors) {
         Set<String> scopeNames = new HashSet<>();
-        for (PropertyScopeAst scope : modelAst.getPropertyScopes()) {
+        List<PropertyScopeAst> scopes = modelAst.getPropertyScopes();
+        for (int i = 0; i < scopes.size(); i++) {
+            PropertyScopeAst scope = scopes.get(i);
             if (!hasText(scope.name())) {
                 errors.add("propertyScopes: name is required");
                 continue;
@@ -54,6 +56,20 @@ final class PropertyValidation {
                 errors.add(here + ": from '" + scope.from() + "' is not a form ExecutionContext can supply "
                         + "-- must be '$ctx.tenantId', '$user.id', or '$user.<tagName>' "
                         + "(a per-read database lookup is not allowed here; see PropertyScopeAst)");
+            }
+            // REG-116: propertyScopes' declared ORDER is the resolver's actual cascade precedence
+            // (PropertyResolver walks the array as given, most specific first) -- nothing else
+            // signals which entry is "more specific" than another, so a wrongly-ordered array
+            // compiles clean and silently inverts precedence at runtime, with no error anywhere. The
+            // one mechanically-checkable rule: the implicit root scope (no "from", always
+            // $ctx.tenantId -- see this class's own field/PropertyScopeAst javadoc) is BY DEFINITION
+            // the least specific, so it must be declared last if present at all.
+            if (scope.from() == null && i != scopes.size() - 1) {
+                errors.add(here + ": the implicit root scope (no 'from', resolves to $ctx.tenantId) "
+                        + "is the LEAST specific level and must be declared LAST in propertyScopes -- "
+                        + "found at position " + (i + 1) + " of " + scopes.size()
+                        + ". Declared order IS resolution order (most specific first); a scope listed "
+                        + "before this one would be silently treated as MORE specific than it actually is.");
             }
         }
 

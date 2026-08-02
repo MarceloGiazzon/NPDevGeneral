@@ -46,7 +46,7 @@ class PropertyValidationTest {
     @Test
     void aWellFormedDeclarationValidatesClean() throws Exception {
         List<String> errors = validate(modelJson(
-                TENANT_SCOPE + "," + USER_SCOPE,
+                USER_SCOPE + "," + TENANT_SCOPE,
                 "{ \"name\": \"pageRows\", \"type\": \"int\", \"default\": 25, \"settableAt\": [\"tenant\", \"user\"] }"
         ));
         assertTrue(errors.stream().noneMatch(e -> e.contains("propertyScopes") || e.contains("properties")),
@@ -101,6 +101,32 @@ class PropertyValidationTest {
         assertTrue(thrown.getMessage() != null && thrown.getMessage().toLowerCase().contains("type"),
                 "a type outside the closed set (string/int/boolean/enum/date) must be refused at compile "
                         + "time: " + thrown);
+    }
+
+    @Test
+    void implicitRootScopeDeclaredBeforeAMoreSpecificOneFailsCompilation() throws Exception {
+        // REG-116: the implicit root scope (no "from") is the least specific by definition and must
+        // be declared LAST -- propertyScopes' order IS resolution order, and nothing else signals
+        // which entry is "more specific" than another, so this compiles clean and silently inverts
+        // precedence at runtime if not caught here. Found live in dsl-conformance-max's own
+        // pre-existing declaration (tenant before user) once Move 14's PropertyResolver (RC-A3)
+        // finally exercised propertyScopes' order for the first time.
+        List<String> errors = validate(modelJson(
+                TENANT_SCOPE + "," + USER_SCOPE,
+                "{ \"name\": \"pageRows\", \"type\": \"int\", \"default\": 25, \"settableAt\": [\"tenant\", \"user\"] }"
+        ));
+        assertTrue(errors.stream().anyMatch(e ->
+                        e.contains("must be declared LAST in propertyScopes") && e.contains("position 1 of 2")),
+                "a root scope declared before a more specific one must be refused: " + errors);
+    }
+
+    @Test
+    void implicitRootScopeDeclaredLastValidatesClean() throws Exception {
+        List<String> errors = validate(modelJson(
+                USER_SCOPE + "," + TENANT_SCOPE,
+                "{ \"name\": \"pageRows\", \"type\": \"int\", \"default\": 25, \"settableAt\": [\"tenant\", \"user\"] }"
+        ));
+        assertTrue(errors.stream().noneMatch(e -> e.contains("propertyScopes")), "unexpected: " + errors);
     }
 
     @Test

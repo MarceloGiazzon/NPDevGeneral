@@ -1,0 +1,57 @@
+id: REG-116
+title: "dsl-conformance-max's own propertyScopes declaration (the RC-A1 corpus witness) listed the implicit root scope (tenant, no 'from') BEFORE the more specific 'user' scope -- compiled clean and validated clean since Wave 6, but silently inverts cascade precedence, undetected until Move 14's PropertyResolver (RC-A3) finally read propertyScopes' order for the first time"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-02
+closed: 2026-08-02
+verification: VERIFIED_LIVE
+surface: dsl, generator
+source: |
+  Found live while end-to-end verifying Move 14 Phase B item B4 (RC-A6, folding settings into
+  properties) against a rebuilt WmsOffice: after an admin set a TENANT-wide pageRows=100 and the
+  non-admin user had already set their OWN user-scope pageRows=50, re-resolving pageRows AS THE USER
+  returned 100 (tenant), not 50 (their own more-specific override) -- exactly backwards.
+
+  Root cause: NPDevContract/dsl/.../validation/PropertyValidation.java's own javadoc and
+  PropertyScopeAst's javadoc both document that propertyScopes' declared array ORDER *is* the
+  resolver's cascade precedence (most specific first) -- but nothing ever validated that order, and
+  WmsOffice's model.json (authored this same Move, B4, copying the pattern from
+  NPDevSamples/dsl-conformance-max's PRE-EXISTING declaration) listed `[{tenant}, {user, from:
+  $user.id}]` -- tenant, the least-specific level, FIRST. dsl-conformance-max itself has carried this
+  exact ordering since Wave 6 (RC-A1's original authoring, docs/MOVE11_RUNTIME_CONFIGURATION_PLAN.md
+  Part A.1) -- compiled clean, validated clean (PropertyValidationTest's own
+  `aWellFormedDeclarationValidatesClean` fixture used the same tenant-before-user order and asserted
+  it clean), and stayed invisible because NOTHING read propertyScopes' order at runtime until
+  DefaultPropertyResolver (this same Move, item B2) was built to actually walk the array.
+
+  Confirmed live: PropertyResolverController's PUT/GET against a rebuilt WmsOffice reproduced the
+  inversion exactly as described above before the fix, and produced the correct precedence (user's
+  own 50 wins over the tenant's 100) after reordering both models' propertyScopes to
+  `[user, tenant]`.
+files:
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - AppGen/apps/_official/WmsOffice/definition/model.json
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PropertyValidation.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/PropertyValidationTest.java
+detail: |
+  Two-part fix, matching this repo's own "codemod ships beside the data fix" convention even though
+  no npdev migrate entry was warranted (only 2 corpus models are affected, both fixed directly in this
+  commit, and the field shape itself did not change -- only declaration order):
+
+  1. Data fix: reordered propertyScopes to `[user, tenant]` (most specific first) in both
+     dsl-conformance-max and WmsOffice.
+  2. Durable compile-time check (PropertyValidation.validatePropertyScopesAndProperties): the implicit
+     root scope (no `from`, always resolves to $ctx.tenantId) is by definition the LEAST specific
+     level, so it is now REFUSED if declared anywhere but last. This is the one mechanically-checkable
+     ordering rule available -- nothing signals relative specificity between two scopes that both
+     declare a `from`, so those remain the author's own responsibility, same as before. Two new tests
+     (PropertyValidationTest: a positive control declaring the root scope last, and the RED case
+     declaring it first) plus a fix to the pre-existing `aWellFormedDeclarationValidatesClean` fixture,
+     which itself used the wrong order and would have started failing under the new rule.
+
+  Left open / not attempted here: whether any OTHER already-declared propertyScopes ordering across
+  the wider corpus (not just these 2 models) has the SAME class of mistake between two scopes that
+  both declare a `from` (e.g. "estabelecimento" before "user" when the intended precedence is the
+  reverse) -- the new validation cannot catch that case (no signal exists to check it against), so
+  this is a real, class-limited coverage gap this fix does not close.
