@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**117 item(s) migrated: 0 open/partial, 117 done.**
+**118 item(s) migrated: 1 open/partial, 117 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -30,6 +30,7 @@
 | REG-114 | workspace::PropertyValue (RC-A2's cascade storage) inherited blanket admin-only CRUD permissions from isAdminConcept()'s built-in-pack default, with no carve-out for a user to read their own resolved property values -- the same latent-bug class workspace::Menu already needed a carve-out for, now reproduced on a newer built-in-pack concept | BUG | MEDIUM | DONE | 2026-08-02 |
 | REG-115 | A new com.finalexec.api.*Controller added to NPDevRuntimeHost compiles into every OTHER app fine but silently produces 404-on-every-route with zero errors anywhere unless its simple class name is also added to runtime-supported-controllers.json's allowedControllers -- an allowlist gate with no companion check that a new controller was actually added to it | GAP | LOW | DONE | 2026-08-02 |
 | REG-116 | dsl-conformance-max's own propertyScopes declaration (the RC-A1 corpus witness) listed the implicit root scope (tenant, no 'from') BEFORE the more specific 'user' scope -- compiled clean and validated clean since Wave 6, but silently inverts cascade precedence, undetected until Move 14's PropertyResolver (RC-A3) finally read propertyScopes' order for the first time | BUG | MEDIUM | DONE | 2026-08-02 |
+| REG-117 | The generated business UI's hardcoded 'My Preferences' panel (business-ui-app.mustache/shell.js.mustache) references the now-retired workspace::Preference concept and its old userId/category/prefKey/prefValue fields -- silently vanishes from the nav (no crash, no error) for the one app that had it, WmsOffice, since RC-A2 (Move 14 item B1) renamed the concept to PropertyValue with a different shape | GAP | MEDIUM | OPEN | 2026-08-02 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
@@ -1426,6 +1427,77 @@ the wider corpus (not just these 2 models) has the SAME class of mistake between
 both declare a `from` (e.g. "estabelecimento" before "user" when the intended precedence is the
 reverse) -- the new validation cannot catch that case (no signal exists to check it against), so
 this is a real, class-limited coverage gap this fix does not close.
+
+### REG-117 — The generated business UI's hardcoded 'My Preferences' panel (business-ui-app.mustache/shell.js.mustache) references the now-retired workspace::Preference concept and its old userId/category/prefKey/prefValue fields -- silently vanishes from the nav (no crash, no error) for the one app that had it, WmsOffice, since RC-A2 (Move 14 item B1) renamed the concept to PropertyValue with a different shape
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found while investigating why the T2 generator gate's own BuiltinPackComposerTest failed
+(that failure was a narrower, already-fixed regression -- see below). A broader grep across the
+whole repo for "Preference" after fixing that one test turned up two generator templates,
+NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache and
+shell.js.mustache, both hardcoding `workspace::Preference` by name:
+
+- shell.js.mustache line ~404: `hasPreferences = manifest.concepts.some(c => c.conceptName ===
+  "workspace::Preference")` gates whether a "Preferencias" nav link is rendered at all.
+- business-ui-app.mustache: `PREFERENCE_CONCEPT_NAME = "workspace::Preference"` (line 19), plus a
+  full ~150-line "My Preferences" panel (loadPreferences/savePreference/addPreference/
+  deletePreference/renderPreferencesPanel, lines ~1704-1850) -- a free-form, user-driven key/value
+  note store: any authenticated user could add an arbitrary category/prefKey/prefValue row via the
+  generic CRUD API, filtered client-side to `row.userId === state.actorId`.
+
+Since `workspace::Preference` no longer exists in any compiled model (renamed to
+`workspace::PropertyValue` with an incompatible shape -- scopeType/scopeId/propKey/propValue, no
+userId/category fields at all -- by RC-A2, Move 14 Phase B item B1, this same session),
+`findConcept("workspace::Preference")` now always returns undefined everywhere both templates check
+it. The failure mode is SILENT, not a crash: `hasPreferences` is always false, so the "Preferencias"
+nav link simply never renders, and the entire panel's code becomes dead/unreachable (nothing ever
+calls `showPreferences()`/`renderPreferencesPanel()` without that nav link to trigger it). WmsOffice
+is the only app in the corpus that ever included the workspace pack (per B0's preflight), so it is
+the only app whose users lost a real, working end-user feature -- silently, with no error anywhere a
+developer would notice unless they specifically went looking for the "Preferencias" link they used
+to see.
+
+Two OTHER instances of this exact class of regression (a test hardcoding the old concept
+name/fields, not caught by B1's own verification pass because it only ran :kernel:test + live boots,
+never the full :dsl:test or :generator:test suites) were found and fixed in this same T2 sweep:
+WorkspacePackResolutionTest (NPDevContract/dsl) and BuiltinPackComposerTest (NPDevGenerator) --
+both DONE. This third instance, in the generated UI template rather than a test, is left OPEN
+because the correct fix is a real design decision, not a mechanical rename (see detail).
+
+**Surface:** `generator`
+**Files:**
+- `NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache`
+- `NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache`
+
+NOT fixed here, deliberately -- this is a real design decision, not a mechanical find-replace, and
+a 4067-line intricate generated-JS template is the wrong place for a rushed edit late in an already
+long session with no time budgeted left to verify a change to it live in a real browser.
+
+Why a simple rename (s/Preference/PropertyValue/ + adjust field names) is NOT the right fix: the
+old "My Preferences" panel's use case -- an authenticated user adding ANY arbitrary
+category/prefKey/prefValue row they want, with no schema, no declared keys, no type -- is a
+fundamentally different mechanism from the new scoped-property cascade (RC-A1/A2/A3), which is
+explicitly DECLARED, typed, and developer-authored (a fixed set of `properties[]` with a `type`,
+`default`, and `settableAt`, never an open-ended user-added key). There is no faithful 1:1 mapping
+from "arbitrary user note-taking" onto "resolve a declared property through a scope cascade" --
+porting the panel to call PropertyResolver's new REST surface (`GET/PUT /api/properties/*`, built
+this same Move for RC-A5's admin surface) would only work for the app's DECLARED properties, not
+for arbitrary ad-hoc keys a user might have typed into the old panel.
+
+Two real options for whoever picks this up, neither attempted here:
+1. Retire the old panel and its hasPreferences/PREFERENCE_CONCEPT_NAME machinery entirely from both
+   mustache templates (the cleaner cut -- CLAUDE.md's own "delete what's certain to be unused"
+   instruction) -- the new properties.html generated admin surface (RC-A5, B3) is the intended
+   successor for "let a user see/edit their own settings", just scoped to DECLARED properties.
+2. Build a genuinely new, generic "declared properties" panel INSIDE the business UI shell itself
+   (rather than a separate properties.html page) backed by PropertyResolver's REST surface -- more
+   work, but keeps the feature inside the one shell a user already navigates, rather than a second
+   page.
+
+Either way: WmsOffice's app-specific web/ pages should be checked for any hand-authored link to the
+old "Preferencias" nav target before whichever fix ships, in case something outside the generated
+shell itself also points at it.
 
 ### REG-12 — LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped
 

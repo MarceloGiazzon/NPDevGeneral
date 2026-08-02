@@ -37,7 +37,9 @@ class BuiltinPackComposerTest {
         assertTrue(identity.stream().anyMatch(c -> "identity::Role".equals(c.getName())));
         assertTrue(identity.stream().anyMatch(c -> "identity::UserRole".equals(c.getName())));
         assertTrue(workspace.stream().anyMatch(c -> "workspace::Menu".equals(c.getName())));
-        assertTrue(workspace.stream().anyMatch(c -> "workspace::Preference".equals(c.getName())));
+        // RC-A2 (Move 14 Phase B item B1): Preference was retired in favor of PropertyValue -- see
+        // BREAKING.md's 2026-08-02 entry and WorkspacePackResolutionTest's identical fix (dsl module).
+        assertTrue(workspace.stream().anyMatch(c -> "workspace::PropertyValue".equals(c.getName())));
     }
 
     @Test

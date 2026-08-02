@@ -155,6 +155,16 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
   — a model with no role fails the corpus gate, no silent default.
 - **Frontend contract:** `docs/UI_CONTRACT.md` · screen classes: `docs/SCREEN_TAXONOMY.md` · the
   durable flow engine (hosted inside `KernelRunner`): `docs/FLOWS.md`.
+- **Scoped-property cascade** (model `propertyScopes[]`/`properties[]`, Wave 6/RC-A1): resolved at
+  runtime by `PropertyResolver`/`DefaultPropertyResolver` (`NPDevKernel/kernel/.../properties/`)
+  against the built-in `workspace::PropertyValue` concept (row presence is the is-set signal — a
+  stored row with a null value is an explicit override, no row means inherit from the next scope).
+  Exposed over REST by `PropertyResolverController` (`GET/PUT /api/properties[/scopes|/{key}]`,
+  open to every authenticated role — the raw generic-CRUD endpoint for `workspace::PropertyValue`
+  stays admin-only like every other built-in-pack concept, see REG-114). The generated admin surface
+  (`scripts/appgen/New-PropertiesAdminPage.ps1` → `properties.html`, one section per scope) is the
+  reference consumer. `propertyScopes[]`'s declared order IS resolution order (most specific first);
+  the implicit root scope (no `from`) must be declared last, enforced at compile time (REG-116).
 
 ## Key docs
 
