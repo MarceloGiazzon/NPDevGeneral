@@ -1,0 +1,55 @@
+{
+  "_comment": [
+    "Move 14 Phase E item E1 (U2): 'a rule applied in one place, not mirrored to its twin' has now",
+    "hit three confirmed instances (REG-89, REG-104, REG-112) -- the same threshold that earned X0 a",
+    "permanent registry+gate. This is that gate for the twin-pair-divergence family. Each rule below",
+    "names two or more locations that must move together; check-twin-pair-consistency.py fails when",
+    "they diverge. A human adds a new rule here when a new twin-pair is found (mirroring how",
+    "docs/X0_SILENT_EXPRESSION_REGISTER.md is curated) -- this file does not invent new pairs on its",
+    "own."
+  ],
+  "rules": [
+    {
+      "id": "test-exclusion-siblings",
+      "citedBy": "REG-112",
+      "description": "Test classes sharing the same vulnerable pattern (a single-arg constructor that silently prefers an external generated-app path over its classpath-baked fixture, per REG-103) must be excluded from a generated app's own `test` task TOGETHER -- excluding only one sibling and not the other is exactly REG-112's shape.",
+      "kind": "sibling-group-in-list",
+      "listFile": "NPDevRuntimeHost/build.gradle",
+      "listMarker": "modelSpecificGeneratedAppTests",
+      "groups": [
+        ["com/finalexec/RuntimeMetadataServiceTest.java", "com/finalexec/PanelRuntimeTest.java"]
+      ]
+    },
+    {
+      "id": "pack-composition-four-place",
+      "citedBy": "REG-108",
+      "description": "A top-level model array field contributed by a pack/fragment (not just the app's own root) must be threaded through ModelSourceResolver.MODEL_ARRAY_KEYS, BOTH copies of pack.schema.json, ModelResolver.resolve(), and the CompiledModelCanonicalJson/Reader pair -- CLAUDE.md's own documented four-place rule.",
+      "kind": "field-in-all-files",
+      "trackedFields": ["roles", "propertyScopes", "properties"],
+      "caseSensitive": false,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+        "NPDevContract/schemas/pack.schema.json",
+        "NPDevContract/dsl/src/main/resources/schema/pack.schema.json",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+      ]
+    },
+    {
+      "id": "ast-compiled-four-place",
+      "citedBy": "REG-104",
+      "description": "A new AST-level field needs a live path through parser -> compiler -> canonical writer+reader -> ModelResolver, or it survives parsing but silently never reaches the generator/runtime (REG-104's shape: RolePermissions.toRole() had no diagnostic for an app-declared role because roles[] did not yet exist end to end).",
+      "kind": "field-in-all-files",
+      "trackedFields": ["roles"],
+      "caseSensitive": false,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+      ]
+    }
+  ]
+}

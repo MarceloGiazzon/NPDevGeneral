@@ -146,6 +146,17 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
   round-trip is just as invisible downstream. `REG-108`'s root cause was (1)+(2) only — `roles`
   (RC-B1) and `propertyScopes`/`properties` (RC-A1) had (3)/(4) from day one but were never added to
   (1)/(2), so a pack (not an app root) declaring any of the three silently lost it.
+- **The same field also needs a live path through `JsonModelParser` → `ModelCompiler` → the
+  canonical writer/reader pair → `ModelResolver`** even for an app's own model root (not just a
+  pack) — this is the separate hazard `REG-104` found: `roles[]` existed at the AST layer with no
+  diagnostic anywhere once RolePermissions tried to use it, because that full chain wasn't wired yet.
+  Both this rule and the pack-composition one above are enforced mechanically, not just by this
+  doc — `scripts/quality/check-twin-pair-consistency.py` (wired in `run-ai-knowledge-gate.ps1`)
+  reads `scripts/quality/twin-pair-registry.json`, a small human-curated list of "these locations
+  must move together" pairs (currently: this four-place chain, the pack-composition four-place
+  chain, and `REG-112`'s test-exclusion sibling pair), and fails the gate the moment any of them
+  diverges — add a new rule there the next time a "one place updated, its twin forgotten" bug is
+  found, rather than letting a fourth instance go unnoticed the way REG-89/104/112 did.
 - **Adding a script under `scripts/`?** It needs both a classification (pattern-matched in
   `scripts/policy/script-inventory-policy.json`) and a declared `invocation` in
   `scripts/policy/script-invocation-declarations.json`; `run-script-inventory-check.ps1` enforces
