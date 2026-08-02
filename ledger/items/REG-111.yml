@@ -2,8 +2,9 @@ id: REG-111
 title: "Long-running generate/build/boot cycles (Build-NpdevApp.ps1, Rebuild-And-Restage.ps1, npdev run app, plain gradlew clean build) emit no incremental progress signal -- whatever is waiting on one (a human operator, an AI agent, a CI step) cannot tell 'still working normally' apart from 'silently stuck' without reaching past the tool into raw filesystem/process state"
 type: GAP
 severity: LOW
-status: OPEN
+status: PARTIAL
 opened: 2026-08-01
+verification: VERIFIED_LIVE
 surface: appgen, cli, docs
 source: |
   Surfaced directly during Move 13 (MOVE13_CLOSE_EVERYTHING_SPEC.md) Phase P1's execution, not by
@@ -48,3 +49,20 @@ detail: |
   Left deliberately unsized on scope/cost -- the point of filing this now is that it stays visible
   and does not silently disappear the way an unfiled frustration would, not that it is ready to be
   picked up as a bounded task yet.
+
+  ---
+
+  **Fast Lane plan item 4b closure (2026-08-02, PARTIAL):** implemented this item's own first named
+  shape -- `npdev run app`'s `result["phase"]` now also gets written to
+  `<finalAppOut>/npdev-run-app-progress.json` (schemaVersion `npdev-run-app-progress.v1`: phase,
+  updatedAt, pid) on every transition (GENERATE at start, BUILD, BOOT, READY, plus the two
+  METADATA_ONLY-fast-path-specific transitions), best-effort (a write failure never fails the run
+  itself). Closes the gap for `npdev run app` specifically: a caller can now poll or `tail` that file
+  instead of reaching past the tool into jar mtimes/log tails/health endpoints.
+
+  **Not closed, still open**: `Build-NpdevApp.ps1` and `Rebuild-And-Restage.ps1` (this item's other
+  two named files) still emit no equivalent sidecar -- they are separate PowerShell entry points,
+  not touched by this Python-side fix, and were out of this pass's scope. The third suggested shape
+  (a written-down "how to check progress independently" recipe) was also not done. Rated PARTIAL,
+  not DONE: the specific, cheapest-cited shape landed and is real, but two of the three named
+  surfaces in this item's own title are still exactly as blind as when it was filed.

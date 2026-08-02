@@ -2,8 +2,10 @@ id: REG-109
 title: "generated-ui-manifest.json (and the rest of static/npdev-business-ui/*) is baked into the packaged jar at generation time with no external-path override, the same class of gap REG-103 fixed for RuntimeMetadataService's JSON catalogs -- named but explicitly not sized by REG-103, sized (not fixed) here"
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-01
+closed: 2026-08-02
+verification: VERIFIED_LIVE
 surface: generator, runtimehost
 source: |
   Filed while executing Move 13 P5.1 (MOVE13_CLOSE_EVERYTHING_SPEC.md), which named this residual
@@ -41,3 +43,33 @@ detail: |
   static-resource pipeline (as opposed to `app.js`/`shell.js` needing something structurally
   different, e.g. because they are also referenced by a content hash somewhere) needs its own pass,
   not assumed here. Left OPEN, not attempted, per this item's own filing instruction.
+
+  ---
+
+  **Fast Lane plan item 1b closure (2026-08-02):** confirmed the shape and applies it. Added
+  `NPDevRuntimeHost/src/main/java/com/finalexec/config/StaticUiResourceConfig.java`, a
+  `WebMvcConfigurer` registering `/**` with `file:${npdev.static-ui.path}/` ahead of Spring Boot's
+  own four default classpath locations (kept identical to what `WebMvcAutoConfiguration` would
+  otherwise register, so replacing `/**` here drops no coverage). `npdev.static-ui.path` defaults to
+  `npdev-generated/src/main/resources/static` -- the SAME relative layout the generator already
+  writes, mirroring `RuntimeMetadataService`'s own `npdev.generated-resources.path` default -- so an
+  unconfigured app's behavior is unchanged until something writes fresh content there.
+
+  Confirmed (not assumed, closing this item's own "not exhaustively confirmed" gap): `app.js`/
+  `shell.js`/`generated-ui-manifest.json` are referenced by plain relative URL in
+  `business-ui-index.mustache`/`business-ui-app.mustache` -- no content hash, no cache-busting query
+  string -- so no HTML/JS reference needed to change, only the resource-location resolution order.
+
+  **Verified live**, same `pack-sample` app REG-103 used: overwrote
+  `npdev-generated/src/main/resources/static/npdev-business-ui/generated-ui-manifest.json`'s
+  `appName` field on disk while the app was already running (no restart) and curled
+  `/npdev-business-ui/generated-ui-manifest.json` -- the new content was served immediately (`file:`
+  resource locations are resolved per-request, not baked in at boot the way classpath resources
+  are, so this is actually a step FASTER than the compiled-model/compiled-metadata fast paths, which
+  still need a restart). Restored the original file afterward.
+
+  Static UI bundle override is done. `Update-AppMetadata.ps1`'s fast path does not yet WRITE to this
+  external directory automatically (it only refreshes the three REG-103 metadata paths, item 1a) --
+  not attempted here, since the static bundle only changes on a UI-shaped model edit (new field/
+  panel/action), which is schema-shaped generation work, not the metadata-only case that fast path
+  targets.
