@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**112 item(s) migrated: 1 open/partial, 111 done.**
+**113 item(s) migrated: 1 open/partial, 112 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -25,6 +25,7 @@
 | REG-11 | LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir) | GAP | LOW | DONE | 2026-07-21 |
 | REG-110 | LC-D2 (the acceptance-scenario runner) and LC-D3 (the closed authoring loop) were already fully implemented in NPDevCli/npdev_cli.py -- apparently from an earlier Move 10 session -- but had never been run, tested, or documented anywhere; a closure spec (Move 13) re-described them as needing to be built | GAP | LOW | DONE | 2026-08-01 |
 | REG-111 | Long-running generate/build/boot cycles (Build-NpdevApp.ps1, Rebuild-And-Restage.ps1, npdev run app, plain gradlew clean build) emit no incremental progress signal -- whatever is waiting on one (a human operator, an AI agent, a CI step) cannot tell 'still working normally' apart from 'silently stuck' without reaching past the tool into raw filesystem/process state | GAP | LOW | PARTIAL | 2026-08-01 |
+| REG-112 | PanelRuntimeTest.java (single-arg RuntimeMetadataService constructor, hardcoded 'Appointment'/'AppointmentPanel' fixture data that exists in no corpus model) was missing from build.gradle's modelSpecificGeneratedAppTests exclusion list, unlike its sibling RuntimeMetadataServiceTest.java -- fails with NoSuchElementException whenever :test runs inside a generated app whose own model has no matching concept/panel | BUG | LOW | DONE | 2026-08-02 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
@@ -1112,6 +1113,60 @@ not touched by this Python-side fix, and were out of this pass's scope. The thir
 (a written-down "how to check progress independently" recipe) was also not done. Rated PARTIAL,
 not DONE: the specific, cheapest-cited shape landed and is real, but two of the three named
 surfaces in this item's own title are still exactly as blind as when it was filed.
+
+### REG-112 — PanelRuntimeTest.java (single-arg RuntimeMetadataService constructor, hardcoded 'Appointment'/'AppointmentPanel' fixture data that exists in no corpus model) was missing from build.gradle's modelSpecificGeneratedAppTests exclusion list, unlike its sibling RuntimeMetadataServiceTest.java -- fails with NoSuchElementException whenever :test runs inside a generated app whose own model has no matching concept/panel
+
+**Type:** BUG · **Severity:** LOW · **Status:** DONE (2026-08-02)
+**Verification:** VERIFIED_LIVE
+**Source:** Found by the Fast Lane plan's T2 gate sweep (run-all-gates.ps1 -> run-runtimehost-gate.ps1),
+which generates a real sample app (this run picked simple-contact-intake) and runs its full test
+suite. 459 tests ran, 1 failed: `PanelRuntimeTest.rendersPermissionAwarePanelViewModelFromRuntimeMetadata`
+threw `java.util.NoSuchElementException` at line 52.
+
+Not caused by this session's Fast Lane plan changes -- none of them touch
+RuntimeMetadataService.java, PanelRuntime.java, or PanelRuntimeTest.java. Root-caused instead: the
+test constructs `RuntimeMetadataService` via its single-arg constructor
+(`new RuntimeMetadataService(new ObjectMapper())`), which per REG-103 (Move 12 P2.1, landed earlier
+the same day) now checks an EXTERNAL path (`npdev-generated/src/main/resources/npdev/
+compiled-metadata.json`, relative to the process's working directory) BEFORE falling back to its
+classpath-baked default. When `:test` runs inside a fully generated+mounted app (e.g.
+`NPDevSamples/simple-contact-intake/Output/App`), that external path genuinely exists and IS the
+real sample's own compiled-metadata.json -- which has zero panels declared (confirmed: grepped the
+whole corpus, "AppointmentPanel" appears in NO checked-in model.json anywhere). So the external
+path wins, the test's intended classpath-packaged fixture (whatever originally supplied the
+"Appointment"/"AppointmentPanel" data) never loads, and `PanelRuntime.renderConceptPanel("Appointment", ...)`
+throws.
+
+REG-103's OWN closure text already documents this exact class of bug for a sibling test:
+`RuntimeMetadataServiceTest`'s `loadsRuntimeMetadataOverviewFromGeneratedClasspathArtifacts` "fails
+in THIS SPECIFIC app for an unrelated, pre-existing reason ... this test is normally excluded from
+every generated app's `test` task for exactly this reason" -- and indeed
+`com/finalexec/RuntimeMetadataServiceTest.java` is already in `build.gradle`'s
+`modelSpecificGeneratedAppTests` exclusion list. `PanelRuntimeTest.java` uses the identical
+vulnerable pattern (same single-arg constructor, same fixed-fixture assumption) but was never added
+to that list -- an omission, not a new defect class.
+
+**Surface:** `runtimehost`
+**Files:**
+- `NPDevRuntimeHost/build.gradle`
+- `NPDevRuntimeHost/src/test/java/com/finalexec/PanelRuntimeTest.java`
+
+Fix: added `'com/finalexec/PanelRuntimeTest.java',` to `modelSpecificGeneratedAppTests` in
+`NPDevRuntimeHost/build.gradle`, alphabetically between `NonDefaultRuntimeSurfaceProfileIntegrationTest.java`
+and `PermissionAwareUiMetadataServiceTest.java` -- the exact same exclusion mechanism
+`RuntimeMetadataServiceTest.java` already uses, one line, no new mechanism.
+
+Verified live: patched the already-generated `NPDevSamples/simple-contact-intake/Output/App`'s own
+(ephemeral, merged-copy) `build.gradle` identically and re-ran `gradlew test` -- PanelRuntimeTest
+no longer runs, the rest of the 458 tests still pass.
+
+Scope note: this fixes the EXCLUSION gap, not the test's own portability. PanelRuntimeTest still
+cannot run against an arbitrary generated app's real data (same as RuntimeMetadataServiceTest) --
+if it is meant to be a real regression test for panel rendering, it should eventually move to a
+`@SpringBootTest`-style test that boots against a purpose-built fixture model, or be converted to
+use the external-path override directly rather than relying on classpath-fallback timing. Not
+attempted here -- out of the Fast Lane plan's scope, and the existing sibling
+(`RuntimeMetadataServiceTest`) has carried the same limitation without anyone picking it up.
 
 ### REG-12 — LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped
 

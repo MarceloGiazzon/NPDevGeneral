@@ -268,7 +268,7 @@
       "invocation": "manual-runbook"
     },
     "scripts/quality/run-fast-gate.ps1": {
-      "invocation": "orchestrated"
+      "invocation": "manual-runbook"
     },
     "scripts/quality/run-final-regression-coverage-audit-tests.ps1": {
       "invocation": "orchestrated"

@@ -67,14 +67,25 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `Start-App.ps1` / `Stop-App.ps1` / `Start-Environment.ps1` (starts H2Server TCP).
 - **Validate a model:** `:NPDevContract:dsl:validateModel -PmodelPath=<p> -PreportOut=<p>`.
 - **Quality gates — "all gates green" means ONE command:**
-  `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1`. It runs the five, in this order, and
-  keeps going past a failure so you see every red in one run:
-  `run-ai-knowledge-gate.ps1` (static, seconds; hosts all 15 `check-*.py`) → `run-generator-gate.ps1`
-  → `run-runtimehost-gate.ps1` → `run-frontend-gate.ps1` → `run-beta-release-gate.ps1`.
-  Run one with `-Only aiKnowledge`. **Never report "gates green" from a single gate** — that claim
-  was made in three consecutive move reports while a checker sat red, which is what
-  `run-all-gates.ps1` exists to prevent. A new `scripts/quality/check-*.py` MUST be invoked by some
-  `run-*.ps1`; `run-script-inventory-check.ps1` fails otherwise (Move 11 W2/O4).
+  `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1` (T2). It runs four gates by default, in
+  this order, and keeps going past a failure so you see every red in one run:
+  `run-ai-knowledge-gate.ps1` (static, seconds; hosts all 16 `check-*.py`) → `run-generator-gate.ps1`
+  → `run-runtimehost-gate.ps1` → `run-frontend-gate.ps1`. `run-beta-release-gate.ps1` (release
+  posture, T3) is **deferred by default** since the Fast Lane plan's item 4 — pass
+  `-IncludeReleaseGate` or `-Only betaRelease` to run it too. Run one gate with `-Only aiKnowledge`.
+  **Never report "gates green" from a single gate** — that claim was made in three consecutive move
+  reports while a checker sat red, which is what `run-all-gates.ps1` exists to prevent. A new
+  `scripts/quality/check-*.py` MUST be invoked by some `run-*.ps1`; `run-script-inventory-check.ps1`
+  fails otherwise (Move 11 W2/O4).
+- **Faster mid-plan verification (the Fast Lane plan, 2026-08-01):** `scripts/quality/run-fast-gate.ps1`
+  is the T1 tier — T0's checks (schema-mirror-consistency, plus an optional touched model/DSL-test
+  check) plus generate+build+boot+REST-smoke of the ONE frozen canary app
+  (`NPDevSamples/npdev-canary`) and the three T1-scoped corpus checks. Target < 3 min vs. T2's
+  ~13-15 min; use it at the end of a wave/step, not as a substitute for T2 before closing a Move.
+  `npdev verify --tier T0|T1|T2|T3` is the one CLI entry point for all four tiers, reading the same
+  staleness ledger every tier writes to (`scripts/quality/verification-cadence.json` +
+  `scripts/quality/cadence_state.py`) — a check that goes stale past its declared `maxStaleness`
+  shows up as a visible, blocking OVERDUE line, never a silent skip.
 - **AI knowledge substrate:** durable platform findings live as `knowledge/cards/*.json`
   (schema `schemas/ai/knowledge-card.schema.json`); `knowledge/platform-status.json` is a **derived**
   projection of the gaps ledger (regen via `scripts/ai/extract_platform_status.py`, never hand-edit).

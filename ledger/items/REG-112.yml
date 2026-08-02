@@ -1,0 +1,57 @@
+id: REG-112
+title: "PanelRuntimeTest.java (single-arg RuntimeMetadataService constructor, hardcoded 'Appointment'/'AppointmentPanel' fixture data that exists in no corpus model) was missing from build.gradle's modelSpecificGeneratedAppTests exclusion list, unlike its sibling RuntimeMetadataServiceTest.java -- fails with NoSuchElementException whenever :test runs inside a generated app whose own model has no matching concept/panel"
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-08-02
+closed: 2026-08-02
+verification: VERIFIED_LIVE
+surface: runtimehost
+source: |
+  Found by the Fast Lane plan's T2 gate sweep (run-all-gates.ps1 -> run-runtimehost-gate.ps1),
+  which generates a real sample app (this run picked simple-contact-intake) and runs its full test
+  suite. 459 tests ran, 1 failed: `PanelRuntimeTest.rendersPermissionAwarePanelViewModelFromRuntimeMetadata`
+  threw `java.util.NoSuchElementException` at line 52.
+
+  Not caused by this session's Fast Lane plan changes -- none of them touch
+  RuntimeMetadataService.java, PanelRuntime.java, or PanelRuntimeTest.java. Root-caused instead: the
+  test constructs `RuntimeMetadataService` via its single-arg constructor
+  (`new RuntimeMetadataService(new ObjectMapper())`), which per REG-103 (Move 12 P2.1, landed earlier
+  the same day) now checks an EXTERNAL path (`npdev-generated/src/main/resources/npdev/
+  compiled-metadata.json`, relative to the process's working directory) BEFORE falling back to its
+  classpath-baked default. When `:test` runs inside a fully generated+mounted app (e.g.
+  `NPDevSamples/simple-contact-intake/Output/App`), that external path genuinely exists and IS the
+  real sample's own compiled-metadata.json -- which has zero panels declared (confirmed: grepped the
+  whole corpus, "AppointmentPanel" appears in NO checked-in model.json anywhere). So the external
+  path wins, the test's intended classpath-packaged fixture (whatever originally supplied the
+  "Appointment"/"AppointmentPanel" data) never loads, and `PanelRuntime.renderConceptPanel("Appointment", ...)`
+  throws.
+
+  REG-103's OWN closure text already documents this exact class of bug for a sibling test:
+  `RuntimeMetadataServiceTest`'s `loadsRuntimeMetadataOverviewFromGeneratedClasspathArtifacts` "fails
+  in THIS SPECIFIC app for an unrelated, pre-existing reason ... this test is normally excluded from
+  every generated app's `test` task for exactly this reason" -- and indeed
+  `com/finalexec/RuntimeMetadataServiceTest.java` is already in `build.gradle`'s
+  `modelSpecificGeneratedAppTests` exclusion list. `PanelRuntimeTest.java` uses the identical
+  vulnerable pattern (same single-arg constructor, same fixed-fixture assumption) but was never added
+  to that list -- an omission, not a new defect class.
+files:
+  - NPDevRuntimeHost/build.gradle
+  - NPDevRuntimeHost/src/test/java/com/finalexec/PanelRuntimeTest.java
+detail: |
+  Fix: added `'com/finalexec/PanelRuntimeTest.java',` to `modelSpecificGeneratedAppTests` in
+  `NPDevRuntimeHost/build.gradle`, alphabetically between `NonDefaultRuntimeSurfaceProfileIntegrationTest.java`
+  and `PermissionAwareUiMetadataServiceTest.java` -- the exact same exclusion mechanism
+  `RuntimeMetadataServiceTest.java` already uses, one line, no new mechanism.
+
+  Verified live: patched the already-generated `NPDevSamples/simple-contact-intake/Output/App`'s own
+  (ephemeral, merged-copy) `build.gradle` identically and re-ran `gradlew test` -- PanelRuntimeTest
+  no longer runs, the rest of the 458 tests still pass.
+
+  Scope note: this fixes the EXCLUSION gap, not the test's own portability. PanelRuntimeTest still
+  cannot run against an arbitrary generated app's real data (same as RuntimeMetadataServiceTest) --
+  if it is meant to be a real regression test for panel rendering, it should eventually move to a
+  `@SpringBootTest`-style test that boots against a purpose-built fixture model, or be converted to
+  use the external-path override directly rather than relying on classpath-fallback timing. Not
+  attempted here -- out of the Fast Lane plan's scope, and the existing sibling
+  (`RuntimeMetadataServiceTest`) has carried the same limitation without anyone picking it up.

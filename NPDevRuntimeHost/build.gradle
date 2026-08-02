@@ -153,6 +153,7 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/ModelSyncStatusControllerIntegrationTest.java',
         'com/finalexec/ModelSyncStatusControllerStandaloneTest.java',
         'com/finalexec/NonDefaultRuntimeSurfaceProfileIntegrationTest.java',
+        'com/finalexec/PanelRuntimeTest.java',
         'com/finalexec/PermissionAwareUiMetadataServiceTest.java',
         'com/finalexec/PublicationChainTenantReferenceValidationTest.java',
         'com/finalexec/PublicationRollbackE2EIT.java',
