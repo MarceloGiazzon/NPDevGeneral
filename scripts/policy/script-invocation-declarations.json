@@ -58,6 +58,9 @@
     "scripts/appgen/New-ControlPanelPage.ps1": {
       "invocation": "manual-runbook"
     },
+    "scripts/appgen/New-PropertiesAdminPage.ps1": {
+      "invocation": "manual-runbook"
+    },
     "scripts/appgen/Rebuild-And-Restage.ps1": {
       "invocation": "manual-runbook"
     },
