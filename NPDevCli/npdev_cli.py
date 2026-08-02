@@ -1370,26 +1370,38 @@ def run_acceptance(args: argparse.Namespace) -> dict:
     """Move 10 D2 (LC-D2): boots via D1 (run_app), then runs every *.scenario.json under
     --scenarios against the live app. Unapproved scenarios still execute (informational -- an
     Author's proposal is visible) but are excluded from the pass/fail summary (D2's own DoD:
-    "Unapproved scenarios are visibly excluded from the pass count")."""
-    boot_args = argparse.Namespace(
-        model=args.model, config=args.config, output=args.output,
-        require_db_definition=getattr(args, "require_db_definition", False),
-        port=args.port, timeout=args.timeout,
-        profile=getattr(args, "profile", "dev"),
-        baseline_model=getattr(args, "baseline_model", None),
-        keep_running=getattr(args, "keep_running", False),
-    )
-    boot_result = run_app(boot_args)
-    if not boot_result.get("ok"):
-        return {
-            "schemaVersion": "npdev-acceptance-report.v1",
-            "ok": False,
-            "boot": boot_result,
-            "scenarios": [],
-            "summary": {"total": 0, "approvedTotal": 0, "passed": 0, "failed": 0, "excludedUnapproved": 0},
-        }
+    "Unapproved scenarios are visibly excluded from the pass count").
 
-    base_url = boot_result["baseUrl"]
+    Move 14 Phase D item D1: --base-url (getattr, so every pre-existing caller that never set
+    it is unaffected) skips the boot entirely and runs scenarios against an ALREADY-RUNNING app
+    -- for a caller (e.g. the T1 fast gate) that already paid for a generate+build+boot cycle for
+    its own smoke check and does not want a SECOND one just to add behavioural assertions.
+    --model/--config/--output are meaningless in that mode and are not required.
+    """
+    base_url = getattr(args, "base_url", None)
+    if base_url:
+        boot_result = {"ok": True, "baseUrl": base_url, "skipped": "boot skipped -- --base-url was supplied"}
+    else:
+        if not (args.model and args.config and args.output):
+            raise CliError("acceptance run: --model/--config/--output are required unless --base-url is given.")
+        boot_args = argparse.Namespace(
+            model=args.model, config=args.config, output=args.output,
+            require_db_definition=getattr(args, "require_db_definition", False),
+            port=args.port, timeout=args.timeout,
+            profile=getattr(args, "profile", "dev"),
+            baseline_model=getattr(args, "baseline_model", None),
+            keep_running=getattr(args, "keep_running", False),
+        )
+        boot_result = run_app(boot_args)
+        if not boot_result.get("ok"):
+            return {
+                "schemaVersion": "npdev-acceptance-report.v1",
+                "ok": False,
+                "boot": boot_result,
+                "scenarios": [],
+                "summary": {"total": 0, "approvedTotal": 0, "passed": 0, "failed": 0, "excludedUnapproved": 0},
+            }
+        base_url = boot_result["baseUrl"]
     scenarios_dir = Path(args.scenarios).expanduser().resolve()
     scenario_files = sorted(scenarios_dir.glob("*.scenario.json"))
     api_key = getattr(args, "api_key", "dev-key")
@@ -2150,9 +2162,16 @@ def build_parser() -> argparse.ArgumentParser:
     acceptance_run = acceptance_sub.add_parser(
         "run", help="Move 10 D2 (LC-D2): boot an app (via D1) and run declarative *.scenario.json acceptance scenarios against it."
     )
-    acceptance_run.add_argument("--model", required=True)
-    acceptance_run.add_argument("--config", required=True)
-    acceptance_run.add_argument("--output", required=True)
+    acceptance_run.add_argument(
+        "--base-url",
+        help="Move 14 Phase D item D1: run scenarios against an ALREADY-RUNNING app at this base URL "
+             "instead of booting one -- for a caller that already has one up (e.g. the T1 fast gate "
+             "reusing its own canary boot) and does not want a second generate+build+boot cycle. "
+             "When given, --model/--config/--output are not required and are ignored.",
+    )
+    acceptance_run.add_argument("--model", required=False)
+    acceptance_run.add_argument("--config", required=False)
+    acceptance_run.add_argument("--output", required=False)
     acceptance_run.add_argument("--scenarios", required=True, help="Directory containing *.scenario.json files.")
     acceptance_run.add_argument(
         "--require-db-definition", action="store_true",

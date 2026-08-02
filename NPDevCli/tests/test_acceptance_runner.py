@@ -10,7 +10,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -203,7 +203,7 @@ class RunAcceptanceSummaryTest(unittest.TestCase):
     run_app so this stays a pure unit test of the summary math, not a live boot."""
 
     @staticmethod
-    def _acceptance_args(scenarios: str) -> "argparse.Namespace":
+    def _acceptance_args(scenarios: str, base_url: str | None = None) -> "argparse.Namespace":
         import argparse
 
         return argparse.Namespace(
@@ -211,6 +211,7 @@ class RunAcceptanceSummaryTest(unittest.TestCase):
             scenarios=scenarios, api_key="dev-key",
             port=8180, timeout=420, profile="dev",
             require_db_definition=False, baseline_model=None, keep_running=False,
+            base_url=base_url,
         )
 
     def _scenario_file(self, tmp_path: Path, filename: str, **overrides) -> None:
@@ -284,6 +285,36 @@ class RunAcceptanceSummaryTest(unittest.TestCase):
         mock_run_one.assert_not_called()
         self.assertFalse(report["ok"])
         self.assertEqual([], report["scenarios"])
+
+    def test_base_url_skips_the_boot_entirely(self):
+        # Move 14 Phase D item D1: a caller that already has an app running (the T1 fast gate,
+        # reusing its own canary boot) must not pay for a second generate+build+boot cycle.
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            self._scenario_file(tmp_path, "01-approved-pass.scenario.json", approved=True)
+
+            fake_result = {"name": "01", "file": "01-approved-pass.scenario.json", "approved": True,
+                            "outcome": "PASS", "assertions": [], "error": None}
+            args = self._acceptance_args(str(tmp_path), base_url="http://127.0.0.1:8103")
+            with patch("npdev_cli.run_app") as mock_run_app, \
+                 patch("npdev_cli._run_one_scenario", return_value=fake_result) as mock_run_one:
+                report = npdev_cli.run_acceptance(args)
+
+        mock_run_app.assert_not_called()
+        mock_run_one.assert_called_once_with("http://127.0.0.1:8103", ANY,
+                                              "01-approved-pass.scenario.json", "dev-key")
+        self.assertEqual("http://127.0.0.1:8103", report["baseUrl"])
+        self.assertTrue(report["ok"])
+
+    def test_missing_model_config_output_without_base_url_is_a_clean_error(self):
+        args = self._acceptance_args(".")
+        args.model = None
+        args.config = None
+        args.output = None
+        with self.assertRaises(npdev_cli.CliError):
+            npdev_cli.run_acceptance(args)
 
 
 if __name__ == "__main__":

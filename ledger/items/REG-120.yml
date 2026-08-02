@@ -1,0 +1,66 @@
+id: REG-120
+title: "A concept whose create is delegated to a declared Flow (input.mode: create) AND is also exposed via the generic CRUD create endpoint gets DOUBLE-PERSISTED on every create -- the flow's own createConcept step writes the row through the kernel persistence capability, then the SAME generated service method immediately writes it AGAIN via saveWithIntegrityMapping -- and the two writes can race, throwing a spurious 500 (or, when they don't race, silently perform a wasted redundant write)"
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-02
+verification: VERIFIED_LIVE
+surface: generator/runtimehost
+source: |
+  Found live while authoring Move 14 Phase D item D1's canary acceptance scenario (folding the
+  already-built acceptance runner into run-fast-gate.ps1). NPDevSamples/npdev-canary's own model
+  declares CanaryTask with a create-mode flow (CreateCanaryTask: invariantCheck -> createConcept ->
+  return) -- exactly the "Flow-CRUD wrapper" pattern RuntimeApiEmitter.generatePermissionManifest's own
+  comment already names (NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/
+  RuntimeApiEmitter.java:474-484, "If this CRUD operation's mutation is delegated to a declared Flow").
+
+  POST /api/flows/CreateCanaryTask/execute (the direct flow endpoint) succeeded reliably, every time,
+  in isolation. POST /api/concepts/canary_tasks (the generic CRUD create endpoint, for the SAME
+  concept) failed deterministically -- 100% reproducible, on a completely fresh/empty database, cold
+  boot, single isolated call, no concurrent client requests -- with:
+    org.h2.jdbc.JdbcSQLTimeoutException: Timeout trying to lock table {0}
+    Caused by: org.h2.message.DbException: Concurrent update in table "canary_tasks": another
+    transaction has updated or deleted the same row [90131-224]
+  (full repro log: a single `curl -X POST .../api/concepts/canary_tasks` against a canary instance
+  whose D:\WorkSpace\NPDev\Build\databases\npdev-canary\npdev_canary.mv.db had just been deleted and
+  the app freshly rebooted -- ruling out accumulated state, concurrent callers, or the
+  SandboxedPluginExecutionEngine's 1000ms default timeout (raised to 5000ms for this same
+  investigation, made no difference) as the cause.)
+
+  Root cause, confirmed by reading the generated
+  CanaryTaskServiceBase.createFromSource (NPDevSamples/npdev-canary/Output/App/npdev-generated/
+  src/main/java/com/npdev/generated/services/CanaryTaskServiceBase.java:131-173, itself generated
+  from NPDevGenerator's service-base.mustache): the method calls, in sequence,
+  `enforceWithConceptGateway("CanaryTask", generatedId, createPayload)` (an authorization CHECK, per
+  its own adjoining comment, not a persistence write) then
+  `enforceWithCreateFlow(crudCtx, generatedId, createPayload)` -- which runs the declared
+  CreateCanaryTask flow, whose own `createConcept` step ALREADY persists the row through the kernel's
+  registered persistence capability (confirmed in the boot log: `com.npdev.kernel.KernelRunner ::
+  cap=persistence op=save ... concept=CanaryTask` fires here) -- and THEN, four lines later,
+  unconditionally calls `saveWithIntegrityMapping(e)` on a freshly-constructed CanaryTask entity
+  carrying the SAME generatedId, persisting the identical logical row a SECOND time through a
+  completely separate path (the CRUD service's own JPA/Hibernate save, not the kernel persistence
+  capability the flow just used). Two independent writes to the same (tenant, id) row through two
+  different persistence mechanisms, each opening its own transaction/session -- exactly what H2
+  reports as a concurrent-update conflict, and what any real (Postgres) deployment under write
+  contention would be at genuine risk of also hitting, just with different error text.
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache
+  - NPDevSamples/npdev-canary/Output/App/npdev-generated/src/main/java/com/npdev/generated/services/CanaryTaskServiceBase.java
+detail: |
+  Not fixed here, deliberately -- this is a generator-template-level defect (service-base.mustache's
+  createFromSource shape) affecting EVERY app with a concept that combines a create-mode Flow with
+  CRUD-create exposure, not something specific to npdev-canary; a correct fix needs to decide, and
+  then verify against the existing REG-16-resid R2 enforcement-ordering guarantee (the adjoining
+  comment this bug sits right next to), which of the two writes should actually persist the row --
+  most likely: keep enforceWithCreateFlow's flow-driven write (it already runs
+  invariantCheck/authorization/side-effects in the declared order) and make saveWithIntegrityMapping
+  a no-op (or skip it entirely) whenever a create flow was invoked for this concept, rather than
+  having two independent code paths that both believe they own writing the row. That's a real design
+  decision touching a security-adjacent enforcement path (REG-16-resid R2), not a same-session patch.
+
+  Workaround used to unblock Move 14 Phase D item D1 (NOT a fix): the canary acceptance scenario
+  (NPDevSamples/npdev-canary/acceptance/01-canary-task-list-filters-by-title.scenario.json) seeds
+  through the direct flow endpoint (POST /api/flows/CreateCanaryTask/execute) instead of the raw CRUD
+  create endpoint, since only the CRUD path double-writes. Confirms the bug is specific to the CRUD
+  wrapper, not the flow itself or the persistence capability.

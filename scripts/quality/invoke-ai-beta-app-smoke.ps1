@@ -4,7 +4,9 @@ param(
     [Parameter(Mandatory = $true)][string]$ReportPath,
     [int]$Port = 18080,
     [string]$Profiles = "dev,step0,ai-beta-local",
-    [int]$BootTimeoutSeconds = 120
+    [int]$BootTimeoutSeconds = 120,
+    [string]$AcceptanceScenariosPath = "",
+    [string]$AcceptanceApiKey = "dev-key"
 )
 
 $ErrorActionPreference = "Stop"
@@ -116,6 +118,7 @@ $report = [ordered]@{
     boot = $null
     health = $null
     smoke = $null
+    acceptance = $null
     status = "failed"
 }
 
@@ -137,7 +140,18 @@ if ($build.ExitCode -ne 0) {
 
 $bootStdout = Join-Path $appRootFull "ai-beta-boot.stdout.log"
 $bootStderr = Join-Path $appRootFull "ai-beta-boot.stderr.log"
-$bootArgs = @("--no-daemon", "bootRun", ('--args="--spring.profiles.active=' + $Profiles + ' --server.port=' + $Port + '"'))
+# Move 14 Phase D item D1: acceptance scenarios add several persistence writes (seed rows) in quick
+# succession right after boot -- SandboxedPluginExecutionEngine's default 1000ms budget
+# (npdev.runtime.plugin-timeout-ms) was observed to occasionally miss on a cold H2 MVStore's first
+# write under load (a JVM just booted, competing with other local processes for disk I/O), throwing
+# a spurious CAPABILITY_FAILED unrelated to the scenario itself. Widened ONLY for this boot, ONLY
+# when acceptance scenarios were actually requested -- every other caller of this script (and every
+# generated app's own real default) is unaffected.
+$bootPropertyArgs = "--spring.profiles.active=$Profiles --server.port=$Port"
+if (-not [string]::IsNullOrWhiteSpace($AcceptanceScenariosPath)) {
+    $bootPropertyArgs += " --npdev.runtime.plugin-timeout-ms=5000"
+}
+$bootArgs = @("--no-daemon", "bootRun", ('--args="' + $bootPropertyArgs + '"'))
 $process = $null
 try {
     $process = Start-Process -FilePath $gradlew -ArgumentList $bootArgs -WorkingDirectory $appRootFull -NoNewWindow -PassThru -RedirectStandardOutput $bootStdout -RedirectStandardError $bootStderr
@@ -191,6 +205,25 @@ try {
     Write-JsonReport $report
     if ($smokeExit -ne 0) {
         throw "REST smoke checks failed."
+    }
+
+    # Move 14 Phase D item D1: "the acceptance runner IS a T1-shaped tool -- fold it into
+    # run-fast-gate.ps1". Reuses THIS SAME boot (--base-url, no second generate+build+boot) so a
+    # caller like the T1 fast gate gets real behavioural assertions (seed -> query -> assert),
+    # not just the smoke check's structural health/flow/panel reachability, at no extra boot cost.
+    if (-not [string]::IsNullOrWhiteSpace($AcceptanceScenariosPath)) {
+        $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
+        $acceptanceOutput = & $py (Join-Path $workspaceRoot "NPDevCli\npdev_cli.py") acceptance run `
+            --base-url $report.baseUrl --scenarios $AcceptanceScenariosPath --api-key $AcceptanceApiKey 2>&1
+        $acceptanceExit = $LASTEXITCODE
+        $acceptanceResult = $null
+        try { $acceptanceResult = ($acceptanceOutput -join "`n") | ConvertFrom-Json } catch { $acceptanceResult = $null }
+        $report.acceptance = New-StageResult -Status ($(if ($acceptanceExit -eq 0) { "passed" } else { "failed" })) -Message ($(if ($acceptanceExit -eq 0) { "Acceptance scenarios passed." } else { "Acceptance scenarios failed -- see evidence." })) -Evidence $acceptanceResult
+        $report.status = if ($acceptanceExit -eq 0) { $report.status } else { "failed" }
+        Write-JsonReport $report
+        if ($acceptanceExit -ne 0) {
+            throw "Acceptance scenarios failed."
+        }
     }
 }
 finally {
