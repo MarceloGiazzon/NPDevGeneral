@@ -124,7 +124,13 @@
     "scripts/quality/bucket2-report-common.ps1": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/cadence_state.py": {
+      "invocation": "orchestrated"
+    },
     "scripts/quality/check-allowlist-citations.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-cadence-coverage.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-dsl-conformance-generates.py": {
@@ -260,6 +266,9 @@
     },
     "scripts/quality/run-external-ai-gate.ps1": {
       "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-fast-gate.ps1": {
+      "invocation": "orchestrated"
     },
     "scripts/quality/run-final-regression-coverage-audit-tests.ps1": {
       "invocation": "orchestrated"

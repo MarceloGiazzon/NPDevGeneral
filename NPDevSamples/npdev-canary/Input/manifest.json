@@ -1,0 +1,7 @@
+{
+  "id": "npdev-canary", "title": "NPDev Canary", "complexity": "T1-canary",
+  "purpose": "Fast Lane plan T1 canary: deliberately minimal, pipeline-complete fixture (2 concepts, 1 flow, 1 panel with 1 dataSource + 1 action, 1 procedure, 1 query with a real multi-clause WHERE) proving generate/build/boot/serve/flow/panel end to end. Frozen -- do not add features here.",
+  "inputFiles": [],
+  "walkthrough": ["Generate and boot via NPDevSamples/scripts/generate-sample-app.ps1 -SampleId npdev-canary.", "GET /api/canary-panel/CanaryPanel (or the equivalent REST smoke path) and POST a CanaryTask through the CreateCanaryTask flow."],
+  "expectedOutcomes": ["CanaryTask CRUD persists and round-trips.", "OpenHighPriorityCanaryTasks only returns status='OPEN' AND priority>=2 rows -- proves the query WHERE actually filters (see LC-P0)."]
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "npdev-canary",
+    "description": "Fast Lane plan T1 canary: minimal, pipeline-complete fixture -- generate/build/boot/serve/flow/panel, nothing more. Frozen.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": { "root": "..\\..\\..\\NPDevRuntimeHost", "mergeStrategy": "clean-copy" },
+  "artifact": { "root": "..\\Output\\ArtifactNP", "generatedFolderName": "npdev-generated", "libsFolderName": "libs", "metaFolderName": "npdev-meta" },
+  "finalExec": { "root": "..\\Output\\App", "deleteBeforeMount": true },
+  "database": { "provider": "h2-local", "database": "npdev_canary", "resetMode": "reset" },
+  "runtime": { "springProfile": "dev,trial", "serverPort": 8103, "javaArgs": [], "gradleTask": "bootRun" },
+  "trialDefaults": {
+    "apiKey": "dev-key", "recommendedProfiles": "dev,trial", "runtimeUrl": "http://localhost:8103/",
+    "databaseMode": "h2-local",
+    "notes": ["T1 fast-gate canary. Frozen -- do not add features."]
+  }
+}

@@ -13,7 +13,11 @@
     "                    is corpus size minus (engine-variant count - 1 per family)",
     "  repro-case     -- encodes a specific past bug or rehearses a specific runtime behavior",
     "  showcase       -- realistic app, demo/verification value (official apps + release-blocking",
-    "                    samples all read this way: proving real platform behavior, not DSL syntax)"
+    "                    samples all read this way: proving real platform behavior, not DSL syntax)",
+    "  canary         -- Fast Lane plan (2026-08-01): the ONE app T1's fast gate builds+boots.",
+    "                    Deliberately minimal but pipeline-complete (concept/flow/panel/procedure/",
+    "                    query with a real WHERE); frozen -- growing it defeats the reason it is",
+    "                    fast. Exactly one model should carry this role: NPDevSamples/npdev-canary."
   ],
   "roles": {
     "AppGen/apps/_official/AuxScreen": "showcase",
@@ -41,6 +45,7 @@
     "NPDevSamples/dsl-conformance-max": "dsl-fixture",
     "NPDevSamples/durable-workflow-demo": "dsl-fixture",
     "NPDevSamples/medium-expense-approval": "showcase",
+    "NPDevSamples/npdev-canary": "canary",
     "NPDevSamples/restaurant-saas-multitenant": "showcase",
     "NPDevSamples/simple-contact-intake": "showcase",
     "NPDevSamples/simple-user-registry": "engine-variant",
