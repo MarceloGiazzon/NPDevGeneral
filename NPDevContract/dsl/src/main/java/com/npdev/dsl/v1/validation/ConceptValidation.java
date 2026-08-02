@@ -776,6 +776,23 @@ final class ConceptValidation {
                     + ": expression must evaluate to a boolean: " + expression);
         }
         for (String referenced : ComputedExpression.referencedFields(expression)) {
+            if (referenced.startsWith("$prop.")) {
+                // RC-A4 hard rule (Move 14 Phase C item C1): a securityRelevant OR ordinary property
+                // is runtime-mutable through the generated admin surface (RC-A5) -- an ordinary
+                // property is even mutable by a non-admin user for their own scope (settableAt +
+                // PropertyResolverController#authorizeWrite). If $prop.* could appear in access.read/
+                // access.write, an authorization rule would become runtime-mutable by exactly the
+                // actor it is supposed to be gating -- bypassing the authoring contract's rule A9
+                // (every permission-shaped delta must reach the Owner through AuthoringDiffGate).
+                // Refused unconditionally, not just for securityRelevant properties: even a
+                // non-security-relevant property's cascade value is not something an access
+                // expression may ever depend on.
+                errors.add("Entity " + entityName + " access." + label
+                        + ": '" + referenced + "' is forbidden here -- $prop.* may never appear inside "
+                        + "access.read/access.write (a runtime-mutable property must never affect an "
+                        + "authorization decision, RC-A4's hard rule / authoring contract rule A9)");
+                continue;
+            }
             if (referenced.startsWith("$")) {
                 continue;
             }
