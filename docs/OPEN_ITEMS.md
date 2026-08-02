@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**116 item(s) migrated: 0 open/partial, 116 done.**
+**117 item(s) migrated: 0 open/partial, 117 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -29,6 +29,7 @@
 | REG-113 | NPDevRuntimeHost/build.gradle.template silently shadowed the actively-maintained NPDevRuntimeHost/build.gradle in every assembled/generated app -- FinalAppAssembler.materializeRootTemplate() prefers *.template over the legacy file whenever both exist, but nothing has kept .template in sync since before commit 067b987 ('Moves 6-11'), so every FinalApp assembled since then (including the very REG-112 fix landed earlier this same session) got a build.gradle missing everything written after that point | BUG | MEDIUM | DONE | 2026-08-02 |
 | REG-114 | workspace::PropertyValue (RC-A2's cascade storage) inherited blanket admin-only CRUD permissions from isAdminConcept()'s built-in-pack default, with no carve-out for a user to read their own resolved property values -- the same latent-bug class workspace::Menu already needed a carve-out for, now reproduced on a newer built-in-pack concept | BUG | MEDIUM | DONE | 2026-08-02 |
 | REG-115 | A new com.finalexec.api.*Controller added to NPDevRuntimeHost compiles into every OTHER app fine but silently produces 404-on-every-route with zero errors anywhere unless its simple class name is also added to runtime-supported-controllers.json's allowedControllers -- an allowlist gate with no companion check that a new controller was actually added to it | GAP | LOW | DONE | 2026-08-02 |
+| REG-116 | dsl-conformance-max's own propertyScopes declaration (the RC-A1 corpus witness) listed the implicit root scope (tenant, no 'from') BEFORE the more specific 'user' scope -- compiled clean and validated clean since Wave 6, but silently inverts cascade precedence, undetected until Move 14's PropertyResolver (RC-A3) finally read propertyScopes' order for the first time | BUG | MEDIUM | DONE | 2026-08-02 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
@@ -1371,6 +1372,60 @@ tree against the three arrays (flag any controller present in neither) would clo
 "silent-by-default" trap the same way run-script-inventory-check.py already closes the analogous
 "an orphaned check-*.py nothing calls" trap for gate scripts -- the identical shape of bug, one
 layer up.
+
+### REG-116 — dsl-conformance-max's own propertyScopes declaration (the RC-A1 corpus witness) listed the implicit root scope (tenant, no 'from') BEFORE the more specific 'user' scope -- compiled clean and validated clean since Wave 6, but silently inverts cascade precedence, undetected until Move 14's PropertyResolver (RC-A3) finally read propertyScopes' order for the first time
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-02)
+**Verification:** VERIFIED_LIVE
+**Source:** Found live while end-to-end verifying Move 14 Phase B item B4 (RC-A6, folding settings into
+properties) against a rebuilt WmsOffice: after an admin set a TENANT-wide pageRows=100 and the
+non-admin user had already set their OWN user-scope pageRows=50, re-resolving pageRows AS THE USER
+returned 100 (tenant), not 50 (their own more-specific override) -- exactly backwards.
+
+Root cause: NPDevContract/dsl/.../validation/PropertyValidation.java's own javadoc and
+PropertyScopeAst's javadoc both document that propertyScopes' declared array ORDER *is* the
+resolver's cascade precedence (most specific first) -- but nothing ever validated that order, and
+WmsOffice's model.json (authored this same Move, B4, copying the pattern from
+NPDevSamples/dsl-conformance-max's PRE-EXISTING declaration) listed `[{tenant}, {user, from:
+$user.id}]` -- tenant, the least-specific level, FIRST. dsl-conformance-max itself has carried this
+exact ordering since Wave 6 (RC-A1's original authoring, docs/MOVE11_RUNTIME_CONFIGURATION_PLAN.md
+Part A.1) -- compiled clean, validated clean (PropertyValidationTest's own
+`aWellFormedDeclarationValidatesClean` fixture used the same tenant-before-user order and asserted
+it clean), and stayed invisible because NOTHING read propertyScopes' order at runtime until
+DefaultPropertyResolver (this same Move, item B2) was built to actually walk the array.
+
+Confirmed live: PropertyResolverController's PUT/GET against a rebuilt WmsOffice reproduced the
+inversion exactly as described above before the fix, and produced the correct precedence (user's
+own 50 wins over the tenant's 100) after reordering both models' propertyScopes to
+`[user, tenant]`.
+
+**Surface:** `dsl, generator`
+**Files:**
+- `NPDevSamples/dsl-conformance-max/Input/model.json`
+- `AppGen/apps/_official/WmsOffice/definition/model.json`
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PropertyValidation.java`
+- `NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/PropertyValidationTest.java`
+
+Two-part fix, matching this repo's own "codemod ships beside the data fix" convention even though
+no npdev migrate entry was warranted (only 2 corpus models are affected, both fixed directly in this
+commit, and the field shape itself did not change -- only declaration order):
+
+1. Data fix: reordered propertyScopes to `[user, tenant]` (most specific first) in both
+   dsl-conformance-max and WmsOffice.
+2. Durable compile-time check (PropertyValidation.validatePropertyScopesAndProperties): the implicit
+   root scope (no `from`, always resolves to $ctx.tenantId) is by definition the LEAST specific
+   level, so it is now REFUSED if declared anywhere but last. This is the one mechanically-checkable
+   ordering rule available -- nothing signals relative specificity between two scopes that both
+   declare a `from`, so those remain the author's own responsibility, same as before. Two new tests
+   (PropertyValidationTest: a positive control declaring the root scope last, and the RED case
+   declaring it first) plus a fix to the pre-existing `aWellFormedDeclarationValidatesClean` fixture,
+   which itself used the wrong order and would have started failing under the new rule.
+
+Left open / not attempted here: whether any OTHER already-declared propertyScopes ordering across
+the wider corpus (not just these 2 models) has the SAME class of mistake between two scopes that
+both declare a `from` (e.g. "estabelecimento" before "user" when the intended precedence is the
+reverse) -- the new validation cannot catch that case (no signal exists to check it against), so
+this is a real, class-limited coverage gap this fix does not close.
 
 ### REG-12 — LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped
 
