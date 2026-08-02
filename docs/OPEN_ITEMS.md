@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**112 item(s) migrated: 2 open/partial, 110 done.**
+**112 item(s) migrated: 1 open/partial, 111 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -21,10 +21,10 @@
 | REG-106 | SchemaLifecycleExecutor.migrate() skipped flyway.repair() whenever the schema fingerprint was unchanged, but V1's generated migration SQL text can drift (comments/emission order) independently of the structural fingerprint -- a plain model.json edit with zero concept/table changes crashed the boot with a Flyway 'Migration checksum mismatch' on the next regeneration | BUG | MEDIUM | DONE | 2026-08-01 |
 | REG-107 | PanelRuntime.executeAction's conceptquery binding fetches an entire concept unbounded via ConceptGateway.list -- the same memory/scale defect LC-P0 fixed for the declared-Panel dataSource path, out of that fix's stated scope | BUG | LOW | DONE | 2026-08-01 |
 | REG-108 | roles/propertyScopes/properties were absent from ModelSourceResolver's MODEL_ARRAY_KEYS (and from pack.schema.json's allowlist) -- a pack or local fragment declaring any of the three had its declaration silently dropped during composition, with no error | BUG | MEDIUM | DONE | 2026-08-01 |
-| REG-109 | generated-ui-manifest.json (and the rest of static/npdev-business-ui/*) is baked into the packaged jar at generation time with no external-path override, the same class of gap REG-103 fixed for RuntimeMetadataService's JSON catalogs -- named but explicitly not sized by REG-103, sized (not fixed) here | GAP | LOW | OPEN | 2026-08-01 |
+| REG-109 | generated-ui-manifest.json (and the rest of static/npdev-business-ui/*) is baked into the packaged jar at generation time with no external-path override, the same class of gap REG-103 fixed for RuntimeMetadataService's JSON catalogs -- named but explicitly not sized by REG-103, sized (not fixed) here | GAP | LOW | DONE | 2026-08-01 |
 | REG-11 | LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir) | GAP | LOW | DONE | 2026-07-21 |
 | REG-110 | LC-D2 (the acceptance-scenario runner) and LC-D3 (the closed authoring loop) were already fully implemented in NPDevCli/npdev_cli.py -- apparently from an earlier Move 10 session -- but had never been run, tested, or documented anywhere; a closure spec (Move 13) re-described them as needing to be built | GAP | LOW | DONE | 2026-08-01 |
-| REG-111 | Long-running generate/build/boot cycles (Build-NpdevApp.ps1, Rebuild-And-Restage.ps1, npdev run app, plain gradlew clean build) emit no incremental progress signal -- whatever is waiting on one (a human operator, an AI agent, a CI step) cannot tell 'still working normally' apart from 'silently stuck' without reaching past the tool into raw filesystem/process state | GAP | LOW | OPEN | 2026-08-01 |
+| REG-111 | Long-running generate/build/boot cycles (Build-NpdevApp.ps1, Rebuild-And-Restage.ps1, npdev run app, plain gradlew clean build) emit no incremental progress signal -- whatever is waiting on one (a human operator, an AI agent, a CI step) cannot tell 'still working normally' apart from 'silently stuck' without reaching past the tool into raw filesystem/process state | GAP | LOW | PARTIAL | 2026-08-01 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
@@ -901,7 +901,8 @@ the corpus fixture alongside it (R6).
 
 ### REG-109 — generated-ui-manifest.json (and the rest of static/npdev-business-ui/*) is baked into the packaged jar at generation time with no external-path override, the same class of gap REG-103 fixed for RuntimeMetadataService's JSON catalogs -- named but explicitly not sized by REG-103, sized (not fixed) here
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-08-02)
+**Verification:** VERIFIED_LIVE
 **Source:** Filed while executing Move 13 P5.1 (MOVE13_CLOSE_EVERYTHING_SPEC.md), which named this residual
 explicitly and said: "Static frontend assets: client-side JS/JSON, not a Spring bean -- a
 materially different problem. Do not size it here. If it is not bounded after 30 minutes of
@@ -939,6 +940,36 @@ this is a bounded, same-shape fix -- but confirming that shape actually applies 
 static-resource pipeline (as opposed to `app.js`/`shell.js` needing something structurally
 different, e.g. because they are also referenced by a content hash somewhere) needs its own pass,
 not assumed here. Left OPEN, not attempted, per this item's own filing instruction.
+
+---
+
+**Fast Lane plan item 1b closure (2026-08-02):** confirmed the shape and applies it. Added
+`NPDevRuntimeHost/src/main/java/com/finalexec/config/StaticUiResourceConfig.java`, a
+`WebMvcConfigurer` registering `/**` with `file:${npdev.static-ui.path}/` ahead of Spring Boot's
+own four default classpath locations (kept identical to what `WebMvcAutoConfiguration` would
+otherwise register, so replacing `/**` here drops no coverage). `npdev.static-ui.path` defaults to
+`npdev-generated/src/main/resources/static` -- the SAME relative layout the generator already
+writes, mirroring `RuntimeMetadataService`'s own `npdev.generated-resources.path` default -- so an
+unconfigured app's behavior is unchanged until something writes fresh content there.
+
+Confirmed (not assumed, closing this item's own "not exhaustively confirmed" gap): `app.js`/
+`shell.js`/`generated-ui-manifest.json` are referenced by plain relative URL in
+`business-ui-index.mustache`/`business-ui-app.mustache` -- no content hash, no cache-busting query
+string -- so no HTML/JS reference needed to change, only the resource-location resolution order.
+
+**Verified live**, same `pack-sample` app REG-103 used: overwrote
+`npdev-generated/src/main/resources/static/npdev-business-ui/generated-ui-manifest.json`'s
+`appName` field on disk while the app was already running (no restart) and curled
+`/npdev-business-ui/generated-ui-manifest.json` -- the new content was served immediately (`file:`
+resource locations are resolved per-request, not baked in at boot the way classpath resources
+are, so this is actually a step FASTER than the compiled-model/compiled-metadata fast paths, which
+still need a restart). Restored the original file afterward.
+
+Static UI bundle override is done. `Update-AppMetadata.ps1`'s fast path does not yet WRITE to this
+external directory automatically (it only refreshes the three REG-103 metadata paths, item 1a) --
+not attempted here, since the static bundle only changes on a UI-shaped model edit (new field/
+panel/action), which is schema-shaped generation work, not the metadata-only case that fast path
+targets.
 
 ### REG-11 — LNCH-20: cross-platform build scripts (gradlew.bat literals, portable cache dir)
 
@@ -1018,7 +1049,8 @@ went unverified for however long it has existed.
 
 ### REG-111 — Long-running generate/build/boot cycles (Build-NpdevApp.ps1, Rebuild-And-Restage.ps1, npdev run app, plain gradlew clean build) emit no incremental progress signal -- whatever is waiting on one (a human operator, an AI agent, a CI step) cannot tell 'still working normally' apart from 'silently stuck' without reaching past the tool into raw filesystem/process state
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Type:** GAP · **Severity:** LOW · **Status:** PARTIAL
+**Verification:** VERIFIED_LIVE
 **Source:** Surfaced directly during Move 13 (MOVE13_CLOSE_EVERYTHING_SPEC.md) Phase P1's execution, not by
 design review. A delegated agent running a real WmsOffice regenerate+build+boot cycle had its
 wrapper shell call killed by the harness with an empty output buffer AFTER the underlying Gradle
@@ -1063,6 +1095,23 @@ when this is picked up (not a commitment to any of them):
 Left deliberately unsized on scope/cost -- the point of filing this now is that it stays visible
 and does not silently disappear the way an unfiled frustration would, not that it is ready to be
 picked up as a bounded task yet.
+
+---
+
+**Fast Lane plan item 4b closure (2026-08-02, PARTIAL):** implemented this item's own first named
+shape -- `npdev run app`'s `result["phase"]` now also gets written to
+`<finalAppOut>/npdev-run-app-progress.json` (schemaVersion `npdev-run-app-progress.v1`: phase,
+updatedAt, pid) on every transition (GENERATE at start, BUILD, BOOT, READY, plus the two
+METADATA_ONLY-fast-path-specific transitions), best-effort (a write failure never fails the run
+itself). Closes the gap for `npdev run app` specifically: a caller can now poll or `tail` that file
+instead of reaching past the tool into jar mtimes/log tails/health endpoints.
+
+**Not closed, still open**: `Build-NpdevApp.ps1` and `Rebuild-And-Restage.ps1` (this item's other
+two named files) still emit no equivalent sidecar -- they are separate PowerShell entry points,
+not touched by this Python-side fix, and were out of this pass's scope. The third suggested shape
+(a written-down "how to check progress independently" recipe) was also not done. Rated PARTIAL,
+not DONE: the specific, cheapest-cited shape landed and is real, but two of the three named
+surfaces in this item's own title are still exactly as blind as when it was filed.
 
 ### REG-12 — LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped
 
