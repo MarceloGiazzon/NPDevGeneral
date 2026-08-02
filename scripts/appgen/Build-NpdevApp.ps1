@@ -1085,6 +1085,14 @@ Write-Step "Emitted ControlPanel page: http://localhost:$ServerPort/control-pane
   -AppFolder $AppFolder -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId $AppId
 Write-Step "Emitted app tree page: http://localhost:$ServerPort/app-tree.html"
 
+# RC-A5 (Move 14 Phase B item B3): the generated properties admin surface -- one section per
+# scope, one control per property, widget from type, settableAt-gated, effective value + source
+# shown inline (A3's explain). Cheap to always emit (reads nothing live); the page itself renders
+# "no properties declared" gracefully for an app whose model declares none.
+& (Join-Path $PSScriptRoot 'New-PropertiesAdminPage.ps1') `
+  -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId $AppId
+Write-Step "Emitted properties admin page: http://localhost:$ServerPort/properties.html"
+
 # ---- emit the local control console (if enabled in config.console.mode) -----
 if ($ConsoleMode -ne 'none') {
   & (Join-Path $PSScriptRoot 'New-AppConsole.ps1') -OpsDir $OpsDir -AppId $AppId -ConsolePort $ConsolePort -OutRoot $OutRoot -Mode $ConsoleMode
