@@ -112,6 +112,10 @@ resolution: |
   every accepted exception individually named and reasoned in the policy file (no bulk allowlisting,
   no scope reduction, no window extension -- per this item's own prohibition).
 
+  T3 confirmation (Move 15 Phase C close, 2026-08-03): ran `run-beta-release-gate.ps1 -GenerateReports`
+  (the full evidence orchestration this item's own repro came from) -- `doc-entrypoint-validation`
+  passed within it (stage 1, exit 0), confirmed independently of the standalone re-run above.
+
   Files changed (absolute):
     D:\WorkSpace\NPDev\NPDev_General\scripts\quality\run-doc-entrypoint-validation.ps1
     D:\WorkSpace\NPDev\NPDev_General\scripts\policy\doc-entrypoint-classification-policy.json
