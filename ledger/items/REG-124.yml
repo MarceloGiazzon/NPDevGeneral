@@ -1,0 +1,58 @@
+id: REG-124
+title: "golden-ai-scenarios/tenant-workflow-ops's ai-model.json declares tenancy.tenantIdField: \"tenantId\", which Normalize-AiContract.ps1 turns into an EXPLICIT \"tenantId\" field on the Ticket concept -- colliding with the platform's own implicit, reserved tenant_id column (ReservedColumnNames), so generation now fails with CONCEPT_FIELD_RESERVED_COLLISION instead of reaching build/boot/smoke"
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-03
+verification: VERIFIED_LIVE
+surface: quality-gates/ai-beta-pipeline
+source: |
+  Found while live-verifying Move 15 Phase C item C1 (REG-121's fix: replacing run-ai-beta-gate.ps1's
+  disabled --migrationsDir flag with --dbDefinitionPath). REG-121's fix works -- verified live against
+  3 of the 6 previously-generation-blocked scenarios in isolation (base-ai-loop, custom-panel-unsupported
+  both reached FULL green: generation -> deterministic-generation -> build -> boot -> health -> smoke,
+  all passed). tenant-workflow-ops is the one exception: generation now reaches past
+  CONFIG_MIGRATIONS_DISABLED cleanly (the DB-definition/schema-fingerprint log lines print
+  successfully) but then fails with a NEW, unrelated error:
+
+    java.lang.IllegalStateException: Concept Ticket has a field 'tenantId' whose column name
+    'tenant_id' collides with a platform-reserved business-table column (every generated table
+    implicitly gets 'version' for optimistic concurrency, 'row_version' for LNCH-16 CAS updates
+    through ConceptGateway, and 'tenant_id' for tenant isolation). Rename this field in the model to
+    something else (e.g. 'tenantIdRef').
+      at com.npdev.generator.dbconfig.ReservedColumnNames.validateNoCollision(ReservedColumnNames.java:41)
+
+  Root cause: golden-ai-scenarios/tenant-workflow-ops/ai-model.json declares
+  `"tenancy": { "tenantIdField": "tenantId", ... }` (an AI-authoring-contract-level tenancy
+  declaration, also referenced by auth.principalFields and testUsers[].tenantId). Normalize-AiContract.ps1
+  reads this and adds an EXPLICIT "tenantId" field to the Ticket concept in the normalized model.json
+  (confirmed: D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\temp\ai-beta-gate\tenant-workflow-ops\normalized\model.json's
+  Ticket concept has fields ["id", "tenantId", "title", "status"]). This predates (or was never
+  reconciled against) the platform's own later convention that EVERY generated business table
+  implicitly gets a reserved `tenant_id` column for isolation -- so this scenario's own
+  AI-authoring-level tenancy design now collides with a platform guarantee added after the fixture was
+  written. Same general family as REG-122 (the normalizer emitting a shape that predates a later
+  platform contract change) but a distinct root cause and fix site -- REG-122 is already closed and
+  scoped only to flow-step syntax.
+files:
+  - golden-ai-scenarios/tenant-workflow-ops/ai-model.json
+  - scripts/ai/Normalize-AiContract.ps1
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ReservedColumnNames.java
+detail: |
+  Not fixed here, deliberately -- out of REG-121's own narrow scope (a disabled CLI flag), and the
+  right fix needs a real decision this session did not make: (a) rename the scenario's own
+  tenancy.tenantIdField to something that does not collide (e.g. "tenantIdRef"), threading the rename
+  through ai-model.json's tenancy/auth/testUsers blocks consistently, since it is NOT an isolated
+  single-field rename (three sections reference the same name); or (b) teach
+  Normalize-AiContract.ps1 to recognize when tenancy.tenantIdField collides with a platform-reserved
+  column and either skip emitting the redundant explicit field (the platform's implicit tenant_id
+  already covers exactly this use case) or auto-rename it. (b) is likely the more durable fix since it
+  would prevent every FUTURE AI-authored scenario from hitting the same collision, not just this one
+  fixture -- but deciding that needs its own verification pass (does anything else read the emitted
+  explicit tenantId field expecting it to exist as a real column?), not a same-session patch appended
+  to REG-121's own closing.
+
+  Practical implication for REG-121: this does NOT block REG-121's own DoD (the disabled-flag
+  producers now run to completion) -- 2 of 3 scenarios spot-checked in isolation reach complete
+  green (generation through smoke); this is scenario-tenant-workflow-ops's own separate, pre-existing
+  defect, unmasked by REG-121's fix rather than caused by it.

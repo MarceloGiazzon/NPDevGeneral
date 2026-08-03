@@ -206,22 +206,53 @@ function Invoke-OfficialSchemaValidation {
     }
 }
 
+function Write-GeneratedDbDefinition {
+    # REG-121: GeneratorMain.migrationsDisabled() now unconditionally refuses any --migration*/
+    # --enableMigrations flag -- the current recreate-style/schema-realization generation contract
+    # takes --dbDefinitionPath instead (see NPDevSamples/scripts/generate-sample-app.ps1's own,
+    # already-migrated invocation). Content mirrors NPDevSamples/npdev-canary/Input/db.definition.json
+    # verbatim: this file is not model-specific, just an H2-local/KeepExistingIfCompatible boot
+    # config, parameterized only by databaseName so each scenario's H2 file doesn't collide with
+    # another's inside the shared evidence-run tree.
+    param(
+        [string]$OutputPath,
+        [string]$DatabaseName
+    )
+    $definition = [ordered]@{
+        database = [ordered]@{
+            engine = "H2Local"
+            databaseName = $DatabaseName
+            username = "sa"
+            password = ""
+            createInternalTables = $true
+            createBusinessTables = $true
+        }
+        schemaLifecycle = [ordered]@{
+            strategy = "KeepExistingIfCompatible"
+            allowDestructiveRecreate = $false
+            destructiveRecreateConfirmation = ""
+            scope = "NpdevOwnedTablesOnly"
+        }
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $OutputPath) | Out-Null
+    ($definition | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $OutputPath -Encoding utf8
+}
+
 function Invoke-ControlledGradleGenerator {
     param(
         [string]$ModelPath,
         [string]$ConfigPath,
         [string]$ArtifactRoot,
-        [string]$MigrationsRoot,
+        [string]$DbDefinitionPath,
         [string]$FinalAppRoot,
         [string]$ResultPath,
         [bool]$AssembleFinalApp
     )
-    New-Item -ItemType Directory -Force -Path $MigrationsRoot | Out-Null
     $generatorArgs = @(
         "--config", $ConfigPath,
         "--model", $ModelPath,
         "--out", $ArtifactRoot,
-        "--migrationsDir", $MigrationsRoot,
+        "--dbDefinitionPath", $DbDefinitionPath,
         "--runtimeHostTemplate", (Join-Path $workspaceRoot "NPDevRuntimeHost"),
         "--finalAppOut", $FinalAppRoot,
         "--clean"
@@ -528,7 +559,7 @@ foreach ($scenarioDir in $scenarioDirs) {
     })
 
     $artifactRoot = Join-Path $scenarioRunRoot "generated/ArtifactNP"
-    $migrationsRoot = Join-Path $scenarioRunRoot "generated/db/migration"
+    $dbDefinitionPath = Join-Path $scenarioRunRoot "generated/db.definition.json"
     $finalAppRoot = Join-Path $scenarioRunRoot "generated/App"
     $verificationPath = Join-Path $scenarioDir.FullName ([string]$manifest.files.verification)
 
@@ -540,12 +571,13 @@ foreach ($scenarioDir in $scenarioDirs) {
         $generationMessage = "Generator execution skipped by -SkipGenerator."
     }
     elseif ($officialStatus -eq "passed") {
+        Write-GeneratedDbDefinition -OutputPath $dbDefinitionPath -DatabaseName ("aibeta_" + ($scenarioId -replace '[^A-Za-z0-9_]', '_'))
         $runnerResultPath = Join-Path $scenarioRunRoot "generator-command-result.json"
         $generatorRun = Invoke-ControlledGradleGenerator `
             -ModelPath $modelPath `
             -ConfigPath $configPath `
             -ArtifactRoot $artifactRoot `
-            -MigrationsRoot $migrationsRoot `
+            -DbDefinitionPath $dbDefinitionPath `
             -FinalAppRoot $finalAppRoot `
             -ResultPath $runnerResultPath `
             -AssembleFinalApp $true
@@ -561,7 +593,7 @@ foreach ($scenarioDir in $scenarioDirs) {
         }
         $generationEvidence = [pscustomobject]@{
             artifactRoot = $artifactRoot
-            migrationsRoot = $migrationsRoot
+            dbDefinitionPath = $dbDefinitionPath
             finalAppRoot = $finalAppRoot
             commandResult = $runnerResult
         }
@@ -573,14 +605,21 @@ foreach ($scenarioDir in $scenarioDirs) {
     $determinismEvidence = $null
     if ($generationStatus -eq "passed") {
         $repeatArtifactRoot = Join-Path $scenarioRunRoot "determinism/ArtifactNP"
-        $repeatMigrationsRoot = Join-Path $scenarioRunRoot "determinism/db/migration"
         $repeatFinalAppRoot = Join-Path $scenarioRunRoot "determinism/App"
         $determinismRunnerPath = Join-Path $scenarioRunRoot "determinism-command-result.json"
+        # Deliberately the SAME db.definition.json file (not a second copy under determinism/, even
+        # with identical content): SchemaRealizationEmitter records the db-definition SOURCE PATH
+        # into schema-realization-manifest.json, so two content-identical-but-differently-located
+        # files would still make the repeat run's manifest differ from the primary run's -- for a
+        # reason that has nothing to do with generator determinism. Reusing the exact same path is
+        # safe: generation itself never boots or connects to a database, and only the PRIMARY
+        # artifactRoot ever reaches the later build/boot/health/smoke stages -- the repeat run exists
+        # solely for this file-hash comparison.
         $repeatRun = Invoke-ControlledGradleGenerator `
             -ModelPath $modelPath `
             -ConfigPath $configPath `
             -ArtifactRoot $repeatArtifactRoot `
-            -MigrationsRoot $repeatMigrationsRoot `
+            -DbDefinitionPath $dbDefinitionPath `
             -FinalAppRoot $repeatFinalAppRoot `
             -ResultPath $determinismRunnerPath `
             -AssembleFinalApp $false
