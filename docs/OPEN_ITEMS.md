@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**126 item(s) migrated: 2 open/partial, 124 done.**
+**126 item(s) migrated: 1 open/partial, 125 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -39,7 +39,7 @@
 | REG-122 | Normalize-AiContract.ps1 emitted retired pre-DSL-2.0 flow-step syntax (enforceInvariants / cap / op / out) for every AI-authored model's generated flow, failing official JSON Schema validation for every golden AI scenario that declares flows[] -- masking the true outcome of ~20 of 28 ai-beta-gate scenarios behind an early, uninformative official-validation failure instead of their own designed stage | BUG | MEDIUM | DONE | 2026-08-02 |
 | REG-123 | doc-entrypoint-validation fails on ~20+ stale script-path references and unmapped report references scattered across historical/archived docs (docs/beta/*, docs/architecture/*, docs/NEXT_EXECUTION_PLAN.md, etc.) -- a documentation-drift backlog, not a single defect, that has never been triaged since this checker's own scope was expanded to cover the full docs/ tree | GAP | LOW | DONE | 2026-08-02 |
 | REG-124 | golden-ai-scenarios/tenant-workflow-ops's ai-model.json declares tenancy.tenantIdField: "tenantId", which Normalize-AiContract.ps1 turns into an EXPLICIT "tenantId" field on the Ticket concept -- colliding with the platform's own implicit, reserved tenant_id column (ReservedColumnNames), so generation now fails with CONCEPT_FIELD_RESERVED_COLLISION instead of reaching build/boot/smoke | BUG | LOW | OPEN | 2026-08-03 |
-| REG-125 | PROJECT_DIGEST.md names scripts/quality/run-box-vision-doc-check.ps1 as its own 'Phase 0 validation script' (expected to write scripts/reports/out/box-vision-doc-check-report.json), but neither the script nor any equivalent under a different name was ever built -- a real, never-fulfilled commitment, not a stale path | GAP | LOW | OPEN | 2026-08-03 |
+| REG-125 | PROJECT_DIGEST.md names scripts/quality/run-box-vision-doc-check.ps1 as its own 'Phase 0 validation script' (expected to write scripts/reports/out/box-vision-doc-check-report.json), but neither the script nor any equivalent under a different name was ever built -- a real, never-fulfilled commitment, not a stale path | GAP | LOW | DONE | 2026-08-03 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
@@ -1909,7 +1909,7 @@ defect, unmasked by REG-121's fix rather than caused by it.
 
 ### REG-125 — PROJECT_DIGEST.md names scripts/quality/run-box-vision-doc-check.ps1 as its own 'Phase 0 validation script' (expected to write scripts/reports/out/box-vision-doc-check-report.json), but neither the script nor any equivalent under a different name was ever built -- a real, never-fulfilled commitment, not a stale path
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-08-03)
 **Verification:** VERIFIED_LIVE
 **Source:** Found while triaging Move 15 Phase C item C2 (REG-123, doc-entrypoint-validation's stale-reference
 backlog). PROJECT_DIGEST.md §"Phase 0 validation" reads:

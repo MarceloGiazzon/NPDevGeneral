@@ -2,7 +2,8 @@ id: REG-125
 title: "PROJECT_DIGEST.md names scripts/quality/run-box-vision-doc-check.ps1 as its own 'Phase 0 validation script' (expected to write scripts/reports/out/box-vision-doc-check-report.json), but neither the script nor any equivalent under a different name was ever built -- a real, never-fulfilled commitment, not a stale path"
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
+closed: 2026-08-03
 opened: 2026-08-03
 verification: VERIFIED_LIVE
 surface: docs/quality-gates
@@ -43,3 +44,35 @@ detail: |
   keyword/section presence diff, not a large tool); if the digest doc is considered stable enough not
   to need one, retire the "Phase 0 validation script" section from PROJECT_DIGEST.md instead and close
   this as "intentionally not built."
+
+resolution: |
+  DONE (Move 16 Phase A3, 2026-08-03). Chose removal, per this item's own recommendation: nothing in
+  this session's own work, nor anything found while investigating, actually needs a Box/Object/Truth
+  doctrine-consistency checker, and PROJECT_DIGEST.md's "## Phase 0 validation" section had not been
+  touched since it was written -- building a real checker now would be scope invention, not fixing
+  this gap.
+
+  Removed PROJECT_DIGEST.md's entire "## Phase 0 validation" section (the script path, the expected
+  report path, and the section heading itself) -- it was the last content in the file, so no other
+  section needed renumbering or relinking.
+
+  Left the two scripts/policy/doc-entrypoint-classification-policy.json entries in place (did not
+  delete them) after confirming why they are still needed: docs/OPEN_ITEMS.md is GENERATED from
+  ledger/items/*.yml and, per its own generator, keeps CLOSED items in a permanent historical section
+  rather than pruning them -- so REG-125's own title/source text (which quotes the dead path verbatim,
+  as the honest record of what was found) will keep re-appearing in that generated doc forever. Removing
+  the classification entries after fixing PROJECT_DIGEST.md made run-doc-entrypoint-validation.ps1 fail
+  fresh (confirmed live: "docs/OPEN_ITEMS.md:42 references missing release-relevant script
+  scripts/quality/run-box-vision-doc-check.ps1" and 6 sibling failures, all pointing at OPEN_ITEMS.md's
+  own generated text, not PROJECT_DIGEST.md). Re-added both entries with their reason text updated to
+  describe the NEW state accurately (the path is dead everywhere, PROJECT_DIGEST.md's own reference is
+  gone, only the generated ledger doc's permanent historical record still names it) rather than leaving
+  stale reasoning that would have described a state (PROJECT_DIGEST.md still names it) that no longer
+  holds.
+
+  Live-verified: pwsh -File scripts/quality/run-doc-entrypoint-validation.ps1 -- overallStatus "passed",
+  0 failures, after both the PROJECT_DIGEST.md removal and the classification-policy reason-text update.
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\PROJECT_DIGEST.md
+    D:\WorkSpace\NPDev\NPDev_General\scripts\policy\doc-entrypoint-classification-policy.json

@@ -134,17 +134,3 @@ Generated files can be replaced.
 Protected customizations cannot be silently replaced.
 
 The generator must preserve user-authored Panel Object and Procedure Object resources and must report conflicts instead of overwriting protected human work.
-
-## Phase 0 validation
-
-Phase 0 validation script:
-
-```text
-scripts/quality/run-box-vision-doc-check.ps1
-```
-
-Expected report:
-
-```text
-scripts/reports/out/box-vision-doc-check-report.json
-```
