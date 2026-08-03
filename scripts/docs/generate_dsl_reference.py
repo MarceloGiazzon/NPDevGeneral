@@ -41,6 +41,7 @@ FEATURED_DEFS = [
     ("lifecycle", "Lifecycle"),
     ("stateTransition", "Lifecycle state transition"),
     ("event", "Event"),
+    ("groupByField", "Aggregate query groupBy field (Move 10 B1, S4 joins)"),
     ("panel", "Panel"),
     ("document", "Document (LNCH-10 Slice 3 -- server-rendered PDF)"),
 ]

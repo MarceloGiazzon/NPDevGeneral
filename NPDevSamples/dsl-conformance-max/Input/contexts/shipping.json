@@ -2,7 +2,7 @@
   "dslVersion": "1.0.0",
   "pack": "shipping",
   "version": "1.0.0",
-  "description": "B20 (S2, ADR-0011) dsl-conformance-max witness: the 'shipping' bounded context. Imports 'billing' (D3) and references its concept via the qualified name billing::Invoice (D1) in a declared query -- the corpus witness for check-dsl-coverage.py's 'contexts' feature.",
+  "description": "B20 (S2, ADR-0011) dsl-conformance-max witness: the 'shipping' bounded context. Imports 'billing' (D3) and references its concept via the qualified name billing::Invoice (D1) in a declared query -- the corpus witness for check-dsl-coverage.py's 'contexts' feature. S4 (roadmap B27) extends this same fixture with the groupBy join corpus witness: DeliveryAttempt.shipment is a SAME-CONTEXT reference (Shipment also lives in 'shipping'); Shipment.invoice is a CROSS-CONTEXT reference into the imported 'billing' context -- one fixture exercising both join shapes check-dsl-coverage.py's query.groupBy.join / query.groupBy.join.crossContext features require.",
   "imports": ["billing"],
   "concepts": [
     {
@@ -11,7 +11,20 @@
       "ui": { "label": "Shipment" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "carrier", "type": "string", "required": true, "ui": { "label": "Carrier" } }
+        { "name": "carrier", "type": "string", "required": true, "ui": { "label": "Carrier" } },
+        { "name": "invoice", "type": "reference", "reference": { "target": "billing::Invoice" },
+          "ui": { "label": "Invoice" } }
+      ]
+    },
+    {
+      "name": "DeliveryAttempt",
+      "truthLevel": "T2",
+      "ui": { "label": "Delivery Attempt" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "shipment", "type": "reference", "reference": { "target": "Shipment" },
+          "ui": { "label": "Shipment" } },
+        { "name": "succeeded", "type": "boolean", "required": true, "ui": { "label": "Succeeded" } }
       ]
     }
   ],
@@ -20,6 +33,18 @@
       "name": "PendingInvoicesForShipping",
       "concept": "billing::Invoice",
       "where": "status == 'PENDING'"
+    },
+    {
+      "name": "DeliveryAttemptsByCarrier",
+      "concept": "DeliveryAttempt",
+      "groupBy": [ "shipment.carrier" ],
+      "aggregates": [ { "name": "attempts", "fn": "count" } ]
+    },
+    {
+      "name": "ShipmentsByInvoiceStatus",
+      "concept": "Shipment",
+      "groupBy": [ "billing::invoice.status" ],
+      "aggregates": [ { "name": "shipmentCount", "fn": "count" } ]
     }
   ]
 }

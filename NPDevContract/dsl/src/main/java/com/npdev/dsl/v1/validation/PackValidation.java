@@ -40,6 +40,7 @@ import com.npdev.dsl.v1.ast.PresentationMetadataAst;
 import com.npdev.dsl.v1.ast.ProcedureAst;
 import com.npdev.dsl.v1.ast.ProcedureParameterAst;
 import com.npdev.dsl.v1.ast.ProcedureStepAst;
+import com.npdev.dsl.v1.query.GroupByJoinGrammar;
 import com.npdev.dsl.v1.query.QueryPredicateGrammar;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
@@ -137,7 +138,7 @@ final class PackValidation {
             validateParameterNames("Query " + query.name(), query.parameters(), errors);
             validateQueryWhereCompiles(query, errors);
             if (query.isAggregate() && concept != null) {
-                validateAggregateQuery(query, concept, errors);
+                validateAggregateQuery(query, concept, entitiesByLower, errors);
             }
         }
     }
@@ -200,8 +201,16 @@ final class PackValidation {
      * explicitly out of scope for v1; refusing loudly at compile time is the accepted boundary
      * instead (matches the platform's own X0 "an input the evaluator cannot handle is an error"
      * rule) -- lift this the day {@code access.read} gains a SQL translation, not before.
+     *
+     * <p>S4 (roadmap B27, ADR-0011 D1): a {@code groupBy} field may now be a one-hop JOIN
+     * ({@link GroupByJoinGrammar}) through a declared {@code reference} field -- {@code
+     * "lote.produtoId"}, optionally context-qualified ({@code "inventory::lote.produtoId"}). The
+     * {@code access.read} hard stop above widens to the WHOLE join path (C3): a join makes the
+     * information-disclosure shape strictly worse, since now ANY concept the join crosses into with
+     * {@code access.read} taints the result, not just the query's own base concept.
      */
-    private static void validateAggregateQuery(QueryAst query, ConceptAst concept, List<String> errors) {
+    private static void validateAggregateQuery(
+            QueryAst query, ConceptAst concept, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         String here = "Query " + query.name();
         if (concept.getAccess() != null && hasText(concept.getAccess().getRead())) {
             errors.add(here + ": groupBy/aggregates are not supported on concept " + concept.getName()
@@ -217,17 +226,7 @@ final class PackValidation {
         }
 
         for (GroupByFieldAst groupByField : query.groupBy()) {
-            FieldAst field = fieldsByLower.get(normalize(groupByField.field()));
-            if (field == null) {
-                errors.add(here + ": groupBy field not found on concept " + concept.getName() + ": "
-                        + groupByField.field());
-                continue;
-            }
-            if (hasText(groupByField.bucket()) && !AGGREGATE_DATE_TYPES.contains(normalize(field.getType()))) {
-                errors.add(here + ": groupBy field " + groupByField.field() + " has bucket \""
-                        + groupByField.bucket() + "\" but its type (" + field.getType()
-                        + ") is not date/datetime");
-            }
+            validateGroupByField(here, concept, groupByField, fieldsByLower, entitiesByLower, errors);
         }
 
         Set<String> aggregateNames = new HashSet<>();
@@ -261,6 +260,105 @@ final class PackValidation {
                 errors.add(here + ": aggregate " + aggregate.name() + " (fn=" + fn + ") requires a numeric "
                         + "field, but " + aggregate.field() + " has type " + field.getType());
             }
+        }
+    }
+
+    /**
+     * S4 (roadmap B27, ADR-0011 D1/C1-C3): validates ONE {@code groupBy} entry -- a plain field
+     * (unchanged from Move 10 B1) or a one-hop join. X0 applies throughout: a join path this method
+     * cannot resolve is a named error via {@code continue} (this entry's own further checks are
+     * skipped, but the REST of the query is still validated -- one bad field must not hide every
+     * other finding), never a silently-accepted or partially-applied clause.
+     */
+    private static void validateGroupByField(
+            String here,
+            ConceptAst concept,
+            GroupByFieldAst groupByField,
+            Map<String, FieldAst> fieldsByLower,
+            Map<String, ConceptAst> entitiesByLower,
+            List<String> errors
+    ) {
+        GroupByJoinGrammar.Target target;
+        try {
+            target = GroupByJoinGrammar.parse(groupByField.field());
+        } catch (GroupByJoinGrammar.UnsupportedGroupByPathException unsupported) {
+            errors.add(here + ": groupBy field cannot be parsed -- " + unsupported.getMessage());
+            return;
+        }
+
+        if (target instanceof GroupByJoinGrammar.Target.Direct direct) {
+            FieldAst field = fieldsByLower.get(normalize(direct.field()));
+            if (field == null) {
+                errors.add(here + ": groupBy field not found on concept " + concept.getName() + ": " + direct.field());
+                return;
+            }
+            if (hasText(groupByField.bucket()) && !AGGREGATE_DATE_TYPES.contains(normalize(field.getType()))) {
+                errors.add(here + ": groupBy field " + direct.field() + " has bucket \""
+                        + groupByField.bucket() + "\" but its type (" + field.getType()
+                        + ") is not date/datetime");
+            }
+            return;
+        }
+
+        GroupByJoinGrammar.Target.Join join = (GroupByJoinGrammar.Target.Join) target;
+        FieldAst referenceField = fieldsByLower.get(normalize(join.referenceField()));
+        if (referenceField == null) {
+            errors.add(here + ": groupBy join field not found on concept " + concept.getName() + ": "
+                    + join.referenceField());
+            return;
+        }
+        if (!hasText(referenceField.getReferenceTarget())) {
+            errors.add(here + ": groupBy join field " + join.referenceField() + " on concept "
+                    + concept.getName() + " is not a reference field -- cannot join through it "
+                    + "(named compile error, not a silently dropped clause)");
+            return;
+        }
+
+        String targetConceptName = referenceField.getReferenceTarget();
+        ConceptAst targetConcept = entitiesByLower.get(normalize(targetConceptName));
+        if (targetConcept == null) {
+            errors.add(here + ": groupBy join field " + join.referenceField() + " targets unknown concept "
+                    + targetConceptName + " -- unresolvable join path");
+            return;
+        }
+
+        if (join.context() != null) {
+            String expectedPrefix = join.context() + "::";
+            if (!targetConceptName.startsWith(expectedPrefix)) {
+                errors.add(here + ": groupBy join \"" + groupByField.field() + "\" declares context '"
+                        + join.context() + "', but reference field " + join.referenceField()
+                        + "'s actual target is " + targetConceptName + " -- the declared context does not "
+                        + "match where the joined concept actually lives");
+                return;
+            }
+        }
+
+        // C3: the access.read hard stop widens to the WHOLE join path -- a group total computed by
+        // joining through a field is exactly as much of a leak as one computed directly on a
+        // restricted concept (see this method's javadoc and the class-level one above it).
+        if (targetConcept.getAccess() != null && hasText(targetConcept.getAccess().getRead())) {
+            errors.add(here + ": groupBy join \"" + groupByField.field() + "\" crosses into concept "
+                    + targetConcept.getName() + ", which declares access.read -- a pushed-down GROUP BY "
+                    + "would compute totals over rows the row-level access.read scope exists to hide, the "
+                    + "same leak whether the restricted concept is queried directly or reached through a "
+                    + "join (accepted boundary; lift when access.read gains a SQL translation)");
+            return;
+        }
+
+        Map<String, FieldAst> targetFieldsByLower = new HashMap<>();
+        for (FieldAst field : targetConcept.getFields()) {
+            targetFieldsByLower.put(normalize(field.getName()), field);
+        }
+        FieldAst targetField = targetFieldsByLower.get(normalize(join.targetField()));
+        if (targetField == null) {
+            errors.add(here + ": groupBy join target field not found on concept " + targetConcept.getName()
+                    + ": " + join.targetField() + " -- unresolvable join path");
+            return;
+        }
+        if (hasText(groupByField.bucket()) && !AGGREGATE_DATE_TYPES.contains(normalize(targetField.getType()))) {
+            errors.add(here + ": groupBy join \"" + groupByField.field() + "\" has bucket \""
+                    + groupByField.bucket() + "\" but its target field's type (" + targetField.getType()
+                    + ") is not date/datetime");
         }
     }
 

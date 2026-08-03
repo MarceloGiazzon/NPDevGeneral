@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -101,7 +102,8 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
                 schema == null ? null : schema.getDefaultValue(),
                 schema == null ? null : schema.getDefaultExpression(),
                 schema == null ? null : schema.getDerivedExpression(),
-                false
+                false,
+                field.getReferenceTarget()
         );
     }
 
@@ -377,6 +379,19 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     public boolean hasRowReadScope(String conceptName) {
         ConceptDefinition concept = conceptsByName.get(normalizeKey(conceptName));
         return concept != null && concept.access() != null && hasText(concept.access().read());
+    }
+
+    @Override
+    public Optional<String> resolveReferenceTarget(String conceptName, String fieldName) {
+        ConceptDefinition concept = conceptsByName.get(normalizeKey(conceptName));
+        if (concept == null) {
+            return Optional.empty();
+        }
+        FieldDefinition field = concept.fields().get(fieldName);
+        if (field == null || field.referenceTarget() == null || field.referenceTarget().isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(field.referenceTarget());
     }
 
     @Override
@@ -665,7 +680,10 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             Object defaultValue,
             String defaultExpression,
             String derivedExpression,
-            boolean hidden
+            boolean hidden,
+            /** S4: this field's declared {@code reference.target} concept name, or null if this
+             *  field isn't a reference at all. */
+            String referenceTarget
     ) {
         public FieldDefinition(
                 String name,
@@ -675,7 +693,21 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
                 String defaultExpression,
                 String derivedExpression
         ) {
-            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, false);
+            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, false, null);
+        }
+
+        /** S4: pre-existing 7-arg shape (name..hidden, no referenceTarget), preserved so callers
+         *  that predate the reference-target widening keep compiling unchanged. */
+        public FieldDefinition(
+                String name,
+                boolean required,
+                List<String> enumValues,
+                Object defaultValue,
+                String defaultExpression,
+                String derivedExpression,
+                boolean hidden
+        ) {
+            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, hidden, null);
         }
 
         public FieldDefinition {

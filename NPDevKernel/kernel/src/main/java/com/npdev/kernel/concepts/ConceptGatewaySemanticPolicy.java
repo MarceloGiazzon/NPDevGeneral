@@ -1,6 +1,7 @@
 package com.npdev.kernel.concepts;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface ConceptGatewaySemanticPolicy {
     ConceptGatewaySemanticPolicy NOOP = new ConceptGatewaySemanticPolicy() {
@@ -63,6 +64,20 @@ public interface ConceptGatewaySemanticPolicy {
      */
     default boolean hasRowReadScope(String conceptName) {
         return false;
+    }
+
+    /**
+     * S4 (roadmap B27, ADR-0011 D1): resolves a declared {@code reference} field's join TARGET
+     * concept name -- empty when {@code conceptName} is unknown or {@code fieldName} isn't a
+     * reference field. Lets {@link DefaultConceptGateway#aggregate} widen its {@link
+     * #hasRowReadScope} hard stop to a {@code groupBy} join's WHOLE path (C3): a group total
+     * computed by joining through a field is exactly as much of an access.read leak as one computed
+     * directly on a restricted concept. The default (empty) preserves today's behavior for a policy
+     * with no model to resolve against (the NOOP policy) -- it simply finds nothing to widen the
+     * check to, same as before this method existed.
+     */
+    default Optional<String> resolveReferenceTarget(String conceptName, String fieldName) {
+        return Optional.empty();
     }
 
     static ConceptGatewaySemanticPolicy noop() {

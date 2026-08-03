@@ -217,6 +217,12 @@ LNCH-12: recurring execution for a flow (cron expression + tenant scope). The ru
 | `payload` | `array<string | eventPayloadField>` |  |  |
 | `mode` | `"create" | "update" | "delete"` |  | When set on a concept-nested event, generated CRUD publishes this event directly from the matching mutation step (in addition to any Flow's own emitEvent step) -- no Flow required to reach it. |
 
+## Aggregate query groupBy field (Move 10 B1, S4 joins) (`#/$defs/groupByField`)
+
+Move 10 B1: one query.groupBy[] entry -- either a bare field name (string) or {field, bucket} for a date/datetime field bucketed to day/week/month/quarter/year. S4 (roadmap B27, ADR-0011 D1): field may also be a one-hop JOIN through a declared reference field -- "referenceField.targetField" (same context) or "context::referenceField.targetField" (crossing an imported context, D3) -- resolving to (context, concept, field) before reaching the same column-resolution path a bare field already uses. Exactly one hop; a longer path ("a.b.c") is a named compile error, never silently truncated. access.read on the base concept OR any concept the join crosses into refuses the whole query (C3).
+
+_(no declared properties)_
+
 ## Panel (`#/$defs/panel`)
 
 | Field | Type | Required | Description |

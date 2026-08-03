@@ -4,6 +4,10 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
+import com.npdev.dsl.v1.query.GroupByJoinGrammar;
+import com.npdev.kernel.concepts.ConceptAggregateEngine;
+import com.npdev.kernel.concepts.ConceptAggregateQuery;
+import com.npdev.kernel.concepts.ConceptAggregateResult;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptStoreOptimisticLockException;
 import com.npdev.kernel.concepts.ReferentialIntegrityException;
@@ -12,10 +16,12 @@ import com.npdev.kernel.ports.ConceptStore;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public final class InMemoryConceptStore implements ConceptStore {
     private final Map<String, ConceptRecord> records = new LinkedHashMap<>();
@@ -52,6 +58,112 @@ public final class InMemoryConceptStore implements ConceptStore {
         }
         out.sort(Comparator.comparing(ConceptRecord::id, String.CASE_INSENSITIVE_ORDER));
         return List.copyOf(out);
+    }
+
+    /**
+     * S4 (roadmap B27, ADR-0011 D1): overrides {@link ConceptStore}'s default aggregate (which only
+     * ever fetches ONE concept's rows) so a {@code groupBy} join hop can pre-materialize the joined
+     * value BEFORE handing rows to {@link ConceptAggregateEngine} -- which stays completely
+     * unmodified, since {@code record.data().get(groupByField.field())} already works for ANY key,
+     * including a join path's own raw string, once that key is actually present in the row.
+     *
+     * <p>INNER JOIN semantics, to agree with {@code JdbcBusinessConceptStore}'s real SQL JOIN: a base
+     * record whose reference field is null, or whose referenced row does not exist for this tenant,
+     * contributes nothing and is excluded from the aggregate entirely -- never grouped under a
+     * {@code null} key, which would silently disagree with the JDBC engine's row count.
+     *
+     * <p>Requires {@code model} (the constructor that omits it can't resolve a reference field's
+     * target concept) -- a join-shaped {@code groupBy} against a no-model store is refused loudly
+     * (X0), not silently evaluated as if every row failed to join.
+     */
+    @Override
+    public synchronized ConceptAggregateResult aggregate(String tenantId, String conceptName, ConceptAggregateQuery query) {
+        List<ConceptRecord> baseRecords = findAll(tenantId, conceptName);
+
+        Set<String> joinReferenceFields = new LinkedHashSet<>();
+        for (ConceptAggregateQuery.GroupByField groupByField : query.groupBy()) {
+            if (GroupByJoinGrammar.parse(groupByField.field()) instanceof GroupByJoinGrammar.Target.Join join) {
+                joinReferenceFields.add(join.referenceField());
+            }
+        }
+        if (joinReferenceFields.isEmpty()) {
+            return ConceptAggregateEngine.apply(baseRecords, query);
+        }
+        if (model == null) {
+            throw new IllegalStateException(
+                    "Cannot resolve groupBy join field(s) " + joinReferenceFields + " on concept " + conceptName
+                            + " -- this InMemoryConceptStore was built without a CompiledModel "
+                            + "(see InMemoryConceptStore(CompiledModel)), so a reference field's join "
+                            + "target cannot be looked up");
+        }
+
+        Map<String, String> targetConceptByReferenceField = new LinkedHashMap<>();
+        for (String referenceField : joinReferenceFields) {
+            String target = referenceTargetOf(conceptName, referenceField);
+            if (target == null) {
+                throw new IllegalArgumentException(
+                        "groupBy join field '" + referenceField + "' on concept " + conceptName
+                                + " is not a declared reference field -- the compile-time validator "
+                                + "(PackValidation#validateAggregateQuery) should have refused this model "
+                                + "before it ever reached the store");
+            }
+            targetConceptByReferenceField.put(referenceField, target);
+        }
+
+        Map<String, Map<String, ConceptRecord>> targetRecordsById = new LinkedHashMap<>();
+        for (String targetConcept : new LinkedHashSet<>(targetConceptByReferenceField.values())) {
+            Map<String, ConceptRecord> byId = new LinkedHashMap<>();
+            for (ConceptRecord record : findAll(tenantId, targetConcept)) {
+                byId.put(normalize(record.id()), record);
+            }
+            targetRecordsById.put(targetConcept, byId);
+        }
+
+        List<ConceptRecord> joined = new ArrayList<>();
+        for (ConceptRecord base : baseRecords) {
+            Map<String, Object> augmented = null;
+            boolean joinable = true;
+            for (ConceptAggregateQuery.GroupByField groupByField : query.groupBy()) {
+                if (!(GroupByJoinGrammar.parse(groupByField.field()) instanceof GroupByJoinGrammar.Target.Join join)) {
+                    continue;
+                }
+                Object fkValue = base.data().get(join.referenceField());
+                ConceptRecord targetRecord = fkValue == null ? null
+                        : targetRecordsById.get(targetConceptByReferenceField.get(join.referenceField()))
+                                .get(normalize(String.valueOf(fkValue)));
+                if (targetRecord == null) {
+                    joinable = false;
+                    break;
+                }
+                if (augmented == null) {
+                    augmented = new LinkedHashMap<>(base.data());
+                }
+                augmented.put(groupByField.field(), targetRecord.data().get(join.targetField()));
+            }
+            if (!joinable) {
+                continue;
+            }
+            joined.add(augmented == null ? base
+                    : new ConceptRecord(base.conceptName(), base.id(), base.tenantId(), augmented, base.rowVersion()));
+        }
+
+        return ConceptAggregateEngine.apply(joined, query);
+    }
+
+    /** Looks up {@code referenceField}'s declared {@code reference.target} on {@code conceptName},
+     *  or null if the concept/field is unknown or the field isn't a reference at all. */
+    private String referenceTargetOf(String conceptName, String referenceField) {
+        for (CompiledConcept concept : model.getConcepts()) {
+            if (!concept.getName().equalsIgnoreCase(conceptName)) {
+                continue;
+            }
+            for (CompiledField field : concept.getFields()) {
+                if (field.getName().equalsIgnoreCase(referenceField)) {
+                    return field.getReferenceTarget();
+                }
+            }
+        }
+        return null;
     }
 
     /**

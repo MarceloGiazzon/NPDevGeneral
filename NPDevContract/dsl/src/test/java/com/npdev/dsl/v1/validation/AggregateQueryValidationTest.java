@@ -129,4 +129,111 @@ class AggregateQueryValidationTest {
         assertTrue(errors.stream().noneMatch(e -> e.contains("groupBy") || e.contains("aggregate")),
                 "unexpected error for a non-aggregate query, got: " + errors);
     }
+
+    /**
+     * S4 (roadmap B27, ADR-0011 D1): groupBy join validation -- {@code ShipmentEvent.warehouse} is a
+     * reference field pointing at {@code Warehouse}, which has its own {@code region} field.
+     * {@code warehouseAccessJson} lets a test declare {@code access.read} on the JOIN TARGET (not
+     * the base concept) to prove C3's widened guard.
+     */
+    private static String modelWithJoinAndQuery(String warehouseAccessJson, String queryJson) {
+        return """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.aggregate.join", "version": "1.0",
+              "concepts": [
+                { "name": "Warehouse", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "region", "type": "string" },
+                  { "name": "openedAt", "type": "date" } ]%s },
+                { "name": "ShipmentEvent", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "warehouse", "type": "reference", "reference": { "target": "Warehouse" } },
+                  { "name": "unitsShipped", "type": "integer" } ] }
+              ],
+              "queries": [ %s ]
+            }
+            """.formatted(warehouseAccessJson == null ? "" : ", \"access\": " + warehouseAccessJson, queryJson);
+    }
+
+    @Test
+    void groupByJoinThroughAReferenceFieldResolves() throws Exception {
+        List<String> errors = validate(modelWithJoinAndQuery(null, """
+            { "name": "UnitsByRegion", "concept": "ShipmentEvent",
+              "groupBy": [ "warehouse.region" ],
+              "aggregates": [ { "name": "total", "fn": "sum", "field": "unitsShipped" } ] }
+            """));
+        assertTrue(errors.stream().noneMatch(e -> e.contains("groupBy") || e.contains("aggregate")),
+                "unexpected error for a valid groupBy join, got: " + errors);
+    }
+
+    @Test
+    void groupByJoinBucketValidatesAgainstTheTargetFieldsType() throws Exception {
+        List<String> errors = validate(modelWithJoinAndQuery(null, """
+            { "name": "UnitsByOpenMonth", "concept": "ShipmentEvent",
+              "groupBy": [ { "field": "warehouse.openedAt", "bucket": "month" } ],
+              "aggregates": [ { "name": "total", "fn": "sum", "field": "unitsShipped" } ] }
+            """));
+        assertTrue(errors.stream().noneMatch(e -> e.contains("groupBy") || e.contains("aggregate")),
+                "unexpected error for a valid bucketed groupBy join, got: " + errors);
+    }
+
+    @Test
+    void groupByJoinThroughANonReferenceFieldIsRejected() throws Exception {
+        List<String> errors = validate(modelWithJoinAndQuery(null, """
+            { "name": "BadJoin", "concept": "ShipmentEvent",
+              "groupBy": [ "unitsShipped.region" ],
+              "aggregates": [ { "name": "count", "fn": "count" } ] }
+            """));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("is not a reference field")),
+                "expected a not-a-reference-field error, got: " + errors);
+    }
+
+    @Test
+    void groupByJoinThroughAnUnknownReferenceFieldIsRejected() throws Exception {
+        List<String> errors = validate(modelWithJoinAndQuery(null, """
+            { "name": "BadJoin", "concept": "ShipmentEvent",
+              "groupBy": [ "bogusRef.region" ],
+              "aggregates": [ { "name": "count", "fn": "count" } ] }
+            """));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("groupBy join field not found") && e.contains("bogusRef")),
+                "expected an unknown-join-field error, got: " + errors);
+    }
+
+    @Test
+    void groupByJoinToAnUnknownTargetFieldIsRejected() throws Exception {
+        List<String> errors = validate(modelWithJoinAndQuery(null, """
+            { "name": "BadJoin", "concept": "ShipmentEvent",
+              "groupBy": [ "warehouse.bogusField" ],
+              "aggregates": [ { "name": "count", "fn": "count" } ] }
+            """));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("groupBy join target field not found") && e.contains("bogusField")),
+                "expected an unresolvable-target-field error, got: " + errors);
+    }
+
+    @Test
+    void twoJoinHopsAreRejectedAsAnUnsupportedPath() throws Exception {
+        List<String> errors = validate(modelWithJoinAndQuery(null, """
+            { "name": "BadJoin", "concept": "ShipmentEvent",
+              "groupBy": [ "warehouse.region.extra" ],
+              "aggregates": [ { "name": "count", "fn": "count" } ] }
+            """));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("groupBy field cannot be parsed")
+                        && e.contains("more than one join hop")),
+                "expected a two-hop-path rejection, got: " + errors);
+    }
+
+    /** C3 RED: the access.read hard stop widens to the WHOLE join path -- a join target declaring
+     *  access.read must refuse the query even though the BASE concept (ShipmentEvent) declares none. */
+    @Test
+    void groupByJoinCrossingIntoAConceptDeclaringAccessReadIsRefused() throws Exception {
+        List<String> errors = validate(modelWithJoinAndQuery(
+                "{\"read\": \"region == $user.region\"}", """
+            { "name": "UnitsByRegion", "concept": "ShipmentEvent",
+              "groupBy": [ "warehouse.region" ],
+              "aggregates": [ { "name": "total", "fn": "sum", "field": "unitsShipped" } ] }
+            """));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("crosses into concept Warehouse")
+                        && e.contains("access.read")),
+                "expected the widened access.read hard stop to fire for the join target, got: " + errors);
+    }
 }
