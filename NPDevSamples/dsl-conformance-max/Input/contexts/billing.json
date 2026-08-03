@@ -6,6 +6,7 @@
   "concepts": [
     {
       "name": "Invoice",
+      "truthLevel": "T2",
       "ui": { "label": "Invoice" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
