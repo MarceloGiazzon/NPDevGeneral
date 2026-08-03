@@ -57,7 +57,7 @@ independent and low-to-medium risk; the last two are new subsystems.
 | 3 | LIFT-ROWOPS | ARCH-13 (declared Panel no create/delete-row) | P1–P4 | Low | — (reuses Workbench rowOps) |
 | 4 | LIFT-QUERY | ARCH-7 (capability can't get live filtered data) | P1–P4 | Low-Med | — |
 | 5 | LIFT-UPLOAD | ARCH-upload (no file-upload primitive) | P1–P6 | High | — (new subsystem) |
-| 6 | LIFT-LOOP | ARCH-loop (no loop step in Flows) | P1–P6 | High | — (durable resume; P6 sequential await-in-loop, parallel still out of scope) |
+| 6 | LIFT-LOOP | ARCH-loop (no loop step in Flows) | P1–P7 | High | — (durable resume; P6 sequential await-in-loop DONE, P7 parallel await-in-loop DESIGNED-ONLY/deferred) |
 
 **Critical path:** none of the six hard-depends on another, so they can parallelize. Recommended
 serial order for a single implementer is the table order: build expression + validation muscle first
@@ -722,7 +722,85 @@ the same `maxLoopIterations` safety cap procedures use.
   `twoAwaitsInsideLoopBodyIsRejected`, replacing the old blanket-rejection test).
 - **Deliberately not done:** parallel awaits (N iterations genuinely waiting at once) — see this
   document's own risk register and `docs/ACCEPTED_BOUNDARIES.md` B15(B). Move 16 Phase C produced a
-  costed design decision for that, not an implementation.
+  costed design decision for that, not an implementation — see LIFT-LOOP-P7 below.
+
+### LIFT-LOOP-P7 — Parallel awaits inside a loop (B15(B)): costed design, not implemented
+- **Status:** DESIGNED, NOT IMPLEMENTED — deferred by explicit recommendation (2026-08-03, Move 16
+  Phase C) · **Risk:** High (schema + coordination changes touching `resumeExecution`/compensation/
+  idempotency simultaneously — the exact shape Move 9 A5 and B15(A)'s own write-up both called "not a
+  bounded task")
+
+**The question:** N loop iterations each independently awaiting their own event, genuinely
+outstanding *at the same time* (not the one-at-a-time shape P6/B15(A) closed). Two storage designs
+were costed; neither was built.
+
+**Option A — one `FlowInstance` row per loop iteration** (a child row, keyed by a new
+`(parentExecutionId, iterationIndex)` pair alongside today's `execution_id` primary key).
+- *Reuses* everything `FlowInstance`-shaped already does correctly per-row: `ResumeCoordinator`'s
+  matching, `resumeExecution`, idempotency (already keyed by `executionId` — a child row's own
+  distinct `executionId` gets this for free), and — per B15(A)'s own investigation — `state_json`
+  needs no new column, since each child row already gets its own independent `correlation_id`,
+  `current_step_index`, `waiting_for_event_name`.
+- *Costs:* the PARENT flow has no existing concept of "wait for N child executions, then resume."
+  `resumeExecution`/`executeFlowInstance` (`NPDevKernel/kernel/.../KernelRunner.java`) would need a
+  new join/barrier: something has to notice "the last of my N children just completed" and re-enter
+  the parent's own forward step loop past the `forEach`. Compensation (`CompensationRunner`, LNCH-17)
+  currently reverses ONE flow's own steps in order — undoing a partially-completed parallel loop
+  means reversing across N child executions, an aggregation this class does not have today. Every
+  place that currently assumes "one row = one flow" (`resumeAllWaitingExecutions`'s scheduled sweep,
+  `flowInstanceStore.findWaitingEligibleToResume`, the `STUCK` detection in §2) would need to decide
+  whether a child row counts on its own or only as part of its parent's aggregate state.
+
+**Option B — a new `flow_instance_wait` table**, one row per `(parentExecutionId, iterationIndex)`,
+purpose-built to track ONLY wait state (`awaitEventName`, `matchCorrelation`, `payloadMatchRefs`,
+resolved-or-not, resolved payload) — the parent `FlowInstance` stays a SINGLE row, parked in
+`WAITING_EVENT` for as long as ANY child wait slot is outstanding.
+- *Costs less duplication* than Option A: no new executionId/compensation-chain/idempotency-scope
+  per iteration — this is genuinely just "N wait slots," not N miniature flows. `AwaitEventStep`'s
+  resolved payload would need to land at a per-iteration state key (e.g.
+  `awaitRef + "." + iterationIndex`, mirroring how B15(A)'s satisfaction-marker key is already
+  per-step, not per-flow) rather than the single `state.put(awaitRef, payload)` slot it uses today.
+- *Costs:* a genuinely NEW adapter port + `-inproc`/`-postgres` pair, mirroring `FlowInstanceStore`'s
+  own existing shape (`NPDevKernel/kernel/.../ports/FlowInstanceStore.java` and its two adapters) —
+  new schema, new schema-mirror obligations, new resume-matching code path in `ResumeCoordinator`
+  that has no existing analog to extend (unlike Option A, which mostly extends things that already
+  exist).
+
+**Leaning, not a decision:** Option B feels architecturally cleaner for this specific shape — "one
+flow, one step, N provisional wait slots" maps better to a dedicated wait table than to N full
+`FlowInstance` rows that would need their own compensation/idempotency identity for no real reason.
+But this is a leaning to hand to whoever picks this up next, not a green light to start Option B —
+see "why deferred" below.
+
+**Migration for existing in-flight `WAITING_EVENT` rows — checked before designing, per this Move's
+own instruction:** parallel awaits would be a NEW, additive capability (opt-in via a new step
+attribute or step type, not a change to today's `forEach`/`await` semantics), so EVERY existing
+`WAITING_EVENT` row — whether a bare await or a B15(A) sequential loop — is a single-`FlowInstance`
+row today and stays exactly that after either option ships; neither option touches or needs to
+convert a single existing row. There is no live production data to migrate (pre-1.0, and this
+capability doesn't exist yet to have created any). The only real "migration" concern is orthogonal to
+this feature specifically: an in-flight instance of a flow *definition* that later changes shape
+needs to keep running under the definition it started with — a general concern the platform already
+has to answer for any flow-definition change, not something new here.
+
+**Completion semantics — the open design questions Option A/B both still need answered, regardless
+of storage choice:**
+- **Join/barrier:** does the loop step complete only once ALL N iterations resolve (the natural
+  "wait for every approval" reading), or is partial/best-effort completion after some subset needed?
+- **Fail-fast vs. partial failure:** does one iteration's genuine failure (not just "still waiting")
+  fail the whole loop step immediately, or let the others keep resolving and report a mixed result?
+- **Per-iteration timeout:** today's single-slot await has no timeout concept at all (it waits
+  forever, subject to the scheduler's resume-eligibility backoff). N-way parallel makes "what happens
+  to the 9 that resolved when the 10th never will" a real, user-facing question that sequential never
+  had to answer, since sequential only ever blocks on the CURRENT iteration.
+
+**Why deferred:** this is a genuine, multi-week subsystem redesign — the same verdict Move 9 A5
+reached and B15(A)'s own investigation confirmed independently while proving the narrower sequential
+case didn't need it. Shipping either option without its own dedicated restart-proof test (the same
+bar P6 met) would repeat exactly the mistake this Move's own hard-stop rule exists to prevent. Revisit
+trigger: genuine user demand for true fan-out/fan-in concurrency inside a loop, not just "the
+sequential case feels slow for large collections" (which a higher `maxLoopIterations` ceiling or
+batching the collection outside the loop may already solve without touching this boundary at all).
 
 ---
 
@@ -741,6 +819,7 @@ LIFT-UPLOAD  P1 ─► P2 ─► P3 ─► P4 ─► P6
                           └► P5
 LIFT-LOOP    P1 ─► P2 ─► P3 ─► P4 ─► P6
                 └► P5
+(P7: costed design only, not implemented -- see LIFT-LOOP-P7's own "why deferred")
 ```
 
 **Recommended single-implementer order:** LIFT-EXPR → LIFT-UNIQUE → LIFT-ROWOPS → LIFT-QUERY →
