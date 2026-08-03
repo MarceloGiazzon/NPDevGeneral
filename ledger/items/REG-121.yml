@@ -2,8 +2,9 @@ id: REG-121
 title: "Two release-evidence producers (run-ai-beta-gate.ps1, run-trusted-source-beta0-proof.ps1) still invoke `:generator:run` with the disabled `--migrationsDir` flag -- GeneratorMain.migrationsDisabled() rejects it outright (CONFIG_MIGRATIONS_DISABLED), so every ai-beta-gate scenario whose model reaches generation fails there, cascading into expanded-beta0-evidence, sample-matrix, docker-linux-parity, and final-regression-coverage-audit"
 type: BUG
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-02
+closed: 2026-08-03
 verification: VERIFIED_LIVE
 surface: quality-gates/ai-beta-pipeline
 source: |
@@ -139,3 +140,89 @@ resolution: |
     D:\WorkSpace\NPDev\NPDev_General\scripts\quality\run-ai-beta-gate.ps1
     D:\WorkSpace\NPDev\NPDev_General\scripts\quality\run-trusted-source-beta0-proof.ps1
   New: D:\WorkSpace\NPDev\NPDev_General\ledger\items\REG-124.yml
+
+  --- Move 16 Phase A1 addendum (2026-08-03): run-trusted-source-beta0-proof.ps1 closed to DONE ---
+
+  Picked up exactly where Move 15 left off: the SHA-256 mismatch was CRLF (Windows checkout) vs LF
+  (hash originally computed against) line endings, no .gitattributes in this repo -- confirmed by
+  LF-normalizing the on-disk bytes and re-hashing before touching anything. Updated both manifest
+  entries' sha256 to match the real on-disk CRLF bytes (safe: Docker/Linux parity bind-mounts this
+  SAME checkout into the container rather than doing a fresh clone, confirmed via Dockerfile.ai-beta
+  and run-docker-linux-proof.ps1's `docker run -v`).
+
+  Running the scenario end-to-end past that point surfaced EIGHT more real, pre-existing bugs, none
+  introduced by this session -- this fixture had evidently never been run to completion before:
+
+    1. Reserved-column collision: the scenario's "User" concept declared an explicit `tenantId`
+       field, colliding with the platform's own reserved `tenant_id` business-table column
+       (ReservedColumnNames). Fixed by REMOVING the field entirely (not renaming) -- confirmed live
+       that TrustedActionSupportTemplates's generated ctx.saveMany/ctx.save helper already
+       auto-populates the tenant column from the authenticated caller's own context.tenantId(),
+       unconditionally, via a hardcoded "tenantId" map key, so an explicit DSL field for it can only
+       ever fight the platform's own auto-injection, never coexist with it.
+    2. TrustedPanelSourcePolicy correctly rejected two `<meta>` tags in the panel HTML (forbidden
+       element, by deliberate security policy -- confirmed by reading the Java allowlist, not routed
+       around). Removed them from the fixture.
+    3+4. Both the build AND the separate bootRun invocation in this script were missing
+       -PnpdevRuntimeHostLibsDir, unlike every other build invocation in the repo (Build-NpdevApp.ps1,
+       generate-sample-app.ps1) -- caused ":verifyNpdevRuntimeHostLibs FAILED". Added the same
+       inline NPDEV_RUNTIMEHOST_LIBS_DIR-or-Build-root-relative resolution
+       Get-NPDevRuntimeHostLibsDir (scripts/npdev-common.ps1) uses, to both invocations (not
+       dot-sourced, to avoid pulling that helper's own Set-StrictMode into this large pre-existing
+       script).
+    5+6. Two assertions ($runtimePassed, $panelActionPassed) checked the generated action envelope's
+       top-level "createdCount" (always 0 -- generic envelope metadata) instead of the procedure's
+       own nested "result.createdCount". Confirmed live: real response body was
+       {"...","createdCount":0,...,"result":{"createdCount":3,"users":[...]}}.
+    7+8. Two MORE assertions ($rolePassed, $tenantPassed) checked a "reason" field on the
+       missing-role/wrong-tenant rejection captures; the generated action endpoint's rejection
+       envelope actually uses "error"/"message", not "reason" ("reason" is only used by the
+       SEPARATE state-viewer diagnostic endpoint's own envelope shape). Fixed both to check
+       $body.error instead.
+    9. The Playwright browser-proof script's `page.waitForFunction(predicateFn, ...)` call failed
+       with "Refused to evaluate a string as JavaScript because 'unsafe-eval' is not an allowed
+       source" -- Playwright's waitForFunction polling harness does a real eval() of the predicate
+       inside the page, which this platform's own strict CSP (script-src 'self', no unsafe-eval)
+       correctly rejects. Confirmed page.$eval (CDP callFunctionOn, not eval()) already worked fine
+       under the same CSP elsewhere in the same script, so replaced the waitForFunction call with a
+       manual polling loop using $eval instead of weakening the CSP.
+   10. Once the browser could actually click through, the PANEL'S OWN hand-authored click handler
+       (user-admin-panel.html) was found reading `result.users`/`result.createdCount` at the top
+       level of the procedure response, but window.NPDev.callProcedure (the generated bridge script)
+       returns the envelope as-is, with the procedure's own domain result nested under
+       `result.result` -- same "top-level envelope vs nested procedure result" confusion as bugs
+       5+6/7+8, this time in the fixture's own JS rather than the test harness. Fixed the click
+       handler to read `response.result.users`/`response.result.createdCount`; re-hashed the panel's
+       manifest entry to 71c2341c642db4d52e0f962de9a71320ecc03f961bf708248996b983eaf68bb8.
+   11. $fullCsp, the harness's hardcoded expected-CSP string, was missing five directives
+       (frame-src, frame-ancestors, worker-src, manifest-src, upgrade-insecure-requests) that
+       TrustedSourceControllerTemplate.FULL_CSP (the generator's actual, canonical, currently-shipped
+       CSP constant) already includes -- a stale test-copy of a security string, not a platform gap.
+       Updated $fullCsp to match FULL_CSP byte-for-byte.
+
+  LIVE VERIFIED (report at C:/Users/Marcelo/AppData/Local/Temp/claude/d--WorkSpace-NPDev-NPDev-General/
+  9586b426-580f-4c6c-8156-02cadac00f59/scratchpad/move16-trusted-source-report14.json): full generate
+  -> build -> boot -> real HTTP + real headless-Chromium browser proof against the actual generated
+  runtime, invoked with `-ScenarioRoot golden-ai-scenarios/deferred/trusted-source` (the script's
+  DEFAULT ScenarioRoot is non-recursive and never discovers this scenario at all -- a separate,
+  pre-existing discovery gap, not fixed here since the scenario is deliberately placed under
+  `deferred/`). Result: overallStatus "passed", all 18 checks true (including all three that were
+  previously false: real-generated-panel-route-action-smoke, real-generated-runtime-role-checks,
+  real-generated-runtime-tenant-checks), top-level failures: []. The sibling scenario
+  golden-ai-scenarios/deferred/trusted-source/trusted-source-path-traversal also appears in this run
+  with non-empty scenarioFailures text, but its own scenario.manifest.json declares
+  `"kind": "negative", "expectedOutcome": "fail"` -- those "failures" are the platform CORRECTLY
+  rejecting a deliberate `../outside.html` path-traversal entrypoint; confirmed working as designed,
+  not a defect, and not named in this item's own scope.
+
+  Both named producers (run-ai-beta-gate.ps1, run-trusted-source-beta0-proof.ps1) now run to
+  completion. REG-121 -> DONE.
+
+  Still not done (unchanged from the Move 15 note, still a real, separate, valuable prevention
+  measure, still left for whoever next touches this family): the twin-pair-registry.json rule
+  tracking the generator's current CLI flags against every direct `:generator:run` caller.
+
+  Files changed in this addendum (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\scripts\quality\run-trusted-source-beta0-proof.ps1
+    D:\WorkSpace\NPDev\NPDev_General\golden-ai-scenarios\deferred\trusted-source\create-users-panel-procedure\trusted-source-manifest.json
+    D:\WorkSpace\NPDev\NPDev_General\golden-ai-scenarios\deferred\trusted-source\create-users-panel-procedure\panel\user-admin-panel.html

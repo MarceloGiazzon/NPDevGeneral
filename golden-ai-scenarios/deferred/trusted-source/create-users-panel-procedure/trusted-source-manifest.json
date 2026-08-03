@@ -9,7 +9,7 @@
       "kind": "procedure",
       "relativePath": "procedure/CreateUsersProcedure.java",
       "language": "java",
-      "sha256": "b018fd106a9c7fc6db1283afc8f9c39888e65577d33637d58fa0603ed3f0e913",
+      "sha256": "75eccc3304d52f7ac549fdb38127838f56a2bb55c24edc5616988bd916d4949a",
       "runtimeBinding": "procedure:create-users",
       "className": "CreateUsersProcedure",
       "method": "execute",
@@ -21,7 +21,7 @@
       "kind": "panel",
       "relativePath": "panel/user-admin-panel.html",
       "language": "html+javascript",
-      "sha256": "33a51929893ed508b1f63314b8ec163891e6d8c1408b489fc726ee5bda9cf537",
+      "sha256": "71c2341c642db4d52e0f962de9a71320ecc03f961bf708248996b983eaf68bb8",
       "runtimeBinding": "panel:/users",
       "requiredRole": "admin",
       "tenantScoped": true

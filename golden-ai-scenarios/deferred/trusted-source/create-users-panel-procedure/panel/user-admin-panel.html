@@ -1,8 +1,6 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>User Admin Panel</title>
   <style>
     body {
@@ -110,7 +108,8 @@
     }
 
     document.getElementById("createUsers").addEventListener("click", async () => {
-      const result = await callCreateUsersProcedure();
+      const response = await callCreateUsersProcedure();
+      const result = response.result || {};
       renderUsers(result.users || []);
       document.getElementById("status").textContent = `${result.createdCount || 0} users created`;
     });
