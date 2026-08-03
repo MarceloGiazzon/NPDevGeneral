@@ -2,8 +2,9 @@ id: REG-124
 title: "golden-ai-scenarios/tenant-workflow-ops's ai-model.json declares tenancy.tenantIdField: \"tenantId\", which Normalize-AiContract.ps1 turns into an EXPLICIT \"tenantId\" field on the Ticket concept -- colliding with the platform's own implicit, reserved tenant_id column (ReservedColumnNames), so generation now fails with CONCEPT_FIELD_RESERVED_COLLISION instead of reaching build/boot/smoke"
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-03
+closed: 2026-08-03
 verification: VERIFIED_LIVE
 surface: quality-gates/ai-beta-pipeline
 source: |
@@ -56,3 +57,37 @@ detail: |
   producers now run to completion) -- 2 of 3 scenarios spot-checked in isolation reach complete
   green (generation through smoke); this is scenario-tenant-workflow-ops's own separate, pre-existing
   defect, unmasked by REG-121's fix rather than caused by it.
+
+resolution: |
+  DONE (Move 16 Phase A2, 2026-08-03). Fix chosen: option (a) from this item's own detail --
+  renamed the scenario's own tenancy.tenantIdField from "tenantId" to "tenantIdRef", threaded
+  through all three sections that reference the same name (confirmed it is not an isolated
+  single-field rename): golden-ai-scenarios/tenant-workflow-ops/ai-model.json's
+  `tenancy.tenantIdField`, and golden-ai-scenarios/tenant-workflow-ops/ai-verification-report.json's
+  `scenario-authenticated-create-ticket` check's request body and expectedJsonContains (both keys
+  renamed tenantId -> tenantIdRef). Left `auth.principalFields`/`testUsers[].tenantId` unchanged --
+  confirmed these represent the AUTH TOKEN CLAIM structure (a separate concept from the persisted
+  Ticket field), passed through verbatim by Normalize-AiContract.ps1 without cross-referencing
+  tenancy.tenantIdField by name.
+
+  Chose (a) over (b) (teaching Normalize-AiContract.ps1 to auto-detect/auto-rename the collision)
+  per this item's own reasoning: (b) is the more durable, repo-wide fix but "needs its own
+  verification pass" that a bounded single-fixture repair should not absorb.
+
+  Live-verified via `run-ai-beta-gate.ps1` (full run, all ~28 scenarios): tenant-workflow-ops now
+  reaches generation -> deterministic-generation -> build -> boot -> health, ALL passing, where it
+  previously failed at generation with CONCEPT_FIELD_RESERVED_COLLISION. This meets this item's own
+  DoD ("the scenario loads and runs").
+
+  The scenario's OWN "smoke" stage still fails one check (scenario-authenticated-create-ticket,
+  403 instead of 201) -- traced this to a genuinely SEPARATE, newly-uncovered defect (the scenario
+  had never reached the smoke stage before this fix, so this bug was previously unreachable):
+  Normalize-AiContract.ps1 translates requiredRole for panels/procedures/workflow-transitions but
+  never for flows[] (CreateTicket's own requiredRole: "agent" is silently dropped, confirmed by
+  diffing the normalized official model.json against the AI-authored one). Filed as REG-126 (OPEN),
+  out of this item's own bounded scope.
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\golden-ai-scenarios\tenant-workflow-ops\ai-model.json
+    D:\WorkSpace\NPDev\NPDev_General\golden-ai-scenarios\tenant-workflow-ops\ai-verification-report.json
+  New: D:\WorkSpace\NPDev\NPDev_General\ledger\items\REG-126.yml
