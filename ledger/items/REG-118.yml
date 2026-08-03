@@ -2,8 +2,9 @@ id: REG-118
 title: "C1's own plan guidance ('bind $prop.<name> where $user.* is already bound') points at a binding site that the SAME item's hard rule makes permanently dead code -- ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule's scope is used EXCLUSIVELY by access.read/access.write, the one place $prop.* is now compile-time forbidden"
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-02
+closed: 2026-08-02
 verification: VERIFIED_LIVE
 surface: kernel
 source: |
@@ -26,7 +27,7 @@ source: |
   conditions in DefaultProcedureExecutor) would require threading ExecutionContext and/or CompiledModel
   through port contracts that do not carry them today, i.e. new plumbing, not a one-line bind.
 files:
-  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/kernel/adapters/expressioncel/ConfiguredConceptGatewaySemanticPolicy.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicy.java
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java
 detail: |
   Not fixed here, deliberately -- C1's own bolded acceptance criterion is only the hard rule ("$prop.*
@@ -38,3 +39,19 @@ detail: |
   architecture -- left here as a signpost for whoever next wants $prop.* usable in a legitimate,
   non-authorization expression surface (invariants is the closest candidate; see the three-surface
   comparison above), rather than silently rediscovering the same dead end.
+
+resolution: |
+  DONE (Move 15 Phase B item B2, 2026-08-02) -- this item's own fix is documentation, not code, per
+  its own framing ("the implementation is right... correct the record"). The Move 14 planning
+  scratchpad (MOVE14_AGILE_SPEC.md, item C1) has been corrected in place: the wrong binding hint is
+  struck through with an inline note explaining why ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule
+  is dead code for $prop.* (its scope is consumed exclusively by the access.read/access.write path this
+  same item forbids $prop.* from), and a note that the implementation correctly bound nothing at all --
+  only the compile-time rejection in ConceptValidation.validateAccessExpression.
+
+  Also found and fixed while correcting the record: this item's own `files:` field named the wrong
+  path for ConfiguredConceptGatewaySemanticPolicy.java (said
+  NPDevKernel/adapters/expression-cel/.../expressioncel/..., which does not exist -- the real path,
+  now corrected above, is NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/...). A second,
+  small instance of the same "wrong anchor sent the next reader to the wrong file" class this item is
+  itself about.

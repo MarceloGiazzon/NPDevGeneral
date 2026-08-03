@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**124 item(s) migrated: 6 open/partial, 118 done.**
+**124 item(s) migrated: 3 open/partial, 121 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -31,10 +31,10 @@
 | REG-115 | A new com.finalexec.api.*Controller added to NPDevRuntimeHost compiles into every OTHER app fine but silently produces 404-on-every-route with zero errors anywhere unless its simple class name is also added to runtime-supported-controllers.json's allowedControllers -- an allowlist gate with no companion check that a new controller was actually added to it | GAP | LOW | DONE | 2026-08-02 |
 | REG-116 | dsl-conformance-max's own propertyScopes declaration (the RC-A1 corpus witness) listed the implicit root scope (tenant, no 'from') BEFORE the more specific 'user' scope -- compiled clean and validated clean since Wave 6, but silently inverts cascade precedence, undetected until Move 14's PropertyResolver (RC-A3) finally read propertyScopes' order for the first time | BUG | MEDIUM | DONE | 2026-08-02 |
 | REG-117 | The generated business UI's hardcoded 'My Preferences' panel (business-ui-app.mustache/shell.js.mustache) references the now-retired workspace::Preference concept and its old userId/category/prefKey/prefValue fields -- silently vanishes from the nav (no crash, no error) for the one app that had it, WmsOffice, since RC-A2 (Move 14 item B1) renamed the concept to PropertyValue with a different shape | GAP | MEDIUM | OPEN | 2026-08-02 |
-| REG-118 | C1's own plan guidance ('bind $prop.<name> where $user.* is already bound') points at a binding site that the SAME item's hard rule makes permanently dead code -- ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule's scope is used EXCLUSIVELY by access.read/access.write, the one place $prop.* is now compile-time forbidden | GAP | LOW | OPEN | 2026-08-02 |
-| REG-119 | An app-declared role (RC-B1 roles[]/grants[]) holding EXECUTE_FLOW can never actually call the generated POST /api/flows/{name}/execute endpoint unless the actor ALSO independently holds the built-in 'user' role or the configured super-user role -- RuntimeApiEmitter's static permission manifest only ever grants the 'flow.execute' permission to those two role names, never to any app-declared one | GAP | MEDIUM | OPEN | 2026-08-02 |
+| REG-118 | C1's own plan guidance ('bind $prop.<name> where $user.* is already bound') points at a binding site that the SAME item's hard rule makes permanently dead code -- ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule's scope is used EXCLUSIVELY by access.read/access.write, the one place $prop.* is now compile-time forbidden | GAP | LOW | DONE | 2026-08-02 |
+| REG-119 | An app-declared role (RC-B1 roles[]/grants[]) holding EXECUTE_FLOW can never actually call the generated POST /api/flows/{name}/execute endpoint unless the actor ALSO independently holds the built-in 'user' role or the configured super-user role -- RuntimeApiEmitter's static permission manifest only ever grants the 'flow.execute' permission to those two role names, never to any app-declared one | GAP | MEDIUM | DONE | 2026-08-02 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
-| REG-120 | A concept whose create is delegated to a declared Flow (input.mode: create) AND is also exposed via the generic CRUD create endpoint gets DOUBLE-PERSISTED on every create -- the flow's own createConcept step writes the row through the kernel persistence capability, then the SAME generated service method immediately writes it AGAIN via saveWithIntegrityMapping -- and the two writes can race, throwing a spurious 500 (or, when they don't race, silently perform a wasted redundant write) | BUG | MEDIUM | OPEN | 2026-08-02 |
+| REG-120 | A concept whose create is delegated to a declared Flow (input.mode: create) AND is also exposed via the generic CRUD create endpoint gets DOUBLE-PERSISTED on every create -- the flow's own createConcept step writes the row through the kernel persistence capability, then the SAME generated service method immediately writes it AGAIN via saveWithIntegrityMapping -- and the two writes can race, throwing a spurious 500 (or, when they don't race, silently perform a wasted redundant write) | BUG | MEDIUM | DONE | 2026-08-02 |
 | REG-121 | Two release-evidence producers (run-ai-beta-gate.ps1, run-trusted-source-beta0-proof.ps1) still invoke `:generator:run` with the disabled `--migrationsDir` flag -- GeneratorMain.migrationsDisabled() rejects it outright (CONFIG_MIGRATIONS_DISABLED), so every ai-beta-gate scenario whose model reaches generation fails there, cascading into expanded-beta0-evidence, sample-matrix, docker-linux-parity, and final-regression-coverage-audit | BUG | MEDIUM | OPEN | 2026-08-02 |
 | REG-122 | Normalize-AiContract.ps1 emitted retired pre-DSL-2.0 flow-step syntax (enforceInvariants / cap / op / out) for every AI-authored model's generated flow, failing official JSON Schema validation for every golden AI scenario that declares flows[] -- masking the true outcome of ~20 of 28 ai-beta-gate scenarios behind an early, uninformative official-validation failure instead of their own designed stage | BUG | MEDIUM | DONE | 2026-08-02 |
 | REG-123 | doc-entrypoint-validation fails on ~20+ stale script-path references and unmapped report references scattered across historical/archived docs (docs/beta/*, docs/architecture/*, docs/NEXT_EXECUTION_PLAN.md, etc.) -- a documentation-drift backlog, not a single defect, that has never been triaged since this checker's own scope was expanded to cover the full docs/ tree | GAP | LOW | OPEN | 2026-08-02 |
@@ -1507,7 +1507,7 @@ shell itself also points at it.
 
 ### REG-118 — C1's own plan guidance ('bind $prop.<name> where $user.* is already bound') points at a binding site that the SAME item's hard rule makes permanently dead code -- ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule's scope is used EXCLUSIVELY by access.read/access.write, the one place $prop.* is now compile-time forbidden
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-08-02)
 **Verification:** VERIFIED_LIVE
 **Source:** Found while implementing Move 14 Phase C item C1 (RC-A4). The plan's implementation hint reads:
 "Bind $prop.<name> where $user.* is already bound -- ConfiguredConceptGatewaySemanticPolicy, anchor
@@ -1530,7 +1530,7 @@ through port contracts that do not carry them today, i.e. new plumbing, not a on
 
 **Surface:** `kernel`
 **Files:**
-- `NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/kernel/adapters/expressioncel/ConfiguredConceptGatewaySemanticPolicy.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicy.java`
 - `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java`
 
 Not fixed here, deliberately -- C1's own bolded acceptance criterion is only the hard rule ("$prop.*
@@ -1545,7 +1545,7 @@ comparison above), rather than silently rediscovering the same dead end.
 
 ### REG-119 — An app-declared role (RC-B1 roles[]/grants[]) holding EXECUTE_FLOW can never actually call the generated POST /api/flows/{name}/execute endpoint unless the actor ALSO independently holds the built-in 'user' role or the configured super-user role -- RuntimeApiEmitter's static permission manifest only ever grants the 'flow.execute' permission to those two role names, never to any app-declared one
 
-**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-02)
 **Verification:** VERIFIED_LIVE
 **Source:** Found live while verifying Move 14 Phase C item C2 (RC-B3, runtime permission-subset binding) on
 WmsOffice. Granted the app-declared role WarehouseManager (grants: EXECUTE_FLOW, READ_EXECUTIONS,
@@ -1623,7 +1623,7 @@ Actions (run 29943008077), not just Windows.
 
 ### REG-120 — A concept whose create is delegated to a declared Flow (input.mode: create) AND is also exposed via the generic CRUD create endpoint gets DOUBLE-PERSISTED on every create -- the flow's own createConcept step writes the row through the kernel persistence capability, then the SAME generated service method immediately writes it AGAIN via saveWithIntegrityMapping -- and the two writes can race, throwing a spurious 500 (or, when they don't race, silently perform a wasted redundant write)
 
-**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-02)
 **Verification:** VERIFIED_LIVE
 **Source:** Found live while authoring Move 14 Phase D item D1's canary acceptance scenario (folding the
 already-built acceptance runner into run-fast-gate.ps1). NPDevSamples/npdev-canary's own model
