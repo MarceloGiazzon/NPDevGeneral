@@ -566,7 +566,17 @@ function Write-GeneratedRuntimeModel {
                 name = "User"
                 fields = @(
                     [ordered]@{ name = "id"; type = "uuid"; id = $true; required = $true },
-                    [ordered]@{ name = "tenantId"; type = "string"; required = $true },
+                    # REG-121 (Move 16 Phase A1): removed the explicit "tenantId" field entirely
+                    # (not renamed) -- it collided with the platform's own reserved tenant_id column
+                    # (ReservedColumnNames: every generated business table implicitly gets one for
+                    # tenant isolation), AND it was always redundant: TrustedActionSupportTemplates's
+                    # generated ctx.saveMany/ctx.save helper already auto-populates the tenant column
+                    # from the AUTHENTICATED CALLER's own context.tenantId() unconditionally (never
+                    # from caller-supplied data -- confirmed live: CreateUsersProcedure.java's
+                    # hardcoded user records never populated a tenant field at all, and this was NOT
+                    # new breakage from a rename, it was already missing before this session touched
+                    # this fixture). An explicit DSL field for it would only ever fight the platform's
+                    # own auto-injection, never usefully coexist with it.
                     [ordered]@{ name = "name"; type = "string"; required = $true },
                     [ordered]@{ name = "email"; type = "string"; required = $true },
                     [ordered]@{ name = "active"; type = "boolean"; required = $true }
@@ -890,8 +900,21 @@ function Invoke-GeneratedRuntimeIntegrationProof {
     $artifacts += [pscustomobject]@{ path = $generatedPanelCssResourcePath; kind = "product-generated-trusted-panel-css-resource" }
     $artifacts += [pscustomobject]@{ path = $generatedPanelJsResourcePath; kind = "product-generated-trusted-panel-js-resource" }
 
+    # REG-121 (Move 16 Phase A1): without -PnpdevRuntimeHostLibsDir, the generated app's own
+    # build.gradle falls back to its per-app-relative default (App__OutsideRepo\runtimehost-libs),
+    # never populated for this scratch app root -- every other build invocation
+    # (Build-NpdevApp.ps1, generate-sample-app.ps1) already passes this explicitly, pointing at the
+    # shared, already-staged cache. Same NPDEV_RUNTIMEHOST_LIBS_DIR override + Build-root-relative
+    # default Get-NPDevRuntimeHostLibsDir (scripts/npdev-common.ps1) uses, inlined here rather than
+    # dot-sourcing that whole helper file (which also sets Set-StrictMode -Version Latest) into this
+    # already-large, pre-existing script.
+    $runtimeHostLibsDir = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_RUNTIMEHOST_LIBS_DIR)) {
+        [System.IO.Path]::GetFullPath($env:NPDEV_RUNTIMEHOST_LIBS_DIR)
+    } else {
+        [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $workspaceRoot) "Build\runtimehost-libs"))
+    }
     $appWrapper = Get-GradleWrapper $runtimeHostRoot
-    $buildCommand = Invoke-ProcessEvidence -FilePath $appWrapper -Arguments @("clean", "build", "-x", "test", "--no-daemon", "--console=plain") -WorkingDirectory $appRoot -StdoutPath $buildStdout -StderrPath $buildStderr -TimeoutSeconds 240 -Name "build-generated-trusted-source-app"
+    $buildCommand = Invoke-ProcessEvidence -FilePath $appWrapper -Arguments @("clean", "build", "-x", "test", "-PnpdevRuntimeHostLibsDir=$runtimeHostLibsDir", "--no-daemon", "--console=plain") -WorkingDirectory $appRoot -StdoutPath $buildStdout -StderrPath $buildStderr -TimeoutSeconds 240 -Name "build-generated-trusted-source-app"
     $commands += $buildCommand
     $artifacts += [pscustomobject]@{ path = $buildStdout; kind = "build-stdout-log" }
     $artifacts += [pscustomobject]@{ path = $buildStderr; kind = "build-stderr-log" }
@@ -942,7 +965,9 @@ function Invoke-GeneratedRuntimeIntegrationProof {
     }
 
     $port = 18190 + (Get-Random -Minimum 10 -Maximum 80)
-    $bootArgs = @("bootRun", "--no-daemon", "--console=plain", ('--args="--spring.profiles.active=dev,step0,ai-beta-local --server.port=' + $port + '"'))
+    # REG-121 (Move 16 Phase A1): same missing -PnpdevRuntimeHostLibsDir as the build invocation
+    # above -- bootRun re-evaluates the build.gradle's own runtimehost-libs verification task too.
+    $bootArgs = @("bootRun", "--no-daemon", "--console=plain", "-PnpdevRuntimeHostLibsDir=$runtimeHostLibsDir", ('--args="--spring.profiles.active=dev,step0,ai-beta-local --server.port=' + $port + '"'))
     $bootProcess = Start-Process -FilePath $appWrapper -ArgumentList $bootArgs -WorkingDirectory $appRoot -RedirectStandardOutput $bootStdout -RedirectStandardError $bootStderr -PassThru -WindowStyle Hidden
     $artifacts += [pscustomobject]@{ path = $bootStdout; kind = "boot-stdout-log" }
     $artifacts += [pscustomobject]@{ path = $bootStderr; kind = "boot-stderr-log" }
@@ -977,7 +1002,11 @@ function Invoke-GeneratedRuntimeIntegrationProof {
         $adminApiKey = Get-GeneratedBetaLocalApiKey -ScenarioId "create-users-panel-procedure" -UserId "admin-user"
         $viewerApiKey = Get-GeneratedBetaLocalApiKey -ScenarioId "create-users-panel-procedure" -UserId "viewer-user"
         $otherAdminApiKey = Get-GeneratedBetaLocalApiKey -ScenarioId "create-users-panel-procedure" -UserId "other-admin"
-        $fullCsp = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'self'"
+        # REG-121 (Move 16 Phase A1): must match TrustedSourceControllerTemplate.FULL_CSP exactly (generator
+        # source of truth) -- this copy was missing the frame-src/frame-ancestors/worker-src/manifest-src/
+        # upgrade-insecure-requests directives added to the platform constant since this string was last
+        # updated here, so the comparison below always failed even though the real served header was correct.
+        $fullCsp = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'; frame-ancestors 'none'; worker-src 'none'; manifest-src 'self'; upgrade-insecure-requests"
         $captures = @()
         $captures += Invoke-HttpEvidence -Name "state-viewer-forbidden" -Uri "$baseUrl/generated/trusted-source/state/User" -Method "GET" -Headers @{ "X-Api-Key" = $viewerApiKey } -Body $null -ExpectedStatus 403 -OutputPath (Join-Path $WorkRoot "http-state-viewer-forbidden.json")
         $captures += Invoke-HttpEvidence -Name "state-before-missing-role-tenant-a" -Uri "$baseUrl/generated/trusted-source/state/User" -Method "GET" -Headers @{ "X-Api-Key" = $adminApiKey } -Body $null -ExpectedStatus 200 -OutputPath (Join-Path $WorkRoot "http-state-before-missing-role-tenant-a.json")
@@ -1165,7 +1194,24 @@ try {
   const procedureResponse = await procedureResponsePromise;
   result.procedureStatusCode = procedureResponse.status();
   result.procedureBody = await procedureResponse.text();
-  await page.waitForFunction(() => document.getElementById("status")?.textContent === "3 users created", null, { timeout: 15000 });
+  // REG-121 (Move 16 Phase A1): page.waitForFunction's polling harness does a real eval() of the
+  // predicate inside the page, which this platform's own strict CSP (script-src 'self', no
+  // unsafe-eval) rejects -- confirmed live ("Refused to evaluate a string as JavaScript because
+  // 'unsafe-eval' is not an allowed source"). $eval below uses CDP callFunctionOn instead (already
+  // proven CSP-safe by the $eval/$$eval calls above), so poll manually with it rather than weakening
+  // the CSP the platform deliberately enforces.
+  {
+    const statusDeadline = Date.now() + 15000;
+    let statusReady = false;
+    while (Date.now() < statusDeadline) {
+      const currentStatus = await page.$eval("#status", element => element.textContent || "").catch(() => "");
+      if (currentStatus === "3 users created") { statusReady = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    if (!statusReady) {
+      throw new Error("Timed out waiting for #status to read \"3 users created\"");
+    }
+  }
   result.statusText = await page.$eval("#status", element => element.textContent || "");
   result.rowCount = await page.$$eval("#usersTable tr", rows => rows.length);
   result.passed =
@@ -1289,17 +1335,29 @@ if (!result.passed) {
         $wrongTenantBUnchanged = (& $countOf $stateBeforeWrongTenantB) -eq (& $countOf $stateAfterWrongTenantB)
         $authorizedStateIncremented = ((& $countOf $stateAfterAuthorizedTenantA) -eq ((& $countOf $stateBeforeAuthorizedTenantA) + 3))
 
-        $runtimePassed = [bool]$authorized.passed -and [string]$authBody.status -eq "ok" -and [int]$authBody.createdCount -eq 3 -and $authorizedStateIncremented
+        # REG-121 (Move 16 Phase A1): the procedure's OWN domain result nests under the generated
+        # action wrapper's "result" key (createdCount/users) -- the wrapper's own top-level
+        # "createdCount" is unrelated envelope metadata (always 0 for this action), never the
+        # procedure's actual return value. Confirmed live: the real response body was
+        # {"...", "createdCount":0, ..., "result":{"createdCount":3,"users":[...]}}.
+        $runtimePassed = [bool]$authorized.passed -and [string]$authBody.status -eq "ok" -and [int]$authBody.result.createdCount -eq 3 -and $authorizedStateIncremented
+        # REG-121 (Move 16 Phase A1): the state-viewer diagnostic endpoint's rejection envelope uses
+        # a top-level "reason" field, but the generated action/procedure endpoint's rejection envelope
+        # uses "error"/"message" instead -- confirmed live: http-procedure-missing-role.json and
+        # http-procedure-wrong-tenant.json both carry {"...","message":"missing-role","error":"missing-role",...}
+        # with no "reason" key at all, so the original checks compared against a field that never existed
+        # on this envelope shape and always evaluated false.
         $stateEndpointRoleProtected = [bool]($captures | Where-Object name -eq "state-viewer-forbidden" | Select-Object -First 1).passed -and [string]$stateViewerForbidden.reason -eq "missing-role"
-        $rolePassed = [bool]$missingRole.passed -and [string]$missingBody.reason -eq "missing-role" -and [int]$missingBody.sideEffectCountBefore -eq [int]$missingBody.sideEffectCountAfter -and $missingStateUnchanged -and $stateEndpointRoleProtected
-        $tenantPassed = [bool]$wrongTenant.passed -and [string]$wrongBody.reason -eq "wrong-tenant" -and [int]$wrongBody.sideEffectCountBefore -eq [int]$wrongBody.sideEffectCountAfter -and $wrongTenantAUnchanged -and $wrongTenantBUnchanged
+        $rolePassed = [bool]$missingRole.passed -and [string]$missingBody.error -eq "missing-role" -and [int]$missingBody.sideEffectCountBefore -eq [int]$missingBody.sideEffectCountAfter -and $missingStateUnchanged -and $stateEndpointRoleProtected
+        $tenantPassed = [bool]$wrongTenant.passed -and [string]$wrongBody.error -eq "wrong-tenant" -and [int]$wrongBody.sideEffectCountBefore -eq [int]$wrongBody.sideEffectCountAfter -and $wrongTenantAUnchanged -and $wrongTenantBUnchanged
         $panelHtmlCspSafe = [string]$panel.responseBody -notmatch "(?is)<style\b|<script(?![^>]*\bsrc\s*=)" -and
                 [string]$panel.responseBody -match "/generated/trusted-source/npdev-panel-runtime\.js" -and
                 [string]$panel.responseBody -match "/generated/trusted-source/panel/user-admin-panel\.js" -and
                 [string]$panel.responseBody -match "/generated/trusted-source/panel/user-admin-panel\.css" -and
                 [string]$panel.responseBody -notmatch "fallbackUsers|fallback"
         $panelPassed = [bool]$panel.passed -and [bool]$bridge.passed -and [bool]$panelCss.passed -and [bool]$panelJs.passed -and $panelHtmlCspSafe -and [string]$panel.responseHeaders["Content-Security-Policy"] -eq $fullCsp
-        $panelActionPassed = [bool]$panelAction.passed -and [string]$panelActionBody.status -eq "ok" -and [int]$panelActionBody.createdCount -eq 3 -and [string]$bridge.responseBody -match "/generated/procedures/" -and [bool]$browserProof.passed -and $browserProofCommand.exitCode -eq 0 -and [bool]$browserProof.fullCspMatched -and [int]$browserProof.inlineScriptCount -eq 0 -and [int]$browserProof.inlineStyleCount -eq 0 -and -not [bool]$browserProof.fallbackSuccessPresent
+        # REG-121 (Move 16 Phase A1): same wrong-JSON-path fix as $runtimePassed above.
+        $panelActionPassed = [bool]$panelAction.passed -and [string]$panelActionBody.status -eq "ok" -and [int]$panelActionBody.result.createdCount -eq 3 -and [string]$bridge.responseBody -match "/generated/procedures/" -and [bool]$browserProof.passed -and $browserProofCommand.exitCode -eq 0 -and [bool]$browserProof.fullCspMatched -and [int]$browserProof.inlineScriptCount -eq 0 -and [int]$browserProof.inlineStyleCount -eq 0 -and -not [bool]$browserProof.fallbackSuccessPresent
 
         $checks += New-Check "real-generated-runtime-procedure-invocation" $runtimePassed "endpoint" "$baseUrl/generated/procedures/create-users" ([pscustomobject]@{ appRoot = $appRoot; requestCapturePath = (Join-Path $WorkRoot "http-procedure-authorized.json"); buildCommand = $buildCommand; bootCommand = $bootEvidence; classpathEvidencePath = $classpathEvidencePath }) $(if ($runtimePassed) { @() } else { @("Authorized trusted procedure invocation through generated runtime endpoint failed.") })
         $checks += New-Check "real-generated-procedure-smoke" $runtimePassed "endpoint" "$baseUrl/generated/procedures/create-users" ([pscustomobject]@{ requestCapturePath = (Join-Path $WorkRoot "http-procedure-authorized.json"); stateBeforePath = (Join-Path $WorkRoot "http-state-before-authorized-tenant-a.json"); stateAfterPath = (Join-Path $WorkRoot "http-state-after-authorized-tenant-a.json"); responseBody = $authBody; stateBeforeCount = (& $countOf $stateBeforeAuthorizedTenantA); stateAfterCount = (& $countOf $stateAfterAuthorizedTenantA) }) $(if ($runtimePassed) { @() } else { @("Generated procedure smoke did not return expected trusted-source result or did not update actual runtime state by 3 records.") })
