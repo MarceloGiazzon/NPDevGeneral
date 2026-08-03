@@ -57,7 +57,7 @@ independent and low-to-medium risk; the last two are new subsystems.
 | 3 | LIFT-ROWOPS | ARCH-13 (declared Panel no create/delete-row) | P1–P4 | Low | — (reuses Workbench rowOps) |
 | 4 | LIFT-QUERY | ARCH-7 (capability can't get live filtered data) | P1–P4 | Low-Med | — |
 | 5 | LIFT-UPLOAD | ARCH-upload (no file-upload primitive) | P1–P6 | High | — (new subsystem) |
-| 6 | LIFT-LOOP | ARCH-loop (no loop step in Flows) | P1–P5 | High | — (durable resume) |
+| 6 | LIFT-LOOP | ARCH-loop (no loop step in Flows) | P1–P6 | High | — (durable resume; P6 sequential await-in-loop, parallel still out of scope) |
 
 **Critical path:** none of the six hard-depends on another, so they can parallelize. Recommended
 serial order for a single implementer is the table order: build expression + validation muscle first
@@ -666,6 +666,64 @@ the same `maxLoopIterations` safety cap procedures use.
   pre-existing, unrelated `ConvertTo-Json` crash (documented as a known gate-script bug, not a
   regression from this phase).
 
+### LIFT-LOOP-P6 — sequential `await` inside a loop body (B15(A))
+- **Status:** DONE (2026-08-03, Move 16 Phase B) · **Risk:** High
+- **Note:** P1 rejected any `AWAIT_EVENT` nested in a `forEach` loop body outright (this row's own
+  original mitigation: "reject nested await in P1; support deliberately in a later slice with its own
+  resume test"). Move 9 A5 later investigated closing it and found a structural wall — but for the
+  GENERAL (parallel, N-iterations-waiting-at-once) case: `FlowInstance` hard-codes one `correlationId`/
+  `currentStepIndex`/`waitingForEventName` per row. That analysis never asked the narrower question
+  this phase answered: what does the SEQUENTIAL-only case (at most one outstanding await at a time)
+  actually need? Nothing new in the schema — `FlowInstance.state` is already a flexible JSON blob.
+  Three mechanisms, entirely inside the existing single-slot shape: (1) a deterministic, non-blank
+  per-iteration correlation id (`executionId + "::forEach:" + stepName + ":" + iterationIndex`,
+  `FlowStateCodec.deriveForEachIterationCorrelationId`) overwrites `state.correlationId` before each
+  iteration's body runs, discriminating iteration N's own reply from any other iteration's or flow
+  instance's event of the same name — required, never silently derived-to-blank
+  (`KernelRunner.matchesCorrelation` treats a blank correlation as "matches anything"); (2) a
+  satisfaction marker plus a mid-iteration checkpoint pinned to the forEach step's own outer trace
+  index close the crash window between "event consumed" and "outer iteration progress advanced" —
+  without both, a crash there loses the marker and re-entry finds the one satisfying event already
+  marked processed by the (separate) idempotency store, parking the flow WAITING forever; (3) two real
+  bugs found and fixed by the restart-proof tests themselves, both previously unreachable since the
+  validator rejected the whole shape: `ForEachStep`'s nested-failure handling used to unconditionally
+  re-wrap ANY nested failure — including a legitimate `WAITING_EVENT` — as a generic terminal `FAILED`;
+  and its `finally` block used to unconditionally wipe progress/correlation/marker state even when
+  returning early for a genuine wait.
+- **What:** a `forEach` loop body with exactly one reachable `await` step resumes correctly across a
+  real process restart, with events arriving out of order.
+- **Where:** [`FlowStateCodec.java`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/FlowStateCodec.java),
+  [`ForEachStep.java`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/ForEachStep.java),
+  [`AwaitEventStep.java`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/AwaitEventStep.java),
+  [`ResumeCoordinator.java`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/ResumeCoordinator.java),
+  [`FlowValidation.java`](../NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java)
+  (`:470-478`, `countAwaitSteps` replacing `containsAwaitStep` — up to one reachable await is now
+  allowed, two or more still rejected since that shape was never exercised by the restart-proof
+  tests).
+- **Why:** the single most-requested "why can't my loop wait for approval on each item" shape, without
+  the invasive per-iteration-collection redesign the parallel case would need.
+- **Definition of Done:** the required restart proof (this phase's own hard-stop rule, unchanged from
+  Move 9: "a loop that resumes the wrong iteration is far worse than a validation error") passes for
+  real, not just compiles.
+- **Verify:** `KernelRunnerAwaitInLoopRestartProofTest`
+  (`NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerAwaitInLoopRestartProofTest.java`),
+  modeled on `KernelRunnerForEachDurabilityTest`'s real-thread-freeze technique. Two scenarios: a
+  forEach over 3 items with brand-new `KernelRunner` instances (no in-memory state carried over)
+  resuming across each parked iteration, with the LAST item's own reply event delivered and already
+  sitting in the store BEFORE the currently-waiting (earlier) iteration's own reply arrives — each
+  iteration resumes exactly once, using its own event, in order; and a thread frozen at the exact
+  instant the mid-iteration checkpoint persists the satisfaction marker (event already durably
+  consumed, idempotency store already marking it processed, outer progress not yet advanced) — a
+  fresh runner resuming from that frozen point completes the iteration via the marker rather than
+  re-querying and getting stuck. Full `NPDevKernel` test suite (kernel + every adapter, 133 tasks)
+  green. `dsl-conformance-max` extended with a real corpus example (`ProcessWidgetOrderLineApprovals`,
+  a `forEach` over `$input.skus` awaiting `WidgetOrderLineApproved` per item) and
+  `FlowForEachValidationTest` extended (`singleAwaitInsideLoopBodyIsAllowed`,
+  `twoAwaitsInsideLoopBodyIsRejected`, replacing the old blanket-rejection test).
+- **Deliberately not done:** parallel awaits (N iterations genuinely waiting at once) — see this
+  document's own risk register and `docs/ACCEPTED_BOUNDARIES.md` B15(B). Move 16 Phase C produced a
+  costed design decision for that, not an implementation.
+
 ---
 
 ## 8. Sequencing & dependencies
@@ -681,7 +739,7 @@ LIFT-ROWOPS  P1 ─► P2 ─► (P3) ─► P4        (reuses Workbench rowOps 
 LIFT-QUERY   P1 ─► P2 ─► P3 ─► P4
 LIFT-UPLOAD  P1 ─► P2 ─► P3 ─► P4 ─► P6
                           └► P5
-LIFT-LOOP    P1 ─► P2 ─► P3 ─► P4
+LIFT-LOOP    P1 ─► P2 ─► P3 ─► P4 ─► P6
                 └► P5
 ```
 
@@ -731,7 +789,8 @@ resume) where the design risk concentrates and deserves undivided attention.
 | Blob orphans on replace/delete | LIFT-UPLOAD-P3 | Cascade delete + a periodic orphan sweep; test replace+delete paths |
 | Object-store infra unavailable in dev | LIFT-UPLOAD-P1 | Filesystem `*-inproc` adapter is the dev default; object-store behind config, tested against minio/localstack |
 | Loop state corrupts durable resume (double effects) | LIFT-LOOP-P2 | Per-iteration idempotency keys reusing the engine's existing dedup; forced-resume test is a merge gate |
-| `await` inside a loop | LIFT-LOOP-P1/P2 | Reject nested await in P1; support deliberately in a later slice with its own resume test |
+| `await` inside a loop (sequential, one outstanding at a time) | LIFT-LOOP-P1/P6 | **Closed, Move 16 Phase B (2026-08-03).** Rejected in P1; lifted in P6 with its own required restart-proof test (`KernelRunnerAwaitInLoopRestartProofTest`) per the mitigation this row always called for |
+| `await` inside a loop (parallel, N outstanding at once) | LIFT-LOOP-P6 | Still out of scope — needs either a `FlowInstance` row per iteration or a new wait-table keyed by (executionId, iteration); Move 16 Phase C costed the design, did not implement it |
 | VS Code Gradle file-lock on regen | all | Bump build-root suffix (`-alt`/`-hNN`) per CLAUDE.md |
 
 ---

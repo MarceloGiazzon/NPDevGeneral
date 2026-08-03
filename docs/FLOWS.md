@@ -334,28 +334,70 @@ Proven by `KernelRunnerForEachDurabilityTest.crashMidLoopThenResumeOnFreshRunner
 crash-injection technique as the compensation test, resumed on a fresh runner with no shared state,
 asserts every item ran exactly once in order.
 
-**The documented boundary:** `FlowValidation` (the sibling class `SemanticValidator` now delegates
-flow/event checks to, per the 2.B decomposition -- see `SemanticValidator.validateFlows`) rejects a
-nested `AWAIT_EVENT` inside a `forEach` loop body **at compile time** —
-`containsAwaitStep` (`NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java:513-525`),
-called from the rejection itself (`:470-472`), which also recurses into a `branch` nested inside the
-loop body, not just top-level steps. This is a deliberate design decision, not a missing feature:
-durable resume of an *in-flight await inside an iteration* is a materially harder state problem than
-resuming a loop that never suspends, and it's deferred rather than half-supported. Own test:
-`FlowForEachValidationTest.nestedAwaitInsideLoopBodyIsRejected`
-(`NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/FlowForEachValidationTest.java:102-114`).
-Tracked as accepted boundary B15 in `docs/ACCEPTED_BOUNDARIES.md` -- Move 9 A5 (2026-07-31)
-investigated closing this boundary and confirmed the wall is structural: `FlowInstance` (one row per
-flow instance) hard-codes exactly one `correlationId`, one `currentStepIndex`, and one
-`waitingForEventName`, and `AwaitEventStep`'s wait descriptor lives at one fixed state key
-(`_npdev.await`) inside one shared mutable state map. Making N loop iterations independently,
-out-of-order awaitable needs either one `FlowInstance` row per iteration (a new sub-execution concept
--- `resumeExecution`/`executeSteps`/compensation/idempotency all assume one row = one flow) or turning
-every one of those scalar fields into a per-iteration collection, simultaneously, across
-`FlowInstance`, `ResumeCoordinator`'s matching, the `npdev_flow_instance` schema, and the
-`ForEachStep`/`AwaitEventStep` contract. The boundary was left in place rather than half-built (Move
-9's own hard-stop rule: "a loop that resumes the wrong iteration is far worse than a validation
-error").
+**B15(A), lifted (Move 16 Phase B, 2026-08-03): a SEQUENTIAL `AWAIT_EVENT` nested in a `forEach` loop
+body — at most one outstanding await at a time — is now durably supported.** `FlowValidation`
+(`NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java`) now accepts a
+loop body with exactly one reachable `await` step (`countAwaitSteps`, `:518-531`) and rejects only
+two-or-more (`:470-478`) — that broader shape was never exercised by this Move's own restart-proof
+tests, so it stays rejected rather than accepted-but-unproven.
+
+Move 9 A5 (2026-07-31) had investigated this boundary and correctly found a structural wall — but for
+the GENERAL (parallel, N-iterations-waiting-at-once) case: `FlowInstance` hard-codes exactly one
+`correlationId`, one `currentStepIndex`, one `waitingForEventName` per row, and `AwaitEventStep`'s wait
+descriptor lives at one fixed state key (`_npdev.await`) in one shared mutable state map. That analysis
+never asked the narrower question Move 16 answered: what does the SEQUENTIAL-only case need? Nothing
+new in the schema — `state` is already a flexible JSON blob. Three mechanisms, entirely inside the
+existing single-slot shape:
+
+1. **Per-iteration correlation** (`FlowStateCodec.deriveForEachIterationCorrelationId`,
+   `NPDevKernel/kernel/.../ForEachStep.java`): a deterministic, non-blank id —
+   `executionId + "::forEach:" + awaitStepName + ":" + iterationIndex` — OVERWRITES the same
+   `state.correlationId` slot before each iteration's body runs (restored on exit). Deliberately
+   derived from `executionId` (globally unique per instance), not the flow's own business
+   `correlationId` (which two different instances may deliberately share for cross-flow linking, and
+   which would collide across instances running the same flow). `FlowInstance.correlationId()` itself
+   is fixed for the instance's whole lifetime and never reflects this — `ResumeCoordinator`'s two
+   correlation-matching call sites now prefer the live, round-tripped `state.correlationId` over that
+   fixed row field, falling back to it for the ordinary, non-forEach case where nothing overrides it.
+2. **A satisfaction marker** (`FlowStateCodec.FOR_EACH_AWAIT_SATISFIED_KEY_PREFIX`, checked/set in
+   `AwaitEventStep`) **plus a mid-iteration checkpoint** pinned to the forEach step's own outer trace
+   index (`ForEachStep`'s `loopBodyProgressRecorder`, installed only when the loop body actually
+   contains an await) close the one real crash window: between "event consumed" and "outer iteration
+   progress advanced." Without both, a crash there loses the marker, and re-entry would call
+   `awaitEvent()` again only to find the satisfying event already marked processed by the (separate)
+   idempotency store — parking the flow WAITING forever on an event that will never arrive again.
+3. Two bugs surfaced and fixed by the restart-proof tests themselves, both unreachable before this
+   Move (the validator rejected any nested await outright, so nothing ever exercised these paths):
+   `ForEachStep`'s nested-failure handling used to unconditionally re-wrap ANY nested failure —
+   including a legitimate `WAITING_EVENT` — as a generic terminal `FAILED`, discarding its own
+   `awaitedEventName`/`awaitedCorrelationId`; and its `finally` block used to unconditionally wipe
+   `progressKey`/`correlationId`/the marker even when returning early for a genuine wait, which would
+   have restarted the whole collection from item 0 on every resume instead of the correct iteration.
+
+Required, non-optional proof (per this Move's own hard-stop rule — "a loop that resumes the wrong
+iteration is far worse than a validation error" still applies, just now satisfied rather than avoided):
+`KernelRunnerAwaitInLoopRestartProofTest`
+(`NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerAwaitInLoopRestartProofTest.java`),
+modeled on `KernelRunnerForEachDurabilityTest`'s real-thread-freeze technique. Two scenarios: a forEach
+over 3 items with brand-new `KernelRunner` instances (no in-memory state carried over) resuming across
+each parked iteration, with the LAST item's own reply event delivered and already sitting in the store
+BEFORE the currently-waiting (earlier) iteration's own reply arrives — proves the per-iteration
+correlation id discriminates correctly, each iteration resuming exactly once, using its own event, in
+order; and a thread frozen at the exact instant the mid-iteration checkpoint persists the satisfaction
+marker (the event already durably consumed, the idempotency store already marking it processed, outer
+progress not yet advanced) — a fresh runner resuming from that frozen point completes the iteration via
+the marker rather than re-querying and getting stuck.
+
+**B15(B), still standing: parallel awaits (more than one iteration genuinely waiting at once) remain
+unsupported and out of scope.** This IS the shape Move 9 A5's structural analysis describes — B15(A)'s
+per-iteration correlation id occupies exactly one slot at a time (overwritten, not appended), so it
+does nothing for N-in-flight. Closing it for real still needs either one `FlowInstance` row per loop
+iteration (a new sub-execution concept touching `resumeExecution`/`executeSteps`/compensation/
+idempotency, all of which assume one row = one flow) or a new dedicated wait-table keyed by
+(executionId, iteration index) — not a bounded task. Move 16 Phase C produced a costed design
+decision for this, not an implementation (see that Move's own closure notes).
+
+Tracked as accepted boundaries B15(A) (closed) / B15(B) (still open) in `docs/ACCEPTED_BOUNDARIES.md`.
 
 ## 7. Scheduling — two mechanisms, same name, don't confuse them
 
@@ -452,8 +494,10 @@ See §11 for the review that found this.
 ## 10. Honest limits
 
 - No per-nested-step compensation — only whole `branch`/`forEach` units (§5).
-- `AWAIT_EVENT` cannot be nested inside a `forEach` loop body — rejected at compile time, not silently
-  broken (§6, accepted boundary B15).
+- `AWAIT_EVENT` nested inside a `forEach` loop body now works for exactly one outstanding await at a
+  time (B15(A), §6); two or more reachable awaits in the same loop body, or more than one loop
+  iteration genuinely waiting at once (B15(B), parallel), are still rejected/unsupported — not
+  silently broken (§6, accepted boundaries B15(A)/B15(B)).
 - `forEach` materializes its whole collection into memory before iterating; `maxLoopIterations` bounds
   iteration count, not memory (§6, `R4-F2`, INFO).
 - No real sample model exercises `FOR_EACH`, `onFailure`/compensation, or hooks — only test code and
@@ -486,5 +530,5 @@ text: `docs/archive/programme-history/REG16_FLOW_ORCHESTRATION_ADVERSARIAL_REVIE
 
 *See also: `docs/architecture/FLOW_TRANSACTION_CONTRACT.md` (compensation, full spec) ·
 `docs/SCHEDULED_FLOWS.md` (cron scheduling, full spec) · `docs/BOUNDARY_LIFT_ROADMAP.md` (LIFT-LOOP-P1/P2) ·
-`docs/ACCEPTED_BOUNDARIES.md` (B15, nested-await rejection) · `FlowEngine.java`'s own javadoc
+`docs/ACCEPTED_BOUNDARIES.md` (B15(A)/B15(B), sequential-vs-parallel await-in-loop) · `FlowEngine.java`'s own javadoc
 (T1.16) for the port/implementation split.*
