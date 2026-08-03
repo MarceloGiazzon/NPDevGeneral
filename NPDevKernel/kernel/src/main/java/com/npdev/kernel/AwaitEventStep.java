@@ -18,6 +18,15 @@ import java.util.Objects;
  * return convention. Stays a flat sibling of {@link KernelRunner} in {@code com.npdev.kernel}, not
  * a subpackage, for the same reason the rest of this split's files do: the collaborators
  * (awaitEvent, traceFailedStep) are package-private.
+ *
+ * <p>B15(A) (Move 16, docs/BOUNDARY_LIFT_ROADMAP.md): the {@link
+ * FlowStateCodec#FOR_EACH_AWAIT_SATISFIED_KEY_PREFIX} check at the top of {@link #execute} makes a
+ * forEach-nested await's re-entry safe after a crash between "event consumed" and "outer loop
+ * iteration progress advanced" (see {@link ForEachStep}'s own javadoc for the full race). The
+ * marker is set here the instant an event is consumed but deliberately NOT cleared here -- only
+ * {@link ForEachStep} clears it, alongside its own progress advance, so repeated crashes in that
+ * exact window keep re-finding the marker rather than re-querying an event the idempotency store
+ * has already marked processed.
  */
 final class AwaitEventStep {
 
@@ -39,6 +48,18 @@ final class AwaitEventStep {
         long stepStartedAt = req.stepStartedAt();
         Map<String, Object> stateBefore = req.stateBefore();
         Map<String, Object> stepInfo = req.stepInfo();
+
+        String satisfiedKey = FlowStateCodec.FOR_EACH_AWAIT_SATISFIED_KEY_PREFIX + step.getName();
+        if (Boolean.TRUE.equals(state.get(satisfiedKey))) {
+            // B15(A): this exact await already resolved in a prior attempt that crashed before
+            // ForEachStep's own progress advance could persist -- state.awaitRef/last/lastEvent
+            // etc are already durably set from that attempt (see this class's own javadoc), so
+            // skip straight past a re-query that would find the satisfying event already marked
+            // processed by the idempotency store and park the flow WAITING forever.
+            stepInfo.put("awaitedEventName", step.getAwaitEventName());
+            stepInfo.put("awaitedEventStatus", "ALREADY_SATISFIED_ON_REENTRY");
+            return null;
+        }
 
         EventEnvelope awaited = runner.awaitEvent(
                 step,
@@ -105,6 +126,7 @@ final class AwaitEventStep {
         state.put("last", awaited.payload());
         state.put("lastEvent", awaited);
         state.put("causationId", awaited.eventId());
+        state.put(satisfiedKey, Boolean.TRUE);
         return null;
     }
 }

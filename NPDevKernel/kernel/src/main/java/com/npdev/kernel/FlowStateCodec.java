@@ -27,6 +27,39 @@ final class FlowStateCodec {
     static final String AWAIT_FIELD_STEP_NAME = "stepName";
     static final String AWAIT_FIELD_AWAIT_REF = "awaitRef";
 
+    /**
+     * B15(A) (sequential await-in-loop, see docs/BOUNDARY_LIFT_ROADMAP.md): the marker {@link
+     * AwaitEventStep} sets in {@code state} the instant it consumes iteration i's awaited event --
+     * BEFORE {@link ForEachStep} advances {@code __forEachProgress.<step>} past i. Deliberately
+     * checked/cleared across two DIFFERENT persists (see each class's own javadoc for why one
+     * persist isn't enough): a crash between "event consumed" and "outer iteration progress
+     * advanced" must resume by finding this marker already durable and skipping straight past a
+     * re-query of an event the idempotency store has already marked processed (which would
+     * otherwise find nothing and re-park the flow WAITING forever on an event that will never
+     * come again) -- not by re-invoking {@code awaitEvent()} a second time.
+     */
+    static final String FOR_EACH_AWAIT_SATISFIED_KEY_PREFIX = "__forEachAwaitSatisfied.";
+
+    /**
+     * B15(A): per-iteration correlation id {@link ForEachStep} writes into {@code state.correlationId}
+     * before executing iteration i's body, so an await nested in the loop discriminates iteration
+     * i's own reply from any other iteration's (or any other flow instance's) event of the same
+     * name -- required, never blank (see {@link #requireNonBlankIterationCorrelationComponent}):
+     * {@code KernelRunner.matchesCorrelation} treats a blank correlation as "matches anything", so a
+     * silently-blank derivation here would silently let iteration N+1's event satisfy iteration N's
+     * await. Derived from {@code executionId} (globally unique per flow instance -- NOT the flow's
+     * own business {@code correlationId}, which two different instances may deliberately share for
+     * cross-flow linking, and which would collide across instances running the same flow) plus the
+     * await step's own name plus the iteration index, so it is both deterministic (a resumed
+     * iteration re-derives the identical value) and collision-free.
+     */
+    static String deriveForEachIterationCorrelationId(String executionId, String awaitStepName, int iterationIndex) {
+        if (executionId == null || executionId.isBlank() || awaitStepName == null || awaitStepName.isBlank()) {
+            return null;
+        }
+        return executionId + "::forEach:" + awaitStepName + ":" + iterationIndex;
+    }
+
     static Map<String, Object> buildAwaitState(
             FlowStepDefinition step,
             int stepIndex,
