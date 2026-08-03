@@ -49,6 +49,13 @@
       "description": "gradlew :NPDevContract:dsl:test --tests <touched area>. Context-dependent -- only runs (and only counts as overdue) when a -DslTestFilter was ever given; never-run is not blocking on its own."
     },
     {
+      "id": "check-adr-decision-implementation",
+      "tier": "T1",
+      "maxStaleness": "1-wave",
+      "invokedBy": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "description": "S4 Phase B: an ADR decision the owner accepted (opt-in, via a ```decision-check fenced block naming a file + required substring) still has live code behind it. Closes the gap ADR-0011 D4 exposed -- accepted in S2's own gate, recorded in the ADR, never implemented, found only by running the S3 codemod against real content. Starts with ADR-0011's D1-D4 only."
+    },
+    {
       "id": "canary-build-boot-smoke",
       "tier": "T1",
       "maxStaleness": "1-wave",
