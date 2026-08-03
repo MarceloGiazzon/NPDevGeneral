@@ -93,7 +93,7 @@ resolution: |
      enforcement enforceWithConceptGateway runs, WITHOUT calling store.save(...). DefaultConceptGateway
      implements it by replicating saveWithinTransaction's enforcement prefix and stopping before the
      persist. service-base.mustache's createFromSource now calls this validate-only form
-     (authorizeCreateWithConceptGateway) instead of the persisting enforceWithConceptGateway whenever a
+     (authorizeCreateFlowWithConceptGateway) instead of the persisting enforceWithConceptGateway whenever a
      create Flow is declared -- the flow's own write is now the row's ONE writer, and the gateway call
      is purely a gate that can still deny before the flow's side effects run (REG-16-resid R2's own
      guarantee, unchanged).
@@ -113,7 +113,7 @@ resolution: |
   Structural regression coverage (:generator:test, fast, no app boot):
   ServiceBaseFlowRowLevelAuthzTest#flowBackedCreateNeverWritesTheRowASecondTimeThroughSaveWithIntegrityMapping
   (new) and #flowBackedCreateEnforcesRowLevelWriteAccessBeforeTheFlowRuns (updated for the
-  authorizeCreateWithConceptGateway rename). Full :generator:test (252 tests), :generator:behaviorTest,
+  authorizeCreateFlowWithConceptGateway rename). Full :generator:test (252 tests), :generator:behaviorTest,
   and :kernel:test suites green -- no regression to a concept with only CRUD (no create flow, still
   uses the persisting enforceWithConceptGateway unchanged) or a concept with only a create-flow (no
   CRUD-declared access changes either).
