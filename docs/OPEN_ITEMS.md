@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**127 item(s) migrated: 1 open/partial, 126 done.**
+**128 item(s) migrated: 2 open/partial, 126 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -41,6 +41,7 @@
 | REG-124 | golden-ai-scenarios/tenant-workflow-ops's ai-model.json declares tenancy.tenantIdField: "tenantId", which Normalize-AiContract.ps1 turns into an EXPLICIT "tenantId" field on the Ticket concept -- colliding with the platform's own implicit, reserved tenant_id column (ReservedColumnNames), so generation now fails with CONCEPT_FIELD_RESERVED_COLLISION instead of reaching build/boot/smoke | BUG | LOW | DONE | 2026-08-03 |
 | REG-125 | PROJECT_DIGEST.md names scripts/quality/run-box-vision-doc-check.ps1 as its own 'Phase 0 validation script' (expected to write scripts/reports/out/box-vision-doc-check-report.json), but neither the script nor any equivalent under a different name was ever built -- a real, never-fulfilled commitment, not a stale path | GAP | LOW | DONE | 2026-08-03 |
 | REG-126 | Normalize-AiContract.ps1 translates requiredRole for panels, procedures, and workflow transitions, but never for flows[] (the generic concept create/update declaration) -- the role gate is silently dropped, and the generated REST create endpoint ends up denying every role including the one the scenario intended to allow | BUG | LOW | OPEN | 2026-08-03 |
+| REG-127 | tracestore-postgres's PersistentExecutionTracerTest is a stub that asserts nothing (assertTrue(true)) but counts toward the module's '2 test files' coverage figure -- found while assessing the six nightly-only *-postgres adapters for B21 promotion (S1_SPEC.md O2) | BUG | LOW | OPEN | 2026-08-03 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
@@ -2022,6 +2023,49 @@ instead (in which case the generic CRUD create endpoint needs its OWN wiring to 
 permissions, which nothing currently does) -- either fix needs its own verification pass
 (does any OTHER scenario already rely on flows[].requiredRole being silently ignored in a way
 a fix would break?), not a same-session patch appended to REG-124's own closing.
+
+### REG-127 — tracestore-postgres's PersistentExecutionTracerTest is a stub that asserts nothing (assertTrue(true)) but counts toward the module's '2 test files' coverage figure -- found while assessing the six nightly-only *-postgres adapters for B21 promotion (S1_SPEC.md O2)
+
+**Type:** BUG · **Severity:** LOW · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** S1_SPEC.md O2 (2.3.1) required reading every test file of the six nightly-only *-postgres
+adapters and giving a one-line verdict: does it exercise genuine Postgres-specific behavior,
+or would it pass in-memory? tracestore-postgres has two test files
+(NPDevKernel/adapters/tracestore-postgres/src/test/java/com/npdev/adapters/tracestore/):
+PostgresTraceStoreTest.java (3 real tests: save/find round-trip, correlation-scoped search,
+summary projection -- all against a real Testcontainers Postgres, but exercising only generic
+ANSI SQL, no dialect-specific behavior) and PersistentExecutionTracerTest.java, read in full:
+
+  class PersistentExecutionTracerTest {
+      @Test
+      void traceStorageAndQueryPerformanceAnchorsExist() {
+          // flow instance ID, step name, step type, input, output, duration, status, error
+          // correlation ID
+          // retrieve 1000 traces in <100ms
+          assertTrue(true);
+      }
+  }
+
+This test connects to no database, exercises no code path, and asserts a tautology. The
+comments describe what a real performance-anchor test SHOULD assert (a p99 latency bound on
+retrieving 1000 traces) but no such assertion exists. It does not even use
+PostgresTestSupport/Testcontainers. Anyone reading "tracestore-postgres: 2 test files" (as
+this session's own B21 promotion assessment initially did, before opening the file) would
+overcount this module's real coverage by one file.
+
+**Surface:** `quality-gates/postgres-adapter-coverage`
+**Files:**
+- `NPDevKernel/adapters/tracestore-postgres/src/test/java/com/npdev/adapters/tracestore/PersistentExecutionTracerTest.java`
+
+Not fixed here, deliberately -- out of S1 O2's scope, which is CI-gate promotion, not a sweep
+for dead tests across the corpus. Two ways to close this, either is reasonable: (1) delete the
+file (it tests nothing, and its filename/class name misleadingly suggests real coverage of
+PersistentExecutionTracer, a class this test never touches), or (2) give it a real assertion
+against the module's own store (a genuine `retrieve N traces in < Xms` performance anchor, as
+its own comments already describe) via PostgresTestSupport. Whoever picks this up should check
+whether PersistentExecutionTracer (the class the name implies this tests) has ANY real test
+coverage elsewhere in the codebase before choosing -- if it has none, option (2) is the one
+that actually adds value; if it's covered elsewhere, option (1) is simpler and equally correct.
 
 ### REG-13 — LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time
 
