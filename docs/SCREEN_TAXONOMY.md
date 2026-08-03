@@ -190,8 +190,9 @@ and found+fixed REG-76 along the way (workbench `inputFields` rendered a single-
 which silently strips newlines, breaking any multi-line paste; G3's own XML test never triggered it
 by luck of using single-line sample data). `inventario`'s other two wizards were assessed and
 named, not silently skipped: Gerar Template is a genuine shape mismatch (generate+download, not
-persist); Recebimento por Arquivo's commit half is blocked by REG-75. No console reached full
-parity in G3/G4 either — 0 B deleted from either `conferencia-fiscal.html` or `inventario.html`.
+persist); Recebimento por Arquivo's commit half was blocked by REG-75 at G3/G4 time (closed Move 4,
+see the update immediately below). No console reached full parity in G3/G4 either — 0 B deleted from
+either `conferencia-fiscal.html` or `inventario.html`.
 
 **Updated 2026-07-31 (re-checked Move 9 D1):** both blockers named above are now closed at the
 platform level — REG-75 (`patchConcept`) closed Move 4, and the generate-and-download shape

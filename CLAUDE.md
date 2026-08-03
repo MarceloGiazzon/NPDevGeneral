@@ -157,6 +157,14 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
   chain, and `REG-112`'s test-exclusion sibling pair), and fails the gate the moment any of them
   diverges — add a new rule there the next time a "one place updated, its twin forgotten" bug is
   found, rather than letting a fourth instance go unnoticed the way REG-89/104/112 did.
+- **Citing a `REG-nn`/ledger id as a live blocker** in `docs/SCREEN_TAXONOMY.md`, `docs/MOVE*_CHECKLISTS.md`,
+  `docs/MOVE*_FINDINGS.md`, or `docs/MOVE1_PANEL_GAPS.md`? Check the id's own ledger status BEFORE
+  writing "blocked by REG-nn" or "REG-nn (open ...)" — `scripts/quality/check-blocker-citation-freshness.py`
+  (wired in `run-ai-knowledge-gate.ps1`) fails the moment that id's `ledger/items/REG-nn.yml` says
+  DONE/PARTIAL while the doc still calls it a live blocker. Move 15 Phase D item D1: five separate
+  times a console/screen record said "blocked by X" while X had already been closed in a later move,
+  and `SCREEN_TAXONOMY.md` itself sat four moves stale before a human re-read caught it — this is the
+  mechanical control that was missing (five other defect families already had one).
 - **Adding a script under `scripts/`?** It needs both a classification (pattern-matched in
   `scripts/policy/script-inventory-policy.json`) and a declared `invocation` in
   `scripts/policy/script-invocation-declarations.json`; `run-script-inventory-check.ps1` enforces
