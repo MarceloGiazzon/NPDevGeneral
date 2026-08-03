@@ -40,6 +40,7 @@ Schema version: `1.0.0`. DSL version: `1.0.0`.
 | `roles` | `array<role>` |  |  |
 | `propertyScopes` | `array<propertyScope>` |  | Wave 6 (RC-A1): the scoped-property cascade's declared levels, ORDER = resolution order, most specific first. The least-specific level is not declared here -- it is each property's own 'default'. |
 | `properties` | `array<property>` |  | Wave 6 (RC-A1): declared runtime properties resolved through the scoped-property cascade (see propertyScopes). |
+| `contexts` | `array<context>` |  | B20 (S2): bounded-context declarations. Each names a context and $ref's the fragment file (composed via the same pack/fragment $ref machinery as `fragments`/`packs`) whose concepts/queries/panels/flows belong to that context. Cross-context references use context::Concept (D1); a fragment may only reference a context its own `imports[]` (pack.schema.json) declares (D3) -- an undeclared or unresolvable reference is a compile error, never silent. |
 
 ## Concept (`#/$defs/concept`)
 
