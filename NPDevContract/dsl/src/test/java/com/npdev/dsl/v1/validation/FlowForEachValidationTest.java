@@ -34,6 +34,23 @@ class FlowForEachValidationTest {
             """.formatted(flowStepsJson);
     }
 
+    private static String modelJsonWithEvents(String flowStepsJson, String eventsJson) {
+        return """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.loop", "version": "1.0",
+              "concepts": [
+                { "name": "Order", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "total", "type": "integer" } ] }
+              ],
+              "events": %s,
+              "flows": [
+                { "name": "SumOrders", "concept": "Order", "steps": %s }
+              ]
+            }
+            """.formatted(eventsJson, flowStepsJson);
+    }
+
     private static List<String> validate(String json) throws Exception {
         ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(json));
         return new SemanticValidator().validate(ast);
@@ -86,8 +103,11 @@ class FlowForEachValidationTest {
     }
 
     @Test
-    void nestedAwaitInsideLoopBodyIsRejected() throws Exception {
-        List<String> errors = validate(modelJson("""
+    void singleAwaitInsideLoopBodyIsAllowed() throws Exception {
+        // B15(A) (Move 16): sequential await-in-loop -- at most one outstanding await at a time --
+        // is now durably supported (see NPDevKernel's ForEachStep/AwaitEventStep javadoc and
+        // KernelRunnerAwaitInLoopRestartProofTest for the restart-proof this lift required).
+        List<String> errors = validate(modelJsonWithEvents("""
             [
               { "name": "sum-orders", "type": "forEach", "collection": "input.orders", "itemKey": "order",
                 "steps": [
@@ -95,9 +115,32 @@ class FlowForEachValidationTest {
                 ]
               }
             ]
+            """, """
+            [ { "name": "OrderApproved", "payload": [] } ]
             """));
-        assertTrue(errors.stream().anyMatch(e -> e.contains("await is not supported inside a forEach loop body")),
-                "expected an await-inside-loop error, got: " + errors);
+        assertTrue(errors.isEmpty(), "unexpected errors: " + errors);
+    }
+
+    @Test
+    void twoAwaitsInsideLoopBodyIsRejected() throws Exception {
+        // B15(A)'s own kernel-side mechanism derives exactly one per-iteration correlation id and
+        // one satisfaction marker per loop, keyed off the first reachable await step -- a second
+        // reachable await in the same loop body was never exercised by this Move's restart-proof
+        // tests, so it stays rejected rather than silently accepted-but-unproven.
+        List<String> errors = validate(modelJsonWithEvents("""
+            [
+              { "name": "sum-orders", "type": "forEach", "collection": "input.orders", "itemKey": "order",
+                "steps": [
+                  { "name": "wait-for-approval", "type": "awaitEvent", "awaitEvent": "OrderApproved", "awaitRef": "approval" },
+                  { "name": "wait-for-payment", "type": "awaitEvent", "awaitEvent": "OrderPaid", "awaitRef": "payment" }
+                ]
+              }
+            ]
+            """, """
+            [ { "name": "OrderApproved", "payload": [] }, { "name": "OrderPaid", "payload": [] } ]
+            """));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("forEach loop body supports at most one await step")),
+                "expected a too-many-awaits error, got: " + errors);
     }
 
     @Test

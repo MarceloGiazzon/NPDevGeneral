@@ -426,13 +426,19 @@ final class FlowValidation {
     private static final int MAX_LOOP_ITERATIONS_CEILING = 1_000_000;
 
     /**
-     * LIFT-LOOP-P1/P4: {@code forEach} flow step validation. Collection/itemKey/non-empty body are
-     * already required by the JSON Schema; this adds the semantic checks the schema can't express:
-     * item-var shadowing (of reserved flow state, the loop's own collection, and any enclosing
-     * loop's item variable), a sane ceiling on {@code maxLoopIterations}, and the P1 design decision
-     * to reject {@code await} nested inside a loop body (durable resume of an in-flight await
-     * *inside* a loop iteration is deliberately deferred to a later slice -- see
-     * BOUNDARY_LIFT_ROADMAP.md's risk register).
+     * LIFT-LOOP-P1/P4, B15(A) (Move 16): {@code forEach} flow step validation.
+     * Collection/itemKey/non-empty body are already required by the JSON Schema; this adds the
+     * semantic checks the schema can't express: item-var shadowing (of reserved flow state, the
+     * loop's own collection, and any enclosing loop's item variable), a sane ceiling on
+     * {@code maxLoopIterations}, and a cap of one reachable {@code await} step per loop body.
+     * That cap is deliberately narrower than "any number of awaits are fine now" -- B15(A)'s own
+     * kernel-side mechanism (see {@code ForEachStep}'s javadoc in the kernel module) derives
+     * exactly one per-iteration correlation id and one satisfaction marker per loop, keyed off the
+     * FIRST reachable await step's name; a loop body with two or more reachable awaits was never
+     * exercised by this Move's own restart-proof tests, so it stays rejected rather than silently
+     * accepted-but-unproven. Parallel awaits across iterations (more than one iteration blocking
+     * at once) remains a separate, explicitly out-of-scope boundary -- see
+     * BOUNDARY_LIFT_ROADMAP.md's risk register.
      */
     private static void validateForEachStep(
             FlowAst flow,
@@ -467,9 +473,14 @@ final class FlowValidation {
                         + ": maxLoopIterations must not exceed " + MAX_LOOP_ITERATIONS_CEILING);
             }
         }
-        if (containsAwaitStep(step.getLoopSteps())) {
+        int reachableAwaitStepCount = countAwaitSteps(step.getLoopSteps());
+        if (reachableAwaitStepCount > 1) {
             errors.add("Flow " + flow.getName() + " step " + step.getName()
-                    + ": await is not supported inside a forEach loop body yet");
+                    + ": a forEach loop body supports at most one await step (found "
+                    + reachableAwaitStepCount + ") -- B15(A) (Move 16) lifted the single-await,"
+                    + " sequential case (durably proven across a real process restart with"
+                    + " out-of-order events); more than one reachable await per iteration, or"
+                    + " parallel awaits across iterations, is not supported yet");
         }
         if (hasText(itemKey)) {
             checkNestedItemKeyShadowing(flow, step, normalizedItemKey, step.getLoopSteps(), errors);
@@ -510,18 +521,21 @@ final class FlowValidation {
         }
     }
 
-    private static boolean containsAwaitStep(List<StepAst> steps) {
+    /** B15(A) (Move 16): counts every reachable await step (recursing into branch/loop nesting),
+     * replacing the former {@code containsAwaitStep} boolean check now that up to one is allowed --
+     * see {@link #validateForEachStep}'s own javadoc for why the cap is exactly one, not "any". */
+    private static int countAwaitSteps(List<StepAst> steps) {
+        int count = 0;
         for (StepAst step : steps) {
             String type = normalize(step.getType());
             if ("await".equals(type)) {
-                return true;
+                count++;
             }
-            if (containsAwaitStep(step.getThenSteps()) || containsAwaitStep(step.getElseSteps())
-                    || containsAwaitStep(step.getLoopSteps())) {
-                return true;
-            }
+            count += countAwaitSteps(step.getThenSteps())
+                    + countAwaitSteps(step.getElseSteps())
+                    + countAwaitSteps(step.getLoopSteps());
         }
-        return false;
+        return count;
     }
 
     private static void validateInvariantStep(
