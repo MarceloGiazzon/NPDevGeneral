@@ -332,6 +332,12 @@
       "payload": [
         { "name": "widgetOrderId", "type": "uuid" }
       ]
+    },
+    {
+      "name": "WidgetOrderLineApproved",
+      "payload": [
+        { "name": "sku", "type": "string" }
+      ]
     }
   ],
 
@@ -1029,6 +1035,35 @@
         },
         {
           "name": "return-sweep",
+          "type": "return",
+          "value": "$input"
+        }
+      ]
+    },
+    {
+      "name": "ProcessWidgetOrderLineApprovals",
+      "concept": "WidgetOrder",
+      "steps": [
+        {
+          "name": "await-line-approvals",
+          "type": "forEach",
+          "collection": "$input.skus",
+          "itemKey": "sku",
+          "maxLoopIterations": 50,
+          "steps": [
+            {
+              "name": "await-line-approved",
+              "type": "awaitEvent",
+              "awaitEvent": "WidgetOrderLineApproved",
+              "match": {
+                "correlation": true
+              },
+              "awaitRef": "lineApproval"
+            }
+          ]
+        },
+        {
+          "name": "return-processed",
           "type": "return",
           "value": "$input"
         }
