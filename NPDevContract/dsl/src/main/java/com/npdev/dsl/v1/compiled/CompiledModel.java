@@ -27,6 +27,7 @@ public final class CompiledModel {
     private final List<CompiledRole> roles;
     private final List<CompiledPropertyScope> propertyScopes;
     private final List<CompiledProperty> properties;
+    private final List<CompiledContext> contexts;
 
     public CompiledModel(String namespace, String version, Map<String, ? extends CompiledEntity> entitiesByName) {
         this(namespace, "1.0.0", version, entitiesByName, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -292,8 +293,8 @@ public final class CompiledModel {
                 documents, externalAi, settings, roles, List.of(), List.of());
     }
 
-    /** Wave 6 (RC-A1): canonical constructor, adds {@code propertyScopes} + {@code properties} (the
-     *  scoped-property cascade's declaration layer). */
+    /** Wave 6 (RC-A1): adds {@code propertyScopes} + {@code properties} (the scoped-property
+     *  cascade's declaration layer). */
     public CompiledModel(
             String namespace,
             String dslVersion,
@@ -318,6 +319,38 @@ public final class CompiledModel {
             List<CompiledRole> roles,
             List<CompiledPropertyScope> propertyScopes,
             List<CompiledProperty> properties
+    ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, settings, roles, propertyScopes, properties, List.of());
+    }
+
+    /** B20 (S2): canonical constructor, adds {@code contexts} (bounded-context registry). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings,
+            List<CompiledRole> roles,
+            List<CompiledPropertyScope> propertyScopes,
+            List<CompiledProperty> properties,
+            List<CompiledContext> contexts
     ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
@@ -346,6 +379,7 @@ public final class CompiledModel {
         this.roles = roles == null ? List.of() : List.copyOf(roles);
         this.propertyScopes = propertyScopes == null ? List.of() : List.copyOf(propertyScopes);
         this.properties = properties == null ? List.of() : List.copyOf(properties);
+        this.contexts = contexts == null ? List.of() : List.copyOf(contexts);
     }
 
     public String getNamespace() { return namespace; }
@@ -469,6 +503,12 @@ public final class CompiledModel {
     /** Wave 6 (RC-A1): declared runtime properties, empty when the model declares none. */
     public List<CompiledProperty> getProperties() {
         return Collections.unmodifiableList(properties);
+    }
+
+    /** B20 (S2): declared bounded contexts, empty when the model declares none (a model with no
+     *  contexts behaves exactly as it did before this feature existed). */
+    public List<CompiledContext> getContexts() {
+        return Collections.unmodifiableList(contexts);
     }
 
     public Optional<CompiledFlow> findFlow(String flowName) {

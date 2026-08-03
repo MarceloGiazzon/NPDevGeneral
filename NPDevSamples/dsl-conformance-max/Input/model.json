@@ -51,6 +51,11 @@
     { "$ref": "fragments/auditLog.json" }
   ],
 
+  "contexts": [
+    { "name": "billing", "$ref": "contexts/billing.json" },
+    { "name": "shipping", "$ref": "contexts/shipping.json" }
+  ],
+
   "domainTypes": [
     {
       "name": "Sku",

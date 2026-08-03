@@ -163,6 +163,7 @@ public final class JsonModelParser {
         List<com.npdev.dsl.v1.ast.RoleAst> roles = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.PropertyScopeAst> propertyScopes = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.PropertyAst> properties = new ArrayList<>();
+        List<com.npdev.dsl.v1.ast.ContextAst> contexts = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
@@ -555,6 +556,7 @@ public final class JsonModelParser {
         roles.addAll(parseRoles(root.get("roles")));
         propertyScopes.addAll(parsePropertyScopes(root.get("propertyScopes")));
         properties.addAll(parseProperties(root.get("properties")));
+        contexts.addAll(parseContexts(root.get("contexts")));
 
         return new ModelAst(
                 namespace,
@@ -581,8 +583,32 @@ public final class JsonModelParser {
                 settings,
                 roles,
                 propertyScopes,
-                properties
+                properties,
+                contexts
         );
+    }
+
+    /** B20 (S2): parses the optional top-level {@code contexts} array -- {@code name} + {@code $ref}.
+     *  By the time this runs, {@code root} is the fully RESOLVED JSON ({@link ModelSourceResolver}
+     *  has already composed each context fragment's content into {@code concepts}/{@code queries}/
+     *  {@code panels}/{@code flows} with {@code contextName::Member} qualification, exactly parallel
+     *  to how a pack import qualifies its members) -- this array is metadata (which contexts exist)
+     *  surviving into the AST, not something this parser resolves further. */
+    private static List<com.npdev.dsl.v1.ast.ContextAst> parseContexts(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.ContextAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("contexts must be an array");
+        }
+        for (JsonNode contextNode : node) {
+            out.add(new com.npdev.dsl.v1.ast.ContextAst(
+                    requiredText(contextNode, "name"),
+                    requiredText(contextNode, "$ref")
+            ));
+        }
+        return out;
     }
 
     /** Wave 3 (RC-B1): parses the optional top-level {@code roles} array -- {@code name} +

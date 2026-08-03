@@ -122,6 +122,11 @@ public final class CompiledModelCanonicalJsonReader {
             properties.add(toProperty(node));
         }
 
+        List<CompiledContext> contexts = new ArrayList<>();
+        for (JsonNode node : array(root, "contexts")) {
+            contexts.add(toContext(node));
+        }
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -145,13 +150,19 @@ public final class CompiledModelCanonicalJsonReader {
                 settings,
                 roles,
                 propertyScopes,
-                properties
+                properties,
+                contexts
         );
     }
 
     /** Wave 3 (RC-B1): reads a single app-defined role -> permission-ceiling declaration. */
     private static CompiledRole toRole(JsonNode node) {
         return new CompiledRole(text(node, "name"), toStringList(node.get("grants")));
+    }
+
+    /** B20 (S2): reads a single declared bounded context (name + $ref). */
+    private static CompiledContext toContext(JsonNode node) {
+        return new CompiledContext(text(node, "name"), text(node, "ref"));
     }
 
     /** Wave 6 (RC-A1): reads a single declared property-cascade scope level. */

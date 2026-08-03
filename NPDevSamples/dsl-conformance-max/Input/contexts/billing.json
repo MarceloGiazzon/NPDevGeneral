@@ -1,0 +1,17 @@
+{
+  "dslVersion": "1.0.0",
+  "pack": "billing",
+  "version": "1.0.0",
+  "description": "B20 (S2, ADR-0011) dsl-conformance-max witness: the 'billing' bounded context, imported by 'shipping' below.",
+  "concepts": [
+    {
+      "name": "Invoice",
+      "ui": { "label": "Invoice" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "amountCents", "type": "integer", "required": true, "ui": { "label": "Amount (cents)" } },
+        { "name": "status", "type": "string", "required": true, "ui": { "label": "Status" } }
+      ]
+    }
+  ]
+}

@@ -472,6 +472,9 @@ FEATURE_DETECTORS = {
     "ruleProfiles": lambda m: _nonempty(m, "ruleProfiles"),
     "fragments": lambda m: _nonempty(m, "fragments"),
     "packs": lambda m: _nonempty(m, "packs"),
+    # B20 (S2, ADR-0011): bounded-context declarations -- a new top-level array sibling of
+    # packs/fragments, composed the same way.
+    "contexts": lambda m: _nonempty(m, "contexts"),
     "flow.schedule": lambda m: any("schedule" in f for f in _flows(m)),
     "flow.specializes": lambda m: any("specializes" in f for f in _flows(m)),
     "flow.hooks": lambda m: any(f.get("hooks") for f in _flows(m)),

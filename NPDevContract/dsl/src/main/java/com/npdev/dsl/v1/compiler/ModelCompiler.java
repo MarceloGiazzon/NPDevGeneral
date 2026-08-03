@@ -592,7 +592,8 @@ public final class ModelCompiler {
                 settings,
                 toCompiledRoles(modelAst.getRoles()),
                 toCompiledPropertyScopes(modelAst.getPropertyScopes()),
-                toCompiledProperties(modelAst.getProperties())
+                toCompiledProperties(modelAst.getProperties()),
+                toCompiledContexts(modelAst.getContexts())
         );
     }
 
@@ -612,6 +613,19 @@ public final class ModelCompiler {
         return new CompiledSettings(
                 settingsAst.getLocale(), settingsAst.getStrings(), settingsAst.getPageRows(),
                 settingsAst.getDateFormat());
+    }
+
+    /** B20 (S2): compiles the declared bounded-context registry (name + $ref). The qualification
+     *  each context's members already carry (contextName::Member) is produced upstream at
+     *  ModelSourceResolver's composition step, not here -- this is metadata pass-through, the same
+     *  shape roles/propertyScopes/properties already are. */
+    private static List<com.npdev.dsl.v1.compiled.CompiledContext> toCompiledContexts(
+            List<com.npdev.dsl.v1.ast.ContextAst> contextAsts) {
+        List<com.npdev.dsl.v1.compiled.CompiledContext> compiled = new ArrayList<>();
+        for (com.npdev.dsl.v1.ast.ContextAst contextAst : contextAsts) {
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledContext(contextAst.name(), contextAst.ref()));
+        }
+        return compiled;
     }
 
     /** Wave 3 (RC-B1): compiles the app-defined role -> permission-ceiling declarations. */
