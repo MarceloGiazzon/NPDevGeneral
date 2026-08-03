@@ -56,7 +56,6 @@ $sharedVars = @{
     roleName           = "UITEST-ROLE-$runStamp"
     userName           = "uitest-user-$runStamp"
     menuLabel          = "UITEST-MENU-$runStamp"
-    prefKey            = "uitest-pref-$runStamp"
     shippingProjectName = "UITEST-SHIP-$runStamp"
 }
 

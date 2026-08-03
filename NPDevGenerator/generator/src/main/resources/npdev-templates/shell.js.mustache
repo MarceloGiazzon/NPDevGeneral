@@ -401,16 +401,12 @@
   function renderNpdevSection(container, manifest) {
     if (!state.isSuperUser || !manifest) return;
     var adminConcepts = (manifest.concepts || []).filter(function (c) { return c.admin; });
-    var hasPreferences = (manifest.concepts || []).some(function (c) { return c.conceptName === "workspace::Preference"; });
-    if (!adminConcepts.length && !hasPreferences) return;
+    if (!adminConcepts.length) return;
 
     addSectionHeader(container, "NPDev");
     adminConcepts.forEach(function (concept) {
       addLeafLink(container, businessHref(concept.conceptName), concept.displayName, null);
     });
-    if (hasPreferences) {
-      addLeafLink(container, businessHref("__preferences__"), "Preferencias", null);
-    }
     addLeafLink(container, businessHref("__store__"), "Store", null);
     addLeafLink(container, businessHref("__boxview__"), "Box View", null);
     addLeafLink(container, businessHref("__promotion__"), "Promotion", null);
