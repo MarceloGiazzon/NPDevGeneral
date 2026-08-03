@@ -102,6 +102,51 @@
                 },
                 "required": ["path", "observation"]
             }
+        },
+        "mergeOutcome": {
+            "description": "S5 (element-granularity authoring merge): present ONLY on a manifest the Custodian itself synthesizes for a MERGED submission (never authored by hand) -- records provenance so a merge is inspectable after the fact: which base it merged from, which two submissions it combined, and which (arrayKey, name) elements came from which side. Optional and additive; a manifest with no merge in its history has no reason to carry this field.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "baseModelSha256": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"},
+                "oursModelSha256": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"},
+                "theirsModelSha256": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"},
+                "mergedModelSha256": {"type": "string", "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"},
+                "mergedModelVersion": {"type": "string", "minLength": 1},
+                "elementsFromOurs": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "arrayKey": {"type": "string", "minLength": 1},
+                            "name": {"type": "string", "minLength": 1}
+                        },
+                        "required": ["arrayKey", "name"]
+                    }
+                },
+                "elementsFromTheirs": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "arrayKey": {"type": "string", "minLength": 1},
+                            "name": {"type": "string", "minLength": 1}
+                        },
+                        "required": ["arrayKey", "name"]
+                    }
+                }
+            },
+            "required": [
+                "baseModelSha256",
+                "oursModelSha256",
+                "theirsModelSha256",
+                "mergedModelSha256",
+                "mergedModelVersion",
+                "elementsFromOurs",
+                "elementsFromTheirs"
+            ]
         }
     },
     "required": [
