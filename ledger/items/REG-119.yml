@@ -2,8 +2,9 @@ id: REG-119
 title: "An app-declared role (RC-B1 roles[]/grants[]) holding EXECUTE_FLOW can never actually call the generated POST /api/flows/{name}/execute endpoint unless the actor ALSO independently holds the built-in 'user' role or the configured super-user role -- RuntimeApiEmitter's static permission manifest only ever grants the 'flow.execute' permission to those two role names, never to any app-declared one"
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-02
+closed: 2026-08-02
 verification: VERIFIED_LIVE
 surface: generator/runtimehost
 source: |
@@ -52,4 +53,28 @@ detail: |
   canListExecutions -> READ_EXECUTIONS), which has no such static gate and cleanly demonstrated both
   the reject-outside-ceiling proof (400 on POST .../permissions with a permission outside the role's
   declared grants) and the live narrowing-takes-effect proof (403 once READ_EXECUTIONS was narrowed
+  away, restored to 200 once the WarehouseManager-only test role held it again).
+
+resolution: |
+  DONE (Move 15 Phase A item A2, 2026-08-02). RuntimeApiEmitter.generatePermissionManifest now reads
+  model.getRoles() (previously never read there at all) and, for every app-declared CompiledRole whose
+  grants() includes "EXECUTE_FLOW" (case-insensitive), adds a PermissionGrantSpec("flow.execute", "",
+  "", role.name()) -- the exact bridge this item's own detail text proposed. This is purely additive:
+  built-in "user"/super-user grant logic is untouched, and a role that does NOT declare EXECUTE_FLOW
+  gets nothing added.
+
+  RED->GREEN, both directions verified against real generator output (not a mock):
+  RuntimeApiEmitterAppDeclaredRoleFlowExecuteTest (new) declares a role WarehouseManager (grants:
+  EXECUTE_FLOW, READ_EXECUTIONS) and a role ReadOnlyViewer (grants: READ_EXECUTIONS only), plus a
+  standalone Flow with no create/update/delete input.mode (so the OTHER, pre-existing Flow-CRUD-wrapper
+  mechanism that can also grant "user" flow.execute can't be the one satisfying the assertion). RED
+  confirmed by temporarily reverting the fix (git stash) and re-running: failed exactly at the
+  WarehouseManager assertion. GREEN after restoring the fix. Negative case verified in the same test:
+  ReadOnlyViewer is NOT granted "flow.execute" -- a role never declaring EXECUTE_FLOW must stay
+  refused, per this item's own "do not trade a false deny for a false allow" instruction. Full
+  :generator:test suite (252 tests) and :generator:behaviorTest green, confirming no regression to
+  built-in USER/OPERATOR/ADMIN manifest generation or any other emitter test.
+
+  Files changed (absolute): D:\WorkSpace\NPDev\NPDev_General\NPDevGenerator\generator\src\main\java\com\npdev\generator\emitters\RuntimeApiEmitter.java;
+  new test D:\WorkSpace\NPDev\NPDev_General\NPDevGenerator\generator\src\test\java\com\npdev\generator\emitters\RuntimeApiEmitterAppDeclaredRoleFlowExecuteTest.java
   away, restored to 200 once the WarehouseManager-only test role held it again).

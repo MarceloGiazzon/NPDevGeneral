@@ -17,6 +17,7 @@ import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
+import com.npdev.dsl.v1.compiled.CompiledRole;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
 import com.npdev.generator.packs.BuiltinPackComposer;
 import com.npdev.generator.output.GeneratedSourceWriter;
@@ -506,6 +507,24 @@ writer.writeRelative(
                 for (String requirement : action.permissionRequirements()) {
                     addIfPresent(permissions, requirement);
                 }
+            }
+        }
+
+        // REG-119: an app-declared role's EXECUTE_FLOW grant (RC-B1 roles[]/grants[]) is checked at
+        // the KERNEL level by RolePermissions/DefaultExecutionAuthorizationPolicy, which already
+        // honors app-declared roles fully -- but the generated POST /api/flows/{name}/execute
+        // endpoint is gated FIRST, and EARLIER, by THIS static manifest via StaticPermissionEvaluator
+        // (see KernelRunner.execute's own "flow.execute" check). Before this loop, model.getRoles()
+        // was never read here, so a role other than the hardcoded "user"/super-user names could hold
+        // EXECUTE_FLOW in its declared grants[] and still be denied at this earlier gate before the
+        // kernel-level check -- which WOULD have allowed it -- ever ran.
+        for (CompiledRole role : model.getRoles()) {
+            if (role == null || role.name() == null || role.name().isBlank()) {
+                continue;
+            }
+            boolean grantsExecuteFlow = role.grants().stream().anyMatch("EXECUTE_FLOW"::equalsIgnoreCase);
+            if (grantsExecuteFlow) {
+                grants.add(new PermissionGrantSpec("flow.execute", "", "", role.name()));
             }
         }
 
