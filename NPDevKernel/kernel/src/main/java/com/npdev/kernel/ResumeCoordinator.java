@@ -148,7 +148,7 @@ final class ResumeCoordinator {
         if (waitCriteria.stepIndex() >= 0 && waitingInstance.currentStepIndex() != waitCriteria.stepIndex()) {
             return false;
         }
-        if (waitCriteria.matchCorrelation() && !KernelRunner.matchesCorrelation(envelope, waitingInstance.correlationId())) {
+        if (waitCriteria.matchCorrelation() && !KernelRunner.matchesCorrelation(envelope, waitingCorrelationId(waitingInstance))) {
             return false;
         }
         if (!KernelRunner.matchesAwaitPayload(
@@ -180,12 +180,26 @@ final class ResumeCoordinator {
                 runner,
                 waitCriteria,
                 waitingInstance.executionId(),
-                waitingInstance.correlationId(),
+                waitingCorrelationId(waitingInstance),
                 waitingInstance.tenantId(),
                 waitingInstance.state(),
                 waitingInstance.state().get("input"),
                 markProcessed
         );
+    }
+
+    /**
+     * B15(A) (Move 16, docs/BOUNDARY_LIFT_ROADMAP.md): {@code FlowInstance.correlationId()} is
+     * fixed for the instance's whole lifetime (every {@code markRunning}/{@code markWaiting}
+     * transition passes it through unchanged), so it never reflects a per-iteration correlation id
+     * a forEach-nested await writes into {@code state.correlationId} (see {@link ForEachStep}'s own
+     * javadoc). {@code state} itself, unlike the row-level field, round-trips through persistence
+     * in full on every checkpoint, so prefer it here and fall back to the row-level field for the
+     * ordinary, non-forEach case where state was never given its own override.
+     */
+    private static String waitingCorrelationId(FlowInstance waitingInstance) {
+        Object stateCorrelationId = waitingInstance.state().get("correlationId");
+        return stateCorrelationId != null ? stateCorrelationId.toString() : waitingInstance.correlationId();
     }
 
     static Optional<EventEnvelope> findAwaitedEvent(
