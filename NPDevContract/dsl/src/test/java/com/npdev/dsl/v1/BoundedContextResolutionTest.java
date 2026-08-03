@@ -5,6 +5,7 @@ import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.parser.ModelSourceResolver;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
+import com.npdev.dsl.v1.validation.SemanticValidator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -105,6 +106,49 @@ class BoundedContextResolutionTest {
         IOException failure = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
         assertTrue(failure.getMessage().contains("does not declare"), failure.getMessage());
         assertTrue(failure.getMessage().contains("inventory::Widget"), failure.getMessage());
+    }
+
+    @Test
+    void validlyImportedButNonexistentConceptFailsAtCompileTimeNotResolveTime() throws Exception {
+        // D3's gate (ModelSourceResolver) only checks whether the CROSS-CONTEXT REFERENCE is
+        // declared -- it does not know whether the target concept actually exists. That existence
+        // check is the compiler/semantic-validation layer's job (S2_SPEC.md sec.5's X0 requirement:
+        // "unresolvable qualified reference -> named compile error"), and it already exists today
+        // for pack-qualified names (PackValidation "concept not found") -- this proves it also fires
+        // for a validly-imported but nonexistent CONTEXT-qualified name, with no new code needed.
+        write("contexts/inventory.json", contextFragment("inventory", """
+                "concepts": [
+                  { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                ]
+                """, null));
+        write("contexts/sales.json", contextFragment("sales", """
+                "concepts": [
+                  { "name": "Order", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                ],
+                "queries": [
+                  { "name": "GhostQuery", "concept": "inventory::Ghost", "where": "id != null" }
+                ]
+                """, "[\"inventory\"]"));
+        Path model = write("model.json", """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "contexts": [
+                    { "name": "inventory", "$ref": "contexts/inventory.json" },
+                    { "name": "sales", "$ref": "contexts/sales.json" }
+                  ],
+                  "concepts": []
+                }
+                """);
+
+        // Resolution itself succeeds -- "inventory" IS a declared import of "sales" (D3's gate).
+        ModelAst ast = new JsonModelParser().parse(model);
+
+        // But the target concept "inventory::Ghost" does not exist -- caught downstream, not silently.
+        java.util.List<String> errors = new SemanticValidator().validate(ast);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("concept not found") && e.contains("inventory::Ghost")),
+                errors.toString());
     }
 
     @Test
