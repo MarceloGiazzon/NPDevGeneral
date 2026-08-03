@@ -328,6 +328,101 @@ class BoundedContextResolutionTest {
                 "invariantCheck's scope must be qualified the same way the concept it checks was");
     }
 
+    /** S4 (ADR-0011 D3 extended to groupBy): a {@code groupBy} join path embedding a
+     *  {@code context::} prefix is gate-checked the same way any other qualified reference is --
+     *  this proves the HAPPY path (the crossed context IS imported) resolves with the field string
+     *  left byte-identical (D1's grammar keeps join hops unqualified; only the context name is
+     *  checked, never rewritten). See {@link #groupByJoinCrossingAnUnimportedContextFailsWithNamedError}
+     *  for the RED half. */
+    @Test
+    void groupByJoinCrossingAnImportedContextResolves() throws Exception {
+        write("contexts/inventory.json", contextFragment("inventory", """
+                "concepts": [
+                  { "name": "Lote", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true },
+                    { "name": "produtoId", "type": "string" } ] }
+                ]
+                """, null));
+        write("contexts/wms.json", contextFragment("wms", """
+                "concepts": [
+                  { "name": "Movimento", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true },
+                    { "name": "lote", "type": "reference", "reference": { "target": "inventory::Lote" } },
+                    { "name": "quantidade", "type": "integer" } ]
+                  }
+                ],
+                "queries": [
+                  { "name": "MovimentosPorProduto", "concept": "Movimento",
+                    "groupBy": [ "inventory::lote.produtoId" ],
+                    "aggregates": [ { "name": "total", "fn": "sum", "field": "quantidade" } ] }
+                ]
+                """, "[\"inventory\"]"));
+        Path model = write("model.json", """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "contexts": [
+                    { "name": "inventory", "$ref": "contexts/inventory.json" },
+                    { "name": "wms", "$ref": "contexts/wms.json" }
+                  ],
+                  "concepts": []
+                }
+                """);
+
+        JsonNode resolved = new ModelSourceResolver().resolve(model).resolvedRoot();
+        JsonNode groupBy = resolved.get("queries").get(0).get("groupBy");
+
+        assertEquals("inventory::lote.produtoId", groupBy.get(0).asText(),
+                "the join path string must survive resolution byte-identical -- only the embedded "
+                        + "context:: prefix is gate-checked, never rewritten");
+    }
+
+    /** S4 (ADR-0011 D3 extended to groupBy) RED half: "wms" does NOT import "inventory" -- the
+     *  groupBy join's embedded {@code inventory::} prefix must fail exactly like any other
+     *  undeclared cross-context reference, never silently resolve. */
+    @Test
+    void groupByJoinCrossingAnUnimportedContextFailsWithNamedError() throws Exception {
+        write("contexts/inventory.json", contextFragment("inventory", """
+                "concepts": [
+                  { "name": "Lote", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true },
+                    { "name": "produtoId", "type": "string" } ] }
+                ]
+                """, null));
+        // "wms" does NOT import "inventory" -- its groupBy join is undeclared.
+        write("contexts/wms.json", contextFragment("wms", """
+                "concepts": [
+                  { "name": "Movimento", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true },
+                    { "name": "lote", "type": "reference", "reference": { "target": "inventory::Lote" } },
+                    { "name": "quantidade", "type": "integer" } ]
+                  }
+                ],
+                "queries": [
+                  { "name": "MovimentosPorProduto", "concept": "Movimento",
+                    "groupBy": [ "inventory::lote.produtoId" ],
+                    "aggregates": [ { "name": "total", "fn": "sum", "field": "quantidade" } ] }
+                ]
+                """, null));
+        Path model = write("model.json", """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "contexts": [
+                    { "name": "inventory", "$ref": "contexts/inventory.json" },
+                    { "name": "wms", "$ref": "contexts/wms.json" }
+                  ],
+                  "concepts": []
+                }
+                """);
+
+        IOException failure = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(failure.getMessage().contains("does not declare"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("inventory::lote.produtoId"), failure.getMessage());
+    }
+
     private static String contextFragment(String name, String bodyFields, String importsArrayJsonOrNull) {
         String importsField = importsArrayJsonOrNull == null
                 ? ""

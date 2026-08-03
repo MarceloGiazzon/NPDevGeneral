@@ -689,6 +689,7 @@ public final class ModelSourceResolver {
         rewriteTextField(object, "conceptRef", conceptRewriteMap, qualifiedReferenceValidator);
         if ("queries".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
+            gateCheckGroupByJoinPaths(object, qualifiedReferenceValidator);
         } else if ("flows".equals(rootKey)) {
             if (parentKey.isBlank() || "input".equals(parentKey)) {
                 rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
@@ -722,6 +723,38 @@ public final class ModelSourceResolver {
         } else if ("events".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             rewriteTextField(object, "conceptName", conceptRewriteMap, qualifiedReferenceValidator);
+        }
+    }
+
+    /** S4 (ADR-0011 D3 extended to groupBy, docs/adr/ADR-0011-bounded-contexts.md's own "No groupBy
+     *  join syntax (S4)" non-goal, now built): a {@code groupBy[]} entry may itself EMBED a
+     *  qualified reference ({@code "inventory::lote.produtoId"} -- the context prefix names which
+     *  context the JOINED concept belongs to, not this whole dotted path). {@code rewriteConceptName}'s
+     *  own {@code ::} branch only gate-checks and never rewrites, so this reuses it directly for its
+     *  gate-check side effect rather than duplicating D3's import logic -- see
+     *  {@code com.npdev.dsl.v1.query.GroupByJoinGrammar} for the authoritative parse of this shape
+     *  (this method only needs to find the embedded {@code context::} prefix, not fully parse the
+     *  join). Fires for BOTH the bare-string shape ({@code "groupBy": ["inventory::lote.produtoId"]})
+     *  and the object shape ({@code {"field": "inventory::lote.produtoId", "bucket": "month"}}) --
+     *  the generic recursive walker never visits a scalar array item, so the string shape needs this
+     *  explicit scan; the object shape would also be reached by that walker's own recursion, but is
+     *  handled here too for a single, easy-to-audit call site. A no-op for packs (which pass
+     *  {@link #QUALIFIED_REF_NOOP}), unrestricted exactly like every other pack-side reference. */
+    private static void gateCheckGroupByJoinPaths(ObjectNode queryObject, QualifiedReferenceValidator qualifiedReferenceValidator) {
+        JsonNode groupBy = queryObject.get("groupBy");
+        if (groupBy == null || !groupBy.isArray()) {
+            return;
+        }
+        for (JsonNode item : groupBy) {
+            String field = null;
+            if (item != null && item.isTextual()) {
+                field = item.asText();
+            } else if (item != null && item.isObject() && item.get("field") != null && item.get("field").isTextual()) {
+                field = item.get("field").asText();
+            }
+            if (field != null && field.contains("::")) {
+                qualifiedReferenceValidator.validate(field);
+            }
         }
     }
 

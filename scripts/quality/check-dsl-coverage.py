@@ -221,6 +221,39 @@ def _has_aggregate_on_commit(model: dict) -> bool:
     )
 
 
+def _groupby_field_text(entry) -> str:
+    """A query.groupBy[] entry is either a plain string or {"field": ..., "bucket": ...} --
+    S4 (roadmap B27, ADR-0011 D1) join detection needs the field TEXT regardless of shape."""
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict) and isinstance(entry.get("field"), str):
+        return entry["field"]
+    return ""
+
+
+def _has_groupby_join(model: dict) -> bool:
+    """S4 (roadmap B27, ADR-0011 D1): a groupBy field naming a one-hop join
+    ("referenceField.targetField"), same-context or unqualified -- distinct from the plain
+    "query.groupBy" feature (a bare field) already tracked above."""
+    return any(
+        "." in _groupby_field_text(entry)
+        for q in (model.get("queries", None) or [])
+        for entry in (q.get("groupBy", None) or [])
+    )
+
+
+def _has_groupby_cross_context_join(model: dict) -> bool:
+    """S4 (roadmap B27, ADR-0011 D1, C1): a groupBy join whose reference field crosses an explicit
+    context:: boundary ("inventory::lote.produtoId") -- the shape B20 was sequenced first to make
+    unambiguous. Distinct from the same-context join above so a regression to just the
+    cross-context parsing/import-gate path independently fails the build."""
+    return any(
+        "::" in (text := _groupby_field_text(entry)) and "." in text
+        for q in (model.get("queries", None) or [])
+        for entry in (q.get("groupBy", None) or [])
+    )
+
+
 def _has_panel_action_download(model: dict) -> bool:
     for panel in (model.get("panels", None) or []):
         if not isinstance(panel, dict):
@@ -467,6 +500,11 @@ FEATURE_DETECTORS = {
     "query.groupBy": lambda m: any(q.get("groupBy") for q in (m.get("queries", None) or [])),
     "query.aggregates": lambda m: any(q.get("aggregates") for q in (m.get("queries", None) or [])),
     "query.having": lambda m: any(q.get("having") for q in (m.get("queries", None) or [])),
+    # S4 (roadmap B27, ADR-0011 D1): groupBy JOIN paths -- distinct from the plain "query.groupBy"
+    # feature above (a bare field name), and split same-context vs cross-context so a regression to
+    # just the D3 import-gate/context-qualification half independently fails the build.
+    "query.groupBy.join": _has_groupby_join,
+    "query.groupBy.join.crossContext": _has_groupby_cross_context_join,
     "procedures": lambda m: _nonempty(m, "procedures"),
     "panels": lambda m: _nonempty(m, "panels"),
     "ruleProfiles": lambda m: _nonempty(m, "ruleProfiles"),
@@ -631,6 +669,40 @@ def load_allowlist() -> dict:
     return json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8")).get("cleared", {})
 
 
+def _merge_context_fragments(model: dict, base_dir: Path) -> dict:
+    """S4 (roadmap B27): every detector above only ever saw the ROOT model.json's own top-level
+    arrays -- a feature declared exclusively inside a contexts[] fragment file (like S4's own
+    groupBy-join corpus witness, which lives in dsl-conformance-max's shipping.json context, not
+    its root model.json) was invisible to this whole gate, silently. Not full resolution (no $ref
+    composition, no contextName:: qualification, no pack merging) -- just enough of a shallow
+    array-union to make feature DETECTION see contexts[]-declared content, the same gap class this
+    gate's own history is full of (checks that only look at the root document)."""
+    contexts = model.get("contexts")
+    if not isinstance(contexts, list):
+        return model
+    merged = dict(model)
+    for entry in contexts:
+        if not isinstance(entry, dict):
+            continue
+        ref = entry.get("$ref")
+        if not isinstance(ref, str):
+            continue
+        fragment_path = (base_dir / ref).resolve()
+        if not fragment_path.is_file():
+            continue
+        try:
+            fragment = json.loads(fragment_path.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(fragment, dict):
+            continue
+        for key, value in fragment.items():
+            if not isinstance(value, list):
+                continue
+            merged[key] = (merged.get(key) or []) + value
+    return merged
+
+
 def coverage(models: list[tuple[str, Path]]) -> dict[str, list[str]]:
     """feature -> list of corpus labels that use it (empty list = zero coverage)."""
     result: dict[str, list[str]] = {f: [] for f in FEATURE_DETECTORS}
@@ -641,6 +713,7 @@ def coverage(models: list[tuple[str, Path]]) -> dict[str, list[str]]:
             continue
         if not isinstance(model, dict):
             continue
+        model = _merge_context_fragments(model, path.parent)
         for feature, detector in FEATURE_DETECTORS.items():
             try:
                 if detector(model):

@@ -766,6 +766,18 @@ Per the spec's rule ("if (b) needs engine work, do neither"), converted REG-105 
 now-more-precisely-scoped (b) I/O-capable-evaluator options named as what would actually lift it).
 No partial join shipped. REG-105 -> boundary (B27).
 
+---
+
+**S4 addendum (2026-08-03): B27's own named trigger (a) fired.** `groupBy` now supports a
+one-hop join through a declared `reference` field, same-context or context-qualified
+(`GroupByJoinGrammar`), exactly the shape option (a) above named
+(`groupBy: ["lote.produtoId"]`). `docs/ACCEPTED_BOUNDARIES.md` B27 updated in place (struck
+through, marked LIFTED, not deleted) rather than closed silently -- see that row for the full
+scope: one hop only, `groupBy` only (`where`/`aggregates` unchanged), `access.read` widened to
+the whole join path. The original two-hop `LocalArmazenagemLote -> Lote -> Produto` case this
+ledger item named is still out of reach (still deferred; the capability-backed workaround this
+item's own detail names still applies to it).
+
 ### REG-106 — SchemaLifecycleExecutor.migrate() skipped flyway.repair() whenever the schema fingerprint was unchanged, but V1's generated migration SQL text can drift (comments/emission order) independently of the structural fingerprint -- a plain model.json edit with zero concept/table changes crashed the boot with a Flyway 'Migration checksum mismatch' on the next regeneration
 
 **Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-01)

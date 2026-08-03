@@ -263,6 +263,14 @@ public final class DefaultConceptGateway implements ConceptGateway {
      * validator (a hand-built {@link ConceptAggregateRequest}, a future caller). Accepted boundary
      * until {@code access.read} gains a SQL translation (tracked in the same ledger item as the
      * compile-time check) -- do not silently aggregate the unscoped rows instead.
+     *
+     * <p>S4 (roadmap B27, ADR-0011 D1, C3): widens this SAME hard stop to a {@code groupBy} join's
+     * WHOLE path, not just the request's own base concept -- a join makes the leak strictly worse,
+     * since now any concept reached through the join with {@code access.read} taints the aggregate.
+     * {@link ConceptGatewaySemanticPolicy#resolveReferenceTarget} is how this runtime backstop
+     * resolves a join's target concept without needing a {@link com.npdev.dsl.v1.compiled.CompiledModel}
+     * of its own (the NOOP policy's default empty answer means this loop simply finds nothing to
+     * widen the check to, same as before this existed).
      */
     @Override
     public ConceptAggregateResult aggregate(ConceptAggregateRequest request, ExecutionContext context) {
@@ -277,6 +285,23 @@ public final class DefaultConceptGateway implements ConceptGateway {
                     "Concept " + request.conceptName() + " declares access.read; groupBy/aggregate "
                             + "queries against it are refused (LC-B1 accepted boundary -- a pushed-down "
                             + "GROUP BY would compute totals over rows access.read exists to hide).");
+        }
+        for (ConceptAggregateQuery.GroupByField groupByField : request.query().groupBy()) {
+            if (!(com.npdev.dsl.v1.query.GroupByJoinGrammar.parse(groupByField.field())
+                    instanceof com.npdev.dsl.v1.query.GroupByJoinGrammar.Target.Join join)) {
+                continue;
+            }
+            String targetConcept = semanticPolicy
+                    .resolveReferenceTarget(request.conceptName(), join.referenceField())
+                    .orElse(null);
+            if (targetConcept != null && semanticPolicy.hasRowReadScope(targetConcept)) {
+                throw new ConceptGatewayAccessDeniedException(
+                        "AGGREGATE_ACCESS_READ_UNSUPPORTED",
+                        "groupBy join \"" + groupByField.field() + "\" crosses into concept " + targetConcept
+                                + ", which declares access.read; groupBy/aggregate queries reached through "
+                                + "this join are refused (C3 -- the same leak whether the restricted "
+                                + "concept is queried directly or reached through a join).");
+            }
         }
 
         ConceptGatewayRequestContext requestContext = requestContext(

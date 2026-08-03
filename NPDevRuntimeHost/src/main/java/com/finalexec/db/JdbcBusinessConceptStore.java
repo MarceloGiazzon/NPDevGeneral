@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.query.GroupByJoinGrammar;
 import com.npdev.kernel.concepts.ConceptAggregateEngine;
 import com.npdev.kernel.concepts.ConceptAggregateQuery;
 import com.npdev.kernel.concepts.ConceptAggregateResult;
@@ -230,37 +231,73 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
      * Java. {@code HAVING}/sort/limit are deliberately NOT pushed to SQL; see
      * {@link ConceptAggregateEngine#applyHavingSortAndLimit} for why applying them once, in Java,
      * over the (small) already-grouped result is the correct v1 simplification, not a shortcut.
+     *
+     * <p>S4 (roadmap B27, ADR-0011 D1): a {@code groupBy} field may be a one-hop join
+     * ({@link GroupByJoinGrammar}) -- the base table is now ALWAYS aliased ({@code npdev_base}),
+     * every base-table column reference prefixed with it, and each distinct joined reference field
+     * gets exactly one {@code JOIN <targetTable> AS npdev_joinN ON npdev_base.<fk> = npdev_joinN.<id>
+     * AND npdev_joinN.tenant_id = ?}. INNER JOIN, deliberately: a base row whose reference field is
+     * null (or points at a row this tenant doesn't own) cannot contribute a joined group value and is
+     * excluded from the aggregate -- {@code InMemoryConceptStore}'s own join pre-materialization
+     * mirrors this exactly (excludes the same rows) so both engines agree on the same query.
+     * {@code where}/{@code aggregates} stay base-concept-only (unchanged scope; only {@code groupBy}
+     * gets the join grammar, per the roadmap's own reference shape).
      */
     @Override
     public ConceptAggregateResult aggregate(String tenantId, String conceptName, ConceptAggregateQuery query) {
         ConceptShape shape = shape(conceptName);
+        String baseAlias = "npdev_base";
+
+        List<GroupByJoinGrammar.Target> parsedGroupBy = new ArrayList<>();
+        for (ConceptAggregateQuery.GroupByField groupByField : query.groupBy()) {
+            parsedGroupBy.add(GroupByJoinGrammar.parse(groupByField.field()));
+        }
+
+        Map<String, JoinPlan> joinsByReferenceField = new LinkedHashMap<>();
+        List<String> joinClauses = new ArrayList<>();
+        List<Object> joinParams = new ArrayList<>();
+        for (GroupByJoinGrammar.Target target : parsedGroupBy) {
+            if (target instanceof GroupByJoinGrammar.Target.Join join) {
+                registerJoin(shape, join.referenceField(), baseAlias, joinsByReferenceField, joinClauses, joinParams, tenantId);
+            }
+        }
 
         List<String> whereClauses = new ArrayList<>();
-        List<Object> params = new ArrayList<>();
-        whereClauses.add("tenant_id = ?");
-        params.add(tenantId);
+        List<Object> whereParams = new ArrayList<>();
+        whereClauses.add(baseAlias + ".tenant_id = ?");
+        whereParams.add(tenantId);
         for (ConceptQuery.Filter filter : query.filters()) {
-            String column = requireColumn(shape, filter.field());
+            String rawColumn = requireColumn(shape, filter.field());
+            String column = baseAlias + "." + rawColumn;
             if (filter.operator() == ConceptQuery.Operator.CONTAINS) {
                 whereClauses.add("LOWER(CAST(" + column + " AS VARCHAR)) LIKE ? ESCAPE '\\'");
-                params.add("%" + likeEscape(String.valueOf(filter.value()).toLowerCase(Locale.ROOT)) + "%");
+                whereParams.add("%" + likeEscape(String.valueOf(filter.value()).toLowerCase(Locale.ROOT)) + "%");
                 continue;
             }
-            String dslType = shape.dslTypeByColumn().get(column.toLowerCase(Locale.ROOT));
+            String dslType = shape.dslTypeByColumn().get(rawColumn.toLowerCase(Locale.ROOT));
             whereClauses.add(column + " " + sqlOperator(filter.operator()) + " ?");
-            params.add(coerceValue(column, filter.value(), dslType));
+            whereParams.add(coerceValue(rawColumn, filter.value(), dslType));
         }
         String whereSql = String.join(" AND ", whereClauses);
 
         List<String> groupByExprs = new ArrayList<>();
         List<String> groupByAliases = new ArrayList<>();
-        for (ConceptAggregateQuery.GroupByField groupByField : query.groupBy()) {
-            String column = requireColumn(shape, groupByField.field());
+        for (int i = 0; i < query.groupBy().size(); i++) {
+            ConceptAggregateQuery.GroupByField groupByField = query.groupBy().get(i);
+            String columnRef;
+            GroupByJoinGrammar.Target target = parsedGroupBy.get(i);
+            if (target instanceof GroupByJoinGrammar.Target.Join join) {
+                JoinPlan plan = joinsByReferenceField.get(normalize(join.referenceField()));
+                columnRef = plan.alias() + "." + requireColumn(plan.targetShape(), join.targetField());
+            } else {
+                String field = ((GroupByJoinGrammar.Target.Direct) target).field();
+                columnRef = baseAlias + "." + requireColumn(shape, field);
+            }
             String alias = "npdev_g" + groupByAliases.size();
             if (groupByField.bucket() != null && !groupByField.bucket().isBlank()) {
-                groupByExprs.add("DATE_TRUNC('" + sqlBucketUnit(groupByField.bucket()) + "', " + column + ")");
+                groupByExprs.add("DATE_TRUNC('" + sqlBucketUnit(groupByField.bucket()) + "', " + columnRef + ")");
             } else {
-                groupByExprs.add(column);
+                groupByExprs.add(columnRef);
             }
             groupByAliases.add(alias);
         }
@@ -272,10 +309,10 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             String fn = aggregate.fn() == null ? "" : aggregate.fn().trim().toLowerCase(Locale.ROOT);
             String expr = switch (fn) {
                 case "count" -> "COUNT(*)";
-                case "sum" -> "SUM(" + requireColumn(shape, aggregate.field()) + ")";
-                case "avg" -> "AVG(" + requireColumn(shape, aggregate.field()) + ")";
-                case "min" -> "MIN(" + requireColumn(shape, aggregate.field()) + ")";
-                case "max" -> "MAX(" + requireColumn(shape, aggregate.field()) + ")";
+                case "sum" -> "SUM(" + baseAlias + "." + requireColumn(shape, aggregate.field()) + ")";
+                case "avg" -> "AVG(" + baseAlias + "." + requireColumn(shape, aggregate.field()) + ")";
+                case "min" -> "MIN(" + baseAlias + "." + requireColumn(shape, aggregate.field()) + ")";
+                case "max" -> "MAX(" + baseAlias + "." + requireColumn(shape, aggregate.field()) + ")";
                 default -> throw new IllegalArgumentException("Unsupported aggregate fn: " + aggregate.fn());
             };
             aggregateExprs.add(expr);
@@ -291,12 +328,20 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         }
         StringBuilder sql = new StringBuilder("SELECT ")
                 .append(String.join(", ", selectItems))
-                .append(" FROM ").append(shape.tableName())
-                .append(" WHERE ").append(whereSql);
+                .append(" FROM ").append(shape.tableName()).append(" AS ").append(baseAlias);
+        for (String joinClause : joinClauses) {
+            sql.append(joinClause);
+        }
+        sql.append(" WHERE ").append(whereSql);
         if (!groupByExprs.isEmpty()) {
             sql.append(" GROUP BY ").append(String.join(", ", groupByExprs));
         }
         LOG.debug("npdev.aggregate.sql concept={} sql={}", conceptName, sql);
+
+        // JOIN ... ON's own "?" placeholders appear in the SQL text before WHERE's, so their bound
+        // values must come first too -- PreparedStatement binds by textual position, not by name.
+        List<Object> params = new ArrayList<>(joinParams);
+        params.addAll(whereParams);
 
         List<Map<String, Object>> rows = new ArrayList<>();
         Connection connection = openConnection();
@@ -331,6 +376,46 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
 
         rows = ConceptAggregateEngine.applyHavingSortAndLimit(rows, query.having(), query.sorts(), query.limit());
         return new ConceptAggregateResult(rows);
+    }
+
+    /** S4: one distinct joined reference field gets exactly one JOIN clause, keyed so a query with
+     *  multiple {@code groupBy} entries through the SAME reference field (e.g. one plain, one
+     *  bucketed) reuses it rather than joining the same table twice. */
+    private record JoinPlan(String alias, ConceptShape targetShape) {
+    }
+
+    private JoinPlan registerJoin(
+            ConceptShape baseShape,
+            String referenceField,
+            String baseAlias,
+            Map<String, JoinPlan> joinsByReferenceField,
+            List<String> joinClauses,
+            List<Object> joinParams,
+            String tenantId
+    ) {
+        String key = normalize(referenceField);
+        JoinPlan existing = joinsByReferenceField.get(key);
+        if (existing != null) {
+            return existing;
+        }
+        String targetConceptName = baseShape.referenceTargetByField().get(key);
+        if (targetConceptName == null || targetConceptName.isBlank()) {
+            throw new IllegalArgumentException(
+                    "groupBy join field '" + referenceField + "' on concept " + baseShape.conceptName()
+                            + " is not a declared reference field -- the compile-time validator "
+                            + "(PackValidation#validateAggregateQuery) should have refused this model "
+                            + "before it ever reached the store");
+        }
+        ConceptShape targetShape = shape(targetConceptName);
+        String fkColumn = requireColumn(baseShape, referenceField);
+        String alias = "npdev_join" + joinsByReferenceField.size();
+        joinClauses.add(" JOIN " + targetShape.tableName() + " AS " + alias
+                + " ON " + baseAlias + "." + fkColumn + " = " + alias + "." + targetShape.idColumn()
+                + " AND " + alias + ".tenant_id = ?");
+        joinParams.add(tenantId);
+        JoinPlan plan = new JoinPlan(alias, targetShape);
+        joinsByReferenceField.put(key, plan);
+        return plan;
     }
 
     /** Move 10 B1: the closed {@code groupBy[].bucket} vocabulary maps 1:1 onto {@code DATE_TRUNC}'s
@@ -649,16 +734,21 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             Map<String, String> columnByField = new LinkedHashMap<>();
             Map<String, String> fieldByColumn = new LinkedHashMap<>();
             Map<String, String> dslTypeByColumn = new LinkedHashMap<>();
+            Map<String, String> referenceTargetByField = new LinkedHashMap<>();
             for (CompiledField field : concept.getFields()) {
                 String column = toDbColumn(field.getName());
                 columnByField.put(field.getName().toLowerCase(Locale.ROOT), column);
                 fieldByColumn.put(column.toLowerCase(Locale.ROOT), field.getName());
                 dslTypeByColumn.put(column.toLowerCase(Locale.ROOT), field.getDslType());
+                if (field.getReferenceTarget() != null && !field.getReferenceTarget().isBlank()) {
+                    referenceTargetByField.put(field.getName().toLowerCase(Locale.ROOT), field.getReferenceTarget());
+                }
                 if (field.isId()) {
                     idColumn = column;
                 }
             }
-            out.put(normalize(concept.getName()), new ConceptShape(concept.getName(), table, idColumn, columnByField, fieldByColumn, dslTypeByColumn));
+            out.put(normalize(concept.getName()), new ConceptShape(
+                    concept.getName(), table, idColumn, columnByField, fieldByColumn, dslTypeByColumn, referenceTargetByField));
         }
         return Map.copyOf(out);
     }
@@ -829,7 +919,10 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             String idColumn,
             Map<String, String> columnByField,
             Map<String, String> fieldByColumn,
-            Map<String, String> dslTypeByColumn
+            Map<String, String> dslTypeByColumn,
+            /** S4: field name (lowercased) -> declared {@code reference.target} concept name, for
+             *  fields that ARE a reference. Absent for any non-reference field. */
+            Map<String, String> referenceTargetByField
     ) {
     }
 

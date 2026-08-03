@@ -693,7 +693,7 @@
         },
         "regions": {
           "type": "object",
-          "description": "Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md §5): how an addressable region of the Aggregate Workbench is filled, keyed by the region's address DERIVED from the aggregate's own composition tree (e.g. \"itens\", \"itens.posicoes\"; \"header\" for the root header region) -- addresses are never authored, only referenced here. A region absent from this map renders generated (the platform default).",
+          "description": "Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md \u00a75): how an addressable region of the Aggregate Workbench is filled, keyed by the region's address DERIVED from the aggregate's own composition tree (e.g. \"itens\", \"itens.posicoes\"; \"header\" for the root header region) -- addresses are never authored, only referenced here. A region absent from this map renders generated (the platform default).",
           "additionalProperties": {
             "$ref": "#/$defs/regionMount"
           }
@@ -742,7 +742,7 @@
       "required": [
         "procedure"
       ],
-      "description": "Move 8 D3 (item G6, docs/MOVE8_CLOSE_TABLE_SPEC.md / Move 6 §B.7): on the Selection surface, REPLACES the generated row source with a procedure's output instead of the bound concept's table -- the `produce` disposition PanelRuntime already executes for hand-authored panels. Distinct from a data source's onRowLoad (Move 6 Move C), which ENRICHES rows the gateway already produced rather than replacing the row source.",
+      "description": "Move 8 D3 (item G6, docs/MOVE8_CLOSE_TABLE_SPEC.md / Move 6 \u00a7B.7): on the Selection surface, REPLACES the generated row source with a procedure's output instead of the bound concept's table -- the `produce` disposition PanelRuntime already executes for hand-authored panels. Distinct from a data source's onRowLoad (Move 6 Move C), which ENRICHES rows the gateway already produced rather than replacing the row source.",
       "properties": {
         "procedure": {
           "type": "string",
@@ -858,7 +858,7 @@
       "required": [
         "render"
       ],
-      "description": "Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md §5): a mounted component edits THROUGH the store, never around it -- the client passes it a narrowed api (rows/columns/editRow/addRow/deleteRow/isDirty/revert/readOnly/invoke), never the whole draft or sibling regions, and it has no direct persistence path (Workbench Save commits the whole tree atomically).",
+      "description": "Move 6 Move D (docs/MOVE6_TYPED_SURFACE_PLAN.md \u00a75): a mounted component edits THROUGH the store, never around it -- the client passes it a narrowed api (rows/columns/editRow/addRow/deleteRow/isDirty/revert/readOnly/invoke), never the whole draft or sibling regions, and it has no direct persistence path (Workbench Save commits the whole tree atomically).",
       "properties": {
         "render": {
           "type": "string",
@@ -3041,6 +3041,7 @@
       "additionalProperties": false
     },
     "groupByField": {
+      "description": "Move 10 B1: one query.groupBy[] entry -- either a bare field name (string) or {field, bucket} for a date/datetime field bucketed to day/week/month/quarter/year. S4 (roadmap B27, ADR-0011 D1): field may also be a one-hop JOIN through a declared reference field -- \"referenceField.targetField\" (same context) or \"context::referenceField.targetField\" (crossing an imported context, D3) -- resolving to (context, concept, field) before reaching the same column-resolution path a bare field already uses. Exactly one hop; a longer path (\"a.b.c\") is a named compile error, never silently truncated. access.read on the base concept OR any concept the join crosses into refuses the whole query (C3).",
       "oneOf": [
         {
           "type": "string",
@@ -3570,7 +3571,7 @@
         "onRowLoad": {
           "type": "string",
           "minLength": 1,
-          "description": "Move 6 Move C (docs/MOVE6_TYPED_SURFACE_PLAN.md §4): a procedure that ENRICHES the rows this data source produced -- adds fields, never reorders/adds/drops rows (a count or id mismatch is a hard runtime failure, not silent truncation). Distinct from `procedure` above, which REPLACES the row source entirely."
+          "description": "Move 6 Move C (docs/MOVE6_TYPED_SURFACE_PLAN.md \u00a74): a procedure that ENRICHES the rows this data source produced -- adds fields, never reorders/adds/drops rows (a count or id mismatch is a hard runtime failure, not silent truncation). Distinct from `procedure` above, which REPLACES the row source entirely."
         }
       },
       "additionalProperties": false
