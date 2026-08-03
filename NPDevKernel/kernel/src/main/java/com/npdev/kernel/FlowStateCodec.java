@@ -1,7 +1,10 @@
 package com.npdev.kernel;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * T2.B.5 (pure mechanical extraction, see docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.5): the
@@ -73,6 +76,120 @@ final class FlowStateCodec {
         out.put(AWAIT_FIELD_STEP_NAME, step.getName());
         out.put(AWAIT_FIELD_AWAIT_REF, normalizeAwaitRef(awaitRef));
         return Map.copyOf(out);
+    }
+
+    /**
+     * B15(B) (S6, docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)): the per-ITERATION analog of {@link
+     * #AWAIT_STATE_KEY} -- a {@code parallelAwait} forEach has up to N outstanding wait
+     * descriptors at once (one per not-yet-resolved iteration), so a single flat key cannot
+     * represent them. Namespaced by step name (mirroring {@link #FOR_EACH_AWAIT_SATISFIED_KEY_PREFIX})
+     * and iteration index. Chosen deliberately over a NEW durable storage surface (a dedicated
+     * {@code flow_instance_wait} table/adapter pair, the roadmap's originally-costed Option B): a
+     * parallel forEach's N iterations all await the SAME declared event name (only correlation
+     * differs per iteration, exactly like B15(A)), so {@code FlowInstanceStore.findWaitingByEvent}
+     * already discovers a candidate instance via its EXISTING indexed column with zero schema
+     * change -- the only piece a new table would have bought is per-slot correlation
+     * discrimination, and {@code state} already round-trips that in full on every checkpoint. This
+     * is why B1's migration story is trivial: nothing new was added below the state-blob layer, so
+     * there is nothing to migrate for an existing in-flight {@code WAITING_EVENT} row.
+     */
+    static final String PARALLEL_AWAIT_STATE_KEY_PREFIX = "_npdev.parallelAwait.";
+
+    /** B15(B): companion to {@link #PARALLEL_AWAIT_STATE_KEY_PREFIX} -- set the instant iteration
+     *  i's awaited event is durably consumed (mirroring {@link #FOR_EACH_AWAIT_SATISFIED_KEY_PREFIX}'s
+     *  own crash-window rationale, now per-iteration instead of per-step: {@code awaitEvent()}
+     *  marks a found event PROCESSED in the idempotency store as a side effect of being called at
+     *  all, so a crash between "iteration i's event consumed" and "this marker persisted" would
+     *  otherwise re-query on resume, find nothing (already marked processed), and leave iteration i
+     *  stuck WAITING forever on an event that will never arrive again). {@link
+     *  ParallelAwaitForEachStep} checkpoints immediately after setting this for iteration i, before
+     *  attempting iteration i+1 -- N separate close-the-window checkpoints, not one. */
+    static final String PARALLEL_AWAIT_RESOLVED_KEY_PREFIX = "__parallelAwaitResolved.";
+
+    static String parallelAwaitStateKey(String stepName, int iterationIndex) {
+        return PARALLEL_AWAIT_STATE_KEY_PREFIX + stepName + "." + iterationIndex;
+    }
+
+    static String parallelAwaitResolvedKey(String stepName, int iterationIndex) {
+        return PARALLEL_AWAIT_RESOLVED_KEY_PREFIX + stepName + "." + iterationIndex;
+    }
+
+    /** B15(B): per-iteration resolved payload lands at {@code awaitRef + "." + i} -- pluralizing
+     *  the single-slot {@code state.put(awaitRef, payload)} convention B15(A) uses, per the
+     *  roadmap's own suggested shape. */
+    static String parallelAwaitPayloadKey(String awaitRef, int iterationIndex) {
+        return normalizeAwaitRef(awaitRef) + "." + iterationIndex;
+    }
+
+    /** Shared by the single-slot {@code _npdev.await} reader ({@code ResumeCoordinator.resolveWaitCriteria})
+     *  and the multi-slot {@code _npdev.parallelAwait.*} scanner below -- one parser for the SAME
+     *  descriptor shape {@link #buildAwaitState} writes, so the two never drift apart. */
+    static KernelRunner.WaitCriteria parseWaitCriteria(Map<?, ?> waitMap, String fallbackEventName, int fallbackStepIndex) {
+        String eventName = Objects.toString(waitMap.get(AWAIT_FIELD_EVENT_NAME), fallbackEventName);
+        boolean matchCorrelation = parseBoolean(waitMap.get(AWAIT_FIELD_MATCH_CORRELATION), true);
+        int stepIndex = parseInt(waitMap.get(AWAIT_FIELD_STEP_INDEX), fallbackStepIndex);
+        String awaitRef = normalizeAwaitRef(Objects.toString(waitMap.get(AWAIT_FIELD_AWAIT_REF), "awaitedEvent"));
+        return new KernelRunner.WaitCriteria(
+                eventName, matchCorrelation, parseStringMap(waitMap.get(AWAIT_FIELD_PAYLOAD_MATCH_REFS)), stepIndex, awaitRef);
+    }
+
+    /** B15(B): every currently-outstanding (not yet resolved) per-iteration wait slot for a
+     *  {@code parallelAwait} forEach, derived entirely from {@code state} -- used by {@link
+     *  ResumeCoordinator} to check an incoming event (or a scheduled sweep) against ALL N
+     *  outstanding correlations, not just one. Each slot's correlation id is RE-DERIVED (not
+     *  stored) via {@link #deriveForEachIterationCorrelationId}, the exact same convention B15(A)
+     *  already uses -- reused, not reinvented (B2's own instruction). Returns an empty list for any
+     *  instance not in parallel-await mode, so callers fall back to the existing single-slot path
+     *  with zero behavior change. */
+    static List<ParallelAwaitSlot> resolveOutstandingParallelAwaitSlots(String executionId, Map<String, Object> state) {
+        if (executionId == null || executionId.isBlank() || state == null || state.isEmpty()) {
+            return List.of();
+        }
+        List<ParallelAwaitSlot> slots = new ArrayList<>();
+        for (Map.Entry<String, Object> entry : state.entrySet()) {
+            String key = entry.getKey();
+            if (key == null || !key.startsWith(PARALLEL_AWAIT_STATE_KEY_PREFIX)) {
+                continue;
+            }
+            if (!(entry.getValue() instanceof Map<?, ?> waitMap)) {
+                continue;
+            }
+            String remainder = key.substring(PARALLEL_AWAIT_STATE_KEY_PREFIX.length());
+            int lastDot = remainder.lastIndexOf('.');
+            if (lastDot <= 0 || lastDot == remainder.length() - 1) {
+                continue;
+            }
+            String stepName = remainder.substring(0, lastDot);
+            Integer iterationIndex = tryParsePositiveInt(remainder.substring(lastDot + 1));
+            if (iterationIndex == null) {
+                continue;
+            }
+            String correlationId = deriveForEachIterationCorrelationId(executionId, stepName, iterationIndex);
+            if (correlationId == null) {
+                continue;
+            }
+            KernelRunner.WaitCriteria criteria = parseWaitCriteria(waitMap, null, -1);
+            if (criteria.awaitEventName() == null || criteria.awaitEventName().isBlank()) {
+                continue;
+            }
+            slots.add(new ParallelAwaitSlot(stepName, iterationIndex, correlationId, criteria));
+        }
+        return List.copyOf(slots);
+    }
+
+    private static Integer tryParsePositiveInt(String text) {
+        try {
+            int value = Integer.parseInt(text);
+            return value >= 0 ? value : null;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    /** B15(B): one outstanding per-iteration wait slot -- {@code correlationId} is the
+     *  DISCRIMINATOR (every slot for the same step shares the same {@code criteria.awaitEventName()},
+     *  since they're all the same await step definition; only correlation differs). */
+    record ParallelAwaitSlot(String stepName, int iterationIndex, String correlationId, KernelRunner.WaitCriteria criteria) {
     }
 
     static Map<String, String> parseStringMap(Object rawValue) {

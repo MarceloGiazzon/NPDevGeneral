@@ -185,7 +185,10 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                         step.getCollectionRef(),
                         step.getItemKey(),
                         toFlowSteps(step.getLoopSteps(), flowConcept, adapterIdByCapability, capabilityOperationsByCapability),
-                        step.getMaxLoopIterations()
+                        step.getMaxLoopIterations(),
+                        // B15(B) (S6, docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)): null/absent means
+                        // sequential (B15(A)'s default), matching FlowStepDefinition's own default.
+                        Boolean.TRUE.equals(step.getParallelAwait())
                 ));
                 // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): step.getMapFromRef()/
                 // getMapToRef() carry this step's own "input"/"output" JSON properties here --

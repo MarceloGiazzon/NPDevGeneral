@@ -10,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -138,6 +137,11 @@ final class ResumeCoordinator {
         if (!KernelRunner.sameTenant(envelope.tenantId(), waitingInstance.tenantId())) {
             return false;
         }
+        List<FlowStateCodec.ParallelAwaitSlot> parallelSlots = FlowStateCodec.resolveOutstandingParallelAwaitSlots(
+                waitingInstance.executionId(), waitingInstance.state());
+        if (!parallelSlots.isEmpty()) {
+            return matchesAnyParallelAwaitSlot(runner, waitingInstance, envelope, parallelSlots);
+        }
         KernelRunner.WaitCriteria waitCriteria = resolveWaitCriteria(waitingInstance);
         if (waitCriteria.awaitEventName() == null || waitCriteria.awaitEventName().isBlank()) {
             return false;
@@ -165,6 +169,65 @@ final class ResumeCoordinator {
                 waitingInstance.executionId(),
                 envelope.eventId()
         );
+    }
+
+    /** B15(B): the parallel-await counterpart of the single-slot matching above -- true the moment
+     *  the incoming event satisfies ANY of the instance's currently-outstanding per-iteration
+     *  slots (deliberately no {@code stepIndex} check here, unlike the single-slot path: every
+     *  slot for one {@code parallelAwait} forEach shares the SAME nested trace index -- see
+     *  {@link ParallelAwaitForEachStep}'s own javadoc -- so it carries no discriminating power;
+     *  correlation is the only discriminator, exactly as B15(A) already established). */
+    private static boolean matchesAnyParallelAwaitSlot(
+            KernelRunner runner,
+            FlowInstance waitingInstance,
+            EventEnvelope envelope,
+            List<FlowStateCodec.ParallelAwaitSlot> slots
+    ) {
+        for (FlowStateCodec.ParallelAwaitSlot slot : slots) {
+            KernelRunner.WaitCriteria criteria = slot.criteria();
+            if (!criteria.awaitEventName().equals(envelope.eventName())) {
+                continue;
+            }
+            if (criteria.matchCorrelation() && !KernelRunner.matchesCorrelation(envelope, slot.correlationId())) {
+                continue;
+            }
+            if (!KernelRunner.matchesAwaitPayload(
+                    criteria.payloadMatchRefs(), envelope, waitingInstance.state(), waitingInstance.state().get("input"))) {
+                continue;
+            }
+            if (isResumeEventAlreadyProcessed(runner, waitingInstance.tenantId(), waitingInstance.executionId(), envelope.eventId())) {
+                continue;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /** B15(B): {@link #resumeAllWaitingExecutions}'s scheduled-sweep counterpart to {@link
+     *  #matchesAnyParallelAwaitSlot} -- no specific incoming event to check against, so this asks
+     *  the event store directly whether ANY outstanding slot already has a satisfying event
+     *  sitting durably (mirroring {@link #findAwaitedEventForInstance}'s single-slot pre-check). */
+    private static boolean hasAnyResolvableParallelAwaitSlot(
+            KernelRunner runner,
+            FlowInstance waitingInstance,
+            List<FlowStateCodec.ParallelAwaitSlot> slots
+    ) {
+        for (FlowStateCodec.ParallelAwaitSlot slot : slots) {
+            Optional<EventEnvelope> found = findAwaitedEvent(
+                    runner,
+                    slot.criteria(),
+                    waitingInstance.executionId(),
+                    slot.correlationId(),
+                    waitingInstance.tenantId(),
+                    waitingInstance.state(),
+                    waitingInstance.state().get("input"),
+                    false
+            );
+            if (found.isPresent()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static Optional<EventEnvelope> findAwaitedEventForInstance(
@@ -280,17 +343,7 @@ final class ResumeCoordinator {
         }
         Object rawWaitState = waitingInstance.state().get(FlowStateCodec.AWAIT_STATE_KEY);
         if (rawWaitState instanceof Map<?, ?> waitMap) {
-            String eventName = Objects.toString(waitMap.get(FlowStateCodec.AWAIT_FIELD_EVENT_NAME), waitingInstance.waitingForEventName());
-            boolean matchCorrelation = FlowStateCodec.parseBoolean(waitMap.get(FlowStateCodec.AWAIT_FIELD_MATCH_CORRELATION), true);
-            int stepIndex = FlowStateCodec.parseInt(waitMap.get(FlowStateCodec.AWAIT_FIELD_STEP_INDEX), waitingInstance.currentStepIndex());
-            String awaitRef = FlowStateCodec.normalizeAwaitRef(Objects.toString(waitMap.get(FlowStateCodec.AWAIT_FIELD_AWAIT_REF), "awaitedEvent"));
-            return new KernelRunner.WaitCriteria(
-                    eventName,
-                    matchCorrelation,
-                    FlowStateCodec.parseStringMap(waitMap.get(FlowStateCodec.AWAIT_FIELD_PAYLOAD_MATCH_REFS)),
-                    stepIndex,
-                    awaitRef
-            );
+            return FlowStateCodec.parseWaitCriteria(waitMap, waitingInstance.waitingForEventName(), waitingInstance.currentStepIndex());
         }
         return new KernelRunner.WaitCriteria(
                 waitingInstance.waitingForEventName(),
@@ -376,15 +429,25 @@ final class ResumeCoordinator {
             if (waitingInstance == null || waitingInstance.status() != FlowInstanceStatus.WAITING_EVENT) {
                 continue;
             }
-            KernelRunner.WaitCriteria waitCriteria = resolveWaitCriteria(waitingInstance);
-            if (waitCriteria.awaitEventName() == null || waitCriteria.awaitEventName().isBlank()) {
-                FlowInstance latest = runner.flowInstanceStore.findByExecutionId(waitingInstance.executionId())
-                        .orElse(waitingInstance);
-                persistResumeBackoff(runner, latest, "missing_event", KernelRunner.nowEpochMillis());
-                continue;
+            List<FlowStateCodec.ParallelAwaitSlot> parallelSlots = FlowStateCodec.resolveOutstandingParallelAwaitSlots(
+                    waitingInstance.executionId(), waitingInstance.state());
+            boolean hasCandidateEvent;
+            if (!parallelSlots.isEmpty()) {
+                // B15(B): N outstanding per-iteration slots -- any ONE having a satisfying event
+                // available is enough to attempt a resume (resumeExecution re-enters the step and
+                // resolves whichever slots it can; still-outstanding ones simply re-park).
+                hasCandidateEvent = hasAnyResolvableParallelAwaitSlot(runner, waitingInstance, parallelSlots);
+            } else {
+                KernelRunner.WaitCriteria waitCriteria = resolveWaitCriteria(waitingInstance);
+                if (waitCriteria.awaitEventName() == null || waitCriteria.awaitEventName().isBlank()) {
+                    FlowInstance latest = runner.flowInstanceStore.findByExecutionId(waitingInstance.executionId())
+                            .orElse(waitingInstance);
+                    persistResumeBackoff(runner, latest, "missing_event", KernelRunner.nowEpochMillis());
+                    continue;
+                }
+                hasCandidateEvent = findAwaitedEventForInstance(runner, waitingInstance, waitCriteria, false).isPresent();
             }
-
-            if (findAwaitedEventForInstance(runner, waitingInstance, waitCriteria, false).isEmpty()) {
+            if (!hasCandidateEvent) {
                 FlowInstance latest = runner.flowInstanceStore.findByExecutionId(waitingInstance.executionId())
                         .orElse(waitingInstance);
                 persistResumeBackoff(runner, latest, "missing_event", KernelRunner.nowEpochMillis());

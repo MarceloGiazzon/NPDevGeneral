@@ -465,6 +465,16 @@ def _has_on_failure(model: dict) -> bool:
     return any("onFailure" in s and s["onFailure"] for s in _all_steps(model))
 
 
+def _has_parallel_await_foreach(model: dict) -> bool:
+    """S6 (B15(B), docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)): a forEach step opting into N-way
+    parallel waiting -- distinct from the plain "step.forEach" feature (any forEach) and from
+    B15(A)'s sequential await-in-loop, which has no DSL-level marker of its own."""
+    return any(
+        str(s.get("type", "")).lower() == "foreach" and s.get("parallelAwait") is True
+        for s in _all_steps(model)
+    )
+
+
 def _flows(model: dict):
     return [f for f in (model.get("flows", None) or []) if isinstance(f, dict)]
 
@@ -526,6 +536,7 @@ FEATURE_DETECTORS = {
     "flow.specializes": lambda m: any("specializes" in f for f in _flows(m)),
     "flow.hooks": lambda m: any(f.get("hooks") for f in _flows(m)),
     "step.onFailure": _has_on_failure,
+    "step.forEach.parallelAwait": _has_parallel_await_foreach,
     **{f"step.{t}": (lambda m, t=t: _has_step_type(m, t)) for t in FLOW_STEP_TYPES},
     # Move 4 (docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md): procedure.patchConcept and aggregate.onCommit
     # are new features, not caught by the flow-only _all_steps() above -- a procedure's steps live

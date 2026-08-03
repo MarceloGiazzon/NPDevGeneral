@@ -1328,6 +1328,13 @@ public final class CompiledModelCanonicalJson {
             stepNode.set("onFailureSteps", toFlowSteps(flowStep.getOnFailureSteps()));
             // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): callProcedure's procedure name.
             stepNode.put("procedureName", safe(flowStep.getProcedureName()));
+            // B15(B) (S6, docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)): a forEach step's opt-in into
+            // N-way parallel waiting.
+            if (flowStep.getParallelAwait() == null) {
+                stepNode.putNull("parallelAwait");
+            } else {
+                stepNode.put("parallelAwait", flowStep.getParallelAwait());
+            }
             steps.add(stepNode);
         }
         return steps;

@@ -724,11 +724,36 @@ the same `maxLoopIterations` safety cap procedures use.
   document's own risk register and `docs/ACCEPTED_BOUNDARIES.md` B15(B). Move 16 Phase C produced a
   costed design decision for that, not an implementation — see LIFT-LOOP-P7 below.
 
-### LIFT-LOOP-P7 — Parallel awaits inside a loop (B15(B)): costed design, not implemented
-- **Status:** DESIGNED, NOT IMPLEMENTED — deferred by explicit recommendation (2026-08-03, Move 16
-  Phase C) · **Risk:** High (schema + coordination changes touching `resumeExecution`/compensation/
-  idempotency simultaneously — the exact shape Move 9 A5 and B15(A)'s own write-up both called "not a
-  bounded task")
+### LIFT-LOOP-P7 — Parallel awaits inside a loop (B15(B))
+- **Status:** DONE (2026-08-03, S6 Phase B), scoped to a single-step loop body · **Risk:** was High;
+  the storage decision below (state-blob, not a new table) removed the schema/adapter half of that
+  risk entirely, leaving only the engine-coordination half, which the restart-proof test (B4)
+  verifies directly. Costed but not implemented as of Move 16 Phase C (2026-08-03 morning); designed
+  AND implemented same-day in S6 Phase B once picked back up.
+
+**B0 — the storage decision, made and recorded.** Neither Option A nor Option B as originally
+costed: re-reading the actual engine code (not just the design doc) before choosing found that a
+BRAND NEW durable storage surface buys nothing at the discovery layer. All N iterations of one
+`parallelAwait` forEach step await the SAME declared event name (only correlation differs per
+iteration, exactly like B15(A)) — so `FlowInstanceStore.findWaitingByEvent` already discovers a
+candidate instance via its EXISTING indexed column with zero schema change. What Option B's new
+table would have bought — per-slot correlation discrimination — `state` already provides for free:
+it round-trips through persistence in full on every checkpoint (the same property B15(A)'s single
+`_npdev.await` slot already relies on). So B15(B) ships as **Option B's architecture** (one parent
+`FlowInstance` row, N provisional wait slots, never N child flows) **implemented via the existing
+state-blob** rather than a new `flow_instance_wait` port/adapter pair — see
+`ParallelAwaitForEachStep`'s and `FlowStateCodec`'s own javadoc for the full reasoning. This is why
+**B1 (storage + migration) needed no new schema, no new adapter, and no migration at all**: nothing
+was added below the state-blob layer, so there is nothing for an existing in-flight `WAITING_EVENT`
+row to need converting.
+
+**Scope-down, deliberate and recorded (mirroring B15(A)'s own scope-downs):** the loop body must be
+EXACTLY one `AWAIT_EVENT` step — no steps before or after it. B15(A)'s sequential model safely
+re-runs an iteration's entire step list from scratch on every (re-)attempt because only ONE
+iteration is ever in flight; with N iterations attempted independently in one pass, a step that
+mutates a non-namespaced `state` key would silently clobber across iterations. Scoping to
+await-only sidesteps that hazard entirely rather than solving it partially. A future lift that wants
+pre/post-await steps needs its own design pass for that specific hazard.
 
 **The question:** N loop iterations each independently awaiting their own event, genuinely
 outstanding *at the same time* (not the one-at-a-time shape P6/B15(A) closed). Two storage designs
@@ -766,41 +791,47 @@ resolved-or-not, resolved payload) — the parent `FlowInstance` stays a SINGLE 
   that has no existing analog to extend (unlike Option A, which mostly extends things that already
   exist).
 
-**Leaning, not a decision:** Option B feels architecturally cleaner for this specific shape — "one
-flow, one step, N provisional wait slots" maps better to a dedicated wait table than to N full
-`FlowInstance` rows that would need their own compensation/idempotency identity for no real reason.
-But this is a leaning to hand to whoever picks this up next, not a green light to start Option B —
-see "why deferred" below.
+**Decision (S6 B0, superseding "leaning, not a decision"):** shipped as Option B's architecture —
+"one flow, one step, N provisional wait slots" — but via the state-blob refinement above, not a new
+table. Option A (N child `FlowInstance` rows) was rejected for the same reason the original costing
+found it more expensive: it would have needed a new parent/child join-barrier concept in
+`resumeExecution` and an N-way aggregation `CompensationRunner` does not have today, for no benefit
+this shape actually needs (nothing here wants independent compensation/idempotency identity per
+iteration).
 
-**Migration for existing in-flight `WAITING_EVENT` rows — checked before designing, per this Move's
-own instruction:** parallel awaits would be a NEW, additive capability (opt-in via a new step
-attribute or step type, not a change to today's `forEach`/`await` semantics), so EVERY existing
-`WAITING_EVENT` row — whether a bare await or a B15(A) sequential loop — is a single-`FlowInstance`
-row today and stays exactly that after either option ships; neither option touches or needs to
-convert a single existing row. There is no live production data to migrate (pre-1.0, and this
-capability doesn't exist yet to have created any). The only real "migration" concern is orthogonal to
-this feature specifically: an in-flight instance of a flow *definition* that later changes shape
-needs to keep running under the definition it started with — a general concern the platform already
-has to answer for any flow-definition change, not something new here.
+**Migration for existing in-flight `WAITING_EVENT` rows — checked before building, per this Move's
+own instruction, and re-verified true after building:** parallel awaits is a NEW, additive
+capability (opt-in via the new `parallelAwait` step attribute, not a change to today's
+`forEach`/`await` semantics) implemented entirely inside `state` (see B0 above) — every existing
+`WAITING_EVENT` row, whether a bare await or a B15(A) sequential loop, is a single-`FlowInstance` row
+today and stays exactly that; nothing new was added below the state-blob layer, so there is nothing
+for an existing row to need converting. Confirmed, not just claimed: the full `NPDevKernel` test
+suite (kernel + every adapter) passes unmodified against the shipped code.
 
-**Completion semantics — the open design questions Option A/B both still need answered, regardless
-of storage choice:**
-- **Join/barrier:** does the loop step complete only once ALL N iterations resolve (the natural
-  "wait for every approval" reading), or is partial/best-effort completion after some subset needed?
-- **Fail-fast vs. partial failure:** does one iteration's genuine failure (not just "still waiting")
-  fail the whole loop step immediately, or let the others keep resolving and report a mixed result?
-- **Per-iteration timeout:** today's single-slot await has no timeout concept at all (it waits
-  forever, subject to the scheduler's resume-eligibility backoff). N-way parallel makes "what happens
-  to the 9 that resolved when the 10th never will" a real, user-facing question that sequential never
-  had to answer, since sequential only ever blocks on the CURRENT iteration.
+**Completion semantics (B3) — decided and recorded (in `ParallelAwaitForEachStep`'s own javadoc,
+authoritative; summarized here):**
+- **Join/barrier:** the loop step completes only once ALL N iterations resolve — the "wait for
+  every reply" reading. No partial/best-effort completion.
+- **Fail-fast vs. partial failure:** a genuine (non-waiting) failure from any iteration's await
+  attempt fails the whole step immediately, matching `ForEachStep`'s existing sequential behavior
+  for a real failure. No mixed-result reporting was introduced.
+- **Unsatisfiable slot / per-iteration timeout:** parks forever, subject to the SAME
+  resume-eligibility backoff and eventual `STUCK` detection every single-slot await already has —
+  no new timeout concept. Per-slot timeouts are their own future design question (e.g. a scheduled
+  event), deliberately left open, exactly as this write-up originally flagged it.
 
-**Why deferred:** this is a genuine, multi-week subsystem redesign — the same verdict Move 9 A5
-reached and B15(A)'s own investigation confirmed independently while proving the narrower sequential
-case didn't need it. Shipping either option without its own dedicated restart-proof test (the same
-bar P6 met) would repeat exactly the mistake this Move's own hard-stop rule exists to prevent. Revisit
-trigger: genuine user demand for true fan-out/fan-in concurrency inside a loop, not just "the
-sequential case feels slow for large collections" (which a higher `maxLoopIterations` ceiling or
-batching the collection outside the loop may already solve without touching this boundary at all).
+**What's built:** `FlowStepDefinition.forEach(..., parallelAwait)` (kernel step model),
+`FlowStateCodec`'s `PARALLEL_AWAIT_STATE_KEY_PREFIX`/`PARALLEL_AWAIT_RESOLVED_KEY_PREFIX` (durable
+per-iteration representation), `ParallelAwaitForEachStep` (the N-slot execution algorithm,
+dispatched from `ForEachStep`), and `ResumeCoordinator`'s parallel-aware matching (both the
+event-driven path and the scheduled-sweep pre-check) — `NPDevKernel/kernel/src/main/java/com/npdev/kernel/`.
+**Verify:** `KernelRunnerParallelAwaitInLoopRestartProofTest` — N=3 iterations genuinely outstanding
+at once, events delivered out of order across two full process restarts (brand-new `KernelRunner`
+instances), each iteration resumes exactly once on its own event, the merged result lands in
+iteration order regardless of arrival order; plus the mid-checkpoint freeze scenario proving a crash
+right after one slot resolves does not re-query its already-processed event. Full `NPDevKernel`
+suite (kernel + every adapter) green. **Deliberately not done:** steps before/after the await within
+one iteration (see the scope-down above) — a future lift, not a mechanical extension of this one.
 
 ---
 
@@ -869,7 +900,7 @@ resume) where the design risk concentrates and deserves undivided attention.
 | Object-store infra unavailable in dev | LIFT-UPLOAD-P1 | Filesystem `*-inproc` adapter is the dev default; object-store behind config, tested against minio/localstack |
 | Loop state corrupts durable resume (double effects) | LIFT-LOOP-P2 | Per-iteration idempotency keys reusing the engine's existing dedup; forced-resume test is a merge gate |
 | `await` inside a loop (sequential, one outstanding at a time) | LIFT-LOOP-P1/P6 | **Closed, Move 16 Phase B (2026-08-03).** Rejected in P1; lifted in P6 with its own required restart-proof test (`KernelRunnerAwaitInLoopRestartProofTest`) per the mitigation this row always called for |
-| `await` inside a loop (parallel, N outstanding at once) | LIFT-LOOP-P6 | Still out of scope — needs either a `FlowInstance` row per iteration or a new wait-table keyed by (executionId, iteration); Move 16 Phase C costed the design, did not implement it |
+| `await` inside a loop (parallel, N outstanding at once) | LIFT-LOOP-P7 | **Closed, S6 Phase B (2026-08-03).** Move 16 Phase C costed the design; S6 picked it back up same-day, chose the state-blob refinement over a new wait-table (B0), and shipped it with its own required restart-proof test (`KernelRunnerParallelAwaitInLoopRestartProofTest`), scoped to a single-step (await-only) loop body |
 | VS Code Gradle file-lock on regen | all | Bump build-root suffix (`-alt`/`-hNN`) per CLAUDE.md |
 
 ---

@@ -1073,6 +1073,36 @@
           "value": "$input"
         }
       ]
+    },
+    {
+      "name": "ProcessParallelWidgetOrderLineApprovals",
+      "concept": "WidgetOrder",
+      "steps": [
+        {
+          "name": "await-line-approvals-parallel",
+          "type": "forEach",
+          "collection": "$input.skus",
+          "itemKey": "sku",
+          "maxLoopIterations": 50,
+          "parallelAwait": true,
+          "steps": [
+            {
+              "name": "await-line-approved-parallel",
+              "type": "awaitEvent",
+              "awaitEvent": "WidgetOrderLineApproved",
+              "match": {
+                "correlation": true
+              },
+              "awaitRef": "lineApproval"
+            }
+          ]
+        },
+        {
+          "name": "return-processed-parallel",
+          "type": "return",
+          "value": "$input"
+        }
+      ]
     }
   ]
 }

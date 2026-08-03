@@ -70,6 +70,7 @@ public final class FlowStepDefinition {
     private final String itemKey;
     private final List<FlowStepDefinition> loopSteps;
     private final Integer maxLoopIterations;
+    private final boolean parallelAwait;
     private final List<FlowStepDefinition> onFailureSteps;
     private final String procedureName;
 
@@ -218,12 +219,14 @@ public final class FlowStepDefinition {
                 operation, inputRef, argsRefs, outputRef, eventName, payloadRef, eventDataRefs, condition,
                 thenSteps, elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatchRefs,
                 delaySeconds, mapFromRef, mapToRef, returnRef, collectionRef, itemKey, loopSteps, maxLoopIterations,
-                null
+                null, false
         );
     }
 
     /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): canonical constructor, adding
-     * {@code procedureName} for {@link Type#CALL_PROCEDURE}. */
+     * {@code procedureName} for {@link Type#CALL_PROCEDURE}. B15(B) (S6,
+     * docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)) adds the trailing {@code parallelAwait} for
+     * {@link Type#FOR_EACH}. */
     private FlowStepDefinition(
             String name,
             Type type,
@@ -258,7 +261,8 @@ public final class FlowStepDefinition {
             String itemKey,
             List<FlowStepDefinition> loopSteps,
             Integer maxLoopIterations,
-            String procedureName
+            String procedureName,
+            boolean parallelAwait
     ) {
         this.name = requireNonBlank(name, "name");
         this.type = type;
@@ -309,6 +313,7 @@ public final class FlowStepDefinition {
         this.maxLoopIterations = maxLoopIterations;
         this.onFailureSteps = List.of();
         this.procedureName = procedureName;
+        this.parallelAwait = parallelAwait;
     }
 
     /**
@@ -354,6 +359,7 @@ public final class FlowStepDefinition {
                 ? List.of()
                 : Collections.unmodifiableList(new ArrayList<>(onFailureSteps));
         this.procedureName = source.procedureName;
+        this.parallelAwait = source.parallelAwait;
     }
 
     /** LNCH-17: attaches declared compensation steps to an already-built step. */
@@ -769,6 +775,27 @@ public final class FlowStepDefinition {
             List<FlowStepDefinition> loopSteps,
             Integer maxLoopIterations
     ) {
+        return forEach(name, collectionRef, itemKey, loopSteps, maxLoopIterations, false);
+    }
+
+    /**
+     * B15(B) (S6, docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)): {@code parallelAwait=true} opts a loop
+     * body of EXACTLY ONE {@code AWAIT_EVENT} step into N-way parallel waiting -- every iteration's
+     * await is attempted up front, all still-outstanding ones stay durably parked at once (not one
+     * at a time, unlike the default sequential mode B15(A) lifted), and the step completes only
+     * once every iteration has resolved. See {@link ParallelAwaitForEachStep} for the execution
+     * semantics and {@link FlowStateCodec}'s parallel-await keys for the durable representation.
+     * Deliberately scoped to a single-step loop body (no steps before or after the await) -- see
+     * {@link ParallelAwaitForEachStep}'s own javadoc for why.
+     */
+    public static FlowStepDefinition forEach(
+            String name,
+            String collectionRef,
+            String itemKey,
+            List<FlowStepDefinition> loopSteps,
+            Integer maxLoopIterations,
+            boolean parallelAwait
+    ) {
         if (loopSteps == null || loopSteps.isEmpty()) {
             throw new IllegalArgumentException("forEach requires at least one loop step");
         }
@@ -805,7 +832,9 @@ public final class FlowStepDefinition {
                 requireNonBlank(collectionRef, "collectionRef"),
                 requireNonBlank(itemKey, "itemKey"),
                 loopSteps,
-                maxLoopIterations
+                maxLoopIterations,
+                null,
+                parallelAwait
         );
     }
 
@@ -852,7 +881,8 @@ public final class FlowStepDefinition {
                 null,
                 List.of(),
                 null,
-                requireNonBlank(procedureName, "procedureName")
+                requireNonBlank(procedureName, "procedureName"),
+                false
         );
     }
 
@@ -1018,6 +1048,10 @@ public final class FlowStepDefinition {
 
     public Integer getMaxLoopIterations() {
         return maxLoopIterations;
+    }
+
+    public boolean isParallelAwait() {
+        return parallelAwait;
     }
 
     public String getProcedureName() {

@@ -144,6 +144,74 @@ class FlowForEachValidationTest {
     }
 
     @Test
+    void parallelAwaitWithSingleAwaitBodyIsAllowedAndCompiles() throws Exception {
+        // B15(B) (S6, docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)): N-way parallel waiting -- lifted
+        // 2026-08-03 once its own restart-proof test passed
+        // (KernelRunnerParallelAwaitInLoopRestartProofTest, kernel module). Scoped to a loop body
+        // of exactly one await step, same shape as the sequential case above.
+        String json = modelJsonWithEvents("""
+            [
+              { "name": "sum-orders", "type": "forEach", "collection": "input.orders", "itemKey": "order",
+                "parallelAwait": true,
+                "steps": [
+                  { "name": "wait-for-approval", "type": "awaitEvent", "awaitEvent": "OrderApproved", "awaitRef": "approval" }
+                ]
+              }
+            ]
+            """, """
+            [ { "name": "OrderApproved", "payload": [] } ]
+            """);
+        List<String> errors = validate(json);
+        assertTrue(errors.isEmpty(), "unexpected errors: " + errors);
+
+        ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(json));
+        CompiledModel compiled = new ModelCompiler().compile(ast);
+        CompiledFlow flow = compiled.getFlows().stream().findFirst().orElseThrow();
+        CompiledFlowStep step = flow.getSteps().get(0);
+        assertEquals(Boolean.TRUE, step.getParallelAwait());
+    }
+
+    @Test
+    void parallelAwaitWithStepsBesidesTheAwaitIsRejected() throws Exception {
+        // The scope-down ParallelAwaitForEachStep's own javadoc (kernel module) explains: a step
+        // mutating a non-namespaced state key would clobber across independently-attempted
+        // iterations, a hazard sequential mode never hits since only one iteration is ever in
+        // flight. So parallelAwait=true requires EXACTLY one loop step (the await itself).
+        List<String> errors = validate(modelJsonWithEvents("""
+            [
+              { "name": "sum-orders", "type": "forEach", "collection": "input.orders", "itemKey": "order",
+                "parallelAwait": true,
+                "steps": [
+                  { "name": "wait-for-approval", "type": "awaitEvent", "awaitEvent": "OrderApproved", "awaitRef": "approval" },
+                  { "name": "return-item", "type": "return", "value": "approval" }
+                ]
+              }
+            ]
+            """, """
+            [ { "name": "OrderApproved", "payload": [] } ]
+            """));
+        assertTrue(
+                errors.stream().anyMatch(e -> e.contains("parallelAwait=true requires the loop body to be EXACTLY one await step")),
+                "expected a parallelAwait shape error, got: " + errors);
+    }
+
+    @Test
+    void parallelAwaitDefaultsToSequentialWhenAbsent() throws Exception {
+        // Absent/false parallelAwait must behave exactly as before this feature existed --
+        // backward compatibility for every model authored before B15(B).
+        ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(modelJson("""
+            [
+              { "name": "sum-orders", "type": "forEach", "collection": "input.orders", "itemKey": "order",
+                "steps": [ { "name": "return-item", "type": "return", "value": "order" } ]
+              }
+            ]
+            """)));
+        CompiledModel compiled = new ModelCompiler().compile(ast);
+        CompiledFlow flow = compiled.getFlows().stream().findFirst().orElseThrow();
+        assertEquals(null, flow.getSteps().get(0).getParallelAwait());
+    }
+
+    @Test
     void zeroMaxLoopIterationsIsRejectedAtSchemaLevel() {
         // Schema-level minimum:1 rejects 0 before SemanticValidator's own positive-value check
         // (added defensively for any future non-schema-validated construction path) would run.

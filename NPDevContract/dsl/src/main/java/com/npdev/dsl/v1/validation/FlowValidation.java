@@ -426,7 +426,7 @@ final class FlowValidation {
     private static final int MAX_LOOP_ITERATIONS_CEILING = 1_000_000;
 
     /**
-     * LIFT-LOOP-P1/P4, B15(A) (Move 16): {@code forEach} flow step validation.
+     * LIFT-LOOP-P1/P4, B15(A) (Move 16), B15(B) (S6): {@code forEach} flow step validation.
      * Collection/itemKey/non-empty body are already required by the JSON Schema; this adds the
      * semantic checks the schema can't express: item-var shadowing (of reserved flow state, the
      * loop's own collection, and any enclosing loop's item variable), a sane ceiling on
@@ -436,9 +436,16 @@ final class FlowValidation {
      * exactly one per-iteration correlation id and one satisfaction marker per loop, keyed off the
      * FIRST reachable await step's name; a loop body with two or more reachable awaits was never
      * exercised by this Move's own restart-proof tests, so it stays rejected rather than silently
-     * accepted-but-unproven. Parallel awaits across iterations (more than one iteration blocking
-     * at once) remains a separate, explicitly out-of-scope boundary -- see
-     * BOUNDARY_LIFT_ROADMAP.md's risk register.
+     * accepted-but-unproven.
+     *
+     * <p><b>{@code parallelAwait=true} (B15(B), lifted 2026-08-03 once its own restart-proof test
+     * passed -- see {@code KernelRunnerParallelAwaitInLoopRestartProofTest} in the kernel module):
+     * N iterations' awaits genuinely outstanding at once, instead of the default sequential
+     * (one-at-a-time) behavior.</b> Scoped narrower than plain sequential mode: the loop body must
+     * be EXACTLY one {@code await} step, no steps before or after it -- see
+     * {@code ParallelAwaitForEachStep}'s own javadoc (kernel module) for why that scope-down exists
+     * (a step mutating a non-namespaced {@code state} key would clobber across independently-attempted
+     * iterations; sequential mode never has more than one iteration in flight, so it never hit this).
      */
     private static void validateForEachStep(
             FlowAst flow,
@@ -477,10 +484,21 @@ final class FlowValidation {
         if (reachableAwaitStepCount > 1) {
             errors.add("Flow " + flow.getName() + " step " + step.getName()
                     + ": a forEach loop body supports at most one await step (found "
-                    + reachableAwaitStepCount + ") -- B15(A) (Move 16) lifted the single-await,"
-                    + " sequential case (durably proven across a real process restart with"
-                    + " out-of-order events); more than one reachable await per iteration, or"
-                    + " parallel awaits across iterations, is not supported yet");
+                    + reachableAwaitStepCount + ") -- B15(A)/B15(B) (Move 16/S6) lifted the"
+                    + " single-await case, sequential or parallel, each durably proven across a"
+                    + " real process restart; more than one reachable await per iteration is not"
+                    + " supported");
+        }
+        if (Boolean.TRUE.equals(step.getParallelAwait())) {
+            List<StepAst> loopSteps = step.getLoopSteps();
+            boolean isSingleAwaitBody = loopSteps.size() == 1
+                    && "await".equals(normalize(loopSteps.get(0).getType()));
+            if (!isSingleAwaitBody) {
+                errors.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": parallelAwait=true requires the loop body to be EXACTLY one await step"
+                        + " (B15(B) does not support steps before or after the await) -- found "
+                        + loopSteps.size() + " step(s)");
+            }
         }
         if (hasText(itemKey)) {
             checkNestedItemKeyShadowing(flow, step, normalizedItemKey, step.getLoopSteps(), errors);

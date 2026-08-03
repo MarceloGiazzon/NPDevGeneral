@@ -1459,7 +1459,8 @@ public final class ModelCompiler {
                     loopSteps,
                     stepAst.getMaxLoopIterations(),
                     onFailureSteps,
-                    stepAst.getProcedure()
+                    stepAst.getProcedure(),
+                    stepAst.getParallelAwait()
             ));
         }
         return out;
