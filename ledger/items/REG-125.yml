@@ -1,0 +1,45 @@
+id: REG-125
+title: "PROJECT_DIGEST.md names scripts/quality/run-box-vision-doc-check.ps1 as its own 'Phase 0 validation script' (expected to write scripts/reports/out/box-vision-doc-check-report.json), but neither the script nor any equivalent under a different name was ever built -- a real, never-fulfilled commitment, not a stale path"
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-03
+verification: VERIFIED_LIVE
+surface: docs/quality-gates
+source: |
+  Found while triaging Move 15 Phase C item C2 (REG-123, doc-entrypoint-validation's stale-reference
+  backlog). PROJECT_DIGEST.md §"Phase 0 validation" reads:
+
+    Phase 0 validation script:
+    scripts/quality/run-box-vision-doc-check.ps1
+    Expected report:
+    scripts/reports/out/box-vision-doc-check-report.json
+
+  A repo-wide search (case-insensitive, for "box-vision" and "box_vision" in any form) found zero
+  matches anywhere other than this one PROJECT_DIGEST.md reference -- the script was never written,
+  under this name or any other. Unlike the sibling finding in
+  docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md (three report references that doc's own text
+  explicitly frames as "Phase 10 is a contract phase... does not implement full production generator
+  integration" -- i.e. deliberately-future-by-design), PROJECT_DIGEST.md's wording ("Phase 0 validation
+  script:" followed by a bare path) does not read as an explicit future-phase disclaimer -- it reads
+  like a real, if small, planned validation tool (presumably: does the digest's own Box/Object/Truth
+  doctrine text stay consistent with docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md and its
+  ADRs) that was simply never picked up.
+files:
+  - PROJECT_DIGEST.md
+  - scripts/policy/doc-entrypoint-classification-policy.json
+detail: |
+  Not fixed here, deliberately -- this item's own scope (REG-123) is the validator's false-positive
+  and stale-path backlog, not building new tooling. Classified scripts/quality/run-box-vision-doc-check.ps1
+  as "future-non-release" and its report as "future-non-release-report" in
+  scripts/policy/doc-entrypoint-classification-policy.json (mirroring the existing
+  scripts/doctor/npdev-doctor.ps1 / doctor-report.json precedent) so doc-entrypoint-validation stops
+  blocking on it while this real gap is tracked here, rather than either silently building a rushed
+  checker or silently allowlisting the reference away with no record.
+
+  Recommended next step for whoever picks this up: decide whether this Phase 0 doc-consistency check
+  is still wanted (PROJECT_DIGEST.md's own doctrine section is short and has not visibly drifted from
+  NPDEV_BOX_OBJECT_TRUTH_VISION.md/its ADRs in practice) -- if yes, build it (likely a simple
+  keyword/section presence diff, not a large tool); if the digest doc is considered stable enough not
+  to need one, retire the "Phase 0 validation script" section from PROJECT_DIGEST.md instead and close
+  this as "intentionally not built."

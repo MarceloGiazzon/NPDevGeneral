@@ -67,6 +67,24 @@
       "classification": "future-non-release",
       "releaseRelevant": false,
       "reason": "Maturity control-board automation is future/non-release governance tooling."
+    },
+    {
+      "path": "scripts/quality/run-box-vision-doc-check.ps1",
+      "classification": "future-non-release",
+      "releaseRelevant": false,
+      "reason": "REG-123/REG-125 (Move 15 Phase C item C2): PROJECT_DIGEST.md names this as its own 'Phase 0 validation script', but it was never built -- a real, precisely-named never-fulfilled commitment (REG-125, OPEN), not a stale path. Not currently Beta0 release evidence."
+    },
+    {
+      "path": "scripts/appgen/generate-sample-app.ps1",
+      "classification": "future-non-release",
+      "releaseRelevant": false,
+      "reason": "REG-123 (Move 15 Phase C item C2): docs/NPDEV_OPEN_ITEMS_REGISTER.md's own \"Where.\" line for a historical LNCH-19 finding names this path as it was AT THE TIME -- that document is explicitly historical/archived-in-place (CLAUDE.md: 'read for narrative, never for status'), so its content is left untouched rather than mechanically re-pointed. The script's real current location is NPDevSamples/scripts/generate-sample-app.ps1; this entry only stops the archived doc's historical path mention from blocking the gate, it is not a claim that scripts/appgen/generate-sample-app.ps1 exists today."
+    },
+    {
+      "path": "scripts/appgen/run-sample-app.ps1",
+      "classification": "future-non-release",
+      "releaseRelevant": false,
+      "reason": "REG-123 (Move 15 Phase C item C2): same historical-archived-doc class as scripts/appgen/generate-sample-app.ps1 above -- see that entry's reason. Real current location: NPDevSamples/scripts/run-sample-app.ps1."
     }
   ],
   "reportClassifications": [
@@ -123,6 +141,45 @@
       ],
       "classification": "checkpoint-only-design-report",
       "reason": "Trusted-source design report is checkpoint-only design evidence; release evidence is produced by trusted-source-beta0-proof-report.json.",
+      "blockingWhenProducerMissing": false
+    },
+    {
+      "reportPath": "scripts/reports/out/box-object-truth-report.json",
+      "producerScripts": [],
+      "plannedConsumers": [
+        "docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md Phase 10 contract only"
+      ],
+      "classification": "checkpoint-only-design-report",
+      "reason": "REG-123 (Move 15 Phase C item C2): NPDEV_GENERATOR_ADAPTER_CONTRACT.md's own text says 'Phase 10 is a contract phase... It does not implement full production generator integration' -- this report and its two siblings below are the future generator adapter's planned inputs, not evidence any current script produces. Aspirational-by-design, not a stale reference.",
+      "blockingWhenProducerMissing": false
+    },
+    {
+      "reportPath": "scripts/reports/out/code-bearing-object-resource-report.json",
+      "producerScripts": [],
+      "plannedConsumers": [
+        "docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md Phase 10 contract only"
+      ],
+      "classification": "checkpoint-only-design-report",
+      "reason": "REG-123 (Move 15 Phase C item C2): same Phase-10-contract-only class as box-object-truth-report.json -- see that entry's reason.",
+      "blockingWhenProducerMissing": false
+    },
+    {
+      "reportPath": "scripts/reports/out/box-object-promotion-evidence-closure-report.json",
+      "producerScripts": [],
+      "plannedConsumers": [
+        "docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md Phase 10 contract only"
+      ],
+      "classification": "checkpoint-only-design-report",
+      "reason": "REG-123 (Move 15 Phase C item C2): same Phase-10-contract-only class as box-object-truth-report.json -- see that entry's reason.",
+      "blockingWhenProducerMissing": false
+    },
+    {
+      "reportPath": "scripts/reports/out/box-vision-doc-check-report.json",
+      "producerScripts": [
+        "scripts/quality/run-box-vision-doc-check.ps1"
+      ],
+      "classification": "future-non-release-report",
+      "reason": "REG-123/REG-125 (Move 15 Phase C item C2): PROJECT_DIGEST.md's own 'Phase 0 validation script' report -- the producer was never built (REG-125, OPEN). Not current Beta0 release evidence.",
       "blockingWhenProducerMissing": false
     }
   ]

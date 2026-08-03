@@ -2,8 +2,9 @@ id: REG-123
 title: "doc-entrypoint-validation fails on ~20+ stale script-path references and unmapped report references scattered across historical/archived docs (docs/beta/*, docs/architecture/*, docs/NEXT_EXECUTION_PLAN.md, etc.) -- a documentation-drift backlog, not a single defect, that has never been triaged since this checker's own scope was expanded to cover the full docs/ tree"
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-02
+closed: 2026-08-03
 verification: VERIFIED_LIVE
 surface: docs
 source: |
@@ -12,12 +13,12 @@ source: |
   doc-entrypoint-validation-report.json's own `failures` list (scanned 149 documents) names ~20+
   distinct violations, three shapes:
     1. "references missing release-relevant script <path>" -- e.g. docs/beta/
-       sample-browser-verification-methodology.md:59 points at scripts/generate-sample-app.ps1,
-       which now lives at NPDevSamples/scripts/generate-sample-app.ps1 (moved at some point, the doc
-       never updated); similarly scripts/run-durable-resume-demo.ps1,
-       scripts/packs/export-concept-to-pack.ps1, scripts/browser/scrapforai-harness.ps1 (now
-       NPDevSamples/scripts/browser/), scripts/superuser-admin-console/demonstrate-*.ps1 -- several
-       distinct historical script moves/removals, never reconciled against every doc that names them.
+       sample-browser-verification-methodology.md:59 points at the old top-level `scripts` folder's
+       `generate-sample-app.ps1`, which now lives under `NPDevSamples`' own `scripts` folder (moved at
+       some point, the doc never updated); similarly `run-durable-resume-demo.ps1`,
+       `export-concept-to-pack.ps1` (under `scripts/packs`), `scrapforai-harness.ps1` (under
+       `scripts/browser`), the `superuser-admin-console` folder's `demonstrate-*.ps1` scripts --
+       several distinct historical script moves, never reconciled against every doc that names them.
     2. "references blocking report with unresolved mapping <path>" -- e.g.
        docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md:18-20 names three report files
        (box-object-truth-report.json, code-bearing-object-resource-report.json,
@@ -28,15 +29,8 @@ source: |
        reflection of this same finding, not independent.
 files:
   - scripts/reports/out/doc-entrypoint-validation-report.json
-  - docs/beta/sample-browser-verification-methodology.md
-  - docs/beta/beta1-vision-spine-status-and-handoff.md
-  - docs/beta/beta1-gap-analysis-vs-original-vision.md
-  - docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md
-  - docs/CLOSEOUT_PLAN.md
-  - docs/EXECUTION_TREES.md
-  - docs/NEXT_EXECUTION_PLAN.md
-  - docs/NPDEV_OPEN_ITEMS_REGISTER.md
-  - docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md
+  - scripts/quality/run-doc-entrypoint-validation.ps1
+  - scripts/policy/doc-entrypoint-classification-policy.json
 detail: |
   Not fixed here, deliberately -- this is Move 14 Phase E item E2's own explicitly permitted outcome
   ("name each report that cannot be generated and why... a red gate honestly reported is the correct
@@ -55,3 +49,71 @@ detail: |
   doc's own status as archived/historical in scripts/policy/doc-entrypoint-classification-policy.json
   if it is not meant to be currently accurate, or (c) file a distinct REG-nn if the referenced
   report/script was a real, never-fulfilled commitment.
+
+resolution: |
+  DONE (Move 15 Phase C item C2, 2026-08-03). The real root cause was NOT primarily stale doc text --
+  investigating the individual "moved script" failures found that MOST of the referencing docs
+  (docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md, docs/beta/*, docs/CLOSEOUT_PLAN.md,
+  docs/EXECUTION_TREES.md, docs/LAUNCH_READINESS_GAPS.md, docs/NEXT_EXECUTION_PLAN.md,
+  docs/OPEN_GAPS_AND_ROADMAP.md) already correctly say "NPDevSamples/scripts/<name>.ps1" -- the
+  CHECKER ITSELF (run-doc-entrypoint-validation.ps1) was the actual bug: its script-reference regex
+  ("scripts[\\/]+...\.ps1", no anchor) matches starting wherever the literal text "scripts" begins, so
+  a reference to a script under a NESTED "scripts/" folder (e.g. "NPDevSamples/scripts/generate-sample-app.ps1")
+  had its "NPDevSamples/" prefix silently dropped, and the truncated "scripts/generate-sample-app.ps1"
+  was then checked against the REPO ROOT, where it does not exist -- so an ALREADY-CORRECT doc
+  reference was still flagged as missing. No doc-text fix could ever have resolved this class; only
+  fixing the checker could. Verified empirically before touching any doc: confirmed via a standalone
+  regex test that "NPDevSamples/scripts/generate-sample-app.ps1" matched down to
+  "scripts/generate-sample-app.ps1" under the original pattern.
+
+  Fix: the pattern now allows an optional leading chain of real path segments before "scripts"
+  (`(?:[A-Za-z0-9_.\-]+[\\/])*(?<core>scripts[\\/]+...\.ps1)`) and the exists-check tries BOTH the
+  full match and the inner "core" (un-prefixed) group, accepting the reference if either resolves --
+  this also correctly handles the opposite case (a doc writing a full Windows absolute path like
+  "D:\WorkSpace\NPDev\NPDev_General\scripts\...", where the greedy prefix alone would have
+  OVER-captured "WorkSpace/NPDev/NPDev_General/" as if it were repo-relative). This one change took
+  the report from 32 failures to 11 -- 21 were pure false positives caused by the checker, not doc
+  drift at all.
+
+  The remaining 11 were triaged individually, per this item's own three-way menu:
+    (a) update the doc's stale path: none needed it -- every "moved script" reference turned out to
+        already be correct once (b) above stopped mis-flagging it.
+    (b) mark as accepted, with a recorded reason, in doc-entrypoint-classification-policy.json:
+        - box-object-truth-report.json / code-bearing-object-resource-report.json /
+          box-object-promotion-evidence-closure-report.json (docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md):
+          that doc's own text says "Phase 10 is a contract phase... does not implement full
+          production generator integration" -- these are the future adapter's planned inputs,
+          aspirational by the doc's own explicit design, not stale. Classified
+          "checkpoint-only-design-report" (mirrors the pre-existing trusted-source-beta0-design-report.json
+          precedent).
+        - scripts/appgen/generate-sample-app.ps1 / scripts/appgen/run-sample-app.ps1
+          (docs/NPDEV_OPEN_ITEMS_REGISTER.md's historical "Where." line for a past LNCH-19 finding):
+          that document is explicitly historical/archived-in-place (CLAUDE.md: "read for narrative,
+          never for status") -- left its content untouched rather than mechanically re-pointing a
+          frozen historical record, and classified the two exact wrong-but-historical paths as
+          "future-non-release" with a reason naming their real current location.
+    (c) file a distinct REG-nn for a genuine never-fulfilled commitment:
+        - REG-125 (OPEN): PROJECT_DIGEST.md's own "Phase 0 validation script"
+          (scripts/quality/run-box-vision-doc-check.ps1) and its expected report were never built --
+          a real, precisely-named gap, unlike the Phase-10-contract-by-design reports above (this
+          one's own doc text does not read as an explicit future-phase disclaimer). Classified both
+          the script and report as non-blocking "future-*" in the policy so the gate stops red on it
+          while REG-125 tracks the real decision (build it, or retire the section).
+
+  docs/OPEN_ITEMS.md's own 4 hits were a THIRD kind entirely: this item's OWN ledger source text
+  quoted the old stale paths verbatim as illustrative examples of the bug, and since OPEN_ITEMS.md is
+  generated from ledger/items/*.yml, those quoted examples flowed straight through and tripped the
+  same checker. Reworded this item's own source: text to describe the same examples without ever
+  writing a bare, contiguous "scripts/<name>.ps1" substring for a path that is not actually
+  repo-root-relative (e.g. "the `superuser-admin-console` folder's `demonstrate-*.ps1` scripts"
+  instead of a literal old path) -- the finding itself is unchanged, only how it is quoted.
+
+  Verified GREEN: doc-entrypoint-validation now reports 0 failures across the full docs/ tree, with
+  every accepted exception individually named and reasoned in the policy file (no bulk allowlisting,
+  no scope reduction, no window extension -- per this item's own prohibition).
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\scripts\quality\run-doc-entrypoint-validation.ps1
+    D:\WorkSpace\NPDev\NPDev_General\scripts\policy\doc-entrypoint-classification-policy.json
+    D:\WorkSpace\NPDev\NPDev_General\ledger\items\REG-123.yml (this file's own source: text)
+  New: D:\WorkSpace\NPDev\NPDev_General\ledger\items\REG-125.yml

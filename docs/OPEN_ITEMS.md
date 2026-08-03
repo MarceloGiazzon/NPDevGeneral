@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**124 item(s) migrated: 2 open/partial, 122 done.**
+**126 item(s) migrated: 3 open/partial, 123 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -35,9 +35,11 @@
 | REG-119 | An app-declared role (RC-B1 roles[]/grants[]) holding EXECUTE_FLOW can never actually call the generated POST /api/flows/{name}/execute endpoint unless the actor ALSO independently holds the built-in 'user' role or the configured super-user role -- RuntimeApiEmitter's static permission manifest only ever grants the 'flow.execute' permission to those two role names, never to any app-declared one | GAP | MEDIUM | DONE | 2026-08-02 |
 | REG-12 | LNCH-10: Excel/PDF/print export beyond CSV -- all 3 slices shipped | GAP | HIGH | DONE | 2026-07-21 |
 | REG-120 | A concept whose create is delegated to a declared Flow (input.mode: create) AND is also exposed via the generic CRUD create endpoint gets DOUBLE-PERSISTED on every create -- the flow's own createConcept step writes the row through the kernel persistence capability, then the SAME generated service method immediately writes it AGAIN via saveWithIntegrityMapping -- and the two writes can race, throwing a spurious 500 (or, when they don't race, silently perform a wasted redundant write) | BUG | MEDIUM | DONE | 2026-08-02 |
-| REG-121 | Two release-evidence producers (run-ai-beta-gate.ps1, run-trusted-source-beta0-proof.ps1) still invoke `:generator:run` with the disabled `--migrationsDir` flag -- GeneratorMain.migrationsDisabled() rejects it outright (CONFIG_MIGRATIONS_DISABLED), so every ai-beta-gate scenario whose model reaches generation fails there, cascading into expanded-beta0-evidence, sample-matrix, docker-linux-parity, and final-regression-coverage-audit | BUG | MEDIUM | OPEN | 2026-08-02 |
+| REG-121 | Two release-evidence producers (run-ai-beta-gate.ps1, run-trusted-source-beta0-proof.ps1) still invoke `:generator:run` with the disabled `--migrationsDir` flag -- GeneratorMain.migrationsDisabled() rejects it outright (CONFIG_MIGRATIONS_DISABLED), so every ai-beta-gate scenario whose model reaches generation fails there, cascading into expanded-beta0-evidence, sample-matrix, docker-linux-parity, and final-regression-coverage-audit | BUG | MEDIUM | PARTIAL | 2026-08-02 |
 | REG-122 | Normalize-AiContract.ps1 emitted retired pre-DSL-2.0 flow-step syntax (enforceInvariants / cap / op / out) for every AI-authored model's generated flow, failing official JSON Schema validation for every golden AI scenario that declares flows[] -- masking the true outcome of ~20 of 28 ai-beta-gate scenarios behind an early, uninformative official-validation failure instead of their own designed stage | BUG | MEDIUM | DONE | 2026-08-02 |
-| REG-123 | doc-entrypoint-validation fails on ~20+ stale script-path references and unmapped report references scattered across historical/archived docs (docs/beta/*, docs/architecture/*, docs/NEXT_EXECUTION_PLAN.md, etc.) -- a documentation-drift backlog, not a single defect, that has never been triaged since this checker's own scope was expanded to cover the full docs/ tree | GAP | LOW | OPEN | 2026-08-02 |
+| REG-123 | doc-entrypoint-validation fails on ~20+ stale script-path references and unmapped report references scattered across historical/archived docs (docs/beta/*, docs/architecture/*, docs/NEXT_EXECUTION_PLAN.md, etc.) -- a documentation-drift backlog, not a single defect, that has never been triaged since this checker's own scope was expanded to cover the full docs/ tree | GAP | LOW | DONE | 2026-08-02 |
+| REG-124 | golden-ai-scenarios/tenant-workflow-ops's ai-model.json declares tenancy.tenantIdField: "tenantId", which Normalize-AiContract.ps1 turns into an EXPLICIT "tenantId" field on the Ticket concept -- colliding with the platform's own implicit, reserved tenant_id column (ReservedColumnNames), so generation now fails with CONCEPT_FIELD_RESERVED_COLLISION instead of reaching build/boot/smoke | BUG | LOW | OPEN | 2026-08-03 |
+| REG-125 | PROJECT_DIGEST.md names scripts/quality/run-box-vision-doc-check.ps1 as its own 'Phase 0 validation script' (expected to write scripts/reports/out/box-vision-doc-check-report.json), but neither the script nor any equivalent under a different name was ever built -- a real, never-fulfilled commitment, not a stale path | GAP | LOW | OPEN | 2026-08-03 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
@@ -1687,7 +1689,7 @@ wrapper, not the flow itself or the persistence capability.
 
 ### REG-121 — Two release-evidence producers (run-ai-beta-gate.ps1, run-trusted-source-beta0-proof.ps1) still invoke `:generator:run` with the disabled `--migrationsDir` flag -- GeneratorMain.migrationsDisabled() rejects it outright (CONFIG_MIGRATIONS_DISABLED), so every ai-beta-gate scenario whose model reaches generation fails there, cascading into expanded-beta0-evidence, sample-matrix, docker-linux-parity, and final-regression-coverage-audit
 
-**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
+**Type:** BUG · **Severity:** MEDIUM · **Status:** PARTIAL
 **Verification:** VERIFIED_LIVE
 **Source:** Found re-checking the betaRelease (T3) gate for Move 14 Phase E item E2 -- last verified at Move
 12 (red on 23 missing + stale evidence). Ran `run-beta-release-gate.ps1 -GenerateReports` (the
@@ -1803,19 +1805,19 @@ unrelated root cause (a disabled `--migrationsDir` generator flag two other scri
 
 ### REG-123 — doc-entrypoint-validation fails on ~20+ stale script-path references and unmapped report references scattered across historical/archived docs (docs/beta/*, docs/architecture/*, docs/NEXT_EXECUTION_PLAN.md, etc.) -- a documentation-drift backlog, not a single defect, that has never been triaged since this checker's own scope was expanded to cover the full docs/ tree
 
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-08-03)
 **Verification:** VERIFIED_LIVE
 **Source:** Found re-checking the betaRelease (T3) gate for Move 14 Phase E item E2, via the same full
 evidence-orchestration run that produced REG-121/REG-122. scripts/reports/out/
 doc-entrypoint-validation-report.json's own `failures` list (scanned 149 documents) names ~20+
 distinct violations, three shapes:
   1. "references missing release-relevant script <path>" -- e.g. docs/beta/
-     sample-browser-verification-methodology.md:59 points at scripts/generate-sample-app.ps1,
-     which now lives at NPDevSamples/scripts/generate-sample-app.ps1 (moved at some point, the doc
-     never updated); similarly scripts/run-durable-resume-demo.ps1,
-     scripts/packs/export-concept-to-pack.ps1, scripts/browser/scrapforai-harness.ps1 (now
-     NPDevSamples/scripts/browser/), scripts/superuser-admin-console/demonstrate-*.ps1 -- several
-     distinct historical script moves/removals, never reconciled against every doc that names them.
+     sample-browser-verification-methodology.md:59 points at the old top-level `scripts` folder's
+     `generate-sample-app.ps1`, which now lives under `NPDevSamples`' own `scripts` folder (moved at
+     some point, the doc never updated); similarly `run-durable-resume-demo.ps1`,
+     `export-concept-to-pack.ps1` (under `scripts/packs`), `scrapforai-harness.ps1` (under
+     `scripts/browser`), the `superuser-admin-console` folder's `demonstrate-*.ps1` scripts --
+     several distinct historical script moves, never reconciled against every doc that names them.
   2. "references blocking report with unresolved mapping <path>" -- e.g.
      docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md:18-20 names three report files
      (box-object-truth-report.json, code-bearing-object-resource-report.json,
@@ -1828,15 +1830,8 @@ distinct violations, three shapes:
 **Surface:** `docs`
 **Files:**
 - `scripts/reports/out/doc-entrypoint-validation-report.json`
-- `docs/beta/sample-browser-verification-methodology.md`
-- `docs/beta/beta1-vision-spine-status-and-handoff.md`
-- `docs/beta/beta1-gap-analysis-vs-original-vision.md`
-- `docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md`
-- `docs/CLOSEOUT_PLAN.md`
-- `docs/EXECUTION_TREES.md`
-- `docs/NEXT_EXECUTION_PLAN.md`
-- `docs/NPDEV_OPEN_ITEMS_REGISTER.md`
-- `docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md`
+- `scripts/quality/run-doc-entrypoint-validation.ps1`
+- `scripts/policy/doc-entrypoint-classification-policy.json`
 
 Not fixed here, deliberately -- this is Move 14 Phase E item E2's own explicitly permitted outcome
 ("name each report that cannot be generated and why... a red gate honestly reported is the correct
@@ -1855,6 +1850,105 @@ the doc's stale path (the script/report genuinely still exists, just moved/renam
 doc's own status as archived/historical in scripts/policy/doc-entrypoint-classification-policy.json
 if it is not meant to be currently accurate, or (c) file a distinct REG-nn if the referenced
 report/script was a real, never-fulfilled commitment.
+
+### REG-124 — golden-ai-scenarios/tenant-workflow-ops's ai-model.json declares tenancy.tenantIdField: "tenantId", which Normalize-AiContract.ps1 turns into an EXPLICIT "tenantId" field on the Ticket concept -- colliding with the platform's own implicit, reserved tenant_id column (ReservedColumnNames), so generation now fails with CONCEPT_FIELD_RESERVED_COLLISION instead of reaching build/boot/smoke
+
+**Type:** BUG · **Severity:** LOW · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found while live-verifying Move 15 Phase C item C1 (REG-121's fix: replacing run-ai-beta-gate.ps1's
+disabled --migrationsDir flag with --dbDefinitionPath). REG-121's fix works -- verified live against
+3 of the 6 previously-generation-blocked scenarios in isolation (base-ai-loop, custom-panel-unsupported
+both reached FULL green: generation -> deterministic-generation -> build -> boot -> health -> smoke,
+all passed). tenant-workflow-ops is the one exception: generation now reaches past
+CONFIG_MIGRATIONS_DISABLED cleanly (the DB-definition/schema-fingerprint log lines print
+successfully) but then fails with a NEW, unrelated error:
+
+  java.lang.IllegalStateException: Concept Ticket has a field 'tenantId' whose column name
+  'tenant_id' collides with a platform-reserved business-table column (every generated table
+  implicitly gets 'version' for optimistic concurrency, 'row_version' for LNCH-16 CAS updates
+  through ConceptGateway, and 'tenant_id' for tenant isolation). Rename this field in the model to
+  something else (e.g. 'tenantIdRef').
+    at com.npdev.generator.dbconfig.ReservedColumnNames.validateNoCollision(ReservedColumnNames.java:41)
+
+Root cause: golden-ai-scenarios/tenant-workflow-ops/ai-model.json declares
+`"tenancy": { "tenantIdField": "tenantId", ... }` (an AI-authoring-contract-level tenancy
+declaration, also referenced by auth.principalFields and testUsers[].tenantId). Normalize-AiContract.ps1
+reads this and adds an EXPLICIT "tenantId" field to the Ticket concept in the normalized model.json
+(confirmed: D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\temp\ai-beta-gate\tenant-workflow-ops\normalized\model.json's
+Ticket concept has fields ["id", "tenantId", "title", "status"]). This predates (or was never
+reconciled against) the platform's own later convention that EVERY generated business table
+implicitly gets a reserved `tenant_id` column for isolation -- so this scenario's own
+AI-authoring-level tenancy design now collides with a platform guarantee added after the fixture was
+written. Same general family as REG-122 (the normalizer emitting a shape that predates a later
+platform contract change) but a distinct root cause and fix site -- REG-122 is already closed and
+scoped only to flow-step syntax.
+
+**Surface:** `quality-gates/ai-beta-pipeline`
+**Files:**
+- `golden-ai-scenarios/tenant-workflow-ops/ai-model.json`
+- `scripts/ai/Normalize-AiContract.ps1`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ReservedColumnNames.java`
+
+Not fixed here, deliberately -- out of REG-121's own narrow scope (a disabled CLI flag), and the
+right fix needs a real decision this session did not make: (a) rename the scenario's own
+tenancy.tenantIdField to something that does not collide (e.g. "tenantIdRef"), threading the rename
+through ai-model.json's tenancy/auth/testUsers blocks consistently, since it is NOT an isolated
+single-field rename (three sections reference the same name); or (b) teach
+Normalize-AiContract.ps1 to recognize when tenancy.tenantIdField collides with a platform-reserved
+column and either skip emitting the redundant explicit field (the platform's implicit tenant_id
+already covers exactly this use case) or auto-rename it. (b) is likely the more durable fix since it
+would prevent every FUTURE AI-authored scenario from hitting the same collision, not just this one
+fixture -- but deciding that needs its own verification pass (does anything else read the emitted
+explicit tenantId field expecting it to exist as a real column?), not a same-session patch appended
+to REG-121's own closing.
+
+Practical implication for REG-121: this does NOT block REG-121's own DoD (the disabled-flag
+producers now run to completion) -- 2 of 3 scenarios spot-checked in isolation reach complete
+green (generation through smoke); this is scenario-tenant-workflow-ops's own separate, pre-existing
+defect, unmasked by REG-121's fix rather than caused by it.
+
+### REG-125 — PROJECT_DIGEST.md names scripts/quality/run-box-vision-doc-check.ps1 as its own 'Phase 0 validation script' (expected to write scripts/reports/out/box-vision-doc-check-report.json), but neither the script nor any equivalent under a different name was ever built -- a real, never-fulfilled commitment, not a stale path
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found while triaging Move 15 Phase C item C2 (REG-123, doc-entrypoint-validation's stale-reference
+backlog). PROJECT_DIGEST.md §"Phase 0 validation" reads:
+
+  Phase 0 validation script:
+  scripts/quality/run-box-vision-doc-check.ps1
+  Expected report:
+  scripts/reports/out/box-vision-doc-check-report.json
+
+A repo-wide search (case-insensitive, for "box-vision" and "box_vision" in any form) found zero
+matches anywhere other than this one PROJECT_DIGEST.md reference -- the script was never written,
+under this name or any other. Unlike the sibling finding in
+docs/architecture/NPDEV_GENERATOR_ADAPTER_CONTRACT.md (three report references that doc's own text
+explicitly frames as "Phase 10 is a contract phase... does not implement full production generator
+integration" -- i.e. deliberately-future-by-design), PROJECT_DIGEST.md's wording ("Phase 0 validation
+script:" followed by a bare path) does not read as an explicit future-phase disclaimer -- it reads
+like a real, if small, planned validation tool (presumably: does the digest's own Box/Object/Truth
+doctrine text stay consistent with docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md and its
+ADRs) that was simply never picked up.
+
+**Surface:** `docs/quality-gates`
+**Files:**
+- `PROJECT_DIGEST.md`
+- `scripts/policy/doc-entrypoint-classification-policy.json`
+
+Not fixed here, deliberately -- this item's own scope (REG-123) is the validator's false-positive
+and stale-path backlog, not building new tooling. Classified scripts/quality/run-box-vision-doc-check.ps1
+as "future-non-release" and its report as "future-non-release-report" in
+scripts/policy/doc-entrypoint-classification-policy.json (mirroring the existing
+scripts/doctor/npdev-doctor.ps1 / doctor-report.json precedent) so doc-entrypoint-validation stops
+blocking on it while this real gap is tracked here, rather than either silently building a rushed
+checker or silently allowlisting the reference away with no record.
+
+Recommended next step for whoever picks this up: decide whether this Phase 0 doc-consistency check
+is still wanted (PROJECT_DIGEST.md's own doctrine section is short and has not visibly drifted from
+NPDEV_BOX_OBJECT_TRUTH_VISION.md/its ADRs in practice) -- if yes, build it (likely a simple
+keyword/section presence diff, not a large tool); if the digest doc is considered stable enough not
+to need one, retire the "Phase 0 validation script" section from PROJECT_DIGEST.md instead and close
+this as "intentionally not built."
 
 ### REG-13 — LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time
 

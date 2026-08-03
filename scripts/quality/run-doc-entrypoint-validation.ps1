@@ -381,7 +381,18 @@ if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "doc-entrypoint-validation-" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
 }
 
-$scriptPattern = [regex]"scripts[\\/]+[A-Za-z0-9_./\\-]+\.ps1"
+    # REG-123: the bare "scripts[\\/]+...\.ps1" pattern has no anchor, so a doc reference to a
+    # script living under a NESTED "scripts/" directory (e.g. "NPDevSamples/scripts/generate-sample-app.ps1",
+    # the real current location of several scripts moved out of this repo's own top-level scripts/
+    # tree) only ever matches its OWN "scripts/...ps1" suffix -- silently dropping the "NPDevSamples/"
+    # prefix -- and then resolves that truncated, wrong path against the REPO ROOT, where no such file
+    # exists. No doc-text fix can satisfy this: correcting a stale reference to the accurate
+    # "NPDevSamples/scripts/..." path still only ever gets checked as bare "scripts/...", which is
+    # exactly as wrong as the ORIGINAL stale reference was. The leading `(?:[A-Za-z0-9_.\-]+[\\/])*`
+    # lets the match grow backward through real path segments when a longer prefix is present, while
+    # leaving every existing bare "scripts/...ps1" reference (zero-length prefix) matched exactly as
+    # before.
+$scriptPattern = [regex]"(?:[A-Za-z0-9_.\-]+[\\/])*(?<core>scripts[\\/]+[A-Za-z0-9_./\\-]+\.ps1)"
 $reportPattern = [regex]"scripts[\\/]+reports[\\/]+out[\\/]+[A-Za-z0-9_./\\-]+\.json"
 $classificationPolicy = Read-ClassificationPolicy $ClassificationPolicyPath
 $documentsToScan = @(Get-DocumentsToScan | Sort-Object)
@@ -425,6 +436,22 @@ foreach ($docFullPath in $documentsToScan) {
             $referencePath = [string]$match.Value
             $normalizedPath = Normalize-DocValidationPath $referencePath
             $exists = Test-Path -LiteralPath (Resolve-RepoPath $normalizedPath) -PathType Leaf
+            # REG-123: the greedy leading-path-segment prefix above lets a NESTED "scripts/" reference
+            # (e.g. "NPDevSamples/scripts/generate-sample-app.ps1") match in full instead of losing its
+            # prefix -- but the SAME greediness over-captures when a doc instead writes a full absolute
+            # path whose ancestor directories happen to look like path segments too (e.g.
+            # "D:\WorkSpace\NPDev\NPDev_General\scripts\...", where the colon after the drive letter
+            # breaks the match, but "WorkSpace/NPDev/NPDev_General/" still gets swept into the captured
+            # prefix, which is not a real repo-relative path). Falling back to the inner "core" group
+            # (the un-prefixed "scripts/...ps1" tail) covers that case: a reference exists if EITHER
+            # interpretation resolves to a real file.
+            if (-not $exists -and $match.Groups["core"].Success) {
+                $corePath = Normalize-DocValidationPath $match.Groups["core"].Value
+                if ($corePath -ne $normalizedPath -and (Test-Path -LiteralPath (Resolve-RepoPath $corePath) -PathType Leaf)) {
+                    $exists = $true
+                    $normalizedPath = $corePath
+                }
+            }
             $classification = Get-ScriptClassification $normalizedPath $classificationPolicy
             $blocking = -not $exists -and [bool]$classification.releaseRelevant
             $reason = if ($exists) { "Referenced script exists." } else { [string]$classification.reason }
