@@ -19,6 +19,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -206,6 +207,14 @@ public final class ModelSourceResolver {
             resolvePacks((ArrayNode) packs, resolved, sourceFile, state);
         }
 
+        JsonNode contexts = root.get("contexts");
+        if (contexts != null) {
+            if (!contexts.isArray()) {
+                throw error(sourceFile, "/contexts", "contexts must be an array of {name, $ref} objects");
+            }
+            resolveContexts((ArrayNode) contexts, resolved, sourceFile, state);
+        }
+
         if (!metadata.isEmpty()) {
             resolved.set("metadata", metadata);
         }
@@ -280,6 +289,182 @@ public final class ModelSourceResolver {
                 }
             });
         }
+    }
+
+    /**
+     * B20 (S2, {@code __OutsideRepo\s1\b20-design.md} D1-D4 + D8, owner-accepted 2026-08-03): composes
+     * each declared bounded context's fragment file -- reusing the pack machinery end to end
+     * ({@link #loadPackJson} for schema validation, {@link #resolvePackRoot} for nested-fragment/$ref
+     * resolution, {@link #mergeQualifiedConcepts}/{@link #mergeQualifiedNonConceptArrays} for
+     * {@code contextName::Member} qualification) rather than a second composition mechanism (D2).
+     *
+     * <p>Two passes: (1) load every declared context's raw fragment + its own {@code imports[]},
+     * validate every import names an ALSO-declared context (D3) and that the import graph is acyclic
+     * (D8); (2) resolve each context's full content and merge it in, gate-checking every reference
+     * that already carries a {@code ::} qualifier (a self-reference, a declared import, or -- since
+     * {@code ::} is also how pack-qualified references already work, unrestricted -- anything that
+     * isn't a known context name at all) against that context's own {@code imports[]}. An undeclared
+     * cross-context reference is a named, thrown error -- never a silent resolve-to-nothing (X0).
+     */
+    private void resolveContexts(
+            ArrayNode contextsNode,
+            ObjectNode resolved,
+            Path modelFile,
+            ResolutionState state
+    ) throws IOException {
+        List<String> orderedNames = new ArrayList<>();
+        Map<String, Path> contextFiles = new LinkedHashMap<>();
+        Map<String, ObjectNode> rawContextNodes = new LinkedHashMap<>();
+        Map<String, Set<String>> importGraph = new LinkedHashMap<>();
+        Map<String, String> contextRefByName = new LinkedHashMap<>();
+
+        int index = 0;
+        for (JsonNode contextRefNode : contextsNode) {
+            String path = "/contexts/" + index;
+            if (!contextRefNode.isObject()) {
+                throw error(modelFile, path, "Context declaration must be a JSON object with name and $ref");
+            }
+            ObjectNode contextRef = (ObjectNode) contextRefNode;
+            JsonNode nameNode = contextRef.get("name");
+            if (nameNode == null || !nameNode.isTextual() || nameNode.asText("").isBlank()) {
+                throw error(modelFile, path + "/name", "Context 'name' must be a non-blank string");
+            }
+            String name = nameNode.asText().trim();
+            JsonNode refNode = contextRef.get("$ref");
+            if (refNode == null || !refNode.isTextual() || refNode.asText("").isBlank()) {
+                throw error(modelFile, path + "/$ref", "Context '$ref' must be a non-blank string");
+            }
+            if (contextFiles.containsKey(name)) {
+                throw error(modelFile, path + "/name", "Duplicate context name: " + name);
+            }
+
+            Path contextFile = resolveContextPath(refNode.asText(), modelFile, state.rootDirectory);
+            ObjectNode rawContextNode = loadPackJson(contextFile, state);
+
+            Set<String> imports = new LinkedHashSet<>();
+            JsonNode importsNode = rawContextNode.get("imports");
+            if (importsNode != null) {
+                if (!importsNode.isArray()) {
+                    throw error(contextFile, "/imports", "imports must be an array of context name strings");
+                }
+                for (JsonNode importNode : importsNode) {
+                    if (!importNode.isTextual() || importNode.asText("").isBlank()) {
+                        throw error(contextFile, "/imports", "Each import must be a non-blank string");
+                    }
+                    imports.add(importNode.asText().trim());
+                }
+            }
+
+            orderedNames.add(name);
+            contextFiles.put(name, contextFile);
+            rawContextNodes.put(name, rawContextNode);
+            importGraph.put(name, imports);
+            contextRefByName.put(name, refNode.asText());
+            index++;
+        }
+
+        // D3: every import must name a DECLARED context -- an import of an undeclared context is
+        // caught at declaration time rather than waiting for first use.
+        for (Map.Entry<String, Set<String>> entry : importGraph.entrySet()) {
+            for (String imported : entry.getValue()) {
+                if (imported.equals(entry.getKey())) {
+                    throw error(contextFiles.get(entry.getKey()), "/imports", "Context '" + entry.getKey()
+                            + "' imports itself -- imports[] is for OTHER contexts only");
+                }
+                if (!importGraph.containsKey(imported)) {
+                    throw error(contextFiles.get(entry.getKey()), "/imports", "Context '" + entry.getKey()
+                            + "' imports undeclared context '" + imported + "' -- every entry in imports[] "
+                            + "must name a context also declared in this model's own contexts[] array");
+                }
+            }
+        }
+
+        // D8 (owner-accepted 2026-08-03): reject import cycles -- a cycle means the boundary is not
+        // a boundary.
+        detectImportCycle(importGraph, modelFile);
+
+        for (String name : orderedNames) {
+            Path contextFile = contextFiles.get(name);
+            ObjectNode rawContextNode = rawContextNodes.get(name);
+            ObjectNode contextContent = resolvePackRoot(rawContextNode, contextFile, state, 1, new ArrayDeque<>());
+            Set<String> allowedImports = importGraph.get(name);
+
+            Map<String, String> conceptRewriteMap = packConceptRewriteMap(name, contextContent);
+            mergeQualifiedConcepts("Context", name, contextContent, resolved, contextFile, conceptRewriteMap);
+
+            QualifiedReferenceValidator gate = qualifiedName -> {
+                String prefix = qualifiedName.substring(0, qualifiedName.indexOf("::"));
+                if (prefix.equals(name) || allowedImports.contains(prefix) || !importGraph.containsKey(prefix)) {
+                    // Self-reference, a declared import, or not a known context at all (assumed to be
+                    // a pack reference -- packs stay unrestricted, unchanged behavior) -- all fine.
+                    return;
+                }
+                throwUnchecked(new IOException("Context '" + name + "' references '" + qualifiedName
+                        + "', which belongs to context '" + prefix + "' -- '" + name + "' does not declare '"
+                        + prefix + "' in its own imports[] (D3: an undeclared cross-context reference is a "
+                        + "compile error, never silent)"));
+            };
+            mergeQualifiedNonConceptArrays("Context", name, contextContent, resolved, contextFile, conceptRewriteMap, gate);
+        }
+
+        // Preserve the {name, $ref} registry itself for introspection (JsonModelParser reads it back
+        // into ContextAst) -- the fragment CONTENT above is already fully composed into
+        // concepts/queries/panels/flows.
+        ArrayNode contextsOut = JsonNodeFactory.instance.arrayNode();
+        for (String name : orderedNames) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", name);
+            node.put("$ref", contextRefByName.get(name));
+            contextsOut.add(node);
+        }
+        resolved.set("contexts", contextsOut);
+    }
+
+    private static Path resolveContextPath(String ref, Path modelFile, Path rootDirectory) throws IOException {
+        return resolveJsonRefUnderRoot(ref, modelFile, rootDirectory, rootDirectory, "Context $ref");
+    }
+
+    /** D8: DFS cycle detection over the import graph, iterative-safe recursion depth aside (bounded
+     *  by the number of declared contexts, never attacker-controlled recursion). Reports the actual
+     *  cycle path, not just "a cycle exists somewhere". */
+    private static void detectImportCycle(Map<String, Set<String>> importGraph, Path modelFile) throws IOException {
+        Set<String> visited = new LinkedHashSet<>();
+        Set<String> onStack = new LinkedHashSet<>();
+        Deque<String> pathStack = new ArrayDeque<>();
+        for (String start : importGraph.keySet()) {
+            if (!visited.contains(start)) {
+                detectImportCycleFrom(start, importGraph, visited, onStack, pathStack, modelFile);
+            }
+        }
+    }
+
+    private static void detectImportCycleFrom(
+            String node,
+            Map<String, Set<String>> importGraph,
+            Set<String> visited,
+            Set<String> onStack,
+            Deque<String> pathStack,
+            Path modelFile
+    ) throws IOException {
+        visited.add(node);
+        onStack.add(node);
+        pathStack.push(node);
+        for (String next : importGraph.getOrDefault(node, Set.of())) {
+            if (onStack.contains(next)) {
+                List<String> cyclePath = new ArrayList<>(pathStack);
+                Collections.reverse(cyclePath);
+                int startIndex = cyclePath.indexOf(next);
+                String description = String.join(" -> ", cyclePath.subList(startIndex, cyclePath.size())) + " -> " + next;
+                throw error(modelFile, "/contexts", "Import cycle detected: " + description
+                        + " -- a context's imports[] graph must be acyclic (a cycle means the boundary "
+                        + "is not a boundary)");
+            }
+            if (!visited.contains(next)) {
+                detectImportCycleFrom(next, importGraph, visited, onStack, pathStack, modelFile);
+            }
+        }
+        pathStack.pop();
+        onStack.remove(node);
     }
 
     private void resolvePacks(
@@ -388,11 +573,28 @@ public final class ModelSourceResolver {
             Map<String, String> conceptRewriteMap
     )
             throws IOException {
+        mergeQualifiedNonConceptArrays("Pack", packId, packNode, resolved, packFile, conceptRewriteMap, QUALIFIED_REF_NOOP);
+    }
+
+    /** B20 (S2): generalized over {@link #mergePackNonConceptArrays} -- identical field walk and
+     *  local-reference rewriting; {@code kindLabel} only changes the duplicate-member error message,
+     *  and {@code qualifiedReferenceValidator} is the D3 import-gate hook (a no-op for packs,
+     *  unchanged behavior; the real check for contexts, see {@link #mergeContextNonConceptArrays}). */
+    private static void mergeQualifiedNonConceptArrays(
+            String kindLabel,
+            String qualifierId,
+            ObjectNode sourceNode,
+            ObjectNode resolved,
+            Path sourceFile,
+            Map<String, String> conceptRewriteMap,
+            QualifiedReferenceValidator qualifiedReferenceValidator
+    )
+            throws IOException {
         for (String key : MODEL_ARRAY_KEYS) {
             if ("concepts".equals(key)) {
                 continue;
             }
-            JsonNode array = packNode.get(key);
+            JsonNode array = sourceNode.get(key);
             if (array == null || !array.isArray()) {
                 continue;
             }
@@ -408,13 +610,13 @@ public final class ModelSourceResolver {
                                 && existing.has("name")
                                 && existing.get("name").isTextual()
                                 && name.equalsIgnoreCase(existing.get("name").asText())) {
-                            throw error(packFile, "/" + key,
-                                    "Pack '" + packId + "' contributes duplicate " + key + " member '" + name + "'");
+                            throw error(sourceFile, "/" + key,
+                                    kindLabel + " '" + qualifierId + "' contributes duplicate " + key + " member '" + name + "'");
                         }
                     }
                 }
                 JsonNode rewritten = item.deepCopy();
-                rewritePackLocalConceptReferencesInPlace(rewritten, conceptRewriteMap, key);
+                rewritePackLocalConceptReferencesInPlace(rewritten, conceptRewriteMap, key, qualifiedReferenceValidator);
                 target.add(rewritten);
             }
             resolved.set(key, target);
@@ -429,29 +631,50 @@ public final class ModelSourceResolver {
         if (node == null || conceptRewriteMap.isEmpty()) {
             return;
         }
-        rewritePackLocalConceptReferencesInPlace(node, conceptRewriteMap, rootKey, "");
+        rewritePackLocalConceptReferencesInPlace(node, conceptRewriteMap, rootKey, QUALIFIED_REF_NOOP);
+    }
+
+    /** B20 (S2): same field walk, plus a hook invoked for every reference already qualified
+     *  ({@code prefix::Name}) rather than rewritten -- packs pass a no-op (unrestricted cross-pack
+     *  reference, existing behavior, unchanged); {@code mergeContextNonConceptArrays} passes D3's
+     *  import-gate check. Unlike the pack-only overload above, this one does NOT short-circuit on an
+     *  empty {@code conceptRewriteMap} -- a context with zero local concepts must still have its
+     *  OTHER-context-qualified references gate-checked. */
+    private static void rewritePackLocalConceptReferencesInPlace(
+            JsonNode node,
+            Map<String, String> conceptRewriteMap,
+            String rootKey,
+            QualifiedReferenceValidator qualifiedReferenceValidator
+    ) {
+        if (node == null) {
+            return;
+        }
+        rewritePackLocalConceptReferencesInPlace(node, conceptRewriteMap, rootKey, "", qualifiedReferenceValidator);
     }
 
     private static void rewritePackLocalConceptReferencesInPlace(
             JsonNode node,
             Map<String, String> conceptRewriteMap,
             String rootKey,
-            String parentKey
+            String parentKey,
+            QualifiedReferenceValidator qualifiedReferenceValidator
     ) {
         if (node == null) {
             return;
         }
         if (node.isObject()) {
             ObjectNode object = (ObjectNode) node;
-            rewriteKnownConceptFields(object, conceptRewriteMap, rootKey, parentKey);
+            rewriteKnownConceptFields(object, conceptRewriteMap, rootKey, parentKey, qualifiedReferenceValidator);
             List<String> fieldNames = new ArrayList<>();
             object.fieldNames().forEachRemaining(fieldNames::add);
             for (String fieldName : fieldNames) {
-                rewritePackLocalConceptReferencesInPlace(object.get(fieldName), conceptRewriteMap, rootKey, fieldName);
+                rewritePackLocalConceptReferencesInPlace(
+                        object.get(fieldName), conceptRewriteMap, rootKey, fieldName, qualifiedReferenceValidator);
             }
         } else if (node.isArray()) {
             for (JsonNode item : node) {
-                rewritePackLocalConceptReferencesInPlace(item, conceptRewriteMap, rootKey, parentKey);
+                rewritePackLocalConceptReferencesInPlace(
+                        item, conceptRewriteMap, rootKey, parentKey, qualifiedReferenceValidator);
             }
         }
     }
@@ -460,58 +683,61 @@ public final class ModelSourceResolver {
             ObjectNode object,
             Map<String, String> conceptRewriteMap,
             String rootKey,
-            String parentKey
+            String parentKey,
+            QualifiedReferenceValidator qualifiedReferenceValidator
     ) {
-        rewriteTextField(object, "conceptRef", conceptRewriteMap);
+        rewriteTextField(object, "conceptRef", conceptRewriteMap, qualifiedReferenceValidator);
         if ("queries".equals(rootKey)) {
-            rewriteTextField(object, "concept", conceptRewriteMap);
+            rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
         } else if ("flows".equals(rootKey)) {
             if (parentKey.isBlank() || "input".equals(parentKey)) {
-                rewriteTextField(object, "concept", conceptRewriteMap);
+                rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             }
         } else if ("procedures".equals(rootKey)) {
-            rewriteTextField(object, "concept", conceptRewriteMap);
+            rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             if ("actionDescriptor".equals(parentKey)) {
-                rewriteTextField(object, "sideEffectConcept", conceptRewriteMap);
-                rewriteTextArrayField(object, "affectedConcepts", conceptRewriteMap);
+                rewriteTextField(object, "sideEffectConcept", conceptRewriteMap, qualifiedReferenceValidator);
+                rewriteTextArrayField(object, "affectedConcepts", conceptRewriteMap, qualifiedReferenceValidator);
             }
         } else if ("panels".equals(rootKey)) {
             if ("dataSources".equals(parentKey) || "actions".equals(parentKey)) {
-                rewriteTextField(object, "concept", conceptRewriteMap);
+                rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             }
         } else if ("orchestrations".equals(rootKey) || "orchestrationRules".equals(rootKey)) {
             if ("action".equals(parentKey) || "actions".equals(parentKey)) {
-                rewriteTextField(object, "concept", conceptRewriteMap);
-                rewriteTextField(object, "targetConcept", conceptRewriteMap);
+                rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
+                rewriteTextField(object, "targetConcept", conceptRewriteMap, qualifiedReferenceValidator);
             }
         } else if ("ruleProfiles".equals(rootKey)) {
-            rewriteTextOrArrayField(object, "appliesTo", conceptRewriteMap);
+            rewriteTextOrArrayField(object, "appliesTo", conceptRewriteMap, qualifiedReferenceValidator);
         } else if ("events".equals(rootKey)) {
-            rewriteTextField(object, "concept", conceptRewriteMap);
-            rewriteTextField(object, "conceptName", conceptRewriteMap);
+            rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
+            rewriteTextField(object, "conceptName", conceptRewriteMap, qualifiedReferenceValidator);
         }
     }
 
     private static void rewriteTextOrArrayField(
             ObjectNode object,
             String fieldName,
-            Map<String, String> conceptRewriteMap
+            Map<String, String> conceptRewriteMap,
+            QualifiedReferenceValidator qualifiedReferenceValidator
     ) {
         JsonNode value = object.get(fieldName);
         if (value == null) {
             return;
         }
         if (value.isTextual()) {
-            rewriteTextField(object, fieldName, conceptRewriteMap);
+            rewriteTextField(object, fieldName, conceptRewriteMap, qualifiedReferenceValidator);
         } else if (value.isArray()) {
-            rewriteTextArrayField(object, fieldName, conceptRewriteMap);
+            rewriteTextArrayField(object, fieldName, conceptRewriteMap, qualifiedReferenceValidator);
         }
     }
 
     private static void rewriteTextArrayField(
             ObjectNode object,
             String fieldName,
-            Map<String, String> conceptRewriteMap
+            Map<String, String> conceptRewriteMap,
+            QualifiedReferenceValidator qualifiedReferenceValidator
     ) {
         JsonNode value = object.get(fieldName);
         if (value == null || !value.isArray()) {
@@ -521,7 +747,7 @@ public final class ModelSourceResolver {
         boolean changed = false;
         for (JsonNode item : value) {
             if (item != null && item.isTextual()) {
-                String replacement = rewriteConceptName(item.asText(), conceptRewriteMap);
+                String replacement = rewriteConceptName(item.asText(), conceptRewriteMap, qualifiedReferenceValidator);
                 rewritten.add(replacement);
                 changed = changed || !replacement.equals(item.asText());
             } else {
@@ -536,23 +762,39 @@ public final class ModelSourceResolver {
     private static void rewriteTextField(
             ObjectNode object,
             String fieldName,
-            Map<String, String> conceptRewriteMap
+            Map<String, String> conceptRewriteMap,
+            QualifiedReferenceValidator qualifiedReferenceValidator
     ) {
         JsonNode value = object.get(fieldName);
         if (value == null || !value.isTextual()) {
             return;
         }
-        String replacement = rewriteConceptName(value.asText(), conceptRewriteMap);
+        String replacement = rewriteConceptName(value.asText(), conceptRewriteMap, qualifiedReferenceValidator);
         if (!replacement.equals(value.asText())) {
             object.put(fieldName, replacement);
         }
     }
 
-    private static String rewriteConceptName(String authored, Map<String, String> conceptRewriteMap) {
-        if (authored == null || authored.contains("::")) {
+    private static String rewriteConceptName(
+            String authored, Map<String, String> conceptRewriteMap, QualifiedReferenceValidator qualifiedReferenceValidator) {
+        if (authored == null) {
+            return authored;
+        }
+        if (authored.contains("::")) {
+            qualifiedReferenceValidator.validate(authored);
             return authored;
         }
         return conceptRewriteMap.getOrDefault(authored, authored);
+    }
+
+    /** B20 (S2): a no-op qualified-reference check -- packs today have no import restriction, so an
+     *  already-qualified reference (cross-pack or, since D1 reuses the same {@code ::} separator,
+     *  cross-context) is left completely unvalidated when reached through a pack's own merge path. */
+    private static final QualifiedReferenceValidator QUALIFIED_REF_NOOP = qualifiedName -> { };
+
+    @FunctionalInterface
+    private interface QualifiedReferenceValidator {
+        void validate(String qualifiedName);
     }
 
     private static Path resolvePackPath(String ref, Path modelFile, Path rootDirectory) throws IOException {
@@ -745,7 +987,22 @@ public final class ModelSourceResolver {
             Map<String, String> conceptRewriteMap
     )
             throws IOException {
-        JsonNode conceptsNode = packNode.get("concepts");
+        mergeQualifiedConcepts("Pack", packId, packNode, resolved, packFile, conceptRewriteMap);
+    }
+
+    /** B20 (S2): generalized over {@link #mergePackConcepts} -- identical logic, {@code kindLabel}
+     *  ("Pack"/"Context") only changes the duplicate-concept error message so a context author sees
+     *  "Context 'inventory' contributes duplicate concept ..." rather than a confusing "Pack ...". */
+    private static void mergeQualifiedConcepts(
+            String kindLabel,
+            String qualifierId,
+            ObjectNode sourceNode,
+            ObjectNode resolved,
+            Path sourceFile,
+            Map<String, String> conceptRewriteMap
+    )
+            throws IOException {
+        JsonNode conceptsNode = sourceNode.get("concepts");
         if (conceptsNode == null || !conceptsNode.isArray()) {
             return;
         }
@@ -754,15 +1011,15 @@ public final class ModelSourceResolver {
                 : JsonNodeFactory.instance.arrayNode();
         for (JsonNode concept : conceptsNode) {
             if (concept.isObject()) {
-                ObjectNode namespaced = namespacePackConcept(packId, (ObjectNode) concept, conceptRewriteMap);
+                ObjectNode namespaced = namespacePackConcept(qualifierId, (ObjectNode) concept, conceptRewriteMap);
                 String namespacedName = textOrBlank(namespaced.get("name"));
                 for (JsonNode existing : targetConcepts) {
                     if (existing != null
                             && existing.isObject()
                             && existing.has("name")
                             && namespacedName.equalsIgnoreCase(existing.get("name").asText())) {
-                        throw error(packFile, "/concepts",
-                                "Pack '" + packId + "' contributes duplicate concept '" + namespacedName + "'");
+                        throw error(sourceFile, "/concepts",
+                                kindLabel + " '" + qualifierId + "' contributes duplicate concept '" + namespacedName + "'");
                     }
                 }
                 targetConcepts.add(namespaced);
@@ -1001,7 +1258,8 @@ public final class ModelSourceResolver {
                 || MODEL_ARRAY_KEYS.contains(key)
                 || "metadata".equals(key)
                 || "fragments".equals(key)
-                || "packs".equals(key);
+                || "packs".equals(key)
+                || "contexts".equals(key);
     }
 
     private static void validateFragmentObject(ObjectNode fragment, Path sourceFile) throws IOException {
@@ -1033,9 +1291,14 @@ public final class ModelSourceResolver {
             JsonNode ref = node.get("$ref");
             if (ref != null) {
                 // A bare include is exactly {"$ref": "..."}; a pack import may additionally carry
-                // an "as" alias ({"$ref": "...", "as": "..."}). Any other extra key is malformed.
+                // an "as" alias ({"$ref": "...", "as": "..."}); a top-level context declaration (B20,
+                // S2) additionally carries a required "name" ({"$ref": "...", "name": "..."}), but
+                // ONLY at /contexts/N -- everywhere else "name" alongside a bare $ref stays malformed,
+                // same as any other stray key would.
+                boolean isContextDeclaration = path.matches("^\\$/contexts/\\d+$");
                 boolean onlyRefAndOptionalAlias = node.size() == 1
-                        || (node.size() == 2 && node.has("as"));
+                        || (node.size() == 2 && node.has("as"))
+                        || (isContextDeclaration && node.size() == 2 && node.has("name"));
                 if (!onlyRefAndOptionalAlias) {
                     throwUnchecked(new IOException("Malformed model include at " + sourceFile + " " + path
                             + ": $ref object must not contain extra properties"));

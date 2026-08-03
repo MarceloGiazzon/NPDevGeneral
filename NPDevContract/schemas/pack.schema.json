@@ -181,6 +181,14 @@
         ]
       }
     },
+    "imports": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "B20 (S2): the other bounded contexts this context fragment may reference via context::Concept (D1). An unlisted context named in a context::Concept reference is a compile error, never a silent resolve-to-nothing (D3, X0). The import graph must be acyclic -- a cycle is a compile error, not a warning."
+    },
     "metadata": {
       "type": "object"
     },

@@ -50,6 +50,35 @@
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
       ]
+    },
+    {
+      "id": "bounded-context-four-place",
+      "citedBy": "B20 (S2, __OutsideRepo\\s1\\b20-design.md, ADR-0011)",
+      "description": "The contexts[] registry (which bounded contexts a model declares) needs the same live path the ast-compiled-four-place rule requires for roles[] -- parser, compiler, ModelResolver, and the canonical writer+reader pair -- or a declared context's registry entry survives parsing but silently never reaches the generator/runtime.",
+      "kind": "field-in-all-files",
+      "trackedFields": ["contexts"],
+      "caseSensitive": false,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+      ]
+    },
+    {
+      "id": "bounded-context-imports-gate",
+      "citedBy": "B20 (S2, __OutsideRepo\\s1\\b20-design.md D3, ADR-0011)",
+      "description": "D3's import-gate field (imports[], declared on a context fragment, pack-shaped per D2) must stay schema-declared on BOTH pack.schema.json copies and enforced by ModelSourceResolver -- a copy that lost the schema key would reject every context fragment that declares imports[], and a resolver that lost the enforcement would silently let an undeclared cross-context reference through (the exact X0 shape D3 exists to prevent).",
+      "kind": "field-in-all-files",
+      "trackedFields": ["imports"],
+      "caseSensitive": false,
+      "files": [
+        "NPDevContract/schemas/pack.schema.json",
+        "NPDevContract/dsl/src/main/resources/schema/pack.schema.json",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java"
+      ]
     }
   ]
 }

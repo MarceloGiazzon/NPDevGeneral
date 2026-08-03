@@ -67,7 +67,23 @@ public final class CompiledModelCanonicalJson {
         root.set("roles", toRoles(model));
         root.set("propertyScopes", toPropertyScopes(model));
         root.set("properties", toProperties(model));
+        root.set("contexts", toContexts(model));
         return root;
+    }
+
+    /** B20 (S2): writes the declared bounded-context registry, sorted by name (deterministic-
+     *  generation gate, same discipline every other array here follows). */
+    private static ArrayNode toContexts(CompiledModel model) {
+        ArrayNode contexts = JsonNodeFactory.instance.arrayNode();
+        List<CompiledContext> sorted = new ArrayList<>(model.getContexts());
+        sorted.sort(Comparator.comparing(context -> normalize(context.name())));
+        for (CompiledContext context : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(context.name()));
+            node.put("ref", safe(context.ref()));
+            contexts.add(node);
+        }
+        return contexts;
     }
 
     /** Wave 6 (RC-A1): writes the declared scope levels of the property cascade, ORDER PRESERVED

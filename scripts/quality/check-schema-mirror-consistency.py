@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Schema mirror consistency: are all four copies of model.schema.json still the same contract?
+"""Schema mirror consistency: are all copies of model.schema.json / pack.schema.json still the same contract?
 
 WHY THIS EXISTS -- 2.A.2 (docs/DSL2_AND_DECOMPOSITION_PLAN.md)
 ------------------------------------------------------------------
@@ -18,14 +18,21 @@ teaching the old contract to whichever consumer reads them -- the authoring UI r
 copy, the DSL module loads its own `src/main/resources` copy, and so on. This gate makes that
 impossible to do unnoticed.
 
+`pack.schema.json` has the same hazard in miniature -- duplicated in two places
+(`NPDevContract/schemas/pack.schema.json`, `NPDevContract/dsl/src/main/resources/schema/pack.schema.json`)
+with nothing checking them until S2 (B20 bounded contexts, S2_SPEC.md sec.0.1) added a second real
+reason they could diverge (the new `contexts`/`imports` schema additions). Checked here as a second,
+independent group -- a drift in one pair never masks or is masked by a drift in the other.
+
 WHAT COUNTS AS "IDENTICAL"
 ---------------------------
 Semantic, not byte-for-byte: parsed JSON structures are deep-compared (so pretty-printing/key-order
-differences never fire), with exactly two keys excused on the legacy-location copy
-(`NPDevContract/dsl/resources/Schemas/model.schema.json`): `deprecated` and `canonicalSchema`. Those
-mark that file as the deliberately-kept legacy pointer, not a content difference to reconcile. Any
-other difference -- a new key on the wrong copy, a different enum on one, a value present on three
-but not the fourth -- is reported as a real drift.
+differences never fire). For the model.schema.json group, exactly two keys are excused on the
+legacy-location copy (`NPDevContract/dsl/resources/Schemas/model.schema.json`): `deprecated` and
+`canonicalSchema` -- they mark that file as the deliberately-kept legacy pointer, not a content
+difference to reconcile. The pack.schema.json group has no excused keys. Any other difference -- a
+new key on the wrong copy, a different enum on one, a value present on some but not all copies in a
+group -- is reported as a real drift.
 
 USAGE
 -----
@@ -39,16 +46,21 @@ import json
 import sys
 from pathlib import Path
 
-SCHEMA_PATHS = (
+MODEL_SCHEMA_PATHS = (
     "NPDevContract/schemas/model.schema.json",
     "NPDevContract/schemas/authoring/model.schema.json",
     "NPDevContract/dsl/src/main/resources/schema/model.schema.json",
     "NPDevContract/dsl/resources/Schemas/model.schema.json",
 )
 
-# Keys excused ONLY on the legacy-location copy (last entry in SCHEMA_PATHS) -- see module docstring.
-LEGACY_COPY_INDEX = 3
-EXCUSED_KEYS_ON_LEGACY_COPY = ("deprecated", "canonicalSchema")
+# Keys excused ONLY on the legacy-location copy (last entry in MODEL_SCHEMA_PATHS) -- see module docstring.
+MODEL_SCHEMA_LEGACY_COPY_INDEX = 3
+MODEL_SCHEMA_EXCUSED_KEYS_ON_LEGACY_COPY = ("deprecated", "canonicalSchema")
+
+PACK_SCHEMA_PATHS = (
+    "NPDevContract/schemas/pack.schema.json",
+    "NPDevContract/dsl/src/main/resources/schema/pack.schema.json",
+)
 
 
 def load_normalized(path: Path, excuse_keys: tuple[str, ...]) -> dict:
@@ -58,29 +70,30 @@ def load_normalized(path: Path, excuse_keys: tuple[str, ...]) -> dict:
     return data
 
 
-def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--root", default=".", help="repo root (default: cwd)")
-    args = parser.parse_args(argv)
-    root = Path(args.root).resolve()
-
-    resolved = [root / p for p in SCHEMA_PATHS]
+def check_group(
+    root: Path,
+    relative_paths: tuple[str, ...],
+    excused_keys_by_index: dict[int, tuple[str, ...]],
+    label: str,
+) -> tuple[bool, bool]:
+    """Returns (ok, hard_error). hard_error means a file was missing or invalid JSON (exit 2 territory)."""
+    resolved = [root / p for p in relative_paths]
     missing = [p for p in resolved if not p.is_file()]
     if missing:
         for p in missing:
             print(f"ERROR: schema copy not found: {p}", file=sys.stderr)
-        return 2
+        return False, True
 
     normalized = []
     for i, path in enumerate(resolved):
-        excuse = EXCUSED_KEYS_ON_LEGACY_COPY if i == LEGACY_COPY_INDEX else ()
+        excuse = excused_keys_by_index.get(i, ())
         try:
             normalized.append(load_normalized(path, excuse))
         except json.JSONDecodeError as exc:
             print(f"ERROR: {path} is not valid JSON: {exc}", file=sys.stderr)
-            return 2
+            return False, True
 
-    print("Schema mirror consistency (4 copies of model.schema.json, semantic compare):")
+    print(f"Schema mirror consistency ({len(relative_paths)} copies of {label}, semantic compare):")
     baseline = normalized[0]
     drift_found = False
     for i in range(1, len(normalized)):
@@ -97,13 +110,37 @@ def main(argv: list[str]) -> int:
             print(f"  [OK]    {resolved[i].relative_to(root).as_posix()}")
 
     if drift_found:
-        print("\nFAIL: the four schema copies are not semantically identical. Every edit to "
-              "model.schema.json must be mirrored to all four (CLAUDE.md's own standing rule).",
+        print(f"\nFAIL: the {label} copies are not semantically identical. Every edit to "
+              f"{label} must be mirrored to all {len(relative_paths)} (CLAUDE.md's own standing rule).",
               file=sys.stderr)
-        return 1
+        return False, False
 
-    print(f"\nOK: all four copies semantically identical (excusing {EXCUSED_KEYS_ON_LEGACY_COPY} on "
-          f"the legacy-location copy).")
+    excused_note = ""
+    if any(excused_keys_by_index.values()):
+        excused = next(v for v in excused_keys_by_index.values() if v)
+        excused_note = f" (excusing {excused} on the legacy-location copy)"
+    print(f"\nOK: all {len(relative_paths)} copies semantically identical{excused_note}.")
+    return True, False
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--root", default=".", help="repo root (default: cwd)")
+    args = parser.parse_args(argv)
+    root = Path(args.root).resolve()
+
+    model_ok, model_hard_error = check_group(
+        root, MODEL_SCHEMA_PATHS,
+        {MODEL_SCHEMA_LEGACY_COPY_INDEX: MODEL_SCHEMA_EXCUSED_KEYS_ON_LEGACY_COPY},
+        "model.schema.json",
+    )
+    print()
+    pack_ok, pack_hard_error = check_group(root, PACK_SCHEMA_PATHS, {}, "pack.schema.json")
+
+    if model_hard_error or pack_hard_error:
+        return 2
+    if not model_ok or not pack_ok:
+        return 1
     return 0
 
 

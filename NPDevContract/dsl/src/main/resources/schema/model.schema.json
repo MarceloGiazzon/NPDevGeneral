@@ -328,6 +328,13 @@
         "$ref": "#/$defs/property"
       },
       "description": "Wave 6 (RC-A1): declared runtime properties resolved through the scoped-property cascade (see propertyScopes)."
+    },
+    "contexts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/context"
+      },
+      "description": "B20 (S2): bounded-context declarations. Each names a context and $ref's the fragment file (composed via the same pack/fragment $ref machinery as `fragments`/`packs`) whose concepts/queries/panels/flows belong to that context. Cross-context references use context::Concept (D1); a fragment may only reference a context its own `imports[]` (pack.schema.json) declares (D3) -- an undeclared or unresolvable reference is a compile error, never silent."
     }
   },
   "$defs": {
@@ -4193,6 +4200,26 @@
         }
       },
       "additionalProperties": false
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "$ref"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+        },
+        "$ref": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?![A-Za-z][A-Za-z0-9+.-]*:)(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).*\\.json$"
+        }
+      }
     }
   },
   "additionalProperties": false

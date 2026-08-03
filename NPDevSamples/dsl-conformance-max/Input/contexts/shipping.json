@@ -1,0 +1,24 @@
+{
+  "dslVersion": "1.0.0",
+  "pack": "shipping",
+  "version": "1.0.0",
+  "description": "B20 (S2, ADR-0011) dsl-conformance-max witness: the 'shipping' bounded context. Imports 'billing' (D3) and references its concept via the qualified name billing::Invoice (D1) in a declared query -- the corpus witness for check-dsl-coverage.py's 'contexts' feature.",
+  "imports": ["billing"],
+  "concepts": [
+    {
+      "name": "Shipment",
+      "ui": { "label": "Shipment" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "carrier", "type": "string", "required": true, "ui": { "label": "Carrier" } }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "name": "PendingInvoicesForShipping",
+      "concept": "billing::Invoice",
+      "where": "status == 'PENDING'"
+    }
+  ]
+}
