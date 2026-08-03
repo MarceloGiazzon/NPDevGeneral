@@ -1,6 +1,7 @@
 package com.npdev.dsl.v1.compiler;
 
 import com.npdev.dsl.v1.ast.ConceptAst;
+import com.npdev.dsl.v1.ast.ContextAst;
 import com.npdev.dsl.v1.ast.DocumentAst;
 import com.npdev.dsl.v1.ast.ExternalAiAst;
 import com.npdev.dsl.v1.ast.FieldAst;
@@ -172,11 +173,16 @@ public final class ModelCompiler {
             domainTypes.add(toCompiledDomainType(domainTypeAst));
         }
 
+        Set<String> contextNames = new HashSet<>();
+        for (ContextAst context : modelAst.getContexts()) {
+            contextNames.add(context.name());
+        }
+
         List<ConceptAst> orderedConcepts = new ArrayList<>(modelAst.getConcepts());
         orderedConcepts.sort(Comparator.comparing(concept -> normalize(concept.getName())));
         for (ConceptAst concept : orderedConcepts) {
             String className = JavaIdentifierSupport.className(concept.getName());
-            String tableName = SqlIdentifierSupport.toSnakePlural(concept.getName());
+            String tableName = SqlIdentifierSupport.toSnakePlural(tableNameSource(concept.getName(), contextNames));
 
             EffectiveEntityDef effective = resolveEffective(
                     concept,
@@ -1059,6 +1065,20 @@ public final class ModelCompiler {
 
     private static String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /** ADR-0011 D4 (B20): a context-qualified concept's physical table name ignores the context
+     *  qualifier -- table names are derived exactly as before B20, from the bare concept name.
+     *  Pack-qualified names ({@code packId::Name}) are untouched by this and keep prefixing exactly
+     *  as they always have; only a prefix matching a name in this model's own declared
+     *  {@code contexts[]} is stripped, since that is the only qualifier D4 promises is invisible to
+     *  the physical schema. */
+    private static String tableNameSource(String qualifiedName, Set<String> contextNames) {
+        int split = qualifiedName.indexOf("::");
+        if (split > 0 && contextNames.contains(qualifiedName.substring(0, split))) {
+            return qualifiedName.substring(split + 2);
+        }
+        return qualifiedName;
     }
 
     private static CompiledGeneratedActionDescriptorSpec compileGeneratedActionDescriptor(ProcedureAst procedureAst) {

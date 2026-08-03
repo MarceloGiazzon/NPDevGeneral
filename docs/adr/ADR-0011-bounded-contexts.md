@@ -126,8 +126,10 @@ context instead.
 - No context-scoped generated navigation — `workspace::Menu`/ControlPanel stay flat.
 - No runtime context rename/merge tooling — renaming a context is a codemod-shaped break like any
   other.
-- No corpus migration (S3) and no codemod (S3) — S2 ships the mechanism and exactly one fixture
-  witness (`dsl-conformance-max`); the other 31 corpus models are untouched.
+- No corpus migration (S3) and no codemod (S3) in S2 itself — S2 ships the mechanism and exactly one
+  fixture witness (`dsl-conformance-max`); S3 (see addendum below) built the codemod and migrated
+  exactly two more models for a concrete reason each. `contexts[]` remains optional indefinitely —
+  see the addendum for why a corpus-wide migration was decided against.
 - No groupBy join syntax (S4, B27) — a query still names exactly one `concept`; a context-qualified
   `query.concept` is the only reference site this increment enforces the import gate on.
 
@@ -152,7 +154,11 @@ context instead.
   error.
 - Compile (`ModelCompiler`/`CompiledModel`): `CompiledContext(name, ref)` registry, pass-through —
   qualification itself already happened at resolution, so this is metadata, not new semantic logic.
-  `BusinessUiEmitter`'s `appName` fallback (`modelAst.getNamespace()`) is untouched.
+  `BusinessUiEmitter`'s `appName` fallback (`modelAst.getNamespace()`) is untouched. **Correction
+  (S3, see addendum below): at the time this section was written, D4's table-name promise was not
+  actually implemented here** — `ModelCompiler` derived the table name straight from the qualified
+  concept name, and `SqlIdentifierSupport.toSnake` folds `::` into `_` rather than stripping it, so a
+  context-qualified concept's table WAS prefixed exactly like a pack-qualified one. Fixed in S3.
 - Canonical round-trip: `CompiledModelCanonicalJson`/`CompiledModelCanonicalJsonReader` read/write
   `contexts[]`, verified both by a dedicated fixture and by the existing generic
   `CanonicalJsonRoundTripCompletenessTest` (reflection-driven; it discovered `CompiledContext`
@@ -178,3 +184,72 @@ zero schema-breaking change for any existing app, since a model with no `context
 identically) and the prerequisite for S4 (groupBy joins needing qualified references to exist first)
 and S5 (multi-author merge, where two authors' disjoint contexts are what makes concurrent submission
 tractable instead of a single 45 KB document's compare-and-swap).
+
+## S3 addendum (2026-08-03) — the codemod, the corpus decision, and two gaps this trial found
+
+**§0 decision: `contexts[]` stays optional indefinitely.** Migrating the other ~29 corpus models into
+single-context wrappers would add indirection to apps with no second context, for no behavioral gain
+— the recommendation `S3_SPEC.md` §0 made, confirmed. No corpus-wide migration was run.
+
+**The codemod exists:** `npdev migrate bounded-contexts --input <definition-dir> [--write]`
+(`NPDevCli/dsl_v2_migration_bounded_contexts.py`, `npdev_cli.py`). Dry-run by default. It wraps a
+model's entire authored content into ONE new context, deriving the context's name from the model's
+`namespace`/`model` field.
+
+**A material correction to the spec's own technical premise, found before writing any code:**
+`S3_SPEC.md` §2.3 proposed rewriting relocated `$ref`s by prepending `../` per directory level. This
+is schema-invalid, not just risky — `model.schema.json`'s `localModelRef` pattern
+(`^(?![A-Za-z][A-Za-z0-9+.-]*:)(?!/)(?!.*(?:^|/)\.\.(?:/|$)).*\.json$`) unconditionally forbids any
+`..` segment, and `loadPackJson` schema-validates a context fragment's raw JSON — including its own
+`$ref` strings — before resolving anything inside it. **The codemod instead physically relocates the
+referenced files** into a `contexts/<name>/` subtree that mirrors their original relative layout, so
+every `$ref` string stays byte-identical; only where it resolves *from* changes. A smaller correction:
+`pack.schema.json` has no `packs` property, so pack `$ref`s can never move into a context and were
+never really part of the "ref rewrite" risk the spec described (WmsOffice's 28 refs are 26 concept
+refs that move + 2 pack refs that don't; pack-sample's 4 are 2 + 2 the same way).
+
+**Two real implementation gaps, found empirically by running the codemod against real content —
+not by inspection — and fixed in this same session, before the WmsOffice trial was allowed to pass:**
+
+1. **D4 ("no physical table prefixing") was accepted here but never implemented.** Every
+   context-qualified concept's table was silently prefixed exactly like a pack-qualified one
+   (`SqlIdentifierSupport.toSnake` folds `::` into `_`, with no exception for a context qualifier).
+   `BoundedContextResolutionTest` never asserted table-name behavior, so S2 shipped this unnoticed.
+   Fixed in `ModelCompiler` (`tableNameSource`, gated on the model's own declared `contexts[]`
+   names so pack-table-prefixing is completely unaffected); new test
+   `BoundedContextTableNamingTest`. Live-proven on the WmsOffice trial: all 26 migrated concepts'
+   table names are unchanged (`areas`, `armazems`, ... `usuarios`), while `identity::*`/
+   `workspace::*` pack-qualified tables stayed prefixed as before.
+2. **`flowStep.scope`** (the field `invariantCheck`/`createConcept`/`updateConcept` steps use to name
+   their target concept — the same field `FlowValidation.collectConceptMutationScopes` reads for all
+   three) **was never in `rewriteKnownConceptFields`'s rewrite table**, unlike `flow.concept`/
+   `flow.input.concept`. A context-qualified concept's own flow steps stayed unqualified, and
+   semantic validation then rejected the mismatch qualification itself introduced. First surfaced on
+   `AppGen/apps/pack-sample`'s `ProcessSale` flow; the same class of bug reproduced on two WmsOffice
+   flows before the fix. Fixed in `ModelSourceResolver`; new test
+   `BoundedContextResolutionTest.flowStepScopeIsQualifiedAlongsideTheConceptItInvariantChecks`.
+
+A third finding is specific to the codemod, not the resolver: **`aggregates[]` is not a
+`pack.schema.json` property and can never move into a context**, but its `root`/
+`collections[].concept` fields name a concept by bare name — the instant that concept moves into a
+context, those references dangle (`root concept not found`). Found on the WmsOffice trial (13
+dangling references across 5 aggregates). The codemod now qualifies these root-staying references as
+part of the same migration (`_qualify_aggregates`), since every concept always moves as one atomic
+unit — any bare reference left after a move can only mean the concept that just moved.
+
+**Scope of "equivalent," stated precisely** (the WmsOffice trial's full evidence:
+`__OutsideRepo/s3/wmsoffice-migration-trial-evidence.txt`): tables, the DB schema, and the
+table-keyed generic-CRUD REST routes are identical before/after migration. Concept identity and the
+generated Java class name change (`Area` → `wmsoffice_core::Area` / `WmsofficeCoreArea`) — the
+intended, disclosed consequence of D1's qualified-identity model, not a defect and not something a
+future codemod should try to hide.
+
+**What actually migrated:** `dsl-conformance-max` (S2's own fixture, unchanged) and
+`AppGen/apps/pack-sample` (migrated for real — the only corpus model combining a concept `$ref` and a
+pack `$ref` in one document, keeping the "packs stay at root" path exercised by a committed artifact).
+**Live WmsOffice was not migrated** — proven safe on a scratch copy only, per the owner's explicit
+call; it has live data and `docs/ACCEPTED_BOUNDARIES.md` B20 already measured zero sub-domain
+pressure for a second context. The other ~29 corpus models, including
+`AppGen/apps/npdev_split_model_sample_app` (which would exercise the `fragments[]` relocation path —
+confirmed working on a scratch copy, not committed), are unchanged: no `$ref`, no second context, no
+forcing reason.

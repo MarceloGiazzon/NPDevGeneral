@@ -693,6 +693,15 @@ public final class ModelSourceResolver {
             if (parentKey.isBlank() || "input".equals(parentKey)) {
                 rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             }
+            // S3 (found via the bounded-contexts codemod trial, pack-sample): invariantCheck /
+            // createConcept / updateConcept flow steps all name their target concept via `scope`
+            // (FlowValidation.collectConceptMutationScopes reads the same field for all three) --
+            // this was never in the rewrite table, so a context-qualified concept's own flow steps
+            // stayed unqualified and validation then rejected them for a scope/concept mismatch that
+            // qualification itself caused. `scope` only has this meaning on a flowStep object, so
+            // rewriting it unconditionally here (not gated to a parentKey, unlike `concept` above,
+            // since a step can be nested arbitrarily deep under then/else/steps/onFailure) is safe.
+            rewriteTextField(object, "scope", conceptRewriteMap, qualifiedReferenceValidator);
         } else if ("procedures".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             if ("actionDescriptor".equals(parentKey)) {
