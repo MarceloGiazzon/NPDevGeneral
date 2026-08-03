@@ -100,6 +100,23 @@ resolution: |
   signal caused by the test harness, not the generator. Fixed by having the repeat run reuse the exact
   same db.definition.json file (not a second, differently-located copy) as the primary run.
 
+  T3 confirmation (Move 15 Phase C close, 2026-08-03): ran `run-beta-release-gate.ps1 -GenerateReports`
+  (the full ~9-15 minute evidence orchestration this item's own scenario feeds) against the fix.
+  Result: 13 stages passed, 5 failed-with-evidence, 0 failed-no-evidence -- CHECK-FAILED, not
+  PRECONDITION-UNMET, per REG-3's own exit-code distinction (this is the honest, "more work
+  surfaced" outcome, not a regression). `ai-beta-gate` itself moved from "every scenario blocked at
+  the same early generation stage" (this item's original finding) to a real, further-along, per-
+  scenario failure set -- the remaining 17 release-gate blockers (ai-beta-gate,
+  expanded-schema-validation, normalization, generated-app-build/-boot, rest/ui-panel/procedure/
+  workflow/tenant-isolation/auth-role-smoke, final-regression-coverage-audit, sample-matrix,
+  docker-linux-parity) are downstream reflections of ai-beta-gate's own remaining per-scenario gaps
+  (REG-124's class -- a scenario reaching generation successfully but then failing ITS OWN, separate,
+  pre-existing defect), exactly the cascade this item's own "source" section already predicted for
+  docker-linux-parity and final-regression-coverage-audit. None are new regressions: they were either
+  already-failing-for-a-different-reason before this fix (docker-linux-parity ran the SAME
+  run-ai-beta-gate.ps1 inside its container) or newly reachable now that generation stops blocking
+  every scenario at the same early stage. Out of this item's own scope to chase further.
+
   run-trusted-source-beta0-proof.ps1 -- the fix is applied and PowerShell-parse-clean, and mirrors the
   exact pattern just proven live above, but this producer's own generated-runtime code path
   (Invoke-GeneratedRuntimeIntegrationProof, the function this fix touches) could not be exercised
