@@ -12,6 +12,8 @@ import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptStoreOptimisticLockException;
 import com.npdev.kernel.ports.ConceptStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.datasource.DataSourceUtils;
 
 import javax.sql.DataSource;
@@ -31,6 +33,12 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class JdbcBusinessConceptStore implements ConceptStore {
+    /** The pushdown claim -- WHERE/LIMIT/GROUP BY compiled to real SQL rather than filtered in the
+     * JVM -- is only provable from the emitted statement text, not from a returned row count (a
+     * JVM-side filter returns the right count too). DEBUG-only so it costs nothing when disabled;
+     * enable with {@code -Dlogging.level.com.finalexec.db.JdbcBusinessConceptStore=DEBUG}. */
+    private static final Logger LOG = LoggerFactory.getLogger(JdbcBusinessConceptStore.class);
+
     private final DataSource dataSource;
     private final Map<String, ConceptShape> shapesByConcept;
     private final Map<String, TableColumns> tableColumnsCache = new ConcurrentHashMap<>();
@@ -186,6 +194,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             List<ConceptRecord> items = new ArrayList<>();
             String pageSql = "SELECT * FROM " + shape.tableName() + " WHERE " + whereSql + orderSql
                     + " LIMIT ? OFFSET ?";
+            LOG.debug("npdev.query.sql concept={} sql={} limit={} offset={}",
+                    conceptName, pageSql, effective.limit(), effective.offset());
             try (PreparedStatement statement = connection.prepareStatement(pageSql)) {
                 int nextIndex = bindParams(statement, params, 1);
                 statement.setInt(nextIndex++, effective.limit());
@@ -286,6 +296,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         if (!groupByExprs.isEmpty()) {
             sql.append(" GROUP BY ").append(String.join(", ", groupByExprs));
         }
+        LOG.debug("npdev.aggregate.sql concept={} sql={}", conceptName, sql);
 
         List<Map<String, Object>> rows = new ArrayList<>();
         Connection connection = openConnection();
