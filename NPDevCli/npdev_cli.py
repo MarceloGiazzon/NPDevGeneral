@@ -669,6 +669,83 @@ def run_migrate_dsl2(args: argparse.Namespace) -> int:
     return 1 if invalid_count > 0 else 0
 
 
+def run_migrate_bounded_contexts(args: argparse.Namespace) -> int:
+    """S3 (docs/adr/ADR-0011-bounded-contexts.md, S3_SPEC.md Section 2): wraps an existing model's
+    whole content into one new bounded context. Dry-run by default (reports every relocation/change);
+    pass --write to actually relocate files and write JSON. See
+    dsl_v2_migration_bounded_contexts.py's module docstring for why this relocates files rather than
+    rewriting $ref strings with '../' (schema-forbidden, not just risky).
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from dsl_v2_migration_bounded_contexts import apply_migration, migrate_document  # local import: keep this optional dependency
+
+    dirs = [Path(p).expanduser().resolve() for p in args.input]
+    model_files: list[Path] = []
+    for d in dirs:
+        if not d.is_dir():
+            print(f"npdev migrate bounded-contexts: input is not a directory: {d}", file=sys.stderr)
+            return 2
+        model_file = d / "model.json"
+        if not model_file.is_file():
+            print(f"npdev migrate bounded-contexts: no model.json found directly in {d}", file=sys.stderr)
+            return 2
+        model_files.append(model_file)
+
+    changed_count = 0
+    skipped_count = 0
+    invalid_count = 0
+    report_entries = []
+
+    for model_file in model_files:
+        base_dir = model_file.parent
+        try:
+            doc = read_json(model_file)
+        except CliError as exc:
+            invalid_count += 1
+            print(f"  [SKIP] {model_file}: {exc}", file=sys.stderr)
+            continue
+        if not isinstance(doc, dict):
+            continue
+
+        plan = migrate_document(doc, base_dir)
+        result = plan.result
+        report_entries.append({
+            "model": str(model_file),
+            "changed": result.changed,
+            "skipped": result.skipped,
+            "changes": result.changes,
+            "ambiguities": result.ambiguities,
+        })
+
+        for a in result.ambiguities:
+            print(f"  [AMBIGUOUS] {model_file}: {a}")
+        if result.skipped:
+            skipped_count += 1
+            continue
+
+        changed_count += 1
+        verb = "CHANGED" if args.write else "WOULD CHANGE"
+        for c in result.changes:
+            print(f"  [{verb}] {model_file}: {c}")
+        if args.write:
+            apply_migration(plan, base_dir, model_file)
+
+    print(
+        f"\n{len(model_files)} model(s) scanned: {changed_count} changed, {skipped_count} skipped "
+        f"(already contexts[]/no movable content/unresolvable ref), {invalid_count} invalid JSON (skipped)"
+    )
+    if not args.write and changed_count > 0:
+        print("Dry run -- pass --write to apply.")
+
+    if args.report:
+        report_path = Path(args.report).expanduser()
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report_entries, indent=2) + "\n", encoding="utf-8")
+        print(f"Report written: {report_path}")
+
+    return 1 if invalid_count > 0 else 0
+
+
 def write_temp_model(model: dict, target: Path) -> Path:
     temp = target.parent / (target.name + ".validation.tmp")
     temp.parent.mkdir(parents=True, exist_ok=True)
@@ -2073,6 +2150,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     migrate_dsl2.add_argument("--report", help="write a JSON report of every file's outcome to this path")
 
+    migrate_bc = migrate_sub.add_parser("bounded-contexts")
+    migrate_bc.add_argument(
+        "--input", required=True, nargs="+",
+        help="one or more directories, each containing exactly one model.json to migrate",
+    )
+    migrate_bc.add_argument(
+        "--write", action="store_true",
+        help="apply changes in place (relocates files and writes JSON); without this flag, reports "
+             "what would change and exits",
+    )
+    migrate_bc.add_argument("--report", help="write a JSON report of every model's outcome to this path")
+
     migration = subparsers.add_parser("migration")
     migration_sub = migration.add_subparsers(dest="migration_command")
     migration_diff = migration_sub.add_parser("diff")
@@ -2283,6 +2372,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "migrate" and args.migrate_command == "dsl-2":
             return run_migrate_dsl2(args)
+        if args.command == "migrate" and args.migrate_command == "bounded-contexts":
+            return run_migrate_bounded_contexts(args)
         if args.command == "migration" and args.migration_command == "diff":
             run_migration_diff(args)
             return 0
