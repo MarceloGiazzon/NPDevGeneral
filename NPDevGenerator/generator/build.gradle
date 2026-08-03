@@ -72,6 +72,21 @@ tasks.register('authorDiffGate', JavaExec) {
     if (project.hasProperty('archiveDir')) {
         cliArgs << '--archiveDir' << project.getProperty('archiveDir')
     }
+    // S5 (__OutsideRepo\s5\S5_SPEC.md I5): element-granularity merge mode -- passing theirsPath
+    // treats previousPath as BASE, submittedPath/manifestPath as OURS, theirsPath/theirsManifestPath
+    // as THEIRS, and runs AuthoringMergeGate instead of refusing outright on a stale base.
+    if (project.hasProperty('theirsPath')) {
+        cliArgs << '--theirs' << project.getProperty('theirsPath')
+    }
+    if (project.hasProperty('theirsManifestPath')) {
+        cliArgs << '--theirsManifest' << project.getProperty('theirsManifestPath')
+    }
+    if (project.hasProperty('mergedOut')) {
+        cliArgs << '--mergedOut' << project.getProperty('mergedOut')
+    }
+    if (project.hasProperty('mergedManifestOut')) {
+        cliArgs << '--mergedManifestOut' << project.getProperty('mergedManifestOut')
+    }
     args = cliArgs
 }
 

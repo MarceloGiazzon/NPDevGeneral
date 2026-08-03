@@ -1791,6 +1791,20 @@ def run_migration_diff(args: argparse.Namespace) -> None:
     print(f"migration diff decision report: {decision_report}")
 
 
+def _add_merge_args(parser: argparse.ArgumentParser) -> None:
+    """S5 (element-granularity authoring merge, __OutsideRepo\\s5\\S5_SPEC.md I5): "surface it
+    where the diff gate already lives -- do not build a second entry point." Passing --theirs
+    treats --previous as the shared BASE, --submitted/--manifest as OURS (already landed), and
+    --theirs/--theirs-manifest as the incoming THEIRS submission; the gate then attempts an
+    element-granularity merge instead of refusing outright on a stale base.
+    """
+    parser.add_argument("--theirs", help="S5: the incoming THEIRS model.json, also based on --previous. Triggers merge mode.")
+    parser.add_argument("--theirs-manifest", dest="theirs_manifest", help="S5: THEIRS' own submission manifest.")
+    parser.add_argument("--merged-out", dest="merged_out", help="S5: write the merged model.json here on a successful merge.")
+    parser.add_argument("--merged-manifest-out", dest="merged_manifest_out",
+                         help="S5: write the synthesized merged manifest (mergeOutcome) here on a successful merge.")
+
+
 def _run_authoring_gate(args: argparse.Namespace, archive_dir: Path | None) -> dict:
     """Shared by `author diff-gate` and `author submit`: invokes
     `:generator:authorDiffGate` (AuthoringDiffGate, AI_AUTHORING_CONTRACT-2026-07-31.md Part 9,
@@ -1823,6 +1837,26 @@ def _run_authoring_gate(args: argparse.Namespace, archive_dir: Path | None) -> d
         generator_args += ["--manifest", str(manifest)]
     if archive_dir is not None:
         generator_args += ["--archiveDir", str(archive_dir)]
+
+    # S5 (I5): --theirs triggers element-granularity merge mode alongside the base gate check.
+    theirs = getattr(args, "theirs", None)
+    if theirs:
+        theirs_path = Path(theirs).expanduser().resolve()
+        if not theirs_path.exists():
+            raise CliError(f"theirs model not found: {theirs_path}")
+        generator_args += ["--theirs", str(theirs_path)]
+        theirs_manifest = getattr(args, "theirs_manifest", None)
+        if theirs_manifest:
+            theirs_manifest_path = Path(theirs_manifest).expanduser().resolve()
+            if not theirs_manifest_path.exists():
+                raise CliError(f"theirs manifest not found: {theirs_manifest_path}")
+            generator_args += ["--theirsManifest", str(theirs_manifest_path)]
+        merged_out = getattr(args, "merged_out", None)
+        if merged_out:
+            generator_args += ["--mergedOut", str(Path(merged_out).expanduser().resolve())]
+        merged_manifest_out = getattr(args, "merged_manifest_out", None)
+        if merged_manifest_out:
+            generator_args += ["--mergedManifestOut", str(Path(merged_manifest_out).expanduser().resolve())]
 
     command = [
         str(wrapper),
@@ -1892,6 +1926,18 @@ def _print_authoring_report(report: dict) -> None:
         print(f"  [{diag.get('severity', '?')}] {code}: {message}")
         if suggested:
             print(f"      fix: {suggested}")
+    merge = report.get("merge")
+    if merge is not None:
+        print(f"merge: {merge.get('status')}")
+        for diag in merge.get("diagnostics", []):
+            print(f"  [error] {diag.get('code', '')}: {diag.get('message', '')}")
+        if merge.get("status") == "merged":
+            print(f"  mergedModelVersion: {merge.get('mergedModelVersion')}")
+            print(f"  mergedModelSha256: {merge.get('mergedModelSha256')}")
+        for element in merge.get("elementsFromOurs", []):
+            print(f"  from ours: {element.get('arrayKey')}[{element.get('name')}]")
+        for element in merge.get("elementsFromTheirs", []):
+            print(f"  from theirs: {element.get('arrayKey')}[{element.get('name')}]")
 
 
 def run_report_bootstrap() -> None:
@@ -2178,6 +2224,7 @@ def build_parser() -> argparse.ArgumentParser:
     author_diff_gate.add_argument("--submitted", required=True)
     author_diff_gate.add_argument("--manifest", help="Submission manifest (npdev-authoring-submission.v1). Omitting it is itself refused (C1).")
     author_diff_gate.add_argument("--output", help="Directory the report is written under (default build/npdev-authoring).")
+    _add_merge_args(author_diff_gate)
     author_submit = author_sub.add_parser("submit")
     author_submit.add_argument("--previous", required=True)
     author_submit.add_argument("--submitted", required=True)
@@ -2185,6 +2232,7 @@ def build_parser() -> argparse.ArgumentParser:
     author_submit.add_argument("--output", help="Directory the report is written under (default build/npdev-authoring).")
     author_submit.add_argument("--archive-dir", dest="archive_dir",
                                 help="Where the previous model is archived on acceptance (E5). Default: <previous's app root>/model-history/.")
+    _add_merge_args(author_submit)
 
     inspect = subparsers.add_parser("inspect")
     inspect_sub = inspect.add_subparsers(dest="inspect_command")

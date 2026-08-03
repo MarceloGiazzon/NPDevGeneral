@@ -7,6 +7,11 @@
     "Never clear a hit here without recording why in that document."
   ],
   "cleared": {
+    "ed724a8ec820": {
+      "rule": "false-positive",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/authoring/AuthoringMergeGate.java:100",
+      "why": "Not SQL at all: the matched text is a violation MESSAGE string -- \"... disjoint-element merge cannot be attempted (H1: never guess). Reasons: \" + String.join(\"; \", reasons) -- the sweep's regex matched the English word \"merge\" (from the class name AuthoringMergeGate / the message prose) near a string-join, the same shape as 7ad9d469c120's \"(for update)\" false positive. S5 (element-granularity authoring merge, __OutsideRepo\\s5\\S5_SPEC.md), 2026-08-03."
+    },
     "005d6a4b2834": {
       "rule": "A3",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/CrossEngineDataPromotion.java:147",

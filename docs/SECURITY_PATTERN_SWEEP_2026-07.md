@@ -346,6 +346,12 @@ no shortcut. Two concrete starting points it did surface:
 
 All four are the direct, mechanical fallout of REG-120's fix (a new kernel method + a new template call site + a new generation-time log line); none represent a new security question. See `ledger/items/REG-120.yml` for the fix itself.
 
+### 4.7 → 2026-08-03, S5 (element-granularity authoring merge)
+
+| Lead | Hits | Resolution |
+|---|---|---|
+| `AuthoringMergeGate.java:100` — a whole-document-conflict violation message | 1 | Rule **false-positive**, the same class as `JdbcBusinessConceptStore.java:113`'s "(for update)" hit (§2.4): not SQL at all. The matched text is `"... disjoint-element merge cannot be attempted (H1: never guess). Reasons: " + String.join("; ", reasons)` — a human-readable diagnostic naming which elements collided. The sweep's `sql-string-building` regex fired on the English word "merge" (from the class name `AuthoringMergeGate` and the message prose "element merge") sitting near a `String.join` concatenation; there is no `DataSource`/JDBC/SQL anywhere in this class, which does an in-memory JSON element merge (`__OutsideRepo\s5\S5_SPEC.md`). |
+
 ## 5. Reproducing this
 
 ```bash
