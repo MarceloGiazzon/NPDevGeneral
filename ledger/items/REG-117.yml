@@ -2,8 +2,9 @@ id: REG-117
 title: "The generated business UI's hardcoded 'My Preferences' panel (business-ui-app.mustache/shell.js.mustache) references the now-retired workspace::Preference concept and its old userId/category/prefKey/prefValue fields -- silently vanishes from the nav (no crash, no error) for the one app that had it, WmsOffice, since RC-A2 (Move 14 item B1) renamed the concept to PropertyValue with a different shape"
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-02
+closed: 2026-08-02
 verification: VERIFIED_LIVE
 surface: generator
 source: |
@@ -71,3 +72,35 @@ detail: |
   Either way: WmsOffice's app-specific web/ pages should be checked for any hand-authored link to the
   old "Preferencias" nav target before whichever fix ships, in case something outside the generated
   shell itself also points at it.
+
+resolution: |
+  DONE (Move 15 Phase B item B1, 2026-08-02), option 1 from this item's own detail text: retired the
+  panel and its machinery entirely from both mustache templates, since RC-A5's properties.html admin
+  surface (generated unconditionally for every app by Build-NpdevApp.ps1, "no properties declared"
+  renders gracefully) is the live, intended successor.
+
+  business-ui-app.mustache: removed PREFERENCE_CONCEPT_NAME/PREFERENCES_SECTION, the
+  visibleConcepts()/render()/activeSectionLabel()/resolveHashTarget()/activateTarget() special-casing,
+  and the ~150-line loadPreferences/savePreference/addPreference/deletePreference/renderPreferencesPanel
+  block. shell.js.mustache: removed the hasPreferences nav-link gate and the "Preferencias" link.
+
+  Checked (per this item's own instruction) for any hand-authored reference before shipping:
+  AppGen/apps (WmsOffice's own app-specific web/ pages) has none. NPDevRuntimeHost's
+  ActuatorAdminGuardFilter.java and docs/LAUNCH_READINESS_GAPS.md both mention workspace::Preference
+  only as historical "prior art of a gating bug" narrative -- correctly left as-is, not a live
+  reference. One real live reference WAS found and fixed: NPDevSamples/scripts/superuser-admin-console/
+  browser-routines/08-my-preferences-panel.json, a ScrapForAI routine that clicked the now-retired nav
+  link and panel -- deleted (it would have failed the next run otherwise), and its
+  now-unused prefKey shared variable removed from demonstrate-browser.ps1.
+
+  Verified: full :generator:test suite (252 tests) green after the template edits -- no other test
+  referenced the removed identifiers. DoD met: no template references a retired concept; the settings
+  screen a user reaches (properties.html) is the generated one; T1-shaped (template + one shell script
+  cleanup, no live app boot needed to prove the removal is complete since removal has no runtime
+  precondition to reproduce).
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\NPDevGenerator\generator\src\main\resources\npdev-templates\business-ui-app.mustache
+    D:\WorkSpace\NPDev\NPDev_General\NPDevGenerator\generator\src\main\resources\npdev-templates\shell.js.mustache
+    D:\WorkSpace\NPDev\NPDev_General\NPDevSamples\scripts\superuser-admin-console\demonstrate-browser.ps1
+  Deleted: D:\WorkSpace\NPDev\NPDev_General\NPDevSamples\scripts\superuser-admin-console\browser-routines\08-my-preferences-panel.json

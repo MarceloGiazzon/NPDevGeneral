@@ -16,8 +16,6 @@
   };
 
   const STORAGE_KEY = "npdev.businessUi.apiKey";
-  const PREFERENCE_CONCEPT_NAME = "workspace::Preference";
-  const PREFERENCES_SECTION = { conceptName: "__preferences__" };
   const STORE_SECTION = { conceptName: "__store__" };
   const BOX_VIEW_SECTION = { conceptName: "__boxview__" };
   const PROMOTION_SECTION = { conceptName: "__promotion__" };
@@ -32,7 +30,6 @@
     roles: [],
     isSuperUser: false,
     actorId: "",
-    preferences: { records: [], loading: false, loaded: false },
     store: { packs: [], discoverable: false, loading: false, loaded: false, filter: "", installedIntents: {} },
     boxView: { boxes: [], note: "", loading: false, loaded: false },
     promotion: { currentStage: "", history: [], loading: false, loaded: false, attempted: false },
@@ -373,15 +370,11 @@
   }
 
   // Internal/admin concepts (identity::*, workspace::*) are only shown to a super-user.
-  // workspace::Preference is excluded here because it has its own personal "Preferences" panel.
   function visibleConcepts() {
     if (!state.manifest || !Array.isArray(state.manifest.concepts)) {
       return [];
     }
     return state.manifest.concepts.filter(function (c) {
-      if (c.conceptName === PREFERENCE_CONCEPT_NAME) {
-        return false;
-      }
       return !conceptIsAdmin(c) || state.isSuperUser;
     });
   }
@@ -403,11 +396,6 @@
       if (isActive) applyActiveGuidePage(concept);
       el.app.appendChild(panel);
     });
-    if (findConcept(PREFERENCE_CONCEPT_NAME)) {
-      const prefsPanel = renderPreferencesPanel();
-      prefsPanel.style.display = activeId === sectionId(PREFERENCES_SECTION) ? "" : "none";
-      el.app.appendChild(prefsPanel);
-    }
     (state.manifest.panels || []).forEach(function (panelMeta) {
       if (!evaluateWhen(panelMeta.visibility, panelContextValues())) { return; }
       const ref = panelSectionRef(panelMeta);
@@ -447,7 +435,6 @@
   function activeSectionLabel(concept) {
     if (!concept) return "";
     if (concept.declaredPanel) return concept.declaredPanel.title;
-    if (concept === PREFERENCES_SECTION) return "Preferencias";
     if (concept === STORE_SECTION) return "Store";
     if (concept === BOX_VIEW_SECTION) return "Box View";
     if (concept === PROMOTION_SECTION) return "Promotion";
@@ -472,11 +459,6 @@
     if (window.location.hash !== hash) {
       window.location.hash = hash;
     }
-  }
-
-  function showPreferences() {
-    showConcept(PREFERENCES_SECTION);
-    loadPreferences();
   }
 
   function showStore() {
@@ -510,7 +492,6 @@
     if (!id) return null;
     const concept = visibleConcepts().find(function (c) { return sectionId(c) === id; });
     if (concept) return concept;
-    if (findConcept(PREFERENCE_CONCEPT_NAME) && sectionId(PREFERENCES_SECTION) === id) return PREFERENCES_SECTION;
     if (state.isSuperUser) {
       if (sectionId(STORE_SECTION) === id) return STORE_SECTION;
       if (sectionId(BOX_VIEW_SECTION) === id) return BOX_VIEW_SECTION;
@@ -522,7 +503,6 @@
 
   function activateTarget(target) {
     if (!target) return;
-    if (target === PREFERENCES_SECTION) { showPreferences(); return; }
     if (target === STORE_SECTION) { showStore(); return; }
     if (target === BOX_VIEW_SECTION) { showBoxView(); return; }
     if (target === PROMOTION_SECTION) { showPromotion(); return; }
@@ -1698,151 +1678,6 @@
     });
     table.appendChild(tbody);
     section.appendChild(table);
-    return section;
-  }
-
-  // Loads every workspace::Preference row and keeps only the current actor's, client-side. This
-  // mirrors the documented tenant-isolation scope limitation of generated CRUD (no server-side
-  // owner filter yet), so it is a UI convenience, not a security boundary.
-  async function loadPreferences() {
-    const concept = findConcept(PREFERENCE_CONCEPT_NAME);
-    if (!concept) return;
-    state.preferences.loading = true;
-    render();
-    try {
-      const payload = await fetchJson(concept.endpointBase + "?page=0&size=200&sort=category&direction=asc", {
-        method: "GET",
-        headers: headers()
-      });
-      const rows = Array.isArray(payload.content) ? payload.content : [];
-      state.preferences.records = rows.filter(function (row) { return row.userId === state.actorId; });
-      state.preferences.loaded = true;
-      setStatus("Preferences loaded.", false);
-    } catch (error) {
-      setStatus(error.message, true);
-    }
-    state.preferences.loading = false;
-    render();
-  }
-
-  async function savePreference(record, prefValue) {
-    const concept = findConcept(PREFERENCE_CONCEPT_NAME);
-    if (!concept) return;
-    try {
-      await fetchJson(concept.endpointBase + "/" + encodeURIComponent(record[concept.idField]), {
-        method: "PUT",
-        headers: headers(),
-        body: JSON.stringify({ userId: record.userId, category: record.category, prefKey: record.prefKey, prefValue: prefValue })
-      });
-      setStatus("Preference saved.", false);
-      await loadPreferences();
-    } catch (error) {
-      setStatus(error.message, true);
-    }
-  }
-
-  async function addPreference(category, prefKey, prefValue) {
-    const concept = findConcept(PREFERENCE_CONCEPT_NAME);
-    if (!concept) return;
-    if (!category.trim() || !prefKey.trim()) {
-      setStatus("Category and key are required.", true);
-      return;
-    }
-    try {
-      await fetchJson(concept.endpointBase, {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify({ userId: state.actorId, category: category.trim(), prefKey: prefKey.trim(), prefValue: prefValue })
-      });
-      setStatus("Preference added.", false);
-      await loadPreferences();
-    } catch (error) {
-      setStatus(error.message, true);
-    }
-  }
-
-  async function deletePreference(record) {
-    const concept = findConcept(PREFERENCE_CONCEPT_NAME);
-    if (!concept || !window.confirm("Delete this preference?")) return;
-    try {
-      await fetch(concept.endpointBase + "/" + encodeURIComponent(record[concept.idField]), { method: "DELETE", headers: headers() });
-      setStatus("Preference deleted.", false);
-      await loadPreferences();
-    } catch (error) {
-      setStatus(error.message, true);
-    }
-  }
-
-  function renderPreferencesPanel() {
-    const section = document.createElement("section");
-    section.className = "concept-panel";
-    section.id = sectionId(PREFERENCES_SECTION);
-
-    const header = document.createElement("div");
-    header.className = "panel-header";
-    const title = document.createElement("h2");
-    title.textContent = "My Preferences";
-    header.appendChild(title);
-    const actions = document.createElement("div");
-    actions.className = "panel-actions";
-    actions.appendChild(button("Refresh", "", loadPreferences));
-    header.appendChild(actions);
-    section.appendChild(header);
-
-    if (!state.preferences.loaded && !state.preferences.loading) {
-      loadPreferences();
-    }
-
-    const byCategory = {};
-    state.preferences.records.forEach(function (row) {
-      const category = row.category || "General";
-      if (!byCategory[category]) byCategory[category] = [];
-      byCategory[category].push(row);
-    });
-
-    Object.keys(byCategory).sort().forEach(function (category) {
-      const group = document.createElement("div");
-      group.className = "filters";
-      const groupTitle = document.createElement("strong");
-      groupTitle.textContent = category;
-      group.appendChild(groupTitle);
-      section.appendChild(group);
-
-      byCategory[category].forEach(function (row) {
-        const line = document.createElement("div");
-        line.className = "filters";
-        const label = document.createElement("span");
-        label.textContent = row.prefKey + ":";
-        const input = document.createElement("input");
-        input.type = "text";
-        input.value = row.prefValue || "";
-        line.appendChild(label);
-        line.appendChild(input);
-        line.appendChild(button("Save", "primary", function () { savePreference(row, input.value); }));
-        line.appendChild(button("Delete", "danger", function () { deletePreference(row); }));
-        section.appendChild(line);
-      });
-    });
-
-    const addRow = document.createElement("div");
-    addRow.className = "filters";
-    const categoryInput = document.createElement("input");
-    categoryInput.type = "text";
-    categoryInput.placeholder = "Category";
-    const keyInput = document.createElement("input");
-    keyInput.type = "text";
-    keyInput.placeholder = "Key";
-    const valueInput = document.createElement("input");
-    valueInput.type = "text";
-    valueInput.placeholder = "Value";
-    addRow.appendChild(categoryInput);
-    addRow.appendChild(keyInput);
-    addRow.appendChild(valueInput);
-    addRow.appendChild(button("Add", "primary", function () {
-      addPreference(categoryInput.value, keyInput.value, valueInput.value);
-    }));
-    section.appendChild(addRow);
-
     return section;
   }
 
