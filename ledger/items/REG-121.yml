@@ -2,7 +2,7 @@ id: REG-121
 title: "Two release-evidence producers (run-ai-beta-gate.ps1, run-trusted-source-beta0-proof.ps1) still invoke `:generator:run` with the disabled `--migrationsDir` flag -- GeneratorMain.migrationsDisabled() rejects it outright (CONFIG_MIGRATIONS_DISABLED), so every ai-beta-gate scenario whose model reaches generation fails there, cascading into expanded-beta0-evidence, sample-matrix, docker-linux-parity, and final-regression-coverage-audit"
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-08-02
 verification: VERIFIED_LIVE
 surface: quality-gates/ai-beta-pipeline
@@ -70,3 +70,55 @@ detail: |
   rule to scripts/quality/twin-pair-registry.json (E1's mirror-rule gate) tracking "the generator's
   currently-supported CLI flags" against every script that invokes `:generator:run` directly, so a
   FUTURE generator CLI contract change cannot silently strand one of these evidence producers again.
+
+resolution: |
+  DONE (Move 15 Phase C item C1, 2026-08-03) for run-ai-beta-gate.ps1, VERIFIED but only partially
+  live-provable for run-trusted-source-beta0-proof.ps1 -- both stated honestly below, per this item's
+  own "run to completion or retired with a stated reason" instruction.
+
+  The fix, both scripts: `--migrationsDir <dir>` replaced with `--dbDefinitionPath <file>`, exactly
+  the flag generate-sample-app.ps1's own (already-migrated) invocation uses. Since GeneratorMain
+  requires `--dbDefinitionPath` to point at a REAL file (not just a directory that used to hold
+  migrations), each script now synthesizes one at generation time (Write-GeneratedDbDefinition /
+  Write-GeneratedRuntimeDbDefinition) -- content mirrors NPDevSamples/npdev-canary/Input/db.definition.json
+  verbatim (H2Local engine, KeepExistingIfCompatible, not model-specific).
+
+  run-ai-beta-gate.ps1 -- LIVE RED->GREEN, verified against the real generator, not a fixture. Ran the
+  script in isolation against 3 of the 6 previously-generation-blocked scenarios:
+    - base-ai-loop: FULL green -- generation -> deterministic-generation -> build -> boot -> health ->
+      smoke, all passed, zero failures.
+    - custom-panel-unsupported: FULL green, same full stage sequence.
+    - tenant-workflow-ops: generation now reaches PAST CONFIG_MIGRATIONS_DISABLED cleanly (confirmed:
+      the DB-definition/schema-fingerprint log lines print, no migrations-disabled error anywhere) but
+      then fails at a SEPARATE, pre-existing defect unrelated to this fix -- the scenario's own
+      ai-model.json declares a tenancy.tenantIdField that collides with the platform's reserved
+      tenant_id column. Filed as REG-124 (OPEN), not fixed here (out of this item's own scope).
+  One self-inflicted bug found and fixed during this verification: the FIRST attempt gave the
+  determinism check's "repeat" generation a different synthesized databaseName than the primary run,
+  which made schema-realization-manifest.json's embedded db-definition source path (and, before that,
+  application-npdev-db.properties) legitimately differ between the two runs -- a false non-determinism
+  signal caused by the test harness, not the generator. Fixed by having the repeat run reuse the exact
+  same db.definition.json file (not a second, differently-located copy) as the primary run.
+
+  run-trusted-source-beta0-proof.ps1 -- the fix is applied and PowerShell-parse-clean, and mirrors the
+  exact pattern just proven live above, but this producer's own generated-runtime code path
+  (Invoke-GeneratedRuntimeIntegrationProof, the function this fix touches) could not be exercised
+  end-to-end: it is only ever reached for a scenario carrying a trusted-source-manifest.json, and the
+  one such scenario in the repo (golden-ai-scenarios/deferred/trusted-source/create-users-panel-procedure)
+  lives under `deferred/` and fails an EARLIER, unrelated check ("Source SHA-256 does not match
+  manifest") before ever reaching generation -- confirmed by forcing -ScenarioRoot to point directly at
+  it (the script's DEFAULT invocation never even discovers this scenario, since `golden-ai-scenarios`
+  Get-ChildItem is non-recursive and the manifest sits two levels deeper, which is exactly why this
+  item's own "source" section already observed this producer "passed only because its own scenario
+  apparently never reaches this code path"). Fixing that SHA-256 mismatch is a separate, pre-existing,
+  deliberately-deferred-scope issue, not something this item introduced or should absorb.
+
+  Not done: the recommended twin-pair-registry.json rule (tracking the generator's current CLI flags
+  against every direct `:generator:run` caller) -- a real, still-valuable prevention measure, left for
+  whoever next touches this family (Move 15's own Phase D adds the analogous prevention control for a
+  DIFFERENT defect family, stale-blocker citations, not this one).
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\scripts\quality\run-ai-beta-gate.ps1
+    D:\WorkSpace\NPDev\NPDev_General\scripts\quality\run-trusted-source-beta0-proof.ps1
+  New: D:\WorkSpace\NPDev\NPDev_General\ledger\items\REG-124.yml

@@ -668,6 +668,33 @@ function Write-GeneratedRuntimeConfig {
     $config | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
 }
 
+function Write-GeneratedRuntimeDbDefinition {
+    # REG-121: GeneratorMain.migrationsDisabled() now unconditionally refuses any --migration*/
+    # --enableMigrations flag -- the current recreate-style/schema-realization generation contract
+    # takes --dbDefinitionPath instead (see NPDevSamples/scripts/generate-sample-app.ps1's own,
+    # already-migrated invocation). Content mirrors NPDevSamples/npdev-canary/Input/db.definition.json
+    # verbatim: not model-specific, just an H2-local/KeepExistingIfCompatible boot config.
+    param([string]$DbDefinitionPath)
+    $definition = [ordered]@{
+        database = [ordered]@{
+            engine = "H2Local"
+            databaseName = "trusted_source_beta0"
+            username = "sa"
+            password = ""
+            createInternalTables = $true
+            createBusinessTables = $true
+        }
+        schemaLifecycle = [ordered]@{
+            strategy = "KeepExistingIfCompatible"
+            allowDestructiveRecreate = $false
+            destructiveRecreateConfirmation = ""
+            scope = "NpdevOwnedTablesOnly"
+        }
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $DbDefinitionPath) | Out-Null
+    $definition | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $DbDefinitionPath -Encoding UTF8
+}
+
 function Get-OutsideRepoScratchRoot {
     param([string]$Name)
     if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_WORKSPACE_SCRATCH_ROOT)) {
@@ -794,6 +821,7 @@ function Invoke-GeneratedRuntimeIntegrationProof {
     $artifactRoot = Join-Path $outputRoot "ArtifactNP"
     $modelPath = Join-Path $inputRoot "model.json"
     $configPath = Join-Path $inputRoot "config.json"
+    $dbDefinitionPath = Join-Path $inputRoot "db.definition.json"
     $generatorStdout = Join-Path $WorkRoot "generated-runtime-generator.stdout.log"
     $generatorStderr = Join-Path $WorkRoot "generated-runtime-generator.stderr.log"
     $buildStdout = Join-Path $WorkRoot "generated-runtime-build.stdout.log"
@@ -804,6 +832,7 @@ function Invoke-GeneratedRuntimeIntegrationProof {
     Write-GeneratedRuntimeModel -ModelPath $modelPath
     Copy-TrustedSourceInputsForGeneratedRuntime -ScenarioDir $ScenarioDir -Manifest $Manifest -InputRoot $inputRoot
     Write-GeneratedRuntimeConfig -ConfigPath $configPath -OutputRoot $outputRoot -RuntimeHostRoot $runtimeHostRoot
+    Write-GeneratedRuntimeDbDefinition -DbDefinitionPath $dbDefinitionPath
     $artifacts += [pscustomobject]@{ path = (Join-Path $inputRoot "trusted-source-manifest.json"); kind = "trusted-source-manifest-copy" }
     $artifacts += [pscustomobject]@{ path = (Join-Path $inputRoot "procedure/CreateUsersProcedure.java"); kind = "trusted-procedure-source-copy" }
     $artifacts += [pscustomobject]@{ path = (Join-Path $inputRoot "panel/user-admin-panel.html"); kind = "trusted-panel-source-copy" }
@@ -813,7 +842,7 @@ function Invoke-GeneratedRuntimeIntegrationProof {
         "--config", $configPath,
         "--model", $modelPath,
         "--out", $artifactRoot,
-        "--migrationsDir", (Join-Path $generatorRoot "db-history/src/main/resources/db/migration"),
+        "--dbDefinitionPath", $dbDefinitionPath,
         "--runtimeHostTemplate", $runtimeHostRoot,
         "--finalAppOut", $appRoot,
         "--assembleFinalApp",
