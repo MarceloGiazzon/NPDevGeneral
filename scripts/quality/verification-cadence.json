@@ -124,6 +124,13 @@
       "maxStaleness": "30-days",
       "invokedBy": "manual-runbook: time a full scripts/appgen/Rebuild-And-Restage.ps1 run (no -SkipLibs/-SkipGeneratorRuntime/-TryFastPath), record in __OutsideRepo/move-fastlane/rebuild-calibration-*.txt, then `python scripts/quality/cadence_state.py record --id rebuild-calibration --tier T3 --result passed`",
       "description": "Move 14 A1: the full-rebuild wall-clock baseline (measured 573s on 2026-08-01) the entire fast-lane tiering plan justifies itself against. A build-time regression is exactly the slow drift this ledger exists to surface -- re-time it periodically rather than letting the one number the plan rests on go stale and unverified."
+    },
+    {
+      "id": "scale-baseline",
+      "tier": "T3",
+      "maxStaleness": "30-days",
+      "invokedBy": "manual-runbook: S1_SPEC.md O1 -- seed a canary-shaped app (AppGen/apps/s1-scale-canary, or its successor) to 100k CanaryTask rows with the same ~7% selective distribution, re-run the declared query (/api/queries/OpenHighPriorityCanaryTasks), the panel data source (/api/v1/runtime/metadata/ui/panels/CanaryPanel), and the groupBy aggregate (/api/queries/CanaryTaskCountByStatusAndPriority) with JdbcBusinessConceptStore's DEBUG SQL log enabled (-Dlogging.level.com.finalexec.db.JdbcBusinessConceptStore=DEBUG), confirm WHERE/LIMIT/GROUP BY still appear in the captured SQL text (not just a returned row count -- row counts are not proof, see the baseline doc), record in __OutsideRepo/s1/scale-baseline-*.txt, then `python scripts/quality/cadence_state.py record --id scale-baseline --tier T3 --result passed`",
+      "description": "S1 O1 (2026-08-03): the regression baseline for ConceptQueryPredicateCompiler/JdbcBusinessConceptStore's SQL pushdown at 100k rows -- all three read paths sub-second with real WHERE/LIMIT/GROUP BY in the emitted SQL, none streamed the full table through the JVM. LC-P0 fixed the architecture; nobody had run it at volume before this baseline. A baseline nobody re-measures is the SCREEN_TAXONOMY staleness failure again -- see __OutsideRepo/s1/scale-baseline-2026-08-03.txt for the full numbers."
     }
   ]
 }

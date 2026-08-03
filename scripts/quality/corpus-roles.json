@@ -34,6 +34,7 @@
     "AppGen/apps/p77-hookproof": "dsl-fixture",
     "AppGen/apps/p77-hookproof-pg": "engine-variant",
     "AppGen/apps/pack-sample": "dsl-fixture",
+    "AppGen/apps/s1-scale-canary": "repro-case",
     "AppGen/apps/simple-consumer-h2server": "dsl-fixture",
     "AppGen/apps/simple-product-h2local": "dsl-fixture",
     "AppGen/apps/simple-user-registry-h2local": "engine-variant",
