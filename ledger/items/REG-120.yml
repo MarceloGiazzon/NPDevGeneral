@@ -2,8 +2,9 @@ id: REG-120
 title: "A concept whose create is delegated to a declared Flow (input.mode: create) AND is also exposed via the generic CRUD create endpoint gets DOUBLE-PERSISTED on every create -- the flow's own createConcept step writes the row through the kernel persistence capability, then the SAME generated service method immediately writes it AGAIN via saveWithIntegrityMapping -- and the two writes can race, throwing a spurious 500 (or, when they don't race, silently perform a wasted redundant write)"
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-02
+closed: 2026-08-02
 verification: VERIFIED_LIVE
 surface: generator/runtimehost
 source: |
@@ -64,3 +65,68 @@ detail: |
   through the direct flow endpoint (POST /api/flows/CreateCanaryTask/execute) instead of the raw CRUD
   create endpoint, since only the CRUD path double-writes. Confirms the bug is specific to the CRUD
   wrapper, not the flow itself or the persistence capability.
+
+resolution: |
+  DONE (Move 15 Phase A item A1, 2026-08-02). This item's own diagnosis of WHICH two writes conflict
+  was incomplete, discovered while reproducing it live: saveWithIntegrityMapping is a real, wasteful
+  redundant write (fixed -- see below), but it is NOT what throws. The actual crash is
+  enforceWithConceptGateway's OWN write (conceptGateway.save(...) -> DefaultConceptGateway.saveWithinTransaction
+  -> store.save(...) -- this call persists for EVERY create, flow-backed or not, despite its name and
+  adjoining comment framing it as pure enforcement) racing the create Flow's own write, which for a
+  real (Postgres/H2) app goes through a COMPLETELY SEPARATE mechanism
+  (PersistenceCapabilityAdapter, a raw-JDBC capability binding, not participating in the enclosing
+  Spring @Transactional/JPA session) -- so the flow's write collides with the still-open outer
+  transaction's just-written, not-yet-committed row. Confirmed via the app's own boot log
+  (ai-beta-boot.stdout.log): "Flow \"CreateCanaryTask\" for CanaryTask did not complete successfully:
+  CAPABILITY_FAILED Postgres persistence save failed for table canary_tasks: ... Concurrent update in
+  table \"canary_tasks\": another transaction has updated or deleted the same row" -- the flow's OWN
+  write is what throws, not saveWithIntegrityMapping (removing only that one, as originally planned,
+  left the live repro red).
+
+  The real fix has two parts:
+  1. saveWithIntegrityMapping is skipped when hasCreateFlow (service-base.mustache): createFromSource
+     now fetches the row the flow already persisted (persistence.findById(generatedId)) instead of
+     constructing and saving a second entity. This is the wasteful-duplicate-write half.
+  2. New ConceptGateway.authorizeCreate(ConceptWriteRequest, ExecutionContext) default method (fail-
+     closed, mirroring authorizeWrite's existing REG-16-resid R3 precedent) -- runs the identical
+     concept.write permission + row-level access.write + BEFORE_COMMIT invariant/lifecycle rule-profile
+     enforcement enforceWithConceptGateway runs, WITHOUT calling store.save(...). DefaultConceptGateway
+     implements it by replicating saveWithinTransaction's enforcement prefix and stopping before the
+     persist. service-base.mustache's createFromSource now calls this validate-only form
+     (authorizeCreateWithConceptGateway) instead of the persisting enforceWithConceptGateway whenever a
+     create Flow is declared -- the flow's own write is now the row's ONE writer, and the gateway call
+     is purely a gate that can still deny before the flow's side effects run (REG-16-resid R2's own
+     guarantee, unchanged).
+
+  Live RED->GREEN, reproduced and re-verified against the REAL npdev-canary app (not a synthetic
+  fixture) via the T1 fast gate's own canary-build-boot-smoke stage, on a freshly-deleted H2 database
+  each time, exactly matching this item's original repro conditions:
+    RED (before any fix):  POST /api/concepts/canary_tasks -> HTTP 500 (H2 "Concurrent update").
+    RED (after only saveWithIntegrityMapping removed): SAME HTTP 500 -- proved the diagnosis above.
+    GREEN (after authorizeCreate added): POST /api/concepts/canary_tasks -> 201, and the acceptance
+    scenario's own query assertion (totalElements: 1 for the seeded title) confirms exactly one row,
+    not a duplicate write silently succeeding twice.
+  The canary acceptance scenario (01-canary-task-list-filters-by-title.scenario.json) now seeds
+  PERMANENTLY through the CRUD create endpoint (reverted from the Move 14 D1 flow-endpoint workaround),
+  so this fix has a standing regression guard on every T1 run.
+
+  Structural regression coverage (:generator:test, fast, no app boot):
+  ServiceBaseFlowRowLevelAuthzTest#flowBackedCreateNeverWritesTheRowASecondTimeThroughSaveWithIntegrityMapping
+  (new) and #flowBackedCreateEnforcesRowLevelWriteAccessBeforeTheFlowRuns (updated for the
+  authorizeCreateWithConceptGateway rename). Full :generator:test (252 tests), :generator:behaviorTest,
+  and :kernel:test suites green -- no regression to a concept with only CRUD (no create flow, still
+  uses the persisting enforceWithConceptGateway unchanged) or a concept with only a create-flow (no
+  CRUD-declared access changes either).
+
+  Author-time signal (increment 3): ServiceEmitter now prints a generation-time note ("create is
+  delegated to Flow X -- that Flow's write is authoritative, the generated CRUD create endpoint will
+  not write a second time (REG-120)") whenever a concept's create is Flow-delegated, making the
+  precedence explicit rather than silent.
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\NPDevGenerator\generator\src\main\resources\npdev-templates\service-base.mustache
+    D:\WorkSpace\NPDev\NPDev_General\NPDevGenerator\generator\src\main\java\com\npdev\generator\emitters\ServiceEmitter.java
+    D:\WorkSpace\NPDev\NPDev_General\NPDevKernel\kernel\src\main\java\com\npdev\kernel\concepts\ConceptGateway.java
+    D:\WorkSpace\NPDev\NPDev_General\NPDevKernel\kernel\src\main\java\com\npdev\kernel\concepts\DefaultConceptGateway.java
+    D:\WorkSpace\NPDev\NPDev_General\NPDevGenerator\generator\src\test\java\com\npdev\generator\emitters\ServiceBaseFlowRowLevelAuthzTest.java
+    D:\WorkSpace\NPDev\NPDev_General\NPDevSamples\npdev-canary\acceptance\01-canary-task-list-filters-by-title.scenario.json

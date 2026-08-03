@@ -569,6 +569,40 @@ public final class DefaultConceptGateway implements ConceptGateway {
     }
 
     /**
+     * REG-120: {@link ConceptGateway#authorizeCreate}'s implementation -- the same permission +
+     * row-level + BEFORE_COMMIT rule-profile enforcement {@link #saveWithinTransaction} runs, minus
+     * the {@code store.save(...)} call and the AFTER_COMMIT profile evaluation (which needs an
+     * actually-persisted record to run against, and there is deliberately none here). There is no
+     * previous record for a create, so {@code previousRecord} is always {@link Optional#empty()} --
+     * exactly what {@code store.findByIdForUpdate} already returns for a not-yet-existing id in
+     * {@link #saveWithinTransaction}, so this matches how a genuine create looks to the rest of this
+     * pipeline today.
+     */
+    @Override
+    public void authorizeCreate(ConceptWriteRequest request, ExecutionContext context) {
+        ExecutionContext effectiveContext = normalizeContext(context);
+        String tenantId = enforceTenant(
+                request.tenantId(), effectiveContext, "CONCEPT_WRITE", request.conceptName(), request.id());
+        ConceptGatewayRequestContext requestContext = requestContext(
+                ConceptGatewayOperation.SAVE,
+                request.conceptName(),
+                request.id(),
+                tenantId,
+                request.data(),
+                effectiveContext,
+                Optional.empty()
+        );
+        enforcePermission(effectiveContext, "concept.write", request.conceptName(), "CONCEPT_WRITE", request.id());
+        enforceRowWritable(requestContext, "CONCEPT_WRITE");
+        ConceptSemanticDecision decision = runWriteSemantics(
+                requestContext,
+                ruleProfilesForWriteBeforeCommit(effectiveContext)
+        );
+        audit(effectiveContext, "CONCEPT_WRITE", request.conceptName(), request.id(), "SUCCESS", "authorized_no_persist", tenantId);
+        trace(requestContext, "SUCCESS", "authorized_no_persist", decision);
+    }
+
+    /**
      * LNCH-13: row-level write scoping -- {@link ConceptGatewaySemanticPolicy#isRowWritable}
      * against the previous record (update/delete) or incoming data (create). Unlike the read
      * path (which fails closed to "not found" per-record), a denied write throws immediately:

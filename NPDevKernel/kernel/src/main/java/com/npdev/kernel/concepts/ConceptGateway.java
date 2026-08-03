@@ -67,6 +67,32 @@ public interface ConceptGateway {
                         + request.conceptName() + " rather than proceeding unchecked.");
     }
 
+    /**
+     * REG-120: the CREATE-time counterpart of {@link #authorizeWrite} -- answers "may this actor
+     * create this row?" WITHOUT persisting it. Runs the same gates {@link #save} runs for a create
+     * (the {@code concept.write} permission, the row-level {@code access.write} scope evaluated
+     * against the SUPPLIED payload rather than a previous record, since none exists yet, and the
+     * coarse invariant/lifecycle BEFORE_COMMIT rule profiles) and then stops.
+     *
+     * <p><b>Why this had to exist.</b> A concept whose create is delegated to a declared Flow still
+     * needs LNCH-13/REG-16-resid R2's enforcement to run and be able to deny BEFORE the Flow's own
+     * side effects run -- but the Flow's own {@code createConcept} step is that row's one
+     * authoritative writer. Before this method existed, the only way to run that enforcement was
+     * {@link #save}, which ALSO persists -- so a Flow-backed create was persisted once by this call
+     * and again by the Flow's own (separate transaction/connection) write, the two racing for the
+     * same row (REG-120: reproduced live as an H2 "Concurrent update" error on every such create).
+     *
+     * <p>The default implementation is deliberately <b>fail-closed</b>, matching
+     * {@link #authorizeWrite}'s own convention: a gateway that has not implemented the check denies
+     * rather than silently allowing.
+     */
+    default void authorizeCreate(ConceptWriteRequest request, ExecutionContext context) {
+        throw new ConceptGatewayAccessDeniedException(
+                "AUTHORIZATION_UNAVAILABLE",
+                "This ConceptGateway cannot authorize a create without performing it; denying "
+                        + request.conceptName() + " rather than proceeding unchecked.");
+    }
+
     void delete(ConceptReadRequest request, ExecutionContext context);
 
     default List<ConceptGatewayTraceRecord> explain() {
