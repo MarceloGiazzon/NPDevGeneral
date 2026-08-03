@@ -104,6 +104,14 @@ public final class ModelSourceResolver {
         FRAGMENT_KEYS = Set.copyOf(keys);
     }
 
+    /** S5 (element-granularity authoring merge, {@code AuthoringMergeGate}): the single source of
+     *  truth for "which top-level keys are named-element arrays" -- reused as-is rather than
+     *  hand-maintaining a second copy of this list (the exact twin-pair defect class this repo
+     *  already tracks mechanically). Order matters to callers that build deterministic output. */
+    public static Set<String> modelArrayKeys() {
+        return MODEL_ARRAY_KEYS;
+    }
+
     private final int maxIncludeDepth;
     private final int maxIncludedFiles;
 

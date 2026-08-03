@@ -137,6 +137,38 @@ public final class AuthoringDiffGate {
         return new GateResult(violations);
     }
 
+    /**
+     * S5 ({@code __OutsideRepo\s5\S5_SPEC.md} H3/I4, {@code AuthoringMergeGate}): the SAME
+     * access/sensitive/invariant/permissionRequirements delta detection {@link #evaluate} runs,
+     * exposed standalone so a MERGE can check the delta between BASE and the MERGED whole (a
+     * document neither Author individually submitted a manifest against) without re-running the
+     * unrelated SHA/version/rename/removal checks, which do not apply to a synthesized merge
+     * result. Reuses {@code AUTHORING_UNDECLARED_SECURITY_CHANGE} verbatim (H3: "reuse it").
+     */
+    static List<Violation> securityDeltaViolations(ModelAst previousModel, ModelAst submittedModel, JsonNode manifest) {
+        List<Violation> violations = new ArrayList<>();
+        Map<String, ConceptAst> previousConcepts = byName(previousModel.getConcepts(), ConceptAst::getName);
+
+        for (ConceptAst submittedConcept : submittedModel.getConcepts()) {
+            ConceptAst previousConcept = previousConcepts.get(submittedConcept.getName());
+            if (previousConcept == null) {
+                continue; // a genuinely new concept -- nothing to have weakened
+            }
+            checkAccessDeltaDeclared(submittedConcept, previousConcept, manifest, violations);
+            checkSensitiveDeltaDeclared(submittedConcept, previousConcept, manifest, violations);
+            checkInvariantDeltaDeclared(submittedConcept, previousConcept, manifest, violations);
+        }
+
+        checkPermissionRequirementsDeltaDeclared(
+                "procedure", previousModel.getProcedures(), submittedModel.getProcedures(),
+                ProcedureAst::name, ProcedureAst::permissionRequirements, manifest, violations);
+        checkPermissionRequirementsDeltaDeclared(
+                "query", previousModel.getQueries(), submittedModel.getQueries(),
+                QueryAst::name, QueryAst::permissionRequirements, manifest, violations);
+
+        return violations;
+    }
+
     // ------------------------------------------------------------------------------------------
     // F6 / A7
     // ------------------------------------------------------------------------------------------
@@ -192,8 +224,9 @@ public final class AuthoringDiffGate {
 
     /** Dotted-numeric comparison (1.4.0 vs 1.5.0); falls back to a plain string compare for any
      *  non-numeric component so an unconventional version string still gets a deterministic answer
-     *  rather than crashing the gate. */
-    private static int compareVersions(String a, String b) {
+     *  rather than crashing the gate. Package-private: {@code AuthoringMergeGate} (S5, H4) reuses
+     *  this exact comparator to pick the merged model's version rather than a second copy. */
+    static int compareVersions(String a, String b) {
         String[] partsA = a.split("\\.");
         String[] partsB = b.split("\\.");
         int length = Math.max(partsA.length, partsB.length);
