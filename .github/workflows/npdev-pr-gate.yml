@@ -26,7 +26,12 @@ jobs:
     # F2b (docs/FINAL_OPEN_ITEMS_PLAN.md): budget re-verified after the two Postgres adapters
     # (persistence, idempotency) were promoted into this job -- see docs/ACCEPTED_BOUNDARIES.md B21.
     # OBSERVED (run 30422102769, 2026-07-29, real PR run, cold runner): 6m14s total wall clock.
-    # 60 min leaves ample headroom; both Postgres adapters stay in this gate.
+    # S1_SPEC.md O2 (2026-08-03) added a third adapter (bulkhead-postgres) to the same shared
+    # Testcontainers container. LOCALLY measured (dev machine, warm Gradle caches, all classes
+    # UP-TO-DATE -- i.e. test-execution + container-reuse cost only, not a cold-runner proxy for the
+    # 6m14s figure above): persistence+idempotency+bulkhead together = 39.6s, vs. B21's own
+    # previously-recorded ~34s for persistence+idempotency alone -- bulkhead's marginal cost is a few
+    # seconds, consistent with reusing one already-started container. 60 min leaves ample headroom.
     timeout-minutes: 60
 
     defaults:
@@ -97,18 +102,28 @@ jobs:
             :adapters:file-store-inproc:test \
             --no-daemon --console=plain
 
-      # docs/REMEDIATION_PLAN.md R-P3 (3.5): the two *-postgres adapters with a track record of REAL,
-      # H2-invisible findings (REG-36's btree index-entry size limit, REG-50's metadata-read failure
-      # fallback) -- both fixes shipped a real-Postgres regression test (via :adapters:postgres-test-support,
-      # a single shared Testcontainers `postgres:15-alpine`, a few seconds to start) specifically because
-      # H2-in-PostgreSQL-compatibility-mode does not enforce what a real engine does. Until this step, this
-      # gate ran NEITHER task at all -- confirmed by grep, neither PR nor nightly (`npdev-ci-validation.yml`)
-      # invoked them -- so these two regressions' own proof has never run in CI since the day they were
-      # fixed. Deliberately NOT the other six *-postgres adapters (eventstore/audit/bulkhead/circuit/
-      # flowinstance/tracestore) -- those stay nightly-only per npdev-ci-validation.yml's own reasoning
-      # (runtime cost, up to 120min across the full Postgres/Playwright/maturity-bootstrap suite); this is
-      # a narrow, evidence-scoped promotion, not a blanket one.
-      - name: "Postgres adapter tests (fast subset with real H2-invisible findings: persistence, idempotency)"
+      # docs/REMEDIATION_PLAN.md R-P3 (3.5), widened by S1_SPEC.md O2 (2026-08-03,
+      # docs/ACCEPTED_BOUNDARIES.md B21): three *-postgres adapters with a track record of REAL,
+      # H2-invisible findings -- REG-36's btree index-entry size limit (idempotency), REG-50's
+      # metadata-read failure fallback (persistence), and bulkhead's SELECT pg_try_advisory_lock/
+      # pg_advisory_unlock (PostgresAdvisoryBulkheadStore) which has NO H2/in-memory equivalent at
+      # all, so onlyOneThreadCanAcquireSameAdvisoryLock is architecturally impossible to satisfy
+      # against anything but a real Postgres engine. All three shipped/have a real-Postgres-only
+      # regression test (via :adapters:postgres-test-support, a single shared Testcontainers
+      # `postgres:15-alpine`, a few seconds to start).
+      #
+      # The other five *-postgres adapters (eventstore/audit/circuit/flowinstance/tracestore) were
+      # each read in full for this widening (verdicts: __OutsideRepo\s1\b21-coverage-assessment.txt)
+      # and stay nightly-only, NOT because promoting them is expensive but because their tests would
+      # pass identically against H2 today -- eventstore/audit/flowinstance are thin `Jdbc*` subclasses
+      # with no dialect-specific SQL; circuit-postgres's FOR UPDATE row-locking assertion already runs,
+      # unblocked by Docker, against H2 in the SAME test body (JdbcCircuitBreakerStateStoreConcurrencyTest,
+      # GATE-KERNEL) with no documented H2/Postgres divergence, so re-running it here would duplicate
+      # proof rather than add H2-invisible coverage; tracestore-postgres would too, and one of its two
+      # test files (PersistentExecutionTracerTest) turned out to assert nothing at all (filed REG-127).
+      # This remains a narrow, evidence-scoped promotion, not a blanket one -- promote the NEXT adapter
+      # only when it earns the same bar: a real, H2-invisible finding with its own regression test.
+      - name: "Postgres adapter tests (fast subset with real H2-invisible findings: persistence, idempotency, bulkhead)"
         working-directory: NPDevKernel
         timeout-minutes: 15
         run: |
@@ -116,6 +131,7 @@ jobs:
           ./gradlew \
             :adapters:persistence-postgres:test \
             :adapters:idempotency-postgres:test \
+            :adapters:bulkhead-postgres:test \
             --no-daemon --console=plain
 
       - name: Generator unit tests

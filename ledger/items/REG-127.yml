@@ -1,0 +1,45 @@
+id: REG-127
+title: "tracestore-postgres's PersistentExecutionTracerTest is a stub that asserts nothing (assertTrue(true)) but counts toward the module's '2 test files' coverage figure -- found while assessing the six nightly-only *-postgres adapters for B21 promotion (S1_SPEC.md O2)"
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-03
+verification: VERIFIED_LIVE
+surface: quality-gates/postgres-adapter-coverage
+source: |
+  S1_SPEC.md O2 (2.3.1) required reading every test file of the six nightly-only *-postgres
+  adapters and giving a one-line verdict: does it exercise genuine Postgres-specific behavior,
+  or would it pass in-memory? tracestore-postgres has two test files
+  (NPDevKernel/adapters/tracestore-postgres/src/test/java/com/npdev/adapters/tracestore/):
+  PostgresTraceStoreTest.java (3 real tests: save/find round-trip, correlation-scoped search,
+  summary projection -- all against a real Testcontainers Postgres, but exercising only generic
+  ANSI SQL, no dialect-specific behavior) and PersistentExecutionTracerTest.java, read in full:
+
+    class PersistentExecutionTracerTest {
+        @Test
+        void traceStorageAndQueryPerformanceAnchorsExist() {
+            // flow instance ID, step name, step type, input, output, duration, status, error
+            // correlation ID
+            // retrieve 1000 traces in <100ms
+            assertTrue(true);
+        }
+    }
+
+  This test connects to no database, exercises no code path, and asserts a tautology. The
+  comments describe what a real performance-anchor test SHOULD assert (a p99 latency bound on
+  retrieving 1000 traces) but no such assertion exists. It does not even use
+  PostgresTestSupport/Testcontainers. Anyone reading "tracestore-postgres: 2 test files" (as
+  this session's own B21 promotion assessment initially did, before opening the file) would
+  overcount this module's real coverage by one file.
+files:
+  - NPDevKernel/adapters/tracestore-postgres/src/test/java/com/npdev/adapters/tracestore/PersistentExecutionTracerTest.java
+detail: |
+  Not fixed here, deliberately -- out of S1 O2's scope, which is CI-gate promotion, not a sweep
+  for dead tests across the corpus. Two ways to close this, either is reasonable: (1) delete the
+  file (it tests nothing, and its filename/class name misleadingly suggests real coverage of
+  PersistentExecutionTracer, a class this test never touches), or (2) give it a real assertion
+  against the module's own store (a genuine `retrieve N traces in < Xms` performance anchor, as
+  its own comments already describe) via PostgresTestSupport. Whoever picks this up should check
+  whether PersistentExecutionTracer (the class the name implies this tests) has ANY real test
+  coverage elsewhere in the codebase before choosing -- if it has none, option (2) is the one
+  that actually adds value; if it's covered elsewhere, option (1) is simpler and equally correct.
