@@ -57,7 +57,11 @@ not attempted, because doing so without the download half would silently drop th
 operator actually needs from this screen (the CSV to fill in offline) — a real, honestly-scoped
 gap, not a missing afternoon of work.
 
-## Wizard 3 — Recebimento por Arquivo: assessed, not attempted (blocked by REG-75)
+## Wizard 3 — Recebimento por Arquivo: assessed, not attempted (blocked by REG-75 at the time — closed Move 4)
+
+This wizard itself was later closed via a different mechanism in Move 13 —
+`AnalisarArquivoRecebimentoDraftProcedure` + `InventarioArquivoAggregate.onCommit`'s
+`ProcessarRecebimentoArquivoOnCommitProcedure`, see docs/SCREEN_TAXONOMY.md's `inventario` row.
 
 Real file upload (`<input type="file">`, read via the browser's File API) -> preview (parse +
 resolve each line against reference data, `AnalisarArquivoRecebimento` flow) -> confirm, which for
@@ -71,17 +75,18 @@ The propose half (upload -> parse -> preview) is achievable with what this sessi
 read the file client-side, paste/pass its text through the same `inputFields` textarea mechanism
 (post-REG-76-fix) to a procedure calling `inventoryFile.analisarArquivoRecebimento`. **The commit
 half is not** — every one of its per-line writes is exactly the "read an existing record, patch one
-field, write it back" shape **REG-75 already named as blocked**: no procedure step unwraps a
-`readConcept` result for a `capabilityCall`, and no step constructs/merges a map at all. Building
-only the propose half without a working commit would not be a Class A composition — it would be a
-preview screen with no confirm, a different and lesser thing than what G3 set out to prove. Not
-attempted; the blocker is REG-75, not a new one.
+field, write it back" shape **REG-75 already named as blocked (closed Move 4 — see the update above)**:
+no procedure step unwraps a `readConcept` result for a `capabilityCall`, and no step constructs/merges
+a map at all. Building only the propose half without a working commit would not be a Class A
+composition — it would be a preview screen with no confirm, a different and lesser thing than what G3
+set out to prove. Not attempted at the time; the blocker was REG-75 (closed Move 4), not a new one.
 
 ## Verdict
 
 **One of three wizards fully composes and is live-verified (wizard 2)** — the second real Class A
 console the plan asked for, proving G3's pattern generalizes rather than being a one-off. The other
 two are each assessed precisely rather than silently skipped: wizard 1 is a genuine shape mismatch
-(generate+download, not persist), wizard 3 is blocked by the already-named REG-75, not a new,
-undiagnosed gap. A second real bug (REG-76) was found and fixed in the course of building wizard 2,
+(generate+download, not persist), wizard 3 was blocked by the already-named REG-75 (closed Move 4),
+not a new, undiagnosed gap. A second real bug (REG-76) was found and fixed in the course of building
+wizard 2,
 closing a latent hole in the exact mechanism G3 introduced.

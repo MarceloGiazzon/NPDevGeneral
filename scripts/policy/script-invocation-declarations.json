@@ -133,6 +133,9 @@
     "scripts/quality/check-allowlist-citations.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-blocker-citation-freshness.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-cadence-coverage.py": {
       "invocation": "ci-gate"
     },

@@ -26,6 +26,13 @@
       "description": "The 4 model.schema.json copies stay semantically identical. Cheap enough to run on every edit."
     },
     {
+      "id": "check-blocker-citation-freshness",
+      "tier": "T0",
+      "maxStaleness": "every-run",
+      "invokedBy": "scripts/quality/check-blocker-citation-freshness.py",
+      "description": "Move 15 Phase D item D1: docs/SCREEN_TAXONOMY.md and the MOVE*_CHECKLISTS/FINDINGS docs don't cite a REG id as a live blocker once that id's own ledger row is DONE/PARTIAL. Cheap doc+ledger scan, no live app needed -- this is the control that was previously entirely missing (verification-cadence.json had 0 entries mentioning the screen record before this)."
+    },
+    {
       "id": "model-validate-touched",
       "tier": "T0",
       "maxStaleness": "every-run",
