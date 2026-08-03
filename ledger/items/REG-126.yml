@@ -1,0 +1,74 @@
+id: REG-126
+title: "Normalize-AiContract.ps1 translates requiredRole for panels, procedures, and workflow transitions, but never for flows[] (the generic concept create/update declaration) -- the role gate is silently dropped, and the generated REST create endpoint ends up denying every role including the one the scenario intended to allow"
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-03
+verification: VERIFIED_LIVE
+surface: quality-gates/ai-beta-pipeline
+source: |
+  Found while live-verifying Move 16 Phase A2 (REG-124's fix: renaming
+  golden-ai-scenarios/tenant-workflow-ops's tenancy.tenantIdField from "tenantId" to
+  "tenantIdRef" to stop it colliding with the platform's reserved tenant_id column).
+  REG-124's own fix works -- verified live: generation, deterministic-generation, build,
+  boot, and health ALL now pass for tenant-workflow-ops, where they previously failed at
+  generation with CONCEPT_FIELD_RESERVED_COLLISION. The scenario now reaches its final
+  "smoke" (REST verification) stage, which was never reached before this session.
+
+  One of the scenario's own designed smoke checks now fails:
+    id: scenario-authenticated-create-ticket
+    POST /api/tickets (X-Api-Key for testUsers[0], userId=agent-a, tenantId=tenant-a,
+    roles=["agent"]), body {"tenantIdRef":"tenant-a","title":"Beta workflow request","status":"open"}
+    expectedStatus: 201, actualStatus: 403 ("Forbidden", bare Spring Boot default error body,
+    no npdev-specific reason/error field -- i.e. rejected before reaching any npdev-specific
+    authorization-decision code path that would normally return a richer JSON envelope).
+
+  Traced the root cause by comparing golden-ai-scenarios/tenant-workflow-ops/ai-model.json
+  against the normalizer's OWN output for this run
+  (D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\temp\ai-beta-gate\tenant-workflow-ops\normalized\model.json):
+  the AI model declares `flows: [{"name": "CreateTicket", ..., "requiredRole": "agent", ...}]`
+  and a top-level `roles: [{"roleId": "agent", "permissions": ["ticket:create", ...]}, ...]`.
+  The normalized/official model.json's own `flows[0]` (CreateTicket) has NO requiredRole field
+  and no role-gate step anywhere in its `steps[]`; the official model.json has no `roles` key
+  at its root at all. Confirmed by grepping scripts/ai/Normalize-AiContract.ps1 for every
+  `requiredRole` reference: it is read and threaded through for `panels[].requiredRole` (line
+  ~88, ~371, ~380), `procedures[].requiredRole` (line ~102, ~332), and workflow
+  `transitions[].requiredRole` (line ~131, ~246, confirmed present in this scenario's own
+  compiled Ticket.lifecycle.transitions[].metadata.requiredRole) -- but `flows[].requiredRole`
+  is never referenced anywhere in the script. The scenario's own `roles[].permissions` DOES
+  survive into the separate normalized/security.json artifact (confirmed: role "agent" ->
+  permissions ["ticket:create", "workflow:transition"] is present there), but nothing in the
+  generated runtime appears to consult that permissions list for the generic concept-create
+  REST endpoint -- there is no requiredRole/roleScopes concept anywhere in NPDevKernel's own
+  code for flows/generic-CRUD-create (grepped: zero matches), only the real, existing
+  RolePermissions/DefaultExecutionAuthorizationPolicy mechanism
+  (NPDevKernel/adapters/authz-default, NPDevKernel/kernel/.../auth/RolePermissions.java) which
+  this normalizer output never populates for this scenario's own flow.
+
+  Net effect: an AI-authored scenario that uses `flows[].requiredRole` (rather than only
+  `procedures[]`/`panels[]`) to gate a generic concept-create action has that intent silently
+  dropped at normalization time, and the resulting generated app's create endpoint appears to
+  default to denying every role (agent included) rather than allowing the one role the
+  scenario declared -- the opposite of what the AI-authoring contract asked for, and silent
+  (no validation error anywhere flags the dropped requiredRole).
+files:
+  - scripts/ai/Normalize-AiContract.ps1
+  - golden-ai-scenarios/tenant-workflow-ops/ai-model.json
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/RolePermissions.java
+  - NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/defaultpolicy/DefaultExecutionAuthorizationPolicy.java
+detail: |
+  Not fixed here, deliberately -- out of Move 16 Phase A2's own bounded scope (REG-124's
+  fixture repair was specifically the tenant-field-name collision; REG-124's own DoD was "the
+  scenario loads and runs", which is met -- generation/build/boot/health all pass now). This is
+  a genuinely separate, newly-uncovered defect in the normalizer's own requiredRole handling,
+  unmasked by REG-124's fix (the scenario never reached the smoke stage before, so this bug was
+  unreachable), not caused by it.
+
+  Recommended next step for whoever picks this up: decide whether flows[].requiredRole should
+  gate the flow's own generated action the same way procedures[].requiredRole already does
+  (likely the more consistent fix, mirroring the existing procedure/panel handling exactly), or
+  whether flows[] is intentionally meant to rely solely on roles[].permissions-based checks
+  instead (in which case the generic CRUD create endpoint needs its OWN wiring to consult
+  permissions, which nothing currently does) -- either fix needs its own verification pass
+  (does any OTHER scenario already rely on flows[].requiredRole being silently ignored in a way
+  a fix would break?), not a same-session patch appended to REG-124's own closing.

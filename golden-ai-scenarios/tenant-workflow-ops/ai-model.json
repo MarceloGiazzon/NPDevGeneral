@@ -116,7 +116,7 @@
   ],
   "tenancy": {
     "mode": "shared-app-tenant-scoped-data",
-    "tenantIdField": "tenantId",
+    "tenantIdField": "tenantIdRef",
     "testTenants": [
       "tenant-a",
       "tenant-b"
