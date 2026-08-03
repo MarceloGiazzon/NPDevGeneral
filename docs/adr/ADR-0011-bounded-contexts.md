@@ -47,6 +47,12 @@ references (`{"context": "...", "concept": "..."}` instead of a string) — reje
 ergonomics, since every reference site (`where`, `groupBy`, panel `dataSource` bindings) is a flat
 string today.
 
+```decision-check
+id: ADR-0011-D1
+file: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
+contains: mergeQualifiedConcepts("Context",
+```
+
 ### D2 — A context is a file/folder boundary, composed via the existing `$ref`/fragment machinery
 
 **Decision:** one context = one physical fragment file. The root model declares
@@ -65,6 +71,12 @@ implementation with its own bug surface.
 directory-of-files loader that does not reuse fragment/pack composition (duplicates hardened logic for
 no benefit).
 
+```decision-check
+id: ADR-0011-D2
+file: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
+contains: loadPackJson(contextFile, state)
+```
+
 ### D3 — Explicit `imports[]`; an undeclared cross-context reference is a compile error
 
 **Decision:** a context fragment declares `imports: ["otherContext", ...]`. A `context::Concept`
@@ -81,6 +93,12 @@ needs to be."
 **Rejected:** free reference (any context may reference any other's qualified names with no
 declaration) — friendlier short-term, but reintroduces the undisciplined flat-vocabulary coupling B20
 exists to fix, with `::` punctuation sprinkled on top.
+
+```decision-check
+id: ADR-0011-D3
+file: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
+contains: imports undeclared context '
+```
 
 ### D4 — No physical table prefixing in v1
 
@@ -101,6 +119,12 @@ already defuses the actual collision case (two contexts in one app both declarin
 DSL-and-data change on day one, the shape the roadmap explicitly wants to avoid shipping first.
 Deferred to an explicit, opt-in v2 mechanism (e.g. a concept declaring `physicallyIsolate: true`) for
 the app that actually needs two physically separate same-named tables.
+
+```decision-check
+id: ADR-0011-D4
+file: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+contains: tableNameSource
+```
 
 ### D8 — The import graph must be acyclic
 

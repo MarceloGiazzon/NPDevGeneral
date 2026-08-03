@@ -130,6 +130,9 @@
     "scripts/quality/cadence_state.py": {
       "invocation": "orchestrated"
     },
+    "scripts/quality/check-adr-decision-implementation.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-allowlist-citations.py": {
       "invocation": "ci-gate"
     },
