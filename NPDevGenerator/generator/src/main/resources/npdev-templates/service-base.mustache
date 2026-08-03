@@ -191,21 +191,34 @@ public class {{entityName}}ServiceBase {
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeCreate("{{conceptName}}", createPayload, crudCtx));
 {{/codaAllowed}}
-        // LNCH-13/REG-16-resid R2: enforceWithConceptGateway now runs BEFORE any create flow, not
-        // only when no create flow is declared, so a declared access.write row-level rule -- and the
-        // coarse invariant/lifecycle rule profiles -- are checked, and can DENY, before a flow's own
-        // side effects (notifications, external calls) ever run. Without this, a concept combining a
+        // LNCH-13/REG-16-resid R2: this enforcement runs BEFORE any create flow, not only when no
+        // create flow is declared, so a declared access.write row-level rule -- and the coarse
+        // invariant/lifecycle rule profiles -- are checked, and can DENY, before a flow's own side
+        // effects (notifications, external calls) ever run. Without this, a concept combining a
         // custom create flow with access.write got ZERO row-level write enforcement on this endpoint:
-        // enforceWithCreateFlow only calls kernelRunner.execute(...), never conceptGateway.save(...),
-        // and the later saveWithIntegrityMapping(e) persists straight through conceptStore, bypassing
-        // ConceptGatewaySemanticPolicy.isRowWritable entirely.
+        // enforceWithCreateFlow only calls kernelRunner.execute(...), never conceptGateway.save(...).
+        //
+        // REG-120: when a create flow IS declared, that flow's own createConcept step is this row's
+        // one authoritative writer, so the check below must NOT also persist -- authorizeCreateWithConceptGateway
+        // runs the identical permission/row-scope/rule-profile enforcement as enforceWithConceptGateway
+        // but stops short of writing. Calling the persisting form here as well raced the flow's own
+        // (separate transaction/connection) write against this call's still-open one, throwing a
+        // spurious lock/concurrent-update error on every such create -- reproduced live via
+        // POST /api/concepts/canary_tasks against npdev-canary's CanaryTask (an H2 "Concurrent
+        // update" error) before this fix.
 {{#kernelControlled}}
+{{^hasCreateFlow}}
         enforceWithConceptGateway("{{conceptName}}", generatedId, createPayload);
+{{/hasCreateFlow}}
+{{#hasCreateFlow}}
+        authorizeCreateWithConceptGateway("{{conceptName}}", generatedId, createPayload);
+{{/hasCreateFlow}}
 {{/kernelControlled}}
 {{#hasCreateFlow}}
         enforceWithCreateFlow(crudCtx, generatedId, createPayload);
 {{/hasCreateFlow}}
 
+{{^hasCreateFlow}}
         {{entityName}} e = new {{entityName}}();
         runtimeSupport.assignGeneratedId("{{conceptName}}", e, generatedId);
         runtimeSupport.applyCreateFields("{{conceptName}}", source, e);
@@ -215,6 +228,20 @@ public class {{entityName}}ServiceBase {
         e.setTenantId(currentTenantId());
 
         {{entityName}} created = saveWithIntegrityMapping(e);
+{{/hasCreateFlow}}
+{{#hasCreateFlow}}
+        // REG-120: enforceWithCreateFlow's own createConcept step already persisted this row through
+        // the kernel's persistence capability -- constructing a second entity and calling
+        // saveWithIntegrityMapping here would write the SAME (tenant, id) row again through a
+        // completely separate persistence mechanism, racing the flow's own write and throwing a
+        // spurious lock/concurrent-update error (or, when it doesn't race, silently performing a
+        // wasted duplicate write). The flow's write is authoritative -- it already ran
+        // invariantCheck/authorization/side effects in the declared order -- so fetch what it wrote
+        // instead of writing it again.
+        {{entityName}} created = persistence.findById(generatedId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Create flow \"{{createFlowName}}\" for {{conceptName}} did not persist id " + generatedId));
+{{/hasCreateFlow}}
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.afterCreate("{{conceptName}}", created, crudCtx));
 {{/codaAllowed}}
@@ -634,6 +661,41 @@ public class {{entityName}}ServiceBase {
         }
     }
 
+{{#hasCreateFlow}}
+    /**
+     * REG-120: the same permission/row-scope/rule-profile enforcement {@link #enforceWithConceptGateway}
+     * runs, but WITHOUT persisting -- used instead of it for this concept's create because a declared
+     * create Flow's own {@code createConcept} step is this row's one authoritative writer. See this
+     * method's call site above for why calling the persisting form here as well is exactly the bug
+     * REG-120 reported.
+     */
+    private void authorizeCreateWithConceptGateway(String conceptName, UUID id, Map<String, Object> payload) {
+        if (conceptGateway == null) {
+            throw new IllegalStateException("ConceptGateway is required for generated CRUD mutations.");
+        }
+        try {
+            conceptGateway.authorizeCreate(
+                    new ConceptWriteRequest(conceptName, String.valueOf(id), null, payload),
+                    generatedCrudExecutionContext()
+            );
+        } catch (ConceptGatewaySemanticException exception) {
+            throw new GeneratedCrudRuntimeSupport.InvariantViolationException(List.of(
+                    new GeneratedCrudRuntimeSupport.InvariantViolationDetail(
+                            exception.code(),
+                            conceptName,
+                            "conceptGateway",
+                            null,
+                            exception.getMessage(),
+                            false
+                    )
+            ));
+        } catch (RuntimeException exception) {
+            throw GeneratedCrudRuntimeSupport.mapDataIntegrityViolation(conceptName, null, exception)
+                    .orElseThrow(() -> exception);
+        }
+    }
+
+{{/hasCreateFlow}}
     private void enforceDeleteWithConceptGateway(String conceptName, UUID id) {
         if (conceptGateway == null) {
             throw new IllegalStateException("ConceptGateway is required for generated CRUD mutations.");

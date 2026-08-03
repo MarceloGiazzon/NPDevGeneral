@@ -1,10 +1,10 @@
 {
   "schemaVersion": "npdev-acceptance-scenario.v1",
-  "name": "Move 14 Phase D item D1: canary tasks filtered by title return only matching rows",
+  "name": "Move 14 Phase D item D1: canary tasks filtered by title return only matching rows (also REG-120 regression: seeds via the generic CRUD create endpoint, which previously double-persisted every row on a concept combining a create Flow with CRUD exposure)",
   "approved": true,
   "given": [
     {
-      "path": "/api/flows/CreateCanaryTask/execute",
+      "path": "/api/concepts/canary_tasks",
       "rows": [
         { "title": "FastGateCanaryScenarioTask", "priority": 1, "status": "OPEN" },
         { "title": "FastGateCanaryScenarioOtherTask", "priority": 1, "status": "OPEN" }

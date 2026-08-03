@@ -215,6 +215,17 @@ public final class ServiceEmitter extends AbstractEmitter {
             model.findFlow(entity.getName(), "create").ifPresent(flow -> {
                 ctx.put("hasCreateFlow", true);
                 ctx.put("createFlowName", flow.getName());
+                // REG-120: author-time precedence signal -- a concept combining a create-mode Flow
+                // with generic CRUD create exposure only ever persists through the Flow's own write
+                // (createFromSource fetches, rather than re-saves, once the Flow has run); the CRUD
+                // create endpoint's permission/tenant/idempotency/audit handling still applies
+                // unchanged, only the actual row write is delegated. Printed (not a generation
+                // failure) because both a Flow-owned create AND CRUD create exposure are individually
+                // legitimate and their combination is intentionally supported, just with one
+                // authoritative writer.
+                System.out.println("[NPDev] Entity " + entity.getClassName() + ": create is delegated to Flow \""
+                        + flow.getName() + "\" -- that Flow's write is authoritative, the generated CRUD "
+                        + "create endpoint will not write a second time (REG-120)");
             });
             model.findFlow(entity.getName(), "update").ifPresent(flow -> {
                 ctx.put("hasUpdateFlow", true);
