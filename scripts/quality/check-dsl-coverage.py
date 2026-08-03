@@ -513,6 +513,15 @@ FEATURE_DETECTORS = {
     # B20 (S2, ADR-0011): bounded-context declarations -- a new top-level array sibling of
     # packs/fragments, composed the same way.
     "contexts": lambda m: _nonempty(m, "contexts"),
+    # S6 (drift A2): a context fragment's own imports[] -- D3's cross-context import gate
+    # (ModelSourceResolver's QualifiedReferenceValidator, ratified in S2's own §0 gate) had NO
+    # coverage protection: "contexts" above only proves a context EXISTS, not that any context
+    # declares imports[]. _merge_context_fragments already surfaces a fragment's own list-typed
+    # keys (imports included) into the merged dict this detector sees, so no new plumbing is
+    # needed -- just the missing detector entry. Losing dsl-conformance-max's one
+    # contexts/shipping.json `"imports": ["billing"]` line would leave D3 silently unexercised
+    # while this gate stayed green.
+    "imports": lambda m: _nonempty(m, "imports"),
     "flow.schedule": lambda m: any("schedule" in f for f in _flows(m)),
     "flow.specializes": lambda m: any("specializes" in f for f in _flows(m)),
     "flow.hooks": lambda m: any(f.get("hooks") for f in _flows(m)),
