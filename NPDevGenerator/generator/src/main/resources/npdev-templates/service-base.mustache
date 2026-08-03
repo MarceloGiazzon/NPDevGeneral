@@ -199,7 +199,7 @@ public class {{entityName}}ServiceBase {
         // enforceWithCreateFlow only calls kernelRunner.execute(...), never conceptGateway.save(...).
         //
         // REG-120: when a create flow IS declared, that flow's own createConcept step is this row's
-        // one authoritative writer, so the check below must NOT also persist -- authorizeCreateWithConceptGateway
+        // one authoritative writer, so the check below must NOT also persist -- authorizeCreateFlowWithConceptGateway
         // runs the identical permission/row-scope/rule-profile enforcement as enforceWithConceptGateway
         // but stops short of writing. Calling the persisting form here as well raced the flow's own
         // (separate transaction/connection) write against this call's still-open one, throwing a
@@ -211,7 +211,7 @@ public class {{entityName}}ServiceBase {
         enforceWithConceptGateway("{{conceptName}}", generatedId, createPayload);
 {{/hasCreateFlow}}
 {{#hasCreateFlow}}
-        authorizeCreateWithConceptGateway("{{conceptName}}", generatedId, createPayload);
+        authorizeCreateFlowWithConceptGateway("{{conceptName}}", generatedId, createPayload);
 {{/hasCreateFlow}}
 {{/kernelControlled}}
 {{#hasCreateFlow}}
@@ -669,7 +669,7 @@ public class {{entityName}}ServiceBase {
      * method's call site above for why calling the persisting form here as well is exactly the bug
      * REG-120 reported.
      */
-    private void authorizeCreateWithConceptGateway(String conceptName, UUID id, Map<String, Object> payload) {
+    private void authorizeCreateFlowWithConceptGateway(String conceptName, UUID id, Map<String, Object> payload) {
         if (conceptGateway == null) {
             throw new IllegalStateException("ConceptGateway is required for generated CRUD mutations.");
         }

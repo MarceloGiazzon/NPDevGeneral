@@ -1486,6 +1486,26 @@
       "rule": "H6",
       "where": "NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/defaultpolicy/IdentityPermissionOverrideLookup.java:80",
       "why": "Move 14 Phase C item C2 (RC-B3). The checker's regex only recognizes .error(/.warn( as 'logged' -- this catch DOES log, at LOG.severe(...), on a schema mismatch (isSchemaMismatch(exception), the same SQLState-42-prefix check and .severe(...) style IdentityRoleLookup.tokenVersion already established), the checker just cannot see it syntactically. The fail-open direction (empty map -> 'no override configured' -> the role's full declared ceiling applies) is deliberately the SAME as H4's reasoning one module over (IdentityRoleLookup.rolesFor, fingerprint ddbcb35ee7ee): the worst case of a lookup fault is identical to 'this admin never configured a runtime restriction here', which is exactly today's pre-C2 behavior for every app that hasn't adopted the feature -- never a widened grant, only a narrowing that fails to apply. RolePermissions' own ceiling intersection (a separate, independently-tested control) is what actually enforces 'never beyond the ceiling'; this lookup only ever supplies an optional narrowing on top of it."
+    },
+    "0379893f74d6": {
+      "rule": "E1",
+      "where": "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache:209 (authorizeCreateFlowWithConceptGateway, enforceWithConceptGateway under {{#kernelControlled}})",
+      "why": "Move 15 Phase A item A1 (REG-120). Same E1/REG-44 class as the other 13 (now 14) {{#kernelControlled}}-with-no-opposite-arm sites in this file: crud.kernelControlled is a single app-level off-switch for ALL generated authz, defaults to true, and a model author disabling it is within the trust boundary -- UnenforceableAccessRuleCheck (REG-44's fix) already refuses generation outright if a concept declares access.read/access.write while kernelControlled resolves false, so the 'silently unenforced declared rule' gap this pattern warns about cannot occur. REG-120 only added a second call (authorizeCreateFlowWithConceptGateway, the validate-only form used when a create Flow is declared) alongside the pre-existing enforceWithConceptGateway inside the SAME already-accepted guard; it does not introduce a new occurrence of the class."
+    },
+    "10ecb8a42586": {
+      "rule": "E1-adjacent (new)",
+      "where": "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache:664 (conceptGateway.authorizeCreate(...) inside authorizeCreateFlowWithConceptGateway's {{#hasCreateFlow}}-guarded body)",
+      "why": "Move 15 Phase A item A1 (REG-120). The tautology discriminator (word_tokens(condition) <= word_tokens(call)) correctly excuses the OUTER call site (authorizeCreateFlowWithConceptGateway(...), which now carries \"flow\" in its name and is not flagged) but this hit is the kernel-level ConceptGateway.authorizeCreate(...) call nested INSIDE that method's body, which is a general-purpose kernel primitive (mirrors the pre-existing authorizeWrite, used elsewhere for a different purpose) and correctly should not have \"Flow\" baked into ITS name just to satisfy a template-file-scoped heuristic. Not LNCH13-F1's shape: the {{^hasCreateFlow}} arm does not need this call because it uses the PERSISTING enforceWithConceptGateway instead, which runs the identical permission/row-scope/rule-profile enforcement PLUS the write -- a strictly broader guarantee, not a missing one. See ServiceBaseFlowRowLevelAuthzTest for the automated proof that the enforcement itself (not just this identifier) still runs before the flow in both branches."
+    },
+    "6ad785fdd420": {
+      "rule": "D3",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ServiceEmitter.java:226",
+      "why": "Move 15 Phase A item A1 (REG-120), same class as rule D3 (SQL-shaped English in non-SQL text): a System.out.println generation-time diagnostic (\"create is delegated to Flow \\\"\" + flow.getName() + \"\\\" -- ...\") containing the English word \"create\", never assembled into or executed as SQL -- there is no DataSource, no JDBC, no database interaction anywhere near this line. flow.getName() is spliced into a console log message only."
+    },
+    "94ff74f7dba1": {
+      "rule": "D3",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptGateway.java:92",
+      "why": "Move 15 Phase A item A1 (REG-120), same class as 6ad785fdd420: the new authorizeCreate default method's fail-closed exception message (\"This ConceptGateway cannot authorize a create without performing it; denying \" + request.conceptName() + \" ...\"), mirroring the pre-existing authorizeWrite default method's identical-shape message one method above it (never itself flagged, since \"authorize a WRITE\" does not contain a SQL keyword) -- a plain Java exception string, never used in any SQL statement."
     }
   }
 }

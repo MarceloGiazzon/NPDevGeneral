@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * testing, per docs/ROW_LEVEL_AUTHORIZATION.md's own history).
  *
  * <p>REG-120 (2026-08-02) changed WHICH method the flow-backed create path calls for this
- * enforcement: {@code authorizeCreateWithConceptGateway} (validate-only, never persists) instead of
+ * enforcement: {@code authorizeCreateFlowWithConceptGateway} (validate-only, never persists) instead of
  * {@code enforceWithConceptGateway} (which also persists, and raced the flow's own separate write --
  * see {@link #flowBackedCreateNeverWritesTheRowASecondTimeThroughSaveWithIntegrityMapping}). The
  * enforcement guarantee this test asserts (runs, and runs before the flow) is unchanged; only the
@@ -104,14 +104,14 @@ class ServiceBaseFlowRowLevelAuthzTest {
 
         String generated = Files.readString(out.resolve("src/main/java/com/npdev/generated/services/TicketServiceBase.java"));
 
-        assertTrue(generated.contains("authorizeCreateWithConceptGateway(\"Ticket\", generatedId, createPayload);"),
+        assertTrue(generated.contains("authorizeCreateFlowWithConceptGateway(\"Ticket\", generatedId, createPayload);"),
                 "the row-level/semantic gateway check must still be emitted for a flow-backed concept "
-                        + "(REG-120: as the validate-only authorizeCreateWithConceptGateway, not the "
+                        + "(REG-120: as the validate-only authorizeCreateFlowWithConceptGateway, not the "
                         + "persisting enforceWithConceptGateway): " + generated);
         assertTrue(generated.contains("enforceWithCreateFlow(crudCtx, generatedId, createPayload);"),
                 "the create flow must still run: " + generated);
 
-        int gatewayCallIndex = generated.indexOf("authorizeCreateWithConceptGateway(\"Ticket\", generatedId, createPayload);");
+        int gatewayCallIndex = generated.indexOf("authorizeCreateFlowWithConceptGateway(\"Ticket\", generatedId, createPayload);");
         int flowCallIndex = generated.indexOf("enforceWithCreateFlow(crudCtx, generatedId, createPayload);");
         assertTrue(gatewayCallIndex >= 0 && flowCallIndex >= 0 && gatewayCallIndex < flowCallIndex,
                 "the row-level/semantic gateway check must run BEFORE the create flow's own side effects, "
