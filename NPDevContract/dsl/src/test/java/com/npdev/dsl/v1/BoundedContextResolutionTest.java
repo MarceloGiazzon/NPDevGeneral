@@ -288,6 +288,46 @@ class BoundedContextResolutionTest {
      *  the same required {@code pack}/{@code dslVersion}/{@code version} identity fields -- by
      *  convention set {@code pack} equal to the context's own name to avoid confusion, though nothing
      *  in the resolver reads it (the ROOT model's {@code contexts[].name} is what actually qualifies). */
+    @Test
+    void flowStepScopeIsQualifiedAlongsideTheConceptItInvariantChecks() throws Exception {
+        // S3 (found via the bounded-contexts codemod trial against AppGen/apps/pack-sample):
+        // invariantCheck / createConcept / updateConcept steps name their target concept via
+        // `scope`, the same field FlowValidation.collectConceptMutationScopes reads for all three --
+        // this was missing from the rewrite table, so a context-qualified concept's own flow
+        // invariantCheck stayed unqualified ("Sale" instead of "wms::Sale") and validation then
+        // rejected the mismatch qualification itself introduced.
+        write("contexts/wms.json", contextFragment("wms", """
+                "concepts": [
+                  { "name": "Sale", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                ],
+                "flows": [
+                  { "name": "ProcessSale",
+                    "input": { "concept": "Sale", "mode": "create" },
+                    "steps": [
+                      { "type": "invariantCheck", "scope": "Sale", "invariants": [] },
+                      { "type": "return", "value": "input" }
+                    ]
+                  }
+                ]
+                """, null));
+        Path model = write("model.json", """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "contexts": [ { "name": "wms", "$ref": "contexts/wms.json" } ],
+                  "concepts": []
+                }
+                """);
+
+        JsonNode resolved = new ModelSourceResolver().resolve(model).resolvedRoot();
+        JsonNode step = resolved.get("flows").get(0).get("steps").get(0);
+
+        assertEquals("wms::Sale", resolved.get("flows").get(0).get("input").get("concept").asText());
+        assertEquals("wms::Sale", step.get("scope").asText(),
+                "invariantCheck's scope must be qualified the same way the concept it checks was");
+    }
+
     private static String contextFragment(String name, String bodyFields, String importsArrayJsonOrNull) {
         String importsField = importsArrayJsonOrNull == null
                 ? ""

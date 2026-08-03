@@ -5,6 +5,37 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-03 — `npdev migrate bounded-contexts` codemod; ADR-0011 D4 gap fixed (S3, docs/adr/ADR-0011-bounded-contexts.md addendum)
+
+**Not a breaking change to any existing model — stated plainly, not overstated.** `contexts[]`
+(S2, 2026-08-03) was already optional and backward-compatible; this entry is about the codemod that
+now exists for authors who want to *adopt* it, plus a real bug fix underneath it.
+
+**The codemod:** `npdev migrate bounded-contexts --input <definition-dir> [--write]`
+(`NPDevCli/dsl_v2_migration_bounded_contexts.py`) wraps a model's whole authored content into one new
+context. Dry-run by default. It physically relocates any `$ref`-referenced concept/plugin/fragment
+files into a `contexts/<name>/` subtree that mirrors their original relative layout — every `$ref`
+string stays byte-identical — rather than rewriting paths with `../`, which `model.schema.json`'s
+`localModelRef` pattern forbids outright (a corrected premise from the drafting spec, not a design
+choice with alternatives; see the ADR addendum for the full reasoning).
+
+**The bug fix, found by running the codemod against real content:** ADR-0011's D4 ("no physical table
+prefixing") was accepted but never implemented — a context-qualified concept's table was silently
+prefixed exactly like a pack-qualified one (`SqlIdentifierSupport.toSnake` folds `::` into `_`
+unconditionally). Fixed in `ModelCompiler.tableNameSource`, gated on the model's own declared
+`contexts[]` names so pack-table-prefixing is completely unaffected. A second, smaller gap
+(`flowStep.scope` never qualified alongside its concept) was fixed alongside it in
+`ModelSourceResolver`. Both are live-proven on a WmsOffice scratch-copy trial
+(`__OutsideRepo/s3/wmsoffice-migration-trial-evidence.txt`) — table names, DB schema, and generic-CRUD
+REST routes are identical before/after a real migration; only concept identity and the generated Java
+class name change, D1's intended qualified-identity consequence.
+
+**No corpus-wide `npdev migrate` sweep** — `contexts[]` stays optional indefinitely (§0 of
+`S3_SPEC.md`, confirmed). `AppGen/apps/pack-sample` was migrated for real (the only corpus model
+combining a concept `$ref` and a pack `$ref`); every other corpus model, including live WmsOffice, is
+untouched — the trial proved the codemod safe, it does not by itself make migrating WmsOffice useful,
+and the owner's call was not to.
+
 ## 2026-08-02 — built-in `workspace` pack: `Preference` concept retired in favor of `PropertyValue` (RC-A2, Move 14 Phase B item B1)
 
 `Preference(id, userId, category, prefKey, prefValue)` is replaced by
