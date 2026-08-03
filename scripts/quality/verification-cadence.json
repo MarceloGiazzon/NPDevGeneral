@@ -70,6 +70,13 @@
       "description": "Every DSL feature detector has at least one corpus model exercising it."
     },
     {
+      "id": "check-twin-pair-consistency",
+      "tier": "T1",
+      "maxStaleness": "1-wave",
+      "invokedBy": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "description": "S6 (drift A3): reads scripts/quality/twin-pair-registry.json's human-curated list of location pairs that must move together (e.g. the four-place chain for a new top-level model array field, both directions of pack-composition) and fails the moment any pair diverges. Ran (hosted by the knowledge gate) but had no staleness deadline of its own, so it could never go overdue -- the ledger's entire premise."
+    },
+    {
       "id": "check-panel-provenance-impact",
       "tier": "T1",
       "maxStaleness": "1-wave",
