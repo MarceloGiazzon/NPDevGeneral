@@ -35,6 +35,7 @@ public final class CompiledFlowStep {
     private final Integer maxLoopIterations;
     private final List<CompiledFlowStep> onFailureSteps;
     private final String procedureName;
+    private final Boolean parallelAwait;
 
     public CompiledFlowStep(
             String name,
@@ -206,11 +207,12 @@ public final class CompiledFlowStep {
         this(name, type, checkpoint, scope, invariants, eventName, payloadRef, eventDataRefs, condition, thenSteps,
                 elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatch, delaySeconds,
                 mapFromRef, mapToRef, returnValueRef, capabilityCall, action, generatedActionName, collectionRef,
-                itemKey, loopSteps, maxLoopIterations, onFailureSteps, null);
+                itemKey, loopSteps, maxLoopIterations, onFailureSteps, null, null);
     }
 
     /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): canonical constructor, adding
-     * {@code procedureName} -- the procedure a {@code callProcedure} flow step invokes. */
+     * {@code procedureName} -- the procedure a {@code callProcedure} flow step invokes. B15(B)
+     * (S6, docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)) adds the trailing {@code parallelAwait}. */
     public CompiledFlowStep(
             String name,
             String type,
@@ -239,7 +241,8 @@ public final class CompiledFlowStep {
             List<CompiledFlowStep> loopSteps,
             Integer maxLoopIterations,
             List<CompiledFlowStep> onFailureSteps,
-            String procedureName
+            String procedureName,
+            Boolean parallelAwait
     ) {
         this.name = name;
         this.type = type;
@@ -269,6 +272,7 @@ public final class CompiledFlowStep {
         this.maxLoopIterations = maxLoopIterations;
         this.onFailureSteps = onFailureSteps == null ? List.of() : new ArrayList<>(onFailureSteps);
         this.procedureName = procedureName;
+        this.parallelAwait = parallelAwait;
     }
 
     public String getName() { return name; }
@@ -340,4 +344,9 @@ public final class CompiledFlowStep {
     }
 
     public String getProcedureName() { return procedureName; }
+
+    /** B15(B) (S6, docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)): {@code true} opts a {@code forEach}
+     *  step's loop body into N-way parallel waiting instead of B15(A)'s default sequential
+     *  behavior. {@code null}/absent means sequential -- fully backward compatible. */
+    public Boolean getParallelAwait() { return parallelAwait; }
 }

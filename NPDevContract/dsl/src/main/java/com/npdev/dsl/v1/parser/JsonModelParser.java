@@ -1856,6 +1856,10 @@ public final class JsonModelParser {
             loopSteps = parseStepList(flowName + "." + stepName + ".steps", loopStepsNode);
         }
         Integer maxLoopIterations = readOptionalInt(stepNode, "maxLoopIterations");
+        // B15(B) (S6, docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)): opts a forEach loop body into N-way
+        // parallel waiting instead of B15(A)'s default sequential behavior. null/absent means
+        // sequential -- fully backward compatible.
+        Boolean parallelAwait = readOptionalBoolean(stepNode, "parallelAwait");
 
         // LNCH-17: declared compensation steps, run in reverse completion order when a later step
         // in the same flow terminally fails.
@@ -1919,7 +1923,8 @@ public final class JsonModelParser {
                 loopSteps,
                 maxLoopIterations,
                 onFailureSteps,
-                procedure
+                procedure,
+                parallelAwait
         );
     }
 

@@ -2701,6 +2701,10 @@
           "minimum": 1,
           "description": "LIFT-LOOP: safety cap on forEach iterations, mirroring Procedures' forEach."
         },
+        "parallelAwait": {
+          "type": "boolean",
+          "description": "B15(B): opts a forEach loop body of exactly one AWAIT_EVENT step into N-way parallel waiting -- every iteration's await is attempted up front and all still-outstanding ones stay durably parked at once, instead of B15(A)'s default sequential (one-at-a-time) behavior. Absent/false means sequential."
+        },
         "onFailure": {
           "type": "array",
           "items": {

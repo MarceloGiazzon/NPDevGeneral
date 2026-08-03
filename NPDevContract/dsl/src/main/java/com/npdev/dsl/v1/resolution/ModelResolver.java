@@ -1001,7 +1001,8 @@ public final class ModelResolver {
                 cloneSteps(step.getLoopSteps()),
                 step.getMaxLoopIterations(),
                 cloneSteps(step.getOnFailureSteps()),
-                step.getProcedure()
+                step.getProcedure(),
+                step.getParallelAwait()
         );
     }
 

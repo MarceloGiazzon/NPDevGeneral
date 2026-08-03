@@ -38,6 +38,7 @@ public final class StepAst {
     private final Integer maxLoopIterations;
     private final List<StepAst> onFailureSteps;
     private final String procedure;
+    private final Boolean parallelAwait;
 
     public StepAst(
             String name,
@@ -248,11 +249,13 @@ public final class StepAst {
         this(name, type, checkpoint, scope, invariants, capability, operation, capabilityPolicy, input, output, args,
                 event, payload, data, condition, thenSteps, elseSteps, awaitEvent, awaitRef, awaitMatchCorrelation,
                 awaitPayloadMatch, delaySeconds, returnValue, action, generatedActionName, collectionRef, itemKey,
-                loopSteps, maxLoopIterations, onFailureSteps, null);
+                loopSteps, maxLoopIterations, onFailureSteps, null, null);
     }
 
     /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): canonical constructor, adding
-     * {@code procedure} -- the procedure name a {@code callProcedure} flow step invokes. */
+     * {@code procedure} -- the procedure name a {@code callProcedure} flow step invokes. B15(B)
+     * (S6, docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)) adds the trailing {@code parallelAwait} for a
+     * {@code forEach} step. */
     public StepAst(
             String name,
             String type,
@@ -284,7 +287,8 @@ public final class StepAst {
             List<StepAst> loopSteps,
             Integer maxLoopIterations,
             List<StepAst> onFailureSteps,
-            String procedure
+            String procedure,
+            Boolean parallelAwait
     ) {
         this.name = name;
         this.type = type;
@@ -317,6 +321,7 @@ public final class StepAst {
         this.maxLoopIterations = maxLoopIterations;
         this.onFailureSteps = onFailureSteps == null ? List.of() : new ArrayList<>(onFailureSteps);
         this.procedure = procedure;
+        this.parallelAwait = parallelAwait;
     }
 
     public String getName() { return name; }
@@ -396,4 +401,10 @@ public final class StepAst {
     }
 
     public String getProcedure() { return procedure; }
+
+    /** B15(B) (S6, docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)): {@code true} opts a {@code forEach}
+     *  step's loop body into N-way parallel waiting (all iterations' awaits genuinely outstanding
+     *  at once) instead of B15(A)'s default sequential (one-at-a-time) behavior. {@code null}/absent
+     *  means sequential -- fully backward compatible. */
+    public Boolean getParallelAwait() { return parallelAwait; }
 }

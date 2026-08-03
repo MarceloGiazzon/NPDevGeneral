@@ -61,6 +61,9 @@ final class ForEachStep {
     }
 
     static KernelRunner.StepExecutionOutcome execute(KernelRunner runner, StepExecutionRequest req) {
+        if (req.step().isParallelAwait()) {
+            return ParallelAwaitForEachStep.execute(runner, req);
+        }
         FlowDefinition flow = req.flow();
         FlowStepDefinition step = req.step();
         Object input = req.input();
@@ -265,7 +268,9 @@ final class ForEachStep {
         return c;
     }
 
-    private static Iterable<?> toIterable(Object value) {
+    /** Package-private (not private): reused as-is by {@link ParallelAwaitForEachStep} rather than
+     *  a second copy -- same collection-coercion rule, both modes. */
+    static Iterable<?> toIterable(Object value) {
         if (value instanceof Iterable<?> iterable) {
             return iterable;
         }

@@ -788,7 +788,8 @@ public final class CompiledModelCanonicalJsonReader {
                 loopSteps,
                 optionalIntegerObject(node.get("maxLoopIterations")),
                 onFailureSteps,
-                optionalText(node, "procedureName")
+                optionalText(node, "procedureName"),
+                optionalBoolean(node.get("parallelAwait"))
         );
     }
 

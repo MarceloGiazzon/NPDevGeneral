@@ -164,6 +164,7 @@ LNCH-13: declarative row-level (data-scoped) authorization. Each expression is e
 | `itemKey` | `string` |  | LIFT-LOOP: state variable name each forEach iteration's item is bound to. |
 | `steps` | `array<flowStep>` |  | LIFT-LOOP: the forEach loop body, executed once per item. |
 | `maxLoopIterations` | `integer` |  | LIFT-LOOP: safety cap on forEach iterations, mirroring Procedures' forEach. |
+| `parallelAwait` | `boolean` |  | B15(B): opts a forEach loop body of exactly one AWAIT_EVENT step into N-way parallel waiting -- every iteration's await is attempted up front and all still-outstanding ones stay durably parked at once, instead of B15(A)'s default sequential (one-at-a-time) behavior. Absent/false means sequential. |
 | `onFailure` | `array<flowStep>` |  | LNCH-17: compensation steps run in reverse completion order if a later step in the same flow terminally fails. Not a distributed transaction -- best-effort cleanup, per the saga pattern; see docs/architecture/FLOW_TRANSACTION_CONTRACT.md. |
 
 ## Flow schedule (LNCH-12) (`#/$defs/flowSchedule`)

@@ -116,7 +116,7 @@ values, each with its own factory method:
 | `AWAIT_EVENT` | `awaitEvent(name, eventName, awaitRef, ...)` | Suspends until a matching event arrives — §4 |
 | `MAP` | `map(name, fromRef, toRef)` | Copies a value from one flow-state reference to another |
 | `RETURN` | `returnValue(name, returnRef)` | Ends the flow, producing a value |
-| `FOR_EACH` | `forEach(name, collectionRef, itemKey, loopSteps, maxLoopIterations)` | Bounded iteration over a collection — §6 |
+| `FOR_EACH` | `forEach(name, collectionRef, itemKey, loopSteps, maxLoopIterations, parallelAwait)` | Bounded iteration over a collection; `parallelAwait` (default `false`) opts a single-await-step loop body into N-way parallel waiting (B15(B)) instead of one-at-a-time (B15(A)) — §6 |
 
 Any step, regardless of kind, can additionally carry `onFailureSteps` (`withOnFailure`,
 `FlowStepDefinition.java:257-308`) — used only for compensation, §5.
@@ -388,16 +388,41 @@ marker (the event already durably consumed, the idempotency store already markin
 progress not yet advanced) — a fresh runner resuming from that frozen point completes the iteration via
 the marker rather than re-querying and getting stuck.
 
-**B15(B), still standing: parallel awaits (more than one iteration genuinely waiting at once) remain
-unsupported and out of scope.** This IS the shape Move 9 A5's structural analysis describes — B15(A)'s
-per-iteration correlation id occupies exactly one slot at a time (overwritten, not appended), so it
-does nothing for N-in-flight. Closing it for real still needs either one `FlowInstance` row per loop
-iteration (a new sub-execution concept touching `resumeExecution`/`executeSteps`/compensation/
-idempotency, all of which assume one row = one flow) or a new dedicated wait-table keyed by
-(executionId, iteration index) — not a bounded task. Move 16 Phase C produced a costed design
-decision for this, not an implementation (see that Move's own closure notes).
+**B15(B), lifted (S6 Phase B, 2026-08-03): N loop iterations genuinely waiting AT THE SAME TIME —
+not one at a time — is now durably supported, opt-in and narrowly scoped.** Move 9 A5's structural
+analysis was right that B15(A)'s single `_npdev.await` slot (overwritten, not appended) does nothing
+for N-in-flight on its own. What closed it: every N-slot descriptor and resolved payload lives in
+`state` itself, namespaced per iteration (`_npdev.parallelAwait.<step>.<i>`,
+`__parallelAwaitResolved.<step>.<i>`, `<awaitRef>.<i>`) — `state` already round-trips through
+persistence in full on every checkpoint, so this needed **no new schema, no new adapter, and no
+migration** (a `FlowInstance` row stays a single row; only its `state` blob grew new namespaced
+keys). The genuinely new piece is `ParallelAwaitForEachStep`
+(`NPDevKernel/kernel/.../ParallelAwaitForEachStep.java`), dispatched from `ForEachStep` when a
+`forEach` step declares `"parallelAwait": true`: it attempts every not-yet-resolved iteration in one
+pass, checkpointing immediately after each one resolves (closing the same "event already marked
+processed" race B15(A)'s satisfaction marker closes, just once per resolved slot instead of once per
+step), and the step itself only completes once every slot has resolved. `ResumeCoordinator` gained a
+parallel-aware matching path (both the event-driven resume and the scheduled sweep) that checks an
+incoming event against ALL outstanding per-iteration correlations, not just one.
 
-Tracked as accepted boundaries B15(A) (closed) / B15(B) (still open) in `docs/ACCEPTED_BOUNDARIES.md`.
+**Deliberately scoped to a single-step loop body — exactly one `AWAIT_EVENT` step, nothing before or
+after it.** `FlowValidation` enforces this (`parallelAwait=true requires the loop body to be EXACTLY
+one await step`): a step mutating a non-namespaced `state` key would silently clobber across
+iterations attempted independently in one pass — a hazard sequential mode never hits, since only one
+iteration is ever in flight there. A future lift that wants pre/post-await steps inside a parallel
+loop needs its own design pass for that hazard, not a mechanical extension of this one.
+
+Required, non-optional proof, same hard-stop rule as B15(A): `KernelRunnerParallelAwaitInLoopRestartProofTest`
+(`NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerParallelAwaitInLoopRestartProofTest.java`).
+N=3 iterations genuinely outstanding at once, events delivered out of order across two full restarts
+(brand-new `KernelRunner` instances) — iteration 2's reply arrives before iteration 0's, iteration
+1's arrives last — proves each iteration resumes exactly once on its own event and the merged result
+lands in iteration order regardless of arrival order; plus a thread frozen right after one slot
+resolves, proving a fresh runner resuming from that point does not re-query the already-processed
+event. Full `NPDevKernel` suite (kernel + every adapter) green.
+
+Tracked as accepted boundaries B15(A) (closed, Move 16) / B15(B) (closed, S6, scoped) in
+`docs/ACCEPTED_BOUNDARIES.md`.
 
 ## 7. Scheduling — two mechanisms, same name, don't confuse them
 
@@ -494,10 +519,11 @@ See §11 for the review that found this.
 ## 10. Honest limits
 
 - No per-nested-step compensation — only whole `branch`/`forEach` units (§5).
-- `AWAIT_EVENT` nested inside a `forEach` loop body now works for exactly one outstanding await at a
-  time (B15(A), §6); two or more reachable awaits in the same loop body, or more than one loop
-  iteration genuinely waiting at once (B15(B), parallel), are still rejected/unsupported — not
-  silently broken (§6, accepted boundaries B15(A)/B15(B)).
+- `AWAIT_EVENT` nested inside a `forEach` loop body works either sequentially, one outstanding await
+  at a time (B15(A), default), or in parallel, N iterations genuinely outstanding at once
+  (B15(B), opt-in via `parallelAwait: true`) — but the parallel mode requires the loop body to be
+  EXACTLY one await step, and two or more reachable awaits in the same loop body remain rejected in
+  either mode — not silently broken (§6, accepted boundaries B15(A)/B15(B), both closed).
 - `forEach` materializes its whole collection into memory before iterating; `maxLoopIterations` bounds
   iteration count, not memory (§6, `R4-F2`, INFO).
 - No real sample model exercises `FOR_EACH`, `onFailure`/compensation, or hooks — only test code and
