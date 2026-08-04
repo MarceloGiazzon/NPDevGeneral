@@ -71,7 +71,48 @@ def validate_item(item: dict, path: Path) -> list[str]:
     return errors
 
 
+def render_summary_table(items: list[dict]) -> list[str]:
+    lines = ["| ID | Title | Type | Sev | Status | Opened |", "|---|---|---|---|---|---|"]
+    for item in items:
+        sev = item["severity"] or "—"
+        lines.append(
+            f"| {item['id']} | {item['title']} | {item['type']} | {sev} | "
+            f"{item['status']} | {item['opened']} |"
+        )
+    return lines
+
+
+def render_item_detail(item: dict) -> list[str]:
+    lines = [f"### {item['id']} — {item['title']}", ""]
+    sev = item["severity"] or "—"
+    lines.append(f"**Type:** {item['type']} · **Severity:** {sev} · **Status:** {item['status']}"
+                 + (f" ({item['closed']})" if item.get("closed") else ""))
+    if item.get("verification"):
+        lines.append(f"**Verification:** {item['verification']}")
+    lines.append(f"**Source:** {item['source']}")
+    lines.append(f"**Surface:** `{item['surface']}`")
+    if item.get("files"):
+        lines.append("**Files:**")
+        for f in item["files"]:
+            lines.append(f"- `{f}`")
+    lines.append("")
+    lines.append(item["detail"].strip())
+    lines.append("")
+    if item.get("legacyDetailRef"):
+        lines.append(f"*Full historical narrative:* `{item['legacyDetailRef']}`")
+        lines.append("")
+    return lines
+
+
 def render(items: list[dict]) -> str:
+    # F7 (FIRST_IMPRESSION_SPEC.md I6): 451 KB / 5,915 lines for 2 open items -- both the old
+    # summary table and the "## Detail" section sorted EVERY item (open and done mixed) purely by
+    # id, so the 2 open items were buried somewhere inside 128 closed ones instead of leading. This
+    # still generates the FULL record (nothing is dropped) -- it just leads with what's actionable
+    # and pushes the closed archive behind a <details> fold instead of leading with it.
+    open_items = sorted((i for i in items if i["status"] != "DONE"), key=lambda i: i["id"])
+    done_items = sorted((i for i in items if i["status"] == "DONE"), key=lambda i: i["id"])
+
     lines = [
         "# Open Items — generated",
         "",
@@ -81,46 +122,37 @@ def render(items: list[dict]) -> str:
         "> place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is",
         "> no longer hand-edited for status.",
         "",
+        f"**{len(items)} item(s) migrated: {len(open_items)} open/partial, {len(done_items)} done.**",
+        "",
+        "## Open / partial",
+        "",
     ]
 
-    open_items = [i for i in items if i["status"] != "DONE"]
-    done_items = [i for i in items if i["status"] == "DONE"]
-
-    lines.append(f"**{len(items)} item(s) migrated: {len(open_items)} open/partial, {len(done_items)} done.**")
-    lines.append("")
-
-    lines.append("| ID | Title | Type | Sev | Status | Opened |")
-    lines.append("|---|---|---|---|---|---|")
-    for item in sorted(items, key=lambda i: i["id"]):
-        sev = item["severity"] or "—"
-        lines.append(
-            f"| {item['id']} | {item['title']} | {item['type']} | {sev} | "
-            f"{item['status']} | {item['opened']} |"
-        )
-    lines.append("")
-
-    lines.append("## Detail")
-    lines.append("")
-    for item in sorted(items, key=lambda i: i["id"]):
-        lines.append(f"### {item['id']} — {item['title']}")
+    if open_items:
+        lines.extend(render_summary_table(open_items))
         lines.append("")
-        sev = item["severity"] or "—"
-        lines.append(f"**Type:** {item['type']} · **Severity:** {sev} · **Status:** {item['status']}"
-                     + (f" ({item['closed']})" if item.get("closed") else ""))
-        if item.get("verification"):
-            lines.append(f"**Verification:** {item['verification']}")
-        lines.append(f"**Source:** {item['source']}")
-        lines.append(f"**Surface:** `{item['surface']}`")
-        if item.get("files"):
-            lines.append("**Files:**")
-            for f in item["files"]:
-                lines.append(f"- `{f}`")
+        lines.append("### Detail")
         lines.append("")
-        lines.append(item["detail"].strip())
+        for item in open_items:
+            lines.extend(render_item_detail(item))
+    else:
+        lines.append("None currently open.")
         lines.append("")
-        if item.get("legacyDetailRef"):
-            lines.append(f"*Full historical narrative:* `{item['legacyDetailRef']}`")
-            lines.append("")
+
+    lines.append(f"## Done ({len(done_items)})")
+    lines.append("")
+    lines.append("<details>")
+    lines.append("<summary>Expand the closed-item table and full detail archive</summary>")
+    lines.append("")
+    if done_items:
+        lines.extend(render_summary_table(done_items))
+        lines.append("")
+        lines.append("### Detail")
+        lines.append("")
+        for item in done_items:
+            lines.extend(render_item_detail(item))
+    lines.append("</details>")
+    lines.append("")
 
     return "\n".join(lines) + "\n"
 
