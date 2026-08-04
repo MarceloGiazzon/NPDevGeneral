@@ -53,7 +53,9 @@
 
   "contexts": [
     { "name": "billing", "$ref": "contexts/billing.json" },
-    { "name": "shipping", "$ref": "contexts/shipping.json" }
+    { "name": "shipping", "$ref": "contexts/shipping.json" },
+    { "name": "isolated-a", "$ref": "contexts/isolated-a.json", "physicallyIsolate": true },
+    { "name": "isolated-b", "$ref": "contexts/isolated-b.json", "physicallyIsolate": true }
   ],
 
   "domainTypes": [

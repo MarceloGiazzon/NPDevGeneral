@@ -1,0 +1,17 @@
+{
+  "dslVersion": "1.0.0",
+  "pack": "isolated-a",
+  "version": "1.0.0",
+  "description": "S8 Wave 4 (ADR-0011 D4's v2 opt-in) dsl-conformance-max witness: a context declaring physicallyIsolate:true, sharing a bare concept name ('Ledger') with isolated-b.json -- the case I3 makes legal (both isolating -> distinct physical tables, isolated_a_ledgers vs isolated_b_ledgers). Deliberately a NEW, dedicated context pair rather than flipping billing/shipping's existing isolation, so this witness cannot ripple into their already-exercised (non-isolating) table names.",
+  "concepts": [
+    {
+      "name": "Ledger",
+      "truthLevel": "T2",
+      "ui": { "label": "Isolated A Ledger" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "amountCents", "type": "integer", "required": true, "ui": { "label": "Amount (cents)" } }
+      ]
+    }
+  ]
+}

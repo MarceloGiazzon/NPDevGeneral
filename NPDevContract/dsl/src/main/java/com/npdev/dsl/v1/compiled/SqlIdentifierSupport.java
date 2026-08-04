@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Shared SQL identifier and bond-shape naming for compiled models.
@@ -43,6 +44,45 @@ public final class SqlIdentifierSupport {
         return out.toString()
                 .replaceAll("_+", "_")
                 .replaceAll("^_+|_+$", "");
+    }
+
+    /**
+     * ADR-0011 D4 (B20, v1; S8 Wave 4, v2): resolves which string a context-qualified concept/member
+     * name ({@code contextName::Name}) actually mangles through to a physical SQL identifier --
+     * D4 v1's default strips a prefix matching one of this model's OWN declared, non-isolating
+     * contexts (the qualifier is invisible to the physical schema); Wave 4's v2 opt-in
+     * ({@code physicallyIsolate: true} on that context) keeps the qualifier, mangled by
+     * {@link #toSnake}'s existing {@code "::" -> "_"} replacement -- the SAME mangling a
+     * pack-qualified name already gets, not a new deriver. A prefix that does not match ANY
+     * declared context (a pack-qualified name, or simply unrecognized) is untouched either way.
+     *
+     * <p>Shared by {@code ModelCompiler#tableNameSource} (the actual compiled table name) AND the
+     * table-name-collision validator ({@code ConceptValidation#validateTableNameCollisions}) --
+     * both MUST make this exact same decision, or the validator could miss a real collision (or
+     * flag a false one) the compiler resolves differently. One deriver, two callers, not two
+     * deriver copies that can drift.
+     *
+     * @param contextPhysicallyIsolateByName every context this model declares, name -> its
+     *                                       {@code physicallyIsolate} flag
+     */
+    public static String contextAwareIdentifierSource(
+            String qualifiedName, Map<String, Boolean> contextPhysicallyIsolateByName) {
+        if (qualifiedName == null) {
+            return null;
+        }
+        int split = qualifiedName.indexOf("::");
+        if (split <= 0) {
+            return qualifiedName;
+        }
+        String prefix = qualifiedName.substring(0, split);
+        Boolean physicallyIsolate = contextPhysicallyIsolateByName.get(prefix);
+        if (physicallyIsolate == null || physicallyIsolate) {
+            // Not a declared context (pack-qualified / unrecognized), or a declared context that
+            // opted into v2 physical isolation -- either way, keep the qualifier as-is.
+            return qualifiedName;
+        }
+        // v1 default: the context qualifier is invisible to the physical schema.
+        return qualifiedName.substring(split + 2);
     }
 
     public static String toSnakePlural(String value) {

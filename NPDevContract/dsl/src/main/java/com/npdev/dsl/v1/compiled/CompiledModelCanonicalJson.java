@@ -129,6 +129,12 @@ public final class CompiledModelCanonicalJson {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("name", safe(context.name()));
             node.put("ref", safe(context.ref()));
+            // S8 Wave 4: only emitted when true -- a model that never declares physicallyIsolate
+            // anywhere must produce byte-identical canonical JSON to before this Move (I4's own
+            // regression DoD).
+            if (context.physicallyIsolate()) {
+                node.put("physicallyIsolate", true);
+            }
             contexts.add(node);
         }
         return contexts;

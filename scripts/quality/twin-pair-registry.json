@@ -53,10 +53,10 @@
     },
     {
       "id": "bounded-context-four-place",
-      "citedBy": "B20 (S2, __OutsideRepo\\s1\\b20-design.md, ADR-0011)",
-      "description": "The contexts[] registry (which bounded contexts a model declares) needs the same live path the ast-compiled-four-place rule requires for roles[] -- parser, compiler, ModelResolver, and the canonical writer+reader pair -- or a declared context's registry entry survives parsing but silently never reaches the generator/runtime.",
+      "citedBy": "B20 (S2, __OutsideRepo\\s1\\b20-design.md, ADR-0011); physicallyIsolate added S8 Wave 4 (ADR-0011 D4 v2)",
+      "description": "The contexts[] registry (which bounded contexts a model declares) needs the same live path the ast-compiled-four-place rule requires for roles[] -- parser, compiler, ModelResolver, and the canonical writer+reader pair -- or a declared context's registry entry survives parsing but silently never reaches the generator/runtime. physicallyIsolate (Wave 4, ADR-0011 D4's v2 opt-in) is a field ON each context entry, not a new top-level array, so it rides this same rule rather than a fourth one.",
       "kind": "field-in-all-files",
-      "trackedFields": ["contexts"],
+      "trackedFields": ["contexts", "physicallyisolate"],
       "caseSensitive": false,
       "files": [
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",

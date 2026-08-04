@@ -607,7 +607,8 @@ public final class JsonModelParser {
         for (JsonNode contextNode : node) {
             out.add(new com.npdev.dsl.v1.ast.ContextAst(
                     requiredText(contextNode, "name"),
-                    requiredText(contextNode, "$ref")
+                    requiredText(contextNode, "$ref"),
+                    contextNode.has("physicallyIsolate") && contextNode.get("physicallyIsolate").asBoolean(false)
             ));
         }
         return out;

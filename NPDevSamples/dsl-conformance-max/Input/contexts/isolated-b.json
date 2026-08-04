@@ -1,0 +1,17 @@
+{
+  "dslVersion": "1.0.0",
+  "pack": "isolated-b",
+  "version": "1.0.0",
+  "description": "S8 Wave 4 (ADR-0011 D4's v2 opt-in) dsl-conformance-max witness: see isolated-a.json -- this context ALSO declares physicallyIsolate:true and ALSO declares a bare 'Ledger' concept. Without physical isolation this would be D4 v1's own named collision (both would compile to the same 'ledgers' table); with both isolating, they compile to isolated_a_ledgers / isolated_b_ledgers -- distinct, legal.",
+  "concepts": [
+    {
+      "name": "Ledger",
+      "truthLevel": "T2",
+      "ui": { "label": "Isolated B Ledger" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "costCents", "type": "integer", "required": true, "ui": { "label": "Cost (cents)" } }
+      ]
+    }
+  ]
+}

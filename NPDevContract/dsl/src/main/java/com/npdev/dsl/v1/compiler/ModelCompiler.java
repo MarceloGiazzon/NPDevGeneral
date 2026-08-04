@@ -177,16 +177,17 @@ public final class ModelCompiler {
             domainTypes.add(toCompiledDomainType(domainTypeAst));
         }
 
-        Set<String> contextNames = new HashSet<>();
+        Map<String, Boolean> contextPhysicallyIsolateByName = new HashMap<>();
         for (ContextAst context : modelAst.getContexts()) {
-            contextNames.add(context.name());
+            contextPhysicallyIsolateByName.put(context.name(), context.physicallyIsolate());
         }
 
         List<ConceptAst> orderedConcepts = new ArrayList<>(modelAst.getConcepts());
         orderedConcepts.sort(Comparator.comparing(concept -> normalize(concept.getName())));
         for (ConceptAst concept : orderedConcepts) {
             String className = JavaIdentifierSupport.className(concept.getName());
-            String tableName = SqlIdentifierSupport.toSnakePlural(tableNameSource(concept.getName(), contextNames));
+            String tableName = SqlIdentifierSupport.toSnakePlural(
+                    tableNameSource(concept.getName(), contextPhysicallyIsolateByName));
 
             EffectiveEntityDef effective = resolveEffective(
                     concept,
@@ -636,7 +637,8 @@ public final class ModelCompiler {
             List<com.npdev.dsl.v1.ast.ContextAst> contextAsts) {
         List<com.npdev.dsl.v1.compiled.CompiledContext> compiled = new ArrayList<>();
         for (com.npdev.dsl.v1.ast.ContextAst contextAst : contextAsts) {
-            compiled.add(new com.npdev.dsl.v1.compiled.CompiledContext(contextAst.name(), contextAst.ref()));
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledContext(
+                    contextAst.name(), contextAst.ref(), contextAst.physicallyIsolate()));
         }
         return compiled;
     }
@@ -1184,18 +1186,26 @@ public final class ModelCompiler {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
-    /** ADR-0011 D4 (B20): a context-qualified concept's physical table name ignores the context
-     *  qualifier -- table names are derived exactly as before B20, from the bare concept name.
-     *  Pack-qualified names ({@code packId::Name}) are untouched by this and keep prefixing exactly
-     *  as they always have; only a prefix matching a name in this model's own declared
-     *  {@code contexts[]} is stripped, since that is the only qualifier D4 promises is invisible to
-     *  the physical schema. */
-    private static String tableNameSource(String qualifiedName, Set<String> contextNames) {
-        int split = qualifiedName.indexOf("::");
-        if (split > 0 && contextNames.contains(qualifiedName.substring(0, split))) {
-            return qualifiedName.substring(split + 2);
-        }
-        return qualifiedName;
+    /** ADR-0011 D4 (B20, v1; S8 Wave 4, v2): a context-qualified concept's physical table name
+     *  ignores the context qualifier BY DEFAULT -- table names are derived exactly as before B20,
+     *  from the bare concept name. D4's v1 reasoning stands unchanged: blanket prefixing would turn
+     *  a DSL change into a data migration on every existing app's live database for a collision no
+     *  app has. Pack-qualified names ({@code packId::Name}) are untouched by this and keep prefixing
+     *  exactly as they always have; only a prefix matching a name in this model's own declared
+     *  {@code contexts[]} is a candidate for this method at all.
+     *
+     *  <p><b>D4's own named v2 escape (Wave 4): a context declaring {@code physicallyIsolate: true}
+     *  opts OUT of the default</b> -- its concepts' table names are context-qualified instead of
+     *  bare, mangled by the SAME {@code SqlIdentifierSupport} replacement ({@code "::" -> "_"})
+     *  already used for pack-qualified names, not a new deriver. Opt-in, defaults {@code false}: a
+     *  context that never declares the key, or any model with no {@code contexts[]} at all, compiles
+     *  to byte-identical table names as before this Move.
+     *
+     *  <p>Delegates to {@link SqlIdentifierSupport#contextAwareIdentifierSource} -- the SAME
+     *  decision {@code ConceptValidation#validateTableNameCollisions} must make, so both stay one
+     *  deriver, not two that can drift. */
+    private static String tableNameSource(String qualifiedName, Map<String, Boolean> contextPhysicallyIsolateByName) {
+        return SqlIdentifierSupport.contextAwareIdentifierSource(qualifiedName, contextPhysicallyIsolateByName);
     }
 
     private static CompiledGeneratedActionDescriptorSpec compileGeneratedActionDescriptor(ProcedureAst procedureAst) {

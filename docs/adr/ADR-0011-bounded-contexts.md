@@ -120,6 +120,10 @@ DSL-and-data change on day one, the shape the roadmap explicitly wants to avoid 
 Deferred to an explicit, opt-in v2 mechanism (e.g. a concept declaring `physicallyIsolate: true`) for
 the app that actually needs two physically separate same-named tables.
 
+**Update (S8 Wave 4, 2026-08-04): the v2 opt-in shipped, exactly as named above.** This v1 reasoning
+stands unchanged — the default is still `false`, blanket prefixing was never built, and no existing
+app's tables moved. See the Wave 4 addendum below for what shipped and two real gaps it found.
+
 ```decision-check
 id: ADR-0011-D4
 file: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
@@ -277,3 +281,69 @@ pressure for a second context. The other ~29 corpus models, including
 `AppGen/apps/npdev_split_model_sample_app` (which would exercise the `fragments[]` relocation path —
 confirmed working on a scratch copy, not committed), are unchanged: no `$ref`, no second context, no
 forcing reason.
+
+## S8 Wave 4 addendum (2026-08-04) — D4's own named v2 escape, shipped
+
+**The v1 decision above is unchanged and still the default.** This addendum is additive: a context
+may now opt OUT of it, one context at a time, by declaring `"physicallyIsolate": true` alongside
+`name`/`$ref` in its `contexts[]` entry. Default `false`. A context that never declares the key, or
+any model with no `contexts[]` at all (every existing app, WmsOffice included), compiles to
+byte-identical table names as before this wave — verified by generating WmsOffice's full realized
+schema before and after with a genuinely rebuilt generator jar cache on both sides (not a stale
+cache, which would have made the comparison meaningless) and byte-comparing the DDL and
+`schema-realization-manifest.json`; the only diff was an absolute source-path provenance string,
+an artifact of the comparison method itself, not a schema change. Evidence:
+`__OutsideRepo/wave4/w4-wmsoffice-no-change.txt`.
+
+**What shipped:** `ContextAst`/`CompiledContext` gain a `physicallyIsolate` boolean (four-place
+chain extended, not a new rule — `bounded-context-four-place` in the twin-pair registry now tracks
+`physicallyisolate` alongside `contexts`). `ModelCompiler#tableNameSource` and the table-name-
+collision validator (`ConceptValidation#validateTableNameCollisions`) both now resolve a
+context-qualified name through one shared method, `SqlIdentifierSupport#contextAwareIdentifierSource`
+— an isolating context keeps its qualifier (mangled by the SAME `"::" -> "_"` replacement a
+pack-qualified name already gets, not a new deriver); a non-isolating one strips it, exactly as D4
+v1 always did.
+
+**Two real gaps found while building this, both empirically (not by inspection), both fixed in the
+same session, mirroring S3's own addendum above:**
+
+1. **The table-name-collision check (`ConceptValidation#validateTableNameCollisions`, REG-98) never
+   actually caught D4 v1's own named collision scenario.** It hashed `concept.getName()` (the
+   QUALIFIED name, e.g. `wms::Sale`) directly, a DIFFERENT string than what `ModelCompiler` actually
+   compiles to (`sales`, the context qualifier D4 v1 strips) — so two DIFFERENT non-isolating
+   contexts both declaring a concept named `Sale` silently compiled to the SAME real table with zero
+   errors anywhere, undetected since S2. RED-verified directly against the pre-fix validator (not
+   just the underlying string comparison) via a temporary `git stash` of the fix, confirming the
+   collision test genuinely failed before and passes after. Now routes through the same
+   `contextAwareIdentifierSource` the compiler uses, so the two can never drift apart again.
+2. **`ModelSourceResolver`'s own malformed-`$ref` structural gate (`validateNoMalformedRef`) hard-
+   coded which extra keys a `/contexts/N` entry may carry** (`$ref` + `name`, nothing else) — a
+   check that runs BEFORE `model.schema.json`'s own `context` definition ever applies, and one none
+   of "the three edit sites, all confirmed" named going into this wave. `physicallyIsolate` tripped
+   it as "malformed" until widened. Found only by validating a REAL context-fragment-composing model
+   (`dsl-conformance-max`) end to end — every AST-level Java test bypasses this resolver-level gate
+   entirely by feeding `JsonModelParser` already-resolved JSON directly (`ContextAst`'s own documented
+   contract). RED-verified directly against the pre-fix condition.
+
+**A deliberate deviation from this wave's own planning spec, decided in-session:** the spec's own
+worked collision matrix named "one context isolating, one not, same concept name" a compile error
+("one still collides"). Built and verified instead: this is LEGAL, not an error — `wms::Sale`
+(isolating) compiles to `wms_sales`; `logistics::Sale` (not isolating) compiles to `sales`; these are
+genuinely different tables, no real collision exists, and flagging it would invent a restriction the
+schema does not actually need. The only same-bare-name pairing that still collides is BOTH contexts
+non-isolating (D4 v1's original scenario, now correctly caught per gap 1 above); BOTH isolating is
+legal, per D4's own escape.
+
+**Corpus witness:** `dsl-conformance-max` gained two NEW, dedicated contexts
+(`contexts/isolated-a.json`, `contexts/isolated-b.json`), both `physicallyIsolate: true`, both
+declaring a concept named `Ledger` — compiling to `isolated_a_ledgers`/`isolated_b_ledgers`. Added as
+new contexts rather than flipping `billing`/`shipping`'s existing isolation, so this witness cannot
+ripple into their already-exercised (non-isolating) table names. `check-dsl-coverage.py` gained
+`contexts.physicallyIsolate` in the same commit (S6 Phase A's own `imports[]` lesson: a new context-
+declaration property needs its own detector, not just the base `contexts` one).
+
+**Tests:** `BoundedContextTableNamingTest` (+2: an isolating context keeps its mangled qualified
+table name; explicit `physicallyIsolate: false` behaves exactly like absent). `BoundedContextResolutionTest`
+(+2: the resolver's malformed-ref gate accepts it; absent defaults to `false` and is not emitted,
+RED/GREEN both). `TableNameCollisionValidationTest` (+5: the four collision cases from this wave's
+own matrix, plus a direct RED proof of gap 1 above).
