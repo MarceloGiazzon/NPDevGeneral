@@ -20,8 +20,10 @@ import java.util.Set;
  * <p><b>Rename resolution runs FIRST</b> — a declared rename paired old→new before classifying, because
  * a rename misread as drop-plus-add destroys the old column's data (the highest-stakes correctness rule
  * in the programme). Destructive items reuse {@code SchemaDeltaItem.stableString()} so acknowledgment
- * tokens stay byte-identical. FK/index diffing is deferred (P0.2 asymmetry: the desired side has no
- * explicit FK/index lists yet).
+ * tokens stay byte-identical. FK/index diffing (SER-G8, missing-only direction) runs via
+ * {@link #diffForeignKeysAndIndexes}; the SURPLUS direction (S8 Wave 2) is a separate method,
+ * {@link #findSurplusConstraints} — see its own javadoc for why it is deliberately not folded into this
+ * method's {@link SchemaDiffItem} output.
  */
 public final class SchemaDiffEngine {
 
@@ -123,6 +125,78 @@ public final class SchemaDiffEngine {
                         SafetyClass.SAFE_ADDITIVE, null, String.join(",", wanted.columns())));
             }
         }
+    }
+
+    /**
+     * S8 Wave 2 (B3 FK/index surplus detection, roadmap deferred item #2): the REVERSE direction —
+     * every live FK/index the desired schema does NOT enumerate, classified via
+     * {@link ConstraintSurplusClassifier} rather than reported wholesale. Deliberately a SEPARATE method
+     * from {@link #diff}, returning a separate {@link ConstraintSurplusReport} rather than adding to
+     * {@link SchemaDiffItem}/{@link SafetyClass} — {@link #diff}'s own missing-only behavior (this
+     * method's sibling direction) is completely unchanged by this method existing, which is what keeps
+     * {@code SchemaDiffEngineTest#extraLiveIndexesAreNeverReported} passing unmodified.
+     *
+     * <p><b>Whole-schema abstention (X0 rule).</b> When the ENTIRE desired schema (every table, not just
+     * one) declares zero FK/index entries — a pre-SER-G8 manifest, or one whose declared lists are
+     * present but empty (both measured, real states: see {@code b3-preflight.py}) — classification is
+     * impossible, not merely empty: every live constraint would look surplus. This method abstains for
+     * the WHOLE call in that case (one entry in {@link ConstraintSurplusReport#abstentions()}), rather
+     * than defaulting every live constraint to {@code FOREIGN}.
+     *
+     * <p><b>Advisory only, permanently.</b> A table present live but absent from the desired schema
+     * (a pending/undeclared drop) is skipped here — its own table-level classification is {@link #diff}'s
+     * job, not this method's; a table's constraints are only classified once the table itself is known
+     * to be desired.
+     */
+    public ConstraintSurplusReport findSurplusConstraints(DesiredSchema desired, CurrentSchema current) {
+        boolean desiredExpressesConstraints = desired.tables().values().stream()
+                .anyMatch(dt -> !dt.foreignKeys().isEmpty() || !dt.indexes().isEmpty());
+
+        if (!desiredExpressesConstraints) {
+            return new ConstraintSurplusReport(List.of(), List.of(
+                    "cannot classify: the desired schema declares no foreign keys or indexes anywhere "
+                            + "(either this manifest predates SER-G8, or its declared FK/index lists are "
+                            + "present but empty) -- abstaining rather than reporting every live "
+                            + "constraint as surplus"));
+        }
+
+        List<SurplusConstraint> surplus = new ArrayList<>();
+        for (CurrentTable ct : current.tables().values()) {
+            DesiredTable dt = desired.tables().get(ct.name());
+            if (dt == null) {
+                continue;
+            }
+            for (CurrentIndex live : ct.indexes()) {
+                if (ConstraintSurplusClassifier.classifyIndex(live, dt, ct, true)
+                        == ConstraintSurplusClassifier.Classification.FOREIGN) {
+                    surplus.add(new SurplusConstraint(ct.name(), "INDEX", live.name(),
+                            lowerAll(live.columns()), live.unique(), null));
+                }
+            }
+            for (CurrentForeignKey live : ct.foreignKeys()) {
+                if (ConstraintSurplusClassifier.classifyForeignKey(live, dt, true)
+                        == ConstraintSurplusClassifier.Classification.FOREIGN) {
+                    surplus.add(new SurplusConstraint(ct.name(), "FOREIGN_KEY", live.name(),
+                            lowerAll(live.columns()), false, lowerOrNull(live.referencedTable())));
+                }
+            }
+        }
+        surplus.sort(Comparator.comparing(SurplusConstraint::table)
+                .thenComparing(SurplusConstraint::kind)
+                .thenComparing(sc -> sc.liveName() == null ? "" : sc.liveName()));
+        return new ConstraintSurplusReport(List.copyOf(surplus), List.of());
+    }
+
+    private static List<String> lowerAll(List<String> values) {
+        List<String> out = new ArrayList<>(values.size());
+        for (String value : values) {
+            out.add(value == null ? null : value.toLowerCase(java.util.Locale.ROOT));
+        }
+        return out;
+    }
+
+    private static String lowerOrNull(String value) {
+        return value == null ? null : value.toLowerCase(java.util.Locale.ROOT);
     }
 
     /** Order-insensitive, case-insensitive column-set equality (names are already lower-cased on both

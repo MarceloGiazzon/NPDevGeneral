@@ -22,10 +22,15 @@ import java.util.Map;
  *
  * <p>Pure function, no DB, wired nowhere in Phase 2. Names are lower-cased to match {@code CurrentSchema}.
  *
- * <p>P0.2 asymmetry: the manifest carries no explicit FK or index lists (bonds/indexes are derived at
- * generation), so {@link DesiredSchema} models columns/types/nullability/defaults/uniques/renames only.
- * {@code SchemaDiffEngine} therefore does not diff FKs/indexes yet (it would phantom-report every live
- * FK); that is deferred until the desired side can express them (see the plan's P5.2).
+ * <p><b>P0.2 asymmetry — CLOSED, SER-G8.</b> This premise held through Phase 2 but no longer does: a
+ * realized {@code schema-realization-manifest.json} DOES carry explicit FK/index lists
+ * ({@code businessTableForeignKeys}/{@code businessTableIndexes}, read below), and {@link DesiredSchema}
+ * models them via {@link DesiredForeignKey}/{@link DesiredIndex}. {@code SchemaDiffEngine} diffs them in
+ * the missing-only direction today ({@code diffForeignKeysAndIndexes}); the SURPLUS direction (a live
+ * constraint the model doesn't declare) is deliberately still not auto-reported, but for a DIFFERENT
+ * reason than expressibility — see {@code docs/ACCEPTED_BOUNDARIES.md} B3: reporting every extra live
+ * constraint would propose dropping primary-key/unique-backing indexes, which is why surplus detection
+ * needs classification (S8 Wave 2, {@code ConstraintSurplusClassifier}), not just a second diff pass.
  */
 public final class DesiredSchemaFactory {
 
