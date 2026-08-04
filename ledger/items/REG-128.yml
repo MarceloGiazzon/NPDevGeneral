@@ -2,8 +2,10 @@ id: REG-128
 title: "NPDevRuntimeHost/build.gradle's embedded runtimehost-libs-dir fallback (resolveNpdevRuntimeLibsDir) still defaults to <repo>__OutsideRepo/runtimehost-libs, never updated by the LC-C4/Wave 1.4 unification that moved sync-runtimehost-libs.ps1 and Build-NpdevApp.ps1 to Build/runtimehost-libs -- and run-runtimehost-gate.ps1 never bridges the gap with NPDEV_RUNTIMEHOST_LIBS_DIR, so its assembled-app test run can silently read stale jars from a directory the gate's own sync step never writes to"
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-04
+closed: 2026-08-04
+verification: VERIFIED_LIVE
 surface: build-tooling/runtimehost-libs-staging
 source: |
   Found while implementing S8 W1.1 (multi-hop groupBy joins). After editing
@@ -85,3 +87,37 @@ detail: |
   Workaround used this session to get a trustworthy build/test signal while implementing S8
   Wave 1: explicitly set $env:NPDEV_RUNTIMEHOST_LIBS_DIR = "D:\WorkSpace\NPDev\Build\runtimehost-libs"
   before invoking any RuntimeHost-touching gate script in the same PowerShell process tree.
+
+resolution: |
+  DONE (firstrun-helpers/PLAN.md I8, 2026-08-04), fix shape (1) from this item's own detail text:
+  changed NPDevRuntimeHost/build.gradle.template's resolveNpdevRuntimeLibsDir `.npdev-root`-found
+  fallback branch to return `<repo's parent>/Build/runtimehost-libs` instead of
+  `<repo>__OutsideRepo/runtimehost-libs`, matching scripts/npdev-common.ps1's
+  Get-NPDevRuntimeHostLibsDir convention (the same one sync-runtimehost-libs.ps1 and
+  Build-NpdevApp.ps1 already resolve to). An explicit -PnpdevRuntimeHostLibsDir=... or
+  NPDEV_RUNTIMEHOST_LIBS_DIR override still wins, unchanged -- only the no-override default
+  moved.
+
+  Also made FinalAppAssembler.assemble() append an explicit `npdevRuntimeHostLibsDir=...` line to
+  every generated app's own gradle.properties at generation time (resolved from
+  NPDEV_RUNTIMEHOST_LIBS_DIR / NPDEV_BUILD_ROOT if set at generation time, else the same
+  `<repo>.parent/Build/runtimehost-libs` convention) -- belt-and-suspenders so a generated app's
+  build.gradle never has to fall through to the template's own default at all once it has been
+  generated once, forward-slash-normalized since backslash is a `.properties` escape character.
+
+  Fix (2) from this item's detail (bridging run-runtimehost-gate.ps1 itself) was NOT done --
+  fix (1) alone closes the gap this item names (the gate's assembled-app test now inherits the
+  corrected template default with no gate-script change needed), and the item's own text says
+  "either one, not necessarily both."
+
+  Verified: generated a canonical-demo app to %TEMP%\i8-verify\canonical-demo-app (outside the
+  repo), then ran `env -u NPDEV_RUNTIMEHOST_LIBS_DIR -u NPDEV_BUILD_ROOT ./gradlew.bat bootJar`
+  with ZERO relevant env vars set (the exact condition that used to fall through to the stale
+  __OutsideRepo default) -- BUILD SUCCESSFUL in 1m 52s. Added a FinalAppAssemblerTest assertion
+  that the generated gradle.properties contains npdevRuntimeHostLibsDir=.../runtimehost-libs with
+  forward slashes and no backslash; :generator:test green.
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\NPDevRuntimeHost\build.gradle.template
+    D:\WorkSpace\NPDev\NPDev_General\NPDevGenerator\generator\src\main\java\com\npdev\generator\assembly\FinalAppAssembler.java
+    D:\WorkSpace\NPDev\NPDev_General\NPDevGenerator\generator\src\test\java\com\npdev\generator\assembly\FinalAppAssemblerTest.java

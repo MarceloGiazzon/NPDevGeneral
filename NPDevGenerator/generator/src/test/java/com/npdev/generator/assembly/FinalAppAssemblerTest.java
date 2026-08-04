@@ -22,6 +22,7 @@ class FinalAppAssemblerTest {
 
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(host.resolve("settings.gradle"), "rootProject.name = 'FinalExec'\n");
+        write(host.resolve("gradle.properties"), "org.gradle.jvmargs=-Xms1g -Xmx6g\norg.gradle.daemon=true\n");
         write(host.resolve("README.md"),
                 "# NPDevRuntimeHost\n\nProvide the template runtime shell that hosts assembled NPDev applications.\n");
         write(host.resolve("PROJECT_DIGEST.md"), "# NPDevRuntimeHost Project Digest\n\nMaintainer-only.\n");
@@ -113,6 +114,18 @@ class FinalAppAssemblerTest {
         assertFalse(Files.exists(finalApp.resolve("PROJECT_DIGEST.md")));
         assertFalse(Files.exists(finalApp.resolve("MIGRATION_DIGEST.md")));
         assertFalse(Files.exists(finalApp.resolve("NO_BUILD_ARTIFACTS.policy")));
+
+        // REG-128 (FIRST_IMPRESSION_PLAN.md I8): the assembled app's own gradle.properties gets a
+        // resolved npdevRuntimeHostLibsDir default APPENDED (original JVM/perf settings preserved,
+        // not overwritten), so `./gradlew bootJar` finds the platform jars even when the app lives
+        // nowhere near the source repo -- the harness's real-world case.
+        Path gradleProperties = finalApp.resolve("gradle.properties");
+        assertTrue(Files.exists(gradleProperties));
+        String gradlePropertiesContent = Files.readString(gradleProperties);
+        assertTrue(gradlePropertiesContent.contains("org.gradle.jvmargs=-Xms1g -Xmx6g"));
+        assertTrue(gradlePropertiesContent.contains("npdevRuntimeHostLibsDir="));
+        assertTrue(gradlePropertiesContent.contains("runtimehost-libs"));
+        assertFalse(gradlePropertiesContent.contains("\\"), "path must use forward slashes -- \\ is a .properties escape character");
     }
 
     private static void write(Path path, String content) throws Exception {

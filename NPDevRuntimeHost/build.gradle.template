@@ -31,10 +31,17 @@ def resolveNpdevRuntimeLibsDir = {
         return file(configured.toString().trim())
     }
 
+    // REG-128: a freshly-assembled app has npdevRuntimeHostLibsDir baked into its OWN
+    // gradle.properties by FinalAppAssembler#appendRuntimeHostLibsDirDefault, so the first
+    // branch above already covers the normal case -- everything below is a last-resort fallback
+    // for an app assembled before that existed, or with gradle.properties hand-edited away.
     def current = projectDir
     while (current != null) {
         if (new File(current, '.npdev-root').isFile()) {
-            return new File(current.parentFile, "${current.name}__OutsideRepo/runtimehost-libs")
+            // Matches scripts/npdev-common.ps1's Get-NPDevRuntimeHostLibsDir convention
+            // (<repo's parent>/Build/runtimehost-libs) -- NOT the old __OutsideRepo path, which
+            // sync-runtimehost-libs.ps1/Build-NpdevApp.ps1 stopped writing to after LC-C4/Wave 1.4.
+            return new File(current.parentFile, "Build/runtimehost-libs")
         }
         current = current.parentFile
     }
