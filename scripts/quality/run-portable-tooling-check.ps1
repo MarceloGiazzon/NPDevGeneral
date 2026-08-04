@@ -120,23 +120,31 @@ function Get-ScopedPathNeutralityFiles {
 
 function Get-HardcodedDriveMatches {
     param([string]$Root)
-    $matches = @()
+    # Not "$matches" -- that name collides case-insensitively with PowerShell's automatic
+    # $Matches variable (set by any -match/-notmatch, including ones in a nested scriptblock),
+    # which silently replaces the accumulator with a regex-capture Hashtable and later breaks
+    # ConvertTo-Json ("System.Collections.Hashtable is not supported"). See Get-GradlePwshCoreTaskMatches.
+    $found = @()
     foreach ($file in Get-ScopedPathNeutralityFiles -Root $Root) {
         $text = Get-Content -Raw -LiteralPath $file.FullName
         $regexMatches = [regex]::Matches($text, "(?<![A-Za-z])[A-Za-z]:[\\/]")
         foreach ($match in $regexMatches) {
-            $matches += [pscustomobject]@{
+            $found += [pscustomobject]@{
                 path = Convert-ToRepoPath -Root $Root -PathValue $file.FullName
                 value = $match.Value
             }
         }
     }
-    return @($matches)
+    return @($found)
 }
 
 function Get-GradlePwshCoreTaskMatches {
     param([string]$Root)
-    $matches = @()
+    # Same $matches/$Matches collision as Get-HardcodedDriveMatches above -- this function is the
+    # one that actually hits it: the Where-Object filter's -notmatch below runs against every
+    # gradle file under a populated build/ output dir, which sets the automatic $Matches variable
+    # and clobbers a same-named accumulator before the pwsh/powershell scan below ever runs.
+    $found = @()
     $gradleFiles = Get-ChildItem -LiteralPath $Root -Recurse -File -Include "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts" |
         Where-Object { $_.FullName -notmatch "\\build\\" -and $_.FullName -notmatch "\\\.gradle\\" }
     foreach ($file in $gradleFiles) {
@@ -144,7 +152,7 @@ function Get-GradlePwshCoreTaskMatches {
         foreach ($line in Get-Content -LiteralPath $file.FullName) {
             $lineNumber++
             if ($line -match "\bpwsh\b.*\s-File\b" -or $line -match "\bpowershell\b.*\s-File\b") {
-                $matches += [pscustomobject]@{
+                $found += [pscustomobject]@{
                     path = Convert-ToRepoPath -Root $Root -PathValue $file.FullName
                     line = $lineNumber
                     text = $line.Trim()
@@ -152,7 +160,7 @@ function Get-GradlePwshCoreTaskMatches {
             }
         }
     }
-    return @($matches)
+    return @($found)
 }
 
 $workspaceRootPath = (Resolve-Path -LiteralPath $WorkspaceRoot).Path
