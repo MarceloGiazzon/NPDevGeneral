@@ -111,6 +111,9 @@ public final class ModelResolver {
                 source.getRoles(),
                 source.getPropertyScopes(),
                 source.getProperties(),
+                // Whole-list pass-through -- every ContextAst field, physicallyIsolate (S8 Wave 4)
+                // included, already survives this untouched; nothing here reconstructs a context
+                // entry field-by-field the way REG-108's bug needed to be caught for.
                 source.getContexts(),
                 source.getConversions()
         );

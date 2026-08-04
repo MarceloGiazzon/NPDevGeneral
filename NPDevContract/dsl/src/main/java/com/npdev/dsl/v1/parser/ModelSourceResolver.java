@@ -326,6 +326,12 @@ public final class ModelSourceResolver {
         Map<String, ObjectNode> rawContextNodes = new LinkedHashMap<>();
         Map<String, Set<String>> importGraph = new LinkedHashMap<>();
         Map<String, String> contextRefByName = new LinkedHashMap<>();
+        // S8 Wave 4 (ADR-0011 D4's v2 escape): the context DECLARATION's own physicallyIsolate flag
+        // -- distinct from anything in the fragment file itself -- must survive this method's
+        // rebuild of the contexts[] registry below, or a context declaring it silently loses the
+        // flag the moment a model composes it (the REG-108 shape CLAUDE.md's four-place rule exists
+        // to prevent).
+        Map<String, Boolean> contextPhysicallyIsolateByName = new LinkedHashMap<>();
 
         int index = 0;
         for (JsonNode contextRefNode : contextsNode) {
@@ -369,6 +375,9 @@ public final class ModelSourceResolver {
             rawContextNodes.put(name, rawContextNode);
             importGraph.put(name, imports);
             contextRefByName.put(name, refNode.asText());
+            JsonNode physicallyIsolateNode = contextRef.get("physicallyIsolate");
+            contextPhysicallyIsolateByName.put(
+                    name, physicallyIsolateNode != null && physicallyIsolateNode.asBoolean(false));
             index++;
         }
 
@@ -424,6 +433,11 @@ public final class ModelSourceResolver {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("name", name);
             node.put("$ref", contextRefByName.get(name));
+            // Only emitted when true -- a model that never declares physicallyIsolate anywhere must
+            // produce byte-identical resolved JSON to before Wave 4 (I4's own regression DoD).
+            if (Boolean.TRUE.equals(contextPhysicallyIsolateByName.get(name))) {
+                node.put("physicallyIsolate", true);
+            }
             contextsOut.add(node);
         }
         resolved.set("contexts", contextsOut);
@@ -1343,13 +1357,16 @@ public final class ModelSourceResolver {
             if (ref != null) {
                 // A bare include is exactly {"$ref": "..."}; a pack import may additionally carry
                 // an "as" alias ({"$ref": "...", "as": "..."}); a top-level context declaration (B20,
-                // S2) additionally carries a required "name" ({"$ref": "...", "name": "..."}), but
-                // ONLY at /contexts/N -- everywhere else "name" alongside a bare $ref stays malformed,
-                // same as any other stray key would.
+                // S2) additionally carries a required "name" ({"$ref": "...", "name": "..."}) and,
+                // since S8 Wave 4 (ADR-0011 D4's v2 opt-in), an optional "physicallyIsolate", but
+                // ONLY at /contexts/N -- everywhere else "name"/"physicallyIsolate" alongside a bare
+                // $ref stays malformed, same as any other stray key would.
                 boolean isContextDeclaration = path.matches("^\\$/contexts/\\d+$");
                 boolean onlyRefAndOptionalAlias = node.size() == 1
                         || (node.size() == 2 && node.has("as"))
-                        || (isContextDeclaration && node.size() == 2 && node.has("name"));
+                        || (isContextDeclaration && node.size() == 2 && node.has("name"))
+                        || (isContextDeclaration && node.size() == 3 && node.has("name")
+                                && node.has("physicallyIsolate"));
                 if (!onlyRefAndOptionalAlias) {
                     throwUnchecked(new IOException("Malformed model include at " + sourceFile + " " + path
                             + ": $ref object must not contain extra properties"));

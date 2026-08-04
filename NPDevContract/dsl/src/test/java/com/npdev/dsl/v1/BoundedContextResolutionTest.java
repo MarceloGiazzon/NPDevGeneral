@@ -265,6 +265,67 @@ class BoundedContextResolutionTest {
         assertEquals("catalog::Product", resolved.get("queries").get(0).get("concept").asText());
     }
 
+    /** S8 Wave 4 (ADR-0011 D4's v2 opt-in): a context declaring {@code physicallyIsolate} is NOT
+     *  "malformed" -- {@code validateNoMalformedRef}'s own structural gate (checked BEFORE
+     *  {@code model.schema.json}'s {@code context} definition even applies) hard-codes which extra
+     *  keys a {@code /contexts/N} entry may carry alongside {@code $ref}, and had to be widened
+     *  here too, a genuine fourth edit site the plan's own "three edit sites, all confirmed" list
+     *  did not name -- found only by validating a REAL context-fragment-composing model
+     *  (dsl-conformance-max), not by the AST-level tests above, which all bypass this resolver-level
+     *  gate by feeding {@link JsonModelParser} already-resolved JSON directly. */
+    @Test
+    void physicallyIsolateOnAContextDeclarationIsNotMalformed() throws Exception {
+        write("contexts/wms.json", contextFragment("wms", """
+                "concepts": [
+                  { "name": "Sale", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                ]
+                """, null));
+        Path model = write("model.json", """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "contexts": [
+                    { "name": "wms", "$ref": "contexts/wms.json", "physicallyIsolate": true }
+                  ],
+                  "concepts": []
+                }
+                """);
+
+        JsonNode resolved = new ModelSourceResolver().resolve(model).resolvedRoot();
+        assertEquals("wms::Sale", resolved.get("concepts").get(0).get("name").asText());
+        assertTrue(resolved.get("contexts").get(0).get("physicallyIsolate").asBoolean(),
+                "physicallyIsolate must survive the resolver's own contexts[] registry rebuild");
+
+        ModelAst ast = new JsonModelParser().parse(model);
+        assertTrue(ast.getContexts().get(0).physicallyIsolate());
+    }
+
+    @Test
+    void physicallyIsolateAbsentDefaultsToFalseAndIsNotEmittedByTheResolver() throws Exception {
+        write("contexts/wms.json", contextFragment("wms", """
+                "concepts": [
+                  { "name": "Sale", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                ]
+                """, null));
+        Path model = write("model.json", """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "contexts": [ { "name": "wms", "$ref": "contexts/wms.json" } ],
+                  "concepts": []
+                }
+                """);
+
+        JsonNode resolved = new ModelSourceResolver().resolve(model).resolvedRoot();
+        assertFalse(resolved.get("contexts").get(0).has("physicallyIsolate"),
+                "must not be emitted at all when absent -- I4's byte-identical regression DoD");
+
+        ModelAst ast = new JsonModelParser().parse(model);
+        assertFalse(ast.getContexts().get(0).physicallyIsolate());
+    }
+
     @Test
     void modelWithNoContextsCompilesWithAnEmptyContextRegistry() throws Exception {
         Path model = write("model.json", """

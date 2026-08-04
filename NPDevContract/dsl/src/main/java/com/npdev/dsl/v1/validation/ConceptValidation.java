@@ -346,16 +346,38 @@ final class ConceptValidation {
      * {@code ModelCompiler} makes to derive a concept's real table name -- rather than reimplementing
      * the sanitization, so this check can never drift from what actually gets compiled (one grammar,
      * not two dialects).
+     *
+     * <p><b>S8 Wave 4 fix (found while building the physicallyIsolate collision cases, ADR-0011
+     * D4): this check previously hashed {@code concept.getName()} DIRECTLY</b> -- for a
+     * context-qualified name ({@code contextName::Concept}) that is a DIFFERENT string than what
+     * {@code ModelCompiler#tableNameSource} actually compiles to (which strips a non-isolating
+     * context's qualifier before pluralizing), so two DIFFERENT contexts declaring the SAME bare
+     * concept name compiled to the SAME real table (D4 v1's whole scenario) went undetected -- the
+     * exact "two concepts silently share one table" hazard this check's own javadoc, above, says it
+     * exists to catch. Now runs every concept name through {@link
+     * SqlIdentifierSupport#contextAwareIdentifierSource} first, the SAME resolution {@code
+     * ModelCompiler#tableNameSource} performs, so this check and the real compiled name can never
+     * drift apart again. This is also I3's own collision matrix (Wave 4, {@code
+     * S8_DEFERRED_FIVE_PLAN.md}): two non-isolating contexts (or one isolating, one not) sharing a
+     * concept name still collide here exactly as before; two BOTH-isolating contexts no longer do,
+     * since their compiled table names now genuinely differ ({@code context_concepts}).
      */
     static void validateTableNameCollisions(ModelAst effectiveModel, List<String> errors) {
+        Map<String, Boolean> contextPhysicallyIsolateByName = new LinkedHashMap<>();
+        for (com.npdev.dsl.v1.ast.ContextAst context : effectiveModel.getContexts()) {
+            contextPhysicallyIsolateByName.put(context.name(), context.physicallyIsolate());
+        }
         Map<String, String> conceptNameByTableName = new LinkedHashMap<>();
         for (ConceptAst concept : effectiveModel.getConcepts()) {
-            String tableName = SqlIdentifierSupport.toSnakePlural(concept.getName());
+            String tableNameSource = SqlIdentifierSupport.contextAwareIdentifierSource(
+                    concept.getName(), contextPhysicallyIsolateByName);
+            String tableName = SqlIdentifierSupport.toSnakePlural(tableNameSource);
             String firstConceptName = conceptNameByTableName.putIfAbsent(tableName, concept.getName());
             if (firstConceptName != null && !normalize(firstConceptName).equals(normalize(concept.getName()))) {
                 errors.add("Concepts " + firstConceptName + " and " + concept.getName()
                         + ": both derive the same physical table name \"" + tableName
-                        + "\" -- rename one of them so their data is not silently merged (REG-98)");
+                        + "\" -- rename one of them, or declare physicallyIsolate on their context(s), "
+                        + "so their data is not silently merged (REG-98)");
             }
         }
     }

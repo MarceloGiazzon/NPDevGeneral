@@ -59,6 +59,46 @@ class BoundedContextTableNamingTest {
     }
 
     @Test
+    void physicallyIsolatingContextKeepsQualifiedMangledTableName() throws Exception {
+        // S8 Wave 4 (ADR-0011 D4's own named v2 escape): a context declaring physicallyIsolate:true
+        // opts OUT of D4's default -- its table name keeps the context qualifier, mangled by the
+        // SAME "::" -> "_" replacement pack-qualified names already get.
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+              "contexts": [ { "name": "wms", "$ref": "contexts/wms.model.json", "physicallyIsolate": true } ],
+              "concepts": [
+                { "name": "wms::Sale", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+              ]
+            }
+            """;
+        CompiledModel model = compile(json);
+        CompiledConcept sale = conceptNamed(model, "wms::Sale");
+
+        assertEquals("wms_sales", sale.getTableName(), "physicallyIsolate:true keeps the context qualifier");
+        assertEquals("WmsSale", sale.getClassName(), "class-name mangling is unaffected either way -- only tables");
+    }
+
+    @Test
+    void physicallyIsolateExplicitFalseBehavesExactlyLikeAbsent() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+              "contexts": [ { "name": "wms", "$ref": "contexts/wms.model.json", "physicallyIsolate": false } ],
+              "concepts": [
+                { "name": "wms::Sale", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+              ]
+            }
+            """;
+        CompiledModel model = compile(json);
+        CompiledConcept sale = conceptNamed(model, "wms::Sale");
+
+        assertEquals("sales", sale.getTableName(), "explicit physicallyIsolate:false is D4's unchanged default");
+    }
+
+    @Test
     void packQualifiedConceptStillGetsPrefixedTableName() throws Exception {
         // Regression guard: D4 is scoped to CONTEXTS only. A pack-qualified concept name must keep
         // prefixing its table exactly as it always has -- this fix must not touch that behavior.

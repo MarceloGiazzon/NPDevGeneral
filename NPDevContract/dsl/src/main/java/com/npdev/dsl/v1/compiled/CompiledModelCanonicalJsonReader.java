@@ -166,9 +166,14 @@ public final class CompiledModelCanonicalJsonReader {
         return new CompiledRole(text(node, "name"), toStringList(node.get("grants")));
     }
 
-    /** B20 (S2): reads a single declared bounded context (name + $ref). */
+    /** B20 (S2): reads a single declared bounded context (name + $ref). S8 Wave 4: plus the
+     *  optional physicallyIsolate flag, absent/false meaning exactly the pre-Wave-4 shape. */
     private static CompiledContext toContext(JsonNode node) {
-        return new CompiledContext(text(node, "name"), text(node, "ref"));
+        return new CompiledContext(
+                text(node, "name"),
+                text(node, "ref"),
+                node.has("physicallyIsolate") && node.get("physicallyIsolate").asBoolean(false)
+        );
     }
 
     /** S7 Phase B (B13): reads a single declared conversion. */

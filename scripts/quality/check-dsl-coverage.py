@@ -571,6 +571,15 @@ FEATURE_DETECTORS = {
     # contexts/shipping.json `"imports": ["billing"]` line would leave D3 silently unexercised
     # while this gate stayed green.
     "imports": lambda m: _nonempty(m, "imports"),
+    # S8 Wave 4 (ADR-0011 D4's v2 opt-in): a context declaring physicallyIsolate:true -- distinct
+    # from the plain "contexts" detector above (which a context with NO physicallyIsolate at all
+    # already satisfies). Read directly off the top-level contexts[] array (the property lives on
+    # the context DECLARATION itself, not inside the fragment file, so no fragment-merge plumbing
+    # is needed the way "imports" above required).
+    "contexts.physicallyIsolate": lambda m: any(
+        isinstance(c, dict) and c.get("physicallyIsolate") is True
+        for c in (m.get("contexts", None) or [])
+    ),
     "flow.schedule": lambda m: any("schedule" in f for f in _flows(m)),
     "flow.specializes": lambda m: any("specializes" in f for f in _flows(m)),
     "flow.hooks": lambda m: any(f.get("hooks") for f in _flows(m)),
