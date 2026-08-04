@@ -1,0 +1,7 @@
+{
+  "id": "s7-lookup-fk",
+  "claims": ["ADD_REQUIRED_COLUMN:s7_order_lines:product_id"],
+  "description": "S7 Phase B: generator-produced convert.sql for a declared lookup conversion (op=lookup, concept=OrderLine), captured verbatim from ConversionHookEmitterDeclaredConversionsTest and adapted only to test-unique table names.",
+  "verifySql": "SELECT COUNT(*) FROM s7_order_lines WHERE product_id IS NULL",
+  "verifyExpect": 0
+}

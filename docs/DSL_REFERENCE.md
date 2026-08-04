@@ -26,6 +26,7 @@ Schema version: `1.0.0`. DSL version: `1.0.0`.
 | `queries` | `array<query | localModelRef>` |  |  |
 | `ruleProfiles` | `array<ruleProfile | localModelRef>` |  |  |
 | `procedures` | `array<procedure | localModelRef>` |  |  |
+| `conversions` | `array<conversion | localModelRef>` |  |  |
 | `panels` | `array<panel | localModelRef>` |  |  |
 | `documents` | `array<document | localModelRef>` |  |  |
 | `guidePages` | `array<guidePage | localModelRef>` |  |  |

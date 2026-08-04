@@ -218,6 +218,40 @@ collide onto one physical table — confirmed live: `OrderLine` and `Order Line`
 `order_lines` with **0 validation errors**. That is a data-integrity bug, not an injection one, so it
 is filed as **REG-98** rather than cleared here.
 
+### 2.5 2026-08-03 — S7 Phase B triaged 16 new hits from `ConversionHookEmitter`'s declarative-conversion SQL generation, under the existing F2/B2-G6 rules
+
+S7 Phase B added `ConversionHookEmitter.emitDeclared` (NPDevGenerator), which compiles a declared
+`conversions[]` entry (`copy`/`split`/`lookup`) to the SAME `db/conversion-hooks/<id>/{hook.json,
+convert.sql}` shape `ConversionHookRunner` already executes — see `docs/ACCEPTED_BOUNDARIES.md` B13.
+The sweep found 16 new hits, all in that one method, all cleared under rules already established
+elsewhere in this document rather than inventing new ones:
+
+**13 `sql-string-building` hits** (fingerprints `6145981d8419`, `aaeb9131a3f1`, `83d0b3b988f5`,
+`814d307bb65e`, `75a50a3f7183`, `995acdd8b42f`, `9b89a663f664`, `4f4350ae354c`, `f27e9a162c28`,
+`c3ec577da23c`, `ff61950d9e27`, `71cf63d95978`, `abba6d858f8d`) — the `ALTER TABLE … ADD COLUMN`/
+`UPDATE … SET`/`ALTER COLUMN … SET NOT NULL` statements each op builds. Cleared under **F2**, the
+same rule already covering `SchemaDeltaReport.java:218`/`SchemaDropSnapshotWriter.java:106` (allowlist
+fingerprints `8521985ae7fe`/`f2e73ed3bcba`): a generation-time emitter that writes SQL TEXT into a
+file and executes nothing itself — `ConversionHookRunner` executes it later, at boot, an
+already-reviewed trust boundary identical to an operator-authored `convert.sql`. Every table/column
+identifier is traced to its source, not assumed by analogy: `table` comes from
+`SqlIdentifierSupport.tableName(CompiledConcept)`, every column from
+`SqlIdentifierSupport.columnName(CompiledField)` — both route through `toSnake()`'s `[a-z0-9_]`-only
+whitelist, the same mechanism `docs/SECURITY_PATTERN_SWEEP_2026-07.md` §2.4 already traced empirically
+(a hostile concept name compiles to a clean identifier, no SQL syntax survives). `portableSqlType(...)`
+comes from `SqlTypeSupport.sqlType(CompiledField)`, a closed `switch` over the DSL's own type enum
+(`uuid`/`integer`/`string`/…), never free text.
+
+**3 `read-without-tenant-predicate` hits** (fingerprints `01ce4dd9c3d6`, `707358791f42`,
+`996fee296fe4`) — the lookup op's correlated-subquery `UPDATE`/`SELECT` and the generated hook's own
+`verifySql`. Cleared under **B2/G6**, the same rule already covering `BackfillPass.java`/
+`CrossEngineDataPromotion.java`/`DestructiveRecreationPass.java` (fingerprint `4014f82e9bb8`): a
+schema migration is a property of the DATABASE, not of one tenant, so `ConversionHookRunner` (like
+`BackfillPass` one package over) applies its `UPDATE` uniformly across every tenant's rows in the
+table by design — a tenant predicate here would be the bug, not its absence.
+
+All 16 recorded in `scripts/quality/security-pattern-sweep-allowlist.json`.
+
 ---
 
 ## 3. (i) The one genuine finding — REG-43

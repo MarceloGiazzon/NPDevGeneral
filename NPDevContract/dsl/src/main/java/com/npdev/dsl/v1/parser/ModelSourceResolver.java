@@ -57,6 +57,7 @@ public final class ModelSourceResolver {
             "queries",
             "ruleProfiles",
             "procedures",
+            "conversions",
             "panels",
             "guidePages",
             // Move 13 (REG-108): roles/propertyScopes/properties are top-level arrays exactly like

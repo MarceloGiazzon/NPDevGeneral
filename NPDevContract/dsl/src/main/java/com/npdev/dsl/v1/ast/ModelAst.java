@@ -34,6 +34,7 @@ public final class ModelAst {
     private final List<PropertyScopeAst> propertyScopes;
     private final List<PropertyAst> properties;
     private final List<ContextAst> contexts;
+    private final List<ConversionAst> conversions;
 
     public ModelAst(String namespace, String version, List<? extends EntityAst> entities) {
         this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -388,7 +389,7 @@ public final class ModelAst {
                 List.of());
     }
 
-    /** B20 (S2): canonical constructor, adds {@code contexts} (bounded-context declarations). */
+    /** B20 (S2): adds {@code contexts} (bounded-context declarations). */
     public ModelAst(
             String namespace,
             String dslVersion,
@@ -417,6 +418,43 @@ public final class ModelAst {
             List<PropertyAst> properties,
             List<ContextAst> contexts
     ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                contexts, List.of());
+    }
+
+    /** S7 Phase B (B13): canonical constructor, adds {@code conversions} (the declarative conversion
+     *  vocabulary -- see {@link ConversionAst}). */
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<SelectorAst> selectors,
+            List<DocumentAst> documents,
+            List<String> parserWarnings,
+            ExternalAiAst externalAi,
+            SettingsAst settings,
+            List<RoleAst> roles,
+            List<PropertyScopeAst> propertyScopes,
+            List<PropertyAst> properties,
+            List<ContextAst> contexts,
+            List<ConversionAst> conversions
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -443,6 +481,7 @@ public final class ModelAst {
         this.propertyScopes = propertyScopes == null ? new ArrayList<>() : new ArrayList<>(propertyScopes);
         this.properties = properties == null ? new ArrayList<>() : new ArrayList<>(properties);
         this.contexts = contexts == null ? new ArrayList<>() : new ArrayList<>(contexts);
+        this.conversions = conversions == null ? new ArrayList<>() : new ArrayList<>(conversions);
     }
 
     public String getNamespace() { return namespace; }
@@ -556,6 +595,11 @@ public final class ModelAst {
      *  contexts behaves exactly as it did before this feature existed). */
     public List<ContextAst> getContexts() {
         return Collections.unmodifiableList(contexts);
+    }
+
+    /** S7 Phase B (B13): declared conversions, empty when the model declares none. */
+    public List<ConversionAst> getConversions() {
+        return Collections.unmodifiableList(conversions);
     }
 
     private static List<ConceptAst> toConcepts(List<? extends EntityAst> source) {
