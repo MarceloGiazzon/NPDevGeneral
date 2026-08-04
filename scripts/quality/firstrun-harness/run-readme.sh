@@ -220,7 +220,13 @@ while IFS= read -r cmd; do
   esac
   echo
   echo "  \$ $cmd"
-  if bash -c "cd '$CURRENT_DIR' && $cmd" >>"$LOG" 2>&1; then
+  # </dev/null is load-bearing: this loop's input comes from a here-string ($CMDS), inherited by
+  # every subshell we spawn since none of them redirect their own stdin. A command that reads or
+  # even just probes stdin (pwsh does, at startup) silently consumes the REST of that here-string,
+  # so the outer `read -r cmd` hits EOF on the NEXT iteration and the loop ends after ONE command
+  # with no error at all -- discovered when a real run processed only the first Quickstart command
+  # (validate model) and silently skipped all seven after it, no failure printed for any of them.
+  if bash -c "cd '$CURRENT_DIR' && $cmd" >>"$LOG" 2>&1 </dev/null; then
     pass "cmd: $(echo "$cmd" | cut -c1-58)"
   else
     fail "cmd: $(echo "$cmd" | cut -c1-58)" \
