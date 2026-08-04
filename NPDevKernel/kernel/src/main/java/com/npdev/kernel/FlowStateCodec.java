@@ -48,9 +48,13 @@ final class FlowStateCodec {
      * before executing iteration i's body, so an await nested in the loop discriminates iteration
      * i's own reply from any other iteration's (or any other flow instance's) event of the same
      * name -- required, never blank (see {@link #requireNonBlankIterationCorrelationComponent}):
-     * {@code KernelRunner.matchesCorrelation} treats a blank correlation as "matches anything", so a
-     * silently-blank derivation here would silently let iteration N+1's event satisfy iteration N's
-     * await. Derived from {@code executionId} (globally unique per flow instance -- NOT the flow's
+     * {@code KernelRunner.matchesCorrelation} fails closed on a blank correlation (F9,
+     * FIRST_IMPRESSION_SPEC.md I7 -- it used to treat blank as "matches anything", which would have
+     * let iteration N+1's event satisfy iteration N's await; now it matches NOTHING instead), so a
+     * silently-blank derivation here would silently strand the iteration waiting forever rather than
+     * resolve against the wrong event -- still a bug, just a hang instead of cross-contamination, and
+     * still why this stays required-non-blank. Derived from {@code executionId} (globally unique per
+     * flow instance -- NOT the flow's
      * own business {@code correlationId}, which two different instances may deliberately share for
      * cross-flow linking, and which would collide across instances running the same flow) plus the
      * await step's own name plus the iteration index, so it is both deterministic (a resumed

@@ -2746,9 +2746,20 @@ CapabilityCall call = new CapabilityCall(
         ).orElse(null);
     }
 
+    /**
+     * F9 (FIRST_IMPRESSION_SPEC.md I7): every caller (ResumeCoordinator) only reaches this when its
+     * own {@code matchCorrelation()} flag is true -- the author explicitly asked for correlation
+     * matching. A blank/null correlation id cannot SATISFY that request, so it must not match
+     * anything; the old {@code return true} here was exactly backwards (a blank id resumed a flow
+     * the event was never meant for). B15(A), B15(B), and Wave 3 each separately declined to touch
+     * this guard and instead guaranteed a non-blank correlation id on every path they built --
+     * narrowing this to fail-closed is a no-op if those guarantees hold, and surfaces a real bug via
+     * the named {@code AWAIT_CORRELATION_UNRESOLVABLE} shape (see {@link ForEachStep}/{@link
+     * ParallelAwaitForEachStep}) if one of them does not.
+     */
     static boolean matchesCorrelation(EventEnvelope event, String correlationId) {
         if (correlationId == null || correlationId.isBlank()) {
-            return true;
+            return false;
         }
         return correlationId.equals(event.correlationId());
     }

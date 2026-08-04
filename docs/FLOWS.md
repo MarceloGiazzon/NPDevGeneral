@@ -242,7 +242,9 @@ same event name. The match, all inside `KernelRunner.java`, requires **every** o
 - the wait descriptor's event name equals the arriving event's name;
 - if the descriptor recorded a step index, it matches the instance's current step index;
 - **correlation id matches**, unless the step explicitly opted out (`matchCorrelation: false`) —
-  `matchesCorrelation`, `KernelRunner.java:4054-4059`, a plain string-equality check;
+  `matchesCorrelation`, `KernelRunner.java:2760-2765`. A blank/null correlation id never matches
+  (F9, FIRST_IMPRESSION_SPEC.md I7 -- fails closed, not a wildcard); otherwise a plain
+  string-equality check;
 - **payload match**, if the step declared `payloadMatchRefs`
   (`matchesAwaitPayload`, `KernelRunner.java:4070-4092`) — this is how a step waits for, say, "the
   approval event whose `expenseId` equals mine," not just any event of that name;

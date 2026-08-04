@@ -680,7 +680,9 @@ the same `maxLoopIterations` safety cap procedures use.
   `FlowStateCodec.deriveForEachIterationCorrelationId`) overwrites `state.correlationId` before each
   iteration's body runs, discriminating iteration N's own reply from any other iteration's or flow
   instance's event of the same name — required, never silently derived-to-blank
-  (`KernelRunner.matchesCorrelation` treats a blank correlation as "matches anything"); (2) a
+  (`KernelRunner.matchesCorrelation` fails closed on a blank correlation — F9,
+  FIRST_IMPRESSION_SPEC.md I7 — so a silently-blank derivation strands the iteration waiting
+  forever instead of resolving against the wrong one); (2) a
   satisfaction marker plus a mid-iteration checkpoint pinned to the forEach step's own outer trace
   index close the crash window between "event consumed" and "outer iteration progress advanced" —
   without both, a crash there loses the marker and re-entry finds the one satisfying event already
