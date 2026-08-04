@@ -2,8 +2,9 @@ id: REG-127
 title: "tracestore-postgres's PersistentExecutionTracerTest is a stub that asserts nothing (assertTrue(true)) but counts toward the module's '2 test files' coverage figure -- found while assessing the six nightly-only *-postgres adapters for B21 promotion (S1_SPEC.md O2)"
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-03
+closed: 2026-08-03
 verification: VERIFIED_LIVE
 surface: quality-gates/postgres-adapter-coverage
 source: |
@@ -43,3 +44,27 @@ detail: |
   whether PersistentExecutionTracer (the class the name implies this tests) has ANY real test
   coverage elsewhere in the codebase before choosing -- if it has none, option (2) is the one
   that actually adds value; if it's covered elsewhere, option (1) is simpler and equally correct.
+
+resolution: |
+  DONE (S7 Phase A3, 2026-08-03). Confirmed PersistentExecutionTracer had zero other test coverage
+  anywhere in the repo (grep for the class name across NPDevKernel found only its own main-source
+  file) -- option (2) per this item's own recommendation.
+
+  Rewrote PersistentExecutionTracerTest.java with three real tests, all against a real Testcontainers
+  Postgres via PostgresTestSupport (same schema bootstrap as the sibling PostgresTraceStoreTest):
+  (1) onFlowEndPersistsTheTraceThroughTheProvidedStore -- exercises the tracer bridge itself (not
+  just JdbcTraceStore, which PostgresTraceStoreTest already covers), (2) onFlowEndIgnoresANullTrace
+  InsteadOfThrowing -- the tracer's own null-guard, previously untested, (3) the performance anchor
+  the stub's comments described but never asserted: persist 1000 traces then retrieve them via one
+  indexed correlation-scoped search, asserting both the row count and a <5000ms wall-clock budget.
+  Chose 5000ms over the stub comment's original "<100ms" -- tight enough that a real regression (e.g.
+  an accidental N+1 query per trace, which would run for seconds) still fails it, wide enough to
+  absorb Testcontainers/CI jitter without being flaky; the exact number was never asserted before, so
+  there was no existing bar to preserve.
+
+  Live-verified: ./gradlew.bat :adapters:tracestore-postgres:test --tests
+  "com.npdev.adapters.tracestore.PersistentExecutionTracerTest" -- BUILD SUCCESSFUL, all 3 tests pass
+  against a real ephemeral Postgres container (Docker 29.6.1 confirmed running).
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\NPDevKernel\adapters\tracestore-postgres\src\test\java\com\npdev\adapters\tracestore\PersistentExecutionTracerTest.java

@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**128 item(s) migrated: 2 open/partial, 126 done.**
+**128 item(s) migrated: 0 open/partial, 128 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -40,8 +40,8 @@
 | REG-123 | doc-entrypoint-validation fails on ~20+ stale script-path references and unmapped report references scattered across historical/archived docs (docs/beta/*, docs/architecture/*, docs/NEXT_EXECUTION_PLAN.md, etc.) -- a documentation-drift backlog, not a single defect, that has never been triaged since this checker's own scope was expanded to cover the full docs/ tree | GAP | LOW | DONE | 2026-08-02 |
 | REG-124 | golden-ai-scenarios/tenant-workflow-ops's ai-model.json declares tenancy.tenantIdField: "tenantId", which Normalize-AiContract.ps1 turns into an EXPLICIT "tenantId" field on the Ticket concept -- colliding with the platform's own implicit, reserved tenant_id column (ReservedColumnNames), so generation now fails with CONCEPT_FIELD_RESERVED_COLLISION instead of reaching build/boot/smoke | BUG | LOW | DONE | 2026-08-03 |
 | REG-125 | PROJECT_DIGEST.md names scripts/quality/run-box-vision-doc-check.ps1 as its own 'Phase 0 validation script' (expected to write scripts/reports/out/box-vision-doc-check-report.json), but neither the script nor any equivalent under a different name was ever built -- a real, never-fulfilled commitment, not a stale path | GAP | LOW | DONE | 2026-08-03 |
-| REG-126 | Normalize-AiContract.ps1 translates requiredRole for panels, procedures, and workflow transitions, but never for flows[] (the generic concept create/update declaration) -- the role gate is silently dropped, and the generated REST create endpoint ends up denying every role including the one the scenario intended to allow | BUG | LOW | OPEN | 2026-08-03 |
-| REG-127 | tracestore-postgres's PersistentExecutionTracerTest is a stub that asserts nothing (assertTrue(true)) but counts toward the module's '2 test files' coverage figure -- found while assessing the six nightly-only *-postgres adapters for B21 promotion (S1_SPEC.md O2) | BUG | LOW | OPEN | 2026-08-03 |
+| REG-126 | Normalize-AiContract.ps1 translates requiredRole for panels, procedures, and workflow transitions, but never for flows[] (the generic concept create/update declaration) -- the role gate is silently dropped, and the generated REST create endpoint ends up denying every role including the one the scenario intended to allow | BUG | LOW | DONE | 2026-08-03 |
+| REG-127 | tracestore-postgres's PersistentExecutionTracerTest is a stub that asserts nothing (assertTrue(true)) but counts toward the module's '2 test files' coverage figure -- found while assessing the six nightly-only *-postgres adapters for B21 promotion (S1_SPEC.md O2) | BUG | LOW | DONE | 2026-08-03 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
@@ -1966,7 +1966,7 @@ this as "intentionally not built."
 
 ### REG-126 — Normalize-AiContract.ps1 translates requiredRole for panels, procedures, and workflow transitions, but never for flows[] (the generic concept create/update declaration) -- the role gate is silently dropped, and the generated REST create endpoint ends up denying every role including the one the scenario intended to allow
 
-**Type:** BUG · **Severity:** LOW · **Status:** OPEN
+**Type:** BUG · **Severity:** LOW · **Status:** DONE (2026-08-03)
 **Verification:** VERIFIED_LIVE
 **Source:** Found while live-verifying Move 16 Phase A2 (REG-124's fix: renaming
 golden-ai-scenarios/tenant-workflow-ops's tenancy.tenantIdField from "tenantId" to
@@ -2038,7 +2038,7 @@ a fix would break?), not a same-session patch appended to REG-124's own closing.
 
 ### REG-127 — tracestore-postgres's PersistentExecutionTracerTest is a stub that asserts nothing (assertTrue(true)) but counts toward the module's '2 test files' coverage figure -- found while assessing the six nightly-only *-postgres adapters for B21 promotion (S1_SPEC.md O2)
 
-**Type:** BUG · **Severity:** LOW · **Status:** OPEN
+**Type:** BUG · **Severity:** LOW · **Status:** DONE (2026-08-03)
 **Verification:** VERIFIED_LIVE
 **Source:** S1_SPEC.md O2 (2.3.1) required reading every test file of the six nightly-only *-postgres
 adapters and giving a one-line verdict: does it exercise genuine Postgres-specific behavior,

@@ -430,6 +430,13 @@ writer.writeRelative(
         permissions.add("capability.invoke");
         permissions.add("event.publish");
 
+        Set<String> conceptKeys = new LinkedHashSet<>();
+        for (CompiledConcept concept : model.getConcepts()) {
+            if (concept != null && concept.getName() != null && !concept.getName().isBlank()) {
+                conceptKeys.add(concept.getName().toLowerCase(Locale.ROOT));
+            }
+        }
+
         List<PermissionGrantSpec> grants = new ArrayList<>();
 
         // Generated CRUD controllers require an explicit grant per persisted concept and
@@ -553,6 +560,7 @@ writer.writeRelative(
                 addIfPresent(userPermissions, role);
                 userPermissions.addAll(aiSecurity.permissionsForRole(role));
             }
+            addReversedCrudPermissions(userPermissions, conceptKeys);
             for (String permission : userPermissions) {
                 grants.add(new PermissionGrantSpec(permission, user.tenantId(), user.userId(), ""));
                 for (String role : user.roles()) {
@@ -785,6 +793,36 @@ writer.writeRelative(
       "denyMode": "disabled",
       "denialMessage": "This action requires the model-defined permission for %s."
     }""".formatted(jsonEscape(name), jsonEscape(ownerName), jsonEscape(kind), jsonEscape(ownerName));
+    }
+
+    private static final Set<String> CRUD_OPERATIONS =
+            Set.of("create", "read", "update", "delete", "list");
+
+    /**
+     * REG-126: an AI-authored {@code roles[].permissions} entry like {@code "ticket:create"} reads
+     * naturally to an author as "resource:action", but the kernel's real CRUD gate
+     * ({@code GeneratedCrudRuntimeSupport.checkCrudPermission}) checks
+     * {@code "<operation>:<conceptName>"} (operation first -- see also the identical backwards-halves
+     * correction already made once in {@code docs/FRONTEND_STRATEGY_PLAN.md}'s
+     * {@code requiredPermission} example). Grant matching is exact-string, so the un-reversed grant
+     * silently matches nothing and the declared role is left with no working CRUD access at all -- no
+     * error anywhere, the platform's own X0 rule. This adds the correct
+     * {@code "<operation>:<conceptName>"} grant ALONGSIDE the author's original string (never removes
+     * it) whenever the first half names a real concept and the second half is a known CRUD operation,
+     * so both the author-facing convention and the platform's runtime check are satisfied.
+     */
+    private static void addReversedCrudPermissions(Set<String> permissions, Set<String> conceptKeys) {
+        for (String permission : List.copyOf(permissions)) {
+            int separator = permission.indexOf(':');
+            if (separator <= 0 || separator == permission.length() - 1) {
+                continue;
+            }
+            String first = permission.substring(0, separator).toLowerCase(Locale.ROOT);
+            String second = permission.substring(separator + 1).toLowerCase(Locale.ROOT);
+            if (conceptKeys.contains(first) && CRUD_OPERATIONS.contains(second)) {
+                permissions.add(second + ":" + first);
+            }
+        }
     }
 
     private static void addIfPresent(Set<String> values, String value) {

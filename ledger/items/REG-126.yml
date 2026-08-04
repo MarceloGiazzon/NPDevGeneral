@@ -2,8 +2,9 @@ id: REG-126
 title: "Normalize-AiContract.ps1 translates requiredRole for panels, procedures, and workflow transitions, but never for flows[] (the generic concept create/update declaration) -- the role gate is silently dropped, and the generated REST create endpoint ends up denying every role including the one the scenario intended to allow"
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-03
+closed: 2026-08-03
 verification: VERIFIED_LIVE
 surface: quality-gates/ai-beta-pipeline
 source: |
@@ -72,3 +73,60 @@ detail: |
   permissions, which nothing currently does) -- either fix needs its own verification pass
   (does any OTHER scenario already rely on flows[].requiredRole being silently ignored in a way
   a fix would break?), not a same-session patch appended to REG-124's own closing.
+
+correction: |
+  S7 Phase A2 (2026-08-03): the diagnosis above is real (flows[].requiredRole IS dropped) but is
+  NOT the cause of the observed 403 -- traced the ACTUAL cause to a different, more consequential
+  bug, verified by reading source, not inference:
+
+  `flows[].requiredRole` has nowhere to go even if threaded through like procedures[] -- CompiledFlow
+  carries no permissionRequirements-equivalent field, and RuntimeApiEmitter's flow-permission
+  collection only ever reads `flow.getAction().getPermissionHint()` (actionMetadata, informational),
+  never a role list. Wiring the normalizer to copy flows[].requiredRole into the official model would
+  be a no-op cosmetic fix -- it would not touch the actual gate that returned 403.
+
+  The REAL gate: POST /api/tickets is a Flow-CRUD-wrapped generic-CRUD endpoint, gated by a static
+  `create:ticket` (operation:concept) permission grant (RuntimeApiEmitter.generatePermissionManifest
+  -> StaticPermissionEvaluator/PermissionGrant, an EARLIER and SEPARATE gate from the kernel-level
+  RolePermissions/DefaultExecutionAuthorizationPolicy the original diagnosis named). The AI model's
+  `roles[].permissions` DOES reach this gate (via readAiBetaSecurityMetadata reading
+  metadata.roles/metadata.auth.testUsers, confirmed present in normalized/security.json) and DOES get
+  turned into grants for the test user's role -- but VERBATIM, with zero translation. The AI-authoring
+  convention this scenario (and 3 other golden-ai-scenarios: tenant-approval-portal,
+  tenant-service-desk, custom-panel-unsupported) all use is "concept:operation"
+  (`"ticket:create"`), while the platform's real check
+  (`GeneratedCrudRuntimeSupport.checkCrudPermission`) builds `"<operation>:<conceptName>"`
+  (`"create:ticket"`) -- halves reversed. `PermissionGrant.matches` is exact-string (no fallback), so
+  "ticket:create" never matches "create:ticket" and the declared role is left with NO working CRUD
+  grant at all. This is the identical backwards-halves mistake already caught and corrected once in
+  this repo's own history -- `docs/FRONTEND_STRATEGY_PLAN.md`'s F2.1 correction note: "requiredPermission:
+  'expenserequest:create' has the halves backwards -- the real format is 'create:expenserequest'
+  (operation first)." That correction was to an illustrative doc example; this is the same mistake
+  live in the golden-scenario fixtures and unguarded in the generator.
+
+resolution: |
+  DONE (S7 Phase A2, 2026-08-03). Fixed the actual gate, not the originally-diagnosed one.
+
+  NPDevGenerator/generator/.../emitters/RuntimeApiEmitter.java (generatePermissionManifest):
+  added `addReversedCrudPermissions` -- for every AI-beta test user's collected permission set, any
+  string shaped `<concept>:<crudOp>` where `<concept>` names a real declared concept and `<crudOp>` is
+  one of create/read/update/delete/list ALSO gets the reversed `<crudOp>:<concept>` grant added
+  alongside the original (never removes the author's own string -- additive only, so nothing that
+  worked before can break). This satisfies both the AI-authoring "resource:action" convention every
+  golden scenario already uses AND the platform's real "operation:concept" CRUD check, without
+  requiring a rewrite of the corpus fixtures or a breaking change to the AI-authoring contract.
+
+  Left the flows[].requiredRole gap exactly as originally diagnosed (still real, still unfixed) --
+  it is orthogonal to this fix and, per the analysis above, wiring it through would not have changed
+  the observed behavior; it remains a candidate for a future session if a flow-level (not
+  concept-CRUD-level) role gate is ever wanted for real.
+
+  Live-verified via a narrow single-scenario run of scripts/quality/run-ai-beta-gate.ps1 (ScenarioRoot
+  pointed at an isolated copy of golden-ai-scenarios/tenant-workflow-ops only, RunId
+  "s7-reg126-narrow", report at scripts/reports/out/ai-beta-gate-reg126-verify.json): ALL 12 stages
+  pass, including "smoke" -- the stage that runs scenario-authenticated-create-ticket (POST
+  /api/tickets, X-Api-Key for testUsers[0]/role "agent"), the exact check that returned 403 before
+  this fix. status: "passed" end to end.
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\NPDevGenerator\generator\src\main\java\com\npdev\generator\emitters\RuntimeApiEmitter.java
