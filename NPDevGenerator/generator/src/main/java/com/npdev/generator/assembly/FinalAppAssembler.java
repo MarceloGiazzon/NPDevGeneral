@@ -8,7 +8,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -90,6 +92,7 @@ public final class FinalAppAssembler {
         writeAiBetaLocalProfile(normalized, generatedMount);
         writeSchemaRealizationManifest(normalized, schemaRealizationCount);
         writeAppReadme(normalized, generatedMount);
+        appendRuntimeHostLibsDirDefault(normalized);
 
         return new AssemblyResult(
                 normalized.finalAppRoot(),
@@ -402,13 +405,27 @@ public final class FinalAppAssembler {
                 + "\n"
                 + "## Run it\n"
                 + "\n"
+                + "**Build the jar first, whichever way you run the app** -- the generated `Dockerfile`\n"
+                + "packages an already-built jar, it does not run Gradle inside the image:\n"
+                + "\n"
+                + "```sh\n"
+                + "./gradlew bootJar\n"
+                + "```\n"
+                + "\n"
+                + "Then either run it directly:\n"
+                + "\n"
+                + "```sh\n"
+                + "java -jar build/libs/FinalExec-0.1.0.jar --spring.profiles.active=dev\n"
+                + "# open http://localhost:8080 (see docker-compose.yml's ports: mapping if you\n"
+                + "# changed the port at generation time -- it varies per generated app)\n"
+                + "```\n"
+                + "\n"
+                + "or in Docker:\n"
+                + "\n"
                 + "```sh\n"
                 + "cp .env.example .env    # set NPDEV_AUTH_APIKEYS at minimum\n"
                 + "docker compose up\n"
                 + "```\n"
-                + "\n"
-                + "The host port is set in this app's own `docker-compose.yml` (the `APP_PORT` build arg/env\n"
-                + "var, or the `ports:` mapping if unset) -- check there, it varies per generated app.\n"
                 + "\n"
                 + "## Where things are\n"
                 + "\n"
@@ -426,6 +443,55 @@ public final class FinalAppAssembler {
                 + "`docs/DEPLOYMENT.md` in the NPDev platform repository this app was generated from.\n";
 
         Files.writeString(options.finalAppRoot().resolve("README.md"), readme);
+    }
+
+    /**
+     * REG-128 / N2 (FIRST_IMPRESSION_PLAN.md I8): {@code resolveNpdevRuntimeLibsDir} in the
+     * materialized {@code build.gradle} (see {@code NPDevRuntimeHost/build.gradle.template}) walks
+     * UP from the assembled app's own directory looking for a sibling {@code .npdev-root} marker --
+     * a heuristic that only works when the assembled app happens to sit nested under (or beside) the
+     * source repo it was generated from. An app assembled anywhere else (the common case: {@code
+     * --output} deliberately points OUTSIDE this repo, per this README's own Quickstart) never finds
+     * the marker and falls through to a nonsensical relative fallback, so {@code ./gradlew bootJar}
+     * cannot find the platform jars even after {@code sync-runtimehost-libs.ps1 -BuildLocalJars} ran
+     * successfully.
+     *
+     * <p>Appends (never overwrites -- {@code NPDevRuntimeHost/gradle.properties}'s own REG-10
+     * comment explains why the checked-in template must never carry a hardcoded path) a resolved
+     * {@code npdevRuntimeHostLibsDir} default to the assembled app's {@code gradle.properties},
+     * computed the SAME way {@code scripts/npdev-common.ps1}'s {@code Get-NPDevRuntimeHostLibsDir}
+     * does (env var override, else {@code <this repo's parent>/Build/runtimehost-libs}) -- so a
+     * freshly generated app finds the jars {@code sync-runtimehost-libs.ps1}'s OWN default just
+     * wrote, with no manual step. An explicit {@code -PnpdevRuntimeHostLibsDir=...} passed to a
+     * later {@code gradlew} invocation still wins (standard Gradle command-line-over-properties-file
+     * precedence) if a caller genuinely needs a different directory.
+     */
+    private static void appendRuntimeHostLibsDirDefault(Options options) throws IOException {
+        Path repoRoot = options.runtimeHostRoot().toAbsolutePath().normalize().getParent();
+        if (repoRoot == null) {
+            return;
+        }
+        String resolved = System.getenv("NPDEV_RUNTIMEHOST_LIBS_DIR");
+        if (resolved == null || resolved.isBlank()) {
+            String buildRoot = System.getenv("NPDEV_BUILD_ROOT");
+            Path buildRootPath = (buildRoot == null || buildRoot.isBlank())
+                    ? repoRoot.resolveSibling("Build")
+                    : Path.of(buildRoot);
+            resolved = buildRootPath.resolve("runtimehost-libs").toString();
+        }
+        // gradle.properties is parsed as a Java .properties file, where "\" is an escape
+        // character -- a raw Windows path would corrupt on read. Forward slashes are accepted by
+        // Gradle/the JVM on every OS this template ships for.
+        String propertyValue = resolved.replace('\\', '/');
+
+        Path gradleProperties = options.finalAppRoot().resolve("gradle.properties");
+        String appended = "\n# npdev generate app (REG-128): resolved default for this machine/session --\n"
+                + "# an explicit -PnpdevRuntimeHostLibsDir=... on the gradlew command line still wins.\n"
+                + "npdevRuntimeHostLibsDir=" + propertyValue + "\n";
+        Files.writeString(
+                gradleProperties, appended, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND
+        );
     }
 
     private static void writeAiBetaLocalProfile(Options options, Path generatedMount) throws IOException {
