@@ -94,6 +94,42 @@
         "NPDevContract/dsl/src/main/resources/schema/pack.schema.json",
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java"
       ]
+    },
+    {
+      "id": "readme-portable-tooling-substrings",
+      "citedBy": "F7 (FIRST_IMPRESSION_SPEC.md I6, `§0`'s trap)",
+      "description": "run-portable-tooling-check.ps1 asserts README.md contains these three EXACT command substrings verbatim (its own linuxCommandExamplesPresent check, case-sensitive .Contains()). F1/F3/F6's own doc edits to README.md all had to preserve them by hand with no gate telling them so beforehand -- this rule is that gate: an edit that reflows or rewords any of the three now fails loud instead of the check silently going red for a reason that looks unrelated to whatever the edit was actually about.",
+      "kind": "field-in-all-files",
+      "trackedFields": ["./npdev validate model", "./npdev normalize ai-model", "./npdev generate app"],
+      "caseSensitive": true,
+      "files": [
+        "README.md",
+        "scripts/quality/run-portable-tooling-check.ps1"
+      ]
+    },
+    {
+      "id": "getting-started-portable-tooling-substrings",
+      "citedBy": "F7 (FIRST_IMPRESSION_SPEC.md I6, `§0`'s trap)",
+      "description": "Same trap as readme-portable-tooling-substrings, for docs/GETTING_STARTED.md's two required substrings (run-portable-tooling-check.ps1's linuxCommandExamplesPresent check). F6's full rewrite of this file had to preserve both verbatim with no gate telling it so beforehand.",
+      "kind": "field-in-all-files",
+      "trackedFields": ["Linux and macOS", "./npdev report bootstrap"],
+      "caseSensitive": true,
+      "files": [
+        "docs/GETTING_STARTED.md",
+        "scripts/quality/run-portable-tooling-check.ps1"
+      ]
+    },
+    {
+      "id": "ci-workflow-report-bootstrap-substring",
+      "citedBy": "F7 (FIRST_IMPRESSION_SPEC.md I6)",
+      "description": "run-portable-tooling-check.ps1's cliReportBootstrapCallable check separately asserts '.github/workflows/npdev-ci-validation.yml' contains the exact substring './npdev report bootstrap' -- a third location for the same literal string this script depends on, found while registering the README/GETTING_STARTED trap above (not itself part of §0's stated five, but the identical failure shape).",
+      "kind": "field-in-all-files",
+      "trackedFields": ["./npdev report bootstrap"],
+      "caseSensitive": true,
+      "files": [
+        ".github/workflows/npdev-ci-validation.yml",
+        "scripts/quality/run-portable-tooling-check.ps1"
+      ]
     }
   ]
 }
