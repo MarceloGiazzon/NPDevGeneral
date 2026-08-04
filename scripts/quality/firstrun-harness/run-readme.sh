@@ -307,6 +307,37 @@ else
   kill "$APP_PID" 2>/dev/null; wait "$APP_PID" 2>/dev/null
 fi
 
+# ---------------------------------------------------------------- 4. npdev run app
+
+section "4. Does 'npdev run app' work as a one-shot command? (REG-131)"
+
+# Not part of README's own documented Quickstart (that path is generate -> bootJar -> java -jar),
+# but a real, shipped, one-command alternative -- and precisely the class of command a hardcoded
+# dev-machine path can break invisibly for everyone but its author (REG-131: NPDEV_RUNTIMEHOST_LIBS_DIR
+# used to default to a literal D:/WorkSpace/... string). A foreign machine is the only thing that
+# can prove this, which is why it belongs in this harness rather than only in a unit test.
+RUN_APP_OUT=/work/my-run-app
+RUN_APP_PORT=8081
+cd "$SRC" || die "cannot cd to $SRC for section 4"
+if RUN_APP_JSON=$(./npdev run app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json \
+    --config NPDevContract/dsl/resources/Models/canonical-demo/config.json \
+    --output "$RUN_APP_OUT" --port "$RUN_APP_PORT" --timeout 300 2>>"$LOG"); then
+  if printf '%s' "$RUN_APP_JSON" | grep -q '"ok": true'; then
+    pass "npdev run app (one-shot generate+build+boot) succeeds"
+  else
+    fail "npdev run app (one-shot generate+build+boot) succeeds" \
+         "exited 0 but reported ok:false; tail of its own JSON below" \
+         "see /work/harness.log"
+    printf '%s' "$RUN_APP_JSON" | tail -c 800 | sed 's/^/          | /'
+  fi
+else
+  fail "npdev run app (one-shot generate+build+boot) succeeds" \
+       "exited non-zero; tail of output below" \
+       "see /work/harness.log"
+  printf '%s' "$RUN_APP_JSON" | tail -c 800 | sed 's/^/          | /'
+  tail -12 "$LOG" | sed 's/^/          | /'
+fi
+
 # ---------------------------------------------------------------- summary
 
 section "SUMMARY"

@@ -1317,12 +1317,32 @@ def _find_jar(app_root: Path) -> Path | None:
     return None
 
 
+def _default_runtimehost_libs_dir() -> Path | None:
+    """Mirrors scripts/npdev-common.ps1's Get-NPDevRuntimeHostLibsDir convention exactly (NOT a
+    third resolution order -- REG-128 already exists because there were two): NPDEV_BUILD_ROOT env
+    override, else <repo>.parent/Build, then /runtimehost-libs. Returns None when the derived
+    directory does not exist -- REG-131/X0: an unresolvable input is an error, never a wrong
+    default. A hardcoded D:/WorkSpace/... fallback here silently pointed `npdev run app` at a
+    directory that only exists on the author's own machine, breaking it for everyone else."""
+    build_root_env = os.environ.get("NPDEV_BUILD_ROOT")
+    build_root = (Path(build_root_env).expanduser().resolve() if build_root_env and build_root_env.strip()
+                  else repo_root().parent / "Build")
+    candidate = build_root / "runtimehost-libs"
+    return candidate if candidate.is_dir() else None
+
+
 def _build_phase(app_root: Path, deadline: float) -> tuple[bool, str, Path | None]:
     wrapper = app_root / ("gradlew.bat" if os.name == "nt" else "gradlew")
     if not wrapper.exists():
         return False, f"Gradle wrapper not found in generated app: {wrapper}", None
     env = dict(os.environ)
-    env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs")))
+    if "NPDEV_RUNTIMEHOST_LIBS_DIR" not in env:
+        derived = _default_runtimehost_libs_dir()
+        if derived is not None:
+            env["NPDEV_RUNTIMEHOST_LIBS_DIR"] = str(derived)
+        # else: leave unset -- the generated build.gradle's own "Missing NPDev RuntimeHost libs
+        # manifest in <path>. Run scripts/runtimehost/sync-runtimehost-libs.ps1" error fires
+        # instead of a wrong path producing a confusing downstream failure.
     command = [str(wrapper), "--no-daemon", "--console=plain", "clean", "build", "-x", "test"]
     try:
         completed = _run_bounded(command, str(app_root), deadline, env=env)
