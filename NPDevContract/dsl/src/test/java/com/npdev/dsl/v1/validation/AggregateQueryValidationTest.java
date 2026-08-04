@@ -210,16 +210,93 @@ class AggregateQueryValidationTest {
                 "expected an unresolvable-target-field error, got: " + errors);
     }
 
+    /** S8 W1.1: two hops used to be refused by the GRAMMAR outright; now the grammar accepts it, so
+     *  this path is refused instead by SEMANTIC resolution -- {@code region} (the mid-chain hop) is
+     *  a plain string field, not a reference, so the chain cannot be walked through it. */
     @Test
-    void twoJoinHopsAreRejectedAsAnUnsupportedPath() throws Exception {
+    void midChainNonReferenceFieldIsRejected() throws Exception {
         List<String> errors = validate(modelWithJoinAndQuery(null, """
             { "name": "BadJoin", "concept": "ShipmentEvent",
               "groupBy": [ "warehouse.region.extra" ],
               "aggregates": [ { "name": "count", "fn": "count" } ] }
             """));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("is not a reference field") && e.contains("region")),
+                "expected a mid-chain not-a-reference-field rejection, got: " + errors);
+    }
+
+    /** S8 W1.1 (roadmap deferred item #1): a join chain longer than
+     *  {@code GroupByJoinGrammar.MAX_JOIN_HOPS} is a named grammar-level compile error, never
+     *  silently truncated -- independent of whether the path's fields even exist on any concept. */
+    @Test
+    void moreJoinHopsThanTheCapAreRejectedAsAnUnsupportedPath() throws Exception {
+        List<String> errors = validate(modelWithJoinAndQuery(null, """
+            { "name": "BadJoin", "concept": "ShipmentEvent",
+              "groupBy": [ "a.b.c.d.e" ],
+              "aggregates": [ { "name": "count", "fn": "count" } ] }
+            """));
         assertTrue(errors.stream().anyMatch(e -> e.contains("groupBy field cannot be parsed")
-                        && e.contains("more than one join hop")),
-                "expected a two-hop-path rejection, got: " + errors);
+                        && e.contains("exceeds the cap of 3")),
+                "expected a hop-cap-exceeded rejection, got: " + errors);
+    }
+
+    /** S8 W1.1: a genuine 2-hop join (both hops real reference fields) resolves cleanly, and the
+     *  widened C3 access.read guard checks the FAR hop's target concept (Country), not just the
+     *  first hop's (Warehouse) -- proven by the paired refusal test right below. */
+    @Test
+    void twoHopGroupByJoinResolves() throws Exception {
+        List<String> errors = validate(modelWithTwoHopJoinAndQuery(null, """
+            { "name": "UnitsByCountry", "concept": "ShipmentEvent",
+              "groupBy": [ "warehouse.country.name" ],
+              "aggregates": [ { "name": "total", "fn": "sum", "field": "unitsShipped" } ] }
+            """));
+        assertTrue(errors.stream().noneMatch(e -> e.contains("groupBy") || e.contains("aggregate")),
+                "unexpected error for a valid two-hop groupBy join, got: " + errors);
+    }
+
+    /** C3 RED, widened to a SECOND hop: the FAR concept in the chain (Country) declares access.read
+     *  while the NEAR one (Warehouse) does not -- the guard must still fire, proving the loop checks
+     *  every hop, not just the first. */
+    @Test
+    void twoHopGroupByJoinCrossingIntoAConceptDeclaringAccessReadAtTheFarHopIsRefused() throws Exception {
+        List<String> errors = validate(modelWithTwoHopJoinAndQuery(
+                "{\"read\": \"name == $user.region\"}", """
+            { "name": "UnitsByCountry", "concept": "ShipmentEvent",
+              "groupBy": [ "warehouse.country.name" ],
+              "aggregates": [ { "name": "total", "fn": "sum", "field": "unitsShipped" } ] }
+            """));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("crosses into concept Country")
+                        && e.contains("access.read")),
+                "expected the widened access.read hard stop to fire for the FAR join hop, got: " + errors);
+    }
+
+    /**
+     * S8 W1.1: same fixture family as {@link #modelWithJoinAndQuery}, extended with a THIRD concept
+     * ({@code Country}) so {@code Warehouse.country -> Country} gives a genuine two-hop chain
+     * ({@code "warehouse.country.name"}) with two REAL reference-field hops, distinct from the
+     * single-hop fixture above. {@code countryAccessJson} lets a test declare {@code access.read} on
+     * the FAR hop's target (Country, not Warehouse) to prove C3 widens to every hop, not just the
+     * first.
+     */
+    private static String modelWithTwoHopJoinAndQuery(String countryAccessJson, String queryJson) {
+        return """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.aggregate.join.twohop", "version": "1.0",
+              "concepts": [
+                { "name": "Country", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "name", "type": "string" } ]%s },
+                { "name": "Warehouse", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "region", "type": "string" },
+                  { "name": "country", "type": "reference", "reference": { "target": "Country" } } ] },
+                { "name": "ShipmentEvent", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "warehouse", "type": "reference", "reference": { "target": "Warehouse" } },
+                  { "name": "unitsShipped", "type": "integer" } ] }
+              ],
+              "queries": [ %s ]
+            }
+            """.formatted(countryAccessJson == null ? "" : ", \"access\": " + countryAccessJson, queryJson);
     }
 
     /** C3 RED: the access.read hard stop widens to the WHOLE join path -- a join target declaring

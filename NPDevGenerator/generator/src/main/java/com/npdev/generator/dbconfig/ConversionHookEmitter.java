@@ -226,6 +226,58 @@ public final class ConversionHookEmitter {
                 claims.add("ADD_REQUIRED_COLUMN:" + table + ":" + setCol);
                 verifyNullChecks.add(setCol);
             }
+            // S8 W1.2 (roadmap deferred item #4): merge is split's inverse -- N source columns
+            // concatenated (via the portable CONCAT(...) function, NOT ||, so a NULL source argument
+            // yields "" rather than propagating NULL through the whole expression -- which is exactly
+            // why the WHERE guard below separately requires every source column non-null: a merge
+            // that silently dropped a missing field into the middle of a name would be the "partial
+            // conversion" B12's discipline forbids, so a row missing any source field is left NULL and
+            // the closing SET NOT NULL fails the boot on it, same as every other op here) into one new
+            // column, with an author-declared separator between each pair.
+            case "merge" -> {
+                CompiledField toField = requireField(concept, conversion.to());
+                String toCol = SqlIdentifierSupport.columnName(toField);
+                List<String> mergeCols = new ArrayList<>();
+                for (String mergeField : conversion.mergeFrom()) {
+                    mergeCols.add(SqlIdentifierSupport.columnName(requireField(concept, mergeField)));
+                }
+                String separator = conversion.with() == null ? "" : conversion.with();
+                String separatorLiteral = "'" + separator.replace("'", "''") + "'";
+                StringBuilder concatArgs = new StringBuilder();
+                StringBuilder nullGuard = new StringBuilder();
+                for (int i = 0; i < mergeCols.size(); i++) {
+                    if (i > 0) {
+                        concatArgs.append(", ").append(separatorLiteral).append(", ");
+                        nullGuard.append(" AND ");
+                    }
+                    concatArgs.append(mergeCols.get(i));
+                    nullGuard.append(mergeCols.get(i)).append(" IS NOT NULL");
+                }
+                statements.add("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS " + toCol + " " + portableSqlType(toField));
+                statements.add("UPDATE " + table + " SET " + toCol + " = CONCAT(" + concatArgs
+                        + ") WHERE " + toCol + " IS NULL AND " + nullGuard);
+                statements.add("ALTER TABLE " + table + " ALTER COLUMN " + toCol + " SET NOT NULL");
+                claims.add("ADD_REQUIRED_COLUMN:" + table + ":" + toCol);
+                verifyNullChecks.add(toCol);
+            }
+            // S8 W1.2: convert is copy with an explicit CAST to 'to's own declared type instead of a
+            // bare assignment -- a source value the target type cannot represent fails the CAST itself
+            // (a real SQLException, caught by ConversionHookRunner#executeAndVerify, which rolls back
+            // the WHOLE hook transaction and refuses the boot) rather than leaving a partially-typed
+            // column, exactly the "fail the whole conversion loudly" behavior B13's own spec's honest
+            // decision calls for.
+            case "convert" -> {
+                CompiledField toField = requireField(concept, conversion.to());
+                String toCol = SqlIdentifierSupport.columnName(toField);
+                String toSqlType = portableSqlType(toField);
+                String fromCol = SqlIdentifierSupport.columnName(requireField(concept, conversion.from()));
+                statements.add("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS " + toCol + " " + toSqlType);
+                statements.add("UPDATE " + table + " SET " + toCol + " = CAST(" + fromCol + " AS " + toSqlType
+                        + ") WHERE " + toCol + " IS NULL");
+                statements.add("ALTER TABLE " + table + " ALTER COLUMN " + toCol + " SET NOT NULL");
+                claims.add("ADD_REQUIRED_COLUMN:" + table + ":" + toCol);
+                verifyNullChecks.add(toCol);
+            }
             default -> throw new IllegalStateException("conversion '" + conversion.id()
                     + "' declares unrecognized op '" + conversion.op() + "'");
         }

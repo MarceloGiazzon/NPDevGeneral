@@ -2,7 +2,7 @@
   "dslVersion": "1.0.0",
   "pack": "shipping",
   "version": "1.0.0",
-  "description": "B20 (S2, ADR-0011) dsl-conformance-max witness: the 'shipping' bounded context. Imports 'billing' (D3) and references its concept via the qualified name billing::Invoice (D1) in a declared query -- the corpus witness for check-dsl-coverage.py's 'contexts' feature. S4 (roadmap B27) extends this same fixture with the groupBy join corpus witness: DeliveryAttempt.shipment is a SAME-CONTEXT reference (Shipment also lives in 'shipping'); Shipment.invoice is a CROSS-CONTEXT reference into the imported 'billing' context -- one fixture exercising both join shapes check-dsl-coverage.py's query.groupBy.join / query.groupBy.join.crossContext features require.",
+  "description": "B20 (S2, ADR-0011) dsl-conformance-max witness: the 'shipping' bounded context. Imports 'billing' (D3) and references its concept via the qualified name billing::Invoice (D1) in a declared query -- the corpus witness for check-dsl-coverage.py's 'contexts' feature. S4 (roadmap B27) extends this same fixture with the groupBy join corpus witness: DeliveryAttempt.shipment is a SAME-CONTEXT reference (Shipment also lives in 'shipping'); Shipment.invoice is a CROSS-CONTEXT reference into the imported 'billing' context -- one fixture exercising both join shapes check-dsl-coverage.py's query.groupBy.join / query.groupBy.join.crossContext features require. S8 W1.1 (roadmap deferred item #1) extends it again with a two-hop chain through the SAME two reference fields (shipment then invoice) -- the corpus witness for check-dsl-coverage.py's query.groupBy.join.multiHop feature.",
   "imports": ["billing"],
   "concepts": [
     {
@@ -45,6 +45,12 @@
       "concept": "Shipment",
       "groupBy": [ "billing::invoice.status" ],
       "aggregates": [ { "name": "shipmentCount", "fn": "count" } ]
+    },
+    {
+      "name": "DeliveryAttemptsByInvoiceStatus",
+      "concept": "DeliveryAttempt",
+      "groupBy": [ "shipment.invoice.status" ],
+      "aggregates": [ { "name": "attempts", "fn": "count" } ]
     }
   ]
 }

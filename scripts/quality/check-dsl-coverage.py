@@ -254,6 +254,20 @@ def _has_groupby_cross_context_join(model: dict) -> bool:
     )
 
 
+def _has_groupby_multi_hop_join(model: dict) -> bool:
+    """S8 W1.1 (roadmap deferred item #1): a groupBy join chaining MORE than one reference-field hop
+    ("shipment.invoice.status" -- two hops, not one) -- distinct from the plain one-hop
+    "query.groupBy.join" feature above so a regression to only the one-hop grammar path
+    independently fails the build."""
+    for q in (model.get("queries", None) or []):
+        for entry in (q.get("groupBy", None) or []):
+            text = _groupby_field_text(entry)
+            remainder = text.split("::", 1)[-1] if "::" in text else text
+            if remainder.count(".") >= 2:
+                return True
+    return False
+
+
 def _has_panel_action_download(model: dict) -> bool:
     for panel in (model.get("panels", None) or []):
         if not isinstance(panel, dict):
@@ -522,6 +536,9 @@ FEATURE_DETECTORS = {
     # just the D3 import-gate/context-qualification half independently fails the build.
     "query.groupBy.join": _has_groupby_join,
     "query.groupBy.join.crossContext": _has_groupby_cross_context_join,
+    # S8 W1.1 (roadmap deferred item #1): the join chain widened from exactly one hop to a capped
+    # multi-hop chain (GroupByJoinGrammar.MAX_JOIN_HOPS).
+    "query.groupBy.join.multiHop": _has_groupby_multi_hop_join,
     "procedures": lambda m: _nonempty(m, "procedures"),
     "panels": lambda m: _nonempty(m, "panels"),
     "ruleProfiles": lambda m: _nonempty(m, "ruleProfiles"),
@@ -672,6 +689,10 @@ FEATURE_DETECTORS = {
     "conversions.op.copy": lambda m: _has_conversion_op(m, "copy"),
     "conversions.op.split": lambda m: _has_conversion_op(m, "split"),
     "conversions.op.lookup": lambda m: _has_conversion_op(m, "lookup"),
+    # S8 W1.2 (roadmap deferred item #4): merge/convert, added after the S7 ship -- same
+    # per-op-tracked-separately discipline as copy/split/lookup above.
+    "conversions.op.merge": lambda m: _has_conversion_op(m, "merge"),
+    "conversions.op.convert": lambda m: _has_conversion_op(m, "convert"),
 }
 
 

@@ -202,12 +202,17 @@ final class PackValidation {
      * instead (matches the platform's own X0 "an input the evaluator cannot handle is an error"
      * rule) -- lift this the day {@code access.read} gains a SQL translation, not before.
      *
-     * <p>S4 (roadmap B27, ADR-0011 D1): a {@code groupBy} field may now be a one-hop JOIN
+     * <p>S4 (roadmap B27, ADR-0011 D1): a {@code groupBy} field may now be a JOIN
      * ({@link GroupByJoinGrammar}) through a declared {@code reference} field -- {@code
      * "lote.produtoId"}, optionally context-qualified ({@code "inventory::lote.produtoId"}). The
      * {@code access.read} hard stop above widens to the WHOLE join path (C3): a join makes the
      * information-disclosure shape strictly worse, since now ANY concept the join crosses into with
      * {@code access.read} taints the result, not just the query's own base concept.
+     *
+     * <p>S8 W1.1 (roadmap deferred item #1): the join may now chain up to
+     * {@link GroupByJoinGrammar#MAX_JOIN_HOPS} reference-field hops -- C3's widened guard applies to
+     * EVERY concept the chain crosses, not just the first/only one, since a longer chain is just
+     * more ways to leak a total over rows the caller could not read individually.
      */
     private static void validateAggregateQuery(
             QueryAst query, ConceptAst concept, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
@@ -264,11 +269,12 @@ final class PackValidation {
     }
 
     /**
-     * S4 (roadmap B27, ADR-0011 D1/C1-C3): validates ONE {@code groupBy} entry -- a plain field
-     * (unchanged from Move 10 B1) or a one-hop join. X0 applies throughout: a join path this method
-     * cannot resolve is a named error via {@code continue} (this entry's own further checks are
-     * skipped, but the REST of the query is still validated -- one bad field must not hide every
-     * other finding), never a silently-accepted or partially-applied clause.
+     * S4 (roadmap B27, ADR-0011 D1/C1-C3) + S8 W1.1: validates ONE {@code groupBy} entry -- a plain
+     * field (unchanged from Move 10 B1) or a 1-to-{@link GroupByJoinGrammar#MAX_JOIN_HOPS}-hop join.
+     * X0 applies throughout: a join path this method cannot resolve is a named error via
+     * {@code return} (this entry's own further checks are skipped, but the REST of the query is
+     * still validated -- one bad field must not hide every other finding), never a silently-accepted
+     * or partially-applied clause.
      */
     private static void validateGroupByField(
             String here,
@@ -300,58 +306,71 @@ final class PackValidation {
             return;
         }
 
+        // S8 W1.1: walk the whole reference-field chain, one hop at a time. C3's access.read hard
+        // stop is re-checked at EVERY hop's target concept, not just the last -- a longer chain is
+        // just more ways to leak a total over rows the caller could not read individually.
         GroupByJoinGrammar.Target.Join join = (GroupByJoinGrammar.Target.Join) target;
-        FieldAst referenceField = fieldsByLower.get(normalize(join.referenceField()));
-        if (referenceField == null) {
-            errors.add(here + ": groupBy join field not found on concept " + concept.getName() + ": "
-                    + join.referenceField());
-            return;
-        }
-        if (!hasText(referenceField.getReferenceTarget())) {
-            errors.add(here + ": groupBy join field " + join.referenceField() + " on concept "
-                    + concept.getName() + " is not a reference field -- cannot join through it "
-                    + "(named compile error, not a silently dropped clause)");
-            return;
-        }
-
-        String targetConceptName = referenceField.getReferenceTarget();
-        ConceptAst targetConcept = entitiesByLower.get(normalize(targetConceptName));
-        if (targetConcept == null) {
-            errors.add(here + ": groupBy join field " + join.referenceField() + " targets unknown concept "
-                    + targetConceptName + " -- unresolvable join path");
-            return;
-        }
-
-        if (join.context() != null) {
-            String expectedPrefix = join.context() + "::";
-            if (!targetConceptName.startsWith(expectedPrefix)) {
-                errors.add(here + ": groupBy join \"" + groupByField.field() + "\" declares context '"
-                        + join.context() + "', but reference field " + join.referenceField()
-                        + "'s actual target is " + targetConceptName + " -- the declared context does not "
-                        + "match where the joined concept actually lives");
+        ConceptAst currentConcept = concept;
+        Map<String, FieldAst> currentFieldsByLower = fieldsByLower;
+        int totalHops = join.referenceFields().size();
+        for (int hopIndex = 0; hopIndex < totalHops; hopIndex++) {
+            String referenceFieldName = join.referenceFields().get(hopIndex);
+            FieldAst referenceField = currentFieldsByLower.get(normalize(referenceFieldName));
+            if (referenceField == null) {
+                errors.add(here + ": groupBy join field not found on concept " + currentConcept.getName() + ": "
+                        + referenceFieldName);
                 return;
+            }
+            if (!hasText(referenceField.getReferenceTarget())) {
+                errors.add(here + ": groupBy join field " + referenceFieldName + " on concept "
+                        + currentConcept.getName() + " is not a reference field -- cannot join through it "
+                        + "(named compile error, not a silently dropped clause)");
+                return;
+            }
+
+            String targetConceptName = referenceField.getReferenceTarget();
+            ConceptAst targetConcept = entitiesByLower.get(normalize(targetConceptName));
+            if (targetConcept == null) {
+                errors.add(here + ": groupBy join field " + referenceFieldName + " targets unknown concept "
+                        + targetConceptName + " -- unresolvable join path");
+                return;
+            }
+
+            boolean isLastHop = hopIndex == totalHops - 1;
+            if (isLastHop && join.context() != null) {
+                String expectedPrefix = join.context() + "::";
+                if (!targetConceptName.startsWith(expectedPrefix)) {
+                    errors.add(here + ": groupBy join \"" + groupByField.field() + "\" declares context '"
+                            + join.context() + "', but reference field " + referenceFieldName
+                            + "'s actual target is " + targetConceptName + " -- the declared context does not "
+                            + "match where the joined concept actually lives");
+                    return;
+                }
+            }
+
+            // C3: the access.read hard stop widens to the WHOLE join path (every hop, not just the
+            // first or last) -- a group total computed by joining through a field is exactly as much
+            // of a leak as one computed directly on a restricted concept (see this method's javadoc
+            // and the class-level one above it).
+            if (targetConcept.getAccess() != null && hasText(targetConcept.getAccess().getRead())) {
+                errors.add(here + ": groupBy join \"" + groupByField.field() + "\" crosses into concept "
+                        + targetConcept.getName() + ", which declares access.read -- a pushed-down GROUP BY "
+                        + "would compute totals over rows the row-level access.read scope exists to hide, the "
+                        + "same leak whether the restricted concept is queried directly or reached through a "
+                        + "join (accepted boundary; lift when access.read gains a SQL translation)");
+                return;
+            }
+
+            currentConcept = targetConcept;
+            currentFieldsByLower = new HashMap<>();
+            for (FieldAst field : currentConcept.getFields()) {
+                currentFieldsByLower.put(normalize(field.getName()), field);
             }
         }
 
-        // C3: the access.read hard stop widens to the WHOLE join path -- a group total computed by
-        // joining through a field is exactly as much of a leak as one computed directly on a
-        // restricted concept (see this method's javadoc and the class-level one above it).
-        if (targetConcept.getAccess() != null && hasText(targetConcept.getAccess().getRead())) {
-            errors.add(here + ": groupBy join \"" + groupByField.field() + "\" crosses into concept "
-                    + targetConcept.getName() + ", which declares access.read -- a pushed-down GROUP BY "
-                    + "would compute totals over rows the row-level access.read scope exists to hide, the "
-                    + "same leak whether the restricted concept is queried directly or reached through a "
-                    + "join (accepted boundary; lift when access.read gains a SQL translation)");
-            return;
-        }
-
-        Map<String, FieldAst> targetFieldsByLower = new HashMap<>();
-        for (FieldAst field : targetConcept.getFields()) {
-            targetFieldsByLower.put(normalize(field.getName()), field);
-        }
-        FieldAst targetField = targetFieldsByLower.get(normalize(join.targetField()));
+        FieldAst targetField = currentFieldsByLower.get(normalize(join.targetField()));
         if (targetField == null) {
-            errors.add(here + ": groupBy join target field not found on concept " + targetConcept.getName()
+            errors.add(here + ": groupBy join target field not found on concept " + currentConcept.getName()
                     + ": " + join.targetField() + " -- unresolvable join path");
             return;
         }

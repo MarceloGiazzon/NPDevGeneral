@@ -1,5 +1,8 @@
 package com.npdev.dsl.v1.query;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * S4 (roadmap B27, ADR-0011 D1): the grammar half of a {@code query.groupBy[]} join hop -- lifted
  * into {@code NPDevContract/dsl} (same reasoning as {@link QueryPredicateGrammar}'s own docstring)
@@ -14,23 +17,34 @@ package com.npdev.dsl.v1.query;
  *
  * <pre>
  *   "warehouseId"                    -&gt; Direct("warehouseId")
- *   "lote.produtoId"                 -&gt; Join(null, "lote", "produtoId")
- *   "inventory::lote.produtoId"      -&gt; Join("inventory", "lote", "produtoId")
+ *   "lote.produtoId"                 -&gt; Join(null, ["lote"], "produtoId")
+ *   "inventory::lote.produtoId"      -&gt; Join("inventory", ["lote"], "produtoId")
+ *   "lote.produto.categoria"         -&gt; Join(null, ["lote", "produto"], "categoria")
  * </pre>
  *
- * {@code lote} is a declared {@code reference}-typed field on the query's own concept; {@code
- * produtoId} is a field on {@code lote}'s reference target. The optional leading {@code context::}
- * names the context the JOINED concept (not the field, not the base concept) belongs to -- a
- * disambiguating, author-checkable restatement of what the reference field's own target already
+ * {@code lote} is a declared {@code reference}-typed field on the query's own concept; each
+ * subsequent {@code referenceFields} entry is itself a {@code reference}-typed field on the concept
+ * the PREVIOUS hop targets; {@code targetField} is a plain field on the concept the LAST hop
+ * targets. The optional leading {@code context::} names the context the FINAL joined concept (the
+ * one {@code targetField} lives on, not any intermediate hop, not the base concept) belongs to -- a
+ * disambiguating, author-checkable restatement of what that reference field's own target already
  * carries, verified for consistency by {@code PackValidation} rather than trusted blindly.
  *
- * <p><b>v1 supports exactly one join hop.</b> {@code "a.b.c"} (two dots) is refused, not
- * best-effort-resolved -- X0's rule ("an input the evaluator cannot handle is an error, never a
- * default answer") applies here exactly as it does to {@link QueryPredicateGrammar}: a join path
- * this grammar cannot parse is a compile error, never a silently-dropped or partially-applied
+ * <p><b>S8 W1.1 (roadmap deferred item #1): up to {@link #MAX_JOIN_HOPS} chained join hops.</b>
+ * {@code "a.b"} is one hop, {@code "a.b.c"} is two, {@code "a.b.c.d"} is three (the cap) --
+ * {@code "a.b.c.d.e"} (four hops) is refused, not best-effort-resolved. The cap exists because an
+ * unbounded chain invites an accidental cartesian-product join; three hops covers realistic
+ * reporting ("revenue by customer's region's country") without inviting one. X0's rule ("an input
+ * the evaluator cannot handle is an error, never a default answer") applies here exactly as it does
+ * to {@link QueryPredicateGrammar}: a join path this grammar cannot parse -- whether malformed or
+ * simply too long -- is a compile error, never a silently-dropped or partially-applied
  * {@code groupBy} clause.
  */
 public final class GroupByJoinGrammar {
+
+    /** S8 W1.1: the maximum number of chained reference-field hops a {@code groupBy} join path may
+     *  name. See the class javadoc for why 3, not unbounded. */
+    public static final int MAX_JOIN_HOPS = 3;
 
     private GroupByJoinGrammar() {
     }
@@ -40,11 +54,24 @@ public final class GroupByJoinGrammar {
         record Direct(String field) implements Target {
         }
 
-        /** A one-hop join: {@code referenceField} is a reference-typed field on the query's own
-         *  concept; {@code targetField} is a field on the concept that reference points at.
-         *  {@code context}, when the author wrote one, names which context the TARGET concept
+        /** A 1-to-{@link #MAX_JOIN_HOPS}-hop join: {@code referenceFields} is the chain of
+         *  reference-typed fields walked in order -- {@code referenceFields.get(0)} on the query's
+         *  own concept, {@code referenceFields.get(1)} on the concept hop 0 targets, and so on;
+         *  {@code targetField} is a field on the concept the LAST reference field targets.
+         *  {@code context}, when the author wrote one, names which context the FINAL joined concept
          *  belongs to -- null when omitted (same-context or unqualified join). */
-        record Join(String context, String referenceField, String targetField) implements Target {
+        record Join(String context, List<String> referenceFields, String targetField) implements Target {
+            public Join {
+                if (referenceFields == null || referenceFields.isEmpty()) {
+                    throw new IllegalArgumentException("a groupBy Join must name at least one reference field hop");
+                }
+                referenceFields = List.copyOf(referenceFields);
+            }
+
+            /** Convenience for the (still-common) single-hop case. */
+            public String referenceField() {
+                return referenceFields.get(0);
+            }
         }
     }
 
@@ -55,8 +82,9 @@ public final class GroupByJoinGrammar {
 
         public UnsupportedGroupByPathException(String field, String reason) {
             super("cannot parse groupBy field " + quote(field) + " -- " + reason
-                    + ". Supported: a plain field name, a one-hop join 'referenceField.targetField', "
-                    + "or a context-qualified one-hop join 'context::referenceField.targetField'.");
+                    + ". Supported: a plain field name, a join of 1-" + MAX_JOIN_HOPS
+                    + " hops ('referenceField.../targetField'), or a context-qualified join "
+                    + "('context::referenceField.../targetField').");
             this.field = field;
         }
 
@@ -71,7 +99,7 @@ public final class GroupByJoinGrammar {
 
     /**
      * @throws UnsupportedGroupByPathException when {@code rawField} is blank, malformed, or asks
-     *         for more than one join hop
+     *         for more join hops than {@link #MAX_JOIN_HOPS}
      */
     public static Target parse(String rawField) {
         if (rawField == null || rawField.isBlank()) {
@@ -95,8 +123,7 @@ public final class GroupByJoinGrammar {
             }
         }
 
-        int dot = remainder.indexOf('.');
-        if (dot < 0) {
+        if (remainder.indexOf('.') < 0) {
             if (context != null) {
                 throw new UnsupportedGroupByPathException(rawField,
                         "a context qualifier ('" + context + "::') requires a join hop "
@@ -108,21 +135,37 @@ public final class GroupByJoinGrammar {
             return new Target.Direct(remainder);
         }
 
-        if (remainder.indexOf('.', dot + 1) >= 0) {
-            throw new UnsupportedGroupByPathException(rawField,
-                    "more than one join hop ('a.b.c') -- v1 supports exactly one 'referenceField.targetField' hop");
+        List<String> segments = new ArrayList<>();
+        int start = 0;
+        for (int index = 0; index <= remainder.length(); index++) {
+            if (index == remainder.length() || remainder.charAt(index) == '.') {
+                segments.add(remainder.substring(start, index));
+                start = index + 1;
+            }
         }
-        String referenceField = remainder.substring(0, dot);
-        String targetField = remainder.substring(dot + 1);
-        if (!isPlainName(referenceField)) {
+
+        int hopCount = segments.size() - 1;
+        if (hopCount > MAX_JOIN_HOPS) {
             throw new UnsupportedGroupByPathException(rawField,
-                    "'" + referenceField + "' (before '.') is not a plain reference field name");
+                    hopCount + " join hops exceeds the cap of " + MAX_JOIN_HOPS
+                            + " -- an unbounded join chain invites an accidental cartesian-product join");
         }
+
+        List<String> referenceFields = new ArrayList<>();
+        for (int i = 0; i < segments.size() - 1; i++) {
+            String referenceField = segments.get(i);
+            if (!isPlainName(referenceField)) {
+                throw new UnsupportedGroupByPathException(rawField,
+                        "'" + referenceField + "' (before '.') is not a plain reference field name");
+            }
+            referenceFields.add(referenceField);
+        }
+        String targetField = segments.get(segments.size() - 1);
         if (!isPlainName(targetField)) {
             throw new UnsupportedGroupByPathException(rawField,
                     "'" + targetField + "' (after '.') is not a plain target field name");
         }
-        return new Target.Join(context, referenceField, targetField);
+        return new Target.Join(context, referenceFields, targetField);
     }
 
     /** True for {@code [A-Za-z_][A-Za-z0-9_]*} -- same convention {@code QueryPredicateGrammar}

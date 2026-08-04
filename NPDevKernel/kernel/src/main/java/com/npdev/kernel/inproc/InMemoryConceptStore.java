@@ -75,43 +75,59 @@ public final class InMemoryConceptStore implements ConceptStore {
      * <p>Requires {@code model} (the constructor that omits it can't resolve a reference field's
      * target concept) -- a join-shaped {@code groupBy} against a no-model store is refused loudly
      * (X0), not silently evaluated as if every row failed to join.
+     *
+     * <p>S8 W1.1 (roadmap deferred item #1): a join may chain up to
+     * {@link GroupByJoinGrammar#MAX_JOIN_HOPS} hops. {@code hopTargetConceptsByField} pre-resolves,
+     * for each distinct {@code groupBy} join's raw field string, the concept name at EACH hop
+     * position (walking from {@code conceptName} through {@code join.referenceFields()} in order);
+     * the row loop below then walks the SAME chain per record, following one reference field at a
+     * time, so an INNER-JOIN miss at any hop (not just the first) excludes the row -- identically to
+     * a real SQL chained {@code JOIN}.
      */
     @Override
     public synchronized ConceptAggregateResult aggregate(String tenantId, String conceptName, ConceptAggregateQuery query) {
         List<ConceptRecord> baseRecords = findAll(tenantId, conceptName);
 
-        Set<String> joinReferenceFields = new LinkedHashSet<>();
+        Map<String, GroupByJoinGrammar.Target.Join> joinsByField = new LinkedHashMap<>();
         for (ConceptAggregateQuery.GroupByField groupByField : query.groupBy()) {
             if (GroupByJoinGrammar.parse(groupByField.field()) instanceof GroupByJoinGrammar.Target.Join join) {
-                joinReferenceFields.add(join.referenceField());
+                joinsByField.put(groupByField.field(), join);
             }
         }
-        if (joinReferenceFields.isEmpty()) {
+        if (joinsByField.isEmpty()) {
             return ConceptAggregateEngine.apply(baseRecords, query);
         }
         if (model == null) {
             throw new IllegalStateException(
-                    "Cannot resolve groupBy join field(s) " + joinReferenceFields + " on concept " + conceptName
+                    "Cannot resolve groupBy join field(s) " + joinsByField.keySet() + " on concept " + conceptName
                             + " -- this InMemoryConceptStore was built without a CompiledModel "
                             + "(see InMemoryConceptStore(CompiledModel)), so a reference field's join "
                             + "target cannot be looked up");
         }
 
-        Map<String, String> targetConceptByReferenceField = new LinkedHashMap<>();
-        for (String referenceField : joinReferenceFields) {
-            String target = referenceTargetOf(conceptName, referenceField);
-            if (target == null) {
-                throw new IllegalArgumentException(
-                        "groupBy join field '" + referenceField + "' on concept " + conceptName
-                                + " is not a declared reference field -- the compile-time validator "
-                                + "(PackValidation#validateAggregateQuery) should have refused this model "
-                                + "before it ever reached the store");
+        Map<String, List<String>> hopTargetConceptsByField = new LinkedHashMap<>();
+        Set<String> touchedConcepts = new LinkedHashSet<>();
+        for (Map.Entry<String, GroupByJoinGrammar.Target.Join> entry : joinsByField.entrySet()) {
+            List<String> hopTargets = new ArrayList<>();
+            String currentConceptName = conceptName;
+            for (String referenceField : entry.getValue().referenceFields()) {
+                String target = referenceTargetOf(currentConceptName, referenceField);
+                if (target == null) {
+                    throw new IllegalArgumentException(
+                            "groupBy join field '" + referenceField + "' on concept " + currentConceptName
+                                    + " is not a declared reference field -- the compile-time validator "
+                                    + "(PackValidation#validateAggregateQuery) should have refused this model "
+                                    + "before it ever reached the store");
+                }
+                hopTargets.add(target);
+                touchedConcepts.add(target);
+                currentConceptName = target;
             }
-            targetConceptByReferenceField.put(referenceField, target);
+            hopTargetConceptsByField.put(entry.getKey(), hopTargets);
         }
 
         Map<String, Map<String, ConceptRecord>> targetRecordsById = new LinkedHashMap<>();
-        for (String targetConcept : new LinkedHashSet<>(targetConceptByReferenceField.values())) {
+        for (String targetConcept : touchedConcepts) {
             Map<String, ConceptRecord> byId = new LinkedHashMap<>();
             for (ConceptRecord record : findAll(tenantId, targetConcept)) {
                 byId.put(normalize(record.id()), record);
@@ -124,21 +140,29 @@ public final class InMemoryConceptStore implements ConceptStore {
             Map<String, Object> augmented = null;
             boolean joinable = true;
             for (ConceptAggregateQuery.GroupByField groupByField : query.groupBy()) {
-                if (!(GroupByJoinGrammar.parse(groupByField.field()) instanceof GroupByJoinGrammar.Target.Join join)) {
+                GroupByJoinGrammar.Target.Join join = joinsByField.get(groupByField.field());
+                if (join == null) {
                     continue;
                 }
-                Object fkValue = base.data().get(join.referenceField());
-                ConceptRecord targetRecord = fkValue == null ? null
-                        : targetRecordsById.get(targetConceptByReferenceField.get(join.referenceField()))
-                                .get(normalize(String.valueOf(fkValue)));
-                if (targetRecord == null) {
-                    joinable = false;
+                List<String> hopTargets = hopTargetConceptsByField.get(groupByField.field());
+                ConceptRecord current = base;
+                for (int hop = 0; hop < join.referenceFields().size(); hop++) {
+                    Object fkValue = current.data().get(join.referenceFields().get(hop));
+                    ConceptRecord targetRecord = fkValue == null ? null
+                            : targetRecordsById.get(hopTargets.get(hop)).get(normalize(String.valueOf(fkValue)));
+                    if (targetRecord == null) {
+                        joinable = false;
+                        break;
+                    }
+                    current = targetRecord;
+                }
+                if (!joinable) {
                     break;
                 }
                 if (augmented == null) {
                     augmented = new LinkedHashMap<>(base.data());
                 }
-                augmented.put(groupByField.field(), targetRecord.data().get(join.targetField()));
+                augmented.put(groupByField.field(), current.data().get(join.targetField()));
             }
             if (!joinable) {
                 continue;

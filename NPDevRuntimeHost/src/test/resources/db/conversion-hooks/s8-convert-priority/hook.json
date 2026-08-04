@@ -1,0 +1,7 @@
+{
+  "id": "s8-convert-priority",
+  "claims": ["ADD_REQUIRED_COLUMN:s8_orders:priority_number"],
+  "description": "S8 W1.2: generator-produced convert.sql for a declared convert conversion (op=convert, concept=Order), captured verbatim from ConversionHookEmitterDeclaredConversionsTest and adapted only to a test-unique table name.",
+  "verifySql": "SELECT COUNT(*) FROM s8_orders WHERE priority_number IS NULL",
+  "verifyExpect": 0
+}

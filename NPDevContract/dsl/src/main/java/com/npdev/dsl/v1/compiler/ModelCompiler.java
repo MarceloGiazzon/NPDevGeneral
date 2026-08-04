@@ -684,9 +684,30 @@ public final class ModelCompiler {
                     requireConversionField(conversionAst.id(), concept, match.equals(), "match.equals");
                     requireConversionField(conversionAst.id(), concept, conversionAst.set(), "set");
                 }
+                // S8 W1.2 (roadmap deferred item #4): merge is split's inverse -- N declared source
+                // fields (mergeFrom, at least 2 -- merging fewer is just 'copy') concatenated into one
+                // new 'to' field.
+                case "merge" -> {
+                    if (conversionAst.mergeFrom().size() < 2) {
+                        throw new IllegalArgumentException("conversion '" + conversionAst.id()
+                                + "' has op 'merge' but declares fewer than 2 'from' fields ("
+                                + conversionAst.mergeFrom() + ") -- merging fewer than two fields is just 'copy'");
+                    }
+                    for (String mergeField : conversionAst.mergeFrom()) {
+                        requireConversionField(conversionAst.id(), concept, mergeField, "from[]");
+                    }
+                    requireConversionField(conversionAst.id(), concept, conversionAst.to(), "to");
+                }
+                // S8 W1.2: convert is copy with an explicit CAST -- same from/to shape, 'to's own
+                // declared field type (already resolved below, same as copy) is the CAST target; see
+                // ConversionAst's javadoc for why there is no separate 'toType' property.
+                case "convert" -> {
+                    requireConversionField(conversionAst.id(), concept, conversionAst.from(), "from");
+                    requireConversionField(conversionAst.id(), concept, conversionAst.to(), "to");
+                }
                 default -> throw new IllegalArgumentException("conversion '" + conversionAst.id()
                         + "' declares op '" + conversionAst.op()
-                        + "', which is not a recognized conversion op (copy, split, lookup)");
+                        + "', which is not a recognized conversion op (copy, split, lookup, merge, convert)");
             }
             CompiledConversion.CompiledConversionLookupMatch compiledMatch = conversionAst.match() == null ? null
                     : new CompiledConversion.CompiledConversionLookupMatch(
@@ -699,7 +720,9 @@ public final class ModelCompiler {
                     conversionAst.to(),
                     into,
                     compiledMatch,
-                    conversionAst.set()
+                    conversionAst.set(),
+                    conversionAst.mergeFrom(),
+                    conversionAst.with()
             ));
         }
         return compiled;

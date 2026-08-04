@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**128 item(s) migrated: 0 open/partial, 128 done.**
+**129 item(s) migrated: 1 open/partial, 128 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -42,6 +42,7 @@
 | REG-125 | PROJECT_DIGEST.md names scripts/quality/run-box-vision-doc-check.ps1 as its own 'Phase 0 validation script' (expected to write scripts/reports/out/box-vision-doc-check-report.json), but neither the script nor any equivalent under a different name was ever built -- a real, never-fulfilled commitment, not a stale path | GAP | LOW | DONE | 2026-08-03 |
 | REG-126 | Normalize-AiContract.ps1 translates requiredRole for panels, procedures, and workflow transitions, but never for flows[] (the generic concept create/update declaration) -- the role gate is silently dropped, and the generated REST create endpoint ends up denying every role including the one the scenario intended to allow | BUG | LOW | DONE | 2026-08-03 |
 | REG-127 | tracestore-postgres's PersistentExecutionTracerTest is a stub that asserts nothing (assertTrue(true)) but counts toward the module's '2 test files' coverage figure -- found while assessing the six nightly-only *-postgres adapters for B21 promotion (S1_SPEC.md O2) | BUG | LOW | DONE | 2026-08-03 |
+| REG-128 | NPDevRuntimeHost/build.gradle's embedded runtimehost-libs-dir fallback (resolveNpdevRuntimeLibsDir) still defaults to <repo>__OutsideRepo/runtimehost-libs, never updated by the LC-C4/Wave 1.4 unification that moved sync-runtimehost-libs.ps1 and Build-NpdevApp.ps1 to Build/runtimehost-libs -- and run-runtimehost-gate.ps1 never bridges the gap with NPDEV_RUNTIMEHOST_LIBS_DIR, so its assembled-app test run can silently read stale jars from a directory the gate's own sync step never writes to | BUG | MEDIUM | OPEN | 2026-08-04 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
@@ -2078,6 +2079,91 @@ its own comments already describe) via PostgresTestSupport. Whoever picks this u
 whether PersistentExecutionTracer (the class the name implies this tests) has ANY real test
 coverage elsewhere in the codebase before choosing -- if it has none, option (2) is the one
 that actually adds value; if it's covered elsewhere, option (1) is simpler and equally correct.
+
+### REG-128 — NPDevRuntimeHost/build.gradle's embedded runtimehost-libs-dir fallback (resolveNpdevRuntimeLibsDir) still defaults to <repo>__OutsideRepo/runtimehost-libs, never updated by the LC-C4/Wave 1.4 unification that moved sync-runtimehost-libs.ps1 and Build-NpdevApp.ps1 to Build/runtimehost-libs -- and run-runtimehost-gate.ps1 never bridges the gap with NPDEV_RUNTIMEHOST_LIBS_DIR, so its assembled-app test run can silently read stale jars from a directory the gate's own sync step never writes to
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
+**Source:** Found while implementing S8 W1.1 (multi-hop groupBy joins). After editing
+NPDevContract/dsl's GroupByJoinGrammar and running
+scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars (which reported success and
+wrote a freshly-rebuilt dsl-0.1.0.jar to D:\WorkSpace\NPDev\Build\runtimehost-libs, confirmed
+via javap to contain the new method), a direct `NPDevRuntimeHost\gradlew.bat compileJava`
+still failed with "cannot find symbol: referenceFields()" against the OLD single-hop Join
+record shape.
+
+Root cause, traced in NPDevRuntimeHost/build.gradle's resolveNpdevRuntimeLibsDir closure:
+
+    def configured = providers.gradleProperty('npdevRuntimeHostLibsDir')
+            .orElse(providers.environmentVariable('NPDEV_RUNTIMEHOST_LIBS_DIR'))
+            .orNull
+    if (configured != null ...) { return file(configured...) }
+    def current = projectDir
+    while (current != null) {
+        if (new File(current, '.npdev-root').isFile()) {
+            return new File(current.parentFile, "${current.name}__OutsideRepo/runtimehost-libs")
+        }
+        current = current.parentFile
+    }
+    return file("${rootProject.projectDir.name}__OutsideRepo/runtimehost-libs")
+
+With no -PnpdevRuntimeHostLibsDir/-PNPDEV_RUNTIMEHOST_LIBS_DIR override, and a `.npdev-root`
+marker present at the repo root, this ALWAYS resolves to
+D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\runtimehost-libs -- NOT
+D:\WorkSpace\NPDev\Build\runtimehost-libs, which is what
+scripts/npdev-common.ps1's Get-NPDevRuntimeHostLibsDir (and therefore
+sync-runtimehost-libs.ps1 and Build-NpdevApp.ps1, per CLAUDE.md's own "the defaults now
+agree (LC-C4 / Wave 1.4)" note) actually resolves to and writes.
+
+Confirmed both directories currently hold DIFFERENT dsl-0.1.0.jar builds
+(NPDev_General__OutsideRepo\runtimehost-libs\dsl-0.1.0.jar timestamped ~1.5h older than
+Build\runtimehost-libs\dsl-0.1.0.jar after a fresh sync).
+
+scripts/quality/run-runtimehost-gate.ps1 (part of T2's run-all-gates.ps1) calls
+sync-runtimehost-libs.ps1 -BuildLocalJars (writes Build/runtimehost-libs) and THEN runs the
+assembled sample app's own `gradlew ... test` via Invoke-NPDevCommandEvidence -- WITHOUT ever
+setting $env:NPDEV_RUNTIMEHOST_LIBS_DIR or passing -PnpdevRuntimeHostLibsDir first. Grepped
+the whole file: no reference to either. So the assembled app's materialized build.gradle
+(a byte-copy of the NPDevRuntimeHost template) falls through to the SAME buggy
+__OutsideRepo default, independent of what the gate's own sync step just wrote.
+
+scripts/quality/run-fast-gate.ps1 (T1) does NOT have this problem -- it explicitly sets
+$env:NPDEV_RUNTIMEHOST_LIBS_DIR = $RuntimeHostLibsDir before its canary build/boot/smoke step,
+which is the correct pattern run-runtimehost-gate.ps1 is missing.
+
+**Surface:** `build-tooling/runtimehost-libs-staging`
+**Files:**
+- `NPDevRuntimeHost/build.gradle`
+- `scripts/quality/run-runtimehost-gate.ps1`
+
+Practical impact: a RuntimeHost-side change validated ONLY through run-runtimehost-gate.ps1 /
+T2 (rather than T1's canary path, which IS correctly bridged) can pass or fail against
+whatever jars happen to already be sitting in NPDev_General__OutsideRepo\runtimehost-libs from
+a PRIOR, unrelated sync -- not necessarily the jars the current gate run just rebuilt. In the
+common case the two directories are close enough in age that this goes unnoticed (as seen
+here: only ~1.5h apart), but nothing GUARANTEES that, and a long gap between "last time
+something synced OutsideRepo" and "now" would make T2 silently test stale RuntimeHost
+dependencies while reporting green -- the same failure shape REG-123 named ("a checker's own
+bug produced false findings/false confidence").
+
+Not fixed here, deliberately -- out of scope for S8 Wave 1 (multi-hop groupBy joins / B13
+conversion ops), and a fix to a shared build.gradle TEMPLATE (copied byte-for-byte into every
+generated FinalApp, per its own "materializes this file" docstring) needs its own careful
+verification against golden-sample/generated-app byte-parity checks before landing, not a
+drive-by one-line edit under an unrelated plan.
+
+Two independent fix shapes, either closes this (do one, not necessarily both):
+(1) Change NPDevRuntimeHost/build.gradle's resolveNpdevRuntimeLibsDir fallback (the
+    `.npdev-root`-found branch) to return Get-NPDevRuntimeHostLibsDir's own convention
+    (`<repo>.parent/Build/runtimehost-libs`) instead of `<repo>__OutsideRepo/runtimehost-libs`,
+    bringing the Groovy default in line with the PowerShell-side unification the CLAUDE.md note
+    already claims exists.
+(2) Add `$env:NPDEV_RUNTIMEHOST_LIBS_DIR = $runtimeHostLibs` (mirroring run-fast-gate.ps1's own
+    pattern) to run-runtimehost-gate.ps1 right after its sync-runtimehost-libs.ps1 call, so the
+    gate is self-consistent regardless of what the template's own default resolves to.
+
+Workaround used this session to get a trustworthy build/test signal while implementing S8
+Wave 1: explicitly set $env:NPDEV_RUNTIMEHOST_LIBS_DIR = "D:\WorkSpace\NPDev\Build\runtimehost-libs"
+before invoking any RuntimeHost-touching gate script in the same PowerShell process tree.
 
 ### REG-13 — LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time
 

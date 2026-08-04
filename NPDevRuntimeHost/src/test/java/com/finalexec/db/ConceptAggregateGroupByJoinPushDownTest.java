@@ -137,6 +137,168 @@ class ConceptAggregateGroupByJoinPushDownTest {
         return new ConceptRecord("Warehouse", id.toString(), TENANT, Map.of("region", region));
     }
 
+    // ---- S8 W1.1 (roadmap deferred item #1): the SAME cross-engine parity proof, one hop longer ----
+
+    private static final UUID BRAZIL_ID = UUID.randomUUID();
+    private static final UUID USA_ID = UUID.randomUUID();
+    private static final UUID DANGLING_COUNTRY_ID = UUID.randomUUID();
+
+    /**
+     * S8 W1.1: {@code Warehouse} now ALSO has a {@code country -> Country} reference, giving a real
+     * two-hop chain {@code "warehouse.country.name"} (ShipmentEvent -&gt; Warehouse -&gt; Country).
+     * Mirrors the single-hop test's own edge cases one hop further out: one warehouse has a NULL
+     * country and one points at a country id that doesn't exist for this tenant -- both must be
+     * excluded under INNER JOIN semantics, identically on both engines.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("adaptersTwoHop")
+    void groupByTwoHopJoinAgreesAcrossEngines(Supplier<ConceptStore> factory) {
+        ConceptStore store = seededTwoHop(factory.get());
+
+        ConceptAggregateQuery query = new ConceptAggregateQuery(
+                List.of(),
+                List.of(new ConceptAggregateQuery.GroupByField("warehouse.country.name", null)),
+                List.of(new ConceptAggregateQuery.AggregateFunction("total", "sum", "unitsShipped")),
+                List.of(), List.of(), null);
+        ConceptAggregateResult result = store.aggregate(TENANT, "ShipmentEvent", query);
+
+        List<Map<String, Object>> rows = new java.util.ArrayList<>(result.rows());
+        rows.sort(Comparator.comparing(r -> String.valueOf(r.get("warehouse.country.name"))));
+
+        assertEquals(2, rows.size(), "the null-country and dangling-country warehouses' events must be "
+                + "excluded (INNER JOIN semantics, at the SECOND hop), leaving exactly the two real "
+                + "countries: " + rows);
+        assertEquals("brazil", rows.get(0).get("warehouse.country.name"));
+        assertEquals(30L, ((Number) rows.get(0).get("total")).longValue(),
+                "brazil = 10 + 20, the dangling/null-country events excluded");
+        assertEquals("usa", rows.get(1).get("warehouse.country.name"));
+        assertEquals(5L, ((Number) rows.get(1).get("total")).longValue());
+    }
+
+    /** S1 O1's own standard, one hop further: proves the JDBC engine emits TWO chained real
+     *  {@code JOIN} clauses for a two-hop path, not two independent joins nor a single flattened one. */
+    @Test
+    void jdbcEmitsChainedJoinsForATwoHopPath() {
+        ch.qos.logback.classic.Logger storeLogger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(JdbcBusinessConceptStore.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        storeLogger.addAppender(appender);
+        ch.qos.logback.classic.Level previousLevel = storeLogger.getLevel();
+        storeLogger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        try {
+            ConceptStore store = seededTwoHop(newJdbcStoreTwoHop());
+            ConceptAggregateQuery query = new ConceptAggregateQuery(
+                    List.of(),
+                    List.of(new ConceptAggregateQuery.GroupByField("warehouse.country.name", null)),
+                    List.of(new ConceptAggregateQuery.AggregateFunction("total", "sum", "unitsShipped")),
+                    List.of(), List.of(), null);
+            store.aggregate(TENANT, "ShipmentEvent", query);
+        } finally {
+            storeLogger.setLevel(previousLevel);
+            storeLogger.detachAppender(appender);
+        }
+
+        String capturedSql = appender.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .filter(message -> message.startsWith("npdev.aggregate.sql"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no npdev.aggregate.sql DEBUG log line was captured"));
+
+        assertTrue(capturedSql.contains(" JOIN warehouses AS npdev_join0"), "captured SQL: " + capturedSql);
+        assertTrue(capturedSql.contains(" ON npdev_base.warehouse = npdev_join0.id"), "captured SQL: " + capturedSql);
+        assertTrue(capturedSql.contains(" JOIN countries AS npdev_join1"), "captured SQL: " + capturedSql);
+        assertTrue(capturedSql.contains(" ON npdev_join0.country = npdev_join1.id"), "captured SQL: " + capturedSql);
+        assertTrue(capturedSql.contains(" GROUP BY npdev_join1.name"), "captured SQL: " + capturedSql);
+    }
+
+    private static ConceptStore seededTwoHop(ConceptStore store) {
+        store.save(country(BRAZIL_ID, "brazil"));
+        store.save(country(USA_ID, "usa"));
+        store.save(warehouseWithCountry(EAST_ID, BRAZIL_ID));
+        store.save(warehouseWithCountry(WEST_ID, USA_ID));
+        store.save(shipmentEvent(EAST_ID, 10));
+        store.save(shipmentEvent(EAST_ID, 20));
+        store.save(shipmentEvent(WEST_ID, 5));
+        UUID warehouseWithNullCountry = UUID.randomUUID();
+        store.save(warehouseWithCountry(warehouseWithNullCountry, null));
+        store.save(shipmentEvent(warehouseWithNullCountry, 999));               // null country -- excluded
+        UUID warehouseWithDanglingCountry = UUID.randomUUID();
+        store.save(warehouseWithCountry(warehouseWithDanglingCountry, DANGLING_COUNTRY_ID));
+        store.save(shipmentEvent(warehouseWithDanglingCountry, 999));           // dangling country -- excluded
+        return store;
+    }
+
+    private static ConceptRecord country(UUID id, String name) {
+        return new ConceptRecord("Country", id.toString(), TENANT, Map.of("name", name));
+    }
+
+    private static ConceptRecord warehouseWithCountry(UUID id, UUID countryId) {
+        Map<String, Object> data = countryId == null ? Map.of("region", "n/a")
+                : Map.of("region", "n/a", "country", countryId.toString());
+        return new ConceptRecord("Warehouse", id.toString(), TENANT, data);
+    }
+
+    private static CompiledModel twoHopJoinModel() {
+        CompiledConcept country = new CompiledConcept(
+                "Country", "Country", "countries",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("name", "string", "String", false, true, false)
+                )
+        );
+        CompiledConcept warehouse = new CompiledConcept(
+                "Warehouse", "Warehouse", "warehouses",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("region", "string", "String", false, true, false),
+                        new CompiledField("country", "reference", "String", false, false, false,
+                                List.of(), "Country")
+                )
+        );
+        CompiledConcept shipmentEvent = new CompiledConcept(
+                "ShipmentEvent", "ShipmentEvent", "shipment_events",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("warehouse", "reference", "String", false, false, false,
+                                List.of(), "Warehouse"),
+                        new CompiledField("unitsShipped", "int", "Integer", false, true, false)
+                )
+        );
+        return new CompiledModel("s8.w1_1.groupbyjoin.twohop", "1.0.0", "1.0.0",
+                Map.of(country.getName(), country, warehouse.getName(), warehouse,
+                        shipmentEvent.getName(), shipmentEvent));
+    }
+
+    private static ConceptStore newInMemoryStoreTwoHop() {
+        return new InMemoryConceptStore(twoHopJoinModel());
+    }
+
+    private static ConceptStore newJdbcStoreTwoHop() {
+        try {
+            String url = "jdbc:h2:mem:s8-w1_1-groupby-join-twohop-" + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
+            DataSource dataSource = new SingleConnectionUrlDataSource(url);
+            try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE countries (id UUID NOT NULL, name VARCHAR(255), "
+                        + "tenant_id VARCHAR(120) NOT NULL, PRIMARY KEY (id))");
+                statement.execute("CREATE TABLE warehouses (id UUID NOT NULL, region VARCHAR(255), country UUID, "
+                        + "tenant_id VARCHAR(120) NOT NULL, PRIMARY KEY (id))");
+                statement.execute("CREATE TABLE shipment_events (id UUID NOT NULL, warehouse UUID, "
+                        + "units_shipped INT, tenant_id VARCHAR(120) NOT NULL, PRIMARY KEY (id))");
+            }
+            return new JdbcBusinessConceptStore(dataSource, twoHopJoinModel());
+        } catch (SQLException exception) {
+            throw new IllegalStateException("failed to build H2-backed JDBC concept store", exception);
+        }
+    }
+
+    static Stream<Arguments> adaptersTwoHop() {
+        return Stream.of(
+                Arguments.of(Named.of("InMemory adapter", (Supplier<ConceptStore>) ConceptAggregateGroupByJoinPushDownTest::newInMemoryStoreTwoHop)),
+                Arguments.of(Named.of("JDBC/H2 adapter", (Supplier<ConceptStore>) ConceptAggregateGroupByJoinPushDownTest::newJdbcStoreTwoHop))
+        );
+    }
+
     private static ConceptRecord shipmentEvent(UUID warehouseId, int unitsShipped) {
         Map<String, Object> data = warehouseId == null
                 ? Map.of("unitsShipped", unitsShipped)

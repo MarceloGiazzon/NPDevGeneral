@@ -648,15 +648,37 @@ public final class JsonModelParser {
                         requiredText(matchNode, "equals")
                 );
             }
+            // S8 W1.2 (roadmap deferred item #4): "from" is a plain string for copy/split/convert but
+            // an ARRAY of field names for merge (GroupByJoinGrammar-style overload of one JSON key by
+            // shape, not a second differently-named property) -- see ConversionAst's own javadoc.
+            String from = null;
+            List<String> mergeFrom = new ArrayList<>();
+            JsonNode fromNode = conversionNode.get("from");
+            if (fromNode != null && !fromNode.isNull()) {
+                if (fromNode.isArray()) {
+                    for (JsonNode fromElement : fromNode) {
+                        mergeFrom.add(fromElement.asText());
+                    }
+                } else {
+                    from = readText(conversionNode, "from");
+                }
+            }
+            // "with" is a separator LITERAL (e.g. a single space) -- readText()'s isBlank() collapse
+            // (correct for every other field here, which must be non-blank identifiers) would wrongly
+            // drop a legitimate " " or "" separator, so read it raw instead.
+            JsonNode withNode = conversionNode.get("with");
+            String with = (withNode != null && !withNode.isNull()) ? withNode.asText() : null;
             out.add(new com.npdev.dsl.v1.ast.ConversionAst(
                     id,
                     requiredText(conversionNode, "concept"),
                     requiredText(conversionNode, "op"),
-                    readText(conversionNode, "from"),
+                    from,
                     readText(conversionNode, "to"),
                     into,
                     match,
-                    readText(conversionNode, "set")
+                    readText(conversionNode, "set"),
+                    mergeFrom,
+                    with
             ));
         }
         return out;

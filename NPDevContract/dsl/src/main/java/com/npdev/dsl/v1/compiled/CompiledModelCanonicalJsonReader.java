@@ -183,6 +183,11 @@ public final class CompiledModelCanonicalJsonReader {
                 ? null
                 : new CompiledConversion.CompiledConversionLookupMatch(
                         text(matchNode, "concept"), text(matchNode, "on"), text(matchNode, "equals"));
+        // "with" is a separator LITERAL (e.g. a single space or "") -- optionalText()'s isBlank()
+        // collapse would wrongly drop a legitimate " " or "" separator on the round trip, so read it
+        // raw instead (same reasoning as JsonModelParser's own "with" parsing).
+        JsonNode withNode = node.get("with");
+        String with = (withNode != null && !withNode.isNull()) ? withNode.asText() : null;
         return new CompiledConversion(
                 text(node, "id"),
                 text(node, "concept"),
@@ -191,7 +196,9 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "to"),
                 into,
                 match,
-                optionalText(node, "set")
+                optionalText(node, "set"),
+                toStringList(node.get("mergeFrom")),
+                with
         );
     }
 

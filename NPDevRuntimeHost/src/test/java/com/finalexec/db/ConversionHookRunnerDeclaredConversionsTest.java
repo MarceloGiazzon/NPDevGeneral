@@ -23,15 +23,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * S7 Phase B (B13 declarative conversion vocabulary): proves, against a real H2 database, that the
- * EXACT convert.sql {@link ConversionHookEmitter} (NPDevGenerator) generates for each of the three
- * declarative ops actually converts real data when run through the real {@link ConversionHookRunner}
- * -- the fixtures under {@code src/test/resources/db/conversion-hooks/s7-*} are captured verbatim
- * from {@code ConversionHookEmitterDeclaredConversionsTest}'s own generator output (only the table
- * names were changed, to keep this suite's claims from colliding with the sibling P7.5 fixtures).
- * Idempotence (B12's guarantee) is proven by running each hook a second time and confirming it is a
- * true no-op -- {@code ConversionHookRunner.run} returns {@code false} because nothing remains
- * unresolved.
+ * S7 Phase B (B13 declarative conversion vocabulary) + S8 W1.2 (roadmap deferred item #4): proves,
+ * against a real H2 database, that the EXACT convert.sql {@link ConversionHookEmitter}
+ * (NPDevGenerator) generates for each of the five declarative ops actually converts real data when
+ * run through the real {@link ConversionHookRunner} -- the fixtures under {@code
+ * src/test/resources/db/conversion-hooks/s7-*}/{@code s8-*} are captured verbatim from {@code
+ * ConversionHookEmitterDeclaredConversionsTest}'s own generator output (only the table names were
+ * changed, to keep this suite's claims from colliding with the sibling P7.5 fixtures). Idempotence
+ * (B12's guarantee) is proven by running each hook a second time and confirming it is a true no-op
+ * -- {@code ConversionHookRunner.run} returns {@code false} because nothing remains unresolved.
  */
 class ConversionHookRunnerDeclaredConversionsTest {
 
@@ -147,6 +147,91 @@ class ConversionHookRunnerDeclaredConversionsTest {
         boolean appliedAgain = ConversionHookRunner.run(dataSource, manifest, historyWriter);
         assertTrue(history.isEmpty(), "a fully-converged conversion must write zero history on rerun: " + history);
         assertEquals(false, appliedAgain);
+    }
+
+    /** S8 W1.2 (roadmap deferred item #4): merge is split's inverse -- proves two source columns
+     *  concatenate with the declared separator into one new column. */
+    @Test
+    void mergeConversionCombinesBothSourceColumnsIntoTheNewColumn_thenIsANoOpOnRerun() throws SQLException {
+        exec("CREATE TABLE s8_customers (id BIGINT PRIMARY KEY, first_name VARCHAR(100), last_name VARCHAR(100))");
+        exec("INSERT INTO s8_customers (id, first_name, last_name) VALUES (1, 'Ada', 'Lovelace')");
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                "s8_customers", Map.of("id", "BIGINT", "first_name", "VARCHAR(100)", "last_name", "VARCHAR(100)"),
+                List.of("id", "first_name", "last_name"), List.of("id", "first_name", "last_name", "display_name"));
+
+        boolean applied = ConversionHookRunner.run(dataSource, manifest, historyWriter);
+
+        assertTrue(applied, "the merge hook must have run");
+        assertEquals("Ada Lovelace", singleStringQuery("SELECT display_name FROM s8_customers WHERE id = 1"));
+        assertTrue(history.stream().map(row -> row[1]).toList().contains("HOOK_APPLIED"));
+
+        history.clear();
+        boolean appliedAgain = ConversionHookRunner.run(dataSource, manifest, historyWriter);
+        assertTrue(history.isEmpty(), "a fully-converged conversion must write zero history on rerun: " + history);
+        assertEquals(false, appliedAgain, "rerunning an already-resolved conversion must be a true no-op");
+        assertEquals("Ada Lovelace", singleStringQuery("SELECT display_name FROM s8_customers WHERE id = 1"),
+                "the value must be unchanged by the idempotent rerun");
+    }
+
+    /** S8 W1.2: X0 rule, data-layer half for merge -- a row missing EITHER source field is left NULL
+     *  by the WHERE guard, and the closing ALTER COLUMN ... SET NOT NULL must fail the whole hook
+     *  rather than silently merging a blank in for the missing field. */
+    @Test
+    void mergeConversionWithAMissingSourceFieldFailsTheBootLoudlyRatherThanLeavingANullResidue() throws SQLException {
+        exec("CREATE TABLE s8_customers (id BIGINT PRIMARY KEY, first_name VARCHAR(100), last_name VARCHAR(100))");
+        exec("INSERT INTO s8_customers (id, first_name, last_name) VALUES (1, 'Ada', NULL)");
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                "s8_customers", Map.of("id", "BIGINT", "first_name", "VARCHAR(100)", "last_name", "VARCHAR(100)"),
+                List.of("id", "first_name", "last_name"), List.of("id", "first_name", "last_name", "display_name"));
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> ConversionHookRunner.run(dataSource, manifest, historyWriter));
+        assertTrue(exception.getMessage().contains("s8-merge-name"), exception.getMessage());
+    }
+
+    /** S8 W1.2: convert is copy with an explicit CAST -- proves a string column's numeric-looking
+     *  values populate a genuinely INTEGER-typed new column (not just a same-typed copy). */
+    @Test
+    void convertConversionCastsTheSourceColumnIntoTheNewTypedColumn_thenIsANoOpOnRerun() throws SQLException {
+        exec("CREATE TABLE s8_orders (id BIGINT PRIMARY KEY, priority_text VARCHAR(20))");
+        exec("INSERT INTO s8_orders (id, priority_text) VALUES (1, '3')");
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                "s8_orders", Map.of("id", "BIGINT", "priority_text", "VARCHAR(20)"),
+                List.of("id", "priority_text"), List.of("id", "priority_text", "priority_number"));
+
+        boolean applied = ConversionHookRunner.run(dataSource, manifest, historyWriter);
+
+        assertTrue(applied, "the convert hook must have run");
+        Object resolved;
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT priority_number FROM s8_orders WHERE id = 1");
+                ResultSet resultSet = statement.executeQuery()) {
+            resultSet.next();
+            resolved = resultSet.getObject(1);
+        }
+        assertEquals(3, ((Number) resolved).intValue());
+
+        history.clear();
+        boolean appliedAgain = ConversionHookRunner.run(dataSource, manifest, historyWriter);
+        assertTrue(history.isEmpty(), "a fully-converged conversion must write zero history on rerun: " + history);
+        assertEquals(false, appliedAgain);
+    }
+
+    /** S8 W1.2: the plan's own "one honest decision" for convert -- a row whose value cannot be
+     *  CAST to the target type fails the WHOLE conversion loudly (a real SQLException from the CAST
+     *  itself, rolling back the hook's transaction), never a silently partial column. */
+    @Test
+    void convertConversionOnAnUnconvertibleValueFailsTheBootLoudlyRatherThanLeavingAPartialColumn() throws SQLException {
+        exec("CREATE TABLE s8_orders (id BIGINT PRIMARY KEY, priority_text VARCHAR(20))");
+        exec("INSERT INTO s8_orders (id, priority_text) VALUES (1, 'urgent')");
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                "s8_orders", Map.of("id", "BIGINT", "priority_text", "VARCHAR(20)"),
+                List.of("id", "priority_text"), List.of("id", "priority_text", "priority_number"));
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> ConversionHookRunner.run(dataSource, manifest, historyWriter));
+        assertTrue(exception.getMessage().contains("s8-convert-priority"), exception.getMessage());
     }
 
     // ---- helpers (mirrors ConversionHookRunnerH2Test's own) ----
