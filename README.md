@@ -75,11 +75,17 @@ is the author-facing tour of concepts, flows, capabilities, panels, and events.
 
 ## Honest limitations
 
-- **Custom business screens are hand-written.** NPDev generates a generic CRUD admin UI against
-  the REST API it also generates; a polished, bespoke frontend is not generated and has to be
-  built against that API like any other client.
-- **One bounded context per model.** A single JSON model compiles to a single deployable app; it
-  is not a multi-service/microservice generator.
+- **Custom business screens: mostly declarative now, fully bespoke still hand-written.** Beyond
+  the generic CRUD admin UI, a model can declare Panels (custom read/action screens, nested
+  master-detail) and Aggregates (multi-region editors) against the generated REST API without
+  writing frontend code — the console this was validated against (WmsOffice's crossdocking
+  console) reached full behavioral parity with its hand-written original, zero cannot-express
+  gaps. A pixel-custom, fully bespoke frontend is still hand-built against the generated API.
+- **One deployable app per model, not a microservice generator.** A model can declare multiple
+  bounded contexts (`contexts[]`, explicit `imports[]` for cross-context references, optional
+  per-context `physicallyIsolate: true` for separate table naming — see
+  `docs/adr/ADR-0011-bounded-contexts.md`), but every context in a model still compiles into the
+  SAME single app and database; contexts are a naming/DSL-level boundary, not a deployment one.
 - **Pre-1.0 and deliberately unstable.** See "Stability policy" below and `BREAKING.md`.
 - **Windows-first tooling.** Development scripts (`scripts/**/*.ps1`) assume PowerShell; the
   portable `npdev`/`npdev.bat` CLI and CI both also run on Linux, but the day-to-day maintainer
