@@ -232,11 +232,26 @@ def validate_json_schema(schema: Path, instance: Path) -> dict:
         errors = result.get("errors") or []
         detail = "; ".join(
             f"{error.get('path', '/')} {error.get('keyword', '')}: {error.get('message', '')}".strip()
+            + _allowed_value_suffix(error)
             for error in errors[:5]
             if isinstance(error, dict)
         )
         raise CliError("canonical model schema validation failed" + (f": {detail}" if detail else ""))
     return result
+
+
+def _allowed_value_suffix(error: dict) -> str:
+    # F4/F5: ajv's default message text for "const"/"enum" violations never names the
+    # value(s) it wanted ("must be equal to constant", "must be equal to one of the
+    # allowed values") -- exactly the defect that made a wrong dslVersion undiagnosable
+    # and turned a type-name typo into a search. Both keywords carry the answer in
+    # `params`; surface it instead of leaving the reader to search the schema for it.
+    params = error.get("params") if isinstance(error.get("params"), dict) else {}
+    if "allowedValue" in params:
+        return f" (expected: {params['allowedValue']!r})"
+    if "allowedValues" in params and isinstance(params["allowedValues"], list):
+        return f" (allowed: {', '.join(repr(v) for v in params['allowedValues'])})"
+    return ""
 
 
 def validate_official_model(path: Path) -> None:

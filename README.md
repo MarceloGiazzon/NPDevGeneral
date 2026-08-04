@@ -104,7 +104,13 @@ release before.
 
 ## License and status
 
-Apache-2.0 (see `LICENSE`). Pre-1.0; current tag `beta1.1`.
+Apache-2.0 (see `LICENSE`). Pre-1.0; the git tag (e.g. `beta1.4`) is the authoritative release
+version. Two other numbers exist and mean something narrower: `npdev --version` reports the
+portable CLI wrapper's own version, and the Gradle module version pinned in each module's
+`build.gradle` (e.g. `NPDevContract/dsl/build.gradle`) is an internal JAR-artifact version, not the
+platform's. Separately, every model declares `"dslVersion": "1.0.0"` — that is the *model JSON
+format* version, unrelated to any of the above; it has never changed, including across the
+"DSL 2.0" flowStep-vocabulary change (`BREAKING.md`).
 
 ## Future direction: Box/Object/Truth
 

@@ -238,6 +238,15 @@ model trips this and needs a real fix: split the flow at the aggregate boundary,
 
 ## 2026-07-27 — DSL 2.0: flowStep vocabulary narrowed to 12 canonical names
 
+**"DSL 2.0" names this vocabulary-narrowing milestone, not a value you write anywhere.** It is
+unrelated to the `dslVersion` field every model declares (`ModelAst.DEFAULT_DSL_VERSION`), which
+stays `"1.0.0"` and means *model-format* version -- `dslVersion` has never changed and this change
+does not bump it. Writing `"dslVersion": "2.0.0"` in a model is a mistake, not an upgrade; the
+schema rejects it (`/dslVersion const: must be equal to constant`, or -- with `npdev validate
+model`'s default semantic check -- the clearer `Unsupported dslVersion '2.0.0'. Supported value:
+"1.0.0".`). If you're migrating a model to the new flowStep vocabulary, run `npdev migrate dsl-2`
+below; don't touch `dslVersion`.
+
 `model.schema.json`'s `flowStep.type` enum dropped from 23 accepted spellings to 12
 (`invariantCheck`, `capabilityCall`, `generatedAction`, `emitEvent`, `scheduleEvent`, `return`,
 `branch`, `awaitEvent`, `createConcept`, `updateConcept`, `map`, `forEach` — the camelCase of the
