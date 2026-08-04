@@ -6,45 +6,13 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**137 item(s) migrated: 1 open/partial, 136 done.**
+**137 item(s) migrated: 0 open/partial, 137 done.**
 
 ## Open / partial
 
-| ID | Title | Type | Sev | Status | Opened |
-|---|---|---|---|---|---|
-| REG-134 | main is left 29+ commits behind beta1-vision-spine with no tag covering S2-S8 or F1-F9 -- a fresh clone of the repo's own default branch gets none of this session's (or the last several sessions') work, including the first-run fixes (I0-I8) this same plan produces | GAP | HIGH | OPEN | 2026-08-04 |
+None currently open.
 
-### Detail
-
-### REG-134 — main is left 29+ commits behind beta1-vision-spine with no tag covering S2-S8 or F1-F9 -- a fresh clone of the repo's own default branch gets none of this session's (or the last several sessions') work, including the first-run fixes (I0-I8) this same plan produces
-
-**Type:** GAP · **Severity:** HIGH · **Status:** OPEN
-**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N5), which the plan itself flags as "not paperwork
--- it gates the trial" (see the plan's own HARNESS_AND_RELEASE_STRATEGY Part A). Every session
-since beta1-vision-spine branched off has landed real, verified, pushed work (S2 bounded
-contexts, S4 groupBy joins, S7 B13 conversion vocabulary, S8 Waves 1-4 physical isolation, and
-now this session's F1-F9 first-impression fixes plus I0-I8) exclusively onto
-origin/beta1-vision-spine -- main has received none of it, and no git tag exists that names a
-commit newcomers should actually clone/checkout to get a coherent, working state.
-
-Practical consequence, directly relevant to this same plan: this session's own first-run harness
-(I1) explicitly defaults REPO_REF=main (scripts/quality/firstrun-harness/Dockerfile's own
-ENV REPO_REF=main) -- meaning the harness's DEFAULT clone-based mode tests a branch that is
-missing this entire plan's fixes, and would report the SAME RED failures this session already
-fixed on beta1-vision-spine. The harness's own README.md documents overriding REPO_REF for
-branch-based testing, but a first-time user following README's own instructions literally would
-hit `main`, not the branch with the fixes.
-
-**Surface:** `release-management/branch-posture`
-
-Not fixed here -- explicitly out of scope per firstrun-helpers/PLAN.md §12's own prohibition
-("do not merge to main or tag -- a separate, authorized step for after this session"). This item
-exists so the decision is visible and tracked, not forgotten: merging beta1-vision-spine to main
-and cutting a tag that covers S2-S8/F1-F9/I0-I8 is a deliberate, owner-authorized release step,
-not a mechanical fix a session should take on its own initiative. Closing this item means that
-merge+tag has actually happened, not that a plan for it exists.
-
-## Done (136)
+## Done (137)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -90,6 +58,7 @@ merge+tag has actually happened, not that a plan for it exists.
 | REG-131 | npdev run app is broken on any machine other than the author's own: npdev_cli.py's _build_phase hardcodes env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs"))) -- an absolute Windows D:\ path with no fallback for a machine where that drive/path does not exist | BUG | HIGH | DONE | 2026-08-04 |
 | REG-132 | No gate exists on the claim 'the documented setup instructions actually work on a clean machine' -- six other defect-family shapes (four-place field threading, pack-composition, twin-pair drift, blocker-citation freshness, script-inventory/invocation, corpus-role coverage) all have a mechanical control; this one had none, and its absence is what let F3/F6/F8, a stale beta1.1 claim, and all three onboarding walls ship undetected | GAP | MEDIUM | DONE | 2026-08-04 |
 | REG-133 | Doc/report generators (generate_dsl_reference.py and siblings) are undeclared consumers of model.schema.json -- nothing enumerates what reads the schema, so an edit to it can silently degrade a generator with no error anywhere, the same shape commit 8cd9860 demonstrated live | GAP | MEDIUM | DONE | 2026-08-04 |
+| REG-134 | main is left 29+ commits behind beta1-vision-spine with no tag covering S2-S8 or F1-F9 -- a fresh clone of the repo's own default branch gets none of this session's (or the last several sessions') work, including the first-run fixes (I0-I8) this same plan produces | GAP | HIGH | DONE | 2026-08-04 |
 | REG-135 | Accepted boundaries (NPDev's designed limits, e.g. B13's 'no Java data-migration hooks') carry no machine-readable identity: ValidationDiagnostic has code/helpKey/suggestedFix but no boundaryId, B-numbers (B1/B2/B15/B27/...) appear in the validation package as Java comments only, and docs/ACCEPTED_BOUNDARIES.md is a markdown table nothing can query except a human reading it | GAP | MEDIUM | DONE | 2026-08-04 |
 | REG-136 | root/NPDevGenerator/NPDevKernel gradle.properties hardcode org.gradle.projectcachedir to this machine's own D:/WorkSpace/NPDev/Build/gradle-project-caches/<module> -- a Gradle START PARAMETER read before any -P/env override can apply, so every gradlew invocation the CLI or sync-runtimehost-libs.ps1 makes fails on any machine without that exact path, breaking the FIRST command in README's own Quickstart (./npdev validate model) | BUG | HIGH | DONE | 2026-08-04 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
@@ -2467,6 +2436,35 @@ lands without a corresponding check that every registered consumer still produce
 shape). This is explicitly the kind of registry-plus-gate pattern
 check-twin-pair-consistency.py already establishes for two other chains; a third instance here
 would be additive, not a new mechanism.
+
+### REG-134 — main is left 29+ commits behind beta1-vision-spine with no tag covering S2-S8 or F1-F9 -- a fresh clone of the repo's own default branch gets none of this session's (or the last several sessions') work, including the first-run fixes (I0-I8) this same plan produces
+
+**Type:** GAP · **Severity:** HIGH · **Status:** DONE (2026-08-04)
+**Verification:** VERIFIED_LIVE
+**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N5), which the plan itself flags as "not paperwork
+-- it gates the trial" (see the plan's own HARNESS_AND_RELEASE_STRATEGY Part A). Every session
+since beta1-vision-spine branched off has landed real, verified, pushed work (S2 bounded
+contexts, S4 groupBy joins, S7 B13 conversion vocabulary, S8 Waves 1-4 physical isolation, and
+now this session's F1-F9 first-impression fixes plus I0-I8) exclusively onto
+origin/beta1-vision-spine -- main has received none of it, and no git tag exists that names a
+commit newcomers should actually clone/checkout to get a coherent, working state.
+
+Practical consequence, directly relevant to this same plan: this session's own first-run harness
+(I1) explicitly defaults REPO_REF=main (scripts/quality/firstrun-harness/Dockerfile's own
+ENV REPO_REF=main) -- meaning the harness's DEFAULT clone-based mode tests a branch that is
+missing this entire plan's fixes, and would report the SAME RED failures this session already
+fixed on beta1-vision-spine. The harness's own README.md documents overriding REPO_REF for
+branch-based testing, but a first-time user following README's own instructions literally would
+hit `main`, not the branch with the fixes.
+
+**Surface:** `release-management/branch-posture`
+
+Not fixed here -- explicitly out of scope per firstrun-helpers/PLAN.md §12's own prohibition
+("do not merge to main or tag -- a separate, authorized step for after this session"). This item
+exists so the decision is visible and tracked, not forgotten: merging beta1-vision-spine to main
+and cutting a tag that covers S2-S8/F1-F9/I0-I8 is a deliberate, owner-authorized release step,
+not a mechanical fix a session should take on its own initiative. Closing this item means that
+merge+tag has actually happened, not that a plan for it exists.
 
 ### REG-135 — Accepted boundaries (NPDev's designed limits, e.g. B13's 'no Java data-migration hooks') carry no machine-readable identity: ValidationDiagnostic has code/helpKey/suggestedFix but no boundaryId, B-numbers (B1/B2/B15/B27/...) appear in the validation package as Java comments only, and docs/ACCEPTED_BOUNDARIES.md is a markdown table nothing can query except a human reading it
 

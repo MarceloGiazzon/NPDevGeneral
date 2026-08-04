@@ -2,8 +2,10 @@ id: REG-134
 title: "main is left 29+ commits behind beta1-vision-spine with no tag covering S2-S8 or F1-F9 -- a fresh clone of the repo's own default branch gets none of this session's (or the last several sessions') work, including the first-run fixes (I0-I8) this same plan produces"
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-04
+closed: 2026-08-04
+verification: VERIFIED_LIVE
 surface: release-management/branch-posture
 source: |
   Filed per firstrun-helpers/PLAN.md §0c (item N5), which the plan itself flags as "not paperwork
@@ -29,3 +31,29 @@ detail: |
   and cutting a tag that covers S2-S8/F1-F9/I0-I8 is a deliberate, owner-authorized release step,
   not a mechanical fix a session should take on its own initiative. Closing this item means that
   merge+tag has actually happened, not that a plan for it exists.
+
+resolution: |
+  DONE (close-five/PLAN.md I5, 2026-08-04), executed only after explicit owner authorization was
+  asked for and given -- I1-I4 (REG-131/133/135/130) all landed first, T2 green, exactly matching
+  this item's own stated preconditions.
+
+    git checkout main
+    git merge --ff-only beta1-vision-spine   # 89eb945..6167403, clean fast-forward, no conflict
+    git push origin main                      # 45218e3..6167403
+    git tag -a beta1.5 -m "S2-S8, F1-F9, first-run harness, REG-128..136"
+    git push origin beta1.5
+
+  Then ran the acceptance test this item's own detail names as the reason it matters: the
+  first-run harness in its REAL DEFAULT mode (REPO_REF=main, no override) -- a bare container
+  cloning the project's actual default branch as a real stranger would, following README.md
+  literally. Before this merge, that exact command could not pass by construction (main was 165
+  commits behind, missing every fix this and the prior session's PLAN.md built). Result: GREEN,
+  21 checks, 0 failures -- HEAD correctly resolved to 6167403, every Quickstart command passed,
+  the generated app booted and responded on :8080, and the new npdev run app check (REG-131, this
+  same session) also passed. Evidence saved at
+  D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\first-impression\
+  harness-GREEN-main-beta1.5-acceptance-test-2026-08-04.txt.
+
+  Per this plan's own explicit scope: no further action taken beyond the merge/tag/verify
+  sequence above -- "the trial" and everything in §8/§13 (npdev setup/doctor/init/mcp
+  install/studio, Maven Central) remain explicitly out of scope.
