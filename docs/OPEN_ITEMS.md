@@ -6,122 +6,15 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**137 item(s) migrated: 5 open/partial, 132 done.**
+**137 item(s) migrated: 1 open/partial, 136 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
-| REG-130 | npdev --version's story is only half-resolved: npdev_cli.py's own VERSION constant is 0.9.0, NPDevContract/dsl/build.gradle's is 0.1.0, and the git tag is beta1.4, with no documented relationship between the three -- a user reading any one of them has no way to know it is not the whole picture | GAP | LOW | OPEN | 2026-08-04 |
-| REG-131 | npdev run app is broken on any machine other than the author's own: npdev_cli.py's _build_phase hardcodes env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs"))) -- an absolute Windows D:\ path with no fallback for a machine where that drive/path does not exist | BUG | HIGH | OPEN | 2026-08-04 |
-| REG-133 | Doc/report generators (generate_dsl_reference.py and siblings) are undeclared consumers of model.schema.json -- nothing enumerates what reads the schema, so an edit to it can silently degrade a generator with no error anywhere, the same shape commit 8cd9860 demonstrated live | GAP | MEDIUM | OPEN | 2026-08-04 |
 | REG-134 | main is left 29+ commits behind beta1-vision-spine with no tag covering S2-S8 or F1-F9 -- a fresh clone of the repo's own default branch gets none of this session's (or the last several sessions') work, including the first-run fixes (I0-I8) this same plan produces | GAP | HIGH | OPEN | 2026-08-04 |
-| REG-135 | Accepted boundaries (NPDev's designed limits, e.g. B13's 'no Java data-migration hooks') carry no machine-readable identity: ValidationDiagnostic has code/helpKey/suggestedFix but no boundaryId, B-numbers (B1/B2/B15/B27/...) appear in the validation package as Java comments only, and docs/ACCEPTED_BOUNDARIES.md is a markdown table nothing can query except a human reading it | GAP | MEDIUM | OPEN | 2026-08-04 |
 
 ### Detail
-
-### REG-130 — npdev --version's story is only half-resolved: npdev_cli.py's own VERSION constant is 0.9.0, NPDevContract/dsl/build.gradle's is 0.1.0, and the git tag is beta1.4, with no documented relationship between the three -- a user reading any one of them has no way to know it is not the whole picture
-
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
-**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N1), found during first-impression review of the
-portable npdev CLI. F4 (FIRST_IMPRESSION_SPEC.md) fixed the model-DSL-version half of this
-(npdev --version now separately reports the DSL/model-format version alongside the CLI's own),
-but the underlying three-numbers-no-relationship problem is still live:
-
-  npdev_cli.py:22        VERSION = "0.9.0"      (the CLI wrapper's own version)
-  NPDevContract/dsl/build.gradle:6  version = '0.1.0'   (the DSL/model-compiler jar's version)
-  git tag (most recent)  beta1.4                (the platform release tag)
-
-None of these track each other, and nothing in --version's own output (even after F4) tells a
-user which of the three is "the platform version" a bug report should cite, or what changing one
-implies about the others.
-
-**Surface:** `cli/version-reporting`
-**Files:**
-- `NPDevCli/npdev_cli.py`
-- `NPDevContract/dsl/build.gradle`
-
-Not fixed here -- explicitly out of scope for this session per firstrun-helpers/PLAN.md §13 (a
-versioning-scheme decision, not a mechanical fix). Two real shapes for whoever picks this up:
-(1) collapse to one number the CLI, the DSL jar, and the git tag all derive from (a single
-VERSION file read by both npdev_cli.py and build.gradle, with the git tag applied to that same
-value at release time); (2) keep three numbers but make --version's own output explicitly name
-what each one means and how they relate, so a report never needs to guess. Either way, whichever
-fix lands should also update this item to DONE citing the chosen shape.
-
-### REG-131 — npdev run app is broken on any machine other than the author's own: npdev_cli.py's _build_phase hardcodes env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs"))) -- an absolute Windows D:\ path with no fallback for a machine where that drive/path does not exist
-
-**Type:** BUG · **Severity:** HIGH · **Status:** OPEN
-**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N2), found during the same review that produced the
-Docker-based first-run harness (I1). README's Quickstart now correctly NAMES the
-sync-runtimehost-libs.ps1 -BuildLocalJars step a newcomer must run first (I2's own fix, this
-session), but even after that step succeeds, npdev run app's own _build_phase helper
-(NPDevCli/npdev_cli.py:1309, confirmed current -- an earlier draft of this finding cited line
-1239, which shifted after this session's CLI edits) unconditionally falls back to a hardcoded
-absolute path that only exists on the platform author's own machine:
-
-    env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs")))
-
-On any other machine (a different drive letter, a non-Windows OS, or simply a different Build
-root), this silently sets an env var pointing at a directory that does not exist, rather than
-either deriving the SAME repo-relative convention scripts/npdev-common.ps1's
-Get-NPDevRuntimeHostLibsDir already uses (`<repo>.parent/Build/runtimehost-libs`) or leaving the
-var unset so a real absence is surfaced as a clear error instead of a wrong path.
-
-Related to, but distinct from, REG-128 (DONE, this session): REG-128 fixed the Groovy-side
-default inside build.gradle.template; this item is the Python CLI's OWN separate hardcoded
-fallback, one layer up, still pointing at the author's literal machine path.
-
-**Surface:** `cli/run-app, build-tooling/runtimehost-libs-staging`
-**Files:**
-- `NPDevCli/npdev_cli.py`
-
-Not fixed here -- out of scope for firstrun-helpers/PLAN.md's session (which named this "probed,
-not fixed" in its own §0c table). The correct fix almost certainly mirrors REG-128's own
-resolution: derive `<repo>.parent/Build/runtimehost-libs` from the CLI's own known repo root
-(npdev_cli.py already computes a repo-root-relative path for other purposes) instead of a
-literal `D:/WorkSpace/NPDev/...` string, with NPDEV_RUNTIMEHOST_LIBS_DIR/NPDEV_BUILD_ROOT env
-overrides still winning first. This is the harder half of "does the README's documented path
-actually work on someone else's machine" -- the first-run harness (I1, this session) does not
-exercise `npdev run app` at all (it defers to `java -jar` directly per the README rewrite), so
-this bug would NOT be caught by the harness as it stands today; closing it should include either
-extending the harness to cover `npdev run app`, or explicitly noting the harness's blind spot.
-
-### REG-133 — Doc/report generators (generate_dsl_reference.py and siblings) are undeclared consumers of model.schema.json -- nothing enumerates what reads the schema, so an edit to it can silently degrade a generator with no error anywhere, the same shape commit 8cd9860 demonstrated live
-
-**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
-**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N4), which the plan itself flags as "the one I would
-file first": it is the same shape as the four-place model-array-key chain and the
-pack-composition chain already tracked in scripts/quality/twin-pair-registry.json (CLAUDE.md's
-own documented "adding a top-level model array field" section) -- an edit in one place with
-consumers nobody enumerated, discovered only after the fact.
-
-Commit 8cd9860 (the model that this plan itself was written against) is the concrete evidence:
-a schema edit there caused generate_dsl_reference.py to silently degrade its output with no
-error anywhere in the pipeline, caught only by a human noticing the generated reference doc
-looked wrong -- not by any gate. model.schema.json is already known to be duplicated across four
-physical copies (per CLAUDE.md's own "model.schema.json is duplicated in 4 places" section,
-enforced by check-schema-mirror-consistency.py), but that check only verifies the four copies
-agree with EACH OTHER -- it says nothing about who reads any of them, or whether a change that
-keeps all four copies in sync can still break a downstream consumer that assumed the old shape.
-
-**Surface:** `quality-gates/schema-consumer-registry`
-**Files:**
-- `NPDevCli/generate_dsl_reference.py`
-- `scripts/quality/check-schema-mirror-consistency.py`
-- `scripts/quality/twin-pair-registry.json`
-
-Not fixed here -- out of scope for firstrun-helpers/PLAN.md's session (probed and named, not
-built). The shape of a fix, per the plan's own reasoning: a small registry (JSON or a new
-twin-pair-registry.json-style file) enumerating every script/generator that reads
-model.schema.json directly (generate_dsl_reference.py is the confirmed one; there may be others
--- an actual grep for `model.schema.json`/`json.schema` reads across NPDevCli/NPDevMcp/scripts
-has not yet been done as part of filing this item), plus a gate that fails when a schema edit
-lands without a corresponding check that every registered consumer still produces sane output
-(even a coarse "did the generator's output change unexpectedly" diff would catch the 8cd9860
-shape). This is explicitly the kind of registry-plus-gate pattern
-check-twin-pair-consistency.py already establishes for two other chains; a third instance here
-would be additive, not a new mechanism.
 
 ### REG-134 — main is left 29+ commits behind beta1-vision-spine with no tag covering S2-S8 or F1-F9 -- a fresh clone of the repo's own default branch gets none of this session's (or the last several sessions') work, including the first-run fixes (I0-I8) this same plan produces
 
@@ -151,44 +44,7 @@ and cutting a tag that covers S2-S8/F1-F9/I0-I8 is a deliberate, owner-authorize
 not a mechanical fix a session should take on its own initiative. Closing this item means that
 merge+tag has actually happened, not that a plan for it exists.
 
-### REG-135 — Accepted boundaries (NPDev's designed limits, e.g. B13's 'no Java data-migration hooks') carry no machine-readable identity: ValidationDiagnostic has code/helpKey/suggestedFix but no boundaryId, B-numbers (B1/B2/B15/B27/...) appear in the validation package as Java comments only, and docs/ACCEPTED_BOUNDARIES.md is a markdown table nothing can query except a human reading it
-
-**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
-**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N6); full analysis in
-NPDev_General__OutsideRepo/firstrun-helpers/DEFERRED_ANALYSIS.md §2. When a user's model hits a
-designed platform limit (not a mistake in their model, a boundary NPDev has deliberately chosen
-not to support -- B13's "no Java data-migration hooks" is the analysis's running example), the
-diagnostic they receive is rendered identically to a real user error: same ERROR severity, no
-link to docs/ACCEPTED_BOUNDARIES.md's own entry, no indication the tool is behaving correctly and
-their model is not wrong. helpKey already exists and already ships
-(e.g. "validation.semantic.concept_invariant_error") -- it is the natural extension point, just
-never pointed at a boundary registry. npdev_check_support (the MCP tool) queries the ledger for
-this today, but that is AI-facing only; there is no human-facing equivalent inside the CLI's own
-diagnostic output.
-
-**Surface:** `dsl/validation-diagnostics, docs/accepted-boundaries`
-**Files:**
-- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation`
-- `docs/ACCEPTED_BOUNDARIES.md`
-
-Not fixed here -- out of scope for firstrun-helpers/PLAN.md's session (explicitly named a
-deferred item, §13). DEFERRED_ANALYSIS.md §2.3 already lays out a decidable, ~2-day shape agent
-work could execute without needing the trial's own observations first:
-  1. Make boundaries machine-readable: ledger/boundaries/*.yml (or one JSON registry) with
-     id/title/userFacingText/workaround/enforcingDiagnosticCodes[]/status, generating or
-     accompanying docs/ACCEPTED_BOUNDARIES.md rather than that file being hand-maintained prose.
-  2. Add boundaryId to ValidationDiagnostic, populated wherever a diagnostic fires BECAUSE of a
-     boundary rather than because of a user error.
-  3. Render a boundary-sourced diagnostic as LIMIT, not ERROR, in CLI output -- the analysis's
-     own framing: "LIMIT tells the user the tool is behaving correctly," which is the entire
-     difference between "this is broken" and "this doesn't do that yet."
-A twin-pair gate (every hittable boundary has an enforcing diagnostic code and vice versa) would
-be the natural mechanical control once 1-2 exist, following the same pattern
-check-twin-pair-consistency.py already uses for two other chains. Only the CONTENT of
-userFacingText/workaround strings for the top boundaries is named as needing real user
-observation (the trial) -- the mechanism itself does not.
-
-## Done (132)
+## Done (136)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -230,7 +86,11 @@ observation (the trial) -- the mechanism itself does not.
 | REG-128 | NPDevRuntimeHost/build.gradle's embedded runtimehost-libs-dir fallback (resolveNpdevRuntimeLibsDir) still defaults to <repo>__OutsideRepo/runtimehost-libs, never updated by the LC-C4/Wave 1.4 unification that moved sync-runtimehost-libs.ps1 and Build-NpdevApp.ps1 to Build/runtimehost-libs -- and run-runtimehost-gate.ps1 never bridges the gap with NPDEV_RUNTIMEHOST_LIBS_DIR, so its assembled-app test run can silently read stale jars from a directory the gate's own sync step never writes to | BUG | MEDIUM | DONE | 2026-08-04 |
 | REG-129 | businessTableIndexes (the schema-realization manifest field B3 surplus-constraint classification depends on) has a documented scope of unique-constraint + bond-lookup indexes only -- it does not capture LNCH-6's implicit panel/query-driven secondary indexes or the author-declared concept.indexes[] escape hatch, both of which emit real DDL. Confirmed on WmsOffice's live database: 17 live indexes across 13 tables, every one idx_<table>_<field> on (tenant_id, field) -- LNCH-6's own exact naming/shape -- classified FOREIGN by an otherwise-correct, 15/15-vector-tested classifier, purely because the manifest never told it these indexes exist. | BUG | MEDIUM | DONE | 2026-08-04 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
+| REG-130 | npdev --version's story is only half-resolved: npdev_cli.py's own VERSION constant is 0.9.0, NPDevContract/dsl/build.gradle's is 0.1.0, and the git tag is beta1.4, with no documented relationship between the three -- a user reading any one of them has no way to know it is not the whole picture | GAP | LOW | DONE | 2026-08-04 |
+| REG-131 | npdev run app is broken on any machine other than the author's own: npdev_cli.py's _build_phase hardcodes env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs"))) -- an absolute Windows D:\ path with no fallback for a machine where that drive/path does not exist | BUG | HIGH | DONE | 2026-08-04 |
 | REG-132 | No gate exists on the claim 'the documented setup instructions actually work on a clean machine' -- six other defect-family shapes (four-place field threading, pack-composition, twin-pair drift, blocker-citation freshness, script-inventory/invocation, corpus-role coverage) all have a mechanical control; this one had none, and its absence is what let F3/F6/F8, a stale beta1.1 claim, and all three onboarding walls ship undetected | GAP | MEDIUM | DONE | 2026-08-04 |
+| REG-133 | Doc/report generators (generate_dsl_reference.py and siblings) are undeclared consumers of model.schema.json -- nothing enumerates what reads the schema, so an edit to it can silently degrade a generator with no error anywhere, the same shape commit 8cd9860 demonstrated live | GAP | MEDIUM | DONE | 2026-08-04 |
+| REG-135 | Accepted boundaries (NPDev's designed limits, e.g. B13's 'no Java data-migration hooks') carry no machine-readable identity: ValidationDiagnostic has code/helpKey/suggestedFix but no boundaryId, B-numbers (B1/B2/B15/B27/...) appear in the validation package as Java comments only, and docs/ACCEPTED_BOUNDARIES.md is a markdown table nothing can query except a human reading it | GAP | MEDIUM | DONE | 2026-08-04 |
 | REG-136 | root/NPDevGenerator/NPDevKernel gradle.properties hardcode org.gradle.projectcachedir to this machine's own D:/WorkSpace/NPDev/Build/gradle-project-caches/<module> -- a Gradle START PARAMETER read before any -P/env override can apply, so every gradlew invocation the CLI or sync-runtimehost-libs.ps1 makes fails on any machine without that exact path, breaking the FIRST command in README's own Quickstart (./npdev validate model) | BUG | HIGH | DONE | 2026-08-04 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
@@ -2454,6 +2314,75 @@ validates cleanly but 500s at runtime with no diagnostic naming the real cause.
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-13`
 
+### REG-130 — npdev --version's story is only half-resolved: npdev_cli.py's own VERSION constant is 0.9.0, NPDevContract/dsl/build.gradle's is 0.1.0, and the git tag is beta1.4, with no documented relationship between the three -- a user reading any one of them has no way to know it is not the whole picture
+
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-08-04)
+**Verification:** VERIFIED_LIVE
+**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N1), found during first-impression review of the
+portable npdev CLI. F4 (FIRST_IMPRESSION_SPEC.md) fixed the model-DSL-version half of this
+(npdev --version now separately reports the DSL/model-format version alongside the CLI's own),
+but the underlying three-numbers-no-relationship problem is still live:
+
+  npdev_cli.py:22        VERSION = "0.9.0"      (the CLI wrapper's own version)
+  NPDevContract/dsl/build.gradle:6  version = '0.1.0'   (the DSL/model-compiler jar's version)
+  git tag (most recent)  beta1.4                (the platform release tag)
+
+None of these track each other, and nothing in --version's own output (even after F4) tells a
+user which of the three is "the platform version" a bug report should cite, or what changing one
+implies about the others.
+
+**Surface:** `cli/version-reporting`
+**Files:**
+- `NPDevCli/npdev_cli.py`
+- `NPDevContract/dsl/build.gradle`
+
+Not fixed here -- explicitly out of scope for this session per firstrun-helpers/PLAN.md §13 (a
+versioning-scheme decision, not a mechanical fix). Two real shapes for whoever picks this up:
+(1) collapse to one number the CLI, the DSL jar, and the git tag all derive from (a single
+VERSION file read by both npdev_cli.py and build.gradle, with the git tag applied to that same
+value at release time); (2) keep three numbers but make --version's own output explicitly name
+what each one means and how they relate, so a report never needs to guess. Either way, whichever
+fix lands should also update this item to DONE citing the chosen shape.
+
+### REG-131 — npdev run app is broken on any machine other than the author's own: npdev_cli.py's _build_phase hardcodes env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs"))) -- an absolute Windows D:\ path with no fallback for a machine where that drive/path does not exist
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-04)
+**Verification:** VERIFIED_LIVE
+**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N2), found during the same review that produced the
+Docker-based first-run harness (I1). README's Quickstart now correctly NAMES the
+sync-runtimehost-libs.ps1 -BuildLocalJars step a newcomer must run first (I2's own fix, this
+session), but even after that step succeeds, npdev run app's own _build_phase helper
+(NPDevCli/npdev_cli.py:1309, confirmed current -- an earlier draft of this finding cited line
+1239, which shifted after this session's CLI edits) unconditionally falls back to a hardcoded
+absolute path that only exists on the platform author's own machine:
+
+    env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs")))
+
+On any other machine (a different drive letter, a non-Windows OS, or simply a different Build
+root), this silently sets an env var pointing at a directory that does not exist, rather than
+either deriving the SAME repo-relative convention scripts/npdev-common.ps1's
+Get-NPDevRuntimeHostLibsDir already uses (`<repo>.parent/Build/runtimehost-libs`) or leaving the
+var unset so a real absence is surfaced as a clear error instead of a wrong path.
+
+Related to, but distinct from, REG-128 (DONE, this session): REG-128 fixed the Groovy-side
+default inside build.gradle.template; this item is the Python CLI's OWN separate hardcoded
+fallback, one layer up, still pointing at the author's literal machine path.
+
+**Surface:** `cli/run-app, build-tooling/runtimehost-libs-staging`
+**Files:**
+- `NPDevCli/npdev_cli.py`
+
+Not fixed here -- out of scope for firstrun-helpers/PLAN.md's session (which named this "probed,
+not fixed" in its own §0c table). The correct fix almost certainly mirrors REG-128's own
+resolution: derive `<repo>.parent/Build/runtimehost-libs` from the CLI's own known repo root
+(npdev_cli.py already computes a repo-root-relative path for other purposes) instead of a
+literal `D:/WorkSpace/NPDev/...` string, with NPDEV_RUNTIMEHOST_LIBS_DIR/NPDEV_BUILD_ROOT env
+overrides still winning first. This is the harder half of "does the README's documented path
+actually work on someone else's machine" -- the first-run harness (I1, this session) does not
+exercise `npdev run app` at all (it defers to `java -jar` directly per the README rewrite), so
+this bug would NOT be caught by the harness as it stands today; closing it should include either
+extending the harness to cover `npdev run app`, or explicitly noting the harness's blind spot.
+
 ### REG-132 — No gate exists on the claim 'the documented setup instructions actually work on a clean machine' -- six other defect-family shapes (four-place field threading, pack-composition, twin-pair drift, blocker-citation freshness, script-inventory/invocation, corpus-role coverage) all have a mechanical control; this one had none, and its absence is what let F3/F6/F8, a stale beta1.1 claim, and all three onboarding walls ship undetected
 
 **Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-04)
@@ -2501,6 +2430,81 @@ as part of closing this item (which is about the gate's existence, not any one r
 Declared in scripts/policy/script-inventory-policy.json and
 scripts/policy/script-invocation-declarations.json per run-script-inventory-check.ps1's own
 requirement (every scripts/ script needs both a classification and an invocation declaration).
+
+### REG-133 — Doc/report generators (generate_dsl_reference.py and siblings) are undeclared consumers of model.schema.json -- nothing enumerates what reads the schema, so an edit to it can silently degrade a generator with no error anywhere, the same shape commit 8cd9860 demonstrated live
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-04)
+**Verification:** VERIFIED_LIVE
+**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N4), which the plan itself flags as "the one I would
+file first": it is the same shape as the four-place model-array-key chain and the
+pack-composition chain already tracked in scripts/quality/twin-pair-registry.json (CLAUDE.md's
+own documented "adding a top-level model array field" section) -- an edit in one place with
+consumers nobody enumerated, discovered only after the fact.
+
+Commit 8cd9860 (the model that this plan itself was written against) is the concrete evidence:
+a schema edit there caused generate_dsl_reference.py to silently degrade its output with no
+error anywhere in the pipeline, caught only by a human noticing the generated reference doc
+looked wrong -- not by any gate. model.schema.json is already known to be duplicated across four
+physical copies (per CLAUDE.md's own "model.schema.json is duplicated in 4 places" section,
+enforced by check-schema-mirror-consistency.py), but that check only verifies the four copies
+agree with EACH OTHER -- it says nothing about who reads any of them, or whether a change that
+keeps all four copies in sync can still break a downstream consumer that assumed the old shape.
+
+**Surface:** `quality-gates/schema-consumer-registry`
+**Files:**
+- `NPDevCli/generate_dsl_reference.py`
+- `scripts/quality/check-schema-mirror-consistency.py`
+- `scripts/quality/twin-pair-registry.json`
+
+Not fixed here -- out of scope for firstrun-helpers/PLAN.md's session (probed and named, not
+built). The shape of a fix, per the plan's own reasoning: a small registry (JSON or a new
+twin-pair-registry.json-style file) enumerating every script/generator that reads
+model.schema.json directly (generate_dsl_reference.py is the confirmed one; there may be others
+-- an actual grep for `model.schema.json`/`json.schema` reads across NPDevCli/NPDevMcp/scripts
+has not yet been done as part of filing this item), plus a gate that fails when a schema edit
+lands without a corresponding check that every registered consumer still produces sane output
+(even a coarse "did the generator's output change unexpectedly" diff would catch the 8cd9860
+shape). This is explicitly the kind of registry-plus-gate pattern
+check-twin-pair-consistency.py already establishes for two other chains; a third instance here
+would be additive, not a new mechanism.
+
+### REG-135 — Accepted boundaries (NPDev's designed limits, e.g. B13's 'no Java data-migration hooks') carry no machine-readable identity: ValidationDiagnostic has code/helpKey/suggestedFix but no boundaryId, B-numbers (B1/B2/B15/B27/...) appear in the validation package as Java comments only, and docs/ACCEPTED_BOUNDARIES.md is a markdown table nothing can query except a human reading it
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-04)
+**Verification:** VERIFIED_LIVE
+**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N6); full analysis in
+NPDev_General__OutsideRepo/firstrun-helpers/DEFERRED_ANALYSIS.md §2. When a user's model hits a
+designed platform limit (not a mistake in their model, a boundary NPDev has deliberately chosen
+not to support -- B13's "no Java data-migration hooks" is the analysis's running example), the
+diagnostic they receive is rendered identically to a real user error: same ERROR severity, no
+link to docs/ACCEPTED_BOUNDARIES.md's own entry, no indication the tool is behaving correctly and
+their model is not wrong. helpKey already exists and already ships
+(e.g. "validation.semantic.concept_invariant_error") -- it is the natural extension point, just
+never pointed at a boundary registry. npdev_check_support (the MCP tool) queries the ledger for
+this today, but that is AI-facing only; there is no human-facing equivalent inside the CLI's own
+diagnostic output.
+
+**Surface:** `dsl/validation-diagnostics, docs/accepted-boundaries`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation`
+- `docs/ACCEPTED_BOUNDARIES.md`
+
+Not fixed here -- out of scope for firstrun-helpers/PLAN.md's session (explicitly named a
+deferred item, §13). DEFERRED_ANALYSIS.md §2.3 already lays out a decidable, ~2-day shape agent
+work could execute without needing the trial's own observations first:
+  1. Make boundaries machine-readable: ledger/boundaries/*.yml (or one JSON registry) with
+     id/title/userFacingText/workaround/enforcingDiagnosticCodes[]/status, generating or
+     accompanying docs/ACCEPTED_BOUNDARIES.md rather than that file being hand-maintained prose.
+  2. Add boundaryId to ValidationDiagnostic, populated wherever a diagnostic fires BECAUSE of a
+     boundary rather than because of a user error.
+  3. Render a boundary-sourced diagnostic as LIMIT, not ERROR, in CLI output -- the analysis's
+     own framing: "LIMIT tells the user the tool is behaving correctly," which is the entire
+     difference between "this is broken" and "this doesn't do that yet."
+A twin-pair gate (every hittable boundary has an enforcing diagnostic code and vice versa) would
+be the natural mechanical control once 1-2 exist, following the same pattern
+check-twin-pair-consistency.py already uses for two other chains. Only the CONTENT of
+userFacingText/workaround strings for the top boundaries is named as needing real user
+observation (the trial) -- the mechanism itself does not.
 
 ### REG-136 — root/NPDevGenerator/NPDevKernel gradle.properties hardcode org.gradle.projectcachedir to this machine's own D:/WorkSpace/NPDev/Build/gradle-project-caches/<module> -- a Gradle START PARAMETER read before any -P/env override can apply, so every gradlew invocation the CLI or sync-runtimehost-libs.ps1 makes fails on any machine without that exact path, breaking the FIRST command in README's own Quickstart (./npdev validate model)
 
