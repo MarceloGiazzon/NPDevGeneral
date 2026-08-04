@@ -187,6 +187,9 @@
     "scripts/quality/check-x0-evaluator-coverage.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/firstrun-harness/run-readme.sh": {
+      "invocation": "manual-runbook"
+    },
     "scripts/quality/fix-statezip-visible-timestamps.ps1": {
       "invocation": "manual-runbook"
     },
