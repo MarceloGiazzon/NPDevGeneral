@@ -774,6 +774,20 @@ def gradle_wrapper(generator_root: Path) -> Path:
     return generator_root / "gradlew"
 
 
+def gradle_project_cache_args(module_key: str) -> list[str]:
+    """org.gradle.projectcachedir is a Gradle START PARAMETER, read from gradle.properties before
+    any -P/env override can take effect -- the root/dsl/generator/kernel gradle.properties files
+    hardcode it to this machine's own D:/WorkSpace/NPDev/Build/gradle-project-caches/<module>
+    (intentional dev-machine build-output policy: keeps Gradle's own cache out of the repo tree,
+    per this repo's own "never write build artifacts inside the repo" rule). On any machine
+    without that exact path, Gradle fails before the build even starts ("Cannot convert URL
+    '...' to a file"), breaking the first command in README's own Quickstart. --project-cache-dir
+    is the one reliable override (a start parameter, not a build-script property, so it beats the
+    properties file). Computed the same way _ai_build_root() is, so this is a no-op on the
+    author's own machine (identical resolved path) and portable everywhere else."""
+    return ["--project-cache-dir", str(_ai_build_root() / "gradle-project-caches" / module_key)]
+
+
 def gradle_args_value(args: list[str]) -> str:
     if os.name == "nt":
         return subprocess.list2cmdline(args)
@@ -913,7 +927,8 @@ def run_generate(args: argparse.Namespace) -> None:
             "--cleanFinalApp",
         ]
         args_str = " ".join(f'"{item}"' if " " in item else item for item in generator_args)
-        command = [str(wrapper), ":generator:run", "--no-daemon", "--console=plain", f"--args={args_str}"]
+        command = [str(wrapper), *gradle_project_cache_args("generator"), ":generator:run",
+                   "--no-daemon", "--console=plain", f"--args={args_str}"]
         if os.name == "nt" and wrapper.suffix.lower() == ".bat":
             command = ["cmd.exe", "/c"] + command
         print("[1/4] compiling + resolving the generator (first run downloads Gradle "
@@ -1283,7 +1298,8 @@ def _generate_phase_captured(
             "--cleanFinalApp",
         ]
         args_str = " ".join(f'"{item}"' if " " in item else item for item in generator_args)
-        command = [str(wrapper), ":generator:run", "--no-daemon", "--console=plain", f"--args={args_str}"]
+        command = [str(wrapper), *gradle_project_cache_args("generator"), ":generator:run",
+                   "--no-daemon", "--console=plain", f"--args={args_str}"]
         if os.name == "nt" and wrapper.suffix.lower() == ".bat":
             command = ["cmd.exe", "/c"] + command
         try:
@@ -1329,7 +1345,8 @@ def _classify_model_change(root: Path, baseline: Path, current: Path, deadline: 
     with tempfile.TemporaryDirectory(prefix="npdev-classify-") as tmp:
         report_path = Path(tmp) / "classification.json"
         command = [
-            str(wrapper), ":generator:classifyModelChange", "--no-daemon", "--console=plain",
+            str(wrapper), *gradle_project_cache_args("generator"),
+            ":generator:classifyModelChange", "--no-daemon", "--console=plain",
             f"-PcurrentPath={current}", f"-PbaselinePath={baseline}", f"-PreportOut={report_path}",
         ]
         if os.name == "nt" and wrapper.suffix.lower() == ".bat":
@@ -1360,7 +1377,8 @@ def _metadata_only_fast_path(
     with tempfile.TemporaryDirectory(prefix="npdev-metadata-only-") as tmp:
         report_path = Path(tmp) / "classification.json"
         command = [
-            str(wrapper), ":generator:classifyModelChange", "--no-daemon", "--console=plain",
+            str(wrapper), *gradle_project_cache_args("generator"),
+            ":generator:classifyModelChange", "--no-daemon", "--console=plain",
             f"-PcurrentPath={current_model}", f"-PbaselinePath={current_model}",
             f"-PreportOut={report_path}", f"-PemitCompiledModelTo={compiled_model_path}",
         ]
@@ -1376,7 +1394,8 @@ def _metadata_only_fast_path(
     kernel_root = root / "NPDevKernel"
     kernel_wrapper = gradle_wrapper(kernel_root)
     sign_command = [
-        str(kernel_wrapper), ":adapters:runtime-validation:resignGeneratedFolder",
+        str(kernel_wrapper), *gradle_project_cache_args("kernel"),
+        ":adapters:runtime-validation:resignGeneratedFolder",
         "--no-daemon", "--console=plain", f"-PgeneratedRoot={generated_root}",
     ]
     if os.name == "nt" and kernel_wrapper.suffix.lower() == ".bat":
@@ -1846,6 +1865,7 @@ def run_migration_diff(args: argparse.Namespace) -> None:
     ]
     command = [
         str(wrapper),
+        *gradle_project_cache_args("generator"),
         ":generator:classifyModelChange",
         "--no-daemon",
         "--console=plain",
@@ -1930,6 +1950,7 @@ def _run_authoring_gate(args: argparse.Namespace, archive_dir: Path | None) -> d
 
     command = [
         str(wrapper),
+        *gradle_project_cache_args("generator"),
         ":generator:authorDiffGate",
         "--no-daemon",
         "--console=plain",
@@ -2114,6 +2135,7 @@ def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
         report_target.parent.mkdir(parents=True, exist_ok=True)
         gradle_args = [
             str(wrapper),
+            *gradle_project_cache_args("root"),
             ":NPDevContract:dsl:validateModel",
             f"-PmodelPath={model}",
             f"-PreportOut={report_target}",

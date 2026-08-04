@@ -69,11 +69,21 @@ $externalGradleBuildRoot = Join-Path $externalBuildRoot "gradle"
 $env:NPDEV_BUILD_ROOT = $externalBuildRoot
 
 if ($BuildLocalJars) {
+    # NPDevKernel/gradle.properties and NPDevGenerator/gradle.properties hardcode
+    # org.gradle.projectcachedir to this machine's own D:/WorkSpace/NPDev/Build/... (dev-machine
+    # build-output policy, keeps Gradle's own cache out of the repo tree). It is a START PARAMETER
+    # read before any -P/env override applies, so on a machine without that exact path Gradle fails
+    # before the build even starts ("Cannot convert URL '...' to a file"). --project-cache-dir is the
+    # one reliable override; derive it from the SAME $externalBuildRoot this script already computed
+    # portably above, so this is a no-op on the author's own machine and portable everywhere else.
+    $kernelProjectCacheDir = Join-Path $externalBuildRoot "gradle-project-caches\kernel"
+    $generatorProjectCacheDir = Join-Path $externalBuildRoot "gradle-project-caches\generator"
+
     Write-NPDevInfo "Building local Kernel/Contract runtime jars for RuntimeHost staging (npdevBuildRoot=$externalBuildRoot)"
-    Invoke-NPDevCommandStreaming -WorkingDirectory $kernelRoot -Executable $kernelGradleWrapper -Arguments @("jar", "-PnpdevBuildRoot=$externalBuildRoot", "--no-daemon", "--console=plain")
+    Invoke-NPDevCommandStreaming -WorkingDirectory $kernelRoot -Executable $kernelGradleWrapper -Arguments @("jar", "-PnpdevBuildRoot=$externalBuildRoot", "--project-cache-dir", $kernelProjectCacheDir, "--no-daemon", "--console=plain")
 
     Write-NPDevInfo "Building local Generator and CLI jars for RuntimeHost staging"
-    Invoke-NPDevCommandStreaming -WorkingDirectory $generatorRoot -Executable $generatorGradleWrapper -Arguments @(":generator:jar", ":tools:npdev-cli:jar", "-PnpdevBuildRoot=$externalBuildRoot", "--no-daemon", "--console=plain")
+    Invoke-NPDevCommandStreaming -WorkingDirectory $generatorRoot -Executable $generatorGradleWrapper -Arguments @(":generator:jar", ":tools:npdev-cli:jar", "-PnpdevBuildRoot=$externalBuildRoot", "--project-cache-dir", $generatorProjectCacheDir, "--no-daemon", "--console=plain")
 }
 
 $sourceRoots = @(

@@ -1,0 +1,68 @@
+id: REG-136
+title: "root/NPDevGenerator/NPDevKernel gradle.properties hardcode org.gradle.projectcachedir to this machine's own D:/WorkSpace/NPDev/Build/gradle-project-caches/<module> -- a Gradle START PARAMETER read before any -P/env override can apply, so every gradlew invocation the CLI or sync-runtimehost-libs.ps1 makes fails on any machine without that exact path, breaking the FIRST command in README's own Quickstart (./npdev validate model)"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-04
+closed: 2026-08-04
+verification: VERIFIED_LIVE
+surface: cli/gradle-invocation, build-tooling/gradle-portability
+source: |
+  Found by firstrun-helpers/PLAN.md's own I1 harness, running in its REAL default mode (a fresh
+  `git clone` of the pushed beta1-vision-spine branch inside a clean Ubuntu container -- not the
+  LOCAL_SRC pre-merge mode, which had ALSO shown a superficially similar failure that turned out to
+  be an unrelated LOCAL_SRC-only CRLF artifact, see the harness's own README.md "Known limits").
+  After I2/I3/I4/I8 all landed and were pushed, the harness was STILL red, with the actual first
+  Quickstart command (`./npdev validate model ...`) failing:
+
+      FAILURE: Build failed with an exception.
+      * What went wrong:
+      Cannot convert URL 'D:/WorkSpace/NPDev/Build/gradle-project-caches/root' to a file.
+
+  Traced to gradle.properties (repo root) and NPDevGenerator/gradle.properties and
+  NPDevKernel/gradle.properties, each hardcoding org.gradle.projectcachedir to an absolute
+  D:/WorkSpace/... path -- a deliberate dev-machine build-output-policy choice (keeps Gradle's own
+  cache out of the repo tree, matching this repo's "never write build artifacts inside the repo"
+  rule), but org.gradle.projectcachedir is read by Gradle's OWN bootstrap logic as a START
+  PARAMETER, before any -P property or environment variable override can take effect -- so on any
+  machine without that exact drive/path, Gradle fails before the build even starts.
+
+  This is the SAME root cause REG-10 already fixed, but scoped ONLY to NPDevRuntimeHost/
+  gradle.properties (the template copied into every generated FinalApp, which REG-10 correctly
+  judged must be portable). The platform's OWN modules (root, dsl, generator, kernel, editor) kept
+  the hardcoded path deliberately -- CI already works around it via a documented `sed -i
+  '/org\.gradle\.projectcachedir/d'` step in three separate workflow files
+  (ai-knowledge-gate.yml, npdev-ci-validation.yml, npdev-pr-gate.yml), but nothing gives a real
+  newcomer following README.md that same workaround.
+files:
+  - NPDevCli/npdev_cli.py
+  - scripts/runtimehost/sync-runtimehost-libs.ps1
+detail: |
+  Fixed by overriding org.gradle.projectcachedir per-invocation with the one reliable mechanism
+  (--project-cache-dir, a genuine Gradle CLI start parameter that beats the properties file)
+  rather than editing the checked-in gradle.properties files -- editing them would either regress
+  the intentional dev-machine build-output policy (removing the setting entirely, like CI's sed
+  step does, moves Gradle's cache to <projectDir>/.gradle, INSIDE the repo tree) or require a new
+  untested mechanism. Instead:
+
+  npdev_cli.py: new gradle_project_cache_args(module_key) helper, computing
+  <_ai_build_root()>/gradle-project-caches/<module_key> -- reusing _ai_build_root()'s own existing
+  NPDEV_BUILD_ROOT-env-or-portable-fallback convention, so this collapses to TODAY'S checked-in
+  D:/WorkSpace/NPDev/Build/gradle-project-caches/<module> value on the author's own machine (a
+  verified no-op) and to a portable equivalent on any other machine. Threaded into all 8
+  repo-side gradle invocation sites (validate model, generate app x2, classifyModelChange x3,
+  authorDiffGate, resignGeneratedFolder) -- NOT into _build_phase's generated-app gradlew call,
+  which is already portable per REG-10.
+
+  sync-runtimehost-libs.ps1: same --project-cache-dir flag added to both the Kernel `jar` and
+  Generator `:generator:jar :tools:npdev-cli:jar` invocations, derived from the SAME
+  $externalBuildRoot this script already computes portably (its own comment documents mirroring
+  build.gradle's resolveNpdevBuildRoot convention, including a fallback for a workspace not
+  literally named NPDev_General -- REG-131/N2's own concern, already handled here).
+
+  Verified: :NPDevCli unit tests (70) green; a live `./npdev validate model` and
+  `./npdev generate app` both run BUILD SUCCESSFUL on the author's own machine (confirming the
+  override is a true no-op locally); `sync-runtimehost-libs.ps1 -BuildLocalJars` run live, BUILD
+  SUCCESSFUL for both Kernel and Generator jars, "45 already current" (unchanged behavior). Full
+  clone-based harness re-run (fresh git clone of the pushed branch, Ubuntu container) is the
+  definitive newcomer-facing proof, captured separately as this session's final evidence.
