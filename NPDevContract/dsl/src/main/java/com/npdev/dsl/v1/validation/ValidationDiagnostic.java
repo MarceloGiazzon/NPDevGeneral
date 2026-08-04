@@ -15,6 +15,7 @@ public final class ValidationDiagnostic {
     private final String ruleName;
     private final String suggestedFix;
     private final String helpKey;
+    private final String boundaryId;
 
     public ValidationDiagnostic(
             ValidationLayer layer,
@@ -41,6 +42,34 @@ public final class ValidationDiagnostic {
             String suggestedFix,
             String helpKey
     ) {
+        this(layer, severity, code, message, sourceModule, path, concept, field, section, ruleName,
+                suggestedFix, helpKey, null);
+    }
+
+    /**
+     * REG-135 (docs/ACCEPTED_BOUNDARIES.md): boundaryId names the ACCEPTED_BOUNDARIES.md row (a
+     * ledger/boundaries/B<n>.yml id) this diagnostic exists BECAUSE of, when one applies -- null
+     * for an ordinary user-error diagnostic. Populated only where a diagnostic's code is otherwise
+     * indistinguishable from an unrelated error (see ledger/boundaries/*.yml's own codeLinked
+     * notes for which boundaries are wired this way today; most are not, since they are enforced
+     * outside this DSL-validation-layer diagnostic entirely -- a boot-time refusal or REST
+     * endpoint, not something npdev validate model ever sees).
+     */
+    public ValidationDiagnostic(
+            ValidationLayer layer,
+            ValidationSeverity severity,
+            String code,
+            String message,
+            String sourceModule,
+            String path,
+            String concept,
+            String field,
+            String section,
+            String ruleName,
+            String suggestedFix,
+            String helpKey,
+            String boundaryId
+    ) {
         this.layer = Objects.requireNonNull(layer, "layer");
         this.severity = Objects.requireNonNull(severity, "severity");
         this.code = sanitize(code);
@@ -53,6 +82,7 @@ public final class ValidationDiagnostic {
         this.ruleName = optional(ruleName);
         this.suggestedFix = optional(suggestedFix);
         this.helpKey = optional(helpKey);
+        this.boundaryId = optional(boundaryId);
     }
 
     public ValidationLayer getLayer() {
@@ -101,6 +131,10 @@ public final class ValidationDiagnostic {
 
     public String getHelpKey() {
         return helpKey;
+    }
+
+    public String getBoundaryId() {
+        return boundaryId;
     }
 
     private static String sanitize(String value) {

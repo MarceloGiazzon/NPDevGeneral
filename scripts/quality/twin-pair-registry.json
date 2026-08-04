@@ -142,6 +142,18 @@
         "scripts/quality/schema-consumers.json",
         "scripts/quality/run-generator-gate.ps1"
       ]
+    },
+    {
+      "id": "boundary-b16-registry-code-link",
+      "citedBy": "REG-135",
+      "description": "ledger/boundaries/B16.yml declares codeLinked:true, naming ValidationDiagnosticNormalizer.java's DESCOPED_PROPERTY_BOUNDARY_IDS map as B16's real enforcement. If a future refactor removes the 'B16' mapping from that Java file without updating the registry entry (or vice versa -- someone adds a new boundaryId string in code without a matching ledger/boundaries/*.yml file), the registry would claim a code link that does not exist, or code would silently attach an unregistered boundaryId -- the exact 'every hittable boundary has an enforcing code, and vice versa' check REG-135 names as its own twin-pair gate.",
+      "kind": "field-in-all-files",
+      "trackedFields": ["B16"],
+      "caseSensitive": true,
+      "files": [
+        "ledger/boundaries/B16.yml",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ValidationDiagnosticNormalizer.java"
+      ]
     }
   ]
 }

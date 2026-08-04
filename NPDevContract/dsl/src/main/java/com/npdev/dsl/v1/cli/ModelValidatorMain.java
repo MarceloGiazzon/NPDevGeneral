@@ -298,6 +298,7 @@ public final class ModelValidatorMain {
         putIfPresent(node, "ruleName", diagnostic.getRuleName());
         putIfPresent(node, "suggestedFix", diagnostic.getSuggestedFix());
         putIfPresent(node, "helpKey", diagnostic.getHelpKey());
+        putIfPresent(node, "boundaryId", diagnostic.getBoundaryId());
         return node;
     }
 

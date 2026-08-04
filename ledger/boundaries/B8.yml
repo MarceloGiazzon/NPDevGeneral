@@ -1,0 +1,9 @@
+id: B8
+title: "Dropping a concept needs one boot of ownership history first"
+kind: HITTABLE
+userFacingText: ""  # deliberately empty pending the trial (REG-135 step 6)
+workaround: "Boot once with the concept present (recording ownership), then remove it."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: "Enforced at boot/schema-diff time in NPDevRuntimeHost (the ownership-history guard before a table drop is proposed), not a DSL ValidationDiagnostic -- outside this session's ValidationDiagnostic-scoped boundaryId mechanism."
+ref: "docs/ACCEPTED_BOUNDARIES.md#B8"

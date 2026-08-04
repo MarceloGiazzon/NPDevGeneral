@@ -1,0 +1,9 @@
+id: B4
+title: "Multi-instance migration is a real lock, not detect-and-refuse"
+kind: HITTABLE
+userFacingText: ""  # deliberately empty pending the trial (REG-135 step 6)
+workaround: "The second instance waits/refuses under the real lock (Postgres advisory lock or H2 atomic claim row); use ControlPanel's clear() only as a deliberate manual escape hatch."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: "Enforced at boot time by MigrationClaimStore (a lock/claim mechanism), surfaced as a boot-time refusal/exception in NPDevRuntimeHost, not a DSL ValidationDiagnostic -- outside this session's ValidationDiagnostic-scoped boundaryId mechanism."
+ref: "docs/ACCEPTED_BOUNDARIES.md#B4"

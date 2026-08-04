@@ -1,0 +1,9 @@
+id: B1
+title: "No automatic rename inference -- a rename must be declared via renamedFrom"
+kind: HITTABLE
+userFacingText: ""  # deliberately empty pending the trial (REG-135 step 6) -- see docs/adr or PLAN.md §12
+workaround: "Declare renamedFrom by hand, or rename via NPDevEditor's Field Details panel (stamps it automatically)."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: "ConceptValidation.java builds raw error strings (errors.add), wrapped later into a generic semantic_validation_error ValidationDiagnostic with no rule-specific code -- not yet distinguishable from any other semantic error by code alone. Needs a dedicated code before boundaryId can be populated here."
+ref: "docs/ACCEPTED_BOUNDARIES.md#B1"

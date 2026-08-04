@@ -2179,7 +2179,45 @@ def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
 
     _capture_validation(model, report)
     print(json.dumps(report, indent=2))
+    _print_boundary_limits(report)
     return 2 if report.get("status") == "failed" else 0
+
+
+def _print_boundary_limits(report: dict) -> None:
+    """REG-135: a diagnostic carrying boundaryId is hitting a NAMED, accepted NPDev design limit
+    (docs/ACCEPTED_BOUNDARIES.md), not a mistake in the model -- render it distinctly from an
+    ordinary ERROR so the model author reads "not wrong, unsupported" instead of "broken". Printed
+    to stderr, after the JSON report: the report's own contract (npdev-validation-report.v2) is
+    unchanged, this is purely additive human-facing narration, same pattern as generate app's
+    stderr-only phase narration."""
+    for diag in report.get("diagnostics", []) or []:
+        boundary_id = diag.get("boundaryId")
+        if not boundary_id:
+            continue
+        print(
+            f"\n  LIMIT   {diag.get('message', '')} (boundary {boundary_id})\n"
+            f"          This is a designed limit, not a mistake in your model.\n"
+            f"          -> details: docs/ACCEPTED_BOUNDARIES.md#{boundary_id}",
+            file=sys.stderr,
+        )
+        _record_boundary_hit(boundary_id, diag.get("code", ""))
+
+
+def _record_boundary_hit(boundary_id: str, code: str) -> None:
+    """REG-135 step 4 ("count first, write second" -- writing all 11 boundaries' userFacingText
+    before knowing which ones actually fire is the same measurement-classified-as-documentation
+    mistake that produced five stale console records earlier in this project, per PLAN.md's own
+    text). One JSON line per firing, best-effort -- a write failure here must never affect the
+    validate command's own exit code or report."""
+    try:
+        log_path = _ai_build_root() / "npdev-ai" / "boundary-hits" / "boundary-hits.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "boundaryId": boundary_id, "code": code, "at": _utc_now(),
+            }) + "\n")
+    except OSError:
+        pass
 
 
 def inspect_app(args: argparse.Namespace) -> None:

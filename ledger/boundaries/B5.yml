@@ -1,0 +1,9 @@
+id: B5
+title: "Schema-ahead detection closes by refusal, not reconstruction"
+kind: HITTABLE
+userFacingText: ""  # deliberately empty pending the trial (REG-135 step 6)
+workaround: "Roll forward, or use mark-done deliberately after verifying by hand."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: "Enforced at boot time by SchemaLifecycleExecutor (REG-8 Trigger C), a boot-time refusal in NPDevRuntimeHost, not a DSL ValidationDiagnostic -- outside this session's ValidationDiagnostic-scoped boundaryId mechanism."
+ref: "docs/ACCEPTED_BOUNDARIES.md#B5"
