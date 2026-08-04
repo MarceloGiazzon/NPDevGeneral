@@ -221,7 +221,7 @@ LNCH-12: recurring execution for a flow (cron expression + tenant scope). The ru
 
 ## Aggregate query groupBy field (Move 10 B1, S4 joins) (`#/$defs/groupByField`)
 
-Move 10 B1: one query.groupBy[] entry -- either a bare field name (string) or {field, bucket} for a date/datetime field bucketed to day/week/month/quarter/year. S4 (roadmap B27, ADR-0011 D1): field may also be a one-hop JOIN through a declared reference field -- "referenceField.targetField" (same context) or "context::referenceField.targetField" (crossing an imported context, D3) -- resolving to (context, concept, field) before reaching the same column-resolution path a bare field already uses. Exactly one hop; a longer path ("a.b.c") is a named compile error, never silently truncated. access.read on the base concept OR any concept the join crosses into refuses the whole query (C3).
+Move 10 B1: one query.groupBy[] entry -- either a bare field name (string) or {field, bucket} for a date/datetime field bucketed to day/week/month/quarter/year. S4 (roadmap B27, ADR-0011 D1) + S8 W1.1 (roadmap deferred item #1): field may also be a JOIN through a chain of declared reference fields, up to 3 hops -- "referenceField.targetField" (one hop, same context), "referenceField.referenceField.targetField" (two hops), and so on, optionally "context::..." qualified (crossing an imported context, D3) to name the FINAL joined concept -- resolving to (context, [referenceFields...], field) before reaching the same column-resolution path a bare field already uses. A path longer than 3 hops ("a.b.c.d.e") is a named compile error, never silently truncated. access.read on the base concept OR any concept the join chain crosses into refuses the whole query (C3).
 
 _(no declared properties)_
 

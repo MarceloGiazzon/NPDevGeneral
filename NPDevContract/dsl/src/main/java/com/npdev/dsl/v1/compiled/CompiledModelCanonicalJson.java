@@ -107,6 +107,13 @@ public final class CompiledModelCanonicalJson {
             if (conversion.set() != null) {
                 node.put("set", conversion.set());
             }
+            if (!conversion.mergeFrom().isEmpty()) {
+                ArrayNode mergeFrom = node.putArray("mergeFrom");
+                conversion.mergeFrom().forEach(mergeFrom::add);
+            }
+            if (conversion.with() != null) {
+                node.put("with", conversion.with());
+            }
             conversions.add(node);
         }
         return conversions;

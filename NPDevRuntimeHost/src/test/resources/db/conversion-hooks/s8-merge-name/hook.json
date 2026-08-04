@@ -1,0 +1,7 @@
+{
+  "id": "s8-merge-name",
+  "claims": ["ADD_REQUIRED_COLUMN:s8_customers:display_name"],
+  "description": "S8 W1.2: generator-produced convert.sql for a declared merge conversion (op=merge, concept=Customer), captured verbatim from ConversionHookEmitterDeclaredConversionsTest and adapted only to a test-unique table name.",
+  "verifySql": "SELECT COUNT(*) FROM s8_customers WHERE display_name IS NULL",
+  "verifyExpect": 0
+}

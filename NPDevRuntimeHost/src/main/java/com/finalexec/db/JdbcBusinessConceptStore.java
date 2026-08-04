@@ -232,16 +232,23 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
      * {@link ConceptAggregateEngine#applyHavingSortAndLimit} for why applying them once, in Java,
      * over the (small) already-grouped result is the correct v1 simplification, not a shortcut.
      *
-     * <p>S4 (roadmap B27, ADR-0011 D1): a {@code groupBy} field may be a one-hop join
+     * <p>S4 (roadmap B27, ADR-0011 D1): a {@code groupBy} field may be a join
      * ({@link GroupByJoinGrammar}) -- the base table is now ALWAYS aliased ({@code npdev_base}),
-     * every base-table column reference prefixed with it, and each distinct joined reference field
-     * gets exactly one {@code JOIN <targetTable> AS npdev_joinN ON npdev_base.<fk> = npdev_joinN.<id>
-     * AND npdev_joinN.tenant_id = ?}. INNER JOIN, deliberately: a base row whose reference field is
-     * null (or points at a row this tenant doesn't own) cannot contribute a joined group value and is
-     * excluded from the aggregate -- {@code InMemoryConceptStore}'s own join pre-materialization
-     * mirrors this exactly (excludes the same rows) so both engines agree on the same query.
-     * {@code where}/{@code aggregates} stay base-concept-only (unchanged scope; only {@code groupBy}
-     * gets the join grammar, per the roadmap's own reference shape).
+     * every base-table column reference prefixed with it, and each distinct joined reference-field
+     * HOP gets exactly one {@code JOIN <targetTable> AS npdev_joinN ON <prevAlias>.<fk> =
+     * npdev_joinN.<id> AND npdev_joinN.tenant_id = ?}. INNER JOIN, deliberately: a base row whose
+     * reference field is null (or points at a row this tenant doesn't own) cannot contribute a
+     * joined group value and is excluded from the aggregate -- {@code InMemoryConceptStore}'s own
+     * join pre-materialization mirrors this exactly (excludes the same rows) so both engines agree
+     * on the same query. {@code where}/{@code aggregates} stay base-concept-only (unchanged scope;
+     * only {@code groupBy} gets the join grammar, per the roadmap's own reference shape).
+     *
+     * <p>S8 W1.1 (roadmap deferred item #1): the join may chain up to
+     * {@link GroupByJoinGrammar#MAX_JOIN_HOPS} hops -- {@link #registerJoinChain} walks the chain one
+     * hop at a time, keying each hop's {@code JoinPlan} by its PREFIX of the chain (e.g. {@code
+     * "shipment."} then {@code "shipment.invoice."}) so two {@code groupBy} entries sharing a prefix
+     * (one 1-hop, one 2-hop through the same first hop) reuse the same {@code JOIN} for that shared
+     * prefix rather than joining the same table twice.
      */
     @Override
     public ConceptAggregateResult aggregate(String tenantId, String conceptName, ConceptAggregateQuery query) {
@@ -253,12 +260,12 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             parsedGroupBy.add(GroupByJoinGrammar.parse(groupByField.field()));
         }
 
-        Map<String, JoinPlan> joinsByReferenceField = new LinkedHashMap<>();
+        Map<String, JoinPlan> joinsByChainKey = new LinkedHashMap<>();
         List<String> joinClauses = new ArrayList<>();
         List<Object> joinParams = new ArrayList<>();
         for (GroupByJoinGrammar.Target target : parsedGroupBy) {
             if (target instanceof GroupByJoinGrammar.Target.Join join) {
-                registerJoin(shape, join.referenceField(), baseAlias, joinsByReferenceField, joinClauses, joinParams, tenantId);
+                registerJoinChain(shape, join.referenceFields(), baseAlias, joinsByChainKey, joinClauses, joinParams, tenantId);
             }
         }
 
@@ -287,7 +294,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             String columnRef;
             GroupByJoinGrammar.Target target = parsedGroupBy.get(i);
             if (target instanceof GroupByJoinGrammar.Target.Join join) {
-                JoinPlan plan = joinsByReferenceField.get(normalize(join.referenceField()));
+                JoinPlan plan = joinsByChainKey.get(chainKey(join.referenceFields()));
                 columnRef = plan.alias() + "." + requireColumn(plan.targetShape(), join.targetField());
             } else {
                 String field = ((GroupByJoinGrammar.Target.Direct) target).field();
@@ -378,43 +385,70 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         return new ConceptAggregateResult(rows);
     }
 
-    /** S4: one distinct joined reference field gets exactly one JOIN clause, keyed so a query with
-     *  multiple {@code groupBy} entries through the SAME reference field (e.g. one plain, one
-     *  bucketed) reuses it rather than joining the same table twice. */
+    /** S4 + S8 W1.1: one distinct joined reference-field HOP gets exactly one JOIN clause, keyed by
+     *  its chain PREFIX ({@link #chainKey}) so a query with multiple {@code groupBy} entries sharing
+     *  a prefix (one 1-hop, one 2-hop through the same first hop; or one plain, one bucketed through
+     *  an identical chain) reuses it rather than joining the same table twice. */
     private record JoinPlan(String alias, ConceptShape targetShape) {
     }
 
-    private JoinPlan registerJoin(
+    /** S8 W1.1: the dedup key for a join chain PREFIX -- {@code ["shipment"]} and
+     *  {@code ["shipment", "invoice"]} produce {@code "shipment."} and {@code "shipment.invoice."}
+     *  respectively, so the second reuses the first hop's JOIN and only adds one more. */
+    private static String chainKey(List<String> referenceFields) {
+        StringBuilder key = new StringBuilder();
+        for (String referenceField : referenceFields) {
+            key.append(normalize(referenceField)).append('.');
+        }
+        return key.toString();
+    }
+
+    /** S8 W1.1: walks {@code referenceFieldChain} one hop at a time, emitting/reusing one JOIN
+     *  clause per distinct chain prefix, and returns the {@link JoinPlan} for the FULL chain (the
+     *  concept {@code targetField} is read from). */
+    private JoinPlan registerJoinChain(
             ConceptShape baseShape,
-            String referenceField,
+            List<String> referenceFieldChain,
             String baseAlias,
-            Map<String, JoinPlan> joinsByReferenceField,
+            Map<String, JoinPlan> joinsByChainKey,
             List<String> joinClauses,
             List<Object> joinParams,
             String tenantId
     ) {
-        String key = normalize(referenceField);
-        JoinPlan existing = joinsByReferenceField.get(key);
-        if (existing != null) {
-            return existing;
+        ConceptShape currentShape = baseShape;
+        String currentAlias = baseAlias;
+        StringBuilder prefix = new StringBuilder();
+        JoinPlan plan = null;
+        for (String referenceField : referenceFieldChain) {
+            prefix.append(normalize(referenceField)).append('.');
+            String key = prefix.toString();
+            JoinPlan existing = joinsByChainKey.get(key);
+            if (existing != null) {
+                plan = existing;
+                currentShape = existing.targetShape();
+                currentAlias = existing.alias();
+                continue;
+            }
+            String targetConceptName = currentShape.referenceTargetByField().get(normalize(referenceField));
+            if (targetConceptName == null || targetConceptName.isBlank()) {
+                throw new IllegalArgumentException(
+                        "groupBy join field '" + referenceField + "' on concept " + currentShape.conceptName()
+                                + " is not a declared reference field -- the compile-time validator "
+                                + "(PackValidation#validateAggregateQuery) should have refused this model "
+                                + "before it ever reached the store");
+            }
+            ConceptShape targetShape = shape(targetConceptName);
+            String fkColumn = requireColumn(currentShape, referenceField);
+            String alias = "npdev_join" + joinsByChainKey.size();
+            joinClauses.add(" JOIN " + targetShape.tableName() + " AS " + alias
+                    + " ON " + currentAlias + "." + fkColumn + " = " + alias + "." + targetShape.idColumn()
+                    + " AND " + alias + ".tenant_id = ?");
+            joinParams.add(tenantId);
+            plan = new JoinPlan(alias, targetShape);
+            joinsByChainKey.put(key, plan);
+            currentShape = targetShape;
+            currentAlias = alias;
         }
-        String targetConceptName = baseShape.referenceTargetByField().get(key);
-        if (targetConceptName == null || targetConceptName.isBlank()) {
-            throw new IllegalArgumentException(
-                    "groupBy join field '" + referenceField + "' on concept " + baseShape.conceptName()
-                            + " is not a declared reference field -- the compile-time validator "
-                            + "(PackValidation#validateAggregateQuery) should have refused this model "
-                            + "before it ever reached the store");
-        }
-        ConceptShape targetShape = shape(targetConceptName);
-        String fkColumn = requireColumn(baseShape, referenceField);
-        String alias = "npdev_join" + joinsByReferenceField.size();
-        joinClauses.add(" JOIN " + targetShape.tableName() + " AS " + alias
-                + " ON " + baseAlias + "." + fkColumn + " = " + alias + "." + targetShape.idColumn()
-                + " AND " + alias + ".tenant_id = ?");
-        joinParams.add(tenantId);
-        JoinPlan plan = new JoinPlan(alias, targetShape);
-        joinsByReferenceField.put(key, plan);
         return plan;
     }
 

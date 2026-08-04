@@ -57,6 +57,34 @@ class DefaultConceptGatewayAggregateJoinAccessReadTest {
         assertTrue(exception.getMessage().contains("access.read"), exception.getMessage());
     }
 
+    /**
+     * S8 W1.1 (roadmap deferred item #1): the SAME widened guard, now proven across a SECOND hop --
+     * {@code Warehouse} (the near hop) declares no access.read of its own, but {@code Country} (the
+     * far hop, reached via {@code warehouse.country.name}) does. The loop in {@code
+     * DefaultConceptGateway#aggregate} must keep walking past an unrestricted hop rather than
+     * stopping at the first one.
+     */
+    @Test
+    void twoHopGroupByJoinCrossingIntoAConceptDeclaringAccessReadAtTheFarHopIsRefused() {
+        DefaultConceptGateway gateway = gatewayWithRestrictedCountryTwoHops();
+
+        ConceptAggregateRequest request = new ConceptAggregateRequest(
+                "ShipmentEvent",
+                TENANT,
+                new ConceptAggregateQuery(
+                        List.of(),
+                        List.of(new ConceptAggregateQuery.GroupByField("warehouse.country.name", null)),
+                        List.of(new ConceptAggregateQuery.AggregateFunction("total", "sum", "unitsShipped")),
+                        List.of(), List.of(), null));
+
+        ConceptGatewayAccessDeniedException exception = assertThrows(
+                ConceptGatewayAccessDeniedException.class,
+                () -> gateway.aggregate(request, ExecutionContext.of(TENANT, "test-actor")));
+        assertEquals("AGGREGATE_ACCESS_READ_UNSUPPORTED", exception.code());
+        assertTrue(exception.getMessage().contains("crosses into concept Country"), exception.getMessage());
+        assertTrue(exception.getMessage().contains("access.read"), exception.getMessage());
+    }
+
     /** Negative control: an UNRESTRICTED join target must not trip the widened guard -- the request
      *  reaches the store and returns normally. */
     @Test
@@ -108,6 +136,44 @@ class DefaultConceptGatewayAggregateJoinAccessReadTest {
                 TenantIsolationPolicy.STRICT_EQUALS,
                 AuditLogStore.noop(),
                 new ConfiguredConceptGatewaySemanticPolicy(List.of(warehouse, shipmentEvent)),
+                record -> { }
+        );
+    }
+
+    /** S8 W1.1: Warehouse (near hop) is unrestricted; Country (far hop) declares access.read. */
+    private static DefaultConceptGateway gatewayWithRestrictedCountryTwoHops() {
+        ConceptDefinition country = new ConceptDefinition(
+                "Country",
+                Map.of(
+                        "id", new FieldDefinition("id", true, List.of(), null, null, null),
+                        "name", new FieldDefinition("name", true, List.of(), null, null, null)
+                ),
+                List.of(), null, java.util.Set.of(),
+                new AccessRules("name == $user.region", null)
+        );
+        ConceptDefinition warehouse = ConceptDefinition.of(
+                "Warehouse",
+                List.of(
+                        new FieldDefinition("id", true, List.of(), null, null, null),
+                        new FieldDefinition("region", true, List.of(), null, null, null),
+                        new FieldDefinition("country", false, List.of(), null, null, null, false, "Country")
+                ),
+                List.of(), null);
+        ConceptDefinition shipmentEvent = ConceptDefinition.of(
+                "ShipmentEvent",
+                List.of(
+                        new FieldDefinition("id", true, List.of(), null, null, null),
+                        new FieldDefinition("warehouse", false, List.of(), null, null, null, false, "Warehouse"),
+                        new FieldDefinition("unitsShipped", true, List.of(), null, null, null)
+                ),
+                List.of(), null);
+
+        return new DefaultConceptGateway(
+                new InMemoryConceptStore(),
+                PermissionEvaluator.allowAll(),
+                TenantIsolationPolicy.STRICT_EQUALS,
+                AuditLogStore.noop(),
+                new ConfiguredConceptGatewaySemanticPolicy(List.of(country, warehouse, shipmentEvent)),
                 record -> { }
         );
     }

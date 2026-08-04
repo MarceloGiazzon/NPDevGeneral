@@ -1577,6 +1577,26 @@
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:225",
       "why": "Same as 6145981d8419 -- setCol resolves through SqlIdentifierSupport's [a-z0-9_]-only whitelist."
     },
+    "a60c85cecc4e": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:257",
+      "why": "S8 W1.2 (roadmap deferred item #4): the merge op's UPDATE/CONCAT, same class as 6145981d8419 (generation-time emitter, executes nothing itself, ConversionHookRunner runs it later at boot). table/toCol/mergeCols all resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist. The one new element vs. copy/split/lookup -- separatorLiteral (conversion.with(), an author-declared string, not an identifier) -- is embedded as a proper single-quoted SQL string LITERAL with every embedded apostrophe doubled (separator.replace(\"'\", \"''\")), the standard SQL literal-escaping technique; it is authoring-time model content (the same trust boundary every other conversions[] value already crosses), never end-user input."
+    },
+    "924dc8c4f2ec": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:274",
+      "why": "S8 W1.2: the convert op's ADD COLUMN, same class as 6145981d8419 -- table/toCol resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist; toSqlType comes from portableSqlType(toField), SqlTypeSupport's closed switch over the DSL's own type enum, never free text."
+    },
+    "e9728bf58a3d": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:275",
+      "why": "Same as 924dc8c4f2ec -- the convert op's UPDATE/CAST; table/toCol/fromCol/toSqlType are the identical identifier-whitelisted and closed-enum values 924dc8c4f2ec already covers."
+    },
+    "8abe5816797f": {
+      "rule": "D3",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java:693",
+      "why": "S8 W1.2, same class as 6ad785fdd420/94ff74f7dba1 (SQL-shaped English in non-SQL text): the scanner matched the word \"MERGE\" inside a plain Java IllegalArgumentException message (\"... has op 'merge' but declares fewer than 2 'from' fields ...\") -- a compile-time validation error string, never assembled into or executed as SQL; there is no DataSource, no JDBC, nothing SQL-shaped anywhere near this line."
+    },
     "01ce4dd9c3d6": {
       "rule": "B2/G6",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:222",

@@ -304,7 +304,8 @@
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "fullName", "type": "string", "ui": { "label": "Full name (legacy)" } },
         { "name": "firstName", "type": "string", "required": true, "ui": { "label": "First name" } },
-        { "name": "lastName", "type": "string", "required": true, "ui": { "label": "Last name" } }
+        { "name": "lastName", "type": "string", "required": true, "ui": { "label": "Last name" } },
+        { "name": "displayName", "type": "string", "ui": { "label": "Display name" } }
       ]
     },
     {
@@ -314,7 +315,9 @@
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "legacyCode", "type": "string", "ui": { "label": "Legacy code" } },
-        { "name": "externalRef", "type": "string", "required": true, "ui": { "label": "External reference" } }
+        { "name": "externalRef", "type": "string", "required": true, "ui": { "label": "External reference" } },
+        { "name": "priorityText", "type": "string", "ui": { "label": "Priority (legacy text)" } },
+        { "name": "priorityNumber", "type": "integer", "ui": { "label": "Priority" } }
       ]
     },
     {
@@ -347,7 +350,11 @@
       "from": "legacyCode", "to": "externalRef" },
     { "id": "0003-lookup-orderline-product", "concept": "ConversionDemoOrderLine", "op": "lookup",
       "match": { "concept": "ConversionDemoProduct", "on": "sku", "equals": "productSku" },
-      "set": "productId" }
+      "set": "productId" },
+    { "id": "0004-merge-customer-display-name", "concept": "ConversionDemoCustomer", "op": "merge",
+      "from": [ "firstName", "lastName" ], "to": "displayName", "with": " " },
+    { "id": "0005-convert-order-priority", "concept": "ConversionDemoOrder", "op": "convert",
+      "from": "priorityText", "to": "priorityNumber" }
   ],
 
   "capabilities": [
