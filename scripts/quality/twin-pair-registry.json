@@ -130,6 +130,18 @@
         ".github/workflows/npdev-ci-validation.yml",
         "scripts/quality/run-portable-tooling-check.ps1"
       ]
+    },
+    {
+      "id": "schema-consumer-registry-gate-wiring",
+      "citedBy": "REG-133",
+      "description": "scripts/quality/schema-consumers.json's own PROTECTED entry for generate_dsl_reference.py names check-dsl-reference-output-floor.py as its enforcing gate -- if a future refactor renames or removes that script from run-generator-gate.ps1 without updating the registry (or vice versa), the registry silently claims protection that no longer runs, exactly the 'consumers nobody enumerated' shape this whole item exists to close. Both must name the enforcing script consistently.",
+      "kind": "field-in-all-files",
+      "trackedFields": ["check-dsl-reference-output-floor.py"],
+      "caseSensitive": true,
+      "files": [
+        "scripts/quality/schema-consumers.json",
+        "scripts/quality/run-generator-gate.ps1"
+      ]
     }
   ]
 }
