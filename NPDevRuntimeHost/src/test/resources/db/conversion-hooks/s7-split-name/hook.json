@@ -1,0 +1,7 @@
+{
+  "id": "s7-split-name",
+  "claims": ["ADD_REQUIRED_COLUMN:s7_customers:first_name", "ADD_REQUIRED_COLUMN:s7_customers:last_name"],
+  "description": "S7 Phase B: generator-produced convert.sql for a declared split conversion (op=split, concept=Customer), captured verbatim from ConversionHookEmitterDeclaredConversionsTest and adapted only to a test-unique table name.",
+  "verifySql": "SELECT COUNT(*) FROM s7_customers WHERE first_name IS NULL OR last_name IS NULL",
+  "verifyExpect": 0
+}

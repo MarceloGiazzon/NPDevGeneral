@@ -28,6 +28,7 @@ public final class CompiledModel {
     private final List<CompiledPropertyScope> propertyScopes;
     private final List<CompiledProperty> properties;
     private final List<CompiledContext> contexts;
+    private final List<CompiledConversion> conversions;
 
     public CompiledModel(String namespace, String version, Map<String, ? extends CompiledEntity> entitiesByName) {
         this(namespace, "1.0.0", version, entitiesByName, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -325,7 +326,7 @@ public final class CompiledModel {
                 documents, externalAi, settings, roles, propertyScopes, properties, List.of());
     }
 
-    /** B20 (S2): canonical constructor, adds {@code contexts} (bounded-context registry). */
+    /** B20 (S2): adds {@code contexts} (bounded-context registry). */
     public CompiledModel(
             String namespace,
             String dslVersion,
@@ -351,6 +352,40 @@ public final class CompiledModel {
             List<CompiledPropertyScope> propertyScopes,
             List<CompiledProperty> properties,
             List<CompiledContext> contexts
+    ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, settings, roles, propertyScopes, properties, contexts, List.of());
+    }
+
+    /** S7 Phase B (B13): canonical constructor, adds {@code conversions} (the declarative conversion
+     *  vocabulary -- see {@link CompiledConversion}). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings,
+            List<CompiledRole> roles,
+            List<CompiledPropertyScope> propertyScopes,
+            List<CompiledProperty> properties,
+            List<CompiledContext> contexts,
+            List<CompiledConversion> conversions
     ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
@@ -380,6 +415,7 @@ public final class CompiledModel {
         this.propertyScopes = propertyScopes == null ? List.of() : List.copyOf(propertyScopes);
         this.properties = properties == null ? List.of() : List.copyOf(properties);
         this.contexts = contexts == null ? List.of() : List.copyOf(contexts);
+        this.conversions = conversions == null ? List.of() : List.copyOf(conversions);
     }
 
     public String getNamespace() { return namespace; }
@@ -509,6 +545,11 @@ public final class CompiledModel {
      *  contexts behaves exactly as it did before this feature existed). */
     public List<CompiledContext> getContexts() {
         return Collections.unmodifiableList(contexts);
+    }
+
+    /** S7 Phase B (B13): declared conversions, empty when the model declares none. */
+    public List<CompiledConversion> getConversions() {
+        return Collections.unmodifiableList(conversions);
     }
 
     public Optional<CompiledFlow> findFlow(String flowName) {

@@ -2,6 +2,9 @@ package com.npdev.dsl.v1.compiler;
 
 import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.ContextAst;
+import com.npdev.dsl.v1.ast.ConversionAst;
+import com.npdev.dsl.v1.ast.ConversionLookupMatchAst;
+import com.npdev.dsl.v1.ast.ConversionSplitTargetAst;
 import com.npdev.dsl.v1.ast.DocumentAst;
 import com.npdev.dsl.v1.ast.ExternalAiAst;
 import com.npdev.dsl.v1.ast.FieldAst;
@@ -64,6 +67,7 @@ import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
 import com.npdev.dsl.v1.ast.StepAst;
+import com.npdev.dsl.v1.compiled.CompiledConversion;
 import com.npdev.dsl.v1.compiled.CompiledFileMetadata;
 import com.npdev.dsl.v1.compiled.CompiledCapability;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityCall;
@@ -575,6 +579,8 @@ public final class ModelCompiler {
             panels.add(AutoPanelExpander.expandSelector(selector, fieldNames));
         }
 
+        List<CompiledConversion> conversions = compileConversions(modelAst.getConversions(), conceptsByNormalizedName);
+
         return new CompiledModel(
                 modelAst.getNamespace(),
                 modelAst.getDslVersion(),
@@ -599,7 +605,8 @@ public final class ModelCompiler {
                 toCompiledRoles(modelAst.getRoles()),
                 toCompiledPropertyScopes(modelAst.getPropertyScopes()),
                 toCompiledProperties(modelAst.getProperties()),
-                toCompiledContexts(modelAst.getContexts())
+                toCompiledContexts(modelAst.getContexts()),
+                conversions
         );
     }
 
@@ -632,6 +639,93 @@ public final class ModelCompiler {
             compiled.add(new com.npdev.dsl.v1.compiled.CompiledContext(contextAst.name(), contextAst.ref()));
         }
         return compiled;
+    }
+
+    /**
+     * S7 Phase B (B13): resolves each declared conversion's concept/field references against the
+     * real model graph. The schema already enforces which of {@code from}/{@code to}/{@code into}/
+     * {@code match}/{@code set} are structurally required per {@code op}; this adds the check the
+     * schema cannot see -- does the referenced concept/field actually exist. An unresolvable
+     * reference is a named {@link IllegalArgumentException}, never a silently-skipped conversion
+     * (the vocabulary's own X0 rule, spec B2). Field lookup is against the concept's OWN declared
+     * fields (not the specialization-effective set {@code resolveEffective} produces elsewhere in
+     * this class) -- a conversion targeting a field a concept only inherits via {@code specializes}
+     * is not yet supported and fails this check, a known, narrow limitation, not silent.
+     */
+    private static List<CompiledConversion> compileConversions(
+            List<ConversionAst> conversionAsts,
+            Map<String, ConceptAst> conceptsByNormalizedName) {
+        List<CompiledConversion> compiled = new ArrayList<>();
+        List<ConversionAst> ordered = new ArrayList<>(conversionAsts);
+        ordered.sort(Comparator.comparing(conversion -> normalize(conversion.id())));
+        for (ConversionAst conversionAst : ordered) {
+            ConceptAst concept = requireConversionConcept(conversionAst.id(), conversionAst.concept(), conceptsByNormalizedName);
+            List<CompiledConversion.CompiledConversionSplitTarget> into = new ArrayList<>();
+            switch (conversionAst.op()) {
+                case "copy" -> {
+                    requireConversionField(conversionAst.id(), concept, conversionAst.from(), "from");
+                    requireConversionField(conversionAst.id(), concept, conversionAst.to(), "to");
+                }
+                case "split" -> {
+                    requireConversionField(conversionAst.id(), concept, conversionAst.from(), "from");
+                    for (ConversionSplitTargetAst target : conversionAst.into()) {
+                        requireConversionField(conversionAst.id(), concept, target.field(), "into[].field");
+                        into.add(new CompiledConversion.CompiledConversionSplitTarget(target.field(), target.take()));
+                    }
+                }
+                case "lookup" -> {
+                    ConversionLookupMatchAst match = conversionAst.match();
+                    if (match == null) {
+                        throw new IllegalArgumentException("conversion '" + conversionAst.id()
+                                + "' has op 'lookup' but declares no 'match'");
+                    }
+                    ConceptAst matchConcept = requireConversionConcept(conversionAst.id(), match.concept(), conceptsByNormalizedName);
+                    requireConversionField(conversionAst.id(), matchConcept, match.on(), "match.on");
+                    requireConversionField(conversionAst.id(), concept, match.equals(), "match.equals");
+                    requireConversionField(conversionAst.id(), concept, conversionAst.set(), "set");
+                }
+                default -> throw new IllegalArgumentException("conversion '" + conversionAst.id()
+                        + "' declares op '" + conversionAst.op()
+                        + "', which is not a recognized conversion op (copy, split, lookup)");
+            }
+            CompiledConversion.CompiledConversionLookupMatch compiledMatch = conversionAst.match() == null ? null
+                    : new CompiledConversion.CompiledConversionLookupMatch(
+                            conversionAst.match().concept(), conversionAst.match().on(), conversionAst.match().equals());
+            compiled.add(new CompiledConversion(
+                    conversionAst.id(),
+                    conversionAst.concept(),
+                    conversionAst.op(),
+                    conversionAst.from(),
+                    conversionAst.to(),
+                    into,
+                    compiledMatch,
+                    conversionAst.set()
+            ));
+        }
+        return compiled;
+    }
+
+    private static ConceptAst requireConversionConcept(
+            String conversionId, String conceptName, Map<String, ConceptAst> conceptsByNormalizedName) {
+        ConceptAst concept = conceptsByNormalizedName.get(normalize(conceptName));
+        if (concept == null) {
+            throw new IllegalArgumentException("conversion '" + conversionId + "' declares concept '"
+                    + conceptName + "', which is not a declared concept");
+        }
+        return concept;
+    }
+
+    private static void requireConversionField(String conversionId, ConceptAst concept, String fieldName, String role) {
+        if (fieldName == null || fieldName.isBlank()) {
+            throw new IllegalArgumentException("conversion '" + conversionId + "' is missing its '" + role + "' field");
+        }
+        for (FieldAst field : concept.getFields()) {
+            if (field.getName() != null && field.getName().equalsIgnoreCase(fieldName)) {
+                return;
+            }
+        }
+        throw new IllegalArgumentException("conversion '" + conversionId + "' references field '" + fieldName
+                + "' (" + role + ") on concept '" + concept.getName() + "', which has no such field");
     }
 
     /** Wave 3 (RC-B1): compiles the app-defined role -> permission-ceiling declarations. */

@@ -557,6 +557,7 @@ public final class JsonModelParser {
         propertyScopes.addAll(parsePropertyScopes(root.get("propertyScopes")));
         properties.addAll(parseProperties(root.get("properties")));
         contexts.addAll(parseContexts(root.get("contexts")));
+        List<com.npdev.dsl.v1.ast.ConversionAst> conversions = parseConversions(root.get("conversions"));
 
         return new ModelAst(
                 namespace,
@@ -584,7 +585,8 @@ public final class JsonModelParser {
                 roles,
                 propertyScopes,
                 properties,
-                contexts
+                contexts,
+                conversions
         );
     }
 
@@ -606,6 +608,55 @@ public final class JsonModelParser {
             out.add(new com.npdev.dsl.v1.ast.ContextAst(
                     requiredText(contextNode, "name"),
                     requiredText(contextNode, "$ref")
+            ));
+        }
+        return out;
+    }
+
+    /** S7 Phase B (B13): parses the optional top-level {@code conversions} array -- see
+     *  {@link com.npdev.dsl.v1.ast.ConversionAst}'s own javadoc. Structural parsing only; the
+     *  compiler resolves {@code concept}/field references against the real model graph. */
+    private static List<com.npdev.dsl.v1.ast.ConversionAst> parseConversions(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.ConversionAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("conversions must be an array");
+        }
+        for (JsonNode conversionNode : node) {
+            String id = requiredText(conversionNode, "id");
+            List<com.npdev.dsl.v1.ast.ConversionSplitTargetAst> into = new ArrayList<>();
+            JsonNode intoNode = conversionNode.get("into");
+            if (intoNode != null && !intoNode.isNull()) {
+                if (!intoNode.isArray()) {
+                    throw new IOException("conversions[" + id + "].into must be an array");
+                }
+                for (JsonNode targetNode : intoNode) {
+                    into.add(new com.npdev.dsl.v1.ast.ConversionSplitTargetAst(
+                            requiredText(targetNode, "field"),
+                            requiredText(targetNode, "take")
+                    ));
+                }
+            }
+            JsonNode matchNode = conversionNode.get("match");
+            com.npdev.dsl.v1.ast.ConversionLookupMatchAst match = null;
+            if (matchNode != null && !matchNode.isNull()) {
+                match = new com.npdev.dsl.v1.ast.ConversionLookupMatchAst(
+                        requiredText(matchNode, "concept"),
+                        requiredText(matchNode, "on"),
+                        requiredText(matchNode, "equals")
+                );
+            }
+            out.add(new com.npdev.dsl.v1.ast.ConversionAst(
+                    id,
+                    requiredText(conversionNode, "concept"),
+                    requiredText(conversionNode, "op"),
+                    readText(conversionNode, "from"),
+                    readText(conversionNode, "to"),
+                    into,
+                    match,
+                    readText(conversionNode, "set")
             ));
         }
         return out;

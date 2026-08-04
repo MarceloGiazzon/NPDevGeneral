@@ -488,6 +488,13 @@ def _nonempty(model: dict, key: str) -> bool:
     return True
 
 
+def _has_conversion_op(model: dict, op: str) -> bool:
+    return any(
+        isinstance(c, dict) and c.get("op") == op
+        for c in (model.get("conversions", None) or [])
+    )
+
+
 FEATURE_DETECTORS = {
     "externalAi": lambda m: "externalAi" in m,
     "domainTypes": lambda m: _nonempty(m, "domainTypes"),
@@ -658,6 +665,13 @@ FEATURE_DETECTORS = {
     # regression to JUST the typed slot still fails the build.
     "autoPanel.actions": _has_typed_workbench_actions,
     "autoPanel.bandPickers": _has_workbench_band_pickers,
+    # S7 Phase B (B13 declarative conversion vocabulary): the top-level conversions[] array, plus
+    # each of the three closed-enum ops tracked separately -- a regression to only one op still
+    # zero-coverage-fails the build, same discipline query.groupBy/query.aggregates/query.having get.
+    "conversions": lambda m: _nonempty(m, "conversions"),
+    "conversions.op.copy": lambda m: _has_conversion_op(m, "copy"),
+    "conversions.op.split": lambda m: _has_conversion_op(m, "split"),
+    "conversions.op.lookup": lambda m: _has_conversion_op(m, "lookup"),
 }
 
 

@@ -220,8 +220,9 @@ public final class GeneratorFacade {
         new SchemaRealizationEmitter().emit(model, outRoot, databasePlan, modelSourcePath,
                 migrationPlanDestructiveItemStableStrings, destructiveAcknowledgmentToken);
         // SER-P7.2: operator-authored conversion hooks (definition/migrations/<ordinal>-<slug>/), opt-in
-        // -- a no-op when the app declares none.
-        new ConversionHookEmitter().emit(modelSourcePath, outRoot);
+        // -- a no-op when the app declares none. S7 Phase B (B13): also compiles model.conversions[]
+        // (the declarative vocabulary) to the same destination -- one execution path, not two.
+        new ConversionHookEmitter().emit(model, modelSourcePath, outRoot);
         new GeneratedFolderSignatureEmitter().emit(outRoot);
     }
 

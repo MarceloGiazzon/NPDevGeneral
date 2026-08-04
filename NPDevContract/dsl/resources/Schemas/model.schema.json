@@ -212,6 +212,19 @@
         ]
       }
     },
+    "conversions": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/conversion"
+          },
+          {
+            "$ref": "#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
     "panels": {
       "type": "array",
       "items": {
@@ -2961,6 +2974,147 @@
             "delete",
             "query"
           ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "conversion": {
+      "description": "S7 B13 declarative conversion vocabulary: an author-facing data-migration operation that compiles to the SAME db/conversion-hooks/<id>/{hook.json,convert.sql} shape ConversionHookRunner already executes at boot -- one execution path, not two. op is a closed enum; an op or a referenced field/concept the compiler cannot resolve is a named compile error, never a silently-skipped conversion.",
+      "type": "object",
+      "required": [
+        "id",
+        "concept",
+        "op"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "copy",
+            "split",
+            "lookup"
+          ]
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "into": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/conversionSplitTarget"
+          }
+        },
+        "match": {
+          "$ref": "#/$defs/conversionLookupMatch"
+        },
+        "set": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "copy"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "from",
+              "to"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "split"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "from",
+              "into"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "lookup"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "match",
+              "set"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "conversionSplitTarget": {
+      "type": "object",
+      "required": [
+        "field",
+        "take"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "take": {
+          "type": "string",
+          "enum": [
+            "before-first-space",
+            "after-first-space"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "conversionLookupMatch": {
+      "type": "object",
+      "required": [
+        "concept",
+        "on",
+        "equals"
+      ],
+      "properties": {
+        "concept": {
+          "type": "string",
+          "minLength": 1
+        },
+        "on": {
+          "type": "string",
+          "minLength": 1
+        },
+        "equals": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false

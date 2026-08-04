@@ -295,7 +295,59 @@
           "ui": { "label": "Units shipped" }
         }
       ]
+    },
+    {
+      "name": "ConversionDemoCustomer",
+      "truthLevel": "T2",
+      "ui": { "label": "Conversion Demo Customer" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "fullName", "type": "string", "ui": { "label": "Full name (legacy)" } },
+        { "name": "firstName", "type": "string", "required": true, "ui": { "label": "First name" } },
+        { "name": "lastName", "type": "string", "required": true, "ui": { "label": "Last name" } }
+      ]
+    },
+    {
+      "name": "ConversionDemoOrder",
+      "truthLevel": "T2",
+      "ui": { "label": "Conversion Demo Order" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "legacyCode", "type": "string", "ui": { "label": "Legacy code" } },
+        { "name": "externalRef", "type": "string", "required": true, "ui": { "label": "External reference" } }
+      ]
+    },
+    {
+      "name": "ConversionDemoProduct",
+      "truthLevel": "T2",
+      "ui": { "label": "Conversion Demo Product" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "sku", "type": "string", "required": true, "ui": { "label": "SKU" } }
+      ]
+    },
+    {
+      "name": "ConversionDemoOrderLine",
+      "truthLevel": "T2",
+      "ui": { "label": "Conversion Demo Order Line" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "productSku", "type": "string", "ui": { "label": "Product SKU (legacy)" } },
+        { "name": "productId", "type": "uuid", "required": true, "ui": { "label": "Product" } }
+      ]
     }
+  ],
+
+  "conversions": [
+    { "id": "0001-split-customer-name", "concept": "ConversionDemoCustomer", "op": "split",
+      "from": "fullName",
+      "into": [ { "field": "firstName", "take": "before-first-space" },
+                { "field": "lastName", "take": "after-first-space" } ] },
+    { "id": "0002-copy-order-code", "concept": "ConversionDemoOrder", "op": "copy",
+      "from": "legacyCode", "to": "externalRef" },
+    { "id": "0003-lookup-orderline-product", "concept": "ConversionDemoOrderLine", "op": "lookup",
+      "match": { "concept": "ConversionDemoProduct", "on": "sku", "equals": "productSku" },
+      "set": "productId" }
   ],
 
   "capabilities": [

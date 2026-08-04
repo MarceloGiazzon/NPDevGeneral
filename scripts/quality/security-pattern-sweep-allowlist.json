@@ -1511,6 +1511,86 @@
       "rule": "D3",
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptGateway.java:92",
       "why": "Move 15 Phase A item A1 (REG-120), same class as 6ad785fdd420: the new authorizeCreate default method's fail-closed exception message (\"This ConceptGateway cannot authorize a create without performing it; denying \" + request.conceptName() + \" ...\"), mirroring the pre-existing authorizeWrite default method's identical-shape message one method above it (never itself flagged, since \"authorize a WRITE\" does not contain a SQL keyword) -- a plain Java exception string, never used in any SQL statement."
+    },
+    "6145981d8419": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:173",
+      "why": "S7 Phase B (B13 declarative conversion vocabulary): generation-time emitter, same class as 8521985ae7fe/f2e73ed3bcba -- builds a conversion hook's convert.sql text into a file and executes nothing itself (ConversionHookRunner executes it later, at boot, an already-reviewed trust boundary identical to an operator-authored convert.sql). table/toCol come from SqlIdentifierSupport.tableName()/columnName(), whose toSnake whitelist emits only [a-z0-9_]; portableSqlType(toField) comes from SqlTypeSupport's closed switch over the DSL's own type enum, never free text."
+    },
+    "aaeb9131a3f1": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:174",
+      "why": "Same as 6145981d8419 -- table/toCol/fromCol all resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist before being spliced into the generated convert.sql text."
+    },
+    "83d0b3b988f5": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:175",
+      "why": "Same as 6145981d8419 -- table/toCol resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist."
+    },
+    "814d307bb65e": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:175",
+      "why": "Same as 6145981d8419 -- toCol resolves through SqlIdentifierSupport's [a-z0-9_]-only whitelist."
+    },
+    "75a50a3f7183": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:184",
+      "why": "Same as 6145981d8419 (the split op's per-target ADD COLUMN) -- table/targetCol resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist; portableSqlType(targetField) through SqlTypeSupport's closed type-enum switch."
+    },
+    "995acdd8b42f": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:199",
+      "why": "Same as 6145981d8419 (the split op's backfill UPDATE) -- table/fromCol and every column named inside setClause/nullGuard are built from the SAME per-target SqlIdentifierSupport.columnName() calls one loop iteration earlier in the same method, never free text."
+    },
+    "9b89a663f664": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:203",
+      "why": "Same as 6145981d8419 (the split op's closing SET NOT NULL, one per target column) -- table/nullCheckCol resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist."
+    },
+    "4f4350ae354c": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:203",
+      "why": "Same as 6145981d8419 -- nullCheckCol resolves through SqlIdentifierSupport's [a-z0-9_]-only whitelist."
+    },
+    "f27e9a162c28": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:221",
+      "why": "Same as 6145981d8419 (the lookup op's ADD COLUMN) -- table/setCol resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist; portableSqlType(setField) through SqlTypeSupport's closed type-enum switch."
+    },
+    "c3ec577da23c": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:222",
+      "why": "Same as 6145981d8419 (the lookup op's correlated-subquery UPDATE) -- table/setCol/matchIdCol/matchTable/onCol/equalsCol all resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist (matchIdCol/matchTable/onCol come from requireField()/tableName() against the compiler-validated match.concept, not free text)."
+    },
+    "ff61950d9e27": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:222",
+      "why": "Same as c3ec577da23c -- the correlated subquery's own identifiers (matchIdCol/matchTable/onCol/table/equalsCol) resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist."
+    },
+    "71cf63d95978": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:225",
+      "why": "Same as 6145981d8419 (the lookup op's closing SET NOT NULL) -- table/setCol resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist."
+    },
+    "abba6d858f8d": {
+      "rule": "F2",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:225",
+      "why": "Same as 6145981d8419 -- setCol resolves through SqlIdentifierSupport's [a-z0-9_]-only whitelist."
+    },
+    "01ce4dd9c3d6": {
+      "rule": "B2/G6",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:222",
+      "why": "S7 Phase B (B13 declarative conversion vocabulary), same class as 4014f82e9bb8: a declared-conversion lookup's correlated-subquery UPDATE, generated at BUILD time (writes convert.sql text into a file, executes nothing) and later run by ConversionHookRunner over an entire physical table's schema/data -- a schema migration is a property of the DATABASE, not of one tenant, so every tenant's rows in that table are meant to be touched uniformly, matching BackfillPass/PlatformColumnPass's identical no-tenant-predicate UPDATE shape one package over in NPDevRuntimeHost."
+    },
+    "707358791f42": {
+      "rule": "B2/G6",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:222",
+      "why": "Same as 01ce4dd9c3d6 -- the correlated subquery's own SELECT, same schema-migration-not-tenant-scoped reasoning."
+    },
+    "996fee296fe4": {
+      "rule": "B2/G6",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:234",
+      "why": "Same as 01ce4dd9c3d6 -- the generated hook's own verifySql (SELECT COUNT(*) FROM <table> WHERE <col> IS NULL), a schema-completeness check over the whole table, not a tenant-scoped read."
     }
   }
 }

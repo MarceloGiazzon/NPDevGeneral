@@ -1,0 +1,7 @@
+{
+  "id": "s7-copy-code",
+  "claims": ["ADD_REQUIRED_COLUMN:s7_orders:external_ref"],
+  "description": "S7 Phase B: generator-produced convert.sql for a declared copy conversion (op=copy, concept=Order), captured verbatim from ConversionHookEmitterDeclaredConversionsTest and adapted only to a test-unique table name.",
+  "verifySql": "SELECT COUNT(*) FROM s7_orders WHERE external_ref IS NULL",
+  "verifyExpect": 0
+}

@@ -127,6 +127,11 @@ public final class CompiledModelCanonicalJsonReader {
             contexts.add(toContext(node));
         }
 
+        List<CompiledConversion> conversions = new ArrayList<>();
+        for (JsonNode node : array(root, "conversions")) {
+            conversions.add(toConversion(node));
+        }
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -151,7 +156,8 @@ public final class CompiledModelCanonicalJsonReader {
                 roles,
                 propertyScopes,
                 properties,
-                contexts
+                contexts,
+                conversions
         );
     }
 
@@ -163,6 +169,30 @@ public final class CompiledModelCanonicalJsonReader {
     /** B20 (S2): reads a single declared bounded context (name + $ref). */
     private static CompiledContext toContext(JsonNode node) {
         return new CompiledContext(text(node, "name"), text(node, "ref"));
+    }
+
+    /** S7 Phase B (B13): reads a single declared conversion. */
+    private static CompiledConversion toConversion(JsonNode node) {
+        List<CompiledConversion.CompiledConversionSplitTarget> into = new ArrayList<>();
+        for (JsonNode targetNode : array(node, "into")) {
+            into.add(new CompiledConversion.CompiledConversionSplitTarget(
+                    text(targetNode, "field"), text(targetNode, "take")));
+        }
+        JsonNode matchNode = node.get("match");
+        CompiledConversion.CompiledConversionLookupMatch match = matchNode == null || matchNode.isNull()
+                ? null
+                : new CompiledConversion.CompiledConversionLookupMatch(
+                        text(matchNode, "concept"), text(matchNode, "on"), text(matchNode, "equals"));
+        return new CompiledConversion(
+                text(node, "id"),
+                text(node, "concept"),
+                text(node, "op"),
+                optionalText(node, "from"),
+                optionalText(node, "to"),
+                into,
+                match,
+                optionalText(node, "set")
+        );
     }
 
     /** Wave 6 (RC-A1): reads a single declared property-cascade scope level. */

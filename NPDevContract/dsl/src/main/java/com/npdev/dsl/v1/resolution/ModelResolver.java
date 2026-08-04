@@ -111,7 +111,8 @@ public final class ModelResolver {
                 source.getRoles(),
                 source.getPropertyScopes(),
                 source.getProperties(),
-                source.getContexts()
+                source.getContexts(),
+                source.getConversions()
         );
         return ResolvedModel.from(resolvedAst);
     }

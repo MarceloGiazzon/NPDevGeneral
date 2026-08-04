@@ -68,7 +68,48 @@ public final class CompiledModelCanonicalJson {
         root.set("propertyScopes", toPropertyScopes(model));
         root.set("properties", toProperties(model));
         root.set("contexts", toContexts(model));
+        root.set("conversions", toConversions(model));
         return root;
+    }
+
+    /** S7 Phase B (B13): writes the declared conversion vocabulary, sorted by id (deterministic-
+     *  generation gate, same discipline every other array here follows). */
+    private static ArrayNode toConversions(CompiledModel model) {
+        ArrayNode conversions = JsonNodeFactory.instance.arrayNode();
+        List<CompiledConversion> sorted = new ArrayList<>(model.getConversions());
+        sorted.sort(Comparator.comparing(conversion -> normalize(conversion.id())));
+        for (CompiledConversion conversion : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("id", safe(conversion.id()));
+            node.put("concept", safe(conversion.concept()));
+            node.put("op", safe(conversion.op()));
+            if (conversion.from() != null) {
+                node.put("from", conversion.from());
+            }
+            if (conversion.to() != null) {
+                node.put("to", conversion.to());
+            }
+            if (!conversion.into().isEmpty()) {
+                ArrayNode into = node.putArray("into");
+                for (CompiledConversion.CompiledConversionSplitTarget target : conversion.into()) {
+                    ObjectNode targetNode = JsonNodeFactory.instance.objectNode();
+                    targetNode.put("field", safe(target.field()));
+                    targetNode.put("take", safe(target.take()));
+                    into.add(targetNode);
+                }
+            }
+            if (conversion.match() != null) {
+                ObjectNode matchNode = node.putObject("match");
+                matchNode.put("concept", safe(conversion.match().concept()));
+                matchNode.put("on", safe(conversion.match().on()));
+                matchNode.put("equals", safe(conversion.match().equals()));
+            }
+            if (conversion.set() != null) {
+                node.put("set", conversion.set());
+            }
+            conversions.add(node);
+        }
+        return conversions;
     }
 
     /** B20 (S2): writes the declared bounded-context registry, sorted by name (deterministic-
