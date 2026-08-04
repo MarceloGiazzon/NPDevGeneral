@@ -735,7 +735,7 @@ TOOLS: list[dict[str, Any]] = [
                     "type": "string",
                     "description": "Directory to assemble the final generated app into (same meaning as npdev_generate's own 'output').",
                 },
-                "port": {"type": "integer", "description": "Server port to boot on. Default 8180."},
+                "port": {"type": "integer", "description": "Server port to boot on. Default 8080."},
                 "timeout": {
                     "type": "integer",
                     "description": "Overall wall-clock budget in seconds across GENERATE+BUILD+BOOT. Default 420.",

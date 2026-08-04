@@ -839,6 +839,37 @@ def run_review_ingest(args: argparse.Namespace) -> None:
     subprocess.run(command, cwd=root, check=True)
 
 
+def _run_with_phase_narration(command: list[str], cwd: Path, markers: list[tuple[str, str]]) -> None:
+    """P2 (FIRST_IMPRESSION_PLAN.md I4): a cold `generate app` shells out to ONE Gradle task that
+    silently does Gradle-dependency-resolution + compile + generate + assemble in a single JVM
+    invocation -- from the caller's side that is ~10 minutes with nothing to look at beyond
+    Gradle's own raw task-by-task chatter, which means nothing to a newcomer.
+
+    Rather than teach GeneratorMain.java a new phase-marker vocabulary (bigger, riskier, needs its
+    own Java-side verification), this streams the child's stdout back out UNCHANGED line-for-line
+    -- so anything parsing our stdout sees exactly what it always has -- and separately watches for
+    a few of GeneratorMain's OWN existing milestone lines (already printed today, just easy to miss
+    in the noise), printing one friendly phase-transition line to STDERR the first time each is
+    seen. `markers` is an ordered list of (substring-to-watch-for, message-to-print); stderr, not
+    stdout, carries the narration.
+    """
+    process = subprocess.Popen(
+        command, cwd=cwd, stdout=subprocess.PIPE, stderr=None,
+        text=True, encoding="utf-8", errors="replace", bufsize=1,
+    )
+    remaining = list(markers)
+    assert process.stdout is not None
+    for line in process.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        while remaining and remaining[0][0] in line:
+            _, message = remaining.pop(0)
+            print(message, file=sys.stderr)
+    process.wait()
+    if process.returncode != 0:
+        raise subprocess.CalledProcessError(process.returncode, command)
+
+
 def run_generate(args: argparse.Namespace) -> None:
     root = repo_root()
     generator_root = root / "NPDevGenerator"
@@ -885,7 +916,31 @@ def run_generate(args: argparse.Namespace) -> None:
         command = [str(wrapper), ":generator:run", "--no-daemon", "--console=plain", f"--args={args_str}"]
         if os.name == "nt" and wrapper.suffix.lower() == ".bat":
             command = ["cmd.exe", "/c"] + command
-        subprocess.run(command, cwd=generator_root, check=True)
+        print("[1/4] compiling + resolving the generator (first run downloads Gradle "
+              "dependencies -- can take several minutes) ...", file=sys.stderr)
+        _run_with_phase_narration(command, generator_root, [
+            ("DB definition:", "[2/4] compiling the model ..."),
+            ("Generation OK.", "[3/4] emitting the application ..."),
+            ("Final app assembly OK.", "[4/4] assembling the final app ..."),
+        ])
+
+    # W3 (FIRST_IMPRESSION_PLAN.md I3): `generate app` used to end with assembly diagnostics and
+    # nothing else -- a newcomer had a directory full of files and no stated next step. Print one
+    # to stdout (machine-readable output from THIS command is diagnostics/paths already printed
+    # above; this closing block is human-facing, matching README's own documented sequence exactly
+    # so the two never drift apart).
+    jar_name = "FinalExec-0.1.0.jar"
+    print(
+        f"\n"
+        f"Your app is ready:  {final_app_out}\n"
+        f"\n"
+        f"  1. Build:   cd {final_app_out} && ./gradlew bootJar\n"
+        f"  2. Run:     java -jar build/libs/{jar_name} --spring.profiles.active=dev\n"
+        f"  3. Open:    http://localhost:8080\n"
+        f"  4. Log in:  the key in SUPER_USER_KEY.txt (created in this folder on first start)\n"
+        f"\n"
+        f"  Docker instead? cp .env.example .env && docker compose up\n"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2170,13 +2225,32 @@ def inspect_app(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="npdev")
+    # P3 (FIRST_IMPRESSION_PLAN.md I4): the top-level command list used to show all 13 commands
+    # with zero descriptions -- a newcomer could not tell which four are theirs. The epilog is the
+    # single highest-value string here: it answers "where do I start?", which the bare command list
+    # never did. RawDescriptionHelpFormatter is required or argparse collapses the epilog's line
+    # breaks into one paragraph.
+    parser = argparse.ArgumentParser(
+        prog="npdev",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "New here?  npdev generate app --model <m> --config <c> --output <dir>\n"
+            "           then:  cd <dir> && ./gradlew bootJar && java -jar build/libs/*.jar\n"
+            "           then open http://localhost:8080\n"
+            "\n"
+            "Docs: docs/GETTING_STARTED.md"
+        ),
+    )
     parser.add_argument("--version", action="store_true", help="Print the portable NPDev CLI version.")
     subparsers = parser.add_subparsers(dest="command")
 
-    validate = subparsers.add_parser("validate")
+    validate = subparsers.add_parser(
+        "validate", help="Check a model is correct -- structure and meaning -- without generating."
+    )
     validate_sub = validate.add_subparsers(dest="validate_command")
-    validate_model = validate_sub.add_parser("model")
+    validate_model = validate_sub.add_parser(
+        "model", help="Check a model's structure AND meaning. Exits non-zero on any error."
+    )
     validate_model.add_argument("path")
     validate_model.add_argument(
         "--semantic",
@@ -2198,13 +2272,17 @@ def build_parser() -> argparse.ArgumentParser:
              "--structural-only, which has no typed report to write.",
     )
 
-    normalize = subparsers.add_parser("normalize")
+    normalize = subparsers.add_parser(
+        "normalize", help="Rewrite an AI-authored model into canonical form."
+    )
     normalize_sub = normalize.add_subparsers(dest="normalize_command")
     normalize_ai = normalize_sub.add_parser("ai-model")
     normalize_ai.add_argument("path")
     normalize_ai.add_argument("--output")
 
-    migrate = subparsers.add_parser("migrate")
+    migrate = subparsers.add_parser(
+        "migrate", help="Rewrite existing models after a breaking DSL change (npdev migrate dsl-2)."
+    )
     migrate_sub = migrate.add_subparsers(dest="migrate_command")
     migrate_legacy = migrate_sub.add_parser("legacy-model")
     migrate_legacy.add_argument("--input", required=True)
@@ -2233,7 +2311,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     migrate_bc.add_argument("--report", help="write a JSON report of every model's outcome to this path")
 
-    migration = subparsers.add_parser("migration")
+    migration = subparsers.add_parser(
+        "migration", help="Classify a schema change as safe or destructive; dry-run the migration plan."
+    )
     migration_sub = migration.add_subparsers(dest="migration_command")
     migration_diff = migration_sub.add_parser("diff")
     migration_diff.add_argument("--baseline", required=True)
@@ -2242,7 +2322,9 @@ def build_parser() -> argparse.ArgumentParser:
     migration_diff.add_argument("--decision-report", dest="decision_report")
 
     # AI_AUTHORING_CONTRACT-2026-07-31.md Part 9 (E2/E4/E5): the Custodian's diff gate.
-    author = subparsers.add_parser("author")
+    author = subparsers.add_parser(
+        "author", help="Submit a model change through the authoring gate, or diff it against a baseline."
+    )
     author_sub = author.add_subparsers(dest="author_command")
     author_diff_gate = author_sub.add_parser("diff-gate")
     author_diff_gate.add_argument("--previous", required=True)
@@ -2259,7 +2341,9 @@ def build_parser() -> argparse.ArgumentParser:
                                 help="Where the previous model is archived on acceptance (E5). Default: <previous's app root>/model-history/.")
     _add_merge_args(author_submit)
 
-    inspect = subparsers.add_parser("inspect")
+    inspect = subparsers.add_parser(
+        "inspect", help="Show what a model already contains: concepts, fields, flows, events, bonds."
+    )
     inspect_sub = inspect.add_subparsers(dest="inspect_command")
     inspect_bonds_parser = inspect_sub.add_parser("bonds")
     inspect_bonds_parser.add_argument("--model", required=True)
@@ -2269,9 +2353,13 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_app_parser.add_argument("--model", required=True)
     inspect_app_parser.add_argument("--output")
 
-    generate = subparsers.add_parser("generate")
+    generate = subparsers.add_parser(
+        "generate", help="Generate a complete, runnable app (or a single screen) from a model."
+    )
     generate_sub = generate.add_subparsers(dest="generate_command")
-    generate_app = generate_sub.add_parser("app")
+    generate_app = generate_sub.add_parser(
+        "app", help="Generate a full Spring Boot app from a model + config."
+    )
     generate_app.add_argument("--model", required=True)
     generate_app.add_argument("--config", required=True)
     generate_app.add_argument("--output", required=True)
@@ -2281,7 +2369,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail if db.definition.json is missing instead of defaulting to an InMemory database definition.",
     )
 
-    run = subparsers.add_parser("run")
+    run = subparsers.add_parser(
+        "run", help="Generate, build, boot and health-check an app in one command."
+    )
     run_sub = run.add_subparsers(dest="run_command")
     run_app = run_sub.add_parser(
         "app", help="Move 10 D1 (LC-D1): generate + build + boot + health-check an app in one command."
@@ -2294,7 +2384,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Fail if db.definition.json is missing instead of defaulting to an InMemory database definition.",
     )
-    run_app.add_argument("--port", type=int, default=8180, help="Server port to boot on (default 8180).")
+    run_app.add_argument(
+        "--port", type=int, default=8080,
+        help="Server port to boot on (default 8080 -- matches application.yml's own default and "
+             "the generated Dockerfile/.env.example, per FIRST_IMPRESSION_PLAN.md I3: one port "
+             "everywhere, not a CLI-only 8180 nobody else uses).",
+    )
     run_app.add_argument(
         "--profile", default="dev",
         help="Spring profile to activate at boot (--spring.profiles.active=<profile>). Default 'dev' -- "
@@ -2319,7 +2414,9 @@ def build_parser() -> argparse.ArgumentParser:
              "(default: PORT_IN_USE is refused outright, matching a fresh CI-style run's expectations).",
     )
 
-    acceptance = subparsers.add_parser("acceptance")
+    acceptance = subparsers.add_parser(
+        "acceptance", help="Run the acceptance suite against a running app."
+    )
     acceptance_sub = acceptance.add_subparsers(dest="acceptance_command")
     acceptance_run = acceptance_sub.add_parser(
         "run", help="Move 10 D2 (LC-D2): boot an app (via D1) and run declarative *.scenario.json acceptance scenarios against it."
@@ -2339,7 +2436,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--require-db-definition", action="store_true",
         help="Fail if db.definition.json is missing instead of defaulting to an InMemory database definition.",
     )
-    acceptance_run.add_argument("--port", type=int, default=8180)
+    acceptance_run.add_argument("--port", type=int, default=8080)
     acceptance_run.add_argument("--timeout", type=int, default=420)
     acceptance_run.add_argument("--profile", default="dev")
     acceptance_run.add_argument(
@@ -2350,7 +2447,9 @@ def build_parser() -> argparse.ArgumentParser:
     acceptance_run.add_argument("--baseline-model")
     acceptance_run.add_argument("--keep-running", action="store_true")
 
-    loop = subparsers.add_parser("loop")
+    loop = subparsers.add_parser(
+        "loop", help="Run the closed-loop authoring/validation cycle end to end."
+    )
     loop_sub = loop.add_subparsers(dest="loop_command")
     loop_run = loop_sub.add_parser(
         "run", help="Move 10 D3 (LC-D3): the closed AI loop end to end -- diff-gate -> validate -> "
@@ -2364,7 +2463,7 @@ def build_parser() -> argparse.ArgumentParser:
     loop_run.add_argument("--output", required=True)
     loop_run.add_argument("--scenarios", required=True, help="Directory containing *.scenario.json acceptance scenarios.")
     loop_run.add_argument("--require-db-definition", action="store_true")
-    loop_run.add_argument("--port", type=int, default=8180)
+    loop_run.add_argument("--port", type=int, default=8080)
     loop_run.add_argument("--timeout", type=int, default=420)
     loop_run.add_argument("--profile", default="dev")
     loop_run.add_argument("--api-key", default="dev-key")
@@ -2389,11 +2488,15 @@ def build_parser() -> argparse.ArgumentParser:
              "the prompt this command writes when --model-command is omitted.",
     )
 
-    report = subparsers.add_parser("report")
+    report = subparsers.add_parser(
+        "report", help="Produce or bootstrap the evidence and status reports."
+    )
     report_sub = report.add_subparsers(dest="report_command")
-    report_sub.add_parser("bootstrap")
+    report_sub.add_parser("bootstrap", help="Regenerate the maintainer status reports under scripts/reports/out/.")
 
-    verify = subparsers.add_parser("verify")
+    verify = subparsers.add_parser(
+        "verify", help="Run a verification tier: T0 inner loop, T1 fast gate, T2 full, T3 release."
+    )
     verify.add_argument("--tier", required=True, choices=["T0", "T1", "T2", "T3"],
                          help="Fast Lane plan tiers -- T0 inner loop, T1 fast gate (one canary app), "
                               "T2 full gate (run-all-gates.ps1), T3 release ceremony.")
@@ -2403,7 +2506,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="T3 only: also run the ~540s release-evidence orchestration, not just "
                               "evaluate what evidence already exists.")
 
-    review = subparsers.add_parser("review")
+    review = subparsers.add_parser(
+        "review", help="Build a review pack, or ingest a review verdict."
+    )
     review_sub = review.add_subparsers(dest="review_command")
     review_pack = review_sub.add_parser("pack")
     review_pack.add_argument("--mission-id", required=True)
@@ -2428,7 +2533,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.version:
-            print(f"npdev {VERSION}")
+            # N1 (FIRST_IMPRESSION_PLAN.md): this is the CLI wrapper's OWN version, distinct from
+            # the model-format version (dslVersion) and the platform release (git tag) -- state
+            # which is which in one line rather than leaving a bare "npdev 0.9.0" to look like the
+            # whole story. Filed as N1 for full alignment (three numbers, still no single source of
+            # truth); this line is the cheap half of that, not the fix.
+            print(f"npdev {VERSION}  (CLI)   ·   model format: dslVersion 1.0.0   ·   see git tag for the platform release")
             return 0
         if args.command == "validate" and args.validate_command == "model":
             if getattr(args, "structural_only", False):
