@@ -52,9 +52,13 @@ import java.util.Objects;
  * resolved, genuinely still waiting, or ended via a nested {@code return}) -- N separate
  * close-the-window checkpoints. Per-iteration correlation ids reuse {@link
  * FlowStateCodec#deriveForEachIterationCorrelationId} verbatim (B2: "reuse that convention, do not
- * invent a second") -- required non-blank, never silently derived-to-blank, since {@code
- * KernelRunner.matchesCorrelation} treats a blank correlation as "matches anything" and Wave 3's
- * multi-step body multiplies that exposure further still (prohibition carried forward unchanged).
+ * invent a second") -- required non-blank, never silently derived-to-blank. {@code
+ * KernelRunner.matchesCorrelation} now fails closed on a blank correlation (F9,
+ * FIRST_IMPRESSION_SPEC.md I7), so a silently-blank derivation strands that iteration waiting
+ * forever rather than resolving against a DIFFERENT iteration's event as it would have under the
+ * old fail-open behavior -- Wave 3's multi-step body still multiplies the blast radius of that
+ * hang across more iterations in flight at once, so the non-blank requirement carries forward
+ * unchanged either way.
  */
 final class ParallelAwaitForEachStep {
 

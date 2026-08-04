@@ -23,6 +23,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class KernelRunnerTest {
 
     @Test
+    void matchesCorrelationFailsClosedOnBlankOrNullCorrelationId() {
+        // F9 (FIRST_IMPRESSION_SPEC.md I7): every real caller (ResumeCoordinator) only reaches
+        // matchesCorrelation when its own matchCorrelation() flag is true -- a blank/null
+        // correlation id cannot satisfy that request, so it must not match ANY event, including
+        // one whose own correlationId happens to be non-blank (matching everything was the bug).
+        EventEnvelope event = EventEnvelope.of("some.event", Map.of());
+
+        assertFalse(KernelRunner.matchesCorrelation(event, null));
+        assertFalse(KernelRunner.matchesCorrelation(event, ""));
+        assertFalse(KernelRunner.matchesCorrelation(event, "   "));
+    }
+
+    @Test
+    void matchesCorrelationStillMatchesOnlyTheEqualNonBlankCorrelationId() {
+        EventEnvelope event = EventEnvelope.of("some.event", Map.of(), "corr-123", "cause-1", Map.of());
+
+        assertTrue(KernelRunner.matchesCorrelation(event, "corr-123"));
+        assertFalse(KernelRunner.matchesCorrelation(event, "corr-999"));
+    }
+
+    @Test
     void publishEventDelegatesEnvelopeToEventBus() {
         AtomicReference<EventEnvelope> envelopeRef = new AtomicReference<>();
 
