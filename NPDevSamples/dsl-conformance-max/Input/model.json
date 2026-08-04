@@ -402,6 +402,12 @@
       "payload": [
         { "name": "sku", "type": "string" }
       ]
+    },
+    {
+      "name": "WidgetOrderLineApprovalRecorded",
+      "payload": [
+        { "name": "sku", "type": "string" }
+      ]
     }
   ],
 
@@ -1146,6 +1152,12 @@
           "parallelAwait": true,
           "steps": [
             {
+              "name": "capture-sku-parallel",
+              "type": "map",
+              "input": "$sku",
+              "output": "$skuSeen"
+            },
+            {
               "name": "await-line-approved-parallel",
               "type": "awaitEvent",
               "awaitEvent": "WidgetOrderLineApproved",
@@ -1153,6 +1165,12 @@
                 "correlation": true
               },
               "awaitRef": "lineApproval"
+            },
+            {
+              "name": "notify-line-approved-parallel",
+              "type": "emitEvent",
+              "event": "WidgetOrderLineApprovalRecorded",
+              "payload": "$lineApproval"
             }
           ]
         },

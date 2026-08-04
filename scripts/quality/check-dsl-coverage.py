@@ -489,6 +489,21 @@ def _has_parallel_await_foreach(model: dict) -> bool:
     )
 
 
+def _has_parallel_await_multistep_foreach(model: dict) -> bool:
+    """S8 Wave 3 (S8_DEFERRED_FIVE_PLAN.md, 2026-08-04, I5): a parallelAwait forEach body widened
+    from EXACTLY one await step to any number of other steps before/after it -- distinct from the
+    plain "step.forEach.parallelAwait" feature above (which a single-await body already satisfies),
+    same discipline as "query.groupBy.join.multiHop" tracking the widened case separately from the
+    base feature it widened."""
+    for step in _all_steps(model):
+        if str(step.get("type", "")).lower() != "foreach" or step.get("parallelAwait") is not True:
+            continue
+        loop_steps = step.get("steps", None) or []
+        if len(loop_steps) > 1:
+            return True
+    return False
+
+
 def _flows(model: dict):
     return [f for f in (model.get("flows", None) or []) if isinstance(f, dict)]
 
@@ -561,6 +576,7 @@ FEATURE_DETECTORS = {
     "flow.hooks": lambda m: any(f.get("hooks") for f in _flows(m)),
     "step.onFailure": _has_on_failure,
     "step.forEach.parallelAwait": _has_parallel_await_foreach,
+    "step.forEach.parallelAwait.multiStep": _has_parallel_await_multistep_foreach,
     **{f"step.{t}": (lambda m, t=t: _has_step_type(m, t)) for t in FLOW_STEP_TYPES},
     # Move 4 (docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md): procedure.patchConcept and aggregate.onCommit
     # are new features, not caught by the flow-only _all_steps() above -- a procedure's steps live

@@ -247,4 +247,116 @@ final class FlowStateCodec {
         String normalized = KernelRunner.normalizeRef(awaitRef);
         return normalized.isBlank() ? "awaitedEvent" : normalized;
     }
+
+    /**
+     * Wave 3 (S8_DEFERRED_FIVE_PLAN.md, 2026-08-04): I0 decision record for per-iteration state
+     * isolation in a MULTI-STEP {@code parallelAwait} loop body (steps before/after the await, not
+     * just the await itself).
+     *
+     * <p><b>Chosen: Option A, namespace-prefixed shadow keys living in the SAME {@code state} blob
+     * the resume path already reads</b> -- the helper's own leaning (see
+     * {@code __OutsideRepo/wave3-helpers/w3-isolation-vectors.json} → {@code designOptions}),
+     * defended here on code-reading grounds, not inherited: Option C (copy-on-write per-iteration
+     * maps) was rejected first, on evidence from reading {@link KernelRunner#executeSteps} (its
+     * automatic per-step {@code progressRecorder.onStepCompleted} checkpoint persists whatever
+     * object graph {@code state} points to at that instant) -- handing a nested {@code executeSteps}
+     * call a DIFFERENT map object than the one the outer checkpoint persists would mean a
+     * mid-iteration crash loses that iteration's own scratch map entirely, since nothing durable
+     * ever pointed at it. Option B (extend the existing 2-key save/restore to the whole map) was
+     * rejected next: it cannot express "this key survives past the loop" (vector 5) at all --
+     * whole-map restore is all-or-nothing. Option A survives both objections: every step class
+     * already reads/writes plain {@code state.get/put(key)} (see {@link AwaitEventStep}, {@link
+     * ReturnStep}) with ZERO awareness of iteration scoping, and Option A's mechanism (below)
+     * relocates their bare writes into a namespaced shadow AFTER the fact rather than requiring any
+     * of the six previously-unscoped step classes to change at all.
+     *
+     * <p><b>The mechanism, concretely</b> (implemented in {@code ParallelLoopIterationScope}, kernel
+     * package): each {@code parallelAwait} forEach step captures ONE baseline snapshot of the entire
+     * {@code state} map the first time it ever runs ({@link #parallelLoopBaselineKey}, captured
+     * exactly once -- a second capture attempt is a no-op, checked via {@code containsKey}). Before
+     * iteration i's turn, {@code enter(i)} overlays whatever iteration i has PREVIOUSLY relocated
+     * into its own namespace (see {@link #parallelLoopScopedKey}) back onto the bare keys the loop
+     * body's steps actually read/write -- this is what lets vector 3 hold (a key set BEFORE the loop
+     * and never touched by any iteration is never in any shadow namespace, so it is untouched by
+     * enter/exit and stays readable throughout). After iteration i's delegated {@code executeSteps}
+     * call returns (whether fully complete, still {@code WAITING}, or ended via a nested {@code
+     * return} -- see {@link ReturnStep}'s own javadoc: unlike every other step kind {@code RETURN}
+     * always terminates execution, but only of the NESTED {@code executeSteps} call this class
+     * delegates to, not the outer flow -- the caller here only branches on {@code
+     * nested.failedResult()}, so a {@code return} inside the body reads as an ordinary successful
+     * iteration turn, exactly like B15(A)'s sequential loop already treats it), {@code exit(i)}
+     * diffs bare {@code state} against the baseline: every key whose CURRENT value differs from (or
+     * is absent from) the baseline is relocated into iteration i's namespace and then reset back to
+     * its baseline value (or removed if the baseline never had it) -- this is what lets vector 4
+     * hold (iteration i+1's {@code enter} never sees iteration i's shadow keys; it only ever
+     * overlays keys under ITS OWN {@code .i+1.} prefix) and what makes vector 1's clobber impossible
+     * ({@code ReturnStep}'s fixed {@code "last"} key differs per iteration in the shadow namespace
+     * even though the bare key briefly held each iteration's value in turn, one at a time, never
+     * concurrently).
+     *
+     * <p><b>Why this is crash-safe across a restart at a DIFFERENT step per iteration (vector 6, the
+     * hard stop) without a separate "in-flight" marker being load-bearing for correctness</b>: a
+     * crash can only ever leave bare {@code state} mid-relocation for AT MOST ONE iteration at a
+     * time (iterations are attempted strictly sequentially within one invocation, never
+     * interleaved), and {@link #parallelLoopActiveIterationKey} durably records which one the
+     * instant {@code enter(i)} runs. On resume, {@code enter(i)} for that SAME recorded index is a
+     * no-op (bare state already IS iteration i's live working set -- overlaying its OLDER relocated
+     * shadow on top would discard the newer, not-yet-relocated progress a crash left behind); for
+     * every other index, bare state is guaranteed to already sit at baseline (the prior iteration's
+     * {@code exit} always resets it before the active marker advances), so the overlay is safe. This
+     * is why re-entering iteration i after a crash re-runs its pre-await steps (idempotency, the
+     * same assumption B15(A) already relies on) but does NOT re-query an already-consumed await:
+     * {@link AwaitEventStep}'s own {@code FOR_EACH_AWAIT_SATISFIED_KEY_PREFIX} marker is itself just
+     * another bare key this mechanism relocates/restores like any other, so it survives the crash in
+     * whichever state (relocated-to-shadow or live-in-bare) it was actually in.
+     *
+     * <p><b>I2 (what survives the loop, vector 5) decided here too:</b> everything a multi-step body
+     * writes is scoped-and-discarded once the whole step completes (see {@code
+     * ParallelLoopIterationScope#clearAll}) -- EXCEPT the await's own resolved payload, which keeps
+     * the existing single-step-body convention of landing as one ordered list under the shared
+     * {@code awaitRef} key (now reconstructed by reading each iteration's relocated {@code awaitRef}
+     * shadow entry before {@code clearAll} runs, rather than from the old dedicated
+     * per-iteration-payload key). A multi-step body has no OTHER single key that unambiguously means
+     * "the iteration's result" the way a one-await body's {@code awaitRef} does; guessing which
+     * step's output "counts" would be exactly the kind of implementation-accident vector 5 warns
+     * against. An author who wants to collect other per-iteration outputs must do so explicitly
+     * (e.g. an aggregate/patchConcept write keyed by the loop item), not rely on an implicit
+     * survivor.
+     */
+    static final String PARALLEL_LOOP_SCOPE_KEY_PREFIX = "__iterScope.";
+    static final String PARALLEL_LOOP_BASELINE_KEY_PREFIX = "__iterBaseline.";
+    static final String PARALLEL_LOOP_ACTIVE_ITERATION_KEY_PREFIX = "__iterActive.";
+    static final String PARALLEL_LOOP_DONE_KEY_PREFIX = "__iterDone.";
+
+    static String parallelLoopScopedKey(String stepName, int iterationIndex, String innerKey) {
+        return PARALLEL_LOOP_SCOPE_KEY_PREFIX + stepName + "." + iterationIndex + "." + innerKey;
+    }
+
+    static String parallelLoopScopePrefix(String stepName, int iterationIndex) {
+        return PARALLEL_LOOP_SCOPE_KEY_PREFIX + stepName + "." + iterationIndex + ".";
+    }
+
+    static String parallelLoopBaselineKey(String stepName) {
+        return PARALLEL_LOOP_BASELINE_KEY_PREFIX + stepName;
+    }
+
+    static String parallelLoopActiveIterationKey(String stepName) {
+        return PARALLEL_LOOP_ACTIVE_ITERATION_KEY_PREFIX + stepName;
+    }
+
+    static String parallelLoopIterationDoneKey(String stepName, int iterationIndex) {
+        return PARALLEL_LOOP_DONE_KEY_PREFIX + stepName + "." + iterationIndex;
+    }
+
+    /** Every key family this file owns for Wave 3's per-iteration scope -- {@code
+     *  ParallelLoopIterationScope}'s diff-against-baseline sweep must never treat one of its OWN
+     *  bookkeeping keys as body-owned data to relocate (that would be infinite regress). */
+    static boolean isParallelLoopReservedKey(String key) {
+        return key != null && (
+                key.startsWith(PARALLEL_LOOP_SCOPE_KEY_PREFIX)
+                        || key.startsWith(PARALLEL_LOOP_BASELINE_KEY_PREFIX)
+                        || key.startsWith(PARALLEL_LOOP_ACTIVE_ITERATION_KEY_PREFIX)
+                        || key.startsWith(PARALLEL_LOOP_DONE_KEY_PREFIX)
+        );
+    }
 }

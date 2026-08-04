@@ -441,11 +441,24 @@ final class FlowValidation {
      * <p><b>{@code parallelAwait=true} (B15(B), lifted 2026-08-03 once its own restart-proof test
      * passed -- see {@code KernelRunnerParallelAwaitInLoopRestartProofTest} in the kernel module):
      * N iterations' awaits genuinely outstanding at once, instead of the default sequential
-     * (one-at-a-time) behavior.</b> Scoped narrower than plain sequential mode: the loop body must
-     * be EXACTLY one {@code await} step, no steps before or after it -- see
-     * {@code ParallelAwaitForEachStep}'s own javadoc (kernel module) for why that scope-down exists
-     * (a step mutating a non-namespaced {@code state} key would clobber across independently-attempted
-     * iterations; sequential mode never has more than one iteration in flight, so it never hit this).
+     * (one-at-a-time) behavior.</b> Originally scoped to EXACTLY one {@code await} step, no steps
+     * before or after it, because a step mutating a non-namespaced {@code state} key would clobber
+     * across independently-attempted iterations (sequential mode never has more than one iteration
+     * in flight, so it never hit this). <b>Wave 3 (S8_DEFERRED_FIVE_PLAN.md, 2026-08-04, I5)
+     * widened this to any number of other steps before/after the one required await</b>, once its
+     * own hard-stop restart proof passed for a genuinely multi-step body (iterations parked at
+     * DIFFERENT steps across a real process restart -- see
+     * {@code KernelRunnerParallelAwaitInLoopRestartProofTest}'s
+     * {@code multiStepBodyRestartWithIterationsAtDifferentStepsDoesNotReprocessTheResolvedIteration}
+     * and {@code ...OutOfOrderDeliveryResumesEachIterationExactlyOnce}, kernel module): the clobber
+     * this cap originally guarded against is now closed by {@code ParallelLoopIterationScope}
+     * (kernel module) -- see {@code FlowStateCodec}'s {@code PARALLEL_LOOP_*} javadoc for the full
+     * per-iteration state-isolation design. Still refused: a {@code forEach} step nested in the
+     * body (I3, vector 9 -- composes two independent per-iteration scoping schemes), and an await
+     * nested inside a branch rather than at the loop body's top level (the kernel-side runtime scan
+     * in {@code ParallelAwaitForEachStep} only looks at the body's top-level steps for its one
+     * required await -- see the check below, deliberately NOT the recursive {@link
+     * #countAwaitSteps}, so the validator never accepts a shape the runtime would then reject).
      */
     private static void validateForEachStep(
             FlowAst flow,
@@ -491,13 +504,35 @@ final class FlowValidation {
         }
         if (Boolean.TRUE.equals(step.getParallelAwait())) {
             List<StepAst> loopSteps = step.getLoopSteps();
-            boolean isSingleAwaitBody = loopSteps.size() == 1
-                    && "await".equals(normalize(loopSteps.get(0).getType()));
-            if (!isSingleAwaitBody) {
+            // I5 (Wave 3): top-level-only count, deliberately NOT the recursive countAwaitSteps
+            // above -- ParallelAwaitForEachStep's runtime scan (kernel module) only looks at the
+            // body's TOP-LEVEL steps for its one required await, so an await buried inside a
+            // branch must be rejected here too, or the validator would accept a shape the runtime
+            // then fails at execution time (the REG-70 shape this ordering exists to prevent).
+            long topLevelAwaitCount = loopSteps.stream()
+                    .filter(loopStep -> "await".equals(normalize(loopStep.getType())))
+                    .count();
+            if (topLevelAwaitCount != 1) {
                 errors.add("Flow " + flow.getName() + " step " + step.getName()
-                        + ": parallelAwait=true requires the loop body to be EXACTLY one await step"
-                        + " (B15(B) does not support steps before or after the await) -- found "
-                        + loopSteps.size() + " step(s)");
+                        + ": parallelAwait=true requires the loop body to contain exactly one await"
+                        + " step at the TOP LEVEL (not nested inside a branch) -- found "
+                        + topLevelAwaitCount);
+            }
+            // I3 (Wave 3, S8_DEFERRED_FIVE_PLAN.md): a nested forEach inside a parallel forEach
+            // composes two independent per-iteration scoping schemes -- ForEachStep itself writes
+            // 5 state keys including its own progress marker, none of which are namespaced by the
+            // OUTER parallel loop's iteration scope (see ParallelLoopIterationScope). Refused with
+            // a named error rather than left to discover the composition is broken later, exactly
+            // as B15(B) originally refused a multi-step body outright. Checked independently of the
+            // single-await-body cap above so this stays correct even once Wave 3's own I5 relaxes
+            // that cap for a multi-step body.
+            for (StepAst nested : loopSteps) {
+                if ("foreach".equals(normalize(nested.getType()))) {
+                    errors.add("Flow " + flow.getName() + " step " + step.getName()
+                            + ": parallelAwait=true does not support a nested forEach step ("
+                            + nested.getName() + ") in its loop body -- composing two independent"
+                            + " per-iteration scoping schemes is not supported (I3, Wave 3)");
+                }
             }
         }
         if (hasText(itemKey)) {

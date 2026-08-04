@@ -172,16 +172,19 @@ class FlowForEachValidationTest {
     }
 
     @Test
-    void parallelAwaitWithStepsBesidesTheAwaitIsRejected() throws Exception {
-        // The scope-down ParallelAwaitForEachStep's own javadoc (kernel module) explains: a step
-        // mutating a non-namespaced state key would clobber across independently-attempted
-        // iterations, a hazard sequential mode never hits since only one iteration is ever in
-        // flight. So parallelAwait=true requires EXACTLY one loop step (the await itself).
-        List<String> errors = validate(modelJsonWithEvents("""
+    void parallelAwaitWithStepsBesidesTheAwaitIsAllowedAndCompiles() throws Exception {
+        // Wave 3 (S8_DEFERRED_FIVE_PLAN.md, 2026-08-04), I5: lifted once the hard-stop restart
+        // proof passed for a genuinely multi-step body -- see
+        // KernelRunnerParallelAwaitInLoopRestartProofTest's
+        // multiStepBodyRestartWithIterationsAtDifferentStepsDoesNotReprocessTheResolvedIteration
+        // and ...OutOfOrderDeliveryResumesEachIterationExactlyOnce (kernel module). The clobber the
+        // old EXACTLY-one-step cap guarded against is now closed by ParallelLoopIterationScope.
+        String json = modelJsonWithEvents("""
             [
               { "name": "sum-orders", "type": "forEach", "collection": "input.orders", "itemKey": "order",
                 "parallelAwait": true,
                 "steps": [
+                  { "name": "calc", "type": "map", "input": "order", "output": "calcOut" },
                   { "name": "wait-for-approval", "type": "awaitEvent", "awaitEvent": "OrderApproved", "awaitRef": "approval" },
                   { "name": "return-item", "type": "return", "value": "approval" }
                 ]
@@ -189,10 +192,92 @@ class FlowForEachValidationTest {
             ]
             """, """
             [ { "name": "OrderApproved", "payload": [] } ]
+            """);
+        List<String> errors = validate(json);
+        assertTrue(errors.isEmpty(), "unexpected errors: " + errors);
+
+        ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(json));
+        CompiledModel compiled = new ModelCompiler().compile(ast);
+        CompiledFlow flow = compiled.getFlows().stream().findFirst().orElseThrow();
+        CompiledFlowStep step = flow.getSteps().get(0);
+        assertEquals(Boolean.TRUE, step.getParallelAwait());
+        assertEquals(3, step.getLoopSteps().size());
+    }
+
+    @Test
+    void parallelAwaitWithNoTopLevelAwaitIsRejectedEvenIfOneIsNestedInABranch() throws Exception {
+        // I5's own guard against the REG-70 shape: ParallelAwaitForEachStep's runtime scan (kernel
+        // module) only looks at the loop body's TOP-LEVEL steps for its one required await, so an
+        // await nested inside a branch must be rejected at compile time too -- otherwise the
+        // validator would accept a shape the runtime then fails at execution.
+        List<String> errors = validate(modelJsonWithEvents("""
+            [
+              { "name": "sum-orders", "type": "forEach", "collection": "input.orders", "itemKey": "order",
+                "parallelAwait": true,
+                "steps": [
+                  { "name": "maybe-wait", "type": "branch", "condition": "order.total > 0",
+                    "then": [
+                      { "name": "wait-for-approval", "type": "awaitEvent", "awaitEvent": "OrderApproved", "awaitRef": "approval" }
+                    ],
+                    "else": []
+                  }
+                ]
+              }
+            ]
+            """, """
+            [ { "name": "OrderApproved", "payload": [] } ]
             """));
         assertTrue(
-                errors.stream().anyMatch(e -> e.contains("parallelAwait=true requires the loop body to be EXACTLY one await step")),
-                "expected a parallelAwait shape error, got: " + errors);
+                errors.stream().anyMatch(e -> e.contains("exactly one await step at the TOP LEVEL")),
+                "expected a top-level-await error, got: " + errors);
+    }
+
+    @Test
+    void parallelAwaitWithZeroAwaitsIsRejected() throws Exception {
+        List<String> errors = validate(modelJson("""
+            [
+              { "name": "sum-orders", "type": "forEach", "collection": "input.orders", "itemKey": "order",
+                "parallelAwait": true,
+                "steps": [
+                  { "name": "return-item", "type": "return", "value": "order" }
+                ]
+              }
+            ]
+            """));
+        assertTrue(
+                errors.stream().anyMatch(e -> e.contains("exactly one await step at the TOP LEVEL")),
+                "expected a top-level-await error, got: " + errors);
+    }
+
+    @Test
+    void parallelAwaitWithNestedForEachIsRejectedWithNamedError() throws Exception {
+        // I3 (Wave 3, S8_DEFERRED_FIVE_PLAN.md, vector 9): a forEach nested inside a parallelAwait
+        // forEach composes two independent per-iteration scoping schemes -- ForEachStep itself
+        // writes 5 state keys including its own progress marker, none namespaced by the OUTER
+        // parallel loop's iteration scope (see ParallelLoopIterationScope, kernel module). Refused
+        // with a named error rather than left to discover the composition is broken later, exactly
+        // as B15(B) originally refused a multi-step body outright.
+        List<String> errors = validate(modelJsonWithEvents("""
+            [
+              { "name": "sum-orders", "type": "forEach", "collection": "input.orders", "itemKey": "order",
+                "parallelAwait": true,
+                "steps": [
+                  { "name": "wait-for-approval", "type": "awaitEvent", "awaitEvent": "OrderApproved", "awaitRef": "approval" },
+                  { "name": "inner-loop", "type": "forEach", "collection": "order.lines", "itemKey": "line",
+                    "steps": [
+                      { "name": "return-line", "type": "return", "value": "line" }
+                    ]
+                  }
+                ]
+              }
+            ]
+            """, """
+            [ { "name": "OrderApproved", "payload": [] } ]
+            """));
+        assertTrue(
+                errors.stream().anyMatch(e -> e.contains("does not support a nested forEach step")
+                        && e.contains("inner-loop")),
+                "expected a named nested-forEach-in-parallelAwait error, got: " + errors);
     }
 
     @Test
