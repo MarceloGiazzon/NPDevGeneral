@@ -155,3 +155,14 @@ a checker that has never seen a red, on a machine that passes every check it mak
 - **Needs network** — clone plus Gradle dependency resolution.
 - **Keys off the literal heading `## Quickstart`.** If README's structure changes, the
   `quickstart-section` check fails loudly rather than silently skipping — that is deliberate.
+- **`LOCAL_SRC=1` on a Windows host can show a false RED unrelated to the docs under test.** The
+  bind mount is read-only, so it exposes the host checkout exactly as `core.autocrlf` left it on
+  disk -- if that produced CRLF line endings, `gradlew`'s `#!/bin/sh` shebang becomes `#!/bin/sh\r`,
+  which Linux resolves to a nonexistent interpreter (`cannot execute: required file not found`,
+  masked further downstream as a `-Dorg.gradle.projectcachedir` URL error). Confirmed this is a
+  `LOCAL_SRC`-only artifact, not a real defect: a genuine `git clone` of this same repo state inside
+  a clean Linux container produces `gradlew` with zero `\r` bytes (git stores it LF-only; nothing in
+  this repo's checkout config converts it on a real Linux clone). Not fixed here, since the mount is
+  read-only and copying+normalizing the whole tree just to test doc edits is more machinery than the
+  case has earned -- if this bites again, `git -C <checkout> add --renormalize .` before mounting is
+  the workaround, or run against `REPO_REF=<branch>` (real clone mode) instead.
