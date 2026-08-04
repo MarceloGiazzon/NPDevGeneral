@@ -2,8 +2,10 @@ id: REG-131
 title: "npdev run app is broken on any machine other than the author's own: npdev_cli.py's _build_phase hardcodes env.setdefault(\"NPDEV_RUNTIMEHOST_LIBS_DIR\", str(Path(\"D:/WorkSpace/NPDev/Build/runtimehost-libs\"))) -- an absolute Windows D:\\ path with no fallback for a machine where that drive/path does not exist"
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-04
+closed: 2026-08-04
+verification: VERIFIED_LIVE
 surface: cli/run-app, build-tooling/runtimehost-libs-staging
 source: |
   Filed per firstrun-helpers/PLAN.md §0c (item N2), found during the same review that produced the
@@ -38,3 +40,35 @@ detail: |
   exercise `npdev run app` at all (it defers to `java -jar` directly per the README rewrite), so
   this bug would NOT be caught by the harness as it stands today; closing it should include either
   extending the harness to cover `npdev run app`, or explicitly noting the harness's blind spot.
+
+resolution: |
+  DONE (close-five/PLAN.md I1, 2026-08-04). Fixed exactly as this item's own detail predicted:
+  new `_default_runtimehost_libs_dir()` helper mirrors `Get-NPDevRuntimeHostLibsDir`'s convention
+  precisely (NPDEV_BUILD_ROOT env override, else `<repo>.parent/Build`, then `/runtimehost-libs`
+  -- NOT a third resolution order, per this plan's own explicit prohibition) and returns `None`
+  when the derived directory does not exist. `_build_phase` now only sets
+  `NPDEV_RUNTIMEHOST_LIBS_DIR` (preserving `setdefault` semantics: an explicitly-set env var from
+  the caller still wins, checked via `"NPDEV_RUNTIMEHOST_LIBS_DIR" not in env`) when a real
+  directory was found; left unset otherwise, so the generated `build.gradle`'s own
+  `verifyNpdevRuntimeHostLibs` task fires its existing named error ("Missing NPDev RuntimeHost
+  libs manifest in <path>. Run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars.")
+  instead of a wrong path producing a confusing downstream failure (REG-136's own X0 lesson,
+  applied here).
+
+  Also added an 8th check to the first-run harness (`scripts/quality/firstrun-harness/
+  run-readme.sh` section 4, REG-131's own closing note that the harness previously had a blind
+  spot here): a live `npdev run app` invocation inside the container, on a separate port (8081)
+  and output dir from the README's own documented path, asserting exit 0 and `"ok": true` in its
+  JSON result.
+
+  Verified two ways: (1) direct local test -- a fresh `generate app` run with `NPDEV_BUILD_ROOT`
+  pointed at a genuinely nonexistent path, confirming `_build_phase` left the env var unset and
+  the build failed with the clean, named "Missing NPDev RuntimeHost libs manifest" error (no
+  Python crash, no confusing downstream failure); a second run with the real Build root present
+  confirmed the positive path still works (BUILD SUCCESSFUL). (2) the harness's own section 4
+  check, run against the real pushed branch inside a clean container -- captured as this session's
+  final clone-based GREEN evidence alongside every other item this plan closed.
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\NPDevCli\npdev_cli.py
+    D:\WorkSpace\NPDev\NPDev_General\scripts\quality\firstrun-harness\run-readme.sh
