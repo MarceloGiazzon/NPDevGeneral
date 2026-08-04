@@ -2,8 +2,10 @@ id: REG-135
 title: "Accepted boundaries (NPDev's designed limits, e.g. B13's 'no Java data-migration hooks') carry no machine-readable identity: ValidationDiagnostic has code/helpKey/suggestedFix but no boundaryId, B-numbers (B1/B2/B15/B27/...) appear in the validation package as Java comments only, and docs/ACCEPTED_BOUNDARIES.md is a markdown table nothing can query except a human reading it"
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-04
+closed: 2026-08-04
+verification: VERIFIED_LIVE
 surface: dsl/validation-diagnostics, docs/accepted-boundaries
 source: |
   Filed per firstrun-helpers/PLAN.md §0c (item N6); full analysis in
@@ -37,3 +39,87 @@ detail: |
   check-twin-pair-consistency.py already uses for two other chains. Only the CONTENT of
   userFacingText/workaround strings for the top boundaries is named as needing real user
   observation (the trial) -- the mechanism itself does not.
+
+resolution: |
+  DONE (close-five/PLAN.md I3, 2026-08-04), all 7 steps built, with one real scope discovery that
+  narrowed step 3's reach honestly rather than by assumption.
+
+  STEP 1 (classify all 29, verify against real code, not titles): re-traced every row -- grepped
+  the real enforcing class for each HITTABLE candidate (all 11 confirmed real: MigrationClaim
+  Store, SchemaLifecycleExecutor, SchemaDropSnapshotRestorer, CrossEngineDataPromotion,
+  ConversionHookRunner, FieldPickerAst, SuperUserBootstrapper all exist; B28's claimed absence of
+  a ModelHolder class was ALSO re-confirmed by grep, still true). Found a real gap in the plan's
+  own draft: B19 was missing from its classification entirely (the draft's own HITTABLE+POSTURAL+
+  INFRASTRUCTURAL+LIFTED counts summed to 27, but the document has 29 rows/28 unique B-numbers --
+  the "two-row gap" the draft itself asked step 1 to reconcile). Traced B19's own text (a
+  bandPickers filter/multiSelect declared without a panel is silently inert, no diagnostic) and
+  classified it POSTURAL, not HITTABLE -- reconciling the count exactly (11 HITTABLE + 8 POSTURAL
+  [7 + B19] + 6 INFRASTRUCTURAL + 4 LIFTED rows [3 boundary numbers, B15 spans 2 rows] = 29).
+
+  STEP 2 (split user-facing from project posture): moved B21-B26 (INFRASTRUCTURAL -- NPDev's own
+  CI/corpus/test-coverage practices, never something an app author can hit) out of
+  docs/ACCEPTED_BOUNDARIES.md into new docs/PROJECT_POSTURE.md. ACCEPTED_BOUNDARIES.md keeps
+  HITTABLE + POSTURAL + LIFTED (real product boundaries) and gained a classification summary
+  table up top recording the kind of every row.
+
+  STEP 3 (boundaryId on ValidationDiagnostic) -- THE REAL FINDING THIS ITEM SURFACED: most
+  HITTABLE boundaries are NOT enforced through ValidationDiagnostic at all. Verified by tracing
+  each of the 11: B4/B5/B8 fire as boot-time refusals in NPDevRuntimeHost (SchemaLifecycleExecutor
+  /MigrationClaimStore), B2/B9/B10 are admin REST endpoints, B17 is a runtime auth-filter
+  rejection, B28 has no diagnostic at all (a design limitation, nothing to refuse). Only B1/B13's
+  compile-error halves and B16 flow through ValidationDiagnostic -- and even those mostly share a
+  GENERIC code (semantic_validation_error / json_schema_additionalproperties) with every unrelated
+  error of the same shape, not a boundary-specific one. This means "populate boundaryId for every
+  hittable boundary" as originally scoped is not achievable within this session without either
+  (a) extending boundaryId-shaped identity to runtime exceptions and REST error responses (a much
+  larger change, several more classes) or (b) adding dedicated diagnostic codes to 10 different
+  validation rules that do not have them today. Scoped down honestly instead: added the
+  `boundaryId` field to ValidationDiagnostic (mechanical, a new trailing constructor parameter,
+  every existing call site unaffected) and wired it CONCRETELY for the one clean, already-
+  distinguishable case: B16 (selectorRef). ValidationDiagnosticNormalizer.structuralDiagnostic()
+  now special-cases message.getProperty()=='selectorRef' to also set boundaryId='B16' on the
+  otherwise-generic additionalProperties diagnostic. RED/GREEN-verified end to end: a live model
+  declaring selectorRef now returns `"boundaryId": "B16"` in the JSON report. The other 10
+  HITTABLE boundaries are registered in ledger/boundaries/*.yml (all 11 files created) with
+  codeLinked:false and an honest codeLinkedNote explaining exactly what would need to change to
+  wire each one -- real future work, not silently dropped.
+
+  STEP 4 (render LIMIT distinctly from ERROR): `npdev validate model`'s Python CLI layer
+  (_print_boundary_limits, npdev_cli.py) now prints an additional stderr block for any diagnostic
+  carrying boundaryId -- "LIMIT ... This is a designed limit, not a mistake in your model. ->
+  details: docs/ACCEPTED_BOUNDARIES.md#B16" -- without touching the JSON report's own
+  npdev-validation-report.v2 contract (boundaryId is simply a new optional field in it).
+  Verified both directions: a selectorRef model gets the LIMIT block; an ordinary error (missing
+  required field) and a clean model get none.
+
+  STEP 5 (instrumentation): every LIMIT firing also appends one JSON line
+  (boundaryId/code/timestamp) to <Build>/npdev-ai/boundary-hits/boundary-hits.jsonl,
+  best-effort (a write failure never affects validate's own exit code) -- the mechanism PLAN.md's
+  own "count first, write second" instruction needs before step 6 (userFacingText) can be written
+  for the boundaries that actually fire. Verified: one real firing produced one real log line.
+
+  STEP 6 (userFacingText): deliberately left empty in all 11 ledger/boundaries/*.yml files, exactly
+  as instructed -- recorded, not forgotten, pending the trial's own observation of which boundaries
+  actually fire.
+
+  STEP 7 (twin-pair gate): registered `boundary-b16-registry-code-link` in twin-pair-registry.json
+  -- ledger/boundaries/B16.yml's own "B16" identity must appear consistently alongside
+  ValidationDiagnosticNormalizer.java's DESCOPED_PROPERTY_BOUNDARY_IDS map entry, or the registry
+  claims a code link that does not exist (or code sets an unregistered boundaryId). RED-verified
+  via a deliberately introduced divergence (stripped "B16" from the registry file, confirmed the
+  gate catches it, restored).
+
+  Verified overall: full :NPDevContract:dsl:test suite green (constructor change is additive,
+  every existing call site unaffected); check-twin-pair-consistency.py green (11 rules, up from
+  9); CLI unit tests (70) green.
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\NPDevContract\dsl\src\main\java\com\npdev\dsl\v1\validation\ValidationDiagnostic.java
+    D:\WorkSpace\NPDev\NPDev_General\NPDevContract\dsl\src\main\java\com\npdev\dsl\v1\validation\ValidationDiagnosticNormalizer.java
+    D:\WorkSpace\NPDev\NPDev_General\NPDevContract\dsl\src\main\java\com\npdev\dsl\v1\cli\ModelValidatorMain.java
+    D:\WorkSpace\NPDev\NPDev_General\NPDevCli\npdev_cli.py
+    D:\WorkSpace\NPDev\NPDev_General\docs\ACCEPTED_BOUNDARIES.md
+    D:\WorkSpace\NPDev\NPDev_General\docs\PROJECT_POSTURE.md (new)
+    D:\WorkSpace\NPDev\NPDev_General\ledger\boundaries\B1.yml, B2.yml, B4.yml, B5.yml, B8.yml,
+      B9.yml, B10.yml, B13.yml, B16.yml, B17.yml, B28.yml (all new)
+    D:\WorkSpace\NPDev\NPDev_General\scripts\quality\twin-pair-registry.json

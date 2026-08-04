@@ -1,0 +1,9 @@
+id: B9
+title: "Snapshot restore is operator-driven, one (snapshot, table) pair at a time -- never restore all"
+kind: HITTABLE
+userFacingText: ""  # deliberately empty pending the trial (REG-135 step 6)
+workaround: "Call the preview endpoint first, resolve any reported conflicts by hand, then restore for that exact (snapshot, table) pair -- repeat per table."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: "Enforced by an admin REST endpoint (SchemaDropSnapshotRestorer's preview/restore pair), not the DSL ValidationDiagnostic pipeline -- outside this session's ValidationDiagnostic-scoped boundaryId mechanism."
+ref: "docs/ACCEPTED_BOUNDARIES.md#B9"

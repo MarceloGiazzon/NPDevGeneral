@@ -1,0 +1,9 @@
+id: B13
+title: "Conversion hooks are SQL-only -- no Java DataMigrationHook (declarative conversions[] vocabulary covers copy/split/lookup/merge/convert)"
+kind: HITTABLE
+userFacingText: ""  # deliberately empty pending the trial (REG-135 step 6)
+workaround: "Declare a conversions[] entry (copy/split/lookup/merge/convert) instead of hand-writing convert.sql; for the uncovered case (retyping an EXISTING column in place), fall back to an operator-authored SQL hook."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: "An unresolvable conversions[] field reference IS a named compile error (PackValidation-style 'unresolvable join path' messages exist for the related groupBy-join case; conversions[] resolution errors follow the same generic semantic-diagnostic path as B1, no dedicated code yet). The Java-hooks-out-of-scope half of this boundary has no diagnostic at all -- there is no code path to reject a Java hook because none is ever parsed as one."
+ref: "docs/ACCEPTED_BOUNDARIES.md#B13"

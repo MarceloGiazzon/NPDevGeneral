@@ -3,6 +3,7 @@ package com.npdev.dsl.v1.validation;
 import com.networknt.schema.ValidationMessage;
 
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,6 +33,16 @@ final class ValidationDiagnosticNormalizer {
             Pattern.compile("^Binding references unknown capability:\\s*(.+)$");
     private static final Pattern DUPLICATE_BINDING_PATTERN =
             Pattern.compile("^Duplicate binding for capability:\\s*(.+)$");
+
+    // REG-135 (docs/ACCEPTED_BOUNDARIES.md): a small number of "unknown property" structural
+    // violations are hitting a NAMED, accepted boundary rather than an ordinary typo -- selectorRef
+    // is B16's own descoped mechanism (0 Java, 0 schema, never built; field.picker replaced it).
+    // json_schema_additionalproperties is otherwise a GENERIC code shared by every unrecognized
+    // property, so this is the one place that distinguishes "you tried the old descoped thing"
+    // from "you have a typo" -- see ledger/boundaries/B16.yml's own codeLinked note.
+    private static final Map<String, String> DESCOPED_PROPERTY_BOUNDARY_IDS = Map.of(
+            "selectorRef", "B16"
+    );
 
     private ValidationDiagnosticNormalizer() {
     }
@@ -317,6 +328,9 @@ final class ValidationDiagnosticNormalizer {
         String suggestedFix = message.getProperty() == null || message.getProperty().isBlank()
                 ? "Update the model so it satisfies the canonical schema at " + instancePath + "."
                 : "Adjust the '" + message.getProperty() + "' property so it matches the canonical schema.";
+        String boundaryId = message.getProperty() == null
+                ? null
+                : DESCOPED_PROPERTY_BOUNDARY_IDS.get(message.getProperty());
 
         return new ValidationDiagnostic(
                 ValidationLayer.STRUCTURAL,
@@ -330,7 +344,8 @@ final class ValidationDiagnosticNormalizer {
                 section,
                 null,
                 suggestedFix,
-                helpKey
+                helpKey,
+                boundaryId
         );
     }
 
