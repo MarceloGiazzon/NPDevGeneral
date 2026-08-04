@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**129 item(s) migrated: 1 open/partial, 128 done.**
+**130 item(s) migrated: 2 open/partial, 128 done.**
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
@@ -43,6 +43,7 @@
 | REG-126 | Normalize-AiContract.ps1 translates requiredRole for panels, procedures, and workflow transitions, but never for flows[] (the generic concept create/update declaration) -- the role gate is silently dropped, and the generated REST create endpoint ends up denying every role including the one the scenario intended to allow | BUG | LOW | DONE | 2026-08-03 |
 | REG-127 | tracestore-postgres's PersistentExecutionTracerTest is a stub that asserts nothing (assertTrue(true)) but counts toward the module's '2 test files' coverage figure -- found while assessing the six nightly-only *-postgres adapters for B21 promotion (S1_SPEC.md O2) | BUG | LOW | DONE | 2026-08-03 |
 | REG-128 | NPDevRuntimeHost/build.gradle's embedded runtimehost-libs-dir fallback (resolveNpdevRuntimeLibsDir) still defaults to <repo>__OutsideRepo/runtimehost-libs, never updated by the LC-C4/Wave 1.4 unification that moved sync-runtimehost-libs.ps1 and Build-NpdevApp.ps1 to Build/runtimehost-libs -- and run-runtimehost-gate.ps1 never bridges the gap with NPDEV_RUNTIMEHOST_LIBS_DIR, so its assembled-app test run can silently read stale jars from a directory the gate's own sync step never writes to | BUG | MEDIUM | OPEN | 2026-08-04 |
+| REG-129 | businessTableIndexes (the schema-realization manifest field B3 surplus-constraint classification depends on) has a documented scope of unique-constraint + bond-lookup indexes only -- it does not capture LNCH-6's implicit panel/query-driven secondary indexes or the author-declared concept.indexes[] escape hatch, both of which emit real DDL. Confirmed on WmsOffice's live database: 17 live indexes across 13 tables, every one idx_<table>_<field> on (tenant_id, field) -- LNCH-6's own exact naming/shape -- classified FOREIGN by an otherwise-correct, 15/15-vector-tested classifier, purely because the manifest never told it these indexes exist. | BUG | MEDIUM | OPEN | 2026-08-04 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
@@ -2164,6 +2165,85 @@ Two independent fix shapes, either closes this (do one, not necessarily both):
 Workaround used this session to get a trustworthy build/test signal while implementing S8
 Wave 1: explicitly set $env:NPDEV_RUNTIMEHOST_LIBS_DIR = "D:\WorkSpace\NPDev\Build\runtimehost-libs"
 before invoking any RuntimeHost-touching gate script in the same PowerShell process tree.
+
+### REG-129 — businessTableIndexes (the schema-realization manifest field B3 surplus-constraint classification depends on) has a documented scope of unique-constraint + bond-lookup indexes only -- it does not capture LNCH-6's implicit panel/query-driven secondary indexes or the author-declared concept.indexes[] escape hatch, both of which emit real DDL. Confirmed on WmsOffice's live database: 17 live indexes across 13 tables, every one idx_<table>_<field> on (tenant_id, field) -- LNCH-6's own exact naming/shape -- classified FOREIGN by an otherwise-correct, 15/15-vector-tested classifier, purely because the manifest never told it these indexes exist.
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
+**Source:** Found during S8 Wave 2 (B3 FK/index surplus detection, roadmap deferred item #2), at the plan's
+own I5 hard stop: "run the classifier against WmsOffice's live schema ... zero constraints
+classified foreign that are actually implicit or declared. One phantom means it is not ready."
+
+ConstraintSurplusClassifier itself is correct and fully tested (15/15 vectors from
+b3-classification-vectors.json pass, including the two vectors -- 3/4 -- that pin the headline
+failure this whole mechanism exists to prevent: never propose dropping a primary key). The
+reverse diff direction (SchemaDiffEngine#findSurplusConstraints) is a clean addition that does
+not touch the existing missing-only diff() at all (regression-verified).
+
+Running it against WmsOffice's real, live H2Server database (verified running via a direct TCP
+probe on port 9200 -- no stop/start needed, since WmsOffice runs H2 in TCP SERVER mode, which
+accepts concurrent client connections; this corrects the plan's own generic "app must be
+stopped, H2 file lock" caution, which assumed H2Local/embedded mode) produced:
+
+  TOTALS: platform-declared=106 implicit=40 unclassifiable=0 FOREIGN=17
+
+All 17 FOREIGN findings share one shape: idx_<table>_<field> on (tenant_id, <field>), non-unique,
+across 13 different tables (local_armazenagems, expedicaos, produtos, lotes, recebimentos, and
+8 more). Traced to NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/
+SchemaRealizationEmitter.java:
+
+  - appendSecondaryIndexes (LNCH-6, line ~561): "emits a tenant-composite (tenant_id, col)
+    secondary index for each model field a panel/query filters, sorts, or joins children by" --
+    DDL-emitting, real, currently shipping. Index names are exactly idx_<table>_<column>
+    (line ~581) -- byte-for-byte the shape of all 17 findings.
+  - collectIndexes (line ~1299, the method that actually POPULATES businessTableIndexes for the
+    manifest) has its OWN documented scope, verbatim: "the indexes this concept's DDL creates --
+    one per unique constraint (unique) and one per bond column (non-unique, the FK lookup
+    index)." It never calls collectImplicitIndexFields/appendSecondaryIndexes's field set at all.
+  - A THIRD category, appendExplicitIndexes (author-declared concept.indexes[], idxx_ prefix,
+    line ~513), is ALSO invisible to collectIndexes for the same reason -- not implicated in
+    WmsOffice's 17 (none use the idxx_ prefix), but the same gap applies to it.
+
+So businessTableIndexes is not merely incomplete by accident -- collectIndexes's own javadoc
+states its scope deliberately, and that scope was simply never widened when LNCH-6 (implicit
+panel/query indexing) or the concept.indexes[] escape hatch shipped. Every one of the 17
+"FOREIGN" verdicts is a real NPDev-created index the classifier had no way to know about, not
+DBA drift and not a classifier bug -- confirmed by reading businessTableIndexes["produtos"] in
+WmsOffice's real generated manifest directly: it lists exactly one entry (perfil_alocacao_id,
+the bond lookup), with no trace of idx_produtos_ativo/idx_produtos_nome anywhere in the file.
+
+**Surface:** `generator/dbconfig/schema-realization-manifest, runtimehost/db/schemastate`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/schemastate/ConstraintSurplusClassifier.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/schemastate/SchemaDiffEngine.java`
+
+Not fixed here, deliberately -- this is Wave 2's own named hard stop firing exactly as designed
+("if classification cannot cleanly separate implicit from foreign on a real database, do not
+ship it... that is a successful outcome, not a failed session"). The fix is generator-side, not
+classifier-side: widen collectIndexes to ALSO enumerate LNCH-6's collectImplicitIndexFields
+result (and concept.indexes[] for the idxx_ family) into businessTableIndexes, so the manifest's
+own declared-index bookkeeping matches what the DDL emitter actually creates. That is a change
+to what every app's manifest contains -- broader blast radius than a wave scoped around a
+read-only classifier, and needs its own generation-time regression proof (does widening
+businessTableIndexes change any OTHER consumer's behavior -- e.g. the missing-only diff
+direction, which already reads the same field and currently sees a narrower list) before it can
+ship.
+
+What DID ship this wave (kept, not reverted): ConstraintSurplusClassifier (15/15 vectors),
+SurplusConstraint/ConstraintSurplusReport (advisory-only records, deliberately not
+SchemaDiffItem/SafetyClass so no existing pass can ever treat a surplus finding as something to
+resolve -- true by construction, not by review), SchemaDiffEngine#findSurplusConstraints (the
+reverse diff direction, missing-only diff() completely unregressed), and the whole-schema
+abstention path (RED-verified against gift-idea-tracker's real pre-SER-G8 manifest shape). None
+of it is wired into ImpactReport, ControlPanel, or any gate -- per the plan's own I6, that only
+happens after I5 passes, and I5 did not pass.
+
+Revisit trigger: collectIndexes is widened to include LNCH-6/concept.indexes[] fields (this
+item's own fix), after which a RE-RUN of the WmsOffice calibration (same classifier, same
+method, no code change needed on the classifier side) is the actual "does surplus detection
+ship" gate. Evidence: NPDev_General__OutsideRepo/wave2/b3-wmsoffice-calibration.txt (full
+per-constraint classification, all 189 live indexes/FKs across WmsOffice's 33 desired-schema
+tables).
 
 ### REG-13 — LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time
 
