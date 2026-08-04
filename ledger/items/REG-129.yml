@@ -2,8 +2,10 @@ id: REG-129
 title: "businessTableIndexes (the schema-realization manifest field B3 surplus-constraint classification depends on) has a documented scope of unique-constraint + bond-lookup indexes only -- it does not capture LNCH-6's implicit panel/query-driven secondary indexes or the author-declared concept.indexes[] escape hatch, both of which emit real DDL. Confirmed on WmsOffice's live database: 17 live indexes across 13 tables, every one idx_<table>_<field> on (tenant_id, field) -- LNCH-6's own exact naming/shape -- classified FOREIGN by an otherwise-correct, 15/15-vector-tested classifier, purely because the manifest never told it these indexes exist."
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-04
+closed: 2026-08-04
+verification: VERIFIED_LIVE
 surface: generator/dbconfig/schema-realization-manifest, runtimehost/db/schemastate
 source: |
   Found during S8 Wave 2 (B3 FK/index surplus detection, roadmap deferred item #2), at the plan's
@@ -79,3 +81,57 @@ detail: |
   ship" gate. Evidence: NPDev_General__OutsideRepo/wave2/b3-wmsoffice-calibration.txt (full
   per-constraint classification, all 189 live indexes/FKs across WmsOffice's 33 desired-schema
   tables).
+
+resolution: |
+  DONE (firstrun-helpers/PLAN.md I7, 2026-08-04). Widened
+  SchemaRealizationEmitter.collectIndexes to also enumerate the two categories its own javadoc
+  had never covered: LNCH-6's implicit secondary indexes (the same field set
+  appendSecondaryIndexes uses to emit idx_ DDL, filtered the same way -- skip id/unique fields,
+  dedupe by column) and author-declared concept.indexes[]'s non-unique half (the unique half was
+  already covered indirectly via collectUniqueConstraints's own independent walk of the same
+  concept.getIndexes() -- see the "double-count" note below). Both new categories are folded into
+  the SAME List<IndexDecl> collectIndexes already returns, so businessTableIndexes now describes
+  every category of index the class's own DDL-emitting methods create, with no new manifest field
+  and no schema-version bump.
+
+  Real bug found and fixed while building this: the first version of the concept.indexes[] loop
+  did not skip index.isUnique(), so a unique explicit index was double-counted -- once via the
+  pre-existing uniqueConstraints parameter (collectUniqueConstraints already adds a uqx_-prefixed
+  entry for it) and again via the new loop. Caught by direct inspection of the regenerated
+  manifest (dsl-conformance-max's WidgetOrderLine ux_widget_order_line_sku entry appeared twice);
+  fixed by skipping index.isUnique() in the new loop, with a comment cross-referencing
+  collectUniqueConstraints so the overlap can't be silently reintroduced.
+
+  Verified three ways:
+  1. Unit: `./gradlew.bat :generator:test --tests
+     "com.npdev.generator.dbconfig.SchemaRealizationEmitter*"` -- BUILD SUCCESSFUL, no
+     regressions, both before and after the double-count fix.
+  2. Corpus: NPDevSamples/dsl-conformance-max regenerated; WidgetOrderLine's unique explicit index
+     now appears exactly once in businessTableIndexes.
+  3. Live, against the real, already-running WmsOffice instance (the exact database this item's
+     own 17-phantom finding came from) -- regenerated WmsOffice to a scratch output
+     (%TEMP%\wmsoffice-reg129\App, outside the repo), then queried the LIVE H2 TCP catalog
+     directly (INFORMATION_SCHEMA.INDEX_COLUMNS on jdbc:h2:tcp://localhost:9200/..., no
+     stop/start of the running app) and compared every non-PK/FK index on every business table
+     against the regenerated manifest BY COLUMN SET (tenant_id-stripped -- index names are
+     engine-generated and were never expected to match; this is the SER-G8 convention the
+     manifest already used for FKs, extended here to indexes). Result: 33 business tables
+     checked, 24 live non-PK/FK secondary indexes, 24/24 matched, 0 missing -- the exact 17
+     idx_-prefixed LNCH-6 findings that were FOREIGN before the fix are now correctly described.
+
+  Also fixed the PLAN-provided helper script,
+  NPDev_General__OutsideRepo/firstrun-helpers/reg129-manifest-index-drift.py: its
+  manifest_indexes() parsed a "name" field that has never existed in the real
+  {"columns": [...], "unique": bool} manifest shape, so every comparison it ever ran reported
+  100% drift regardless of correctness -- a bug in the checker, not evidence of the defect. Now
+  compares by column set (matching the live-verification method above), restricted to the
+  manifest's own businessTables list (comparing against internal npdev_*/flyway_schema_history
+  tables produced 42 false positives during development, all legitimately out of
+  businessTableIndexes' scope). Re-run against the same WmsOffice evidence: 0 drift, exit 0.
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\NPDevGenerator\generator\src\main\java\com\npdev\generator\dbconfig\SchemaRealizationEmitter.java
+    D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\firstrun-helpers\reg129-manifest-index-drift.py
+  Not committed to a permanent gate: the drift script stays in the outside-repo helpers directory
+  as a manual verification tool, per this item's own "consider adding to twin-pair-registry.json"
+  note -- left for a future session to decide, not required by this fix.

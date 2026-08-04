@@ -1172,6 +1172,10 @@ public final class SchemaRealizationEmitter {
         Map<String, List<IndexDecl>> businessTableIndexes = new LinkedHashMap<>();
 
         Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
+        // REG-129: same computation appendBusinessTableConstraints's two callers already use to
+        // feed appendSecondaryIndexes -- collectIndexes needs the identical per-concept field set
+        // so businessTableIndexes describes exactly what that DDL creates, not a narrower view of it.
+        Map<String, Set<String>> implicitIndexFields = collectImplicitIndexFields(model);
         for (CompiledConcept concept : model.getConcepts()) {
             String table = SqlIdentifierSupport.tableName(concept);
             businessTableColumns.put(table, fullColumnNames(concept, conceptsByName));
@@ -1215,7 +1219,8 @@ public final class SchemaRealizationEmitter {
             if (!foreignKeys.isEmpty()) {
                 businessTableForeignKeys.put(table, foreignKeys);
             }
-            List<IndexDecl> indexes = collectIndexes(concept, conceptsByName, uniqueConstraints);
+            List<IndexDecl> indexes = collectIndexes(concept, conceptsByName, uniqueConstraints,
+                    implicitIndexFields.getOrDefault(concept.getName().toLowerCase(Locale.ROOT), Set.of()));
             if (!indexes.isEmpty()) {
                 businessTableIndexes.put(table, indexes);
             }
@@ -1292,13 +1297,26 @@ public final class SchemaRealizationEmitter {
         return List.copyOf(foreignKeys);
     }
 
-    /** SER-G8: the indexes this concept's DDL creates — one per unique constraint (unique) and one per
-     *  bond column (non-unique, the FK lookup index). Deliberately does NOT include implicit primary-key
-     *  indexes: the runtime treats a live PK over the same columns as satisfying a declared index, and
-     *  the model never needs to ask for one. */
+    /**
+     * SER-G8: the indexes this concept's DDL creates. Deliberately does NOT include implicit
+     * primary-key indexes: the runtime treats a live PK over the same columns as satisfying a
+     * declared index, and the model never needs to ask for one.
+     *
+     * <p>REG-129: this used to describe only "one per unique constraint and one per bond column" --
+     * two of the THREE categories {@link #appendBusinessTableConstraints}'s DDL actually creates.
+     * The other two, {@link #appendSecondaryIndexes} (LNCH-6's implicit panel/query-driven
+     * indexes, {@code idx_}-prefixed) and {@link #appendExplicitIndexes} (author-declared {@code
+     * concept.indexes[]}, {@code idxx_}/{@code uqx_}-prefixed), were invisible to
+     * {@code businessTableIndexes} -- confirmed on WmsOffice's live database: all 17 "FOREIGN"
+     * findings B3's surplus classifier reported were exactly these, real NPDev-created indexes the
+     * manifest simply never told it about (S8 Wave 2's own hard-stop calibration,
+     * `reg129-manifest-index-drift.py`). Both are now folded in here, using the SAME
+     * field-eligibility/resolution rules as their DDL-emitting counterparts, so the manifest never
+     * drifts from what the DDL above it in this same class actually creates.
+     */
     private static List<IndexDecl> collectIndexes(
             CompiledConcept concept, Map<String, CompiledConcept> conceptsByName,
-            List<UniqueConstraintDecl> uniqueConstraints) {
+            List<UniqueConstraintDecl> uniqueConstraints, Set<String> implicitIndexFields) {
         List<IndexDecl> indexes = new ArrayList<>();
         for (UniqueConstraintDecl unique : uniqueConstraints) {
             indexes.add(new IndexDecl(List.copyOf(unique.columns()), true));
@@ -1308,6 +1326,49 @@ public final class SchemaRealizationEmitter {
                 indexes.add(new IndexDecl(List.of(SqlIdentifierSupport.columnName(field)), false));
             }
         }
+
+        Map<String, CompiledField> fieldsByLowerName = new LinkedHashMap<>();
+        for (CompiledField field : concept.getFields()) {
+            fieldsByLowerName.put(field.getName().toLowerCase(Locale.ROOT), field);
+        }
+
+        // LNCH-6 secondary indexes (appendSecondaryIndexes): same skip-id/skip-unique/dedupe rule.
+        if (implicitIndexFields != null && !implicitIndexFields.isEmpty()) {
+            Set<String> emittedColumns = new LinkedHashSet<>();
+            for (String fieldName : implicitIndexFields) {
+                CompiledField field = fieldsByLowerName.get(fieldName.toLowerCase(Locale.ROOT));
+                if (field == null || field.isId() || field.isUnique()) {
+                    continue;
+                }
+                String column = SqlIdentifierSupport.columnName(field);
+                if (emittedColumns.add(column.toLowerCase(Locale.ROOT))) {
+                    indexes.add(new IndexDecl(List.of(column), false));
+                }
+            }
+        }
+
+        // Author-declared concept.indexes[] (appendExplicitIndexes) -- NON-unique half only. A
+        // unique explicit index is already collected above via uniqueConstraints:
+        // collectUniqueConstraints (this class, ~line 945) independently walks concept.getIndexes()
+        // for index.isUnique() and adds a uqx_-prefixed UniqueConstraintDecl -- the exact same
+        // "uqx_" naming appendExplicitIndexes' unique branch uses for its DDL. Re-adding it here
+        // too would double the manifest entry for the SAME real constraint.
+        for (CompiledIndex index : concept.getIndexes()) {
+            if (index.isUnique()) {
+                continue;
+            }
+            List<String> columns = new ArrayList<>();
+            for (String fieldName : index.getFields()) {
+                CompiledField field = fieldsByLowerName.get(fieldName.toLowerCase(Locale.ROOT));
+                if (field != null) {
+                    columns.add(SqlIdentifierSupport.columnName(field));
+                }
+            }
+            if (!columns.isEmpty()) {
+                indexes.add(new IndexDecl(List.copyOf(columns), false));
+            }
+        }
+
         return List.copyOf(indexes);
     }
 
