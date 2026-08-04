@@ -57,248 +57,324 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/concept"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/concept"
+        }
       }
     },
     "domainTypes": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/domainType"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/domainType"
+        }
       }
     },
     "capabilities": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/capability"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/capability"
+        }
       }
     },
     "customCapabilities": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/capability"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/capability"
+        }
       }
     },
     "bindings": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/binding"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/binding"
+        }
       }
     },
     "events": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/event"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/event"
+        }
       }
     },
     "flows": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/flow"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/flow"
+        }
       }
     },
     "orchestrationRules": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/orchestrationRule"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/orchestrationRule"
+        }
       }
     },
     "orchestrations": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/orchestrationRule"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/orchestrationRule"
+        }
       }
     },
     "queries": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/query"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/query"
+        }
       }
     },
     "ruleProfiles": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/ruleProfile"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/ruleProfile"
+        }
       }
     },
     "procedures": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/procedure"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/procedure"
+        }
       }
     },
     "conversions": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/conversion"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/conversion"
+        }
       }
     },
     "panels": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/panel"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/panel"
+        }
       }
     },
     "documents": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/document"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/document"
+        }
       }
     },
     "guidePages": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/guidePage"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/guidePage"
+        }
       }
     },
     "aggregates": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/aggregate"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/aggregate"
+        }
       }
     },
     "autoPanels": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/autoPanel"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/autoPanel"
+        }
       }
     },
     "selectors": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "$ref": "#/$defs/selector"
-          },
-          {
-            "$ref": "#/$defs/localModelRef"
-          }
-        ]
+        "if": {
+          "type": "object",
+          "required": [
+            "$ref"
+          ]
+        },
+        "then": {
+          "$ref": "#/$defs/localModelRef"
+        },
+        "else": {
+          "$ref": "#/$defs/selector"
+        }
       }
     },
     "metadata": {
