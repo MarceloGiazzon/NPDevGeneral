@@ -126,6 +126,32 @@ $dslReferenceEvidence = [pscustomobject]@{
 }
 $gateReport | Add-Member -NotePropertyName dslReferenceDrift -NotePropertyValue $dslReferenceEvidence -Force
 
+# REG-133: the drift check above only catches "not regenerated" -- 8cd9860 regenerated AND
+# re-committed the doc in the SAME commit that broke it, so the drift check compared the freshly
+# (badly) regenerated content against the freshly (badly) committed content and passed. This is
+# the companion gate: an absolute floor on the rendered CONTENT itself (no discriminated root
+# field renders as the bare "any" fallback; flowStep/procedureStep/concept breadth floors met),
+# independent of whether it matches history.
+$dslReferenceFloorScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\quality\check-dsl-reference-output-floor.py"
+$dslReferenceFloorError = $null
+$dslReferenceFloorExitCode = $null
+$dslReferenceFloorOutput = @()
+try {
+    $dslReferenceFloorOutput = & python $dslReferenceFloorScript 2>&1 | ForEach-Object { $_.ToString() }
+    $dslReferenceFloorExitCode = $LASTEXITCODE
+}
+catch {
+    $dslReferenceFloorError = $_.Exception.Message
+}
+$dslReferenceFloorPassed = ($null -eq $dslReferenceFloorError) -and ($dslReferenceFloorExitCode -eq 0)
+$dslReferenceFloorEvidence = [pscustomobject]@{
+    overallStatus = if ($dslReferenceFloorPassed) { "passed" } else { "failed" }
+    exitCode = $dslReferenceFloorExitCode
+    output = @($dslReferenceFloorOutput | Select-Object -Last 20)
+    error = $dslReferenceFloorError
+}
+$gateReport | Add-Member -NotePropertyName dslReferenceOutputFloor -NotePropertyValue $dslReferenceFloorEvidence -Force
+
 # Move 8 D1 (item G3, docs/MOVE8_CLOSE_TABLE_SPEC.md): ReleaseGateValidator.validatePromotion is
 # fully built and unit-tested (R81, ledger/items/REG-81.yml) but was invoked by nothing except its
 # own test -- truth-level promotion gating was dormant. Wires the smallest real check: run
@@ -185,6 +211,7 @@ if (
     ($null -eq $generatorGovernanceReport) -or
     ([string]$generatorGovernanceReport.overallStatus -ne "passed") -or
     (-not $dslReferencePassed) -or
+    (-not $dslReferenceFloorPassed) -or
     (-not $releaseGatePassed)
 ) {
     $gateReport.overallStatus = "failed"
@@ -205,6 +232,9 @@ if (
             }
             if (-not $dslReferencePassed) {
                 "docs/DSL_REFERENCE.md is stale -- run 'python scripts/docs/generate_dsl_reference.py' and commit the result."
+            }
+            if (-not $dslReferenceFloorPassed) {
+                "docs/DSL_REFERENCE.md failed its output floor (REG-133) -- the generator ran but silently produced degenerate content; see scripts/quality/check-dsl-reference-output-floor.py's own output."
             }
             if (-not $releaseGatePassed) {
                 if (-not [string]::IsNullOrWhiteSpace($releaseGateError)) {

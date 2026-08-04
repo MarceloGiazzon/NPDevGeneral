@@ -2,8 +2,10 @@ id: REG-133
 title: "Doc/report generators (generate_dsl_reference.py and siblings) are undeclared consumers of model.schema.json -- nothing enumerates what reads the schema, so an edit to it can silently degrade a generator with no error anywhere, the same shape commit 8cd9860 demonstrated live"
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-04
+closed: 2026-08-04
+verification: VERIFIED_LIVE
 surface: quality-gates/schema-consumer-registry
 source: |
   Filed per firstrun-helpers/PLAN.md §0c (item N4), which the plan itself flags as "the one I would
@@ -36,3 +38,47 @@ detail: |
   shape). This is explicitly the kind of registry-plus-gate pattern
   check-twin-pair-consistency.py already establishes for two other chains; a third instance here
   would be additive, not a new mechanism.
+
+resolution: |
+  DONE (close-five/PLAN.md I2, 2026-08-04). Ran the plan's own provided
+  `schema-consumer-inventory.py` helper: found 61 files referencing model.schema.json, 14 flagged
+  as likely SHAPE-READER by its heuristic. Triaged each by hand against the real file content
+  (not the heuristic's guess, per its own instruction) -- only 2 were genuine schema-shape
+  readers: generate_dsl_reference.py (the confirmed 8cd9860 victim, unprotected) and
+  check-step-type-test-coverage.py (a real shape-reader, but ALREADY self-protecting -- its own
+  run() treats an empty enum read as a hard failure, not a silent pass). Three more
+  (FlowStepTypeConformanceTest/ProcedureStepTypeConformanceTest/GeneratedActionFlowStepValidation
+  Test, all JUnit) are real shape-readers already protected by JUnit's own pass/fail. The other 9
+  "candidates" were false positives in two recurring patterns, worth naming for future re-runs of
+  the inventory tool: (a) `ai-model.schema.json` contains the substring `model.schema.json`, so
+  every hit actually about the AI-authoring schema (a different file) got flagged; (b) a
+  script/test that greps its OWN source code (Java/Python) for the literal string
+  "model.schema.json" was conflated with reading the schema's CONTENT.
+
+  Built `scripts/quality/schema-consumers.json` (the registry, all 5 real shape-readers) and
+  `scripts/quality/check-dsl-reference-output-floor.py` (the new gate for the one unprotected
+  consumer) -- two floors: (1) no root array field whose schema uses the if/then/else|oneOf
+  discriminator renders as the bare "any"/"array<any>" fallback (the EXACT 8cd9860 shape,
+  schema-shape-agnostic: computed by walking the schema's OWN properties at check time, not a
+  hardcoded field list -- a hardcoded list was my own first draft and had a real bug, wrong/
+  incomplete field names, caught by cross-checking against the schema directly rather than
+  trusting memory); (2) flowStep/procedureStep/concept breadth floors. RED-verified against the
+  ACTUAL pre-fix broken code (git show 8cd9860^, restored after): 19 problems reported, exactly
+  the 19 model-array fields F5 fixed. Wired into run-generator-gate.ps1 as a new
+  `dslReferenceOutputFloor` step alongside the pre-existing `dslReferenceDrift` (--check) step --
+  deliberately two separate gates, since 8cd9860 proved a drift check alone is insufficient (the
+  schema change regenerated AND re-committed the doc in the same commit, so drift compared
+  clean). Registered in twin-pair-registry.json (schema-consumer-registry-gate-wiring): the
+  registry's own claim that check-dsl-reference-output-floor.py protects generate_dsl_reference.py
+  must stay consistent with the gate script actually existing in run-generator-gate.ps1 --
+  RED-verified via a deliberately introduced divergence.
+
+  Verified: full :NPDevContract:dsl:test suite green; check-twin-pair-consistency.py green (11
+  rules); run-script-inventory-check.ps1 green (new script classified+declared).
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\scripts\quality\check-dsl-reference-output-floor.py (new)
+    D:\WorkSpace\NPDev\NPDev_General\scripts\quality\schema-consumers.json (new)
+    D:\WorkSpace\NPDev\NPDev_General\scripts\quality\run-generator-gate.ps1
+    D:\WorkSpace\NPDev\NPDev_General\scripts\quality\twin-pair-registry.json
+    D:\WorkSpace\NPDev\NPDev_General\scripts\policy\script-invocation-declarations.json

@@ -1,0 +1,53 @@
+{
+  "_comment": [
+    "REG-133 -- who reads model.schema.json's SHAPE (not just its path). Triaged by hand from",
+    "schema-consumer-inventory.py's own SHAPE-READER? guesses (14 candidates) against the actual",
+    "file content, not the heuristic's guess -- see that triage in REG-133.yml's own source text.",
+    "9 of the 14 candidates were false positives, in two recurring patterns worth naming so a",
+    "future re-run of the inventory tool doesn't need to re-derive them:",
+    "  (a) 'ai-model.schema.json' contains the substring 'model.schema.json' -- every hit that was",
+    "      actually about schemas/ai/ai-model.schema.json (a DIFFERENT schema) got flagged.",
+    "  (b) a script/test that greps its OWN source code (Java/Python) for the literal string",
+    "      'model.schema.json' -- checking that CODE references the schema's PATH correctly is",
+    "      not reading the schema's CONTENT.",
+    "Only entries below are real: each opens model.schema.json and derives something from its",
+    "structure that would be WRONG, not just missing, if that structure changed underneath it."
+  ],
+  "consumers": [
+    {
+      "path": "scripts/docs/generate_dsl_reference.py",
+      "reads": "walks $defs (concept/field/flowStep/procedureStep/...) properties+enums, and the root model's array-field discriminator (if/then/else or oneOf) via describe_type(), to render docs/DSL_REFERENCE.md",
+      "breaksIf": "a new composition keyword (or a changed discriminator shape) that describe_type() does not have a branch for -- it silently falls through to the bare 'any'/'array<any>' fallback instead of erroring. This is the exact 8cd9860 defect: the schema's oneOf->if/then/else migration did this to all 19 model-array fields, and neither generate_dsl_reference.py's own --check drift mode (regenerated+recommitted in the SAME commit, so drift compared clean) nor any other gate caught it -- a human reading the doc did.",
+      "assertion": "scripts/quality/check-dsl-reference-output-floor.py (NEW, this item) -- no discriminated root array field renders as the bare fallback; flowStep/procedureStep/concept breadth floors met. Wired into run-generator-gate.ps1 (dslReferenceOutputFloor), alongside the pre-existing dslReferenceDrift check.",
+      "status": "PROTECTED (new gate added this item)"
+    },
+    {
+      "path": "scripts/quality/check-step-type-test-coverage.py",
+      "reads": "$defs.flowStep.properties.type.enum and $defs.procedureStep.properties.type.enum -- every declared step-kind value",
+      "breaksIf": "the enum read comes back empty (schema restructured, path changed) -- ALREADY guarded: this script's own run() treats zero enum values as 'this check has gone stale', a hard failure, not a silent pass. No new gate needed.",
+      "assertion": "ALREADY ENFORCED by the script's own 'no type enum found in the schema' check (see its source, ~line 106). Listed here for completeness, not because it needed a new gate.",
+      "status": "ALREADY PROTECTED (pre-existing)"
+    },
+    {
+      "path": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/FlowStepTypeConformanceTest.java",
+      "reads": "$defs.flowStep.properties.type.enum -- asserts every value has a corresponding FlowValidation step-type case and a minimal model-level fixture",
+      "breaksIf": "a new flowStep.type enum value ships with no matching test case -- ALREADY guarded: this is a JUnit conformance test, so a gap fails the build loudly (red X), not silently. No new gate needed.",
+      "assertion": "ALREADY ENFORCED by JUnit (this test's own pass/fail IS the gate).",
+      "status": "ALREADY PROTECTED (pre-existing)"
+    },
+    {
+      "path": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ProcedureStepTypeConformanceTest.java",
+      "reads": "$defs.procedureStep.properties.type.enum -- same shape as FlowStepTypeConformanceTest, for procedureStep",
+      "breaksIf": "same as FlowStepTypeConformanceTest -- ALREADY guarded by JUnit.",
+      "assertion": "ALREADY ENFORCED by JUnit.",
+      "status": "ALREADY PROTECTED (pre-existing)"
+    },
+    {
+      "path": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/GeneratedActionFlowStepValidationTest.java",
+      "reads": "$defs.flowStep's generatedAction-specific allOf branch (required:[\"actionName\"])",
+      "breaksIf": "the schema-level required-field guard for generatedAction is removed or weakened -- ALREADY guarded: asserts a ModelSchemaValidationException is thrown, a JUnit failure if it stops being thrown.",
+      "assertion": "ALREADY ENFORCED by JUnit.",
+      "status": "ALREADY PROTECTED (pre-existing)"
+    }
+  ]
+}
