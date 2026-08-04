@@ -6,182 +6,189 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**130 item(s) migrated: 2 open/partial, 128 done.**
+**136 item(s) migrated: 5 open/partial, 131 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
-| REG-128 | NPDevRuntimeHost/build.gradle's embedded runtimehost-libs-dir fallback (resolveNpdevRuntimeLibsDir) still defaults to <repo>__OutsideRepo/runtimehost-libs, never updated by the LC-C4/Wave 1.4 unification that moved sync-runtimehost-libs.ps1 and Build-NpdevApp.ps1 to Build/runtimehost-libs -- and run-runtimehost-gate.ps1 never bridges the gap with NPDEV_RUNTIMEHOST_LIBS_DIR, so its assembled-app test run can silently read stale jars from a directory the gate's own sync step never writes to | BUG | MEDIUM | OPEN | 2026-08-04 |
-| REG-129 | businessTableIndexes (the schema-realization manifest field B3 surplus-constraint classification depends on) has a documented scope of unique-constraint + bond-lookup indexes only -- it does not capture LNCH-6's implicit panel/query-driven secondary indexes or the author-declared concept.indexes[] escape hatch, both of which emit real DDL. Confirmed on WmsOffice's live database: 17 live indexes across 13 tables, every one idx_<table>_<field> on (tenant_id, field) -- LNCH-6's own exact naming/shape -- classified FOREIGN by an otherwise-correct, 15/15-vector-tested classifier, purely because the manifest never told it these indexes exist. | BUG | MEDIUM | OPEN | 2026-08-04 |
+| REG-130 | npdev --version's story is only half-resolved: npdev_cli.py's own VERSION constant is 0.9.0, NPDevContract/dsl/build.gradle's is 0.1.0, and the git tag is beta1.4, with no documented relationship between the three -- a user reading any one of them has no way to know it is not the whole picture | GAP | LOW | OPEN | 2026-08-04 |
+| REG-131 | npdev run app is broken on any machine other than the author's own: npdev_cli.py's _build_phase hardcodes env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs"))) -- an absolute Windows D:\ path with no fallback for a machine where that drive/path does not exist | BUG | HIGH | OPEN | 2026-08-04 |
+| REG-133 | Doc/report generators (generate_dsl_reference.py and siblings) are undeclared consumers of model.schema.json -- nothing enumerates what reads the schema, so an edit to it can silently degrade a generator with no error anywhere, the same shape commit 8cd9860 demonstrated live | GAP | MEDIUM | OPEN | 2026-08-04 |
+| REG-134 | main is left 29+ commits behind beta1-vision-spine with no tag covering S2-S8 or F1-F9 -- a fresh clone of the repo's own default branch gets none of this session's (or the last several sessions') work, including the first-run fixes (I0-I8) this same plan produces | GAP | HIGH | OPEN | 2026-08-04 |
+| REG-135 | Accepted boundaries (NPDev's designed limits, e.g. B13's 'no Java data-migration hooks') carry no machine-readable identity: ValidationDiagnostic has code/helpKey/suggestedFix but no boundaryId, B-numbers (B1/B2/B15/B27/...) appear in the validation package as Java comments only, and docs/ACCEPTED_BOUNDARIES.md is a markdown table nothing can query except a human reading it | GAP | MEDIUM | OPEN | 2026-08-04 |
 
 ### Detail
 
-### REG-128 — NPDevRuntimeHost/build.gradle's embedded runtimehost-libs-dir fallback (resolveNpdevRuntimeLibsDir) still defaults to <repo>__OutsideRepo/runtimehost-libs, never updated by the LC-C4/Wave 1.4 unification that moved sync-runtimehost-libs.ps1 and Build-NpdevApp.ps1 to Build/runtimehost-libs -- and run-runtimehost-gate.ps1 never bridges the gap with NPDEV_RUNTIMEHOST_LIBS_DIR, so its assembled-app test run can silently read stale jars from a directory the gate's own sync step never writes to
+### REG-130 — npdev --version's story is only half-resolved: npdev_cli.py's own VERSION constant is 0.9.0, NPDevContract/dsl/build.gradle's is 0.1.0, and the git tag is beta1.4, with no documented relationship between the three -- a user reading any one of them has no way to know it is not the whole picture
 
-**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
-**Source:** Found while implementing S8 W1.1 (multi-hop groupBy joins). After editing
-NPDevContract/dsl's GroupByJoinGrammar and running
-scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars (which reported success and
-wrote a freshly-rebuilt dsl-0.1.0.jar to D:\WorkSpace\NPDev\Build\runtimehost-libs, confirmed
-via javap to contain the new method), a direct `NPDevRuntimeHost\gradlew.bat compileJava`
-still failed with "cannot find symbol: referenceFields()" against the OLD single-hop Join
-record shape.
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N1), found during first-impression review of the
+portable npdev CLI. F4 (FIRST_IMPRESSION_SPEC.md) fixed the model-DSL-version half of this
+(npdev --version now separately reports the DSL/model-format version alongside the CLI's own),
+but the underlying three-numbers-no-relationship problem is still live:
 
-Root cause, traced in NPDevRuntimeHost/build.gradle's resolveNpdevRuntimeLibsDir closure:
+  npdev_cli.py:22        VERSION = "0.9.0"      (the CLI wrapper's own version)
+  NPDevContract/dsl/build.gradle:6  version = '0.1.0'   (the DSL/model-compiler jar's version)
+  git tag (most recent)  beta1.4                (the platform release tag)
 
-    def configured = providers.gradleProperty('npdevRuntimeHostLibsDir')
-            .orElse(providers.environmentVariable('NPDEV_RUNTIMEHOST_LIBS_DIR'))
-            .orNull
-    if (configured != null ...) { return file(configured...) }
-    def current = projectDir
-    while (current != null) {
-        if (new File(current, '.npdev-root').isFile()) {
-            return new File(current.parentFile, "${current.name}__OutsideRepo/runtimehost-libs")
-        }
-        current = current.parentFile
-    }
-    return file("${rootProject.projectDir.name}__OutsideRepo/runtimehost-libs")
+None of these track each other, and nothing in --version's own output (even after F4) tells a
+user which of the three is "the platform version" a bug report should cite, or what changing one
+implies about the others.
 
-With no -PnpdevRuntimeHostLibsDir/-PNPDEV_RUNTIMEHOST_LIBS_DIR override, and a `.npdev-root`
-marker present at the repo root, this ALWAYS resolves to
-D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\runtimehost-libs -- NOT
-D:\WorkSpace\NPDev\Build\runtimehost-libs, which is what
-scripts/npdev-common.ps1's Get-NPDevRuntimeHostLibsDir (and therefore
-sync-runtimehost-libs.ps1 and Build-NpdevApp.ps1, per CLAUDE.md's own "the defaults now
-agree (LC-C4 / Wave 1.4)" note) actually resolves to and writes.
-
-Confirmed both directories currently hold DIFFERENT dsl-0.1.0.jar builds
-(NPDev_General__OutsideRepo\runtimehost-libs\dsl-0.1.0.jar timestamped ~1.5h older than
-Build\runtimehost-libs\dsl-0.1.0.jar after a fresh sync).
-
-scripts/quality/run-runtimehost-gate.ps1 (part of T2's run-all-gates.ps1) calls
-sync-runtimehost-libs.ps1 -BuildLocalJars (writes Build/runtimehost-libs) and THEN runs the
-assembled sample app's own `gradlew ... test` via Invoke-NPDevCommandEvidence -- WITHOUT ever
-setting $env:NPDEV_RUNTIMEHOST_LIBS_DIR or passing -PnpdevRuntimeHostLibsDir first. Grepped
-the whole file: no reference to either. So the assembled app's materialized build.gradle
-(a byte-copy of the NPDevRuntimeHost template) falls through to the SAME buggy
-__OutsideRepo default, independent of what the gate's own sync step just wrote.
-
-scripts/quality/run-fast-gate.ps1 (T1) does NOT have this problem -- it explicitly sets
-$env:NPDEV_RUNTIMEHOST_LIBS_DIR = $RuntimeHostLibsDir before its canary build/boot/smoke step,
-which is the correct pattern run-runtimehost-gate.ps1 is missing.
-
-**Surface:** `build-tooling/runtimehost-libs-staging`
+**Surface:** `cli/version-reporting`
 **Files:**
-- `NPDevRuntimeHost/build.gradle`
-- `scripts/quality/run-runtimehost-gate.ps1`
+- `NPDevCli/npdev_cli.py`
+- `NPDevContract/dsl/build.gradle`
 
-Practical impact: a RuntimeHost-side change validated ONLY through run-runtimehost-gate.ps1 /
-T2 (rather than T1's canary path, which IS correctly bridged) can pass or fail against
-whatever jars happen to already be sitting in NPDev_General__OutsideRepo\runtimehost-libs from
-a PRIOR, unrelated sync -- not necessarily the jars the current gate run just rebuilt. In the
-common case the two directories are close enough in age that this goes unnoticed (as seen
-here: only ~1.5h apart), but nothing GUARANTEES that, and a long gap between "last time
-something synced OutsideRepo" and "now" would make T2 silently test stale RuntimeHost
-dependencies while reporting green -- the same failure shape REG-123 named ("a checker's own
-bug produced false findings/false confidence").
+Not fixed here -- explicitly out of scope for this session per firstrun-helpers/PLAN.md §13 (a
+versioning-scheme decision, not a mechanical fix). Two real shapes for whoever picks this up:
+(1) collapse to one number the CLI, the DSL jar, and the git tag all derive from (a single
+VERSION file read by both npdev_cli.py and build.gradle, with the git tag applied to that same
+value at release time); (2) keep three numbers but make --version's own output explicitly name
+what each one means and how they relate, so a report never needs to guess. Either way, whichever
+fix lands should also update this item to DONE citing the chosen shape.
 
-Not fixed here, deliberately -- out of scope for S8 Wave 1 (multi-hop groupBy joins / B13
-conversion ops), and a fix to a shared build.gradle TEMPLATE (copied byte-for-byte into every
-generated FinalApp, per its own "materializes this file" docstring) needs its own careful
-verification against golden-sample/generated-app byte-parity checks before landing, not a
-drive-by one-line edit under an unrelated plan.
+### REG-131 — npdev run app is broken on any machine other than the author's own: npdev_cli.py's _build_phase hardcodes env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs"))) -- an absolute Windows D:\ path with no fallback for a machine where that drive/path does not exist
 
-Two independent fix shapes, either closes this (do one, not necessarily both):
-(1) Change NPDevRuntimeHost/build.gradle's resolveNpdevRuntimeLibsDir fallback (the
-    `.npdev-root`-found branch) to return Get-NPDevRuntimeHostLibsDir's own convention
-    (`<repo>.parent/Build/runtimehost-libs`) instead of `<repo>__OutsideRepo/runtimehost-libs`,
-    bringing the Groovy default in line with the PowerShell-side unification the CLAUDE.md note
-    already claims exists.
-(2) Add `$env:NPDEV_RUNTIMEHOST_LIBS_DIR = $runtimeHostLibs` (mirroring run-fast-gate.ps1's own
-    pattern) to run-runtimehost-gate.ps1 right after its sync-runtimehost-libs.ps1 call, so the
-    gate is self-consistent regardless of what the template's own default resolves to.
+**Type:** BUG · **Severity:** HIGH · **Status:** OPEN
+**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N2), found during the same review that produced the
+Docker-based first-run harness (I1). README's Quickstart now correctly NAMES the
+sync-runtimehost-libs.ps1 -BuildLocalJars step a newcomer must run first (I2's own fix, this
+session), but even after that step succeeds, npdev run app's own _build_phase helper
+(NPDevCli/npdev_cli.py:1309, confirmed current -- an earlier draft of this finding cited line
+1239, which shifted after this session's CLI edits) unconditionally falls back to a hardcoded
+absolute path that only exists on the platform author's own machine:
 
-Workaround used this session to get a trustworthy build/test signal while implementing S8
-Wave 1: explicitly set $env:NPDEV_RUNTIMEHOST_LIBS_DIR = "D:\WorkSpace\NPDev\Build\runtimehost-libs"
-before invoking any RuntimeHost-touching gate script in the same PowerShell process tree.
+    env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs")))
 
-### REG-129 — businessTableIndexes (the schema-realization manifest field B3 surplus-constraint classification depends on) has a documented scope of unique-constraint + bond-lookup indexes only -- it does not capture LNCH-6's implicit panel/query-driven secondary indexes or the author-declared concept.indexes[] escape hatch, both of which emit real DDL. Confirmed on WmsOffice's live database: 17 live indexes across 13 tables, every one idx_<table>_<field> on (tenant_id, field) -- LNCH-6's own exact naming/shape -- classified FOREIGN by an otherwise-correct, 15/15-vector-tested classifier, purely because the manifest never told it these indexes exist.
+On any other machine (a different drive letter, a non-Windows OS, or simply a different Build
+root), this silently sets an env var pointing at a directory that does not exist, rather than
+either deriving the SAME repo-relative convention scripts/npdev-common.ps1's
+Get-NPDevRuntimeHostLibsDir already uses (`<repo>.parent/Build/runtimehost-libs`) or leaving the
+var unset so a real absence is surfaced as a clear error instead of a wrong path.
 
-**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
-**Source:** Found during S8 Wave 2 (B3 FK/index surplus detection, roadmap deferred item #2), at the plan's
-own I5 hard stop: "run the classifier against WmsOffice's live schema ... zero constraints
-classified foreign that are actually implicit or declared. One phantom means it is not ready."
+Related to, but distinct from, REG-128 (DONE, this session): REG-128 fixed the Groovy-side
+default inside build.gradle.template; this item is the Python CLI's OWN separate hardcoded
+fallback, one layer up, still pointing at the author's literal machine path.
 
-ConstraintSurplusClassifier itself is correct and fully tested (15/15 vectors from
-b3-classification-vectors.json pass, including the two vectors -- 3/4 -- that pin the headline
-failure this whole mechanism exists to prevent: never propose dropping a primary key). The
-reverse diff direction (SchemaDiffEngine#findSurplusConstraints) is a clean addition that does
-not touch the existing missing-only diff() at all (regression-verified).
-
-Running it against WmsOffice's real, live H2Server database (verified running via a direct TCP
-probe on port 9200 -- no stop/start needed, since WmsOffice runs H2 in TCP SERVER mode, which
-accepts concurrent client connections; this corrects the plan's own generic "app must be
-stopped, H2 file lock" caution, which assumed H2Local/embedded mode) produced:
-
-  TOTALS: platform-declared=106 implicit=40 unclassifiable=0 FOREIGN=17
-
-All 17 FOREIGN findings share one shape: idx_<table>_<field> on (tenant_id, <field>), non-unique,
-across 13 different tables (local_armazenagems, expedicaos, produtos, lotes, recebimentos, and
-8 more). Traced to NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/
-SchemaRealizationEmitter.java:
-
-  - appendSecondaryIndexes (LNCH-6, line ~561): "emits a tenant-composite (tenant_id, col)
-    secondary index for each model field a panel/query filters, sorts, or joins children by" --
-    DDL-emitting, real, currently shipping. Index names are exactly idx_<table>_<column>
-    (line ~581) -- byte-for-byte the shape of all 17 findings.
-  - collectIndexes (line ~1299, the method that actually POPULATES businessTableIndexes for the
-    manifest) has its OWN documented scope, verbatim: "the indexes this concept's DDL creates --
-    one per unique constraint (unique) and one per bond column (non-unique, the FK lookup
-    index)." It never calls collectImplicitIndexFields/appendSecondaryIndexes's field set at all.
-  - A THIRD category, appendExplicitIndexes (author-declared concept.indexes[], idxx_ prefix,
-    line ~513), is ALSO invisible to collectIndexes for the same reason -- not implicated in
-    WmsOffice's 17 (none use the idxx_ prefix), but the same gap applies to it.
-
-So businessTableIndexes is not merely incomplete by accident -- collectIndexes's own javadoc
-states its scope deliberately, and that scope was simply never widened when LNCH-6 (implicit
-panel/query indexing) or the concept.indexes[] escape hatch shipped. Every one of the 17
-"FOREIGN" verdicts is a real NPDev-created index the classifier had no way to know about, not
-DBA drift and not a classifier bug -- confirmed by reading businessTableIndexes["produtos"] in
-WmsOffice's real generated manifest directly: it lists exactly one entry (perfil_alocacao_id,
-the bond lookup), with no trace of idx_produtos_ativo/idx_produtos_nome anywhere in the file.
-
-**Surface:** `generator/dbconfig/schema-realization-manifest, runtimehost/db/schemastate`
+**Surface:** `cli/run-app, build-tooling/runtimehost-libs-staging`
 **Files:**
-- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
-- `NPDevRuntimeHost/src/main/java/com/finalexec/db/schemastate/ConstraintSurplusClassifier.java`
-- `NPDevRuntimeHost/src/main/java/com/finalexec/db/schemastate/SchemaDiffEngine.java`
+- `NPDevCli/npdev_cli.py`
 
-Not fixed here, deliberately -- this is Wave 2's own named hard stop firing exactly as designed
-("if classification cannot cleanly separate implicit from foreign on a real database, do not
-ship it... that is a successful outcome, not a failed session"). The fix is generator-side, not
-classifier-side: widen collectIndexes to ALSO enumerate LNCH-6's collectImplicitIndexFields
-result (and concept.indexes[] for the idxx_ family) into businessTableIndexes, so the manifest's
-own declared-index bookkeeping matches what the DDL emitter actually creates. That is a change
-to what every app's manifest contains -- broader blast radius than a wave scoped around a
-read-only classifier, and needs its own generation-time regression proof (does widening
-businessTableIndexes change any OTHER consumer's behavior -- e.g. the missing-only diff
-direction, which already reads the same field and currently sees a narrower list) before it can
-ship.
+Not fixed here -- out of scope for firstrun-helpers/PLAN.md's session (which named this "probed,
+not fixed" in its own §0c table). The correct fix almost certainly mirrors REG-128's own
+resolution: derive `<repo>.parent/Build/runtimehost-libs` from the CLI's own known repo root
+(npdev_cli.py already computes a repo-root-relative path for other purposes) instead of a
+literal `D:/WorkSpace/NPDev/...` string, with NPDEV_RUNTIMEHOST_LIBS_DIR/NPDEV_BUILD_ROOT env
+overrides still winning first. This is the harder half of "does the README's documented path
+actually work on someone else's machine" -- the first-run harness (I1, this session) does not
+exercise `npdev run app` at all (it defers to `java -jar` directly per the README rewrite), so
+this bug would NOT be caught by the harness as it stands today; closing it should include either
+extending the harness to cover `npdev run app`, or explicitly noting the harness's blind spot.
 
-What DID ship this wave (kept, not reverted): ConstraintSurplusClassifier (15/15 vectors),
-SurplusConstraint/ConstraintSurplusReport (advisory-only records, deliberately not
-SchemaDiffItem/SafetyClass so no existing pass can ever treat a surplus finding as something to
-resolve -- true by construction, not by review), SchemaDiffEngine#findSurplusConstraints (the
-reverse diff direction, missing-only diff() completely unregressed), and the whole-schema
-abstention path (RED-verified against gift-idea-tracker's real pre-SER-G8 manifest shape). None
-of it is wired into ImpactReport, ControlPanel, or any gate -- per the plan's own I6, that only
-happens after I5 passes, and I5 did not pass.
+### REG-133 — Doc/report generators (generate_dsl_reference.py and siblings) are undeclared consumers of model.schema.json -- nothing enumerates what reads the schema, so an edit to it can silently degrade a generator with no error anywhere, the same shape commit 8cd9860 demonstrated live
 
-Revisit trigger: collectIndexes is widened to include LNCH-6/concept.indexes[] fields (this
-item's own fix), after which a RE-RUN of the WmsOffice calibration (same classifier, same
-method, no code change needed on the classifier side) is the actual "does surplus detection
-ship" gate. Evidence: NPDev_General__OutsideRepo/wave2/b3-wmsoffice-calibration.txt (full
-per-constraint classification, all 189 live indexes/FKs across WmsOffice's 33 desired-schema
-tables).
+**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
+**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N4), which the plan itself flags as "the one I would
+file first": it is the same shape as the four-place model-array-key chain and the
+pack-composition chain already tracked in scripts/quality/twin-pair-registry.json (CLAUDE.md's
+own documented "adding a top-level model array field" section) -- an edit in one place with
+consumers nobody enumerated, discovered only after the fact.
 
-## Done (128)
+Commit 8cd9860 (the model that this plan itself was written against) is the concrete evidence:
+a schema edit there caused generate_dsl_reference.py to silently degrade its output with no
+error anywhere in the pipeline, caught only by a human noticing the generated reference doc
+looked wrong -- not by any gate. model.schema.json is already known to be duplicated across four
+physical copies (per CLAUDE.md's own "model.schema.json is duplicated in 4 places" section,
+enforced by check-schema-mirror-consistency.py), but that check only verifies the four copies
+agree with EACH OTHER -- it says nothing about who reads any of them, or whether a change that
+keeps all four copies in sync can still break a downstream consumer that assumed the old shape.
+
+**Surface:** `quality-gates/schema-consumer-registry`
+**Files:**
+- `NPDevCli/generate_dsl_reference.py`
+- `scripts/quality/check-schema-mirror-consistency.py`
+- `scripts/quality/twin-pair-registry.json`
+
+Not fixed here -- out of scope for firstrun-helpers/PLAN.md's session (probed and named, not
+built). The shape of a fix, per the plan's own reasoning: a small registry (JSON or a new
+twin-pair-registry.json-style file) enumerating every script/generator that reads
+model.schema.json directly (generate_dsl_reference.py is the confirmed one; there may be others
+-- an actual grep for `model.schema.json`/`json.schema` reads across NPDevCli/NPDevMcp/scripts
+has not yet been done as part of filing this item), plus a gate that fails when a schema edit
+lands without a corresponding check that every registered consumer still produces sane output
+(even a coarse "did the generator's output change unexpectedly" diff would catch the 8cd9860
+shape). This is explicitly the kind of registry-plus-gate pattern
+check-twin-pair-consistency.py already establishes for two other chains; a third instance here
+would be additive, not a new mechanism.
+
+### REG-134 — main is left 29+ commits behind beta1-vision-spine with no tag covering S2-S8 or F1-F9 -- a fresh clone of the repo's own default branch gets none of this session's (or the last several sessions') work, including the first-run fixes (I0-I8) this same plan produces
+
+**Type:** GAP · **Severity:** HIGH · **Status:** OPEN
+**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N5), which the plan itself flags as "not paperwork
+-- it gates the trial" (see the plan's own HARNESS_AND_RELEASE_STRATEGY Part A). Every session
+since beta1-vision-spine branched off has landed real, verified, pushed work (S2 bounded
+contexts, S4 groupBy joins, S7 B13 conversion vocabulary, S8 Waves 1-4 physical isolation, and
+now this session's F1-F9 first-impression fixes plus I0-I8) exclusively onto
+origin/beta1-vision-spine -- main has received none of it, and no git tag exists that names a
+commit newcomers should actually clone/checkout to get a coherent, working state.
+
+Practical consequence, directly relevant to this same plan: this session's own first-run harness
+(I1) explicitly defaults REPO_REF=main (scripts/quality/firstrun-harness/Dockerfile's own
+ENV REPO_REF=main) -- meaning the harness's DEFAULT clone-based mode tests a branch that is
+missing this entire plan's fixes, and would report the SAME RED failures this session already
+fixed on beta1-vision-spine. The harness's own README.md documents overriding REPO_REF for
+branch-based testing, but a first-time user following README's own instructions literally would
+hit `main`, not the branch with the fixes.
+
+**Surface:** `release-management/branch-posture`
+
+Not fixed here -- explicitly out of scope per firstrun-helpers/PLAN.md §12's own prohibition
+("do not merge to main or tag -- a separate, authorized step for after this session"). This item
+exists so the decision is visible and tracked, not forgotten: merging beta1-vision-spine to main
+and cutting a tag that covers S2-S8/F1-F9/I0-I8 is a deliberate, owner-authorized release step,
+not a mechanical fix a session should take on its own initiative. Closing this item means that
+merge+tag has actually happened, not that a plan for it exists.
+
+### REG-135 — Accepted boundaries (NPDev's designed limits, e.g. B13's 'no Java data-migration hooks') carry no machine-readable identity: ValidationDiagnostic has code/helpKey/suggestedFix but no boundaryId, B-numbers (B1/B2/B15/B27/...) appear in the validation package as Java comments only, and docs/ACCEPTED_BOUNDARIES.md is a markdown table nothing can query except a human reading it
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
+**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N6); full analysis in
+NPDev_General__OutsideRepo/firstrun-helpers/DEFERRED_ANALYSIS.md §2. When a user's model hits a
+designed platform limit (not a mistake in their model, a boundary NPDev has deliberately chosen
+not to support -- B13's "no Java data-migration hooks" is the analysis's running example), the
+diagnostic they receive is rendered identically to a real user error: same ERROR severity, no
+link to docs/ACCEPTED_BOUNDARIES.md's own entry, no indication the tool is behaving correctly and
+their model is not wrong. helpKey already exists and already ships
+(e.g. "validation.semantic.concept_invariant_error") -- it is the natural extension point, just
+never pointed at a boundary registry. npdev_check_support (the MCP tool) queries the ledger for
+this today, but that is AI-facing only; there is no human-facing equivalent inside the CLI's own
+diagnostic output.
+
+**Surface:** `dsl/validation-diagnostics, docs/accepted-boundaries`
+**Files:**
+- `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation`
+- `docs/ACCEPTED_BOUNDARIES.md`
+
+Not fixed here -- out of scope for firstrun-helpers/PLAN.md's session (explicitly named a
+deferred item, §13). DEFERRED_ANALYSIS.md §2.3 already lays out a decidable, ~2-day shape agent
+work could execute without needing the trial's own observations first:
+  1. Make boundaries machine-readable: ledger/boundaries/*.yml (or one JSON registry) with
+     id/title/userFacingText/workaround/enforcingDiagnosticCodes[]/status, generating or
+     accompanying docs/ACCEPTED_BOUNDARIES.md rather than that file being hand-maintained prose.
+  2. Add boundaryId to ValidationDiagnostic, populated wherever a diagnostic fires BECAUSE of a
+     boundary rather than because of a user error.
+  3. Render a boundary-sourced diagnostic as LIMIT, not ERROR, in CLI output -- the analysis's
+     own framing: "LIMIT tells the user the tool is behaving correctly," which is the entire
+     difference between "this is broken" and "this doesn't do that yet."
+A twin-pair gate (every hittable boundary has an enforcing diagnostic code and vice versa) would
+be the natural mechanical control once 1-2 exist, following the same pattern
+check-twin-pair-consistency.py already uses for two other chains. Only the CONTENT of
+userFacingText/workaround strings for the top boundaries is named as needing real user
+observation (the trial) -- the mechanism itself does not.
+
+## Done (131)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -220,7 +227,10 @@ tables).
 | REG-125 | PROJECT_DIGEST.md names scripts/quality/run-box-vision-doc-check.ps1 as its own 'Phase 0 validation script' (expected to write scripts/reports/out/box-vision-doc-check-report.json), but neither the script nor any equivalent under a different name was ever built -- a real, never-fulfilled commitment, not a stale path | GAP | LOW | DONE | 2026-08-03 |
 | REG-126 | Normalize-AiContract.ps1 translates requiredRole for panels, procedures, and workflow transitions, but never for flows[] (the generic concept create/update declaration) -- the role gate is silently dropped, and the generated REST create endpoint ends up denying every role including the one the scenario intended to allow | BUG | LOW | DONE | 2026-08-03 |
 | REG-127 | tracestore-postgres's PersistentExecutionTracerTest is a stub that asserts nothing (assertTrue(true)) but counts toward the module's '2 test files' coverage figure -- found while assessing the six nightly-only *-postgres adapters for B21 promotion (S1_SPEC.md O2) | BUG | LOW | DONE | 2026-08-03 |
+| REG-128 | NPDevRuntimeHost/build.gradle's embedded runtimehost-libs-dir fallback (resolveNpdevRuntimeLibsDir) still defaults to <repo>__OutsideRepo/runtimehost-libs, never updated by the LC-C4/Wave 1.4 unification that moved sync-runtimehost-libs.ps1 and Build-NpdevApp.ps1 to Build/runtimehost-libs -- and run-runtimehost-gate.ps1 never bridges the gap with NPDEV_RUNTIMEHOST_LIBS_DIR, so its assembled-app test run can silently read stale jars from a directory the gate's own sync step never writes to | BUG | MEDIUM | DONE | 2026-08-04 |
+| REG-129 | businessTableIndexes (the schema-realization manifest field B3 surplus-constraint classification depends on) has a documented scope of unique-constraint + bond-lookup indexes only -- it does not capture LNCH-6's implicit panel/query-driven secondary indexes or the author-declared concept.indexes[] escape hatch, both of which emit real DDL. Confirmed on WmsOffice's live database: 17 live indexes across 13 tables, every one idx_<table>_<field> on (tenant_id, field) -- LNCH-6's own exact naming/shape -- classified FOREIGN by an otherwise-correct, 15/15-vector-tested classifier, purely because the manifest never told it these indexes exist. | BUG | MEDIUM | DONE | 2026-08-04 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
+| REG-132 | No gate exists on the claim 'the documented setup instructions actually work on a clean machine' -- six other defect-family shapes (four-place field threading, pack-composition, twin-pair drift, blocker-citation freshness, script-inventory/invocation, corpus-role coverage) all have a mechanical control; this one had none, and its absence is what let F3/F6/F8, a stale beta1.1 claim, and all three onboarding walls ship undetected | GAP | MEDIUM | DONE | 2026-08-04 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
 | REG-16 | The other 23 launch items had zero adversarial review | PROCESS | HIGH | DONE | 2026-07-21 |
@@ -2257,6 +2267,172 @@ whether PersistentExecutionTracer (the class the name implies this tests) has AN
 coverage elsewhere in the codebase before choosing -- if it has none, option (2) is the one
 that actually adds value; if it's covered elsewhere, option (1) is simpler and equally correct.
 
+### REG-128 — NPDevRuntimeHost/build.gradle's embedded runtimehost-libs-dir fallback (resolveNpdevRuntimeLibsDir) still defaults to <repo>__OutsideRepo/runtimehost-libs, never updated by the LC-C4/Wave 1.4 unification that moved sync-runtimehost-libs.ps1 and Build-NpdevApp.ps1 to Build/runtimehost-libs -- and run-runtimehost-gate.ps1 never bridges the gap with NPDEV_RUNTIMEHOST_LIBS_DIR, so its assembled-app test run can silently read stale jars from a directory the gate's own sync step never writes to
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-04)
+**Verification:** VERIFIED_LIVE
+**Source:** Found while implementing S8 W1.1 (multi-hop groupBy joins). After editing
+NPDevContract/dsl's GroupByJoinGrammar and running
+scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars (which reported success and
+wrote a freshly-rebuilt dsl-0.1.0.jar to D:\WorkSpace\NPDev\Build\runtimehost-libs, confirmed
+via javap to contain the new method), a direct `NPDevRuntimeHost\gradlew.bat compileJava`
+still failed with "cannot find symbol: referenceFields()" against the OLD single-hop Join
+record shape.
+
+Root cause, traced in NPDevRuntimeHost/build.gradle's resolveNpdevRuntimeLibsDir closure:
+
+    def configured = providers.gradleProperty('npdevRuntimeHostLibsDir')
+            .orElse(providers.environmentVariable('NPDEV_RUNTIMEHOST_LIBS_DIR'))
+            .orNull
+    if (configured != null ...) { return file(configured...) }
+    def current = projectDir
+    while (current != null) {
+        if (new File(current, '.npdev-root').isFile()) {
+            return new File(current.parentFile, "${current.name}__OutsideRepo/runtimehost-libs")
+        }
+        current = current.parentFile
+    }
+    return file("${rootProject.projectDir.name}__OutsideRepo/runtimehost-libs")
+
+With no -PnpdevRuntimeHostLibsDir/-PNPDEV_RUNTIMEHOST_LIBS_DIR override, and a `.npdev-root`
+marker present at the repo root, this ALWAYS resolves to
+D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\runtimehost-libs -- NOT
+D:\WorkSpace\NPDev\Build\runtimehost-libs, which is what
+scripts/npdev-common.ps1's Get-NPDevRuntimeHostLibsDir (and therefore
+sync-runtimehost-libs.ps1 and Build-NpdevApp.ps1, per CLAUDE.md's own "the defaults now
+agree (LC-C4 / Wave 1.4)" note) actually resolves to and writes.
+
+Confirmed both directories currently hold DIFFERENT dsl-0.1.0.jar builds
+(NPDev_General__OutsideRepo\runtimehost-libs\dsl-0.1.0.jar timestamped ~1.5h older than
+Build\runtimehost-libs\dsl-0.1.0.jar after a fresh sync).
+
+scripts/quality/run-runtimehost-gate.ps1 (part of T2's run-all-gates.ps1) calls
+sync-runtimehost-libs.ps1 -BuildLocalJars (writes Build/runtimehost-libs) and THEN runs the
+assembled sample app's own `gradlew ... test` via Invoke-NPDevCommandEvidence -- WITHOUT ever
+setting $env:NPDEV_RUNTIMEHOST_LIBS_DIR or passing -PnpdevRuntimeHostLibsDir first. Grepped
+the whole file: no reference to either. So the assembled app's materialized build.gradle
+(a byte-copy of the NPDevRuntimeHost template) falls through to the SAME buggy
+__OutsideRepo default, independent of what the gate's own sync step just wrote.
+
+scripts/quality/run-fast-gate.ps1 (T1) does NOT have this problem -- it explicitly sets
+$env:NPDEV_RUNTIMEHOST_LIBS_DIR = $RuntimeHostLibsDir before its canary build/boot/smoke step,
+which is the correct pattern run-runtimehost-gate.ps1 is missing.
+
+**Surface:** `build-tooling/runtimehost-libs-staging`
+**Files:**
+- `NPDevRuntimeHost/build.gradle`
+- `scripts/quality/run-runtimehost-gate.ps1`
+
+Practical impact: a RuntimeHost-side change validated ONLY through run-runtimehost-gate.ps1 /
+T2 (rather than T1's canary path, which IS correctly bridged) can pass or fail against
+whatever jars happen to already be sitting in NPDev_General__OutsideRepo\runtimehost-libs from
+a PRIOR, unrelated sync -- not necessarily the jars the current gate run just rebuilt. In the
+common case the two directories are close enough in age that this goes unnoticed (as seen
+here: only ~1.5h apart), but nothing GUARANTEES that, and a long gap between "last time
+something synced OutsideRepo" and "now" would make T2 silently test stale RuntimeHost
+dependencies while reporting green -- the same failure shape REG-123 named ("a checker's own
+bug produced false findings/false confidence").
+
+Not fixed here, deliberately -- out of scope for S8 Wave 1 (multi-hop groupBy joins / B13
+conversion ops), and a fix to a shared build.gradle TEMPLATE (copied byte-for-byte into every
+generated FinalApp, per its own "materializes this file" docstring) needs its own careful
+verification against golden-sample/generated-app byte-parity checks before landing, not a
+drive-by one-line edit under an unrelated plan.
+
+Two independent fix shapes, either closes this (do one, not necessarily both):
+(1) Change NPDevRuntimeHost/build.gradle's resolveNpdevRuntimeLibsDir fallback (the
+    `.npdev-root`-found branch) to return Get-NPDevRuntimeHostLibsDir's own convention
+    (`<repo>.parent/Build/runtimehost-libs`) instead of `<repo>__OutsideRepo/runtimehost-libs`,
+    bringing the Groovy default in line with the PowerShell-side unification the CLAUDE.md note
+    already claims exists.
+(2) Add `$env:NPDEV_RUNTIMEHOST_LIBS_DIR = $runtimeHostLibs` (mirroring run-fast-gate.ps1's own
+    pattern) to run-runtimehost-gate.ps1 right after its sync-runtimehost-libs.ps1 call, so the
+    gate is self-consistent regardless of what the template's own default resolves to.
+
+Workaround used this session to get a trustworthy build/test signal while implementing S8
+Wave 1: explicitly set $env:NPDEV_RUNTIMEHOST_LIBS_DIR = "D:\WorkSpace\NPDev\Build\runtimehost-libs"
+before invoking any RuntimeHost-touching gate script in the same PowerShell process tree.
+
+### REG-129 — businessTableIndexes (the schema-realization manifest field B3 surplus-constraint classification depends on) has a documented scope of unique-constraint + bond-lookup indexes only -- it does not capture LNCH-6's implicit panel/query-driven secondary indexes or the author-declared concept.indexes[] escape hatch, both of which emit real DDL. Confirmed on WmsOffice's live database: 17 live indexes across 13 tables, every one idx_<table>_<field> on (tenant_id, field) -- LNCH-6's own exact naming/shape -- classified FOREIGN by an otherwise-correct, 15/15-vector-tested classifier, purely because the manifest never told it these indexes exist.
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-04)
+**Verification:** VERIFIED_LIVE
+**Source:** Found during S8 Wave 2 (B3 FK/index surplus detection, roadmap deferred item #2), at the plan's
+own I5 hard stop: "run the classifier against WmsOffice's live schema ... zero constraints
+classified foreign that are actually implicit or declared. One phantom means it is not ready."
+
+ConstraintSurplusClassifier itself is correct and fully tested (15/15 vectors from
+b3-classification-vectors.json pass, including the two vectors -- 3/4 -- that pin the headline
+failure this whole mechanism exists to prevent: never propose dropping a primary key). The
+reverse diff direction (SchemaDiffEngine#findSurplusConstraints) is a clean addition that does
+not touch the existing missing-only diff() at all (regression-verified).
+
+Running it against WmsOffice's real, live H2Server database (verified running via a direct TCP
+probe on port 9200 -- no stop/start needed, since WmsOffice runs H2 in TCP SERVER mode, which
+accepts concurrent client connections; this corrects the plan's own generic "app must be
+stopped, H2 file lock" caution, which assumed H2Local/embedded mode) produced:
+
+  TOTALS: platform-declared=106 implicit=40 unclassifiable=0 FOREIGN=17
+
+All 17 FOREIGN findings share one shape: idx_<table>_<field> on (tenant_id, <field>), non-unique,
+across 13 different tables (local_armazenagems, expedicaos, produtos, lotes, recebimentos, and
+8 more). Traced to NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/
+SchemaRealizationEmitter.java:
+
+  - appendSecondaryIndexes (LNCH-6, line ~561): "emits a tenant-composite (tenant_id, col)
+    secondary index for each model field a panel/query filters, sorts, or joins children by" --
+    DDL-emitting, real, currently shipping. Index names are exactly idx_<table>_<column>
+    (line ~581) -- byte-for-byte the shape of all 17 findings.
+  - collectIndexes (line ~1299, the method that actually POPULATES businessTableIndexes for the
+    manifest) has its OWN documented scope, verbatim: "the indexes this concept's DDL creates --
+    one per unique constraint (unique) and one per bond column (non-unique, the FK lookup
+    index)." It never calls collectImplicitIndexFields/appendSecondaryIndexes's field set at all.
+  - A THIRD category, appendExplicitIndexes (author-declared concept.indexes[], idxx_ prefix,
+    line ~513), is ALSO invisible to collectIndexes for the same reason -- not implicated in
+    WmsOffice's 17 (none use the idxx_ prefix), but the same gap applies to it.
+
+So businessTableIndexes is not merely incomplete by accident -- collectIndexes's own javadoc
+states its scope deliberately, and that scope was simply never widened when LNCH-6 (implicit
+panel/query indexing) or the concept.indexes[] escape hatch shipped. Every one of the 17
+"FOREIGN" verdicts is a real NPDev-created index the classifier had no way to know about, not
+DBA drift and not a classifier bug -- confirmed by reading businessTableIndexes["produtos"] in
+WmsOffice's real generated manifest directly: it lists exactly one entry (perfil_alocacao_id,
+the bond lookup), with no trace of idx_produtos_ativo/idx_produtos_nome anywhere in the file.
+
+**Surface:** `generator/dbconfig/schema-realization-manifest, runtimehost/db/schemastate`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/schemastate/ConstraintSurplusClassifier.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/schemastate/SchemaDiffEngine.java`
+
+Not fixed here, deliberately -- this is Wave 2's own named hard stop firing exactly as designed
+("if classification cannot cleanly separate implicit from foreign on a real database, do not
+ship it... that is a successful outcome, not a failed session"). The fix is generator-side, not
+classifier-side: widen collectIndexes to ALSO enumerate LNCH-6's collectImplicitIndexFields
+result (and concept.indexes[] for the idxx_ family) into businessTableIndexes, so the manifest's
+own declared-index bookkeeping matches what the DDL emitter actually creates. That is a change
+to what every app's manifest contains -- broader blast radius than a wave scoped around a
+read-only classifier, and needs its own generation-time regression proof (does widening
+businessTableIndexes change any OTHER consumer's behavior -- e.g. the missing-only diff
+direction, which already reads the same field and currently sees a narrower list) before it can
+ship.
+
+What DID ship this wave (kept, not reverted): ConstraintSurplusClassifier (15/15 vectors),
+SurplusConstraint/ConstraintSurplusReport (advisory-only records, deliberately not
+SchemaDiffItem/SafetyClass so no existing pass can ever treat a surplus finding as something to
+resolve -- true by construction, not by review), SchemaDiffEngine#findSurplusConstraints (the
+reverse diff direction, missing-only diff() completely unregressed), and the whole-schema
+abstention path (RED-verified against gift-idea-tracker's real pre-SER-G8 manifest shape). None
+of it is wired into ImpactReport, ControlPanel, or any gate -- per the plan's own I6, that only
+happens after I5 passes, and I5 did not pass.
+
+Revisit trigger: collectIndexes is widened to include LNCH-6/concept.indexes[] fields (this
+item's own fix), after which a RE-RUN of the WmsOffice calibration (same classifier, same
+method, no code change needed on the classifier side) is the actual "does surplus detection
+ship" gate. Evidence: NPDev_General__OutsideRepo/wave2/b3-wmsoffice-calibration.txt (full
+per-constraint classification, all 189 live indexes/FKs across WmsOffice's 33 desired-schema
+tables).
+
 ### REG-13 — LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time
 
 **Type:** GAP · **Severity:** HIGH · **Status:** DONE (2026-07-22)
@@ -2276,6 +2452,54 @@ updateConcept examples omit the persistence capability/binding block, producing 
 validates cleanly but 500s at runtime with no diagnostic naming the real cause.
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-13`
+
+### REG-132 — No gate exists on the claim 'the documented setup instructions actually work on a clean machine' -- six other defect-family shapes (four-place field threading, pack-composition, twin-pair drift, blocker-citation freshness, script-inventory/invocation, corpus-role coverage) all have a mechanical control; this one had none, and its absence is what let F3/F6/F8, a stale beta1.1 claim, and all three onboarding walls ship undetected
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-04)
+**Verification:** VERIFIED_LIVE
+**Source:** Filed per firstrun-helpers/PLAN.md §0c (item N3), naming a real, previously-uncovered gap: every
+other recurring defect family in this repo (the four-place model-array-key chain, the
+pack-composition chain, twin-pair drift generally, stale blocker citations, script-inventory
+policy drift, corpus-role coverage) has a dedicated check-*.py wired into run-*.ps1 per
+CLAUDE.md's own documented rule. "Does following README.md's own Quickstart, verbatim, on a bare
+machine with nothing pre-installed, actually work" had no such control -- it could only be
+checked by a human manually following the docs, which nobody had done recently enough to catch
+the accumulated drift (missing prereqs in the doc's own prerequisites line, an undocumented
+jar-build step, a missing bootJar step, no login/port information after generation).
+
+**Surface:** `quality-gates/first-run-verification`
+**Files:**
+- `scripts/quality/firstrun-harness/Dockerfile`
+- `scripts/quality/firstrun-harness/README.md`
+- `scripts/quality/firstrun-harness/run-readme.sh`
+
+Closed by firstrun-helpers/PLAN.md's own I1, built and RED-verified in this same session BEFORE
+any of the doc/CLI fixes it exercises (I2/I3) landed -- confirmed 7 real failures on the first
+run, matching the plan's own predicted defect shapes (missing Python3/pwsh in the bare image
+until installed per README's own prerequisites line, the undocumented jar-build step, the
+missing bootJar step, no app-jar-exists at the end). The harness is a Docker container
+(ubuntu:24.04, nothing preinstalled) that installs ONLY what README's prerequisites sentence
+names, then extracts and runs every fenced code block in README's Quickstart section verbatim
+and in order, asserting each command's exit code and a handful of documented-behavior invariants
+(prereqs actually present, the app actually boots on the documented port). It supports both a
+fresh git-clone mode (the real "newcomer" path) and a LOCAL_SRC bind-mount mode (for testing
+doc/CLI changes before they are pushed).
+
+Three real bugs were found and fixed IN THE HARNESS ITSELF while proving it actually works (not
+in the platform code under test): CRLF-vs-LF corruption of extracted commands under LOCAL_SRC
+mode (Windows checkout has CRLF; the real git blob does not), MSYS/Git-Bash path-mangling of the
+`-v` bind-mount argument (fixed with MSYS_NO_PATHCONV=1), and a persistent-working-directory bug
+where every extracted command ran in a fresh subshell rooted at the clone dir, so a `cd` command
+in the README had zero effect on later commands (fixed by tracking CURRENT_DIR across the loop).
+
+Per this item's own explicit prohibition (PLAN.md §12: "do not build the harness after the
+fixes"), the harness was built and its RED run captured BEFORE I2/I3's doc/CLI fixes landed --
+the GREEN-after-fixes run is captured separately as this session's final closeout evidence, not
+as part of closing this item (which is about the gate's existence, not any one run's result).
+
+Declared in scripts/policy/script-inventory-policy.json and
+scripts/policy/script-invocation-declarations.json per run-script-inventory-check.ps1's own
+requirement (every scripts/ script needs both a classification and an invocation declaration).
 
 ### REG-14 — LNCH-22: newcomer documentation test run for the first time
 

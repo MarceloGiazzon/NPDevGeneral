@@ -1,0 +1,39 @@
+id: REG-135
+title: "Accepted boundaries (NPDev's designed limits, e.g. B13's 'no Java data-migration hooks') carry no machine-readable identity: ValidationDiagnostic has code/helpKey/suggestedFix but no boundaryId, B-numbers (B1/B2/B15/B27/...) appear in the validation package as Java comments only, and docs/ACCEPTED_BOUNDARIES.md is a markdown table nothing can query except a human reading it"
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-04
+surface: dsl/validation-diagnostics, docs/accepted-boundaries
+source: |
+  Filed per firstrun-helpers/PLAN.md §0c (item N6); full analysis in
+  NPDev_General__OutsideRepo/firstrun-helpers/DEFERRED_ANALYSIS.md §2. When a user's model hits a
+  designed platform limit (not a mistake in their model, a boundary NPDev has deliberately chosen
+  not to support -- B13's "no Java data-migration hooks" is the analysis's running example), the
+  diagnostic they receive is rendered identically to a real user error: same ERROR severity, no
+  link to docs/ACCEPTED_BOUNDARIES.md's own entry, no indication the tool is behaving correctly and
+  their model is not wrong. helpKey already exists and already ships
+  (e.g. "validation.semantic.concept_invariant_error") -- it is the natural extension point, just
+  never pointed at a boundary registry. npdev_check_support (the MCP tool) queries the ledger for
+  this today, but that is AI-facing only; there is no human-facing equivalent inside the CLI's own
+  diagnostic output.
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  Not fixed here -- out of scope for firstrun-helpers/PLAN.md's session (explicitly named a
+  deferred item, §13). DEFERRED_ANALYSIS.md §2.3 already lays out a decidable, ~2-day shape agent
+  work could execute without needing the trial's own observations first:
+    1. Make boundaries machine-readable: ledger/boundaries/*.yml (or one JSON registry) with
+       id/title/userFacingText/workaround/enforcingDiagnosticCodes[]/status, generating or
+       accompanying docs/ACCEPTED_BOUNDARIES.md rather than that file being hand-maintained prose.
+    2. Add boundaryId to ValidationDiagnostic, populated wherever a diagnostic fires BECAUSE of a
+       boundary rather than because of a user error.
+    3. Render a boundary-sourced diagnostic as LIMIT, not ERROR, in CLI output -- the analysis's
+       own framing: "LIMIT tells the user the tool is behaving correctly," which is the entire
+       difference between "this is broken" and "this doesn't do that yet."
+  A twin-pair gate (every hittable boundary has an enforcing diagnostic code and vice versa) would
+  be the natural mechanical control once 1-2 exist, following the same pattern
+  check-twin-pair-consistency.py already uses for two other chains. Only the CONTENT of
+  userFacingText/workaround strings for the top boundaries is named as needing real user
+  observation (the trial) -- the mechanism itself does not.

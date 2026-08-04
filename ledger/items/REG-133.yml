@@ -1,0 +1,38 @@
+id: REG-133
+title: "Doc/report generators (generate_dsl_reference.py and siblings) are undeclared consumers of model.schema.json -- nothing enumerates what reads the schema, so an edit to it can silently degrade a generator with no error anywhere, the same shape commit 8cd9860 demonstrated live"
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-04
+surface: quality-gates/schema-consumer-registry
+source: |
+  Filed per firstrun-helpers/PLAN.md §0c (item N4), which the plan itself flags as "the one I would
+  file first": it is the same shape as the four-place model-array-key chain and the
+  pack-composition chain already tracked in scripts/quality/twin-pair-registry.json (CLAUDE.md's
+  own documented "adding a top-level model array field" section) -- an edit in one place with
+  consumers nobody enumerated, discovered only after the fact.
+
+  Commit 8cd9860 (the model that this plan itself was written against) is the concrete evidence:
+  a schema edit there caused generate_dsl_reference.py to silently degrade its output with no
+  error anywhere in the pipeline, caught only by a human noticing the generated reference doc
+  looked wrong -- not by any gate. model.schema.json is already known to be duplicated across four
+  physical copies (per CLAUDE.md's own "model.schema.json is duplicated in 4 places" section,
+  enforced by check-schema-mirror-consistency.py), but that check only verifies the four copies
+  agree with EACH OTHER -- it says nothing about who reads any of them, or whether a change that
+  keeps all four copies in sync can still break a downstream consumer that assumed the old shape.
+files:
+  - NPDevCli/generate_dsl_reference.py
+  - scripts/quality/check-schema-mirror-consistency.py
+  - scripts/quality/twin-pair-registry.json
+detail: |
+  Not fixed here -- out of scope for firstrun-helpers/PLAN.md's session (probed and named, not
+  built). The shape of a fix, per the plan's own reasoning: a small registry (JSON or a new
+  twin-pair-registry.json-style file) enumerating every script/generator that reads
+  model.schema.json directly (generate_dsl_reference.py is the confirmed one; there may be others
+  -- an actual grep for `model.schema.json`/`json.schema` reads across NPDevCli/NPDevMcp/scripts
+  has not yet been done as part of filing this item), plus a gate that fails when a schema edit
+  lands without a corresponding check that every registered consumer still produces sane output
+  (even a coarse "did the generator's output change unexpectedly" diff would catch the 8cd9860
+  shape). This is explicitly the kind of registry-plus-gate pattern
+  check-twin-pair-consistency.py already establishes for two other chains; a third instance here
+  would be additive, not a new mechanism.
