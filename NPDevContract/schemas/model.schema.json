@@ -2714,7 +2714,7 @@
         },
         "parallelAwait": {
           "type": "boolean",
-          "description": "B15(B): opts a forEach loop body of exactly one AWAIT_EVENT step into N-way parallel waiting -- every iteration's await is attempted up front and all still-outstanding ones stay durably parked at once, instead of B15(A)'s default sequential (one-at-a-time) behavior. Absent/false means sequential."
+          "description": "B15(B): opts a forEach loop body into N-way parallel waiting -- every iteration's await is attempted up front and all still-outstanding ones stay durably parked at once, instead of B15(A)'s default sequential (one-at-a-time) behavior. The body must contain exactly one AWAIT_EVENT step at the top level (not nested in a branch); any number of other non-forEach steps are allowed before/after it (Wave 3, S8_DEFERRED_FIVE_PLAN.md). Absent/false means sequential."
         },
         "onFailure": {
           "type": "array",

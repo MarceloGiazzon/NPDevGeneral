@@ -116,7 +116,7 @@ values, each with its own factory method:
 | `AWAIT_EVENT` | `awaitEvent(name, eventName, awaitRef, ...)` | Suspends until a matching event arrives — §4 |
 | `MAP` | `map(name, fromRef, toRef)` | Copies a value from one flow-state reference to another |
 | `RETURN` | `returnValue(name, returnRef)` | Ends the flow, producing a value |
-| `FOR_EACH` | `forEach(name, collectionRef, itemKey, loopSteps, maxLoopIterations, parallelAwait)` | Bounded iteration over a collection; `parallelAwait` (default `false`) opts a single-await-step loop body into N-way parallel waiting (B15(B)) instead of one-at-a-time (B15(A)) — §6 |
+| `FOR_EACH` | `forEach(name, collectionRef, itemKey, loopSteps, maxLoopIterations, parallelAwait)` | Bounded iteration over a collection; `parallelAwait` (default `false`) opts a loop body (exactly one top-level `AWAIT_EVENT` step, plus any number of other non-`FOR_EACH` steps before/after it, since Wave 3) into N-way parallel waiting (B15(B)) instead of one-at-a-time (B15(A)) — §6 |
 
 Any step, regardless of kind, can additionally carry `onFailureSteps` (`withOnFailure`,
 `FlowStepDefinition.java:257-308`) — used only for compensation, §5.
@@ -405,23 +405,58 @@ step), and the step itself only completes once every slot has resolved. `ResumeC
 parallel-aware matching path (both the event-driven resume and the scheduled sweep) that checks an
 incoming event against ALL outstanding per-iteration correlations, not just one.
 
-**Deliberately scoped to a single-step loop body — exactly one `AWAIT_EVENT` step, nothing before or
-after it.** `FlowValidation` enforces this (`parallelAwait=true requires the loop body to be EXACTLY
-one await step`): a step mutating a non-namespaced `state` key would silently clobber across
+**Originally scoped to a single-step loop body — exactly one `AWAIT_EVENT` step, nothing before or
+after it** (S6): a step mutating a non-namespaced `state` key would silently clobber across
 iterations attempted independently in one pass — a hazard sequential mode never hits, since only one
-iteration is ever in flight there. A future lift that wants pre/post-await steps inside a parallel
-loop needs its own design pass for that hazard, not a mechanical extension of this one.
+iteration is ever in flight there.
 
-Required, non-optional proof, same hard-stop rule as B15(A): `KernelRunnerParallelAwaitInLoopRestartProofTest`
-(`NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerParallelAwaitInLoopRestartProofTest.java`).
-N=3 iterations genuinely outstanding at once, events delivered out of order across two full restarts
-(brand-new `KernelRunner` instances) — iteration 2's reply arrives before iteration 0's, iteration
-1's arrives last — proves each iteration resumes exactly once on its own event and the merged result
-lands in iteration order regardless of arrival order; plus a thread frozen right after one slot
-resolves, proving a fresh runner resuming from that point does not re-query the already-processed
-event. Full `NPDevKernel` suite (kernel + every adapter) green.
+**Wave 3 (S8_DEFERRED_FIVE_PLAN.md, 2026-08-04, deferred item #3) lifted that scope-down**: the loop
+body may now contain any number of other (non-`FOR_EACH`) steps before/after the one required await.
+**I0 (the design decision, recorded in full in `FlowStateCodec`'s own javadoc on
+`PARALLEL_LOOP_SCOPE_KEY_PREFIX`):** every iteration's writes are relocated into a namespaced shadow
+(`__iterScope.<step>.<i>.<key>`) living in the SAME `state` blob the resume path already reads —
+chosen over a new `flow_instance_wait`-style table (bought nothing new, per B1's original reasoning)
+and over per-iteration copy-on-write maps (a durable-resume story exactly as hard as the problem being
+solved). `ParallelLoopIterationScope` (`NPDevKernel/kernel/.../ParallelLoopIterationScope.java`)
+implements it: `enter(i)` overlays iteration i's own previously-relocated progress onto the bare keys
+its steps read/write; `exit(i)` diffs bare state against a ONE-TIME pre-loop baseline snapshot,
+relocating anything that changed and resetting bare state back to baseline — closing the clobber
+entirely, without requiring any change to the six previously-unscoped step classes (`ReturnStep`,
+`ScheduleEventStep`, `EmitEventStep`, `CapabilityCallStep`, `CallProcedureStep`, `MapStep`), since the
+relocation happens externally to all of them. **I2 (what survives the loop):** everything a
+multi-step body writes is scoped-and-discarded once the step completes, EXCEPT the await's own
+resolved payload, which keeps the existing single-step-body convention of folding into one ordered
+list under the shared `awaitRef` — a multi-step body has no other key that unambiguously means "the
+iteration's result" the way a one-await body's `awaitRef` does. **A `forEach` nested inside a
+parallel `forEach` is still refused**, now with a named error (`FlowValidation`: "does not support a
+nested forEach step") rather than falling out of the old single-step cap incidentally — composing two
+independent per-iteration scoping schemes was never attempted. The one required await must be at the
+loop body's TOP LEVEL, not nested inside a `branch` — `ParallelAwaitForEachStep`'s runtime scan only
+looks at top-level steps, so `FlowValidation` deliberately does NOT reuse its recursive
+`countAwaitSteps` for this specific check, to avoid accepting a shape the runtime would then reject.
 
-Tracked as accepted boundaries B15(A) (closed, Move 16) / B15(B) (closed, S6, scoped) in
+Required, non-optional proof, same hard-stop rule as B15(A)/B15(B)'s own original lift:
+`KernelRunnerParallelAwaitInLoopRestartProofTest`
+(`NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerParallelAwaitInLoopRestartProofTest.java`,
+extended, not duplicated). The S6-era two tests (N=3 iterations genuinely outstanding at once, events
+delivered out of order across two full restarts; plus a thread frozen right after one slot resolves)
+remain, now exercised through the SAME generic multi-step-capable code path as the single-await-body
+case (no separate implementation to drift). Wave 3 added two more, proving the strictly harder
+resume problem a multi-step body creates — iterations parked at DIFFERENT steps, not all at the same
+one:
+- `multiStepBodyRestartWithIterationsAtDifferentStepsDoesNotReprocessTheResolvedIteration` (vector
+  6): kills a real process with iteration 0 fully done (past its pre-await capability call, its
+  await, AND its post-await step), iteration 1 parked AT its own await, iteration 2 untouched during
+  that pass. A brand-new `KernelRunner` resumes from the durable checkpoint: iteration 0's
+  capability-call count (via a counting dispatcher) proves it does NOT re-run across the restart,
+  iteration 1 resumes correctly at its own await, and iteration 2 gets one clean attempt.
+- `multiStepBodyOutOfOrderDeliveryResumesEachIterationExactlyOnce` (vector 7): re-proves out-of-order
+  delivery for the multi-step body specifically, rather than assuming it carries from the
+  single-step case.
+
+Evidence captured to `NPDev_General__OutsideRepo/wave3/w3-restart-proof.txt`.
+
+Tracked as accepted boundaries B15(A) (closed, Move 16) / B15(B) (closed, S6, then widened Wave 3) in
 `docs/ACCEPTED_BOUNDARIES.md`.
 
 ## 7. Scheduling — two mechanisms, same name, don't confuse them
@@ -521,9 +556,11 @@ See §11 for the review that found this.
 - No per-nested-step compensation — only whole `branch`/`forEach` units (§5).
 - `AWAIT_EVENT` nested inside a `forEach` loop body works either sequentially, one outstanding await
   at a time (B15(A), default), or in parallel, N iterations genuinely outstanding at once
-  (B15(B), opt-in via `parallelAwait: true`) — but the parallel mode requires the loop body to be
-  EXACTLY one await step, and two or more reachable awaits in the same loop body remain rejected in
-  either mode — not silently broken (§6, accepted boundaries B15(A)/B15(B), both closed).
+  (B15(B), opt-in via `parallelAwait: true`) — the parallel mode's loop body may contain any number
+  of other steps before/after the one required await (Wave 3), but that await must be at the TOP
+  LEVEL (not nested inside a `branch`), a nested `forEach` is still refused, and two or more reachable
+  awaits in the same loop body remain rejected in either mode — not silently broken (§6, accepted
+  boundaries B15(A)/B15(B), both closed).
 - `forEach` materializes its whole collection into memory before iterating; `maxLoopIterations` bounds
   iteration count, not memory (§6, `R4-F2`, INFO).
 - No real sample model exercises `FOR_EACH`, `onFailure`/compensation, or hooks — only test code and

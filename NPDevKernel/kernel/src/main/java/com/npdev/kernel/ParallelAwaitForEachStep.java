@@ -16,60 +16,45 @@ import java.util.Objects;
  * {@link ForEachStep}'s sequential (one-at-a-time) {@code AWAIT_EVENT} handling from B15(A).
  * Dispatched from {@link ForEachStep#execute} when {@code step.isParallelAwait()}.
  *
- * <p><b>Deliberately scoped to a single-step loop body: exactly one {@code AWAIT_EVENT} step, no
- * steps before or after it.</b> This is not an arbitrary restriction -- it is what makes the
- * design tractable and provably correct without a second durable-state hazard class. B15(A)'s
- * sequential model re-runs an iteration's ENTIRE step list from scratch on every (re-)attempt
- * (nested {@code executeSteps} always starts at index 0), relying on non-await steps being safe to
- * re-execute. That is fine when only ONE iteration is ever in flight. For N iterations attempted
- * independently in one pass, a step before/after the await that mutates a NON-namespaced
- * {@code state} key would silently clobber across iterations (iteration i+1's pre-await step
- * overwriting a key iteration i already committed to, before iteration i's own await resolves and
- * the loop completes). Scoping to await-only sidesteps that hazard entirely: the only per-iteration
- * mutation is the resolved payload, and it is namespaced by iteration index (see {@link
- * FlowStateCodec#parallelAwaitPayloadKey}). A future lift that wants pre/post-await steps needs its
- * own design pass for that specific hazard -- not a mechanical extension of this one.
+ * <p><b>Wave 3 (S8_DEFERRED_FIVE_PLAN.md, 2026-08-04): lifted from "exactly one AWAIT_EVENT step,
+ * no steps before or after" to an arbitrary loop body containing exactly one reachable {@code
+ * AWAIT_EVENT} step plus any number of other (non-{@code FOR_EACH}) steps before/after it.</b> The
+ * original restriction existed because a step mutating a non-namespaced {@code state} key would
+ * silently clobber across independently-attempted iterations; that hazard is now closed by {@link
+ * ParallelLoopIterationScope} (per-iteration namespaced shadow keys in the SAME {@code state} blob
+ * -- see {@link FlowStateCodec}'s own extensive javadoc on {@code PARALLEL_LOOP_SCOPE_KEY_PREFIX}
+ * for the full I0 design record: why Option A was chosen over B/C, why it survives a restart with
+ * iterations parked at DIFFERENT steps, and the I2 decision on what survives past the loop). A
+ * nested {@code FOR_EACH} in the body is still refused (I3, vector 9) -- composing two independent
+ * scoping schemes was never attempted here and is not safe to assume.
  *
- * <p><b>Storage decision (B0/B1): no new durable storage surface.</b> Every outstanding wait
+ * <p><b>Storage decision (B0/B1, S6): no new durable storage surface.</b> Every outstanding wait
  * descriptor and every resolved payload lives in {@code state} (the existing {@code FlowInstance}
- * JSON blob), namespaced per iteration -- see {@link FlowStateCodec}'s
- * {@code PARALLEL_AWAIT_STATE_KEY_PREFIX}/{@code PARALLEL_AWAIT_RESOLVED_KEY_PREFIX} javadoc for
- * the full reasoning (the roadmap's originally-costed "new {@code flow_instance_wait} table"
- * option turned out to buy nothing at the discovery layer: all N iterations of one parallel
- * forEach share the same declared await event name, so {@code FlowInstanceStore.findWaitingByEvent}
- * already finds the candidate instance via its existing indexed column). This is why B1 needed no
- * schema/adapter change and no migration: nothing new exists below the state-blob layer for an
- * existing in-flight {@code WAITING_EVENT} row to need converting.
+ * JSON blob) -- Wave 3's per-iteration shadow keys are an extension of this same decision, not a
+ * departure from it (see {@link FlowStateCodec}'s {@code PARALLEL_LOOP_*} javadoc).
  *
- * <p><b>Fan-in completion semantics (B3, decided and recorded here):</b>
+ * <p><b>Fan-in completion semantics (B3, S6, unchanged by Wave 3):</b>
  * <ul>
  *   <li><b>Join/barrier:</b> ALL N iterations must resolve before the step completes -- the natural
  *   "wait for every reply" reading. No partial/best-effort completion.</li>
  *   <li><b>Fail-fast vs. partial failure:</b> a genuine (non-waiting) failure from ANY iteration's
- *   await attempt fails the whole step immediately, matching {@link ForEachStep}'s existing
- *   sequential behavior for a real failure (as opposed to a still-waiting one). No mixed-result
- *   reporting is introduced.</li>
+ *   attempt fails the whole step immediately, matching {@link ForEachStep}'s existing sequential
+ *   behavior for a real failure (as opposed to a still-waiting one). No mixed-result reporting is
+ *   introduced.</li>
  *   <li><b>Unsatisfiable slot / timeout:</b> parks forever, subject to the SAME resume-eligibility
  *   backoff and eventual {@code STUCK} detection every single-slot {@code AWAIT_EVENT} already has
- *   today (which itself has no timeout concept). No new per-slot timeout subsystem is introduced by
- *   this lift -- that is an orthogonal, harder question (per-slot timeouts need their own design,
- *   e.g. a scheduled event) deliberately left for a future increment, exactly as the roadmap's own
- *   B15(B) write-up flagged it as open and unscoped.</li>
+ *   today (which itself has no timeout concept).</li>
  * </ul>
  *
- * <p><b>Durability (B2/B4):</b> {@code awaitEvent()} marks a found event PROCESSED in the
- * idempotency store as a side effect of merely being called (see {@code KernelRunner#awaitEvent} →
- * {@code ResumeCoordinator#findAwaitedEvent(..., markProcessed=true)}). That means the instant
- * iteration i's event is consumed, a crash before its resolution is durably persisted would leave
- * it stuck WAITING forever (the event is already marked processed, so a re-query on resume finds
- * nothing). This class checkpoints ({@code progressRecorder.onStepCompleted}) immediately after
- * EACH iteration resolves, before attempting the next one -- N separate close-the-window
- * checkpoints, the same discipline B15(A)'s single mid-iteration checkpoint uses, just applied once
- * per resolved slot instead of once per step. Per-iteration correlation ids reuse {@link
+ * <p><b>Durability (B2/B4, S6):</b> {@code awaitEvent()} marks a found event PROCESSED in the
+ * idempotency store as a side effect of merely being called. This class checkpoints ({@code
+ * progressRecorder.onStepCompleted}) immediately after EACH iteration's turn closes (fully
+ * resolved, genuinely still waiting, or ended via a nested {@code return}) -- N separate
+ * close-the-window checkpoints. Per-iteration correlation ids reuse {@link
  * FlowStateCodec#deriveForEachIterationCorrelationId} verbatim (B2: "reuse that convention, do not
  * invent a second") -- required non-blank, never silently derived-to-blank, since {@code
- * KernelRunner.matchesCorrelation} treats a blank correlation as "matches anything" and B15(B)
- * multiplies that exposure by N.
+ * KernelRunner.matchesCorrelation} treats a blank correlation as "matches anything" and Wave 3's
+ * multi-step body multiplies that exposure further still (prohibition carried forward unchanged).
  */
 final class ParallelAwaitForEachStep {
 
@@ -94,22 +79,45 @@ final class ParallelAwaitForEachStep {
         Map<String, Object> stepInfo = req.stepInfo();
 
         List<FlowStepDefinition> loopSteps = step.getLoopSteps();
-        if (loopSteps.size() != 1 || loopSteps.get(0).getType() != FlowStepDefinition.Type.AWAIT_EVENT) {
+        FlowStepDefinition awaitStep = null;
+        int awaitCount = 0;
+        for (FlowStepDefinition candidate : loopSteps) {
+            if (candidate.getType() == FlowStepDefinition.Type.AWAIT_EVENT) {
+                awaitCount++;
+                awaitStep = candidate;
+            }
+            if (candidate.getType() == FlowStepDefinition.Type.FOR_EACH) {
+                runner.traceFailedStep(traceMeta, step, traceStepIndex, stepStartedAt, stateBefore, state, stepInfo,
+                        List.of(), null, stepTraces);
+                return KernelRunner.StepExecutionOutcome.failed(ExecutionResult.failed(
+                        flow.getName(),
+                        List.of(),
+                        emittedEvents,
+                        "forEach step " + step.getName() + " has parallelAwait=true but its loop body nests"
+                                + " another forEach step (" + candidate.getName() + ") -- I3 (Wave 3): a"
+                                + " parallel forEach body must not nest another forEach, sequential or"
+                                + " parallel -- composing two independent per-iteration scoping schemes is"
+                                + " not supported",
+                        executionId,
+                        Objects.toString(state.get("correlationId"), defaultCorrelationId),
+                        executionId
+                ));
+            }
+        }
+        if (awaitCount != 1) {
             runner.traceFailedStep(traceMeta, step, traceStepIndex, stepStartedAt, stateBefore, state, stepInfo,
                     List.of(), null, stepTraces);
             return KernelRunner.StepExecutionOutcome.failed(ExecutionResult.failed(
                     flow.getName(),
                     List.of(),
                     emittedEvents,
-                    "forEach step " + step.getName() + " has parallelAwait=true but its loop body is not "
-                            + "exactly one AWAIT_EVENT step -- parallel mode does not support steps before "
-                            + "or after the await",
+                    "forEach step " + step.getName() + " has parallelAwait=true but its loop body has "
+                            + awaitCount + " AWAIT_EVENT step(s) -- exactly one is required",
                     executionId,
                     Objects.toString(state.get("correlationId"), defaultCorrelationId),
                     executionId
             ));
         }
-        FlowStepDefinition awaitStep = loopSteps.get(0);
         String awaitStepName = awaitStep.getName();
         String awaitRef = FlowStateCodec.normalizeAwaitRef(awaitStep.getAwaitRef());
 
@@ -151,71 +159,92 @@ final class ParallelAwaitForEachStep {
         }
 
         String itemKey = step.getItemKey();
-        boolean hadPreviousItemValue = state.containsKey(itemKey);
-        Object previousItemValue = state.get(itemKey);
-        boolean hadPreviousCorrelationId = state.containsKey("correlationId");
-        Object previousCorrelationIdValue = state.get("correlationId");
+        // Wave 3: pinned to this forEach step's OWN traceStepIndex (not whatever nested index the
+        // loop body's own executeSteps call would otherwise compute), exactly matching B15(A)'s
+        // ForEachStep#loopBodyProgressRecorder -- a mid-iteration checkpoint must durably persist
+        // state without corrupting the flow's own outer step-index checkpoint.
+        KernelRunner.StepProgressRecorder loopBodyProgressRecorder =
+                (ignoredNestedIndex, currentState) -> progressRecorder.onStepCompleted(traceStepIndex, currentState);
+
+        ParallelLoopIterationScope.captureBaselineOnce(state, step.getName());
 
         boolean allResolved = true;
         String firstOutstandingCorrelationId = null;
-        try {
-            for (int i = 0; i < items.size(); i++) {
-                String resolvedKey = FlowStateCodec.parallelAwaitResolvedKey(step.getName(), i);
-                if (Boolean.TRUE.equals(state.get(resolvedKey))) {
-                    continue; // already resolved in a prior attempt/resume -- do not re-attempt
-                }
-                String iterationCorrelationId = FlowStateCodec.deriveForEachIterationCorrelationId(
-                        executionId, awaitStepName, i);
-                if (iterationCorrelationId == null) {
-                    runner.traceFailedStep(traceMeta, step, traceStepIndex, stepStartedAt, stateBefore, state, stepInfo,
-                            List.of(), null, stepTraces);
-                    return KernelRunner.StepExecutionOutcome.failed(ExecutionResult.failed(
-                            flow.getName(),
-                            List.of(),
-                            emittedEvents,
-                            "AWAIT_CORRELATION_UNRESOLVABLE: forEach step " + step.getName()
-                                    + " could not derive a per-iteration await correlation id at iteration " + i,
-                            executionId,
-                            Objects.toString(state.get("correlationId"), defaultCorrelationId),
-                            executionId
-                    ));
-                }
-                state.put(itemKey, items.get(i));
-                state.put("correlationId", iterationCorrelationId);
+        for (int i = 0; i < items.size(); i++) {
+            String doneKey = FlowStateCodec.parallelLoopIterationDoneKey(step.getName(), i);
+            if (Boolean.TRUE.equals(state.get(doneKey))) {
+                continue; // already fully completed in a prior pass -- do not re-attempt
+            }
+            String iterationCorrelationId = FlowStateCodec.deriveForEachIterationCorrelationId(
+                    executionId, awaitStepName, i);
+            if (iterationCorrelationId == null) {
+                runner.traceFailedStep(traceMeta, step, traceStepIndex, stepStartedAt, stateBefore, state, stepInfo,
+                        List.of(), null, stepTraces);
+                return KernelRunner.StepExecutionOutcome.failed(ExecutionResult.failed(
+                        flow.getName(),
+                        List.of(),
+                        emittedEvents,
+                        "AWAIT_CORRELATION_UNRESOLVABLE: forEach step " + step.getName()
+                                + " could not derive a per-iteration await correlation id at iteration " + i,
+                        executionId,
+                        Objects.toString(state.get("correlationId"), defaultCorrelationId),
+                        executionId
+                ));
+            }
 
-                EventEnvelope awaited = runner.awaitEvent(
-                        awaitStep, state, defaultCorrelationId, input, effectiveContext.tenantId(), executionId);
-                if (awaited == null) {
-                    state.put(
-                            FlowStateCodec.parallelAwaitStateKey(step.getName(), i),
-                            FlowStateCodec.buildAwaitState(awaitStep, 0, awaitRef)
-                    );
+            ParallelLoopIterationScope.enter(state, step.getName(), i);
+            state.put(itemKey, items.get(i));
+            state.put("correlationId", iterationCorrelationId);
+
+            List<StepTrace> iterationTraces = new ArrayList<>();
+            KernelRunner.StepExecutionOutcome nested = runner.executeSteps(
+                    flow,
+                    loopSteps,
+                    input,
+                    state,
+                    emittedEvents,
+                    traceMeta,
+                    iterationTraces,
+                    executionId,
+                    defaultCorrelationId,
+                    0,
+                    loopBodyProgressRecorder,
+                    effectiveContext
+            );
+            stepTraces.addAll(iterationTraces);
+
+            if (nested.failedResult() != null) {
+                ExecutionResult nestedFailure = nested.failedResult();
+                if (nestedFailure.getStatus() == ExecutionStatus.WAITING_EVENT) {
+                    ParallelLoopIterationScope.exit(state, step.getName(), i);
                     allResolved = false;
                     if (firstOutstandingCorrelationId == null) {
                         firstOutstandingCorrelationId = iterationCorrelationId;
                     }
+                    progressRecorder.onStepCompleted(traceStepIndex, state);
                     continue;
                 }
+                ParallelLoopIterationScope.exit(state, step.getName(), i);
+                runner.traceFailedStep(traceMeta, step, traceStepIndex, stepStartedAt, stateBefore, state, stepInfo,
+                        nestedFailure.getInvariantViolations(), nestedFailure.getCapabilityError(), stepTraces);
+                return KernelRunner.StepExecutionOutcome.failed(ExecutionResult.failed(
+                        flow.getName(),
+                        nestedFailure.getInvariantViolations(),
+                        emittedEvents,
+                        "forEach step " + step.getName() + " failed at iteration " + i + ": "
+                                + nestedFailure.getError(),
+                        executionId,
+                        Objects.toString(state.get("correlationId"), defaultCorrelationId),
+                        executionId
+                ));
+            }
 
-                state.put(FlowStateCodec.parallelAwaitPayloadKey(awaitRef, i), awaited.payload());
-                state.put(resolvedKey, Boolean.TRUE);
-                state.remove(FlowStateCodec.parallelAwaitStateKey(step.getName(), i));
-                // Mandatory, not an optimization -- see this class's own javadoc: awaitEvent() above
-                // already marked the consumed event PROCESSED in the idempotency store, so this
-                // iteration's resolution must be durable BEFORE attempting the next iteration.
-                progressRecorder.onStepCompleted(traceStepIndex, state);
-            }
-        } finally {
-            if (hadPreviousItemValue) {
-                state.put(itemKey, previousItemValue);
-            } else {
-                state.remove(itemKey);
-            }
-            if (hadPreviousCorrelationId) {
-                state.put("correlationId", previousCorrelationIdValue);
-            } else {
-                state.remove("correlationId");
-            }
+            ParallelLoopIterationScope.exit(state, step.getName(), i);
+            state.put(doneKey, Boolean.TRUE);
+            // Mandatory, not an optimization -- see this class's own javadoc: awaitEvent() already
+            // marks a consumed event PROCESSED in the idempotency store, so this iteration's
+            // resolution must be durable BEFORE attempting the next iteration.
+            progressRecorder.onStepCompleted(traceStepIndex, state);
         }
 
         if (!allResolved) {
@@ -236,14 +265,15 @@ final class ParallelAwaitForEachStep {
             ));
         }
 
-        // All N iterations resolved: fold the per-iteration payloads into one ordered list under
-        // the shared awaitRef (author convenience for what runs after the loop), and clear every
-        // per-iteration marker -- nothing about this step should remain visible in state once done.
+        // All N iterations resolved: fold each iteration's relocated awaitRef payload into one
+        // ordered list under the shared awaitRef (I2 -- see FlowStateCodec's PARALLEL_LOOP_*
+        // javadoc for why this is the ONE thing that survives a multi-step body, everything else
+        // being scoped-and-discarded), then clear every per-iteration marker for this step.
         List<Object> combined = new ArrayList<>();
         for (int i = 0; i < items.size(); i++) {
-            combined.add(state.remove(FlowStateCodec.parallelAwaitPayloadKey(awaitRef, i)));
-            state.remove(FlowStateCodec.parallelAwaitResolvedKey(step.getName(), i));
+            combined.add(ParallelLoopIterationScope.readScoped(state, step.getName(), i, awaitRef));
         }
+        ParallelLoopIterationScope.clearAll(state, step.getName());
         state.put(awaitRef, combined);
         stepInfo.put("collectionSize", items.size());
         stepInfo.put("awaitedEventName", awaitStep.getAwaitEventName());

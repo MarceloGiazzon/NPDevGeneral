@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -50,6 +51,12 @@ class KernelRunnerParallelAwaitInLoopRestartProofTest {
 
     private static final String AWAIT_STEP_NAME = "await-approval";
     private static final String LOOP_STEP_NAME = "await-loop";
+
+    // Wave 3 (S8_DEFERRED_FIVE_PLAN.md, 2026-08-04) I4 -- THE HARD STOP: vectors 6 and 7 need a
+    // genuinely MULTI-STEP body (a capability call before AND after the await), not the single
+    // await-only body the two tests above already cover.
+    private static final String MULTI_AWAIT_STEP_NAME = "multi-await-approval";
+    private static final String MULTI_LOOP_STEP_NAME = "multi-await-loop";
 
     @Test
     void threeParallelAwaitsResolveOutOfOrderAcrossRestartsExactlyOnce() {
@@ -85,11 +92,11 @@ class KernelRunnerParallelAwaitInLoopRestartProofTest {
 
         FlowInstance midway = store.findByExecutionId(executionId).orElseThrow();
         assertEquals(FlowInstanceStatus.WAITING_EVENT, midway.status());
-        assertEquals(Boolean.TRUE, midway.state().get(FlowStateCodec.parallelAwaitResolvedKey(LOOP_STEP_NAME, 0)),
+        assertEquals(Boolean.TRUE, midway.state().get(FlowStateCodec.parallelLoopIterationDoneKey(LOOP_STEP_NAME, 0)),
                 "iteration 0 must already be resolved");
-        assertEquals(Boolean.TRUE, midway.state().get(FlowStateCodec.parallelAwaitResolvedKey(LOOP_STEP_NAME, 2)),
+        assertEquals(Boolean.TRUE, midway.state().get(FlowStateCodec.parallelLoopIterationDoneKey(LOOP_STEP_NAME, 2)),
                 "iteration 2 must already be resolved, even though its event arrived FIRST");
-        assertFalse(Boolean.TRUE.equals(midway.state().get(FlowStateCodec.parallelAwaitResolvedKey(LOOP_STEP_NAME, 1))),
+        assertFalse(Boolean.TRUE.equals(midway.state().get(FlowStateCodec.parallelLoopIterationDoneKey(LOOP_STEP_NAME, 1))),
                 "iteration 1 must still be outstanding");
 
         // Deliver iteration 1's own reply last.
@@ -119,15 +126,16 @@ class KernelRunnerParallelAwaitInLoopRestartProofTest {
         // Exactly-once: every per-iteration marker/descriptor is cleaned up on completion, and a
         // redundant extra resume call (simulating a duplicate scheduler tick) must be a pure no-op.
         for (int i = 0; i < 3; i++) {
-            assertFalse(completed.state().containsKey(FlowStateCodec.parallelAwaitResolvedKey(LOOP_STEP_NAME, i)));
-            assertFalse(completed.state().containsKey(FlowStateCodec.parallelAwaitStateKey(LOOP_STEP_NAME, i)));
+            assertFalse(completed.state().containsKey(FlowStateCodec.parallelLoopIterationDoneKey(LOOP_STEP_NAME, i)));
+            assertFalse(completed.state().containsKey(
+                    FlowStateCodec.parallelLoopScopedKey(LOOP_STEP_NAME, i, FlowStateCodec.AWAIT_STATE_KEY)));
         }
     }
 
     @Test
     void crashAfterOneSlotResolvesDoesNotReQueryItsAlreadyProcessedEvent() throws InterruptedException {
         RecordingEventInfrastructure events = new RecordingEventInfrastructure();
-        String resolvedMarkerKey = FlowStateCodec.parallelAwaitResolvedKey(LOOP_STEP_NAME, 0);
+        String resolvedMarkerKey = FlowStateCodec.parallelLoopIterationDoneKey(LOOP_STEP_NAME, 0);
         RaceWindowFlowInstanceStore store = new RaceWindowFlowInstanceStore(resolvedMarkerKey);
 
         KernelRunner runner1 = new KernelRunner(
@@ -162,7 +170,7 @@ class KernelRunnerParallelAwaitInLoopRestartProofTest {
         FlowInstance frozenSnapshot = store.findByExecutionId(executionId).orElseThrow();
         assertEquals(Boolean.TRUE, frozenSnapshot.state().get(resolvedMarkerKey));
         assertFalse(
-                Boolean.TRUE.equals(frozenSnapshot.state().get(FlowStateCodec.parallelAwaitResolvedKey(LOOP_STEP_NAME, 1))),
+                Boolean.TRUE.equals(frozenSnapshot.state().get(FlowStateCodec.parallelLoopIterationDoneKey(LOOP_STEP_NAME, 1))),
                 "iteration 1 must NOT have been attempted yet -- that's the exact frozen instant"
         );
 
@@ -178,8 +186,183 @@ class KernelRunnerParallelAwaitInLoopRestartProofTest {
         FlowInstance afterRestartSnapshot = store.findByExecutionId(executionId).orElseThrow();
         assertEquals(Boolean.TRUE, afterRestartSnapshot.state().get(resolvedMarkerKey),
                 "iteration 0 must remain resolved via its marker, not re-queried");
-        assertFalse(afterRestartSnapshot.state().containsKey(FlowStateCodec.parallelAwaitStateKey(LOOP_STEP_NAME, 0)),
+        assertFalse(afterRestartSnapshot.state().containsKey(
+                FlowStateCodec.parallelLoopScopedKey(LOOP_STEP_NAME, 0, FlowStateCodec.AWAIT_STATE_KEY)),
                 "iteration 0's wait descriptor must have been cleared when it resolved, not linger");
+    }
+
+    /**
+     * Wave 3 I4 -- THE HARD STOP, vector 6: restart with iterations parked at DIFFERENT steps.
+     * B15(B)'s own proof above (single-await body) always had every iteration at the SAME step; a
+     * multi-step body means iteration 0 can be fully done (past its capability call, its await, AND
+     * its post-await call) while iteration 1 is still parked mid-body at its own await, and
+     * iteration 2 has not been touched at all during the crash-recovery pass -- a strictly harder
+     * resume problem. Uses a {@link CountingCapabilityDispatcher} to prove the thing vector 6
+     * explicitly names: iteration 0's pre-await capability call must NOT re-run once it is durably
+     * done, across a real process restart.
+     */
+    @Test
+    void multiStepBodyRestartWithIterationsAtDifferentStepsDoesNotReprocessTheResolvedIteration()
+            throws InterruptedException {
+        RecordingEventInfrastructure events = new RecordingEventInfrastructure();
+        CountingCapabilityDispatcher dispatcher = new CountingCapabilityDispatcher();
+        String iteration0DoneKey = FlowStateCodec.parallelLoopIterationDoneKey(MULTI_LOOP_STEP_NAME, 0);
+        RaceWindowFlowInstanceStore store = new RaceWindowFlowInstanceStore(iteration0DoneKey);
+
+        KernelRunner runner1 = new KernelRunner(
+                events, (entityName, payload) -> List.of(), flowProviderForMultiStepParallelLoopFlow(),
+                dispatcher, events, store);
+        Map<String, Object> input = Map.of(
+                "correlationId", "corr-b15b-w3-vector6",
+                "items", List.of("a", "b", "c")
+        );
+
+        // Pass 1 (unfrozen): nothing queued yet -- all 3 iterations attempt their pre-await
+        // capability call once, park at their own await, none resolve.
+        ExecutionResult started = runner1.execute("MultiStepParallelLoopFlow", input);
+        assertEquals(ExecutionStatus.WAITING_EVENT, started.getStatus());
+        String executionId = started.getExecutionId();
+        assertEquals(1, dispatcher.countFor("a"));
+        assertEquals(1, dispatcher.countFor("b"));
+        assertEquals(1, dispatcher.countFor("c"));
+
+        // Pass 2 (frozen): only iteration 0's event is delivered. The crashed process re-attempts
+        // (idempotent re-run of the pre-await call is expected and accepted -- B15(A)'s own
+        // assumption), resolves its await, runs its post-await emitEvent, and durably completes --
+        // frozen the INSTANT that completes, before iteration 1 is even re-attempted.
+        events.append(approvalEvent(
+                FlowStateCodec.deriveForEachIterationCorrelationId(executionId, MULTI_AWAIT_STEP_NAME, 0), "approved-a"));
+        KernelRunner runner2 = new KernelRunner(
+                events, (entityName, payload) -> List.of(), flowProviderForMultiStepParallelLoopFlow(),
+                dispatcher, events, store);
+        Thread crashedProcessThread = new Thread(
+                () -> runner2.resumeExecution(executionId),
+                "simulated-crashed-process-multistep-mid-parallel-await"
+        );
+        crashedProcessThread.setDaemon(true);
+        crashedProcessThread.start();
+        assertTrue(store.awaitPausePoint(10, TimeUnit.SECONDS),
+                "timed out waiting for the simulated crash right after iteration 0 fully completed");
+
+        FlowInstance frozen = store.findByExecutionId(executionId).orElseThrow();
+        assertEquals(Boolean.TRUE, frozen.state().get(iteration0DoneKey), "iteration 0 must be durably done");
+        assertFalse(Boolean.TRUE.equals(frozen.state().get(
+                        FlowStateCodec.parallelLoopIterationDoneKey(MULTI_LOOP_STEP_NAME, 1))),
+                "iteration 1 must still be outstanding -- parked AT its own await, a DIFFERENT step than iteration 0");
+        assertFalse(Boolean.TRUE.equals(frozen.state().get(
+                        FlowStateCodec.parallelLoopIterationDoneKey(MULTI_LOOP_STEP_NAME, 2))),
+                "iteration 2 must still be outstanding");
+        assertEquals(2, dispatcher.countFor("a"), "iteration 0's pre-await call ran once per pass so far (1+1)");
+        assertEquals(1, dispatcher.countFor("c"),
+                "iteration 2 must not have been reached AT ALL during the frozen pass -- it was still item 1's "
+                        + "turn when the freeze fired");
+
+        // Restart: a brand-new runner resumes from that exact frozen checkpoint, delivering
+        // iteration 1's event. THE hard-stop assertion: iteration 0's capability call must NOT
+        // run a third time (the crash happened AFTER it durably completed) -- only its
+        // parallelLoopIterationDoneKey marker, not a re-query or a re-run, may account for it.
+        events.append(approvalEvent(
+                FlowStateCodec.deriveForEachIterationCorrelationId(executionId, MULTI_AWAIT_STEP_NAME, 1), "approved-b"));
+        KernelRunner runner3 = new KernelRunner(
+                events, (entityName, payload) -> List.of(), flowProviderForMultiStepParallelLoopFlow(),
+                dispatcher, events, store);
+        ExecutionResult afterRestart = runner3.resumeExecution(executionId);
+        assertEquals(ExecutionStatus.WAITING_EVENT, afterRestart.getStatus(), "iteration 2 still has no event");
+
+        assertEquals(2, dispatcher.countFor("a"),
+                "HARD STOP assertion: iteration 0 must NOT re-run its capability call across the restart");
+        assertEquals(2, dispatcher.countFor("b"), "iteration 1 resumes at its own await, re-running its idempotent "
+                + "pre-await call once more (1 from the frozen pass + 1 on restart), same as B15(A)'s assumption");
+        assertEquals(2, dispatcher.countFor("c"), "iteration 2 starts clean this pass -- one attempt, parks again");
+        FlowInstance afterRestartSnapshot = store.findByExecutionId(executionId).orElseThrow();
+        assertEquals(Boolean.TRUE, afterRestartSnapshot.state().get(
+                FlowStateCodec.parallelLoopIterationDoneKey(MULTI_LOOP_STEP_NAME, 1)), "iteration 1 must now be done");
+
+        // Close it out: deliver iteration 2's event and confirm a clean completion.
+        events.append(approvalEvent(
+                FlowStateCodec.deriveForEachIterationCorrelationId(executionId, MULTI_AWAIT_STEP_NAME, 2), "approved-c"));
+        ExecutionResult finalResult = runner3.resumeExecution(executionId);
+        assertEquals(ExecutionStatus.OK, finalResult.getStatus());
+        assertEquals(2, dispatcher.countFor("a"), "still no further re-run of iteration 0 on the final pass");
+        FlowInstance completed = store.findByExecutionId(executionId).orElseThrow();
+        assertEquals(FlowInstanceStatus.COMPLETED, completed.status());
+        List<?> approvals = (List<?>) completed.state().get("approval");
+        assertEquals(3, approvals.size());
+        assertEquals("approved-a", valueOf(approvals.get(0)));
+        assertEquals("approved-b", valueOf(approvals.get(1)));
+        assertEquals("approved-c", valueOf(approvals.get(2)));
+    }
+
+    /**
+     * Wave 3 I4, vector 7: out-of-order delivery with a multi-step body -- B15(B) proved this for a
+     * single-step body above; re-proving it here rather than assuming it carries, since Wave 3's
+     * per-iteration scope is new machinery vectors 1-5 didn't exercise across a restart.
+     */
+    @Test
+    void multiStepBodyOutOfOrderDeliveryResumesEachIterationExactlyOnce() {
+        RecordingEventInfrastructure events = new RecordingEventInfrastructure();
+        CountingCapabilityDispatcher dispatcher = new CountingCapabilityDispatcher();
+        InMemoryFlowInstanceStore store = new InMemoryFlowInstanceStore();
+
+        KernelRunner runner1 = new KernelRunner(
+                events, (entityName, payload) -> List.of(), flowProviderForMultiStepParallelLoopFlow(),
+                dispatcher, events, store);
+        Map<String, Object> input = Map.of(
+                "correlationId", "corr-b15b-w3-vector7",
+                "items", List.of("a", "b", "c")
+        );
+        ExecutionResult started = runner1.execute("MultiStepParallelLoopFlow", input);
+        assertEquals(ExecutionStatus.WAITING_EVENT, started.getStatus());
+        String executionId = started.getExecutionId();
+
+        String corr0 = FlowStateCodec.deriveForEachIterationCorrelationId(executionId, MULTI_AWAIT_STEP_NAME, 0);
+        String corr1 = FlowStateCodec.deriveForEachIterationCorrelationId(executionId, MULTI_AWAIT_STEP_NAME, 1);
+        String corr2 = FlowStateCodec.deriveForEachIterationCorrelationId(executionId, MULTI_AWAIT_STEP_NAME, 2);
+
+        // Deliver iteration 2's reply first, then 0's, withholding 1's for this round.
+        events.append(approvalEvent(corr2, "approved-c"));
+        events.append(approvalEvent(corr0, "approved-a"));
+        KernelRunner runner2 = new KernelRunner(
+                events, (entityName, payload) -> List.of(), flowProviderForMultiStepParallelLoopFlow(),
+                dispatcher, events, store);
+        ExecutionResult afterFirstResume = runner2.resumeExecution(executionId);
+        assertEquals(ExecutionStatus.WAITING_EVENT, afterFirstResume.getStatus(), "iteration 1 still has no event");
+
+        FlowInstance midway = store.findByExecutionId(executionId).orElseThrow();
+        assertEquals(Boolean.TRUE, midway.state().get(FlowStateCodec.parallelLoopIterationDoneKey(MULTI_LOOP_STEP_NAME, 0)));
+        assertEquals(Boolean.TRUE, midway.state().get(FlowStateCodec.parallelLoopIterationDoneKey(MULTI_LOOP_STEP_NAME, 2)));
+        assertFalse(Boolean.TRUE.equals(
+                midway.state().get(FlowStateCodec.parallelLoopIterationDoneKey(MULTI_LOOP_STEP_NAME, 1))));
+
+        // Deliver iteration 1's reply last, then restart with a brand-new runner.
+        events.append(approvalEvent(corr1, "approved-b"));
+        KernelRunner runner3 = new KernelRunner(
+                events, (entityName, payload) -> List.of(), flowProviderForMultiStepParallelLoopFlow(),
+                dispatcher, events, store);
+        ExecutionResult finalResult = runner3.resumeExecution(executionId);
+        assertEquals(ExecutionStatus.OK, finalResult.getStatus());
+
+        FlowInstance completed = store.findByExecutionId(executionId).orElseThrow();
+        assertEquals(FlowInstanceStatus.COMPLETED, completed.status());
+        List<?> approvals = (List<?>) completed.state().get("approval");
+        assertEquals(3, approvals.size());
+        assertEquals("approved-a", valueOf(approvals.get(0)), "iteration 0's own reply lands at index 0");
+        assertEquals("approved-b", valueOf(approvals.get(1)), "iteration 1's own reply lands at index 1, though it arrived LAST");
+        assertEquals("approved-c", valueOf(approvals.get(2)), "iteration 2's own reply lands at index 2, though it arrived FIRST");
+
+        // Exactly-once PER PASS a not-yet-done iteration was attempted in -- never more, proving no
+        // iteration was re-processed by another's resolution, in EITHER delivery order. Iterations 0
+        // and 2 resolved in the first resume (2 passes total: initial + first resume); iteration 1
+        // did not resolve until the final resume (3 passes: initial + first resume + final resume).
+        assertEquals(2, dispatcher.countFor("a"));
+        assertEquals(3, dispatcher.countFor("b"));
+        assertEquals(2, dispatcher.countFor("c"));
+
+        for (int i = 0; i < 3; i++) {
+            assertFalse(completed.state().containsKey(FlowStateCodec.parallelLoopIterationDoneKey(MULTI_LOOP_STEP_NAME, i)));
+            assertFalse(completed.state().containsKey(
+                    FlowStateCodec.parallelLoopScopedKey(MULTI_LOOP_STEP_NAME, i, FlowStateCodec.AWAIT_STATE_KEY)));
+        }
     }
 
     private static Object valueOf(Object approvalPayload) {
@@ -233,6 +416,58 @@ class KernelRunnerParallelAwaitInLoopRestartProofTest {
                                 )
                         )
                 ));
+    }
+
+    /** Wave 3 I4: a genuinely multi-step parallelAwait body -- a capability call BEFORE the await
+     *  (whose re-run count is what proves the hard stop) and an emitEvent AFTER it, exactly the
+     *  shape vector 6 names ({@code ["capabilityCall", "awaitEvent", "emitEvent"]}). */
+    private static InMemoryFlowDefinitionProvider flowProviderForMultiStepParallelLoopFlow() {
+        return new InMemoryFlowDefinitionProvider()
+                .register(new FlowDefinition(
+                        "MultiStepParallelLoopFlow",
+                        "Order",
+                        List.of(
+                                FlowStepDefinition.forEach(
+                                        MULTI_LOOP_STEP_NAME,
+                                        "input.items",
+                                        "item",
+                                        List.of(
+                                                FlowStepDefinition.capabilityCall(
+                                                        "calc", "counting-capability", "increment", "item", "calcOut"),
+                                                FlowStepDefinition.awaitEvent(
+                                                        MULTI_AWAIT_STEP_NAME,
+                                                        "ItemApproved",
+                                                        "approval"
+                                                ),
+                                                FlowStepDefinition.emitEvent(
+                                                        "notify", "ItemNotified", "approval")
+                                        ),
+                                        10,
+                                        true
+                                )
+                        )
+                ));
+    }
+
+    /** Wave 3 I4: counts capability invocations per item value, so a test can assert an iteration's
+     *  pre-await step did or did not re-run across a simulated crash/restart. */
+    private static final class CountingCapabilityDispatcher implements CapabilityDispatcher {
+        private final Map<String, AtomicInteger> counts = new ConcurrentHashMap<>();
+
+        @Override
+        public CapabilityResult invoke(CapabilityCall call, Map<String, Object> state) {
+            if ("increment".equals(call.operation())) {
+                String item = String.valueOf(call.input());
+                counts.computeIfAbsent(item, ignored -> new AtomicInteger()).incrementAndGet();
+                return CapabilityResult.success("calc-" + item);
+            }
+            return CapabilityResult.success(null);
+        }
+
+        int countFor(String item) {
+            AtomicInteger count = counts.get(item);
+            return count == null ? 0 : count.get();
+        }
     }
 
     private static final class InMemoryFlowInstanceStore implements FlowInstanceStore {
