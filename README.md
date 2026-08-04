@@ -44,12 +44,17 @@ instead of a runtime crash three steps later. See `docs/ai/AI_KNOWLEDGE_LOOP_AND
 
 ## Quickstart
 
-Requires Java 17 and (for the Docker path) Docker. Clone the repo, then from its root:
+Requires Java 17, Python 3, and PowerShell 7 (`pwsh`) -- Docker is optional, only needed for the
+Docker run path below. Clone the repo, then from its root:
 
 ```sh
 # Validate a real, checked-in sample model (full structural + semantic check by default;
 # pass --structural-only for a fast JSON-Schema-only check with no Gradle invocation)
 ./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
+
+# NPDev's own kernel/generator jars are not on Maven Central -- build and stage them locally
+# once (a fresh clone only; already-built jars are reused on every later run):
+pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars
 
 # Generate a complete Spring Boot app from it
 ./npdev generate app \
@@ -59,11 +64,26 @@ Requires Java 17 and (for the Docker path) Docker. Clone the repo, then from its
 ```
 
 (On Windows, use `npdev.bat` with the same arguments.) The output directory is a complete,
-buildable Spring Boot project — a `docker-compose.yml` (with an optional Caddy TLS-terminating
-`proxy` profile) is generated alongside it. To run it:
+buildable Spring Boot project with its own README. **The generated `Dockerfile` packages an
+already-built jar — you must build it first, whichever way you run the app:**
 
 ```sh
 cd /path/outside/this/repo/canonical-demo-app
+./gradlew bootJar
+```
+
+Then either run it directly:
+
+```sh
+java -jar build/libs/FinalExec-0.1.0.jar --spring.profiles.active=dev
+# open http://localhost:8080 -- the Super User key is written to SUPER_USER_KEY.txt
+# in this directory on first boot; log in with it (see docs/DEPLOYMENT.md for how)
+```
+
+or run it in Docker (a `docker-compose.yml`, with an optional Caddy TLS-terminating `proxy`
+profile, was generated alongside it):
+
+```sh
 cp .env.example .env    # set NPDEV_AUTH_APIKEYS at minimum
 docker compose up
 ```
