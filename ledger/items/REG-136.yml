@@ -37,32 +37,59 @@ source: |
 files:
   - NPDevCli/npdev_cli.py
   - scripts/runtimehost/sync-runtimehost-libs.ps1
+  - gradle.properties
+  - NPDevGenerator/gradle.properties
+  - NPDevKernel/gradle.properties
 detail: |
-  Fixed by overriding org.gradle.projectcachedir per-invocation with the one reliable mechanism
-  (--project-cache-dir, a genuine Gradle CLI start parameter that beats the properties file)
-  rather than editing the checked-in gradle.properties files -- editing them would either regress
-  the intentional dev-machine build-output policy (removing the setting entirely, like CI's sed
-  step does, moves Gradle's cache to <projectDir>/.gradle, INSIDE the repo tree) or require a new
-  untested mechanism. Instead:
+  FIRST ATTEMPT (wrong, corrected same session): overriding org.gradle.projectcachedir with only
+  --project-cache-dir, leaving the checked-in gradle.properties value in place, on the theory that
+  a Gradle CLI start parameter beats a gradle.properties value. Passed every LOCAL test on the
+  author's own machine (the override IS honored there) and was committed+pushed believing the
+  clone-mode harness would now go green. It did not: re-run against the pushed branch inside a
+  clean Ubuntu container, the FIRST Quickstart command still failed with the exact original error.
+  Reproduced directly (bypassing npdev_cli.py entirely, plain `./gradlew --project-cache-dir
+  <portable-path> help`) and confirmed empirically: when gradle.properties ALSO sets
+  org.gradle.projectcachedir to a value invalid on the current OS (a Windows D: path, on Linux),
+  Gradle fails during an early bootstrap read of the properties-file value BEFORE the command-line
+  override can prevent it -- the two are not evaluated in the precedence order assumed. This does
+  not reproduce on the author's own Windows machine (where the D: path IS valid), which is exactly
+  why the first attempt's local verification looked clean but proved nothing about Linux.
 
-  npdev_cli.py: new gradle_project_cache_args(module_key) helper, computing
+  REAL FIX: the checked-in D:/WorkSpace/... line has to actually be ABSENT from the file Gradle
+  reads -- confirmed by reproducing CI's own existing workaround (`sed -i
+  '/org\.gradle\.projectcachedir/d'` in three workflow files) manually inside the same clean
+  container: with the line removed, a plain `./gradlew help` succeeds immediately. Removed
+  org.gradle.projectcachedir from gradle.properties (root), NPDevGenerator/gradle.properties, and
+  NPDevKernel/gradle.properties (the three modules the documented Quickstart + sync-runtimehost-
+  libs.ps1 actually touch; NPDevContract/dsl and NPDevEditor are untouched -- their own gradle.properties
+  is not read by anything in the documented newcomer path). Confirmed once the conflicting line is
+  gone, the FIRST ATTEMPT'S --project-cache-dir override (now non-conflicting) DOES correctly
+  redirect the cache -- so that code was not wasted, it just needed the properties-file half too:
+  root gradle.properties documents this in a comment so it cannot be silently re-added.
+
+  npdev_cli.py: gradle_project_cache_args(module_key) helper, computing
   <_ai_build_root()>/gradle-project-caches/<module_key> -- reusing _ai_build_root()'s own existing
-  NPDEV_BUILD_ROOT-env-or-portable-fallback convention, so this collapses to TODAY'S checked-in
+  NPDEV_BUILD_ROOT-env-or-portable-fallback convention, so this resolves to the SAME
   D:/WorkSpace/NPDev/Build/gradle-project-caches/<module> value on the author's own machine (a
-  verified no-op) and to a portable equivalent on any other machine. Threaded into all 8
-  repo-side gradle invocation sites (validate model, generate app x2, classifyModelChange x3,
+  verified no-op there) and to a portable equivalent elsewhere. Threaded into all 8 repo-side
+  gradle invocation sites (validate model, generate app x2, classifyModelChange x3,
   authorDiffGate, resignGeneratedFolder) -- NOT into _build_phase's generated-app gradlew call,
   which is already portable per REG-10.
 
-  sync-runtimehost-libs.ps1: same --project-cache-dir flag added to both the Kernel `jar` and
-  Generator `:generator:jar :tools:npdev-cli:jar` invocations, derived from the SAME
-  $externalBuildRoot this script already computes portably (its own comment documents mirroring
-  build.gradle's resolveNpdevBuildRoot convention, including a fallback for a workspace not
-  literally named NPDev_General -- REG-131/N2's own concern, already handled here).
+  sync-runtimehost-libs.ps1: same --project-cache-dir flag on both the Kernel `jar` and Generator
+  `:generator:jar :tools:npdev-cli:jar` invocations, derived from the SAME $externalBuildRoot this
+  script already computes portably.
 
-  Verified: :NPDevCli unit tests (70) green; a live `./npdev validate model` and
-  `./npdev generate app` both run BUILD SUCCESSFUL on the author's own machine (confirming the
-  override is a true no-op locally); `sync-runtimehost-libs.ps1 -BuildLocalJars` run live, BUILD
-  SUCCESSFUL for both Kernel and Generator jars, "45 already current" (unchanged behavior). Full
-  clone-based harness re-run (fresh git clone of the pushed branch, Ubuntu container) is the
-  definitive newcomer-facing proof, captured separately as this session's final evidence.
+  A direct ad-hoc gradlew invocation that bypasses both of the above (e.g. `cd NPDevKernel &&
+  ./gradlew test` by hand) now falls through to Gradle's own default (<projectDir>/.gradle) unless
+  --project-cache-dir is passed explicitly -- a real, accepted, narrow gap for manual invocations
+  outside the documented/automated paths; not fixed here, since only that mechanical path is what
+  broke a real newcomer, and root gradle.properties's own comment names the workaround (a
+  machine-global %USERPROFILE%\.gradle\gradle.properties) for anyone who wants it back.
+
+  Verified: :NPDevCli unit tests (70) green; T1 fast gate green (twice, once per fix attempt); a
+  live `./npdev validate model`, `./npdev generate app`, and `sync-runtimehost-libs.ps1
+  -BuildLocalJars` all BUILD SUCCESSFUL on the author's own machine with zero `.gradle` directory
+  appearing inside any repo module (confirmed by direct `ls` after each). The definitive
+  newcomer-facing proof is the clone-based harness (fresh `git clone` of the pushed branch, clean
+  Ubuntu container) reaching GREEN, captured separately as this session's final evidence.
