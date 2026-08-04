@@ -22,6 +22,11 @@ class FinalAppAssemblerTest {
 
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(host.resolve("settings.gradle"), "rootProject.name = 'FinalExec'\n");
+        write(host.resolve("README.md"),
+                "# NPDevRuntimeHost\n\nProvide the template runtime shell that hosts assembled NPDev applications.\n");
+        write(host.resolve("PROJECT_DIGEST.md"), "# NPDevRuntimeHost Project Digest\n\nMaintainer-only.\n");
+        write(host.resolve("MIGRATION_DIGEST.md"), "# RuntimeHost: Base Template Migration Digest\n\nMaintainer-only.\n");
+        write(host.resolve("NO_BUILD_ARTIFACTS.policy"), "NO BUILD ARTIFACTS IN THIS SOURCE TREE\n");
         write(host.resolve("src/main/java/com/finalexec/FinalExecApplication.java"), "package com.finalexec;\n");
         write(host.resolve("src/main/java/com/finalexec/api/RuntimeMetadataController.java"), "package com.finalexec.api;\n");
         write(host.resolve("src/main/java/com/finalexec/api/internal/TemplateLibraryManagementController.java"), "package com.finalexec.api.internal;\n");
@@ -39,7 +44,8 @@ class FinalAppAssemblerTest {
         write(host.resolve("npdev-build-info.properties"), "old build info");
 
         write(artifact.resolve("src/main/java/com/npdev/generated/entities/User.java"), "package com.npdev.generated.entities;\n");
-        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"), "{}\n");
+        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
         write(artifact.resolve("src/main/resources/npdev/support/generated-folder.signature.properties"),
                 "contract=npdev-generated-folder-signature-v1\n");
         write(artifact.resolve("src/main/resources/db/migration/R__should_not_mount_here.sql"), "select 2;\n");
@@ -94,6 +100,19 @@ class FinalAppAssemblerTest {
         assertFalse(Files.exists(finalApp.resolve("npdev-build-info.properties")));
         assertFalse(Files.exists(finalApp.resolve("src/main/resources/db/migration/V5013__legacy_sample.sql")));
         assertFalse(Files.exists(finalApp.resolve("npdev-generated/src/main/resources/db/migration/R__should_not_mount_here.sql")));
+
+        // F2 (FIRST_IMPRESSION_SPEC.md I3): the assembled app gets its OWN README, derived from the
+        // compiled model, not NPDevRuntimeHost's maintainer-facing one -- and the maintainer-only
+        // digests/policy file that used to ride along in the bulk copy are excluded entirely.
+        Path readme = finalApp.resolve("README.md");
+        assertTrue(Files.exists(readme));
+        String readmeContent = Files.readString(readme);
+        assertFalse(readmeContent.contains("Provide the template runtime shell"));
+        assertTrue(readmeContent.contains("demo.sample"));
+        assertTrue(readmeContent.contains("1.0"));
+        assertFalse(Files.exists(finalApp.resolve("PROJECT_DIGEST.md")));
+        assertFalse(Files.exists(finalApp.resolve("MIGRATION_DIGEST.md")));
+        assertFalse(Files.exists(finalApp.resolve("NO_BUILD_ARTIFACTS.policy")));
     }
 
     private static void write(Path path, String content) throws Exception {
