@@ -173,7 +173,10 @@ try {
     $commands = @(
         (Invoke-NpdevCommand -Name "npdev-version" -Root $workspaceRootPath -CommandLine "./npdev --version")
         (Invoke-NpdevCommand -Name "npdev-validate-model" -Root $workspaceRootPath -CommandLine "./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json")
-        (Invoke-NpdevCommand -Name "npdev-invalid-model-rejected" -Root $workspaceRootPath -CommandLine "./npdev validate model NPDevCli/tests/fixtures/invalid-model.json" -ExpectedExitCode 1)
+        # F1: `validate model` now runs full semantic validation by default (npdev_cli.py's
+        # run_validate_semantic), which reports a failed model via exit 2, not the schema-only
+        # path's exit 1 -- this fixture is still rejected, just by the stronger default validator.
+        (Invoke-NpdevCommand -Name "npdev-invalid-model-rejected" -Root $workspaceRootPath -CommandLine "./npdev validate model NPDevCli/tests/fixtures/invalid-model.json" -ExpectedExitCode 2)
         (Invoke-NpdevCommand -Name "npdev-normalize-ai-model" -Root $workspaceRootPath -CommandLine "mkdir -p build && ./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json > build/npdev-normalized-model.json")
         (Invoke-NpdevCommand -Name "npdev-generate-app" -Root $workspaceRootPath -CommandLine "./npdev generate app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json --config NPDevContract/dsl/resources/Models/canonical-demo/config.json --output build/npdev-generated")
     )
@@ -233,7 +236,7 @@ try {
         cliVersionWorks = [bool](@($commands | Where-Object { $_.name -eq "npdev-version" -and $_.passed }).Count -eq 1)
         cliModelValidationWorks = [bool](@($commands | Where-Object { $_.name -eq "npdev-validate-model" -and $_.passed }).Count -eq 1)
         cliModelValidationUsesCanonicalSchema = [bool]((Get-Content -Raw -LiteralPath (Join-Path $workspaceRootPath "NPDevCli/npdev_cli.py")).Contains("NPDevContract") -and (Get-Content -Raw -LiteralPath (Join-Path $workspaceRootPath "NPDevCli/npdev_cli.py")).Contains("model.schema.json") -and (Get-Content -Raw -LiteralPath (Join-Path $workspaceRootPath "NPDevCli/npdev_cli.py")).Contains("validate-json-schema.mjs"))
-        cliInvalidModelRejected = [bool](@($commands | Where-Object { $_.name -eq "npdev-invalid-model-rejected" -and $_.passed -and $_.exitCode -eq 1 }).Count -eq 1)
+        cliInvalidModelRejected = [bool](@($commands | Where-Object { $_.name -eq "npdev-invalid-model-rejected" -and $_.passed -and $_.exitCode -eq 2 }).Count -eq 1)
         cliAiNormalizeWorks = [bool](@($commands | Where-Object { $_.name -eq "npdev-normalize-ai-model" -and $_.passed }).Count -eq 1)
         cliGenerateWorks = [bool](@($commands | Where-Object { $_.name -eq "npdev-generate-app" -and $_.passed }).Count -eq 1)
         cliReportBootstrapCallable = [bool]((Get-Content -Raw -LiteralPath (Join-Path $workspaceRootPath "NPDevCli/npdev_cli.py")).Contains("report") -and (Get-Content -Raw -LiteralPath (Join-Path $workspaceRootPath ".github/workflows/npdev-ci-validation.yml")).Contains("./npdev report bootstrap"))

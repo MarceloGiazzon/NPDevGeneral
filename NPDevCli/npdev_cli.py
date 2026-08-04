@@ -2166,11 +2166,21 @@ def build_parser() -> argparse.ArgumentParser:
     validate_model.add_argument(
         "--semantic",
         action="store_true",
-        help="Run full structural + semantic validation and emit a typed npdev-validation-report.v2 report.",
+        help="No-op: full structural + semantic validation (npdev-validation-report.v2) is now the "
+             "default. Kept as a documented alias so existing scripts and the MCP tool keep working "
+             "unchanged.",
+    )
+    validate_model.add_argument(
+        "--structural-only",
+        action="store_true",
+        help="Skip semantic validation and run JSON-Schema structural checks only (the fast path; "
+             "no Gradle invocation). The success message says explicitly that semantic checks did "
+             "not run.",
     )
     validate_model.add_argument(
         "--report",
-        help="Write the typed validation report to this path (in addition to stdout).",
+        help="Write the typed validation report to this path (in addition to stdout). Ignored with "
+             "--structural-only, which has no typed report to write.",
     )
 
     normalize = subparsers.add_parser("normalize")
@@ -2406,12 +2416,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"npdev {VERSION}")
             return 0
         if args.command == "validate" and args.validate_command == "model":
-            if getattr(args, "semantic", False):
-                report_out = Path(args.report).expanduser() if args.report else None
-                return run_validate_semantic(Path(args.path).expanduser(), report_out)
-            validate_official_model(Path(args.path).expanduser())
-            print("model validation passed")
-            return 0
+            if getattr(args, "structural_only", False):
+                validate_official_model(Path(args.path).expanduser())
+                print("schema validation passed (semantic checks NOT run -- re-run without "
+                      "--structural-only)")
+                return 0
+            # F1: full structural + semantic validation is the default -- a schema-only pass used
+            # to print an unqualified "model validation passed" for a model with real semantic
+            # errors (e.g. an invariant referencing a field that doesn't exist). --semantic is kept
+            # as a no-op alias: it already asked for this, so it changes nothing.
+            report_out = Path(args.report).expanduser() if args.report else None
+            return run_validate_semantic(Path(args.path).expanduser(), report_out)
         if args.command == "normalize" and args.normalize_command == "ai-model":
             write_or_print_json(normalize_ai_model(Path(args.path).expanduser()), args.output)
             return 0

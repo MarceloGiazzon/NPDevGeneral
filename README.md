@@ -47,7 +47,8 @@ instead of a runtime crash three steps later. See `docs/ai/AI_KNOWLEDGE_LOOP_AND
 Requires Java 17 and (for the Docker path) Docker. Clone the repo, then from its root:
 
 ```sh
-# Validate a real, checked-in sample model
+# Validate a real, checked-in sample model (full structural + semantic check by default;
+# pass --structural-only for a fast JSON-Schema-only check with no Gradle invocation)
 ./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
 
 # Generate a complete Spring Boot app from it
@@ -69,7 +70,7 @@ docker compose up
 
 Full deployment options (Postgres-first production path, env-var reference, the mail-catcher
 profile) are in `docs/DEPLOYMENT.md`. `docs/GETTING_STARTED.md` covers the portable CLI in more
-depth (`npdev normalize ai-model`, `npdev report bootstrap`); `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`
+depth (`./npdev normalize ai-model`, `./npdev report bootstrap`); `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`
 is the author-facing tour of concepts, flows, capabilities, panels, and events.
 
 ## Honest limitations

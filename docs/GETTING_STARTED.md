@@ -10,6 +10,11 @@ Start from the repository root. On Linux and macOS, use the portable `npdev` ent
 ./npdev report bootstrap
 ```
 
+`validate model` runs full structural + semantic validation by default (it shells out to Gradle, so
+expect a few seconds); pass `--structural-only` for a fast JSON-Schema-only check that skips Gradle
+entirely -- its success message says explicitly that semantic checks did not run, so it is never
+mistaken for the full check. `--semantic` still works as a documented no-op alias.
+
 When running from another directory, set `NPDEV_ROOT` to the workspace root before invoking `npdev`.
 
 ```sh
