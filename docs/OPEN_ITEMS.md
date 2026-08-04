@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**136 item(s) migrated: 5 open/partial, 131 done.**
+**137 item(s) migrated: 5 open/partial, 132 done.**
 
 ## Open / partial
 
@@ -188,7 +188,7 @@ check-twin-pair-consistency.py already uses for two other chains. Only the CONTE
 userFacingText/workaround strings for the top boundaries is named as needing real user
 observation (the trial) -- the mechanism itself does not.
 
-## Done (131)
+## Done (132)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -231,6 +231,7 @@ observation (the trial) -- the mechanism itself does not.
 | REG-129 | businessTableIndexes (the schema-realization manifest field B3 surplus-constraint classification depends on) has a documented scope of unique-constraint + bond-lookup indexes only -- it does not capture LNCH-6's implicit panel/query-driven secondary indexes or the author-declared concept.indexes[] escape hatch, both of which emit real DDL. Confirmed on WmsOffice's live database: 17 live indexes across 13 tables, every one idx_<table>_<field> on (tenant_id, field) -- LNCH-6's own exact naming/shape -- classified FOREIGN by an otherwise-correct, 15/15-vector-tested classifier, purely because the manifest never told it these indexes exist. | BUG | MEDIUM | DONE | 2026-08-04 |
 | REG-13 | LNCH-18: non-author usability test (ADR-0006 DoD) run for the first time | GAP | HIGH | DONE | 2026-07-21 |
 | REG-132 | No gate exists on the claim 'the documented setup instructions actually work on a clean machine' -- six other defect-family shapes (four-place field threading, pack-composition, twin-pair drift, blocker-citation freshness, script-inventory/invocation, corpus-role coverage) all have a mechanical control; this one had none, and its absence is what let F3/F6/F8, a stale beta1.1 claim, and all three onboarding walls ship undetected | GAP | MEDIUM | DONE | 2026-08-04 |
+| REG-136 | root/NPDevGenerator/NPDevKernel gradle.properties hardcode org.gradle.projectcachedir to this machine's own D:/WorkSpace/NPDev/Build/gradle-project-caches/<module> -- a Gradle START PARAMETER read before any -P/env override can apply, so every gradlew invocation the CLI or sync-runtimehost-libs.ps1 makes fails on any machine without that exact path, breaking the FIRST command in README's own Quickstart (./npdev validate model) | BUG | HIGH | DONE | 2026-08-04 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
 | REG-16 | The other 23 launch items had zero adversarial review | PROCESS | HIGH | DONE | 2026-07-21 |
@@ -2500,6 +2501,71 @@ as part of closing this item (which is about the gate's existence, not any one r
 Declared in scripts/policy/script-inventory-policy.json and
 scripts/policy/script-invocation-declarations.json per run-script-inventory-check.ps1's own
 requirement (every scripts/ script needs both a classification and an invocation declaration).
+
+### REG-136 — root/NPDevGenerator/NPDevKernel gradle.properties hardcode org.gradle.projectcachedir to this machine's own D:/WorkSpace/NPDev/Build/gradle-project-caches/<module> -- a Gradle START PARAMETER read before any -P/env override can apply, so every gradlew invocation the CLI or sync-runtimehost-libs.ps1 makes fails on any machine without that exact path, breaking the FIRST command in README's own Quickstart (./npdev validate model)
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-04)
+**Verification:** VERIFIED_LIVE
+**Source:** Found by firstrun-helpers/PLAN.md's own I1 harness, running in its REAL default mode (a fresh
+`git clone` of the pushed beta1-vision-spine branch inside a clean Ubuntu container -- not the
+LOCAL_SRC pre-merge mode, which had ALSO shown a superficially similar failure that turned out to
+be an unrelated LOCAL_SRC-only CRLF artifact, see the harness's own README.md "Known limits").
+After I2/I3/I4/I8 all landed and were pushed, the harness was STILL red, with the actual first
+Quickstart command (`./npdev validate model ...`) failing:
+
+    FAILURE: Build failed with an exception.
+    * What went wrong:
+    Cannot convert URL 'D:/WorkSpace/NPDev/Build/gradle-project-caches/root' to a file.
+
+Traced to gradle.properties (repo root) and NPDevGenerator/gradle.properties and
+NPDevKernel/gradle.properties, each hardcoding org.gradle.projectcachedir to an absolute
+D:/WorkSpace/... path -- a deliberate dev-machine build-output-policy choice (keeps Gradle's own
+cache out of the repo tree, matching this repo's "never write build artifacts inside the repo"
+rule), but org.gradle.projectcachedir is read by Gradle's OWN bootstrap logic as a START
+PARAMETER, before any -P property or environment variable override can take effect -- so on any
+machine without that exact drive/path, Gradle fails before the build even starts.
+
+This is the SAME root cause REG-10 already fixed, but scoped ONLY to NPDevRuntimeHost/
+gradle.properties (the template copied into every generated FinalApp, which REG-10 correctly
+judged must be portable). The platform's OWN modules (root, dsl, generator, kernel, editor) kept
+the hardcoded path deliberately -- CI already works around it via a documented `sed -i
+'/org\.gradle\.projectcachedir/d'` step in three separate workflow files
+(ai-knowledge-gate.yml, npdev-ci-validation.yml, npdev-pr-gate.yml), but nothing gives a real
+newcomer following README.md that same workaround.
+
+**Surface:** `cli/gradle-invocation, build-tooling/gradle-portability`
+**Files:**
+- `NPDevCli/npdev_cli.py`
+- `scripts/runtimehost/sync-runtimehost-libs.ps1`
+
+Fixed by overriding org.gradle.projectcachedir per-invocation with the one reliable mechanism
+(--project-cache-dir, a genuine Gradle CLI start parameter that beats the properties file)
+rather than editing the checked-in gradle.properties files -- editing them would either regress
+the intentional dev-machine build-output policy (removing the setting entirely, like CI's sed
+step does, moves Gradle's cache to <projectDir>/.gradle, INSIDE the repo tree) or require a new
+untested mechanism. Instead:
+
+npdev_cli.py: new gradle_project_cache_args(module_key) helper, computing
+<_ai_build_root()>/gradle-project-caches/<module_key> -- reusing _ai_build_root()'s own existing
+NPDEV_BUILD_ROOT-env-or-portable-fallback convention, so this collapses to TODAY'S checked-in
+D:/WorkSpace/NPDev/Build/gradle-project-caches/<module> value on the author's own machine (a
+verified no-op) and to a portable equivalent on any other machine. Threaded into all 8
+repo-side gradle invocation sites (validate model, generate app x2, classifyModelChange x3,
+authorDiffGate, resignGeneratedFolder) -- NOT into _build_phase's generated-app gradlew call,
+which is already portable per REG-10.
+
+sync-runtimehost-libs.ps1: same --project-cache-dir flag added to both the Kernel `jar` and
+Generator `:generator:jar :tools:npdev-cli:jar` invocations, derived from the SAME
+$externalBuildRoot this script already computes portably (its own comment documents mirroring
+build.gradle's resolveNpdevBuildRoot convention, including a fallback for a workspace not
+literally named NPDev_General -- REG-131/N2's own concern, already handled here).
+
+Verified: :NPDevCli unit tests (70) green; a live `./npdev validate model` and
+`./npdev generate app` both run BUILD SUCCESSFUL on the author's own machine (confirming the
+override is a true no-op locally); `sync-runtimehost-libs.ps1 -BuildLocalJars` run live, BUILD
+SUCCESSFUL for both Kernel and Generator jars, "45 already current" (unchanged behavior). Full
+clone-based harness re-run (fresh git clone of the pushed branch, Ubuntu container) is the
+definitive newcomer-facing proof, captured separately as this session's final evidence.
 
 ### REG-14 — LNCH-22: newcomer documentation test run for the first time
 
