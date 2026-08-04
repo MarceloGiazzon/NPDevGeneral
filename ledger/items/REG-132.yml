@@ -1,0 +1,51 @@
+id: REG-132
+title: "No gate exists on the claim 'the documented setup instructions actually work on a clean machine' -- six other defect-family shapes (four-place field threading, pack-composition, twin-pair drift, blocker-citation freshness, script-inventory/invocation, corpus-role coverage) all have a mechanical control; this one had none, and its absence is what let F3/F6/F8, a stale beta1.1 claim, and all three onboarding walls ship undetected"
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-04
+closed: 2026-08-04
+verification: VERIFIED_LIVE
+surface: quality-gates/first-run-verification
+source: |
+  Filed per firstrun-helpers/PLAN.md §0c (item N3), naming a real, previously-uncovered gap: every
+  other recurring defect family in this repo (the four-place model-array-key chain, the
+  pack-composition chain, twin-pair drift generally, stale blocker citations, script-inventory
+  policy drift, corpus-role coverage) has a dedicated check-*.py wired into run-*.ps1 per
+  CLAUDE.md's own documented rule. "Does following README.md's own Quickstart, verbatim, on a bare
+  machine with nothing pre-installed, actually work" had no such control -- it could only be
+  checked by a human manually following the docs, which nobody had done recently enough to catch
+  the accumulated drift (missing prereqs in the doc's own prerequisites line, an undocumented
+  jar-build step, a missing bootJar step, no login/port information after generation).
+files:
+  - scripts/quality/firstrun-harness/Dockerfile
+  - scripts/quality/firstrun-harness/README.md
+  - scripts/quality/firstrun-harness/run-readme.sh
+detail: |
+  Closed by firstrun-helpers/PLAN.md's own I1, built and RED-verified in this same session BEFORE
+  any of the doc/CLI fixes it exercises (I2/I3) landed -- confirmed 7 real failures on the first
+  run, matching the plan's own predicted defect shapes (missing Python3/pwsh in the bare image
+  until installed per README's own prerequisites line, the undocumented jar-build step, the
+  missing bootJar step, no app-jar-exists at the end). The harness is a Docker container
+  (ubuntu:24.04, nothing preinstalled) that installs ONLY what README's prerequisites sentence
+  names, then extracts and runs every fenced code block in README's Quickstart section verbatim
+  and in order, asserting each command's exit code and a handful of documented-behavior invariants
+  (prereqs actually present, the app actually boots on the documented port). It supports both a
+  fresh git-clone mode (the real "newcomer" path) and a LOCAL_SRC bind-mount mode (for testing
+  doc/CLI changes before they are pushed).
+
+  Three real bugs were found and fixed IN THE HARNESS ITSELF while proving it actually works (not
+  in the platform code under test): CRLF-vs-LF corruption of extracted commands under LOCAL_SRC
+  mode (Windows checkout has CRLF; the real git blob does not), MSYS/Git-Bash path-mangling of the
+  `-v` bind-mount argument (fixed with MSYS_NO_PATHCONV=1), and a persistent-working-directory bug
+  where every extracted command ran in a fresh subshell rooted at the clone dir, so a `cd` command
+  in the README had zero effect on later commands (fixed by tracking CURRENT_DIR across the loop).
+
+  Per this item's own explicit prohibition (PLAN.md §12: "do not build the harness after the
+  fixes"), the harness was built and its RED run captured BEFORE I2/I3's doc/CLI fixes landed --
+  the GREEN-after-fixes run is captured separately as this session's final closeout evidence, not
+  as part of closing this item (which is about the gate's existence, not any one run's result).
+
+  Declared in scripts/policy/script-inventory-policy.json and
+  scripts/policy/script-invocation-declarations.json per run-script-inventory-check.ps1's own
+  requirement (every scripts/ script needs both a classification and an invocation declaration).

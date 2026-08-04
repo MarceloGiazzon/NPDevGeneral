@@ -1,0 +1,31 @@
+id: REG-134
+title: "main is left 29+ commits behind beta1-vision-spine with no tag covering S2-S8 or F1-F9 -- a fresh clone of the repo's own default branch gets none of this session's (or the last several sessions') work, including the first-run fixes (I0-I8) this same plan produces"
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-04
+surface: release-management/branch-posture
+source: |
+  Filed per firstrun-helpers/PLAN.md §0c (item N5), which the plan itself flags as "not paperwork
+  -- it gates the trial" (see the plan's own HARNESS_AND_RELEASE_STRATEGY Part A). Every session
+  since beta1-vision-spine branched off has landed real, verified, pushed work (S2 bounded
+  contexts, S4 groupBy joins, S7 B13 conversion vocabulary, S8 Waves 1-4 physical isolation, and
+  now this session's F1-F9 first-impression fixes plus I0-I8) exclusively onto
+  origin/beta1-vision-spine -- main has received none of it, and no git tag exists that names a
+  commit newcomers should actually clone/checkout to get a coherent, working state.
+
+  Practical consequence, directly relevant to this same plan: this session's own first-run harness
+  (I1) explicitly defaults REPO_REF=main (scripts/quality/firstrun-harness/Dockerfile's own
+  ENV REPO_REF=main) -- meaning the harness's DEFAULT clone-based mode tests a branch that is
+  missing this entire plan's fixes, and would report the SAME RED failures this session already
+  fixed on beta1-vision-spine. The harness's own README.md documents overriding REPO_REF for
+  branch-based testing, but a first-time user following README's own instructions literally would
+  hit `main`, not the branch with the fixes.
+files: []
+detail: |
+  Not fixed here -- explicitly out of scope per firstrun-helpers/PLAN.md §12's own prohibition
+  ("do not merge to main or tag -- a separate, authorized step for after this session"). This item
+  exists so the decision is visible and tracked, not forgotten: merging beta1-vision-spine to main
+  and cutting a tag that covers S2-S8/F1-F9/I0-I8 is a deliberate, owner-authorized release step,
+  not a mechanical fix a session should take on its own initiative. Closing this item means that
+  merge+tag has actually happened, not that a plan for it exists.

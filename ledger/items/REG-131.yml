@@ -1,0 +1,40 @@
+id: REG-131
+title: "npdev run app is broken on any machine other than the author's own: npdev_cli.py's _build_phase hardcodes env.setdefault(\"NPDEV_RUNTIMEHOST_LIBS_DIR\", str(Path(\"D:/WorkSpace/NPDev/Build/runtimehost-libs\"))) -- an absolute Windows D:\\ path with no fallback for a machine where that drive/path does not exist"
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-04
+surface: cli/run-app, build-tooling/runtimehost-libs-staging
+source: |
+  Filed per firstrun-helpers/PLAN.md §0c (item N2), found during the same review that produced the
+  Docker-based first-run harness (I1). README's Quickstart now correctly NAMES the
+  sync-runtimehost-libs.ps1 -BuildLocalJars step a newcomer must run first (I2's own fix, this
+  session), but even after that step succeeds, npdev run app's own _build_phase helper
+  (NPDevCli/npdev_cli.py:1309, confirmed current -- an earlier draft of this finding cited line
+  1239, which shifted after this session's CLI edits) unconditionally falls back to a hardcoded
+  absolute path that only exists on the platform author's own machine:
+
+      env.setdefault("NPDEV_RUNTIMEHOST_LIBS_DIR", str(Path("D:/WorkSpace/NPDev/Build/runtimehost-libs")))
+
+  On any other machine (a different drive letter, a non-Windows OS, or simply a different Build
+  root), this silently sets an env var pointing at a directory that does not exist, rather than
+  either deriving the SAME repo-relative convention scripts/npdev-common.ps1's
+  Get-NPDevRuntimeHostLibsDir already uses (`<repo>.parent/Build/runtimehost-libs`) or leaving the
+  var unset so a real absence is surfaced as a clear error instead of a wrong path.
+
+  Related to, but distinct from, REG-128 (DONE, this session): REG-128 fixed the Groovy-side
+  default inside build.gradle.template; this item is the Python CLI's OWN separate hardcoded
+  fallback, one layer up, still pointing at the author's literal machine path.
+files:
+  - NPDevCli/npdev_cli.py
+detail: |
+  Not fixed here -- out of scope for firstrun-helpers/PLAN.md's session (which named this "probed,
+  not fixed" in its own §0c table). The correct fix almost certainly mirrors REG-128's own
+  resolution: derive `<repo>.parent/Build/runtimehost-libs` from the CLI's own known repo root
+  (npdev_cli.py already computes a repo-root-relative path for other purposes) instead of a
+  literal `D:/WorkSpace/NPDev/...` string, with NPDEV_RUNTIMEHOST_LIBS_DIR/NPDEV_BUILD_ROOT env
+  overrides still winning first. This is the harder half of "does the README's documented path
+  actually work on someone else's machine" -- the first-run harness (I1, this session) does not
+  exercise `npdev run app` at all (it defers to `java -jar` directly per the README rewrite), so
+  this bug would NOT be caught by the harness as it stands today; closing it should include either
+  extending the harness to cover `npdev run app`, or explicitly noting the harness's blind spot.

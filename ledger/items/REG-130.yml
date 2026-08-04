@@ -1,0 +1,31 @@
+id: REG-130
+title: "npdev --version's story is only half-resolved: npdev_cli.py's own VERSION constant is 0.9.0, NPDevContract/dsl/build.gradle's is 0.1.0, and the git tag is beta1.4, with no documented relationship between the three -- a user reading any one of them has no way to know it is not the whole picture"
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-04
+surface: cli/version-reporting
+source: |
+  Filed per firstrun-helpers/PLAN.md §0c (item N1), found during first-impression review of the
+  portable npdev CLI. F4 (FIRST_IMPRESSION_SPEC.md) fixed the model-DSL-version half of this
+  (npdev --version now separately reports the DSL/model-format version alongside the CLI's own),
+  but the underlying three-numbers-no-relationship problem is still live:
+
+    npdev_cli.py:22        VERSION = "0.9.0"      (the CLI wrapper's own version)
+    NPDevContract/dsl/build.gradle:6  version = '0.1.0'   (the DSL/model-compiler jar's version)
+    git tag (most recent)  beta1.4                (the platform release tag)
+
+  None of these track each other, and nothing in --version's own output (even after F4) tells a
+  user which of the three is "the platform version" a bug report should cite, or what changing one
+  implies about the others.
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevContract/dsl/build.gradle
+detail: |
+  Not fixed here -- explicitly out of scope for this session per firstrun-helpers/PLAN.md §13 (a
+  versioning-scheme decision, not a mechanical fix). Two real shapes for whoever picks this up:
+  (1) collapse to one number the CLI, the DSL jar, and the git tag all derive from (a single
+  VERSION file read by both npdev_cli.py and build.gradle, with the git tag applied to that same
+  value at release time); (2) keep three numbers but make --version's own output explicitly name
+  what each one means and how they relate, so a report never needs to guess. Either way, whichever
+  fix lands should also update this item to DONE citing the chosen shape.
