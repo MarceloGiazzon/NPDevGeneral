@@ -61,6 +61,12 @@ def describe_type(prop: dict) -> str:
         return prop["$ref"].rsplit("/", 1)[-1]
     if "oneOf" in prop:
         return " | ".join(describe_type(option) for option in prop["oneOf"])
+    if "if" in prop and "then" in prop and "else" in prop:
+        # F5 (FIRST_IMPRESSION_SPEC.md I2): the model-array-field discriminator ({"if": has "$ref",
+        # "then": localModelRef, "else": the real type}) replaced a oneOf of the same two branches --
+        # describe it the same "type1 | type2" way a reader of the old oneOf-rendered reference saw,
+        # else-branch (the real type) first to match the old oneOf's own ordering.
+        return " | ".join([describe_type(prop["else"]), describe_type(prop["then"])])
     ptype = prop.get("type")
     if ptype == "array":
         items = prop.get("items", {})
