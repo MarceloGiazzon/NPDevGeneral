@@ -2,8 +2,10 @@ id: REG-130
 title: "npdev --version's story is only half-resolved: npdev_cli.py's own VERSION constant is 0.9.0, NPDevContract/dsl/build.gradle's is 0.1.0, and the git tag is beta1.4, with no documented relationship between the three -- a user reading any one of them has no way to know it is not the whole picture"
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-04
+closed: 2026-08-04
+verification: VERIFIED_LIVE
 surface: cli/version-reporting
 source: |
   Filed per firstrun-helpers/PLAN.md §0c (item N1), found during first-impression review of the
@@ -29,3 +31,32 @@ detail: |
   value at release time); (2) keep three numbers but make --version's own output explicitly name
   what each one means and how they relate, so a report never needs to guess. Either way, whichever
   fix lands should also update this item to DONE citing the chosen shape.
+
+resolution: |
+  DONE (close-five/PLAN.md I4, 2026-08-04), shape (2) from this item's own detail text (the
+  plan's own recommendation: zero coupling, answers the actual question "what do I cite"). Kept
+  all three numbers -- collapsing to one (shape 1) would couple the CLI's release cadence to the
+  DSL jar's and touch the release process, out of proportion to a LOW-severity reporting gap.
+
+  --version now prints all three explicitly, one per line, with the citable one marked:
+
+    npdev 0.9.0                 (portable CLI)
+      model format  dslVersion 1.0.0
+      DSL compiler  0.1.0
+      platform      beta1.4-119-gbbc7099  <- cite THIS in a bug report
+
+  The platform line is `git describe --tags --always` run live against the actual checkout (this
+  CLI runs directly from a clone, not a packaged artifact, so the checkout's own git state is the
+  accurate answer) -- more precise than a bare tag name when commits have landed since the last
+  tag (as here: beta1.4 + 119 commits), and degrades to an honest "unknown" (never a guess) if git
+  is unavailable or the checkout has no tags, matching the same X0 rule REG-131/REG-136 apply.
+
+  README.md's own "License and status" section (added by F4, FIRST_IMPRESSION_SPEC.md) already
+  explains the three-numbers story in prose and needed no change -- it already names the git tag
+  as "the authoritative release version," consistent with --version's own new "cite THIS" marker.
+
+  Verified: NPDevCli unit tests (70) green; live `npdev --version` run, output matches the exact
+  shape above against the real repo state.
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\NPDevCli\npdev_cli.py

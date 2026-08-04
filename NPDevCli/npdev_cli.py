@@ -20,6 +20,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 VERSION = "0.9.0"
+# REG-130: the three numbers a bug report could cite, none of them derived from the others.
+# Keep in sync by hand (there is no single source of truth yet -- see REG-130's own ledger entry
+# for the two shapes considered and why "keep three, explain them" was chosen over collapsing to
+# one file): NPDevContract/dsl/build.gradle's own `version` and model.schema.json's own
+# properties.dslVersion.const.
+DSL_COMPILER_VERSION = "0.1.0"
+DSL_MODEL_FORMAT_VERSION = "1.0.0"
 
 
 class CliError(Exception):
@@ -31,6 +38,24 @@ def repo_root() -> Path:
     if env_root:
         return Path(env_root).expanduser().resolve()
     return Path(__file__).resolve().parents[1]
+
+
+def _platform_release_tag() -> str:
+    """REG-130: the citable identifier for --version's own 'platform' line -- the most recent git
+    tag reachable from HEAD, read live from the actual checkout (this CLI is a portable wrapper
+    run directly from a clone, not a packaged/versioned artifact, so the checkout's own git state
+    IS the accurate answer). Falls back to a plain, honest 'unknown' rather than guessing when git
+    is unavailable or the checkout has no tags at all -- an unresolvable input is an error/unknown,
+    never a wrong default (the same X0 rule REG-131/REG-136 apply elsewhere)."""
+    try:
+        completed = subprocess.run(
+            ["git", "describe", "--tags", "--always"],
+            cwd=repo_root(), capture_output=True, text=True, timeout=5,
+        )
+        tag = completed.stdout.strip()
+        return tag if completed.returncode == 0 and tag else "unknown (no git tag reachable)"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown (git unavailable)"
 
 
 # --- validate/fix loop capture (idea 2, live increment) -------------------------------------------
@@ -2613,12 +2638,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.version:
-            # N1 (FIRST_IMPRESSION_PLAN.md): this is the CLI wrapper's OWN version, distinct from
-            # the model-format version (dslVersion) and the platform release (git tag) -- state
-            # which is which in one line rather than leaving a bare "npdev 0.9.0" to look like the
-            # whole story. Filed as N1 for full alignment (three numbers, still no single source of
-            # truth); this line is the cheap half of that, not the fix.
-            print(f"npdev {VERSION}  (CLI)   ·   model format: dslVersion 1.0.0   ·   see git tag for the platform release")
+            # REG-130 (firstrun-helpers/close-five/PLAN.md I4): three numbers, no stated
+            # relationship, and a user filing a bug could not tell which one to cite. Shape 2 from
+            # the plan's own two options: keep all three (collapsing to one file couples the CLI's
+            # release cadence to the DSL jar's, and touches the release process) but make --version
+            # name each one AND mark which is citable.
+            print(f"npdev {VERSION}                 (portable CLI)")
+            print(f"  model format  dslVersion {DSL_MODEL_FORMAT_VERSION}")
+            print(f"  DSL compiler  {DSL_COMPILER_VERSION}")
+            print(f"  platform      {_platform_release_tag()}  <- cite THIS in a bug report")
             return 0
         if args.command == "validate" and args.validate_command == "model":
             if getattr(args, "structural_only", False):
