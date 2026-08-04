@@ -137,6 +137,20 @@ def _has_sensitive_field(model: dict) -> bool:
     return False
 
 
+def _has_renamed_field(model: dict) -> bool:
+    """D1 (FIRST_IMPRESSION_PLAN.md I5): a field declaring renamedFrom -- the mechanism that keeps
+    a rename from being read as drop+add (a destructive change NPDev correctly refuses). Zero
+    corpus coverage until this gate started tracking it, discovered while writing the authoring
+    contract's own D1 section (docs/ai/AUTHORING_FOR_AI.md), which cites this as its witness."""
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for field in (concept.get("fields", None) or []):
+            if isinstance(field, dict) and field.get("renamedFrom"):
+                return True
+    return False
+
+
 def _has_field_picker_filter(model: dict) -> bool:
     """B16/B19 (Move 9 A3): a field's picker.filter -- the reference field's own single-clause
     predicate constraining its auto-picker's candidate rows."""
@@ -527,6 +541,8 @@ def _has_conversion_op(model: dict, op: str) -> bool:
 FEATURE_DETECTORS = {
     "externalAi": lambda m: "externalAi" in m,
     "domainTypes": lambda m: _nonempty(m, "domainTypes"),
+    # D1 (FIRST_IMPRESSION_PLAN.md I5): field.renamedFrom -- see _has_renamed_field's own docstring.
+    "field.renamedFrom": _has_renamed_field,
     "selectors": lambda m: _nonempty(m, "selectors"),
     # Wave 3 (RC-B1, MOVE11_RUNTIME_CONFIGURATION_PLAN Part B.1): app-defined role -> permission-
     # ceiling declarations, a new top-level array sibling of settings/selectors.

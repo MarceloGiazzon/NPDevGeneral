@@ -85,6 +85,7 @@
         { "name": "id", "type": "uuid", "id": true, "required": true },
         {
           "name": "customerEmail",
+          "renamedFrom": "email",
           "type": "string",
           "required": true,
           "sensitive": true,

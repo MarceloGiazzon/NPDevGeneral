@@ -4,6 +4,27 @@ Terse, unambiguous rules for generating a valid NPDev `model.json`. This is the 
 external AI should keep in context. After drafting, ALWAYS run `npdev validate model <path>
 --semantic` (or the `npdev_validate` MCP tool) and fix every `error` diagnostic before generating.
 
+## Ask before you write
+
+The user has an intent, not a schema. **Do not draft a model until you can answer these eight.**
+Each maps to a structural decision that is expensive to change once data exists.
+
+1. **What are the main things this system keeps track of?** → concepts
+2. **For each — what do you need to know about it?** → fields
+3. **How do they connect? Does an X belong to one Y, or to many?** → bonds and cardinality
+4. **Who uses it, and can they all see everything?** → roles and permissions
+5. **Does anything need to happen automatically — reminders, approvals, notifications?** → flows and events
+6. **Does anything move through stages (draft → confirmed → done)?** → state and transitions
+7. **What must never be allowed? Two bookings in the same slot?** → invariants
+8. **Roughly how many records — hundreds, or millions?** → H2 vs Postgres
+
+Ask in the user's own vocabulary — translating their answer into concepts, bonds, flows and
+invariants **is the job**.
+
+**Start smallest.** Build the smallest model that runs, then add on request — never on your own
+initiative. "Track appointments" tempts twelve concepts with audit trails; don't. The user reviews
+a running app, not JSON, and every speculative concept is one they must now understand to reject.
+
 ## Non-negotiables
 
 1. **Every object is validated `additionalProperties: false`.** A typo'd or invented key fails
@@ -15,6 +36,23 @@ external AI should keep in context. After drafting, ALWAYS run `npdev validate m
 4. **Root uses `concepts`, not `entities`.** `entities` is a rejected legacy shape.
 5. Required root fields: `dslVersion` (`"1.0.0"`), `version`, `namespace` (or alias `model`),
    and a non-empty `concepts` array.
+
+## Renaming: `renamedFrom` is mandatory
+
+**NPDev cannot infer a rename.** Change a field or concept name and NPDev sees a *dropped* column
+plus a *new* one — a destructive change — and correctly refuses. That refusal is safe but a dead
+end: the user is left holding an error they cannot interpret, at the moment they are most invested.
+
+**Whenever you rename anything on a model that has already been generated and run, declare it:**
+
+    { "name": "mobile", "renamedFrom": "phone", "type": "string" }
+
+This tells NPDev the column is the same column; existing data moves with it. Applies to a field or
+concept rename on an app already generated/run; not to a brand-new field/concept or a never-run
+model. **User says "rename X to Y" → always `renamedFrom`, never a silent name change.**
+
+Removing a field or concept is also destructive and needs an explicit acknowledgment. Never remove
+one because it "looks unused" — ask.
 
 ## The 8 building blocks (what each is)
 
