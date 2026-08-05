@@ -81,6 +81,35 @@ history) instead of copying `canonical-demo` by hand -- see `docs/YOUR_FIRST_APP
 install --client claude-code` (or `claude-desktop`, or `--print`) connects an AI client to NPDev's
 MCP tools -- see `docs/AUTHORING_WITH_AI.md`.
 
+### Driving NPDev from a program, not a terminal
+
+`doctor`, `setup`, and `init` all accept `--json`, which is an *additive* second output mode --
+the human summary printed without the flag is unchanged (byte-for-byte), so this is safe to add to
+an existing script without breaking anyone reading the terminal output. Pass `--json` and nothing
+but a machine-readable object (or, for `setup`, a stream of them) goes to stdout; any narration
+moves to stderr instead.
+
+- **`npdev doctor --json`** emits one `npdev-cli-result.v1` object with a `checks` array -- one
+  record per check (`id`, `status`: `pass`/`fail`/`warn`, `found`, `expected`, `detail`, `fix`,
+  `fixCommand`), including the ones that passed (the human summary only ever prints failures and
+  warnings, so passing checks are otherwise invisible to a caller). `java-present`/`java-version`
+  resolve `JAVA_HOME` before falling back to PATH, matching Gradle's own resolution order -- a
+  private JDK works even with nothing on PATH at all.
+- **`npdev setup --json`** emits one `npdev-cli-event.v1` object per line (JSON Lines) as each
+  phase (`jars`, `knowledge-index`) starts and finishes, ending with one `npdev-cli-result.v1`
+  object. `setup` tries a prebuilt `runtimehost-libs-<tag>.zip` Release asset first on a tagged
+  commit (checksum-verified against a sibling `SHA256SUMS`), and always falls back to a full local
+  build -- untagged commit, no asset published, download failure, checksum mismatch, or
+  `--build-local` passed. Either way, the result object's `jarsSource` field (and a trailing
+  `Jars source:` line in the human output) says which path was actually taken.
+- **`npdev init my-app --json`** emits one object with `created.directory` (always absolute --
+  a calling program has no shared working directory to resolve a relative path against),
+  `created.files`, `gitInitialised`, and `nextCommand`.
+
+This exists for the same reason `npdev run app`/`npdev verify` already print structured JSON: an
+AI agent driving NPDev through MCP, CI asserting on fields instead of grepping sentences, or a
+future GUI (the NPDev Manager) all need a result they can parse, not prose meant for a human.
+
 `npdev verify --tier T0|T1|T2|T3` is the one entry point for this repo's verification tiers, from
 an inner-loop syntax/schema check (T0, ~1s) up through a full canary build+boot+smoke (T1, a few
 minutes) to the complete gate suite (T2) and release-readiness evidence (T3) -- see
