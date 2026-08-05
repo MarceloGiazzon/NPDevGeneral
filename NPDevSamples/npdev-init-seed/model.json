@@ -1,0 +1,35 @@
+{
+  "namespace": "npdev.seed",
+  "dslVersion": "1.0.0",
+  "version": "0.1.0",
+  "concepts": [
+    {
+      "name": "Patient",
+      "ui": { "label": "Patient" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "mrn", "type": "string", "required": true, "ui": { "label": "Medical record number" } },
+        { "name": "firstName", "type": "string", "required": true, "ui": { "label": "First name" } },
+        { "name": "lastName", "type": "string", "required": true, "ui": { "label": "Last name" } }
+      ],
+      "invariants": [
+        { "name": "PatientMrnUnique", "type": "unique", "fields": ["mrn"] }
+      ]
+    },
+    {
+      "name": "Appointment",
+      "ui": { "label": "Appointment" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "patientId",
+          "type": "reference",
+          "required": true,
+          "ui": { "label": "Patient" },
+          "reference": { "target": "Patient", "displayField": "lastName" }
+        },
+        { "name": "scheduledAt", "type": "datetime", "required": true, "ui": { "label": "Scheduled at" } }
+      ]
+    }
+  ]
+}

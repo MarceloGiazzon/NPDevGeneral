@@ -138,12 +138,21 @@ the test suite.**
 
 | Level | Scope | Catches | Cost |
 |---|---|---|---|
-| **1** *(these files)* | bare Linux, follow README, assert the app answers | **W1 · W2 · W3 · incomplete prereqs** | **~1 day** |
-| **2** | matrix with a deliberately **wrong Java (21)** | proves `npdev doctor` actually catches it | +½ day |
+| **1** *(run-readme.sh)* | bare Linux, follow README, assert the app answers | **W1 · W2 · W3 · incomplete prereqs · the change-a-field/your-first-app/init loops** | done |
+| **2** *(Dockerfile.wrongjava)* | a machine with a deliberately **wrong Java (21)** pre-installed | proves `npdev doctor` actually catches it | done |
 | **3** | Windows container for the `.bat` path | Windows-specific drift | expensive, lower value initially |
 
 **Level 2 matters more than it looks:** without it, `npdev doctor` ships untested by construction —
 a checker that has never seen a red, on a machine that passes every check it makes.
+
+```bash
+docker build --build-arg JDK=21 -f Dockerfile.wrongjava -t npdev-firstrun-wrongjava .
+docker run --rm npdev-firstrun-wrongjava
+# exit 0: doctor correctly failed and named Java 21. exit 1: it did not -- a real bug.
+
+# against your uncommitted working tree, same pre-merge convention as Level 1:
+docker run --rm -e LOCAL_SRC=1 -v /d/WorkSpace/NPDev/NPDev_General:/work/src:ro npdev-firstrun-wrongjava
+```
 
 ---
 

@@ -909,6 +909,109 @@ def _run_with_phase_narration(command: list[str], cwd: Path, markers: list[tuple
         raise subprocess.CalledProcessError(process.returncode, command)
 
 
+def run_init(args: argparse.Namespace) -> int:
+    """I3: scaffold a new app directory from a small, corpus-registered seed (NPDevSamples/
+    npdev-init-seed -- 2 concepts + 1 bond, derived from canonical-demo's own Patient/Appointment
+    rather than a hand-written second fixture, so it stays covered by the same DSL-coverage gate
+    canonical-demo is) and give it a git history from the first commit. The model IS the app --
+    losing model.json loses the application, so a scaffold with no history is a trap, not a
+    convenience (see docs/YOUR_FIRST_APP.md's own step 4 for the same rule stated for a human)."""
+    root = repo_root()
+    target = Path(args.name).expanduser().resolve()
+
+    try:
+        target.relative_to(root)
+        raise CliError(
+            f"refusing to scaffold inside this repo ({root}) -- {target} would never be found by "
+            "anyone cloning NPDev fresh, and risks being swept up by this repo's own git history. "
+            "Pick a directory outside the repo."
+        )
+    except ValueError:
+        pass  # not inside root -- the expected case
+
+    if target.exists() and any(target.iterdir()):
+        raise CliError(f"refusing to scaffold into a non-empty directory: {target}")
+
+    seed_dir = root / "NPDevSamples" / (args.from_sample or "npdev-init-seed")
+    seed_model_path = seed_dir / "model.json"
+    seed_config_path = seed_dir / "config.json"
+    if not seed_model_path.exists() or not seed_config_path.exists():
+        raise CliError(
+            f"seed directory {seed_dir} does not have both model.json and config.json -- "
+            f"{'pick a different --from' if args.from_sample else 'this is an npdev bug, not a user error'}."
+        )
+
+    token = re.sub(r"[^a-zA-Z0-9]+", "", target.name) or "app"
+    db_name = re.sub(r"[^a-zA-Z0-9]+", "_", target.name).strip("_").lower() or "npdev_app"
+
+    target.mkdir(parents=True, exist_ok=True)
+
+    model = json.loads(seed_model_path.read_text(encoding="utf-8"))
+    model["namespace"] = token
+    (target / "model.json").write_text(json.dumps(model, indent=2) + "\n", encoding="utf-8")
+
+    shutil.copy2(seed_config_path, target / "config.json")
+
+    seed_db_def_path = seed_dir / "db.definition.json"
+    if seed_db_def_path.exists():
+        db_def = json.loads(seed_db_def_path.read_text(encoding="utf-8"))
+        db_def.setdefault("database", {})["databaseName"] = db_name
+        (target / "db.definition.json").write_text(json.dumps(db_def, indent=2) + "\n", encoding="utf-8")
+
+    (target / "README.md").write_text(
+        f"# {target.name}\n\n"
+        f"An NPDev app, scaffolded by `npdev init`.\n\n"
+        f"**`model.json` is this application.** Everything else -- the database schema, the REST "
+        f"API, the admin screens -- is generated from it and is disposable: delete it, regenerate "
+        f"it, nothing is lost as long as model.json (and db.definition.json, which says how your "
+        f"data persists) survive. This directory is already a git repository with one commit for "
+        f"exactly that reason -- keep committing as you change the model.\n\n"
+        f"## Run it\n\n"
+        f"```sh\n"
+        f"cd {target.name}\n"
+        f"npdev run app\n"
+        f"```\n\n"
+        f"(`npdev run app` with no flags looks for `model.json`/`config.json` in the current "
+        f"directory and generates the app into a sibling `{target.name}-app` folder.)\n\n"
+        f"Open http://localhost:8080 and use API key `dev-key` (the `dev` profile's built-in "
+        f"convenience credential -- see docs/YOUR_FIRST_APP.md for what that means and why "
+        f"SUPER_USER_KEY.txt is a different, unrelated thing).\n\n"
+        f"## Next\n\n"
+        f"Edit `model.json` -- add a field, add a concept -- then `npdev run app` again; it "
+        f"regenerates the SAME app in place rather than starting over. See docs/YOUR_FIRST_APP.md "
+        f"for the full walkthrough, including how to declare a rename so NPDev does not mistake it "
+        f"for a destructive change.\n",
+        encoding="utf-8",
+    )
+
+    (target / ".gitignore").write_text(
+        "# Generated app output lives in a SIBLING directory by convention (see README.md) and\n"
+        "# is disposable -- if one ever ends up nested here by accident, don't track it.\n"
+        "*-app/\n"
+        "\n"
+        "# OS/editor noise\n"
+        ".DS_Store\n"
+        "Thumbs.db\n"
+        "*.swp\n",
+        encoding="utf-8",
+    )
+
+    subprocess.run(["git", "init", "--quiet"], cwd=target, check=True)
+    subprocess.run(["git", "add", "."], cwd=target, check=True)
+    subprocess.run(
+        ["git", "commit", "--quiet", "-m", f"npdev init: scaffold {target.name}"],
+        cwd=target, check=True,
+    )
+
+    print(f"Created {target}")
+    for name in ("model.json", "config.json", "db.definition.json", "README.md", ".gitignore"):
+        if (target / name).exists():
+            print(f"  {name}")
+    print(f"\ngit: initialized, 1 commit")
+    print(f"\nNext:\n  cd {target.name}\n  npdev run app")
+    return 0
+
+
 def run_generate(args: argparse.Namespace) -> None:
     root = repo_root()
     generator_root = root / "NPDevGenerator"
@@ -1107,6 +1210,42 @@ def _log_excerpt(text: str, around: str | None = None, window: int = 40) -> str:
     return "\n".join(lines[-window:])
 
 
+def _infer_run_app_paths(args: argparse.Namespace) -> dict | None:
+    """I3: `npdev init my-app && cd my-app && npdev run app` must work with no flags -- the model
+    IS the app (see docs/YOUR_FIRST_APP.md), so the directory holding it is enough context to find
+    it and its config, and to name a sensible place to put the generated code. Mutates args in
+    place; returns a diagnostic dict (GENERATE-phase, same shape run_app's own _diag produces) if
+    inference cannot find something explicit flags would have supplied, or None on success.
+    Never overrides an explicitly-passed flag -- CWD-inference is a default, not an override."""
+    cwd = Path.cwd()
+    if not args.model:
+        candidate = cwd / "model.json"
+        if not candidate.exists():
+            return _diag(
+                "GENERATE", "MODEL_NOT_FOUND",
+                f"--model not given and no model.json in the current directory ({cwd}).",
+                suggested_fix="Pass --model explicitly, or run this from a directory `npdev init` "
+                              "created (it scaffolds model.json alongside config.json).",
+            )
+        args.model = str(candidate)
+    if not args.config:
+        candidate = cwd / "config.json"
+        if not candidate.exists():
+            return _diag(
+                "GENERATE", "CONFIG_NOT_FOUND",
+                f"--config not given and no config.json in the current directory ({cwd}).",
+                suggested_fix="Pass --config explicitly, or run this from a directory `npdev init` created.",
+            )
+        args.config = str(candidate)
+    if not args.output:
+        # Sibling directory, not a subdirectory: generated code is disposable and should not sit
+        # inside the same folder as the model it was generated from (docs/YOUR_FIRST_APP.md's own
+        # manual convention -- my-library -> ../my-library-app -- so this matches what anyone who
+        # read that page already expects, rather than inventing a second convention here).
+        args.output = str(cwd.parent / f"{cwd.name}-app")
+    return None
+
+
 def run_app(args: argparse.Namespace) -> dict:
     """Move 10 D1 (LC-D1, `npdev_build_and_run`): GENERATE -> BUILD -> BOOT -> READY, one command,
     structured output, five named failure classes, bounded with guaranteed teardown."""
@@ -1116,6 +1255,10 @@ def run_app(args: argparse.Namespace) -> dict:
     import urllib.request
 
     result: dict = {"phase": "GENERATE", "ok": False, "diagnostics": [], "baseUrl": None, "logExcerpt": None}
+    inference_failure = _infer_run_app_paths(args)
+    if inference_failure is not None:
+        result["diagnostics"].append(inference_failure)
+        return result
     deadline = time.monotonic() + args.timeout
     root = repo_root()
     final_app_out = Path(args.output).expanduser().resolve()
@@ -1340,6 +1483,319 @@ def _find_jar(app_root: Path) -> Path | None:
         if "build" + os.sep + "libs" in str(candidate) and not candidate.name.endswith("-plain.jar"):
             return candidate
     return None
+
+
+def _discover_runtimehost_source_jars(root: Path, external_build_root: Path) -> dict[str, Path]:
+    """Mirrors sync-runtimehost-libs.ps1's own discovery exactly: build/libs/*.jar under
+    NPDevContract/NPDevGenerator/NPDevKernel, PLUS whatever the external npdevBuildRoot's own
+    gradle/ tree holds, skipping npdev-migrations-* (those are staged separately), keeping the
+    newest by mtime when a name collides between the two locations."""
+    by_name: dict[str, Path] = {}
+
+    def consider(jar: Path) -> None:
+        if jar.name.startswith("npdev-migrations-"):
+            return
+        existing = by_name.get(jar.name)
+        if existing is None or jar.stat().st_mtime > existing.stat().st_mtime:
+            by_name[jar.name] = jar
+
+    for source_root_name in ("NPDevContract", "NPDevGenerator", "NPDevKernel"):
+        source_root = root / source_root_name
+        if not source_root.is_dir():
+            continue
+        for jar in source_root.rglob("*.jar"):
+            if "/build/libs/" in jar.as_posix():
+                consider(jar)
+
+    external_gradle_root = external_build_root / "gradle"
+    if external_gradle_root.is_dir():
+        for jar in external_gradle_root.rglob("*.jar"):
+            if "/libs/" in jar.as_posix():
+                consider(jar)
+
+    return by_name
+
+
+def run_setup(args: argparse.Namespace) -> int:
+    """I4: a portable port of scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars --
+    that script is 265 lines with zero Windows-specific constructs (measured); keeping `pwsh` as a
+    hard prerequisite on macOS/Linux for "mkdir, run gradle twice, copy some jars" is an accident
+    of history, not a real Windows dependency. The .ps1 stays exactly as-is for maintainers --
+    this does not call it and it does not call this, per the plan's own explicit prohibition.
+
+    Step 2 (the AI knowledge index) matters more than it looks: NPDevMcp/server.py already errors
+    correctly when the index is missing ("index not built yet -- run: python scripts/ai/
+    build_knowledge.py") -- that good error is currently the user's first hint the step exists.
+    Folding it in here means they never have to see it."""
+    root = repo_root()
+    kernel_root = root / "NPDevKernel"
+    generator_root = root / "NPDevGenerator"
+    kernel_wrapper = gradle_wrapper(kernel_root)
+    generator_wrapper = gradle_wrapper(generator_root)
+    if not kernel_wrapper.exists():
+        raise CliError(f"Kernel Gradle wrapper not found: {kernel_wrapper}")
+    if not generator_wrapper.exists():
+        raise CliError(f"Generator Gradle wrapper not found: {generator_wrapper}")
+
+    build_root = _ai_build_root()
+    os.environ["NPDEV_BUILD_ROOT"] = str(build_root)
+    libs_dir = build_root / "runtimehost-libs"
+    libs_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"npdev setup: [1/3] building Kernel/Contract runtime jars (npdevBuildRoot={build_root})")
+    kernel_command = [str(kernel_wrapper), "jar", f"-PnpdevBuildRoot={build_root}",
+                       *gradle_project_cache_args("kernel"), "--no-daemon", "--console=plain"]
+    if os.name == "nt" and kernel_wrapper.suffix.lower() == ".bat":
+        kernel_command = ["cmd.exe", "/c"] + kernel_command
+    subprocess.run(kernel_command, cwd=kernel_root, check=True)
+
+    print("npdev setup: [1/3] building Generator and CLI jars")
+    generator_command = [str(generator_wrapper), ":generator:jar", ":tools:npdev-cli:jar",
+                          f"-PnpdevBuildRoot={build_root}", *gradle_project_cache_args("generator"),
+                          "--no-daemon", "--console=plain"]
+    if os.name == "nt" and generator_wrapper.suffix.lower() == ".bat":
+        generator_command = ["cmd.exe", "/c"] + generator_command
+    subprocess.run(generator_command, cwd=generator_root, check=True)
+
+    source_jars = _discover_runtimehost_source_jars(root, build_root)
+    if not source_jars:
+        raise CliError("No RuntimeHost jars were discovered under build/libs after local jar build.")
+
+    copied, up_to_date = [], []
+    for name, source in sorted(source_jars.items()):
+        target = libs_dir / name
+        if target.exists():
+            same_size = target.stat().st_size == source.stat().st_size
+            same_time = abs(target.stat().st_mtime - source.stat().st_mtime) < 1
+            if same_size and same_time:
+                up_to_date.append(name)
+                continue
+        shutil.copy2(source, target)
+        copied.append(name)
+
+    missing = [name for name in source_jars if not (libs_dir / name).exists()]
+    if missing:
+        raise CliError(f"RuntimeHost libs sync failed; missing after copy: {', '.join(missing)}")
+
+    manifest = {
+        "schemaVersion": "npdev-runtimehost-libs-manifest.v1",
+        "generatedAt": _utc_now(),
+        "runtimeHostLibsLocation": "external-local-cache",
+        "requiredStagedJars": sorted(source_jars),
+    }
+    (libs_dir / "runtimehost-libs-manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    print(f"npdev setup: {len(copied)} jar(s) copied, {len(up_to_date)} already current -> {libs_dir}")
+
+    # Clean the source builds' own build/ dirs afterward -- build output does not belong inside
+    # the repo tree (this repo's own standing policy); scoped to exactly the three source roots
+    # walked above, nothing else.
+    for source_root_name in ("NPDevContract", "NPDevGenerator", "NPDevKernel"):
+        source_root = root / source_root_name
+        if not source_root.is_dir():
+            continue
+        for build_dir in sorted((p for p in source_root.rglob("build") if p.is_dir()),
+                                 key=lambda p: len(str(p)), reverse=True):
+            shutil.rmtree(build_dir, ignore_errors=True)
+
+    build_knowledge = root / "scripts" / "ai" / "build_knowledge.py"
+    if build_knowledge.exists():
+        print("npdev setup: [2/3] building the AI knowledge index")
+        subprocess.run([sys.executable, str(build_knowledge)], cwd=root, check=True)
+        knowledge_note = str(build_root / "npdev-ai")
+    else:
+        print(f"npdev setup: [2/3] skipped -- not found: {build_knowledge}")
+        knowledge_note = "skipped"
+
+    print(f"npdev setup: [3/3] done")
+    print(f"\nRuntimehost jars: {libs_dir}\nKnowledge index:  {knowledge_note}")
+    return 0
+
+
+def _resolve_java_home_binary(java_home: str) -> Path:
+    return Path(java_home) / "bin" / ("java.exe" if os.name == "nt" else "java")
+
+
+def run_doctor(args: argparse.Namespace) -> int:
+    """I5: one screen, no scrolling -- exit non-zero listing only what MUST be fixed, warnings
+    separate and never blocking. Every check here exists because this project already hit the
+    failure mode it guards: JAVA_HOME/`java`-on-PATH disagreement is the classic silent Gradle
+    mismatch (Gradle follows JAVA_HOME, not PATH); a hardcoded runtimehost-libs path (REG-131)
+    broke `run app` for everyone but its author -- `doctor` naming the fix (`npdev setup`) instead
+    of a bare "missing" is the same lesson at authoring time instead of failure time."""
+    problems: list[str] = []
+    warnings: list[str] = []
+
+    java_path = shutil.which("java")
+    if java_path is None:
+        problems.append("Java not found on PATH -- NPDev requires Java 17 (Gradle needs it for everything).")
+    else:
+        try:
+            version_output = subprocess.run(
+                ["java", "-version"], capture_output=True, text=True, timeout=10,
+            ).stderr
+        except (OSError, subprocess.SubprocessError):
+            version_output = ""
+        match = re.search(r'version "(\d+)', version_output)
+        found_version = match.group(1) if match else "unknown"
+        if found_version != "17":
+            problems.append(f"Java {found_version} found ({java_path}) -- NPDev requires Java 17 specifically.")
+
+        java_home = os.environ.get("JAVA_HOME")
+        if java_home:
+            expected = _resolve_java_home_binary(java_home)
+            try:
+                if os.name == "nt":
+                    same = str(expected.resolve()).lower() == str(Path(java_path).resolve()).lower()
+                else:
+                    same = expected.resolve() == Path(java_path).resolve()
+            except OSError:
+                same = False
+            if not same:
+                problems.append(
+                    f"JAVA_HOME disagrees with the `java` on PATH -- JAVA_HOME={java_home} "
+                    f"(-> {expected}) but PATH resolves java to {java_path}. Gradle follows "
+                    f"JAVA_HOME, so a build can silently use a different JDK than this check just "
+                    f"looked at."
+                )
+        else:
+            warnings.append("JAVA_HOME is not set -- Gradle falls back to PATH, which works today "
+                             "but is worth setting explicitly so the two can never disagree.")
+
+    if sys.version_info < (3, 9):
+        problems.append(f"Python {sys.version.split()[0]} found -- NPDev's CLI needs Python 3.9+.")
+
+    if shutil.which("git") is None:
+        problems.append("git not found on PATH -- required to clone NPDev and for `npdev init`.")
+
+    required_gb = 5
+    try:
+        free_gb = shutil.disk_usage(repo_root()).free / (1024 ** 3)
+        if free_gb < required_gb:
+            problems.append(f"{free_gb:.1f} GB free -- NPDev's Gradle caches and a generated "
+                             f"app's own build need roughly {required_gb} GB free.")
+    except OSError:
+        warnings.append("could not determine free disk space.")
+
+    if _default_runtimehost_libs_dir() is None:
+        problems.append("Runtimehost jars not staged -- run `npdev setup`.")
+
+    knowledge_index = _ai_build_root() / "npdev-ai" / "rag-index.json"
+    if not knowledge_index.exists():
+        warnings.append("AI knowledge index not built -- run `npdev setup` (needed for the MCP "
+                         "tools, not for generate/build/run).")
+
+    if shutil.which("docker") is None:
+        warnings.append("Docker not found -- only needed for the docker-compose run path.")
+
+    if shutil.which("pwsh") is None:
+        warnings.append("PowerShell 7 (pwsh) not found -- fine for the portable `npdev` path "
+                         "(`npdev setup` replaces it); still needed for this repo's own "
+                         "maintainer scripts under scripts/.")
+
+    print("npdev doctor")
+    print("=" * 60)
+    if problems:
+        print(f"\nMUST FIX ({len(problems)}):")
+        for p in problems:
+            print(f"  [FAIL] {p}")
+    if warnings:
+        print(f"\nWarnings ({len(warnings)}, not blocking):")
+        for w in warnings:
+            print(f"  [WARN] {w}")
+    if not problems and not warnings:
+        print("\nEverything checked out.")
+    return 1 if problems else 0
+
+
+def _mcp_server_entry() -> dict:
+    """The two things a user gets wrong in a hand-written MCP config: the absolute path and the
+    Python interpreter. `sys.executable` is the interpreter ALREADY running this process -- if
+    invoked via the npdev/npdev.bat wrapper (python3 then python, the same resolution order a GUI
+    client cannot replicate on its own), it is already the correctly-resolved one."""
+    server_path = repo_root() / "NPDevMcp" / "server.py"
+    return {
+        "command": sys.executable,
+        "args": [str(server_path)],
+        "env": {"NPDEV_ROOT": str(repo_root())},
+    }
+
+
+def _claude_desktop_config_path() -> Path | None:
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+    if os.name == "nt":
+        appdata = os.environ.get("APPDATA")
+        return Path(appdata) / "Claude" / "claude_desktop_config.json" if appdata else None
+    return Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
+
+
+def _merge_mcp_config(config_path: Path, entry: dict) -> tuple[dict, str | None]:
+    """Merge semantics are non-negotiable (I6): a convenience command that destroys a user's other
+    configured MCP servers is unforgivable. Missing file -> create with just our entry. Existing,
+    parseable file -> back it up FIRST, then touch ONLY mcpServers.npdev, every other key stays
+    byte-identical. Existing, UNPARSEABLE file -> stop and raise, do not write -- a hand-edited
+    config that no longer parses is the user's in-progress work, not ours to overwrite."""
+    if not config_path.exists():
+        return {"mcpServers": {"npdev": entry}}, None
+
+    raw = config_path.read_text(encoding="utf-8")
+    try:
+        config = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise CliError(
+            f"{config_path} exists but is not valid JSON ({exc}) -- refusing to touch it. Fix it "
+            f"by hand, or use `npdev mcp install --print` and paste the block in yourself."
+        )
+
+    backup_path = config_path.with_name(config_path.name + f".bak-{datetime.now().strftime('%Y%m%d%H%M%S')}")
+    shutil.copy2(config_path, backup_path)
+    config.setdefault("mcpServers", {})
+    config["mcpServers"]["npdev"] = entry
+    return config, str(backup_path)
+
+
+def run_mcp_install(args: argparse.Namespace) -> int:
+    """I6: writes/merges an MCP client config pointing at NPDevMcp/server.py. The largest
+    built-but-unreachable capability in the project before this -- 16 MCP tools and no config
+    template anywhere, so a non-specialist could not connect a client."""
+    entry = _mcp_server_entry()
+    server_path = Path(entry["args"][0])
+    if not server_path.exists():
+        raise CliError(f"MCP server not found: {server_path}")
+
+    if args.print_only or not args.client:
+        print(json.dumps({"mcpServers": {"npdev": entry}}, indent=2))
+        if args.client:
+            target = ".mcp.json" if args.client == "claude-code" else "claude_desktop_config.json"
+            print(f"\nPaste this into {target} yourself, or re-run without --print to write it.")
+        else:
+            print("\n(no --client given -- printed only. Pass --client claude-code or "
+                  "--client claude-desktop to write the file, or paste this block into "
+                  "any other MCP client's own settings.)")
+        return 0
+
+    if args.client == "claude-code":
+        config_path = Path.cwd() / ".mcp.json"
+    else:
+        config_path = _claude_desktop_config_path()
+        if config_path is None or not config_path.parent.exists():
+            print(f"Could not find (or safely create) {config_path or 'a Claude Desktop config path'} "
+                  f"on this platform -- not guessing, not creating the directory tree.")
+            print("Paste this into your client's MCP settings yourself:\n")
+            print(json.dumps({"mcpServers": {"npdev": entry}}, indent=2))
+            return 1
+
+    config, backup_path = _merge_mcp_config(config_path, entry)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+
+    print(f"Wrote {config_path}")
+    if backup_path:
+        print(f"Backed up the previous file to {backup_path}")
+    print(f"\nServer: {entry['command']} {server_path}")
+    print("Restart your client, then confirm NPDev's tools appear in its tool list.")
+    return 0
 
 
 def _default_runtimehost_libs_dir() -> Path | None:
@@ -2339,15 +2795,50 @@ def build_parser() -> argparse.ArgumentParser:
         prog="npdev",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "New here?  npdev generate app --model <m> --config <c> --output <dir>\n"
-            "           then:  cd <dir> && ./gradlew bootJar && java -jar build/libs/*.jar\n"
+            "New here?  npdev init my-app && cd my-app && npdev run app\n"
             "           then open http://localhost:8080\n"
             "\n"
-            "Docs: docs/GETTING_STARTED.md"
+            "Docs: docs/GETTING_STARTED.md, docs/YOUR_FIRST_APP.md"
         ),
     )
     parser.add_argument("--version", action="store_true", help="Print the portable NPDev CLI version.")
     subparsers = parser.add_subparsers(dest="command")
+
+    init_parser = subparsers.add_parser(
+        "init", help="Scaffold a new NPDev app directory: model, config, a real database, a README, "
+                     "and a first git commit (I3)."
+    )
+    init_parser.add_argument("name", help="Directory to create. Must not exist inside this repo, and "
+                                           "must be empty or not yet exist.")
+    init_parser.add_argument(
+        "--from", dest="from_sample", default=None, metavar="SAMPLE",
+        help="Name of a directory under NPDevSamples/ to derive the seed from instead of the "
+             "default. Must contain model.json and config.json.",
+    )
+
+    subparsers.add_parser(
+        "setup", help="Build the runtimehost jars a generated app needs to compile, and the AI "
+                      "knowledge index -- no pwsh required (I4)."
+    )
+
+    subparsers.add_parser(
+        "doctor", help="Check this machine is ready for NPDev -- Java 17, JAVA_HOME agreement, "
+                       "Python, git, disk space, staged jars (I5)."
+    )
+
+    mcp = subparsers.add_parser(
+        "mcp", help="Connect an AI client to NPDev's MCP tools (I6)."
+    )
+    mcp_sub = mcp.add_subparsers(dest="mcp_command")
+    mcp_install = mcp_sub.add_parser(
+        "install", help="Write (merge, never overwrite) an MCP client config pointing at "
+                        "NPDevMcp/server.py."
+    )
+    mcp_install.add_argument("--client", choices=["claude-code", "claude-desktop"], default=None)
+    mcp_install.add_argument(
+        "--print", dest="print_only", action="store_true",
+        help="Print the config block instead of writing any file (default when --client is omitted).",
+    )
 
     validate = subparsers.add_parser(
         "validate", help="Check a model is correct -- structure and meaning -- without generating."
@@ -2481,9 +2972,21 @@ def build_parser() -> argparse.ArgumentParser:
     run_app = run_sub.add_parser(
         "app", help="Move 10 D1 (LC-D1): generate + build + boot + health-check an app in one command."
     )
-    run_app.add_argument("--model", required=True)
-    run_app.add_argument("--config", required=True)
-    run_app.add_argument("--output", required=True)
+    run_app.add_argument(
+        "--model", required=False,
+        help="Defaults to ./model.json in the current directory (I3: so `npdev init my-app && "
+             "cd my-app && npdev run app` works with no flags).",
+    )
+    run_app.add_argument(
+        "--config", required=False,
+        help="Defaults to ./config.json in the current directory.",
+    )
+    run_app.add_argument(
+        "--output", required=False,
+        help="Defaults to a sibling directory named '<current-directory-name>-app' -- the same "
+             "convention docs/YOUR_FIRST_APP.md's own manual steps use (e.g. my-library -> "
+             "../my-library-app), so the inferred path is not a surprise to anyone who read that page.",
+    )
     run_app.add_argument(
         "--require-db-definition",
         action="store_true",
@@ -2683,6 +3186,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "inspect" and args.inspect_command == "app":
             inspect_app(args)
             return 0
+        if args.command == "init":
+            return run_init(args)
+        if args.command == "setup":
+            return run_setup(args)
+        if args.command == "doctor":
+            return run_doctor(args)
+        if args.command == "mcp" and args.mcp_command == "install":
+            return run_mcp_install(args)
         if args.command == "generate" and args.generate_command == "app":
             run_generate(args)
             return 0

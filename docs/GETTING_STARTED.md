@@ -55,12 +55,21 @@ it, and giving it a database that actually keeps your data is the real next step
 ## Other useful commands
 
 ```sh
+./npdev doctor
 ./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json
 ./npdev report bootstrap
 ```
 
-`normalize ai-model` is the first step of the AI-authoring loop (`docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md`).
-`./npdev report bootstrap` regenerates the maintainer status reports under `scripts/reports/out/`.
+`doctor` checks this machine is ready -- Java 17 and `JAVA_HOME` agreement, Python, git, disk
+space, and whether the runtimehost jars (`./npdev setup`) and AI knowledge index are staged; safe
+to run any time. `normalize ai-model` is the first step of the AI-authoring loop
+(`docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md`). `./npdev report bootstrap` regenerates the
+maintainer status reports under `scripts/reports/out/`.
+
+`./npdev init my-app` scaffolds a new app directory (model/config/a real database/README/git
+history) instead of copying `canonical-demo` by hand -- see `docs/YOUR_FIRST_APP.md`. `./npdev mcp
+install --client claude-code` (or `claude-desktop`, or `--print`) connects an AI client to NPDev's
+MCP tools -- see `docs/AUTHORING_WITH_AI.md`.
 
 `npdev verify --tier T0|T1|T2|T3` is the one entry point for this repo's verification tiers, from
 an inner-loop syntax/schema check (T0, ~1s) up through a full canary build+boot+smoke (T1, a few
