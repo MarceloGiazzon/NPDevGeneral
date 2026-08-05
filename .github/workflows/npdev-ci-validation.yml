@@ -208,9 +208,9 @@ jobs:
           path: |
             scripts/reports/out
             ci-maturity-evidence
-            NPDevContract/dsl/**/build/test-results/test
-            NPDevKernel/**/build/test-results/test
-            NPDevGenerator/**/build/test-results/test
+            Build/gradle/npdev-dsl/**/test-results/test
+            Build/gradle/npdev-kernel/**/test-results/test
+            Build/gradle/npdev-generator/**/test-results/test
             NPDevRuntimeHost/**/build/test-results/test
             NPDevRuntimeHost/**/build/test-results/integrationTest
             NPDevSamples/**/Output/App/**/build/test-results/integrationTest
