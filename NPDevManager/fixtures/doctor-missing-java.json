@@ -1,0 +1,108 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "doctor",
+  "ok": false,
+  "exitCode": 1,
+  "checks": [
+    {
+      "id": "java-present",
+      "name": "Java",
+      "status": "fail",
+      "found": null,
+      "expected": "installed and on PATH",
+      "detail": "Java not found on PATH -- NPDev requires Java 17 (Gradle needs it for everything).",
+      "fix": "Install Java 17 from https://adoptium.net/temurin/releases/",
+      "fixCommand": null
+    },
+    {
+      "id": "java-version",
+      "name": "Java 17",
+      "status": "pass",
+      "found": null,
+      "expected": "17",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "java-home-agreement",
+      "name": "JAVA_HOME",
+      "status": "pass",
+      "found": null,
+      "expected": "set, and agreeing with the java on PATH",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "python-version",
+      "name": "Python 3.9+",
+      "status": "pass",
+      "found": "3.13.5",
+      "expected": "3.9+",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "git-present",
+      "name": "git",
+      "status": "pass",
+      "found": "C:\\Program Files\\Git\\mingw64\\bin\\git.EXE",
+      "expected": "installed and on PATH",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "disk-space",
+      "name": "Disk space",
+      "status": "pass",
+      "found": "122.5 GB",
+      "expected": ">= 5 GB",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "runtimehost-jars",
+      "name": "NPDev jars",
+      "status": "pass",
+      "found": "D:\\WorkSpace\\NPDev\\Build\\runtimehost-libs",
+      "expected": "staged",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "ai-knowledge-index",
+      "name": "AI knowledge index",
+      "status": "pass",
+      "found": "D:\\WorkSpace\\NPDev\\Build\\npdev-ai\\rag-index.json",
+      "expected": "built",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "docker-present",
+      "name": "Docker",
+      "status": "pass",
+      "found": "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.EXE",
+      "expected": "optional",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "pwsh-present",
+      "name": "PowerShell 7",
+      "status": "pass",
+      "found": "C:\\Program Files (x86)\\PowerShell\\7\\pwsh.EXE",
+      "expected": "optional",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    }
+  ]
+}

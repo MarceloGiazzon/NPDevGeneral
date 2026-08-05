@@ -1,0 +1,198 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #6b7280;
+  --border: #e2e2e2;
+  --pass: #1a7f37;
+  --fail: #c0392b;
+  --warn: #a3720a;
+  --accent: #2563eb;
+  --surface: #f6f7f9;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181a;
+    --fg: #ececec;
+    --muted: #9aa0a6;
+    --border: #2e2f32;
+    --pass: #3fbf5f;
+    --fail: #f2685c;
+    --warn: #e0b13a;
+    --accent: #5b9dff;
+    --surface: #202124;
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* Must win over every other display rule in this file regardless of source order or specificity
+   ties (a bare .fake-banner{display:flex} rule below otherwise beats the UA default [hidden]
+   rule, since both are single-selector specificity and this file loads after it) -- any element
+   marked hidden must actually disappear. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.fake-banner {
+  background: #7a3b00;
+  color: #fff;
+  padding: 6px 14px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 13px;
+}
+.fake-banner select { margin-left: 6px; }
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.tab {
+  padding: 12px 20px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 2px solid transparent;
+}
+.tab:hover { color: var(--fg); }
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+main {
+  flex: 1;
+  padding: 24px 32px;
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  overflow-y: auto;
+}
+
+.screen[hidden] { display: none; }
+
+h1 { margin: 0 0 4px; font-size: 22px; }
+h2 { font-size: 15px; margin: 20px 0 8px; }
+.subtitle { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+
+.check-list { display: flex; flex-direction: column; gap: 6px; }
+.check-row {
+  display: grid;
+  grid-template-columns: 24px 160px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.check-row .mark { font-weight: 700; text-align: center; }
+.check-row.pass .mark { color: var(--pass); }
+.check-row.fail .mark { color: var(--fail); }
+.check-row.warn .mark { color: var(--warn); }
+.check-row .name { font-weight: 600; }
+.check-row .detail { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.check-row .found { color: var(--muted); font-family: monospace; font-size: 12px; }
+
+button {
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 13px;
+}
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.fix-btn { color: var(--fail); border-color: var(--fail); }
+
+.install-step {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.status-line { color: var(--muted); font-size: 13px; margin: 6px 0; }
+progress { width: 100%; margin: 8px 0; }
+
+.log-view {
+  background: #0d0f12;
+  color: #d7e0ea;
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.app-list, .version-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.app-item, .version-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.version-item.current { border-color: var(--accent); }
+.version-item .badge {
+  font-size: 11px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 8px;
+}
+
+form label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+form input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.run-buttons { display: flex; gap: 10px; margin: 14px 0; }
+.run-banner {
+  border: 1px solid var(--fail);
+  color: var(--fail);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.run-banner.ok { border-color: var(--pass); color: var(--pass); }
