@@ -118,6 +118,35 @@ cd ../my-library-app && ./gradlew bootJar && java -jar build/libs/FinalExec-0.1.
 book is still there** (with `publishedYear` blank, since it existed before the field did) — NPDev
 evolves the schema rather than recreating it.
 
+### Let it do that for you
+
+Doing this by hand once is worth it — you have now seen every step. After that, use the watch loop:
+
+```sh
+cd ../my-library
+npdev dev
+```
+
+It generates, builds, boots, and then watches your model. **Save a change and it does the whole
+sequence above for you**, printing what it did:
+
+```
+14:09:02  changed: model.json
+14:09:02  validate ......................................... ok
+14:09:47  ready in 45.2s   http://localhost:8080
+```
+
+Two things worth knowing:
+
+- **A mistake does not cost you the running app.** `npdev dev` validates before it touches
+  anything, so a typo'd field type prints the error and leaves your app serving the last good
+  model. Fix it, save again.
+- **Your data survives**, because `npdev init` gave you a real file-backed database. If you see
+  `data IN-MEMORY` in the banner, your `db.definition.json` says `InMemory` and rows will be lost
+  on every reload.
+
+Press Ctrl+C to stop.
+
 Commit the change:
 
 ```sh

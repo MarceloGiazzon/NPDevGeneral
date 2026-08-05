@@ -836,6 +836,147 @@ else
   fail "npdev mcp install: server answers initialize + tools/list over stdio" "$HANDSHAKE_OK"
 fi
 
+# ---------------------------------------------------------------- 9. npdev dev
+
+section "9. npdev dev -- the watch loop (the product's inner loop)"
+
+# Section 5 proves a newcomer CAN change a field: edit, validate, generate, build, restart,
+# assert over REST. This section proves `npdev dev` does all of that FOR them on save --
+# and, just as importantly, that a typo does NOT take their running app down.
+#
+# The two checks that carry the design:
+#   dev-invalid-model-keeps-app-up   validate runs before anything is touched (the trust invariant)
+#   dev-teardown / dev-no-orphan     the loop stops what it started, or reclaims it next start
+
+DEV_DIR=/work/dev-loop
+DEV_LOG=/work/dev.log
+DEV_PORT=8087
+DEV_CONCEPT="Provider"
+
+cd "$SRC" || die "cannot cd to $SRC for section 9"
+
+rm -rf "$DEV_DIR"; mkdir -p "$DEV_DIR"
+if ./npdev init "$DEV_DIR/dev-app" >>"$LOG" 2>&1; then
+  pass "npdev dev: scaffold via npdev init"
+else
+  fail "npdev dev: scaffold via npdev init" "npdev init failed" "see $LOG"
+fi
+
+DEV_APP="$DEV_DIR/dev-app"
+if [ -f "$DEV_APP/model.json" ]; then
+  # Persistence is an `npdev init` promise, and `npdev dev` depends on it: with an
+  # InMemory engine every reload would silently discard the user's test rows.
+  if grep -q '"engine"[[:space:]]*:[[:space:]]*"H2Local"' "$DEV_APP/db.definition.json" 2>/dev/null; then
+    pass "npdev dev: scaffolded db is persistent (H2Local, not InMemory)"
+  else
+    fail "npdev dev: scaffolded db is persistent (H2Local, not InMemory)" \
+         "npdev init scaffolded an ephemeral database, so dev reloads would discard data" \
+         "db.definition.json should declare engine H2Local + KeepExistingIfCompatible"
+  fi
+
+  ( cd "$DEV_APP" && "$SRC/npdev" dev --port "$DEV_PORT" ) >"$DEV_LOG" 2>&1 &
+  DEV_PID=$!
+
+  DEV_UP=0
+  for _ in $(seq 1 220); do
+    sleep 3
+    grep -q "ready in" "$DEV_LOG" && { DEV_UP=1; break; }
+    kill -0 "$DEV_PID" 2>/dev/null || break
+  done
+
+  if [ "$DEV_UP" = "1" ]; then
+    pass "npdev dev: first cycle reaches READY with no flags"
+
+    DEV_SEED_CONCEPT=$(python3 -c "import json;print(json.load(open('$DEV_APP/model.json'))['concepts'][0]['name'])" 2>/dev/null)
+    echo "  seeded concept: $DEV_SEED_CONCEPT"
+
+    # --- a saved edit must rebuild and become reachable ---------------------------
+    python3 /usr/local/bin/inject_field.py "$DEV_APP/model.json" "$DEV_SEED_CONCEPT" \
+      '{"name": "devLoopProof", "type": "string"}' >>"$LOG" 2>&1
+
+    DEV_RELOADED=0
+    for _ in $(seq 1 220); do
+      sleep 3
+      [ "$(grep -c 'ready in' "$DEV_LOG")" -ge 2 ] && { DEV_RELOADED=1; break; }
+      kill -0 "$DEV_PID" 2>/dev/null || break
+    done
+
+    if [ "$DEV_RELOADED" = "1" ]; then
+      pass "npdev dev: a saved edit rebuilds and reaches READY again"
+    else
+      fail "npdev dev: a saved edit rebuilds and reaches READY again" \
+           "no second 'ready in' after editing model.json" "see $DEV_LOG"
+      tail -20 "$DEV_LOG" | sed 's/^/          | /'
+    fi
+
+    if grep -q 'changed:' "$DEV_LOG"; then
+      pass "npdev dev: the file change was detected and reported"
+    else
+      fail "npdev dev: the file change was detected and reported" "no 'changed:' line" "see $DEV_LOG"
+    fi
+
+    # --- THE TRUST INVARIANT: an invalid model must not take the app down ----------
+    python3 - "$DEV_APP/model.json" <<'PYEOF' >>"$LOG" 2>&1
+import json, sys
+p = sys.argv[1]
+m = json.load(open(p, encoding="utf-8"))
+m["concepts"][0]["fields"][1]["type"] = "strng"     # deliberate, known-bad
+json.dump(m, open(p, "w", encoding="utf-8"), indent=2)
+PYEOF
+    sleep 30
+
+    if curl -sS -o /dev/null -w '%{http_code}' "http://localhost:$DEV_PORT/actuator/health" 2>/dev/null | grep -q '^200$'; then
+      pass "npdev dev: an INVALID model leaves the running app up (validate-first)"
+    else
+      fail "npdev dev: an INVALID model leaves the running app up (validate-first)" \
+           "the app stopped serving after a typo was saved -- validate must run before anything is touched" \
+           "see $DEV_LOG"
+      tail -20 "$DEV_LOG" | sed 's/^/          | /'
+    fi
+
+    if grep -qi 'FAILED' "$DEV_LOG"; then
+      pass "npdev dev: the validation failure is reported, not swallowed"
+    else
+      fail "npdev dev: the validation failure is reported, not swallowed" \
+           "no failure reported for a known-bad model" "see $DEV_LOG"
+    fi
+  else
+    fail "npdev dev: first cycle reaches READY with no flags" \
+         "npdev dev never reached READY" "see $DEV_LOG"
+    tail -20 "$DEV_LOG" | sed 's/^/          | /'
+  fi
+
+  # --- teardown: stop the loop, then prove nothing was left behind -----------------
+  kill -INT "$DEV_PID" 2>/dev/null
+  sleep 8
+  kill -INT "$DEV_PID" 2>/dev/null      # second interrupt escalates, by design
+  sleep 12
+  if kill -0 "$DEV_PID" 2>/dev/null; then
+    kill -9 "$DEV_PID" 2>/dev/null
+    fail "npdev dev: exits on interrupt" \
+         "the loop was still running 20s after two interrupts" "see $DEV_LOG"
+  else
+    pass "npdev dev: exits on interrupt"
+  fi
+
+  # Teardown cannot be guaranteed on every exit path (a force-kill runs no cleanup), so
+  # the contract is: either the app is gone, OR the next `npdev dev` reclaims it. Assert
+  # the reclaim path directly rather than assuming the happy one.
+  sleep 5
+  if curl -sS -o /dev/null -w '%{http_code}' "http://localhost:$DEV_PORT/actuator/health" 2>/dev/null | grep -q '^200$'; then
+    if [ -f "$DEV_APP/.npdev-dev/app.pid" ]; then
+      pass "npdev dev: a surviving app is recorded for reclaim (app.pid present)"
+    else
+      fail "npdev dev: a surviving app is recorded for reclaim (app.pid present)" \
+           "an app is still serving and nothing recorded its pid, so the next run cannot reclaim it"
+    fi
+  else
+    pass "npdev dev: no app left serving after the loop exits"
+  fi
+else
+  fail "npdev dev: scaffold via npdev init" "no model.json under $DEV_APP" "see $LOG"
+fi
+
 # ---------------------------------------------------------------- summary
 
 section "SUMMARY"
