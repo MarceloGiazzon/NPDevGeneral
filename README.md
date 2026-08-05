@@ -1,138 +1,236 @@
 # NPDev
 
-**NPDev is spec-driven development for business applications.** You write a specification in
-domain language; NPDev derives a complete, deterministic system — database schema and its
-migrations, REST API, authorization, and long-running business processes — as Spring Boot source
-you own outright.
+**You declare what your application is. NPDev builds all of it — database, REST API, admin screens,
+role-based access, durable background processes — as Spring Boot source you own outright.**
 
-Concretely: you author a JSON model (concepts, fields, flows, panels, authorization rules), and
-`npdev generate app` produces a real Gradle/Spring Boot project — not a scaffold you fill in, a
-working application with a database schema, a REST API, row-level authorization, and a generic
-admin UI already wired up. You then build and run it like any other Spring Boot app.
+One JSON file describes the things your app tracks, how they relate, who may see them, and what
+happens automatically. NPDev turns that into a real Gradle/Spring Boot project — not a scaffold you
+fill in, a working application.
 
-## What it generates
+---
 
-| Layer | Generated |
+## See it run
+
+```sh
+npdev doctor                       # is this machine ready? (Java 17, Python, disk)
+npdev setup                        # one-time: build NPDev's own jars locally
+npdev init my-app && cd my-app     # a small, runnable app to start from
+npdev dev                          # build it, run it, and watch it
+```
+
+**→ open http://localhost:8080**
+
+Log in with the key in `SUPER_USER_KEY.txt`, written to that folder on first start.
+
+**Four commands.** You now have list and edit screens, a REST API behind them, a database, and
+authentication.
+
+Leave `npdev dev` running. Add a field to `model.json`, save, and watch:
+
+```
+14:09:02  changed: model.json
+14:09:02  validate ......................................... ok
+14:09:47  ready in 45.2s   http://localhost:8080
+```
+
+The screens, the API and the database column are all there. **Get it wrong and it says so without
+taking your app down** — validation runs before anything is touched.
+
+---
+
+## What you can build
+
+This is the part worth reading. **Every row below is a declaration in your model file — not code
+you write.**
+
+### Data
+
+| You write | You get |
 |---|---|
-| Entities, persistence, REST API, OpenAPI | ✅ |
-| Schema migrations + evolution planning | ✅ |
-| Row-level authorization, tenant isolation | ✅ |
-| Durable flows, events, orchestration | ✅ |
-| Auth, JWT, password reset, ControlPanel | ✅ |
-| Docker + compose + Caddy | ✅ |
-| Generic CRUD admin UI | ✅ |
-| **Custom business screens** | ❌ **hand-written against the generated API** |
+| a concept with fields | table, REST API, list/create/edit screens, validation |
+| **13 field types** — text, numbers, dates, enums, references, files, arrays, objects | the right column type, the right input widget, the right validation |
+| a `domainType` | format, validation, widget and label defined **once**, reused everywhere |
+| `{"type":"unique","fields":["isbn"]}` | a real DB constraint, server validation, and a clear error |
+| an `expression` invariant | business rules enforced where they cannot be bypassed |
+| a `reference` field | foreign key, joins, cascade rules, and a searchable picker in the UI |
+| `extends` on a concept | inheritance — shared fields declared once |
+| `derivedExpression` | computed values evaluated server-side, so every client agrees |
+| `indexes` | the indexes your queries need, created and tracked |
 
-## Three things this does that most CRUD generators don't
+### Behaviour
 
-**Schema evolution that preserves data.** Change your model — rename a field, split a concept,
-narrow a type — and NPDev diffs the new shape against the live database and emits a migration
-plan, not a drop-and-recreate. Renames need to be declared (a rename and a drop+add look
-identical in a pure shape diff), but a declared rename keeps the data. See
-`docs/DATABASES_AND_MIGRATIONS.md`.
+| You write | You get |
+|---|---|
+| a `flow` with steps | **13 step types** — call, branch, loop, create, update, emit, schedule, await, return |
+| any flow | **durable execution: it survives a process restart and resumes where it stopped** |
+| `awaitEvent` | a process that pauses for an approval or a webhook — for days, across deploys |
+| `forEach`, including parallel | isolated iterations that each resume correctly after a crash |
+| `scheduleEvent` / `schedule` | delayed and recurring work, with no separate scheduler |
+| a `procedure` | reusable server-side logic with parameters and a return value |
+| an `orchestrationRule` | when *this* event happens, run *that* |
+| a `capability` + `binding` | name an operation, swap its implementation without touching the model |
 
-**A durable workflow engine.** A flow can pause on `awaitEvent` — waiting for an approval, a
-webhook, a reply — and survive a JVM restart while it waits; a durable suspend/resume mechanism
-finds it and continues exactly where it left off, days later if needed. A failure mid-flow
-compensates already-completed steps (a saga, not a rollback), and that compensation itself
-survives a crash mid-unwind. See `docs/FLOWS.md`.
+### Screens
 
-**AI-authored specs against a schema-constrained validator.** The model is a JSON document with a
-JSON Schema and a semantic validator that rejects an invalid spec before anything is generated —
-which makes it a tractable target for an LLM to author directly, with real, structured feedback
-instead of a runtime crash three steps later. See `docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md`.
+| You write | You get |
+|---|---|
+| nothing | a generated admin UI for every concept, from day one |
+| a `panel` | a real screen with a route, several data sources, layout, and actions |
+| `visibility` / `enabledWhen` | conditional display driven by rules, not JavaScript |
+| an `action` | a button that runs a flow — including ones that stream a generated file back |
+| an `aggregate` | a **master-detail-detail workbench**, saved in one transaction, with commit hooks |
+| a `guidePage` | in-app guidance attached to the screen it explains |
 
-## Quickstart
+### Access
 
-Requires Java 17 and Python 3 -- Docker is optional, only needed for the Docker run path below.
-PowerShell is no longer required for this path (`scripts/**/*.ps1` remain the maintainer path for
-developing NPDev itself -- see "PowerShell scripts" in `docs/GETTING_STARTED.md`). Clone the repo,
-then from its root, run `./npdev doctor` any time to check your machine is ready -- it names
-exactly what to fix or run next:
+| You write | You get |
+|---|---|
+| `roles` + `grants` | roles and what they may do |
+| `requiredRole` | access **enforced at the API**, not just hidden in the UI |
+| row-level rules | control over *which rows* each user sees |
+| `sensitive` on a field | special handling in logs, traces, and exports |
+| — | JWT or API-key auth, a super-user key issued on first boot, and a built-in ControlPanel for users, roles and schedules |
 
-```sh
-# Validate a real, checked-in sample model (full structural + semantic check by default;
-# pass --structural-only for a fast JSON-Schema-only check with no Gradle invocation)
-./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
+### Queries and reporting
 
-# NPDev's own kernel/generator jars are not on Maven Central -- build and stage them locally
-# once (a fresh clone only; already-built jars are reused on every later run):
-./npdev setup
+| You write | You get |
+|---|---|
+| a named `query` | parameterised, permission-checked queries — no SQL built by hand in a controller |
+| `groupBy` + `aggregates` + `having` | roll-ups (`sum`, `count`, `avg`) **joined across concepts** — dashboards without a reporting layer |
+| `tracePolicy` / `auditPolicy` | tracing and auditing declared per operation instead of remembered |
 
-# Generate a complete Spring Boot app from it
-./npdev generate app \
-  --model NPDevContract/dsl/resources/Models/canonical-demo/model.json \
-  --config NPDevContract/dsl/resources/Models/canonical-demo/config.json \
-  --output /path/outside/this/repo/canonical-demo-app
+### Changing it later
+
+| You write | You get |
+|---|---|
+| **save the file** | `npdev dev` validates, regenerates, rebuilds and restarts — automatically |
+| a new field | the schema evolves against the live database — it is not dropped and recreated |
+| `renamedFrom` | the column and its contents move together |
+| `conversions` | reshape existing data as part of the change: split, copy, look up, merge |
+| a typo | an error naming the exact path, **and your app still running on the last good model** |
+| — | destructive changes refused unless you acknowledge them explicitly |
+| — | snapshots around risky migrations, and a real lock so two instances cannot migrate at once |
+
+### Growing it
+
+| You write | You get |
+|---|---|
+| `fragments` | split a large model across files |
+| `packs` | reusable model modules shared between applications |
+| `contexts` + `imports` | bounded contexts, so one team's `Order` is not another's |
+| `propertyScopes` | configuration that cascades: global → tenant → user, in a declared order |
+| — | multi-tenancy, H2 for development and PostgreSQL for production |
+
+**Full reference: `docs/FEATURES.md`.**
+
+---
+
+## What you actually get
+
+```
+Java 17 · Spring Boot · Gradle · H2 (dev) / PostgreSQL (production)
+REST API · generated admin UI · JWT or API-key auth · Docker Compose included
 ```
 
-**Starting a NEW app of your own, not the demo above?** `./npdev init my-app` scaffolds a small,
-real, already-running model and gives it a git history in one step -- see `docs/YOUR_FIRST_APP.md`.
+**A normal Gradle project.** Open it in your IDE, read it, commit it, deploy it anywhere you deploy
+Spring Boot. **If you stopped using NPDev tomorrow, your application would keep working.**
 
-(On Windows, use `npdev.bat` with the same arguments.) The output directory is a complete,
-buildable Spring Boot project with its own README. **The generated `Dockerfile` packages an
-already-built jar — you must build it first, whichever way you run the app:**
+---
 
-```sh
-cd /path/outside/this/repo/canonical-demo-app
-./gradlew bootJar
-```
+## Changing your mind is the normal case
 
-Then either run it directly:
+Add a field to your model, regenerate, and the app follows — the screens, the API, and the database
+schema. Rename something and say so with `renamedFrom`, and it is understood as a rename.
 
-```sh
-java -jar build/libs/FinalExec-0.1.0.jar --spring.profiles.active=dev
-# open http://localhost:8080 -- the Super User key is written to SUPER_USER_KEY.txt
-# in this directory on first boot; log in with it (see docs/DEPLOYMENT.md for how)
-```
+Most business applications are wrong three times before they are right. **NPDev is built for the
+third version, not the first.**
 
-or run it in Docker (a `docker-compose.yml`, with an optional Caddy TLS-terminating `proxy`
-profile, was generated alongside it):
+---
 
-```sh
-cp .env.example .env    # set NPDEV_AUTH_APIKEYS at minimum
-docker compose up
-```
+## Who this is for
 
-Full deployment options (Postgres-first production path, env-var reference, the mail-catcher
-profile) are in `docs/DEPLOYMENT.md`. `docs/GETTING_STARTED.md` covers the portable CLI in more
-depth (`./npdev normalize ai-model`, `./npdev report bootstrap`); `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`
-is the author-facing tour of concepts, flows, capabilities, panels, and events.
+**A good fit for** internal tools, admin systems, operations back-offices, line-of-business
+apps — anything with real entities, real rules, real users, and a schema that will change a dozen
+times before it settles.
+
+**Also a good fit if you want an AI to write it.** The model is JSON with a strict schema and a
+validator that returns typed, machine-readable errors, so an agent can author, check its own work,
+and correct itself. See `docs/AUTHORING_WITH_AI.md`.
+
+**Not a good fit if you want** a bespoke consumer-facing UI (NPDev generates a functional admin
+interface, not a designed product surface), a microservice generator (one model is one deployable
+app), or frozen APIs today.
+
+---
 
 ## Honest limitations
 
-- **Custom business screens: mostly declarative now, fully bespoke still hand-written.** Beyond
-  the generic CRUD admin UI, a model can declare Panels (custom read/action screens, nested
-  master-detail) and Aggregates (multi-region editors) against the generated REST API without
-  writing frontend code — the console this was validated against (WmsOffice's crossdocking
-  console) reached full behavioral parity with its hand-written original, zero cannot-express
-  gaps. A pixel-custom, fully bespoke frontend is still hand-built against the generated API.
-- **One deployable app per model, not a microservice generator.** A model can declare multiple
-  bounded contexts (`contexts[]`, explicit `imports[]` for cross-context references, optional
-  per-context `physicallyIsolate: true` for separate table naming — see
-  `docs/adr/ADR-0011-bounded-contexts.md`), but every context in a model still compiles into the
-  SAME single app and database; contexts are a naming/DSL-level boundary, not a deployment one.
-- **Pre-1.0 and deliberately unstable.** See "Stability policy" below and `BREAKING.md`.
-- **Windows-first tooling.** Development scripts (`scripts/**/*.ps1`) assume PowerShell; the
-  portable `npdev`/`npdev.bat` CLI and CI both also run on Linux, but the day-to-day maintainer
-  workflow is Windows-first today.
+- **Custom screens are hand-written.** You get a working admin UI plus declarable panels and
+  workbenches; a polished, bespoke frontend is built against the generated REST API like any other
+  client.
+- **One model is one deployable app.** Bounded contexts exist inside a model; this is not a
+  microservice generator.
+- **The app restarts to pick up a model change.** `npdev dev` makes that automatic and
+  reports it, but it is a restart, not hot reload.
+- **Pre-1.0 and deliberately unstable.** See below.
+
+The current, complete list of designed limits is `docs/ACCEPTED_BOUNDARIES.md` — kept accurate on
+purpose, because a stale limitations page costs more trust than a short feature list.
+
+---
+
+## The CLI
+
+```sh
+./npdev doctor                    # check this machine
+./npdev setup                     # build NPDev's jars locally (once per clone)
+./npdev init <name>               # scaffold a new model, with git history
+./npdev dev                       # watch the model; rebuild + restart on save
+./npdev run app                   # generate, build, boot, health-check (one shot)
+./npdev validate model <path>     # full structural + semantic check, no generation
+./npdev generate app --model <m> --config <c> --output <dir>
+./npdev mcp install               # connect an AI tool to NPDev
+```
+
+`npdev --help` describes every command. **Windows:** `npdev.bat`, same arguments.
+
+For AI-authored models, `./npdev normalize ai-model <path>` rewrites a draft into canonical form
+before validation.
+
+---
 
 ## Stability policy (pre-1.0)
 
 NPDev is pre-1.0 and **deliberately unstable**. The model DSL, generated code layout, and internal
 APIs will change without deprecation cycles.
 
-We do this on purpose. NPDev models are machine-authored — an agent writes them from your
-specification. A breaking DSL change costs one regeneration, not a migration project. We would
-rather fix a design mistake than carry it for a decade.
+**This is a design position, not an apology.** NPDev models are meant to be machine-authored — an
+agent writes them from your specification. **A breaking DSL change costs one regeneration, not a
+migration project.** We would rather fix a design mistake than carry it for a decade.
 
-Every breaking change ships with:
-  • a `npdev migrate` codemod that rewrites existing models automatically
-  • a one-line entry in `BREAKING.md`
-  • the reason it was worth breaking
+Every breaking change ships with an `npdev migrate` codemod that rewrites existing models
+automatically, a one-line entry in `BREAKING.md`, and the reason it was worth breaking.
 
-If you need frozen APIs today, NPDev is not ready for you yet. We will freeze at 1.0, and not one
-release before.
+**If you need frozen APIs today, NPDev is not ready for you.** We freeze at 1.0, and not one release
+before.
+
+---
+
+## Where to go next
+
+| If you want to… | Go to |
+|---|---|
+| **build your own app** | `docs/YOUR_FIRST_APP.md` — about 15 minutes |
+| **have an AI write the model** | `docs/AUTHORING_WITH_AI.md` |
+| **see everything it can do** | `docs/FEATURES.md` |
+| understand the concepts | `docs/NPDEV_CONCEPTS_DEEP_DIVE.md` |
+| deploy properly (Postgres, Docker, env vars) | `docs/DEPLOYMENT.md` |
+| know how schema changes work | `docs/DATABASES_AND_MIGRATIONS.md` |
+| know what NPDev **won't** do | `docs/ACCEPTED_BOUNDARIES.md` |
+| fix a broken setup | `npdev doctor`, then `docs/GETTING_STARTED.md` |
+| see where the platform is heading | `docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md` |
+
+---
 
 ## License and status
 
@@ -148,20 +246,3 @@ format* version, unrelated to any of the above; it has never changed, including 
 itself landed right after) — a fresh clone of `main` today is `beta1.5` plus that one commit, not a
 different, later release. Recorded here rather than moving the tag, since moving a tag needs
 explicit authorization this note doesn't have.
-
-## Future direction: Box/Object/Truth
-
-The platform's longer-term architectural direction — Boxes as the unit of structure/ownership/
-release, code-bearing Panel/Procedure Objects, and a T0–T6 truth-classification ladder — is
-described in `docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md` (see also
-`docs/adr/ADR-0002-box-object-truth-model.md`, `docs/adr/ADR-0003-code-bearing-panel-procedure-objects.md`).
-
-**Status, precisely:** the Box/Object hierarchy itself (`Application Box` → `Module Box` →
-`Entity Box`/`Rule Box`/`Evidence Box`, code-bearing Panel/Procedure Objects) is **not
-implemented** — `"box"` appears zero times in the model schema. The **truth** half is partially
-real today, independent of Boxes: a `T0`–`T6` truth-level ladder exists on every concept, a bond
-(concept-to-concept reference) pointing at a less-true concept raises a warning at authoring time,
-and a release-gate validator hard-blocks promoting a concept whose reachable dependencies haven't
-earned the required truth level yet (`NPDevContract/docs/BONDS.md`, Phase 6). What's not built yet
-is the Box hierarchy that would organize this platform-wide, and code-bearing Panel/Procedure
-Objects as the primary authored surface — both are the vision doc's subject, not this README's.

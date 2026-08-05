@@ -232,7 +232,7 @@ def validate_json_schema(schema: Path, instance: Path) -> dict:
             raise CliError("npm is required to install the canonical JSON Schema validator dependencies")
         # Run `npm install` FROM the validator dir (cwd), not `--prefix <dir>` from the repo root:
         # `--prefix` sets where node_modules lands but npm still reads package.json from cwd, so with
-        # cwd=repo-root (which has no package.json) npm ENOENTs on Windows (D:\...\package.json). REG-33.
+        # cwd=repo-root (which has no package.json) npm ENOENTs on Windows (<drive>:\...\package.json). REG-33.
         subprocess.run([npm, "install", "--silent"], cwd=validator_root, check=True)
     completed = subprocess.run(
         [
@@ -811,7 +811,7 @@ def gradle_wrapper(generator_root: Path) -> Path:
 def gradle_project_cache_args(module_key: str) -> list[str]:
     """org.gradle.projectcachedir is a Gradle START PARAMETER, read from gradle.properties before
     any -P/env override can take effect -- the root/dsl/generator/kernel gradle.properties files
-    hardcode it to this machine's own D:/WorkSpace/NPDev/Build/gradle-project-caches/<module>
+    hardcode it to this machine's own <drive>:/WorkSpace/NPDev/Build/gradle-project-caches/<module>
     (intentional dev-machine build-output policy: keeps Gradle's own cache out of the repo tree,
     per this repo's own "never write build artifacts inside the repo" rule). On any machine
     without that exact path, Gradle fails before the build even starts ("Cannot convert URL
@@ -1816,7 +1816,7 @@ def _default_runtimehost_libs_dir() -> Path | None:
     third resolution order -- REG-128 already exists because there were two): NPDEV_BUILD_ROOT env
     override, else <repo>.parent/Build, then /runtimehost-libs. Returns None when the derived
     directory does not exist -- REG-131/X0: an unresolvable input is an error, never a wrong
-    default. A hardcoded D:/WorkSpace/... fallback here silently pointed `npdev run app` at a
+    default. A hardcoded <drive>:/WorkSpace/... fallback here silently pointed `npdev run app` at a
     directory that only exists on the author's own machine, breaking it for everyone else."""
     build_root_env = os.environ.get("NPDEV_BUILD_ROOT")
     build_root = (Path(build_root_env).expanduser().resolve() if build_root_env and build_root_env.strip()
