@@ -462,9 +462,13 @@ public final class FinalAppAssembler {
      * computed the SAME way {@code scripts/npdev-common.ps1}'s {@code Get-NPDevRuntimeHostLibsDir}
      * does (env var override, else {@code <this repo's parent>/Build/runtimehost-libs}) -- so a
      * freshly generated app finds the jars {@code sync-runtimehost-libs.ps1}'s OWN default just
-     * wrote, with no manual step. An explicit {@code -PnpdevRuntimeHostLibsDir=...} passed to a
-     * later {@code gradlew} invocation still wins (standard Gradle command-line-over-properties-file
-     * precedence) if a caller genuinely needs a different directory.
+     * wrote, with no manual step. Because this always bakes a value into {@code gradle.properties},
+     * and {@code providers.gradleProperty()} can't tell "explicit -P" apart from "read from the
+     * properties file", a build-time {@code NPDEV_RUNTIMEHOST_LIBS_DIR} env var override would be
+     * permanently shadowed by this generation-time default -- REG-137 fixed this by having the
+     * template check the env var BEFORE the gradle property. An explicit
+     * {@code -PnpdevRuntimeHostLibsDir=...} passed to a later {@code gradlew} invocation still wins
+     * whenever no env var is set.
      */
     private static void appendRuntimeHostLibsDirDefault(Options options) throws IOException {
         Path repoRoot = options.runtimeHostRoot().toAbsolutePath().normalize().getParent();

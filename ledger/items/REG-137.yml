@@ -1,0 +1,91 @@
+id: REG-137
+title: "NPDevRuntimeHost/build.gradle.template's resolveNpdevRuntimeLibsDir checked the gradle property before the NPDEV_RUNTIMEHOST_LIBS_DIR env var, so REG-128's generation-time-baked gradle.properties default permanently shadowed any build-time env var override -- breaking 3 generator packaged-app runtime proof tests on Linux CI"
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-05
+closed: 2026-08-05
+verification: VERIFIED_LIVE
+surface: build-tooling/runtimehost-libs-staging
+source: |
+  Found while diagnosing a failing GitHub Actions scheduled run (npdev-ci-validation.yml, run
+  30978607862, 2026-08-05). The Linux job's "Generator unit tests" step (:generator:test) failed
+  3 tests deterministically (reproduced identically on a manual re-run, not flaky):
+    - TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.packagedGeneratedAppBootsHandlesHttpAndWritesJdbcEvidenceRows
+    - HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.deletingOrReplacingARecordCascadesTheUnderlyingFileBytes
+    - HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest.packagedGeneratedAppUploadsAndDownloadsAFileThroughARealObjectStore
+
+  Gradle's default console reporter only prints "AssertionFailedError at Foo.java:1009" with no
+  message text, and the workflow's evidence-upload step had a separate, independent bug (its
+  artifact glob looked for `<Module>/**/build/test-results/test`, but dsl/kernel/generator/editor
+  all redirect layout.buildDirectory to a sibling `Build/gradle/<rootProject>/<projectPath>` per
+  this repo's build-output policy, so the glob never matched and the real JUnit XML was silently
+  dropped every run -- fixed separately in the same commit as this item, see
+  .github/workflows/npdev-ci-validation.yml). Fixing that glob first surfaced the real message:
+
+      > Task :verifyNpdevRuntimeHostLibs FAILED
+      Missing NPDev RuntimeHost libs manifest in /home/runner/work/NPDevGeneral/Build/runtimehost-libs.
+      Run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars.
+
+  Root cause, in NPDevRuntimeHost/build.gradle.template's resolveNpdevRuntimeLibsDir:
+
+      def configured = providers.gradleProperty('npdevRuntimeHostLibsDir')
+              .orElse(providers.environmentVariable('NPDEV_RUNTIMEHOST_LIBS_DIR'))
+              .orNull
+
+  REG-128 (2026-08-04) made FinalAppAssembler#appendRuntimeHostLibsDirDefault ALWAYS bake a
+  resolved npdevRuntimeHostLibsDir line into every generated app's gradle.properties at
+  generation time (belt-and-suspenders fix for apps generated outside the source repo, which
+  previously fell through to a nonsensical relative-path default). But providers.gradleProperty()
+  cannot distinguish "explicit -P on the command line" from "value read from the properties file"
+  -- once gradle.properties always carries a baked value, the `.orElse(environmentVariable(...))`
+  fallback branch is permanently dead. These 3 tests generate the app once (no
+  NPDEV_RUNTIMEHOST_LIBS_DIR set at generation time, so the baked default is the global
+  `Build/runtimehost-libs`), then try to override the libs dir via the NPDEV_RUNTIMEHOST_LIBS_DIR
+  env var when invoking `bootJar`, pointing at their own test-local, freshly-built jar set
+  (OUTSIDE_ROOT/runtimehost-libs) -- that override was silently ignored, and the build looked for
+  a manifest at the (unpopulated, at that point in the CI pipeline) global Build/runtimehost-libs
+  instead.
+
+  Passed on the author's own dev machine only because D:\WorkSpace\NPDev\Build\runtimehost-libs
+  already has valid jars there from routine platform work, masking the bug -- a clean CI checkout
+  has nothing there until the workflow's later "Stage RuntimeHost libs" step runs (which happens
+  AFTER "Generator unit tests" in the pipeline).
+files:
+  - NPDevRuntimeHost/build.gradle.template
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest.java
+  - .github/workflows/npdev-ci-validation.yml
+detail: |
+  Two independent, complementary fixes landed together (both applied, not "either/or" like
+  REG-128's own two fix shapes were):
+
+  (1) NPDevRuntimeHost/build.gradle.template's resolveNpdevRuntimeLibsDir now checks
+      NPDEV_RUNTIMEHOST_LIBS_DIR BEFORE providers.gradleProperty(), restoring the build-time env
+      var override path for any caller (not just these 3 tests) while leaving REG-128's original
+      fix intact for the no-override case (no env var, no -P -> uses the baked
+      gradle.properties default). The only behavior change is the unusual case of an env var AND
+      an explicit -P being set simultaneously (env var now wins instead of -P) -- no caller in
+      this repo does that.
+
+  (2) The 3 affected tests now ALSO pass -PnpdevRuntimeHostLibsDir=<path> on the bootJar command
+      line, alongside the existing NPDEV_RUNTIMEHOST_LIBS_DIR env var, as defense-in-depth --
+      this works regardless of fix (1) since an explicit -P always wins.
+
+  Also fixed in the same commit: the CI workflow's evidence-upload artifact glob (see files list),
+  which is what made the real error message visible at all instead of the bare
+  "AssertionFailedError at line 1009" console summary.
+resolution: |
+  DONE (2026-08-05), same day as discovery. Both fix shapes from this item's own detail applied.
+
+  Verified: all 3 previously-failing tests pass locally (`./gradlew.bat test --tests
+  TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest --tests
+  HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest --tests
+  HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest` -- BUILD SUCCESSFUL). The failure
+  was also independently reproduced twice on the real GitHub Actions Linux runner (deterministic,
+  not flaky) before the fix, confirming it wasn't CI-runner resource contention.
+
+  Not yet re-verified on GitHub Actions itself after the fix (local verification only as of this
+  writing) -- CI re-run is a natural follow-up.
