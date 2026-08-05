@@ -1588,6 +1588,91 @@ class _SetupOutput:
             raise subprocess.CalledProcessError(completed.returncode, command)
 
 
+# I5: prebuilt-jars Release asset -- the repo builds this from a tag push (see
+# .github/workflows/publish-runtimehost-libs.yml); `npdev setup` tries it first and only falls
+# back to a local build when there is nothing to download or it cannot be trusted (§9: the
+# fallback is not optional -- a fork, an offline machine, or an untagged commit must still work).
+_RUNTIMEHOST_LIBS_RELEASE_REPO = "MarceloGiazzon/NPDevGeneral"
+
+
+def _current_git_tag(root: Path) -> str | None:
+    """The tag exactly at HEAD, or None -- an untagged commit (any ordinary feature-branch
+    checkout) has nothing published to download, so this is the gate that sends `setup` to the
+    local-build path without ever attempting a network call."""
+    try:
+        completed = subprocess.run(
+            ["git", "describe", "--tags", "--exact-match", "HEAD"],
+            cwd=root, capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    tag = completed.stdout.strip()
+    return tag if completed.returncode == 0 and tag else None
+
+
+def _try_download_runtimehost_libs(tag: str, libs_dir: Path, out: "_SetupOutput",
+                                    base_url: str | None = None) -> bool:
+    """Best-effort download of `runtimehost-libs-<tag>.zip` (+ sibling `SHA256SUMS`) from this
+    tag's GitHub Release, checksum-verified before anything is extracted. Returns False -- never
+    raises -- on ANY failure (no release for this tag, no matching asset, network error, checksum
+    mismatch, a corrupt zip): the caller always still has the local-build fallback, which is the
+    one thing §9 forbids removing. `base_url` overrides the real GitHub Release URL -- only ever
+    passed in a test, to prove the checksum-mismatch/corruption path against a local server."""
+    import urllib.error
+    import urllib.request
+    import zipfile
+
+    base = base_url or f"https://github.com/{_RUNTIMEHOST_LIBS_RELEASE_REPO}/releases/download/{tag}"
+    zip_name = f"runtimehost-libs-{tag}.zip"
+
+    with tempfile.TemporaryDirectory(prefix="npdev-setup-download-") as tmp:
+        zip_path = Path(tmp) / zip_name
+        try:
+            with urllib.request.urlopen(f"{base}/SHA256SUMS", timeout=30) as resp:
+                sums_text = resp.read().decode("utf-8", errors="replace")
+        except (urllib.error.URLError, OSError, ValueError):
+            out.narrate(f"npdev setup: no published SHA256SUMS for {tag} -- building locally instead.")
+            return False
+
+        expected_hash = None
+        for line in sums_text.splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[1].lstrip("*") == zip_name:
+                expected_hash = parts[0].lower()
+                break
+        if expected_hash is None:
+            out.narrate(f"npdev setup: SHA256SUMS has no entry for {zip_name} -- building locally instead.")
+            return False
+
+        try:
+            urllib.request.urlretrieve(f"{base}/{zip_name}", zip_path)
+        except (urllib.error.URLError, OSError, ValueError):
+            out.narrate(f"npdev setup: could not download {zip_name} -- building locally instead.")
+            return False
+
+        actual_hash = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+        if actual_hash != expected_hash:
+            out.narrate(
+                f"npdev setup: checksum mismatch for {zip_name} (expected {expected_hash[:12]}..., "
+                f"got {actual_hash[:12]}...) -- building locally instead."
+            )
+            return False
+
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(libs_dir)
+        except (zipfile.BadZipFile, OSError) as exc:
+            out.narrate(f"npdev setup: could not extract {zip_name} ({exc}) -- building locally instead.")
+            return False
+
+    if not (libs_dir / "runtimehost-libs-manifest.json").exists():
+        out.narrate(f"npdev setup: {zip_name} had no manifest inside -- building locally instead.")
+        return False
+
+    out.narrate(f"npdev setup: downloaded and verified {zip_name} (sha256 {expected_hash[:12]}...) -> {libs_dir}")
+    return True
+
+
 def run_setup(args: argparse.Namespace) -> int:
     """I4: a portable port of scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars --
     that script is 265 lines with zero Windows-specific constructs (measured); keeping `pwsh` as a
@@ -1624,51 +1709,66 @@ def run_setup(args: argparse.Namespace) -> int:
     jars_started = _time.monotonic()
     out.event("jars", "started")
 
-    out.narrate(f"npdev setup: [1/3] building Kernel/Contract runtime jars (npdevBuildRoot={build_root})")
-    kernel_command = [str(kernel_wrapper), "jar", f"-PnpdevBuildRoot={build_root}",
-                       *gradle_project_cache_args("kernel"), "--no-daemon", "--console=plain"]
-    if os.name == "nt" and kernel_wrapper.suffix.lower() == ".bat":
-        kernel_command = ["cmd.exe", "/c"] + kernel_command
-    out.run(kernel_command, kernel_root)
+    # I5: try a prebuilt Release asset before spending the ~9 of setup's ~10 minutes compiling --
+    # only possible on a tagged commit (nothing published for a feature branch), and skippable
+    # with --build-local. Every failure mode inside _try_download_runtimehost_libs falls through
+    # to the exact same local build below; §9 forbids a download-only setup.
+    jars_source = "build"
+    if getattr(args, "build_local", False):
+        out.narrate("npdev setup: --build-local passed -- skipping the download, building locally.")
+    else:
+        tag = _current_git_tag(root)
+        if tag and _try_download_runtimehost_libs(tag, libs_dir, out):
+            jars_source = "download"
 
-    out.narrate("npdev setup: [1/3] building Generator and CLI jars")
-    generator_command = [str(generator_wrapper), ":generator:jar", ":tools:npdev-cli:jar",
-                          f"-PnpdevBuildRoot={build_root}", *gradle_project_cache_args("generator"),
-                          "--no-daemon", "--console=plain"]
-    if os.name == "nt" and generator_wrapper.suffix.lower() == ".bat":
-        generator_command = ["cmd.exe", "/c"] + generator_command
-    out.run(generator_command, generator_root)
+    if jars_source == "download":
+        pass  # _try_download_runtimehost_libs already staged the jars + manifest into libs_dir
+    else:
+        out.narrate(f"npdev setup: [1/3] building Kernel/Contract runtime jars (npdevBuildRoot={build_root})")
+        kernel_command = [str(kernel_wrapper), "jar", f"-PnpdevBuildRoot={build_root}",
+                           *gradle_project_cache_args("kernel"), "--no-daemon", "--console=plain"]
+        if os.name == "nt" and kernel_wrapper.suffix.lower() == ".bat":
+            kernel_command = ["cmd.exe", "/c"] + kernel_command
+        out.run(kernel_command, kernel_root)
 
-    source_jars = _discover_runtimehost_source_jars(root, build_root)
-    if not source_jars:
-        raise CliError("No RuntimeHost jars were discovered under build/libs after local jar build.")
+        out.narrate("npdev setup: [1/3] building Generator and CLI jars")
+        generator_command = [str(generator_wrapper), ":generator:jar", ":tools:npdev-cli:jar",
+                              f"-PnpdevBuildRoot={build_root}", *gradle_project_cache_args("generator"),
+                              "--no-daemon", "--console=plain"]
+        if os.name == "nt" and generator_wrapper.suffix.lower() == ".bat":
+            generator_command = ["cmd.exe", "/c"] + generator_command
+        out.run(generator_command, generator_root)
 
-    copied, up_to_date = [], []
-    for name, source in sorted(source_jars.items()):
-        target = libs_dir / name
-        if target.exists():
-            same_size = target.stat().st_size == source.stat().st_size
-            same_time = abs(target.stat().st_mtime - source.stat().st_mtime) < 1
-            if same_size and same_time:
-                up_to_date.append(name)
-                continue
-        shutil.copy2(source, target)
-        copied.append(name)
+        source_jars = _discover_runtimehost_source_jars(root, build_root)
+        if not source_jars:
+            raise CliError("No RuntimeHost jars were discovered under build/libs after local jar build.")
 
-    missing = [name for name in source_jars if not (libs_dir / name).exists()]
-    if missing:
-        raise CliError(f"RuntimeHost libs sync failed; missing after copy: {', '.join(missing)}")
+        copied, up_to_date = [], []
+        for name, source in sorted(source_jars.items()):
+            target = libs_dir / name
+            if target.exists():
+                same_size = target.stat().st_size == source.stat().st_size
+                same_time = abs(target.stat().st_mtime - source.stat().st_mtime) < 1
+                if same_size and same_time:
+                    up_to_date.append(name)
+                    continue
+            shutil.copy2(source, target)
+            copied.append(name)
 
-    manifest = {
-        "schemaVersion": "npdev-runtimehost-libs-manifest.v1",
-        "generatedAt": _utc_now(),
-        "runtimeHostLibsLocation": "external-local-cache",
-        "requiredStagedJars": sorted(source_jars),
-    }
-    (libs_dir / "runtimehost-libs-manifest.json").write_text(
-        json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    out.narrate(f"npdev setup: {len(copied)} jar(s) copied, {len(up_to_date)} already current -> {libs_dir}")
-    out.event("jars", "done", seconds=round(_time.monotonic() - jars_started, 1))
+        missing = [name for name in source_jars if not (libs_dir / name).exists()]
+        if missing:
+            raise CliError(f"RuntimeHost libs sync failed; missing after copy: {', '.join(missing)}")
+
+        manifest = {
+            "schemaVersion": "npdev-runtimehost-libs-manifest.v1",
+            "generatedAt": _utc_now(),
+            "runtimeHostLibsLocation": "external-local-cache",
+            "requiredStagedJars": sorted(source_jars),
+        }
+        (libs_dir / "runtimehost-libs-manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        out.narrate(f"npdev setup: {len(copied)} jar(s) copied, {len(up_to_date)} already current -> {libs_dir}")
+    out.event("jars", "done", seconds=round(_time.monotonic() - jars_started, 1), source=jars_source)
 
     # Clean the source builds' own build/ dirs afterward -- build output does not belong inside
     # the repo tree (this repo's own standing policy); scoped to exactly the three source roots
@@ -1695,7 +1795,9 @@ def run_setup(args: argparse.Namespace) -> int:
         out.event("knowledge-index", "skipped")
 
     out.narrate(f"npdev setup: [3/3] done")
-    out.narrate(f"\nRuntimehost jars: {libs_dir}\nKnowledge index:  {knowledge_note}")
+    # I5: the one new trailing line -- "which path was taken" must be visible in the human output
+    # too (§7 DoD), so this is additive-only rather than reworking the block above it.
+    out.narrate(f"\nRuntimehost jars: {libs_dir}\nKnowledge index:  {knowledge_note}\nJars source:      {jars_source}")
 
     if out.json_mode:
         result = {
@@ -1703,6 +1805,7 @@ def run_setup(args: argparse.Namespace) -> int:
             "command": "setup",
             "ok": True,
             "exitCode": 0,
+            "jarsSource": jars_source,
             "events": out.events,
         }
         print(json.dumps(result))
@@ -3065,6 +3168,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit one npdev-cli-event.v1 JSON object per line on stdout as each phase starts/"
              "finishes, then a final npdev-cli-result.v1 object -- narration moves to stderr "
              "(Phase 0 I2). Without this flag, output is unchanged.",
+    )
+    setup_parser.add_argument(
+        "--build-local", action="store_true",
+        help="Skip the prebuilt-jars download and always build the runtimehost jars locally "
+             "(Phase 0 I5), even on a tagged commit with a published release.",
     )
 
     doctor_parser = subparsers.add_parser(
