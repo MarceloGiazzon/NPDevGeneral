@@ -48,6 +48,16 @@ against the same `--output`. The generator diffs the new shape against what's al
 (schema evolution, not drop-and-recreate) -- see `docs/DATABASES_AND_MIGRATIONS.md` for how
 renames and destructive changes are handled.
 
+Once you have done that by hand once, stop doing it by hand:
+
+```sh
+npdev dev
+```
+
+`npdev dev` generates, builds, boots, and then watches your model -- every save re-runs the whole
+sequence and restarts the app. It validates first, so a typo prints an error and leaves the running
+app alone rather than taking it down.
+
 **Now build something of your own.** `canonical-demo` is a fixed fixture -- copying it, changing
 it, and giving it a database that actually keeps your data is the real next step:
 `docs/YOUR_FIRST_APP.md`.
