@@ -48,6 +48,10 @@ against the same `--output`. The generator diffs the new shape against what's al
 (schema evolution, not drop-and-recreate) -- see `docs/DATABASES_AND_MIGRATIONS.md` for how
 renames and destructive changes are handled.
 
+**Now build something of your own.** `canonical-demo` is a fixed fixture -- copying it, changing
+it, and giving it a database that actually keeps your data is the real next step:
+`docs/YOUR_FIRST_APP.md`.
+
 ## Other useful commands
 
 ```sh
@@ -65,9 +69,14 @@ minutes) to the complete gate suite (T2) and release-readiness evidence (T3) -- 
 
 ## Authoring in the editor
 
-`NPDevEditor/ui-react` is the browser-based authoring UI (concepts, fields, flows, panels) as an
-alternative to hand-editing model JSON. From `NPDevEditor/ui-react`: `npm install` once, then
-`npm run dev` starts a local dev server (Vite prints the URL, typically `http://localhost:5173`).
+The browser-based authoring UI (concepts, fields, flows, panels) as an alternative to hand-editing
+model JSON is already built into every app you generate -- open **`/npdev-ui-react/`** on your
+running app (e.g. `http://localhost:8080/npdev-ui-react/`). No separate install or server needed.
+
+`npm run dev` inside `NPDevEditor/ui-react` (Vite, typically `http://localhost:5173`) is the
+**editor's own development server** -- for someone changing the editor's source code, not for
+authoring a model. Run against a bare `npm run dev` it has no generated app to talk to and shows
+"unavailable" everywhere; that is expected for that workflow, not a bug in the one above.
 
 ## When running from another directory
 
