@@ -4,6 +4,7 @@
 
 mod npdev;
 mod runtime;
+mod selftest;
 mod state;
 mod versions;
 
@@ -289,6 +290,15 @@ fn manager_home_path() -> String {
 }
 
 fn main() {
+    // I1 (CLOSEOUT_PLAN.md): a headless proof the whole install path works with no window, so
+    // "does the Manager work on a clean machine" can be checked by a container on every change
+    // instead of only by a human clicking through five screens. Must run before Tauri's own
+    // Builder ever touches a display -- `--selftest` never opens one.
+    if std::env::args().any(|a| a == "--selftest") {
+        let rt = tokio::runtime::Runtime::new().expect("failed to start a tokio runtime for --selftest");
+        std::process::exit(rt.block_on(selftest::run()));
+    }
+
     state::ensure_dirs().expect("could not create the Manager's home directories");
 
     tauri::Builder::default()
