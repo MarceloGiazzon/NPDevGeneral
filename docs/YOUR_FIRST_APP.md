@@ -14,85 +14,59 @@ regenerate it any time. The model is the part worth keeping, backing up, and put
 
 We will build a small library: **Books** and the **Members** who borrow them.
 
-## 1. Start from a copy
-
-Copy the demo's config to a folder of your own, outside the NPDev repo:
+## 1. Scaffold it
 
 ```sh
-mkdir -p ../my-library
-cp NPDevContract/dsl/resources/Models/canonical-demo/config.json ../my-library/config.json
+./npdev init ../my-library
 ```
 
-## 2. Write your model
+This one command gives you `model.json` (a small, valid, already-runnable example), `config.json`,
+`db.definition.json`, a `README.md`, a `.gitignore` — and a git history: the directory is already a
+repository with one commit. **That matters:** your model is the app, and the version you'd most
+want back if you broke something is the one you never lost.
 
-Create `model.json` in that same folder:
+**Without `db.definition.json`, `generate app` would silently default to an in-memory database
+that forgets everything the moment the app stops.** `npdev init` gives you a real one (H2Local)
+from the start, for exactly the reason step 5 below needs it: proving your data survives a schema
+change.
+
+## 2. Make it yours
+
+Open `../my-library/model.json`. Replace its `concepts` array — the scaffold's own Patient/
+Appointment example — with two of your own:
 
 ```json
-{
-  "$schema": "../NPDevGeneral/NPDevContract/schemas/model.schema.json",
-  "namespace": "library",
-  "dslVersion": "1.0.0",
-  "version": "0.1.0",
-  "concepts": [
-    {
-      "name": "Book",
-      "ui": { "label": "Book" },
-      "fields": [
-        { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } },
-        { "name": "isbn", "type": "string", "ui": { "label": "ISBN" } },
-        { "name": "copies", "type": "int", "ui": { "label": "Copies" } }
-      ],
-      "invariants": [
-        { "name": "BookIsbnUnique", "type": "unique", "fields": ["isbn"] }
-      ]
-    },
-    {
-      "name": "Member",
-      "ui": { "label": "Member" },
-      "fields": [
-        { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "fullName", "type": "string", "required": true, "ui": { "label": "Full name" } },
-        { "name": "email", "type": "string", "ui": { "label": "Email" } }
-      ]
-    }
-  ]
-}
+"concepts": [
+  {
+    "name": "Book",
+    "ui": { "label": "Book" },
+    "fields": [
+      { "name": "id", "type": "uuid", "id": true, "required": true },
+      { "name": "title", "type": "string", "required": true, "ui": { "label": "Title" } },
+      { "name": "isbn", "type": "string", "ui": { "label": "ISBN" } },
+      { "name": "copies", "type": "int", "ui": { "label": "Copies" } }
+    ],
+    "invariants": [
+      { "name": "BookIsbnUnique", "type": "unique", "fields": ["isbn"] }
+    ]
+  },
+  {
+    "name": "Member",
+    "ui": { "label": "Member" },
+    "fields": [
+      { "name": "id", "type": "uuid", "id": true, "required": true },
+      { "name": "fullName", "type": "string", "required": true, "ui": { "label": "Full name" } },
+      { "name": "email", "type": "string", "ui": { "label": "Email" } }
+    ]
+  }
+]
 ```
 
-**Start from a blank model, not a trimmed copy of the demo.** The demo also declares
-`domainTypes`/`capabilities`/`bindings`/`events`/`orchestrationRules`/`flows` that reference its
-own Patient/Encounter concepts — copy those across without removing them and validation fails with
-"references unknown concept" errors that have nothing to do with anything you changed. Two
-concepts and nothing else is the actual smallest valid model.
+**The scaffold's seed is deliberately just concepts — nothing that references them from elsewhere.**
+Replacing the whole array is safe: there is no `domainTypes`/`capabilities`/`flows` block anywhere
+in the scaffold that points back at Patient or Appointment and would break when they disappear.
 
-## 3. Give it a real, persistent database
-
-Also create `db.definition.json` next to it:
-
-```json
-{
-  "database": { "engine": "H2Local", "databaseName": "my_library", "username": "sa", "password": "", "createInternalTables": true, "createBusinessTables": true },
-  "schemaLifecycle": { "strategy": "KeepExistingIfCompatible", "allowDestructiveRecreate": false, "destructiveRecreateConfirmation": "", "scope": "NpdevOwnedTablesOnly" }
-}
-```
-
-**Without this file, `generate app` silently defaults to an in-memory database that forgets
-everything the moment the app stops** — fine for a five-minute demo, wrong for the point of step 6
-below, which is proving your data survives a schema change.
-
-## 4. Give it a history
-
-```sh
-cd ../my-library
-git init && git add . && git commit -m "start from the NPDev demo config"
-```
-
-**Now, not after you've made changes.** Your model is the app; give it a history from the first
-commit, or the very first version of it — the one you'd most want back if you broke something —
-is the one version that was never saved.
-
-## 5. Check it before you build it
+## 3. Check it before you build it
 
 ```sh
 cd ../NPDevGeneral
@@ -105,7 +79,7 @@ Expect `"status": "passed"`.
 path in your file. Fix and re-run. Getting errors here is normal and cheap; getting them after a
 five-minute build is not.
 
-## 6. Build and run it
+## 4. Build and run it
 
 ```sh
 ./npdev generate app --model ../my-library/model.json --config ../my-library/config.json --output ../my-library-app
@@ -121,7 +95,7 @@ moment — type **`dev-key`** into the API Key field on the page that greets you
 REST API behind them. (There is a second, separate key file — `SUPER_USER_KEY.txt` — but that is
 for the platform ControlPanel, not for using your own app; ignore it for now.)
 
-## 7. Change it and watch it follow
+## 5. Change it and watch it follow
 
 This is the part that matters. Stop the app (**Ctrl+C, and give it a couple of seconds** — on
 Windows especially, regenerating before the old process has fully released its jar file fails with
@@ -150,7 +124,7 @@ Commit the change:
 cd ../my-library && git commit -am "add publishedYear to Book"
 ```
 
-## 8. Renaming — read this before you need it
+## 6. Renaming — read this before you need it
 
 **NPDev cannot guess that a rename is a rename.** If you change `isbn` to `isbnCode`, NPDev sees
 one column dropped and another added — a destructive change — and will refuse.
@@ -168,7 +142,8 @@ destructive changes.
 
 - **Connect the two concepts** — a `Loan` linking Book and Member is the natural next step;
   see `docs/NPDEV_CONCEPTS_DEEP_DIVE.md` on bonds.
-- **Let an AI write the model for you** — `docs/ai/AUTHORING_FOR_AI.md`.
+- **Let an AI write the model for you** — `docs/AUTHORING_WITH_AI.md` (MCP setup and the
+  chat-only fallback); `docs/ai/AUTHORING_FOR_AI.md` is the underlying contract either path follows.
 - **Edit in the browser** — the authoring editor lives at `/npdev-ui-react/` on your running app;
   see `docs/GETTING_STARTED.md`.
 - **Go to production** — `docs/DEPLOYMENT.md` (Postgres, Docker, environment variables).

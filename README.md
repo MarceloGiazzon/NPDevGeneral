@@ -44,8 +44,11 @@ instead of a runtime crash three steps later. See `docs/ai/AI_KNOWLEDGE_LOOP_AND
 
 ## Quickstart
 
-Requires Java 17, Python 3, and PowerShell 7 (`pwsh`) -- Docker is optional, only needed for the
-Docker run path below. Clone the repo, then from its root:
+Requires Java 17 and Python 3 -- Docker is optional, only needed for the Docker run path below.
+PowerShell is no longer required for this path (`scripts/**/*.ps1` remain the maintainer path for
+developing NPDev itself -- see "PowerShell scripts" in `docs/GETTING_STARTED.md`). Clone the repo,
+then from its root, run `./npdev doctor` any time to check your machine is ready -- it names
+exactly what to fix or run next:
 
 ```sh
 # Validate a real, checked-in sample model (full structural + semantic check by default;
@@ -54,7 +57,7 @@ Docker run path below. Clone the repo, then from its root:
 
 # NPDev's own kernel/generator jars are not on Maven Central -- build and stage them locally
 # once (a fresh clone only; already-built jars are reused on every later run):
-pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars
+./npdev setup
 
 # Generate a complete Spring Boot app from it
 ./npdev generate app \
@@ -62,6 +65,9 @@ pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJ
   --config NPDevContract/dsl/resources/Models/canonical-demo/config.json \
   --output /path/outside/this/repo/canonical-demo-app
 ```
+
+**Starting a NEW app of your own, not the demo above?** `./npdev init my-app` scaffolds a small,
+real, already-running model and gives it a git history in one step -- see `docs/YOUR_FIRST_APP.md`.
 
 (On Windows, use `npdev.bat` with the same arguments.) The output directory is a complete,
 buildable Spring Boot project with its own README. **The generated `Dockerfile` packages an
@@ -137,6 +143,11 @@ portable CLI wrapper's own version, and the Gradle module version pinned in each
 platform's. Separately, every model declares `"dslVersion": "1.0.0"` — that is the *model JSON
 format* version, unrelated to any of the above; it has never changed, including across the
 "DSL 2.0" flowStep-vocabulary change (`BREAKING.md`).
+
+**`beta1.5`'s tag sits one commit behind `main`** (a docs-only commit recording the merge and tag
+itself landed right after) — a fresh clone of `main` today is `beta1.5` plus that one commit, not a
+different, later release. Recorded here rather than moving the tag, since moving a tag needs
+explicit authorization this note doesn't have.
 
 ## Future direction: Box/Object/Truth
 

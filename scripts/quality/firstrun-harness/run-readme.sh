@@ -115,6 +115,15 @@ else
   c_grn "  cloned OK"
 fi
 
+# your-first-app (section 6) and `npdev init` both run real `git commit`s -- that needs SOME
+# identity configured, which this bare image deliberately has none of. This is not a gap in
+# NPDev's own docs to fix: anyone who owns a git identity already configured it long before they
+# ever cloned NPDev, the same unstated assumption as "knows how to open a terminal." Configuring
+# it here is harness setup, standing in for that pre-existing human state -- not a documented
+# NPDev prerequisite.
+git config --global user.email "harness@example.invalid"
+git config --global user.name "NPDev Harness"
+
 [ -f "$SRC/README.md" ] || die "no README.md at the repo root"
 cd "$SRC" || die "cannot cd $SRC"
 echo "  HEAD: $(git -C "$SRC" log -1 --format='%h %s' 2>/dev/null | cut -c1-60)"
@@ -138,6 +147,17 @@ fi
 
 want() { echo "$PREREQ_LINE" | grep -qi "$1"; }
 
+# I4: `npdev setup` replaced pwsh as the way to build runtimehost jars on the user path -- README
+# no longer names PowerShell as a requirement, and should not start again by accident (a stale
+# "Requires ... pwsh" would send a newcomer installing something they no longer need).
+if want 'powershell' || want 'pwsh'; then
+  fail "prereqs-drop-pwsh" \
+       "README's prerequisites sentence still names PowerShell/pwsh" \
+       "the user path uses 'npdev setup' now (I4) -- pwsh is maintainer-only, see docs/GETTING_STARTED.md"
+else
+  pass "prereqs-drop-pwsh"
+fi
+
 APT_PKGS=""
 want 'java'                        && APT_PKGS="$APT_PKGS openjdk-17-jdk"
 want 'python'                      && APT_PKGS="$APT_PKGS python3"
@@ -160,11 +180,14 @@ if [ "$NEED_PWSH" = "1" ]; then
 fi
 
 # --- Now check that what README named is actually SUFFICIENT. -------------------
-# This is the real prerequisite test: NPDev needs java + python + pwsh. If README
-# failed to name any of them, the corresponding check fails HERE, with a message
-# that names the documentation defect rather than a confusing downstream error.
+# This is the real prerequisite test: NPDev needs java + python. If README failed to name
+# either, the corresponding check fails HERE, with a message that names the documentation
+# defect rather than a confusing downstream error. pwsh is deliberately NOT in this list
+# anymore (I4) -- `npdev setup` replaced it on the user path, so it is no longer a real
+# NPDev requirement to assert against, only a maintainer-script one (see prereqs-drop-pwsh
+# just above, which checks the opposite: that README does NOT claim it back).
 
-for tool_spec in "java:Java 17" "python3:Python 3" "pwsh:PowerShell 7"; do
+for tool_spec in "java:Java 17" "python3:Python 3"; do
   tool=${tool_spec%%:*}; label=${tool_spec#*:}
   if command -v "$tool" >/dev/null 2>&1; then
     pass "prereq-present: $label"
@@ -183,6 +206,16 @@ if command -v java >/dev/null 2>&1; then
   else
     fail "java-is-17" "found: $JV" "README must state Java 17 specifically"
   fi
+fi
+
+# I4's own decisive test: `npdev setup` (run for real below, in the Quickstart) must work with
+# NO pwsh installed. Asserting its absence explicitly, rather than just relying on the fact that
+# section 1 above no longer installs it, protects against some OTHER package silently pulling
+# pwsh in as a dependency and quietly making this test meaningless.
+if command -v pwsh >/dev/null 2>&1; then
+  fail "pwsh-genuinely-absent" "pwsh is present on this image -- I4's own test needs it to NOT be"
+else
+  pass "pwsh-genuinely-absent"
 fi
 
 # ---------------------------------------------------------------- 2. quickstart
@@ -228,7 +261,7 @@ printf '%s\n' "$CMDS" | sed 's/^/    $ /'
 
 DID_BOOTJAR=0
 DID_SYNC=0
-printf '%s\n' "$CMDS" | grep -q 'sync-runtimehost-libs' && DID_SYNC=1
+printf '%s\n' "$CMDS" | grep -qE 'sync-runtimehost-libs|npdev setup' && DID_SYNC=1
 printf '%s\n' "$CMDS" | grep -q 'bootJar'               && DID_BOOTJAR=1
 
 # A real terminal keeps ONE persistent working directory across a whole session -- `cd` in one
@@ -454,11 +487,11 @@ section "6. Execute docs/YOUR_FIRST_APP.md the way a newcomer would (I1/I2)"
 # This reuses run_cmd_list -- the same command-parsing/execution machinery section 2 uses for
 # README's Quickstart -- rather than a second implementation, per the plan's own instruction.
 # YOUR_FIRST_APP.md interleaves ```sh command blocks with ```json blocks that are FILE CONTENT
-# (model.json, db.definition.json) or a field snippet to inject, not commands -- so extraction
-# has to be step-aware (numbered "## N. Title" headings) and fence-language-aware, unlike
-# README's Quickstart which is one heading and 100% ```sh. Step 8 (renaming) is illustrative
-# only -- deliberately excluded, since running it would try to rename a field this app doesn't
-# have a reason to rename.
+# (a concepts array to splice in, a field snippet to inject), not commands -- so extraction has
+# to be step-aware (numbered "## N. Title" headings) and fence-language-aware, unlike README's
+# Quickstart which is one heading and 100% ```sh. Step 6 (renaming) is illustrative only --
+# deliberately excluded, since running it would try to rename a field this app doesn't have a
+# reason to rename.
 YFA_DOC="$SRC/docs/YOUR_FIRST_APP.md"
 YFA_WORK=/work/my-library
 YFA_APP=/work/my-library-app
@@ -470,7 +503,6 @@ else
   pass "your-first-app: doc exists"
 
   rm -rf "$YFA_WORK" "$YFA_APP"
-  mkdir -p "$YFA_WORK"
 
   python3 - "$YFA_DOC" > /work/yfa-steps.json <<'PYEOF'
 import json, re, sys
@@ -479,7 +511,7 @@ steps = []
 for sec in re.split(r"(?m)^## ", doc)[1:]:
     title, body = sec.split("\n", 1)
     m = re.match(r"(\d+)\.", title)
-    if not m or int(m.group(1)) > 7:
+    if not m or int(m.group(1)) > 5:
         continue
     blocks = [{"lang": lang, "body": b} for lang, b in re.findall(r"```(sh|json)\n(.*?)\n```", body, re.S)]
     steps.append({"n": int(m.group(1)), "title": title.strip(), "blocks": blocks})
@@ -492,7 +524,7 @@ PYEOF
     pass "your-first-app: doc parses into numbered steps"
 
     STEP_COUNT=$(python3 -c "import json; print(len(json.load(open('/work/yfa-steps.json'))))")
-    echo "  steps 1-7 found: $STEP_COUNT"
+    echo "  steps 1-5 found: $STEP_COUNT"
 
     # subst <text> -- rewrite the doc's own relative paths onto this container's /work layout.
     # Longest/most-specific pattern first: "../my-library-app" is a superstring of "../my-library".
@@ -504,7 +536,7 @@ PYEOF
 
     # yfa_block <step-n> <block-index> -- the doc's per-step blocks are processed one at a
     # time, explicitly, in document order (which step holds a file, which holds a snippet,
-    # which holds commands is fixed and small -- 7 steps), rather than a generic block-walking
+    # which holds commands is fixed and small -- 5 steps), rather than a generic block-walking
     # loop: explicit is more honest here than a clever parser this small, rarely-changing doc
     # does not need.
     yfa_block() { python3 -c "
@@ -514,75 +546,76 @@ step = next((s for s in steps if s['n'] == $1), None)
 print(step['blocks'][$2]['body'] if step and len(step['blocks']) > $2 else '', end='')
 "; }
 
-    # Step 1 (sh): mkdir + cp -- runs from the repo root, same as every other step below.
-    # (run_cmd_list is invoked via `<<<`, not a pipe -- a pipe's last stage runs in a subshell
-    # in bash by default, and pass/fail's CHECKS_RUN/FAILURES mutations would silently vanish
-    # the moment that subshell exited, undercounting every check inside it. `<<<` redirects
-    # stdin without forking, so counters and CURRENT_DIR both persist correctly.)
+    # Step 1 (sh): `npdev init ../my-library` -- one command now does what used to be four
+    # separate steps (mkdir+cp, write db.definition.json, git init+add+commit): I3 built `npdev
+    # init` precisely so this doc could stop teaching those as separate manual steps. Runs from
+    # the repo root, same as every other step below. (run_cmd_list is invoked via `<<<`, not a
+    # pipe -- a pipe's last stage runs in a subshell in bash by default, and pass/fail's
+    # CHECKS_RUN/FAILURES mutations would silently vanish the moment that subshell exited,
+    # undercounting every check inside it. `<<<` redirects stdin without forking, so counters
+    # and CURRENT_DIR both persist correctly.)
     CURRENT_DIR="$SRC"
     S1=$(yfa_block 1 0 | subst | sed 's/ && /\n/g')
     if [ -n "$S1" ]; then run_cmd_list "your-first-app step1" <<< "$S1"
     else fail "your-first-app step1: block present" "no sh block found under step 1"; fi
 
-    # Step 2 (json): full model.json content
+    for f in model.json config.json db.definition.json README.md .gitignore; do
+      if [ -f "$YFA_WORK/$f" ]; then
+        pass "your-first-app step1: npdev init scaffolded $f"
+      else
+        fail "your-first-app step1: npdev init scaffolded $f" "missing: $YFA_WORK/$f"
+      fi
+    done
+    if git -C "$YFA_WORK" log --oneline >>"$LOG" 2>&1; then
+      pass "your-first-app step1: npdev init already gave the model a git history"
+    else
+      fail "your-first-app step1: npdev init already gave the model a git history" "see $LOG"
+    fi
+
+    # Step 2 (json): a `"concepts": [...]` fragment meant to be pasted over the scaffold's own
+    # concepts array, not a standalone document -- wrap it in braces to parse, same as a human
+    # reading "replace its concepts array with" would mentally do. Routed through a temp FILE,
+    # not interpolated into the python -c string directly: the fragment is full of double quotes
+    # (it's JSON), and embedding it inside an already-double-quoted shell string would terminate
+    # that string early on the first `"` it contains -- a real shell-quoting bug caught before
+    # this ever ran, the same class of mistake as the change-a-field/inject_field.py design this
+    # section otherwise reuses (always pass untrusted-shaped content as a file or an argv element,
+    # never splice it into a script string).
     S2=$(yfa_block 2 0)
-    if [ -n "$S2" ]; then
-      printf '%s\n' "$S2" > "$YFA_WORK/model.json"
-      if python3 -c "import json; json.load(open('$YFA_WORK/model.json'))" >>"$LOG" 2>&1; then
-        pass "your-first-app step2: model.json written and is valid JSON"
-      else
-        fail "your-first-app step2: model.json written and is valid JSON" "see $LOG"
-      fi
+    printf '%s' "$S2" > /work/yfa-concepts-fragment.json
+    if [ -n "$S2" ] && python3 -c "
+import json
+with open('$YFA_WORK/model.json', encoding='utf-8') as f:
+    model = json.load(f)
+with open('/work/yfa-concepts-fragment.json', encoding='utf-8') as f:
+    fragment = f.read()
+model.update(json.loads('{' + fragment + '}'))
+with open('$YFA_WORK/model.json', 'w', encoding='utf-8') as f:
+    json.dump(model, f, indent=2)
+" >>"$LOG" 2>&1; then
+      pass "your-first-app step2: Book/Member concepts replace the scaffold's own"
     else
-      fail "your-first-app step2: block present" "no json block found under step 2"
+      fail "your-first-app step2: Book/Member concepts replace the scaffold's own" "see $LOG"
     fi
 
-    # Step 3 (json): full db.definition.json content
-    S3=$(yfa_block 3 0)
-    if [ -n "$S3" ]; then
-      printf '%s\n' "$S3" > "$YFA_WORK/db.definition.json"
-      if python3 -c "import json; json.load(open('$YFA_WORK/db.definition.json'))" >>"$LOG" 2>&1; then
-        pass "your-first-app step3: db.definition.json written and is valid JSON"
-      else
-        fail "your-first-app step3: db.definition.json written and is valid JSON" "see $LOG"
-      fi
-    else
-      fail "your-first-app step3: block present" "no json block found under step 3"
-    fi
+    # Step 3 (sh): cd back to repo root + validate
+    S3=$(yfa_block 3 0 | subst | sed 's/ && /\n/g')
+    CURRENT_DIR="$SRC"
+    if [ -n "$S3" ]; then run_cmd_list "your-first-app step3" <<< "$S3"
+    else fail "your-first-app step3: block present" "no sh block found under step 3"; fi
 
-    # Step 4 (sh): git init -- AFTER model.json/db.definition.json exist, so both get tracked
-    # (this ordering is itself the fix for a real bug the doc's own first draft had: git init
-    # BEFORE those files existed meant they were never `git add`ed, and the closing `git commit
-    # -am` at step 7 silently committed nothing).
+    # Step 4 (sh): generate, cd, gradlew bootJar, java -jar (deferred by run_cmd_list)
     S4=$(yfa_block 4 0 | subst | sed 's/ && /\n/g')
     CURRENT_DIR="$SRC"
     if [ -n "$S4" ]; then run_cmd_list "your-first-app step4" <<< "$S4"
     else fail "your-first-app step4: block present" "no sh block found under step 4"; fi
 
-    if git -C "$YFA_WORK" log --oneline >>"$LOG" 2>&1; then
-      pass "your-first-app step4: git history exists after git init"
-    else
-      fail "your-first-app step4: git history exists after git init" "see $LOG"
-    fi
-
-    # Step 5 (sh): cd back to repo root + validate
-    S5=$(yfa_block 5 0 | subst | sed 's/ && /\n/g')
-    CURRENT_DIR="$SRC"
-    if [ -n "$S5" ]; then run_cmd_list "your-first-app step5" <<< "$S5"
-    else fail "your-first-app step5: block present" "no sh block found under step 5"; fi
-
-    # Step 6 (sh): generate, cd, gradlew bootJar, java -jar (deferred by run_cmd_list)
-    S6=$(yfa_block 6 0 | subst | sed 's/ && /\n/g')
-    CURRENT_DIR="$SRC"
-    if [ -n "$S6" ]; then run_cmd_list "your-first-app step6" <<< "$S6"
-    else fail "your-first-app step6: block present" "no sh block found under step 6"; fi
-
-    # Step 6's real "does it run" proof -- boot the built jar and hit the documented dev-key path.
+    # Step 4's real "does it run" proof -- boot the built jar and hit the documented dev-key path.
     YFA_JAR=$(find "$YFA_APP" -name '*.jar' -path '*build/libs*' 2>/dev/null | head -1)
     if [ -z "$YFA_JAR" ]; then
-      fail "your-first-app step6: jar exists after build" "no build/libs/*.jar under $YFA_APP"
+      fail "your-first-app step4: jar exists after build" "no build/libs/*.jar under $YFA_APP"
     else
-      pass "your-first-app step6: jar exists after build"
+      pass "your-first-app step4: jar exists after build"
       ( cd "$(dirname "$(dirname "$(dirname "$YFA_JAR")")")" \
         && java -jar "$YFA_JAR" --spring.profiles.active=dev --server.port="$YFA_PORT" ) >/work/yfa-app.log 2>&1 &
       YFA_PID=$!
@@ -595,45 +628,45 @@ print(step['blocks'][$2]['body'] if step and len(step['blocks']) > $2 else '', e
         kill -0 "$YFA_PID" 2>/dev/null || break
       done
       if [ "$YFA_UP" = "1" ]; then
-        pass "your-first-app step6: app responds on :$YFA_PORT"
+        pass "your-first-app step4: app responds on :$YFA_PORT"
         YFA_BOOK=$(curl -sS -X POST "http://localhost:$YFA_PORT/api/books" \
           -H 'X-Api-Key: dev-key' -H 'Content-Type: application/json' \
           -d '{"title":"The Hobbit","isbn":"9780345339683","copies":1}' 2>>"$LOG")
         if printf '%s' "$YFA_BOOK" | grep -q '"title"[[:space:]]*:[[:space:]]*"The Hobbit"'; then
-          pass "your-first-app step6: dev-key creates a Book over the documented REST API"
+          pass "your-first-app step4: dev-key creates a Book over the documented REST API"
         else
-          fail "your-first-app step6: dev-key creates a Book over the documented REST API" \
+          fail "your-first-app step4: dev-key creates a Book over the documented REST API" \
                "see $LOG"; printf '%s' "$YFA_BOOK" | tail -c 500 | sed 's/^/          | /'
         fi
       else
-        fail "your-first-app step6: app responds on :$YFA_PORT" "no HTTP response within 120s" "see /work/yfa-app.log"
+        fail "your-first-app step4: app responds on :$YFA_PORT" "no HTTP response within 120s" "see /work/yfa-app.log"
         tail -15 /work/yfa-app.log | sed 's/^/          | /'
       fi
       kill "$YFA_PID" 2>/dev/null; wait "$YFA_PID" 2>/dev/null
     fi
 
-    # Step 7 (json #0): the publishedYear field snippet -- inject it (scripted, same mechanism
-    # as change-a-field), then run the step's sh block (json #... none further; sh block #0).
-    S7_FIELD=$(yfa_block 7 0)
-    if [ -n "$S7_FIELD" ] && python3 /usr/local/bin/inject_field.py "$YFA_WORK/model.json" "Book" "$S7_FIELD" >>"$LOG" 2>&1; then
-      pass "your-first-app step7: publishedYear field injected into Book"
+    # Step 5 (json #0): the publishedYear field snippet -- inject it (scripted, same mechanism
+    # as change-a-field), then run the step's sh block (sh block #1).
+    S5_FIELD=$(yfa_block 5 0)
+    if [ -n "$S5_FIELD" ] && python3 /usr/local/bin/inject_field.py "$YFA_WORK/model.json" "Book" "$S5_FIELD" >>"$LOG" 2>&1; then
+      pass "your-first-app step5: publishedYear field injected into Book"
     else
-      fail "your-first-app step7: publishedYear field injected into Book" "see $LOG"
+      fail "your-first-app step5: publishedYear field injected into Book" "see $LOG"
     fi
 
-    S7=$(yfa_block 7 1 | subst | sed 's/ && /\n/g')
+    S5=$(yfa_block 5 1 | subst | sed 's/ && /\n/g')
     CURRENT_DIR="$SRC"
-    if [ -n "$S7" ]; then run_cmd_list "your-first-app step7" <<< "$S7"
-    else fail "your-first-app step7: sh block present" "no second (sh) block found under step 7"; fi
+    if [ -n "$S5" ]; then run_cmd_list "your-first-app step5" <<< "$S5"
+    else fail "your-first-app step5: sh block present" "no second (sh) block found under step 5"; fi
 
-    # Step 7's real proof: the field the user "added" is actually there, and the book created
-    # in step 6 SURVIVED the regenerate+rebuild+restart (H2Local, per step 3's db.definition.json)
-    # rather than only proving a fresh, empty app boots.
+    # Step 5's real proof: the field the user "added" is actually there, and the book created
+    # in step 4 SURVIVED the regenerate+rebuild+restart (H2Local, from npdev init's own
+    # db.definition.json) rather than only proving a fresh, empty app boots.
     YFA_JAR2=$(find "$YFA_APP" -name '*.jar' -path '*build/libs*' 2>/dev/null | head -1)
     if [ -z "$YFA_JAR2" ]; then
-      fail "your-first-app step7: jar exists after rebuild" "no build/libs/*.jar under $YFA_APP"
+      fail "your-first-app step5: jar exists after rebuild" "no build/libs/*.jar under $YFA_APP"
     else
-      pass "your-first-app step7: jar exists after rebuild"
+      pass "your-first-app step5: jar exists after rebuild"
       ( cd "$(dirname "$(dirname "$(dirname "$YFA_JAR2")")")" \
         && java -jar "$YFA_JAR2" --spring.profiles.active=dev --server.port="$YFA_PORT" ) >/work/yfa-app2.log 2>&1 &
       YFA_PID2=$!
@@ -646,43 +679,161 @@ print(step['blocks'][$2]['body'] if step and len(step['blocks']) > $2 else '', e
         kill -0 "$YFA_PID2" 2>/dev/null || break
       done
       if [ "$YFA_UP2" = "1" ]; then
-        pass "your-first-app step7: app responds after regenerate+rebuild+restart"
+        pass "your-first-app step5: app responds after regenerate+rebuild+restart"
         YFA_LIST=$(curl -sS "http://localhost:$YFA_PORT/api/books" -H 'X-Api-Key: dev-key' 2>>"$LOG")
         if printf '%s' "$YFA_LIST" | grep -q '"publishedYear"'; then
-          pass "your-first-app step7: publishedYear field reachable via REST"
+          pass "your-first-app step5: publishedYear field reachable via REST"
         else
-          fail "your-first-app step7: publishedYear field reachable via REST" "see $LOG"
+          fail "your-first-app step5: publishedYear field reachable via REST" "see $LOG"
           printf '%s' "$YFA_LIST" | tail -c 500 | sed 's/^/          | /'
         fi
         if printf '%s' "$YFA_LIST" | grep -q '"title"[[:space:]]*:[[:space:]]*"The Hobbit"'; then
-          pass "your-first-app step7: the book created in step 6 survived the schema change"
+          pass "your-first-app step5: the book created in step 4 survived the schema change"
         else
-          fail "your-first-app step7: the book created in step 6 survived the schema change" \
+          fail "your-first-app step5: the book created in step 4 survived the schema change" \
                "H2Local should have kept it -- see $LOG"
           printf '%s' "$YFA_LIST" | tail -c 500 | sed 's/^/          | /'
         fi
       else
-        fail "your-first-app step7: app responds after regenerate+rebuild+restart" \
+        fail "your-first-app step5: app responds after regenerate+rebuild+restart" \
              "no HTTP response within 120s" "see /work/yfa-app2.log"
         tail -15 /work/yfa-app2.log | sed 's/^/          | /'
       fi
       kill "$YFA_PID2" 2>/dev/null; wait "$YFA_PID2" 2>/dev/null
     fi
 
-    # Step 7's closing git commit -am -- proves the doc's own restructured step ordering
-    # actually fixed the "nothing to commit" bug found while writing it.
-    S7_COMMIT=$(yfa_block 7 2 | subst | sed 's/ && /\n/g')
+    # Step 5's closing git commit -am -- proves the doc's own step ordering (npdev init's own
+    # commit happens BEFORE any edit, so both the concepts-replacement and publishedYear are
+    # tracked modifications by the time this runs) actually produces a second commit, not a
+    # silently-empty `git commit -am`.
+    S5_COMMIT=$(yfa_block 5 2 | subst | sed 's/ && /\n/g')
     CURRENT_DIR="$SRC"
-    if [ -n "$S7_COMMIT" ]; then run_cmd_list "your-first-app step7-commit" <<< "$S7_COMMIT"
-    else fail "your-first-app step7: closing commit block present" "no third block found under step 7"; fi
+    if [ -n "$S5_COMMIT" ]; then run_cmd_list "your-first-app step5-commit" <<< "$S5_COMMIT"
+    else fail "your-first-app step5: closing commit block present" "no third block found under step 5"; fi
 
     if [ "$(git -C "$YFA_WORK" log --oneline 2>>"$LOG" | wc -l)" -ge 2 ]; then
-      pass "your-first-app step7: git commit -am actually committed the tracked change"
+      pass "your-first-app step5: git commit -am actually committed the tracked changes"
     else
-      fail "your-first-app step7: git commit -am actually committed the tracked change" \
-           "expected 2 commits (start + publishedYear); see $LOG"
+      fail "your-first-app step5: git commit -am actually committed the tracked changes" \
+           "expected >= 2 commits (npdev init + publishedYear); see $LOG"
     fi
   fi
+fi
+
+# ---------------------------------------------------------------- 7. npdev init -> run app
+
+section "7. npdev init -> run app with NO flags (I3, CWD inference)"
+
+# your-first-app above already proves `npdev init`'s scaffolding + git history. This section
+# proves I3's OTHER half: `npdev run app`, given no --model/--config/--output at all, must infer
+# them from the current directory -- the exact promise `npdev init my-app && cd my-app && npdev
+# run app` makes. Uses the DEFAULT seed (no --from), unlike your-first-app which overwrites it --
+# so this is also the one place the harness ever boots the seed's own Patient/Appointment shape.
+INIT_DIR=/work/init-check-app
+INIT_OUT=/work/init-check-app-app
+
+cd "$SRC" || die "cannot cd to $SRC for section 7"
+rm -rf "$INIT_DIR" "$INIT_OUT"
+
+if ./npdev init "$INIT_DIR" >>"$LOG" 2>&1; then
+  pass "npdev init: scaffolds a fresh directory"
+else
+  fail "npdev init: scaffolds a fresh directory" "see $LOG"
+fi
+
+for f in model.json config.json db.definition.json README.md .gitignore; do
+  if [ -f "$INIT_DIR/$f" ]; then
+    pass "npdev init: scaffolded $f"
+  else
+    fail "npdev init: scaffolded $f" "missing: $INIT_DIR/$f"
+  fi
+done
+
+if git -C "$INIT_DIR" log --oneline >>"$LOG" 2>&1; then
+  pass "npdev init: git history exists (first commit made automatically)"
+else
+  fail "npdev init: git history exists (first commit made automatically)" "see $LOG"
+fi
+
+# Re-running init into the SAME (now non-empty) directory must refuse, not silently overwrite.
+if ./npdev init "$INIT_DIR" >>"$LOG" 2>&1; then
+  fail "npdev init: refuses a non-empty target directory" \
+       "a second init into the same directory exited 0 -- it should have refused"
+else
+  pass "npdev init: refuses a non-empty target directory"
+fi
+
+# The actual point of this section: no --model/--config/--output at all.
+INIT_JSON=$(cd "$INIT_DIR" && "$SRC/npdev" run app --timeout 420 2>>"$LOG")
+INIT_RC=$?
+if [ "$INIT_RC" -eq 0 ] && printf '%s' "$INIT_JSON" | grep -q '"ok": true'; then
+  pass "npdev run app (no flags): infers model/config/output from CWD and boots"
+  INIT_URL=$(printf '%s' "$INIT_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('baseUrl') or '')" 2>>"$LOG")
+  if [ -n "$INIT_URL" ] && curl -sS -o /dev/null -w '%{http_code}' "$INIT_URL/" 2>/dev/null | grep -qE '^(200|301|302|401|403)$'; then
+    pass "npdev run app (no flags): the app it booted actually responds"
+  else
+    fail "npdev run app (no flags): the app it booted actually responds" "baseUrl='$INIT_URL'; see $LOG"
+  fi
+  pkill -f "init-check-app-app" 2>/dev/null; sleep 1
+else
+  fail "npdev run app (no flags): infers model/config/output from CWD and boots" \
+       "exit=$INIT_RC; tail of its own JSON below" "see $LOG"
+  printf '%s' "$INIT_JSON" | tail -c 800 | sed 's/^/          | /'
+fi
+
+# ---------------------------------------------------------------- 8. npdev mcp install
+
+section "8. npdev mcp install -- config + live stdio handshake (I6)"
+
+# The agent-verifiable half of I6: the emitted config is valid and its paths resolve, and --
+# the real test -- the server actually answers an MCP initialize/tools/list handshake over
+# stdio. What no harness can verify is a GUI client discovering the file after a restart; that
+# is a separate, human, one-time step (see docs/AUTHORING_WITH_AI.md's own note on the split).
+cd "$SRC" || die "cannot cd to $SRC for section 8"
+rm -rf /work/mcp-install-test && mkdir -p /work/mcp-install-test
+if (cd /work/mcp-install-test && "$SRC/npdev" mcp install --client claude-code) >>"$LOG" 2>&1; then
+  pass "npdev mcp install: writes .mcp.json"
+else
+  fail "npdev mcp install: writes .mcp.json" "see $LOG"
+fi
+
+MCP_CMD=$(python3 -c "import json; print(json.load(open('/work/mcp-install-test/.mcp.json'))['mcpServers']['npdev']['command'])" 2>>"$LOG")
+MCP_SERVER=$(python3 -c "import json; print(json.load(open('/work/mcp-install-test/.mcp.json'))['mcpServers']['npdev']['args'][0])" 2>>"$LOG")
+if [ -n "$MCP_CMD" ] && [ -x "$MCP_CMD" ] && [ -f "$MCP_SERVER" ]; then
+  pass "npdev mcp install: emitted command + server path both resolve"
+else
+  fail "npdev mcp install: emitted command + server path both resolve" \
+       "command='$MCP_CMD' server='$MCP_SERVER'"
+fi
+
+HANDSHAKE_OK=$(python3 - "$MCP_CMD" "$MCP_SERVER" <<'PYEOF' 2>>"$LOG"
+import json, subprocess, sys
+cmd, server = sys.argv[1], sys.argv[2]
+p = subprocess.Popen([cmd, server], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                     text=True, bufsize=1)
+try:
+    req = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+           "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                      "clientInfo": {"name": "npdev-harness-selftest", "version": "1"}}}
+    p.stdin.write(json.dumps(req) + "\n"); p.stdin.flush()
+    init_resp = json.loads(p.stdout.readline())
+    assert "result" in init_resp, f"initialize had no result: {init_resp}"
+
+    req2 = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+    p.stdin.write(json.dumps(req2) + "\n"); p.stdin.flush()
+    tools = json.loads(p.stdout.readline())["result"]["tools"]
+    assert len(tools) >= 15, f"expected >= 15 tools, got {len(tools)}"
+    print(f"true {len(tools)}")
+except Exception as exc:
+    print(f"false {exc}")
+finally:
+    p.terminate()
+PYEOF
+)
+if printf '%s' "$HANDSHAKE_OK" | grep -q '^true'; then
+  pass "npdev mcp install: server answers initialize + tools/list over stdio ($(printf '%s' "$HANDSHAKE_OK" | awk '{print $2}') tools)"
+else
+  fail "npdev mcp install: server answers initialize + tools/list over stdio" "$HANDSHAKE_OK"
 fi
 
 # ---------------------------------------------------------------- summary

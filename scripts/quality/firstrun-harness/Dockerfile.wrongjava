@@ -1,0 +1,39 @@
+# NPDev doctor Level-2 harness -- a machine with the WRONG Java already installed.
+#
+# WHY THIS EXISTS
+# ----------------
+# `npdev doctor` written without a failing machine to run against is a checker that has never
+# seen a red -- untested by construction, since every one of its checks passes trivially on the
+# machine that wrote it. This builds a machine with Java 21 (not the required 17) pre-installed
+# and asserts `doctor` actually catches it, naming the version it found -- the single test that
+# proves doctor's FAILURE path, not just its happy path (see docs/YOUR_FIRST_APP.md's I5 counterpart
+# in PLAN.md: "the single most important test in the plan").
+#
+# Build:  docker build --build-arg JDK=21 -f Dockerfile.wrongjava -t npdev-firstrun-wrongjava .
+# Run:    docker run --rm npdev-firstrun-wrongjava
+#         exit 0 -- doctor correctly failed and named the wrong JDK version
+#         exit 1 -- doctor did NOT catch it (a real bug to fix, not a harness problem)
+#         exit 2 -- harness itself could not run (clone failed, ...)
+
+FROM ubuntu:24.04
+
+ARG JDK=21
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    JDK_VERSION=${JDK}
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates curl git python3 "openjdk-${JDK}-jdk" \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work
+COPY check-wrongjava.sh /usr/local/bin/check-wrongjava.sh
+RUN chmod +x /usr/local/bin/check-wrongjava.sh
+
+# REPO_URL/REPO_REF/LOCAL_SRC follow the same convention as the Level-1 harness's own Dockerfile.
+ENV REPO_URL=https://github.com/MarceloGiazzon/NPDevGeneral.git \
+    REPO_REF=main \
+    LOCAL_SRC=0
+
+ENTRYPOINT ["/usr/local/bin/check-wrongjava.sh"]

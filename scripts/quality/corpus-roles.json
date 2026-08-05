@@ -47,6 +47,7 @@
     "NPDevSamples/durable-workflow-demo": "dsl-fixture",
     "NPDevSamples/medium-expense-approval": "showcase",
     "NPDevSamples/npdev-canary": "canary",
+    "NPDevSamples/npdev-init-seed": "showcase",
     "NPDevSamples/restaurant-saas-multitenant": "showcase",
     "NPDevSamples/simple-contact-intake": "showcase",
     "NPDevSamples/simple-user-registry": "engine-variant",
