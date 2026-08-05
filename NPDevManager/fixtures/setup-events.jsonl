@@ -1,0 +1,5 @@
+{"schemaVersion": "npdev-cli-event.v1", "phase": "jars", "status": "started"}
+{"schemaVersion": "npdev-cli-event.v1", "phase": "jars", "status": "done", "seconds": 92.3, "source": "build"}
+{"schemaVersion": "npdev-cli-event.v1", "phase": "knowledge-index", "status": "started"}
+{"schemaVersion": "npdev-cli-event.v1", "phase": "knowledge-index", "status": "done", "seconds": 0.2}
+{"schemaVersion": "npdev-cli-result.v1", "command": "setup", "ok": true, "exitCode": 0, "jarsSource": "build", "events": [{"schemaVersion": "npdev-cli-event.v1", "phase": "jars", "status": "started"}, {"schemaVersion": "npdev-cli-event.v1", "phase": "jars", "status": "done", "seconds": 92.3, "source": "build"}, {"schemaVersion": "npdev-cli-event.v1", "phase": "knowledge-index", "status": "started"}, {"schemaVersion": "npdev-cli-event.v1", "phase": "knowledge-index", "status": "done", "seconds": 0.2}]}

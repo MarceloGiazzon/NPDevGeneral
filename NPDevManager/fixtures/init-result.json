@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "init",
+  "ok": true,
+  "exitCode": 0,
+  "created": {
+    "directory": "C:\\Users\\Marcelo\\AppData\\Local\\Temp\\claude\\D--WorkSpace-NPDev-NPDev-General\\b175b707-5fb6-42eb-bf82-ea8a8871efbf\\scratchpad\\init-fixture-app",
+    "files": [
+      "model.json",
+      "config.json",
+      "db.definition.json",
+      "README.md",
+      ".gitignore"
+    ],
+    "gitInitialised": true,
+    "nextCommand": "npdev dev"
+  }
+}

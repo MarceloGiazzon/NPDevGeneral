@@ -1,0 +1,25 @@
+{"ts": 1785923969.6543014, "kind": "phase", "phase": "validate"}
+{"ts": 1785924011.833327, "kind": "result", "result": "ok"}
+{"ts": 1785924011.833663, "kind": "classification", "metadataOnly": false}
+{"ts": 1785924011.8338075, "kind": "phase", "phase": "generate"}
+{"ts": 1785924066.7054977, "kind": "result", "result": "ok"}
+{"ts": 1785924066.706223, "kind": "phase", "phase": "build"}
+{"ts": 1785924172.2986069, "kind": "result", "result": "ok"}
+{"ts": 1785924172.2990363, "kind": "phase", "phase": "restart"}
+{"ts": 1785924273.197155, "kind": "result", "result": "ok"}
+{"ts": 1785924273.2027197, "kind": "ready", "seconds": 303.5, "metadataOnly": false}
+{"ts": 1785924330.3520706, "kind": "changed", "files": ["C:\\Users\\Marcelo\\AppData\\Local\\Temp\\claude\\D--WorkSpace-NPDev-NPDev-General\\b175b707-5fb6-42eb-bf82-ea8a8871efbf\\scratchpad\\dev-fixture-app\\model.json"]}
+{"ts": 1785924330.3531823, "kind": "phase", "phase": "validate"}
+{"ts": 1785924343.5563402, "kind": "result", "result": "FAILED"}
+{"ts": 1785924343.5573597, "kind": "diagnostics", "errorCount": 1}
+{"ts": 1785924380.5439053, "kind": "changed", "files": ["C:\\Users\\Marcelo\\AppData\\Local\\Temp\\claude\\D--WorkSpace-NPDev-NPDev-General\\b175b707-5fb6-42eb-bf82-ea8a8871efbf\\scratchpad\\dev-fixture-app\\model.json"]}
+{"ts": 1785924380.545092, "kind": "phase", "phase": "validate"}
+{"ts": 1785924401.31386, "kind": "result", "result": "ok"}
+{"ts": 1785924470.4992025, "kind": "classification", "metadataOnly": true}
+{"ts": 1785924470.6149962, "kind": "phase", "phase": "generate"}
+{"ts": 1785924546.6421802, "kind": "result", "result": "ok"}
+{"ts": 1785924546.6423993, "kind": "phase", "phase": "build"}
+{"ts": 1785924628.0687828, "kind": "result", "result": "ok"}
+{"ts": 1785924628.0689757, "kind": "phase", "phase": "restart"}
+{"ts": 1785924700.8946946, "kind": "result", "result": "ok"}
+{"ts": 1785924700.8983588, "kind": "ready", "seconds": 320.4, "metadataOnly": true}

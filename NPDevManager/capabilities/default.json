@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities the main window needs: listening for the progress/log events emitted from Rust (setup-event, dev-event, jdk-progress, python-progress, version-install-progress), and the opener plugin's open_path/open_url used by the Apps and Run screens.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "opener:default"
+  ]
+}
