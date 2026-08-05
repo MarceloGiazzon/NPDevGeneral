@@ -175,3 +175,22 @@ docker run --rm -e LOCAL_SRC=1 -v /d/WorkSpace/NPDev/NPDev_General:/work/src:ro 
   read-only and copying+normalizing the whole tree just to test doc edits is more machinery than the
   case has earned -- if this bites again, `git -C <checkout> add --renormalize .` before mounting is
   the workaround, or run against `REPO_REF=<branch>` (real clone mode) instead.
+- **`docker build` from a Windows checkout bakes in CRLF too -- a SEPARATE artifact from the one
+  above.** `run-readme.sh`/`inject_field.py`/`check-wrongjava.sh` are `COPY`'d into the image from
+  the build CONTEXT (this repo's checkout on disk), not cloned via git -- so `docker build -t
+  npdev-firstrun .` run directly against a Windows checkout with `core.autocrlf=true` bakes
+  `run-readme.sh` itself in with CRLF, and its own `#!/usr/bin/env bash` shebang becomes
+  `#!/usr/bin/env bash\r`, which fails identically to the gotcha above (`env: 'bash\r': No such
+  file or directory`) but before the container ever gets far enough to clone anything. Confirmed
+  the committed BLOB is LF-only (`git show HEAD:...` has zero `\r` bytes) -- purely a Windows
+  working-tree artifact, same root cause as the mount gotcha, different mechanism (COPY at build
+  time vs. bind-mount at run time). Workaround used here: build from a scratch directory populated
+  via `git show HEAD:<path> | tr -d '\r' > <scratch>/<path>` for each file, then `docker build`
+  against that directory instead of this one directly.
+- **A stray `git config --global` inside the container is load-bearing, not decoration.** Both
+  `npdev init` and YOUR_FIRST_APP.md's own step 1 run a real `git commit`; a bare Ubuntu image
+  has no identity configured at all, and `git commit` fails outright without one
+  ("unable to auto-detect email address"). Configured once in section 0, right after obtaining the
+  source -- standing in for the pre-existing human state every real machine already has (anyone
+  who owns a git identity configured it long before cloning NPDev), not a documented NPDev
+  prerequisite.
