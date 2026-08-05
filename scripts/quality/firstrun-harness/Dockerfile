@@ -32,6 +32,7 @@ RUN apt-get update \
 
 WORKDIR /work
 COPY run-readme.sh /usr/local/bin/run-readme.sh
+COPY inject_field.py /usr/local/bin/inject_field.py
 RUN chmod +x /usr/local/bin/run-readme.sh
 
 # REPO_URL   which repository to clone (override to test a fork/branch)
