@@ -309,10 +309,19 @@ ROOT_SCALAR_KEYS = {"$schema", "schemaVersion", "dslVersion", "namespace", "mode
 FRAGMENT_KEYS = MODEL_ARRAY_KEYS | {"metadata", "fragments"}
 
 
-def resolve_split_model(path: Path) -> dict:
+def resolve_split_model(path: Path, collect_sources: set[Path] | None = None) -> dict:
+    """Compose a (possibly $ref-split) model into one dict.
+
+    `collect_sources`, when given, is populated with every file that contributed -- the root
+    plus every fragment reached through $ref. `npdev dev` uses it as its watch set: a model is
+    a graph since bounded contexts (S3), so watching model.json alone misses fragment edits.
+    Exposed as an out-parameter rather than a second traversal on purpose -- two walks of the
+    same $ref graph would drift, which is REG-108's exact shape.
+    """
     root_path = Path(path).expanduser().resolve(strict=True)
     root_dir = root_path.parent.resolve(strict=True)
-    seen: set[Path] = set()
+    seen: set[Path] = set() if collect_sources is None else collect_sources
+    seen.add(root_path)
 
     def fail(label: str, message: str) -> None:
         raise CliError(f"{label}: {message}")
@@ -2826,6 +2835,13 @@ def build_parser() -> argparse.ArgumentParser:
                        "Python, git, disk space, staged jars (I5)."
     )
 
+    dev_parser = subparsers.add_parser(
+        "dev", help="Watch the model and rebuild + restart the app on every save -- the "
+                    "change-a-field loop, automatic."
+    )
+    from dev_loop import add_arguments as _dev_add_arguments  # local import, as elsewhere
+    _dev_add_arguments(dev_parser)
+
     mcp = subparsers.add_parser(
         "mcp", help="Connect an AI client to NPDev's MCP tools (I6)."
     )
@@ -3190,6 +3206,16 @@ def main(argv: list[str] | None = None) -> int:
             return run_init(args)
         if args.command == "setup":
             return run_setup(args)
+        if args.command == "dev":
+            # Reuse run_app's CWD inference rather than a second rule: `npdev init my-app &&
+            # cd my-app && npdev dev` must work with no flags, and two ways of finding
+            # model.json would drift.
+            inference_error = _infer_run_app_paths(args)
+            if inference_error is not None:
+                print(json.dumps({"ok": False, "diagnostics": [inference_error]}, indent=2))
+                return 2
+            from dev_loop import dev as _dev_run  # local import, as elsewhere
+            return _dev_run(args, sys.modules[__name__])
         if args.command == "doctor":
             return run_doctor(args)
         if args.command == "mcp" and args.mcp_command == "install":
