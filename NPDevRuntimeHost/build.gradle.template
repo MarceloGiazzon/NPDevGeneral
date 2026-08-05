@@ -24,8 +24,18 @@ repositories {
 }
 
 def resolveNpdevRuntimeLibsDir = {
-    def configured = providers.gradleProperty('npdevRuntimeHostLibsDir')
-            .orElse(providers.environmentVariable('NPDEV_RUNTIMEHOST_LIBS_DIR'))
+    // REG-137: NPDEV_RUNTIMEHOST_LIBS_DIR is checked BEFORE the gradle property on purpose.
+    // FinalAppAssembler#appendRuntimeHostLibsDirDefault (REG-128) always bakes a resolved
+    // npdevRuntimeHostLibsDir into every generated app's gradle.properties at generation time --
+    // if gradleProperty were checked first, that baked-in generation-time value would permanently
+    // shadow a build-time env var override (e.g. a test pointing bootJar at its own freshly-built
+    // jar set), since providers.gradleProperty() reads the file with no way to tell "explicit -P"
+    // apart from "value came from the properties file". Checking the env var first restores that
+    // override path. An explicit -PnpdevRuntimeHostLibsDir=... still wins whenever no env var is
+    // set (it feeds this same gradleProperty() call); the only case this reorders is the unusual
+    // one where both an env var AND -P are set simultaneously, which no caller in this repo does.
+    def configured = providers.environmentVariable('NPDEV_RUNTIMEHOST_LIBS_DIR')
+            .orElse(providers.gradleProperty('npdevRuntimeHostLibsDir'))
             .orNull
     if (configured != null && !configured.toString().trim().isEmpty()) {
         return file(configured.toString().trim())

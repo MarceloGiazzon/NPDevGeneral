@@ -108,7 +108,12 @@ final class HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest {
         Path runtimeHostLibs = ensureRuntimeHostLibs(evidenceRoot);
 
         CommandResult bootJar = runCommand(
-                List.of(gradlewPath(finalAppRoot).toString(), "--no-daemon", "bootJar"),
+                // REG-137: pass both the env var AND -P. FinalAppAssembler always bakes a
+                // generation-time npdevRuntimeHostLibsDir default into the assembled app's
+                // gradle.properties (REG-128), which -- absent this -P -- would win over a
+                // bare env var via Gradle's own command-line/-property-file precedence.
+                List.of(gradlewPath(finalAppRoot).toString(), "--no-daemon", "bootJar",
+                        "-PnpdevRuntimeHostLibsDir=" + runtimeHostLibs),
                 finalAppRoot,
                 Map.of("NPDEV_RUNTIMEHOST_LIBS_DIR", runtimeHostLibs.toString()),
                 Duration.ofMinutes(6)
