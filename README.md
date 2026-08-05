@@ -11,6 +11,9 @@ fill in, a working application.
 
 ## See it run
 
+**Requires Java 17 and Python 3** — Docker is optional, only needed for the Docker run path.
+`npdev doctor` checks all of it and tells you exactly what is missing.
+
 ```sh
 npdev doctor                       # is this machine ready? (Java 17, Python, disk)
 npdev setup                        # one-time: build NPDev's own jars locally
