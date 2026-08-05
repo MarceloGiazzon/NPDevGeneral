@@ -193,6 +193,9 @@
     "scripts/quality/firstrun-harness/run-readme.sh": {
       "invocation": "manual-runbook"
     },
+    "scripts/quality/firstrun-harness/check-wrongjava.sh": {
+      "invocation": "manual-runbook"
+    },
     "scripts/quality/firstrun-harness/inject_field.py": {
       "invocation": "orchestrated"
     },
