@@ -1016,10 +1016,31 @@ def run_init(args: argparse.Namespace) -> int:
         cwd=target, check=True,
     )
 
+    created_files = [name for name in
+                     ("model.json", "config.json", "db.definition.json", "README.md", ".gitignore")
+                     if (target / name).exists()]
+
+    if getattr(args, "json", False):
+        # I3: one object, nothing else on stdout -- absolute paths only, since the Manager has no
+        # shared working directory to resolve a relative one against.
+        result = {
+            "schemaVersion": "npdev-cli-result.v1",
+            "command": "init",
+            "ok": True,
+            "exitCode": 0,
+            "created": {
+                "directory": str(target),
+                "files": created_files,
+                "gitInitialised": True,
+                "nextCommand": "npdev dev",
+            },
+        }
+        print(json.dumps(result, indent=2))
+        return 0
+
     print(f"Created {target}")
-    for name in ("model.json", "config.json", "db.definition.json", "README.md", ".gitignore"):
-        if (target / name).exists():
-            print(f"  {name}")
+    for name in created_files:
+        print(f"  {name}")
     print(f"\ngit: initialized, 1 commit")
     print(f"\nNext:\n  cd {target.name}\n  npdev run app")
     return 0
@@ -1529,6 +1550,44 @@ def _discover_runtimehost_source_jars(root: Path, external_build_root: Path) -> 
     return by_name
 
 
+class _SetupOutput:
+    """I2: narration goes wherever the human already saw it (stdout, byte-identical) unless
+    --json is passed, in which case narration moves to stderr and JSON Lines events take stdout
+    instead -- the same split `dev_loop.py`'s own `Output` class already established for `npdev
+    dev`, reused rather than inventing a second convention (§9 prohibition)."""
+
+    def __init__(self, json_mode: bool):
+        self.json_mode = json_mode
+        self.events: list[dict] = []
+
+    def narrate(self, text: str) -> None:
+        print(text, file=sys.stderr if self.json_mode else sys.stdout)
+
+    def event(self, phase: str, status: str, **extra) -> None:
+        if not self.json_mode:
+            return
+        payload = {"schemaVersion": "npdev-cli-event.v1", "phase": phase, "status": status, **extra}
+        self.events.append(payload)
+        print(json.dumps(payload), flush=True)
+
+    def run(self, command: list, cwd: Path) -> None:
+        """Run a subprocess whose own stdout must not leak onto OUR stdout in --json mode (Gradle
+        output and build_knowledge.py's own JSON both inherit stdio by default, which would land
+        raw text between JSON Lines events -- the exact violation of "nothing but JSON on stdout"
+        this class exists to prevent). In human mode, subprocess.run is left completely untouched
+        (inherited, streamed) so the human output stays byte- and timing-identical to before."""
+        if not self.json_mode:
+            subprocess.run(command, cwd=cwd, check=True)
+            return
+        completed = subprocess.run(command, cwd=cwd, capture_output=True, text=True)
+        if completed.stdout:
+            self.narrate(completed.stdout.rstrip("\n"))
+        if completed.stderr:
+            self.narrate(completed.stderr.rstrip("\n"))
+        if completed.returncode != 0:
+            raise subprocess.CalledProcessError(completed.returncode, command)
+
+
 def run_setup(args: argparse.Namespace) -> int:
     """I4: a portable port of scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars --
     that script is 265 lines with zero Windows-specific constructs (measured); keeping `pwsh` as a
@@ -1539,7 +1598,14 @@ def run_setup(args: argparse.Namespace) -> int:
     Step 2 (the AI knowledge index) matters more than it looks: NPDevMcp/server.py already errors
     correctly when the index is missing ("index not built yet -- run: python scripts/ai/
     build_knowledge.py") -- that good error is currently the user's first hint the step exists.
-    Folding it in here means they never have to see it."""
+    Folding it in here means they never have to see it.
+
+    Phase 0 I2: --json wraps the same two phases (jar build, knowledge index) with started/done
+    events carrying elapsed seconds, ending with one npdev-cli-result.v1 object -- setup is long
+    (~573s), so the Manager needs progress, not just a final verdict."""
+    import time as _time
+
+    out = _SetupOutput(getattr(args, "json", False))
     root = repo_root()
     kernel_root = root / "NPDevKernel"
     generator_root = root / "NPDevGenerator"
@@ -1555,20 +1621,23 @@ def run_setup(args: argparse.Namespace) -> int:
     libs_dir = build_root / "runtimehost-libs"
     libs_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"npdev setup: [1/3] building Kernel/Contract runtime jars (npdevBuildRoot={build_root})")
+    jars_started = _time.monotonic()
+    out.event("jars", "started")
+
+    out.narrate(f"npdev setup: [1/3] building Kernel/Contract runtime jars (npdevBuildRoot={build_root})")
     kernel_command = [str(kernel_wrapper), "jar", f"-PnpdevBuildRoot={build_root}",
                        *gradle_project_cache_args("kernel"), "--no-daemon", "--console=plain"]
     if os.name == "nt" and kernel_wrapper.suffix.lower() == ".bat":
         kernel_command = ["cmd.exe", "/c"] + kernel_command
-    subprocess.run(kernel_command, cwd=kernel_root, check=True)
+    out.run(kernel_command, kernel_root)
 
-    print("npdev setup: [1/3] building Generator and CLI jars")
+    out.narrate("npdev setup: [1/3] building Generator and CLI jars")
     generator_command = [str(generator_wrapper), ":generator:jar", ":tools:npdev-cli:jar",
                           f"-PnpdevBuildRoot={build_root}", *gradle_project_cache_args("generator"),
                           "--no-daemon", "--console=plain"]
     if os.name == "nt" and generator_wrapper.suffix.lower() == ".bat":
         generator_command = ["cmd.exe", "/c"] + generator_command
-    subprocess.run(generator_command, cwd=generator_root, check=True)
+    out.run(generator_command, generator_root)
 
     source_jars = _discover_runtimehost_source_jars(root, build_root)
     if not source_jars:
@@ -1598,7 +1667,8 @@ def run_setup(args: argparse.Namespace) -> int:
     }
     (libs_dir / "runtimehost-libs-manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    print(f"npdev setup: {len(copied)} jar(s) copied, {len(up_to_date)} already current -> {libs_dir}")
+    out.narrate(f"npdev setup: {len(copied)} jar(s) copied, {len(up_to_date)} already current -> {libs_dir}")
+    out.event("jars", "done", seconds=round(_time.monotonic() - jars_started, 1))
 
     # Clean the source builds' own build/ dirs afterward -- build output does not belong inside
     # the repo tree (this repo's own standing policy); scoped to exactly the three source roots
@@ -1611,22 +1681,51 @@ def run_setup(args: argparse.Namespace) -> int:
                                  key=lambda p: len(str(p)), reverse=True):
             shutil.rmtree(build_dir, ignore_errors=True)
 
+    knowledge_started = _time.monotonic()
+    out.event("knowledge-index", "started")
     build_knowledge = root / "scripts" / "ai" / "build_knowledge.py"
     if build_knowledge.exists():
-        print("npdev setup: [2/3] building the AI knowledge index")
-        subprocess.run([sys.executable, str(build_knowledge)], cwd=root, check=True)
+        out.narrate("npdev setup: [2/3] building the AI knowledge index")
+        out.run([sys.executable, str(build_knowledge)], root)
         knowledge_note = str(build_root / "npdev-ai")
+        out.event("knowledge-index", "done", seconds=round(_time.monotonic() - knowledge_started, 1))
     else:
-        print(f"npdev setup: [2/3] skipped -- not found: {build_knowledge}")
+        out.narrate(f"npdev setup: [2/3] skipped -- not found: {build_knowledge}")
         knowledge_note = "skipped"
+        out.event("knowledge-index", "skipped")
 
-    print(f"npdev setup: [3/3] done")
-    print(f"\nRuntimehost jars: {libs_dir}\nKnowledge index:  {knowledge_note}")
+    out.narrate(f"npdev setup: [3/3] done")
+    out.narrate(f"\nRuntimehost jars: {libs_dir}\nKnowledge index:  {knowledge_note}")
+
+    if out.json_mode:
+        result = {
+            "schemaVersion": "npdev-cli-result.v1",
+            "command": "setup",
+            "ok": True,
+            "exitCode": 0,
+            "events": out.events,
+        }
+        print(json.dumps(result))
     return 0
 
 
 def _resolve_java_home_binary(java_home: str) -> Path:
     return Path(java_home) / "bin" / ("java.exe" if os.name == "nt" else "java")
+
+
+def _check(id_: str, name: str, status: str, *, found: str | None = None,
+           expected: str | None = None, detail: str | None = None, fix: str | None = None,
+           fixCommand: str | None = None) -> dict:
+    """I1: one record shape for every doctor check -- see manager/helpers/checks-contract.json
+    (outside this repo) for the frozen id list. `status` drives BOTH renderers: the human summary
+    filters to fail/warn (a passing check has always printed nothing, and that must keep being
+    true byte-for-byte), while --json includes every record, pass included, so the Manager's Ready
+    screen has something to show on a healthy machine."""
+    return {
+        "id": id_, "name": name, "status": status,
+        "found": found, "expected": expected,
+        "detail": detail, "fix": fix, "fixCommand": fixCommand,
+    }
 
 
 def run_doctor(args: argparse.Namespace) -> int:
@@ -1635,76 +1734,199 @@ def run_doctor(args: argparse.Namespace) -> int:
     failure mode it guards: JAVA_HOME/`java`-on-PATH disagreement is the classic silent Gradle
     mismatch (Gradle follows JAVA_HOME, not PATH); a hardcoded runtimehost-libs path (REG-131)
     broke `run app` for everyone but its author -- `doctor` naming the fix (`npdev setup`) instead
-    of a bare "missing" is the same lesson at authoring time instead of failure time."""
-    problems: list[str] = []
-    warnings: list[str] = []
+    of a bare "missing" is the same lesson at authoring time instead of failure time.
 
-    java_path = shutil.which("java")
-    if java_path is None:
-        problems.append("Java not found on PATH -- NPDev requires Java 17 (Gradle needs it for everything).")
+    Phase 0 I1: accumulates one `_check()` record per id (java-present, java-version,
+    java-home-agreement, python-version, git-present, disk-space, runtimehost-jars,
+    ai-knowledge-index, docker-present, pwsh-present -- the checks-contract.json list) and renders
+    it two ways. When java itself is missing, java-version/java-home-agreement cannot be evaluated
+    at all; they are recorded as status "pass" rather than invented failures, because today's human
+    output prints nothing else in that case and MUST NOT gain new lines -- the Manager will see the
+    real story once java-present's own fix is applied and doctor is re-run."""
+    checks: list[dict] = []
+
+    # Phase 0 I4b (the Manager's own M3 thesis): resolve JAVA_HOME first, PATH second -- the same
+    # order Gradle itself uses. A private-JDK Manager sets ONLY JAVA_HOME for the processes it
+    # starts and deliberately never touches PATH (manager/SPEC.md/DESIGN.md), so a doctor that
+    # only ever called `shutil.which("java")` reported java-present FAIL on exactly that machine
+    # shape even with a perfectly good JDK 17 sitting where JAVA_HOME pointed -- confirmed live
+    # against a real extracted Temurin 17 with PATH stripped of java entirely. Every other check
+    # below now runs against whichever binary this resolves, not a bare "java" command name, so it
+    # still works when PATH has none at all.
+    java_home = os.environ.get("JAVA_HOME")
+    java_home_bin = _resolve_java_home_binary(java_home) if java_home else None
+    path_java = shutil.which("java")
+
+    if java_home_bin is not None and java_home_bin.exists():
+        java_bin = java_home_bin
+    elif path_java is not None:
+        java_bin = Path(path_java)
     else:
+        java_bin = None
+
+    if java_bin is None:
+        checks.append(_check(
+            "java-present", "Java", "fail", expected="installed and on PATH",
+            detail="Java not found on PATH -- NPDev requires Java 17 (Gradle needs it for everything).",
+            fix="Install Java 17 from https://adoptium.net/temurin/releases/",
+        ))
+        checks.append(_check("java-version", "Java 17", "pass", expected="17"))
+        checks.append(_check("java-home-agreement", "JAVA_HOME", "pass",
+                             expected="set, and agreeing with the java on PATH"))
+    else:
+        checks.append(_check("java-present", "Java", "pass", found=str(java_bin),
+                             expected="installed and on PATH"))
         try:
             version_output = subprocess.run(
-                ["java", "-version"], capture_output=True, text=True, timeout=10,
+                [str(java_bin), "-version"], capture_output=True, text=True, timeout=10,
             ).stderr
         except (OSError, subprocess.SubprocessError):
             version_output = ""
         match = re.search(r'version "(\d+)', version_output)
         found_version = match.group(1) if match else "unknown"
         if found_version != "17":
-            problems.append(f"Java {found_version} found ({java_path}) -- NPDev requires Java 17 specifically.")
+            checks.append(_check(
+                "java-version", "Java 17", "fail", found=found_version, expected="17",
+                detail=f"Java {found_version} found ({java_bin}) -- NPDev requires Java 17 specifically.",
+                fix="Install Java 17. Other versions may be installed alongside it.",
+            ))
+        else:
+            checks.append(_check("java-version", "Java 17", "pass", found=found_version, expected="17"))
 
-        java_home = os.environ.get("JAVA_HOME")
-        if java_home:
-            expected = _resolve_java_home_binary(java_home)
+        if java_home and path_java is None:
+            # Nothing on PATH to disagree with -- the Manager's own shape (JAVA_HOME set, PATH
+            # deliberately untouched). This must be green, not a warning: that is the whole point
+            # of I4b.
+            checks.append(_check("java-home-agreement", "JAVA_HOME", "pass", found=java_home,
+                                 expected="set, and agreeing with the java on PATH"))
+        elif java_home:
             try:
                 if os.name == "nt":
-                    same = str(expected.resolve()).lower() == str(Path(java_path).resolve()).lower()
+                    same = str(java_home_bin.resolve()).lower() == str(Path(path_java).resolve()).lower()
                 else:
-                    same = expected.resolve() == Path(java_path).resolve()
+                    same = java_home_bin.resolve() == Path(path_java).resolve()
             except OSError:
                 same = False
             if not same:
-                problems.append(
-                    f"JAVA_HOME disagrees with the `java` on PATH -- JAVA_HOME={java_home} "
-                    f"(-> {expected}) but PATH resolves java to {java_path}. Gradle follows "
-                    f"JAVA_HOME, so a build can silently use a different JDK than this check just "
-                    f"looked at."
-                )
+                checks.append(_check(
+                    "java-home-agreement", "JAVA_HOME", "fail", found=java_home,
+                    expected="agreeing with the java on PATH",
+                    detail=(
+                        f"JAVA_HOME disagrees with the `java` on PATH -- JAVA_HOME={java_home} "
+                        f"(-> {java_home_bin}) but PATH resolves java to {path_java}. Gradle follows "
+                        f"JAVA_HOME, so a build can silently use a different JDK than this check just "
+                        f"looked at."
+                    ),
+                    fix="Set JAVA_HOME to your Java 17 installation.",
+                ))
+            else:
+                checks.append(_check("java-home-agreement", "JAVA_HOME", "pass", found=java_home,
+                                     expected="set, and agreeing with the java on PATH"))
         else:
-            warnings.append("JAVA_HOME is not set -- Gradle falls back to PATH, which works today "
-                             "but is worth setting explicitly so the two can never disagree.")
+            checks.append(_check(
+                "java-home-agreement", "JAVA_HOME", "warn",
+                expected="set, and agreeing with the java on PATH",
+                detail="JAVA_HOME is not set -- Gradle falls back to PATH, which works today "
+                       "but is worth setting explicitly so the two can never disagree.",
+                fix="Set JAVA_HOME to your Java 17 installation.",
+            ))
 
     if sys.version_info < (3, 9):
-        problems.append(f"Python {sys.version.split()[0]} found -- NPDev's CLI needs Python 3.9+.")
+        checks.append(_check(
+            "python-version", "Python 3.9+", "fail", found=sys.version.split()[0], expected="3.9+",
+            detail=f"Python {sys.version.split()[0]} found -- NPDev's CLI needs Python 3.9+.",
+            fix="Install Python 3.9 or newer from https://www.python.org/downloads/",
+        ))
+    else:
+        checks.append(_check("python-version", "Python 3.9+", "pass",
+                             found=sys.version.split()[0], expected="3.9+"))
 
-    if shutil.which("git") is None:
-        problems.append("git not found on PATH -- required to clone NPDev and for `npdev init`.")
+    git_path = shutil.which("git")
+    if git_path is None:
+        checks.append(_check(
+            "git-present", "git", "fail", expected="installed and on PATH",
+            detail="git not found on PATH -- required to clone NPDev and for `npdev init`.",
+            fix="Install git from https://git-scm.com/downloads",
+        ))
+    else:
+        checks.append(_check("git-present", "git", "pass", found=git_path, expected="installed and on PATH"))
 
     required_gb = 5
     try:
         free_gb = shutil.disk_usage(repo_root()).free / (1024 ** 3)
         if free_gb < required_gb:
-            problems.append(f"{free_gb:.1f} GB free -- NPDev's Gradle caches and a generated "
-                             f"app's own build need roughly {required_gb} GB free.")
+            checks.append(_check(
+                "disk-space", "Disk space", "fail",
+                found=f"{free_gb:.1f} GB", expected=f">= {required_gb} GB",
+                detail=f"{free_gb:.1f} GB free -- NPDev's Gradle caches and a generated "
+                       f"app's own build need roughly {required_gb} GB free.",
+                fix="Free up disk space.",
+            ))
+        else:
+            checks.append(_check("disk-space", "Disk space", "pass",
+                                 found=f"{free_gb:.1f} GB", expected=f">= {required_gb} GB"))
     except OSError:
-        warnings.append("could not determine free disk space.")
+        checks.append(_check(
+            "disk-space", "Disk space", "warn", expected=f">= {required_gb} GB",
+            detail="could not determine free disk space.",
+        ))
 
     if _default_runtimehost_libs_dir() is None:
-        problems.append("Runtimehost jars not staged -- run `npdev setup`.")
+        checks.append(_check(
+            "runtimehost-jars", "NPDev jars", "fail", expected="staged",
+            detail="Runtimehost jars not staged -- run `npdev setup`.",
+            fix="Run npdev setup.", fixCommand="npdev setup",
+        ))
+    else:
+        checks.append(_check("runtimehost-jars", "NPDev jars", "pass", expected="staged",
+                             found=str(_default_runtimehost_libs_dir())))
 
     knowledge_index = _ai_build_root() / "npdev-ai" / "rag-index.json"
     if not knowledge_index.exists():
-        warnings.append("AI knowledge index not built -- run `npdev setup` (needed for the MCP "
-                         "tools, not for generate/build/run).")
+        checks.append(_check(
+            "ai-knowledge-index", "AI knowledge index", "warn", expected="built",
+            detail="AI knowledge index not built -- run `npdev setup` (needed for the MCP "
+                   "tools, not for generate/build/run).",
+            fix="Run npdev setup.", fixCommand="npdev setup",
+        ))
+    else:
+        checks.append(_check("ai-knowledge-index", "AI knowledge index", "pass", expected="built",
+                             found=str(knowledge_index)))
 
-    if shutil.which("docker") is None:
-        warnings.append("Docker not found -- only needed for the docker-compose run path.")
+    docker_path = shutil.which("docker")
+    if docker_path is None:
+        checks.append(_check(
+            "docker-present", "Docker", "warn", expected="optional",
+            detail="Docker not found -- only needed for the docker-compose run path.",
+        ))
+    else:
+        checks.append(_check("docker-present", "Docker", "pass", found=docker_path, expected="optional"))
 
-    if shutil.which("pwsh") is None:
-        warnings.append("PowerShell 7 (pwsh) not found -- fine for the portable `npdev` path "
-                         "(`npdev setup` replaces it); still needed for this repo's own "
-                         "maintainer scripts under scripts/.")
+    pwsh_path = shutil.which("pwsh")
+    if pwsh_path is None:
+        checks.append(_check(
+            "pwsh-present", "PowerShell 7", "warn", expected="optional",
+            detail="PowerShell 7 (pwsh) not found -- fine for the portable `npdev` path "
+                   "(`npdev setup` replaces it); still needed for this repo's own "
+                   "maintainer scripts under scripts/.",
+        ))
+    else:
+        checks.append(_check("pwsh-present", "PowerShell 7", "pass", found=pwsh_path, expected="optional"))
+
+    problems = [c["detail"] for c in checks if c["status"] == "fail"]
+    warnings = [c["detail"] for c in checks if c["status"] == "warn"]
+    ok = not problems
+
+    if getattr(args, "json", False):
+        result = {
+            "schemaVersion": "npdev-cli-result.v1",
+            "command": "doctor",
+            "ok": ok,
+            "exitCode": 1 if problems else 0,
+            "checks": checks,
+        }
+        print(json.dumps(result, indent=2))
+        return result["exitCode"]
 
     print("npdev doctor")
     print("=" * 60)
@@ -2828,15 +3050,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Name of a directory under NPDevSamples/ to derive the seed from instead of the "
              "default. Must contain model.json and config.json.",
     )
+    init_parser.add_argument(
+        "--json", action="store_true",
+        help="Emit a single npdev-cli-result.v1 JSON object on stdout instead of the human "
+             "summary (Phase 0 I3 -- the human summary is unchanged either way).",
+    )
 
-    subparsers.add_parser(
+    setup_parser = subparsers.add_parser(
         "setup", help="Build the runtimehost jars a generated app needs to compile, and the AI "
                       "knowledge index -- no pwsh required (I4)."
     )
+    setup_parser.add_argument(
+        "--json", action="store_true",
+        help="Emit one npdev-cli-event.v1 JSON object per line on stdout as each phase starts/"
+             "finishes, then a final npdev-cli-result.v1 object -- narration moves to stderr "
+             "(Phase 0 I2). Without this flag, output is unchanged.",
+    )
 
-    subparsers.add_parser(
+    doctor_parser = subparsers.add_parser(
         "doctor", help="Check this machine is ready for NPDev -- Java 17, JAVA_HOME agreement, "
                        "Python, git, disk space, staged jars (I5)."
+    )
+    doctor_parser.add_argument(
+        "--json", action="store_true",
+        help="Emit a single npdev-cli-result.v1 JSON object (all checks, including passing ones) "
+             "on stdout instead of the human summary (Phase 0 I1 -- the human summary is "
+             "unchanged either way).",
     )
 
     dev_parser = subparsers.add_parser(
