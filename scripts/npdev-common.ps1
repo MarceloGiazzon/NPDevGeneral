@@ -364,12 +364,40 @@ function Get-NPDevRuntimeHostLibsDir([string]$WorkspaceRoot) {
 
 # The Build root every generated artifact lives under. Kept beside the libs dir above so the two
 # cannot drift apart again: they are now one definition, not two conventions.
+#
+# Walks UP from the workspace root looking for a directory literally named 'NPDev_General' --
+# mirrors build.gradle's own resolveNpdevBuildRoot exactly (the Kernel/Generator Gradle builds do
+# the same walk, and take -PnpdevBuildRoot / NPDEV_BUILD_ROOT as an override the same way this does).
+# Falls back to <workspace>/Build when no such ancestor exists -- e.g. a `git clone` folder literally
+# named 'NPDevGeneral' (no underscore, exactly how GitHub's own checkout action names it) or a git
+# worktree under .../.claude/worktrees.
+#
+# Found live (2026-08-06, CI_RED_PLAN.md follow-up): this function's OLD body was a bare
+# <workspace.parent>/Build guess, which diverged from a SEPARATE copy of this exact walk that
+# scripts/runtimehost/sync-runtimehost-libs.ps1 maintained on its own. On a GitHub Actions runner
+# (checkout at .../NPDevGeneral/NPDevGeneral, so the walk never finds 'NPDev_General' either) the
+# two fallbacks disagreed: this function's old guess landed one level too high
+# (<checkout-parent>/Build), while the generated sample app's own build.gradle resolution (which
+# the OTHER copy correctly mirrored) landed at <checkout>/Build -- so `npdev setup`'s jar sync
+# reported success while writing to a directory the generated app's own
+# `verifyNpdevRuntimeHostLibs` task never looked in ("Missing NPDev RuntimeHost libs manifest").
+# Centralized here, with sync-runtimehost-libs.ps1's own duplicate removed, so the two mechanisms
+# cannot diverge again -- the same "one place updated, its twin forgotten" shape this project
+# already tracks via scripts/quality/check-twin-pair-consistency.py, fixed by deleting the twin
+# instead of registering it.
 function Get-NPDevBuildRoot([string]$WorkspaceRoot) {
     if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_BUILD_ROOT)) {
         return Normalize-NPDevPath $env:NPDEV_BUILD_ROOT
     }
 
     $workspace = Get-Item -LiteralPath (Normalize-NPDevPath $WorkspaceRoot)
+    $ancestor = $workspace
+    while ($null -ne $ancestor -and $ancestor.Name -ne 'NPDev_General') {
+        $ancestor = $ancestor.Parent
+    }
+    if ($null -ne $ancestor -and $null -ne $ancestor.Parent) {
+        return Normalize-NPDevPath (Join-Path $ancestor.Parent.FullName "Build")
+    }
     return Normalize-NPDevPath (Join-Path $workspace.Parent.FullName "Build")
 }
 
