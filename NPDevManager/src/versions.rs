@@ -1,9 +1,14 @@
 //! NPDev itself: tag list (cached, GitHub API is rate-limited unauthenticated), tag-zip download
-//! (no git required -- SPEC.md §6: 7.0 MB vs 49 MB of git history), and the M7 Versions screen's
-//! list/remove. Each installed tag is one folder under `state::versions_dir()/<tag>/` -- removal
-//! is exactly `rm -rf` on that one folder, nothing else, so it is honest about what "remove" means.
+//! (no git CLONE required -- SPEC.md §6: 7.0 MB vs 49 MB of git history), and the M7 Versions
+//! screen's list/remove. Each installed tag is one folder under `state::versions_dir()/<tag>/` --
+//! removal is exactly `rm -rf` on that one folder, nothing else, so it is honest about what
+//! "remove" means. `install_version` best-effort shells out to `git` once, after unzipping, to
+//! stamp the tag onto the installed copy (see `stamp_git_tag_for_setup`) -- this is a separate,
+//! narrower use than the "no git required" download path above: it makes `npdev setup`'s
+//! existing fast-path detection work for a Manager-installed version, and silently no-ops if git
+//! isn't present, so it never turns git into a hard requirement.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -196,6 +201,8 @@ pub async fn install_version(
         std::fs::remove_dir(&inner).map_err(|e| e.to_string())?;
     }
 
+    stamp_git_tag_for_setup(&dest, tag).await;
+
     let mut manager = app_state.manager.lock().expect("lock poisoned");
     manager.versions.push(state::InstalledVersion {
         tag: tag.to_string(),
@@ -206,6 +213,43 @@ pub async fn install_version(
     }
     manager.save().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// `npdev setup`'s download-vs-build decision (`_current_git_tag()` in `npdev_cli.py`) is gated
+/// on `git describe --tags --exact-match HEAD` -- but `install_version` above unzips a GitHub tag
+/// **archive**, which has no `.git` directory at all, so that detection always sees "no tag" and
+/// setup always falls back to the ~9-10 min local build, even when a Release asset exists for
+/// `tag`. Found live (2026-08-05, I4's container proof: `jarsSource` was "build" despite
+/// `beta1.6` having a published asset, confirmed by I3's own direct test that the download path
+/// works fine against a real `git clone`). Stamping a minimal local repo here is what lets a
+/// Manager-installed version reach the same fast path a real clone gets -- best-effort and
+/// entirely silent on any failure: if git isn't on this machine either, `setup` just keeps
+/// working exactly the way it already did (a correct, only slower, local build).
+async fn stamp_git_tag_for_setup(dest: &Path, tag: &str) {
+    async fn run(dest: &Path, args: &[&str]) -> bool {
+        tokio::process::Command::new("git")
+            .args(args)
+            .current_dir(dest)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+    let steps: [&[&str]; 5] = [
+        &["init", "--quiet"],
+        &["config", "user.email", "npdev-manager@localhost"],
+        &["config", "user.name", "npdev-manager"],
+        &["add", "-A"],
+        &["commit", "--quiet", "-m", "npdev-manager: stamp for setup's tag detection"],
+    ];
+    for args in steps {
+        if !run(dest, args).await {
+            return;
+        }
+    }
+    run(dest, &["tag", tag]).await;
 }
 
 pub fn chrono_now_iso() -> String {
