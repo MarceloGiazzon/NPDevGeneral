@@ -22,10 +22,24 @@
 .EXAMPLE
     pwsh -NoProfile -File scripts/quality/run-external-ai-gate.ps1
 #>
-param()
+param(
+    [string]$WorkspaceRoot = "",
+    [string]$RunId = "",
+    [string]$ReportPath = ""
+)
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "..\npdev-common.ps1")
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) { $WorkspaceRoot = $repoRoot }
+$WorkspaceRoot = Normalize-NPDevPath $WorkspaceRoot
+$RunId = Resolve-NPDevRunId $RunId "external-ai-gate"
+if ([string]::IsNullOrWhiteSpace($ReportPath)) {
+    $ReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\external-ai-gate-report.json"
+}
+else {
+    $ReportPath = Normalize-NPDevPath $ReportPath
+}
 Push-Location $repoRoot
 try {
     $py = (Get-Command python -ErrorAction Stop).Source
@@ -35,7 +49,8 @@ try {
 
     Write-Host "[1/3] Checking register consistency (includes mission-run coverage)..."
     & $py "scripts/quality/check-register-consistency.py"
-    if ($LASTEXITCODE -ne 0) { $failures += "register consistency check failed (see output above -- may include missing mission run records)" }
+    $registerConsistencyPassed = ($LASTEXITCODE -eq 0)
+    if (-not $registerConsistencyPassed) { $failures += "register consistency check failed (see output above -- may include missing mission run records)" }
 
     Write-Host "[2/3] Validating each mission in missions.json against external-ai-mission.schema.json..."
     $missionsPath = Join-Path $repoRoot "scripts/external-review/missions.json"
@@ -43,12 +58,14 @@ try {
     $missionsData = Get-Content -LiteralPath $missionsPath -Raw | ConvertFrom-Json
     $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("npdev-mission-check-" + [guid]::NewGuid())
     New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+    $missionSchemaFailures = @()
     try {
         foreach ($mission in $missionsData.missions) {
             $missionFile = Join-Path $tempDir ($mission.missionId + ".json")
             $mission | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $missionFile -Encoding utf8NoBOM
             & pwsh -NoProfile -File "scripts/quality/Invoke-JsonSchemaValidation.ps1" -SchemaPath $missionSchema -InstancePath $missionFile | Out-Null
             if ($LASTEXITCODE -ne 0) {
+                $missionSchemaFailures += $mission.missionId
                 $failures += "mission $($mission.missionId) fails external-ai-mission.schema.json"
             }
         }
@@ -56,25 +73,50 @@ try {
     finally {
         Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
     }
+    $missionCount = @($missionsData.missions).Count
 
     Write-Host "[3/3] Smoke-testing the pack producer (M2-SEC-ROWAUTHZ, working tree, no vendor call)..."
     $smokeOutputDir = Join-Path ([System.IO.Path]::GetTempPath()) ("npdev-pack-smoke-" + [guid]::NewGuid())
+    $packProducerPassed = $true
+    $packSchemaPassed = $true
     & $py "scripts/external-review/build-review-pack.py" --mission-id M2-SEC-ROWAUTHZ --output-dir $smokeOutputDir
     if ($LASTEXITCODE -ne 0) {
+        $packProducerPassed = $false
+        $packSchemaPassed = $false
         $failures += "pack producer smoke test failed to build M2-SEC-ROWAUTHZ"
     }
     else {
         $packFile = Get-ChildItem -Recurse -File -Path $smokeOutputDir -Filter "*.json" | Select-Object -First 1
         if (-not $packFile) {
+            $packSchemaPassed = $false
             $failures += "pack producer smoke test produced no output file"
         }
         else {
             $packSchema = Join-Path $repoRoot "NPDevContract/schemas/external-ai-pack.schema.json"
             & pwsh -NoProfile -File "scripts/quality/Invoke-JsonSchemaValidation.ps1" -SchemaPath $packSchema -InstancePath $packFile.FullName | Out-Null
-            if ($LASTEXITCODE -ne 0) { $failures += "smoke-test pack fails external-ai-pack.schema.json" }
+            if ($LASTEXITCODE -ne 0) {
+                $packSchemaPassed = $false
+                $failures += "smoke-test pack fails external-ai-pack.schema.json"
+            }
         }
     }
     Remove-Item -Recurse -Force $smokeOutputDir -ErrorAction SilentlyContinue
+
+    $overallStatus = if ($failures.Count -eq 0) { "passed" } else { "failed" }
+    $report = [pscustomobject]@{
+        generatedAt = (Get-Date).ToString("o")
+        runId = $RunId
+        scriptPath = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $PSCommandPath
+        workspaceRoot = $WorkspaceRoot
+        overallStatus = $overallStatus
+        checks = @(
+            [pscustomobject]@{ name = "register-consistency"; status = if ($registerConsistencyPassed) { "passed" } else { "failed" } }
+            [pscustomobject]@{ name = "mission-schema-validation"; status = if ($missionSchemaFailures.Count -eq 0) { "passed" } else { "failed" }; missionCount = $missionCount; failingMissionIds = @($missionSchemaFailures) }
+            [pscustomobject]@{ name = "pack-producer-smoke-test"; status = if ($packProducerPassed -and $packSchemaPassed) { "passed" } else { "failed" } }
+        )
+        failures = @($failures)
+    }
+    Write-NPDevJsonFile $ReportPath $report
 
     if ($failures.Count -gt 0) {
         Write-Host ""
