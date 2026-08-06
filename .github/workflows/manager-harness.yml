@@ -1,0 +1,35 @@
+name: NPDev Manager harness
+
+# CLOSEOUT_PLAN.md I4: "the same instrument, one layer up" from firstrun-harness -- proves the
+# Manager's install path (private JDK, Python, an NPDev version, then a green `doctor`) works on a
+# genuinely bare Linux machine, mechanically, on every change. Not a per-PR gate: the builder
+# stage compiles the entire Rust/Tauri dependency tree from scratch (no persistent cache mount),
+# so a full run costs real minutes -- same reasoning firstrun-harness's own README gives for its
+# own tag/nightly-only cadence, not per-PR.
+on:
+  push:
+    tags:
+      - '*'
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: manager-harness-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  manager-harness:
+    name: Manager --selftest in a bare container
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build the harness image
+        run: docker build -f scripts/quality/manager-harness/Dockerfile -t npdev-manager-harness .
+
+      - name: Run --selftest in the bare container
+        run: docker run --rm npdev-manager-harness

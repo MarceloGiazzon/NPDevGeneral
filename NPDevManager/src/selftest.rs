@@ -36,6 +36,8 @@ async fn run_steps() -> Result<(), StepError> {
 
     let cli_path = resolve_npdev_step(&app_state).await?;
 
+    run_setup_step(&python_path, &cli_path, java_home.as_deref()).await?;
+
     run_doctor_step(&python_path, &cli_path, java_home.as_deref()).await
 }
 
@@ -111,6 +113,25 @@ async fn resolve_npdev_step(app_state: &state::AppState) -> Result<std::path::Pa
         .await
         .map_err(|e| ("5/5 install NPDev version", e))?;
     Ok(npdev::npdev_cli_path(&state::versions_dir().join(&newest.name)))
+}
+
+/// Part of [5/5]: `npdev setup` (stages the runtimehost jars + AI knowledge index) is a
+/// precondition for `doctor` to report every check passing -- the same as it is for a real user
+/// via the Ready screen's Setup step. Found live (2026-08-05, I4's first container run): without
+/// this, `--selftest` reached doctor with jars unstaged and only 6/10 checks passing, which was
+/// this selftest's own bug, not a Manager defect -- `resolve_npdev_step` alone was never enough.
+async fn run_setup_step(python_path: &std::path::Path, cli_path: &std::path::Path, java_home: Option<&str>) -> Result<(), StepError> {
+    let result = npdev::run_setup_streaming_with(
+        python_path.to_path_buf(),
+        cli_path.to_path_buf(),
+        java_home.map(str::to_string),
+        |_value| {},
+    )
+    .await
+    .map_err(|e| ("5/5 npdev setup", e))?;
+    let jars_source = result.get("jarsSource").and_then(|v| v.as_str()).unwrap_or("?");
+    println!("        npdev setup (stage jars + knowledge index) ..... ok  (jarsSource={jars_source})");
+    Ok(())
 }
 
 /// [5/5]: the exact `doctor --json` call `check_doctor` makes, via the runtimes resolved above.

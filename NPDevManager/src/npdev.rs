@@ -215,7 +215,22 @@ pub async fn run_setup_streaming(app: AppHandle, python_exe: PathBuf, npdev_cli:
         let last_line = FIXTURE_SETUP_EVENTS.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("{}");
         return serde_json::from_str(last_line).map_err(|e| e.to_string());
     }
+    run_setup_streaming_with(python_exe, npdev_cli, java_home, move |value| {
+        let _ = app.emit("setup-event", value.clone());
+    })
+    .await
+}
 
+/// The real (never-fake-mode) body of `run_setup_streaming`, decoupled from `AppHandle` so
+/// `--selftest` (I1, CLOSEOUT_PLAN.md) can drive the exact same `npdev setup` invocation with no
+/// window -- staging the runtimehost jars + AI knowledge index is a precondition for `doctor` to
+/// report all checks passing, the same as it is for a real user via the Ready screen's Setup step.
+pub async fn run_setup_streaming_with(
+    python_exe: PathBuf,
+    npdev_cli: PathBuf,
+    java_home: Option<String>,
+    mut on_event: impl FnMut(&Value) + Send + 'static,
+) -> Result<Value, String> {
     let mut cmd = build_command(&python_exe, &npdev_cli, &["setup", "--json"], java_home.as_deref(), None);
     let mut child = cmd.spawn().map_err(|e| format!("could not start setup: {e}"))?;
     let stdout = child.stdout.take().ok_or("setup: no stdout pipe")?;
@@ -238,7 +253,7 @@ pub async fn run_setup_streaming(app: AppHandle, python_exe: PathBuf, npdev_cli:
             continue;
         }
         if let Ok(value) = serde_json::from_str::<Value>(line) {
-            let _ = app.emit("setup-event", value.clone());
+            on_event(&value);
             last = Some(value);
         }
     }
