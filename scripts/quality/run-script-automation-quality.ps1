@@ -54,6 +54,16 @@ $detectorAuxiliaryPaths = @(
 
 $runtimeSurfaceEvidenceAuxiliaryPaths = @()
 
+# CI_RED_PLAN.md I2 (2026-08-05): run-all-gates.ps1 is a pure orchestrator -- it runs four (or
+# five, with -IncludeReleaseGate) other gate scripts in sequence and prints/exits on their
+# combined result, but never itself serializes a report object to JSON. Each gate it calls already
+# writes its own structured report (generator-gate-report.json, etc.), so requiring a SIXTH report
+# here would just duplicate what run-all-gates.ps1's own children already record. Same shape as
+# this checker excluding itself above.
+$orchestratorAuxiliaryPaths = @(
+    "scripts\quality\run-all-gates.ps1"
+)
+
 $runtimeHostOrchestrationPattern = '^scripts\\quality\\run-runtimehost-batch\d+-verification\.ps1$|^scripts\\quality\\run-runtimehost-convergence-batch\.ps1$|^scripts\\quality\\run-runtimehost-convergence-check\.ps1$'
 
 # REG-31 migration backlog (2026-07-24, spot-checked): these scripts emit no structured JSON
@@ -68,7 +78,7 @@ $reportContractMigrationBacklog = @(
     "scripts\quality\run-publication-runtime-sql-neutrality-check.ps1"
 )
 
-$structuredReportExclusions = @($detectorAuxiliaryPaths + $runtimeSurfaceEvidenceAuxiliaryPaths + $reportContractMigrationBacklog)
+$structuredReportExclusions = @($detectorAuxiliaryPaths + $runtimeSurfaceEvidenceAuxiliaryPaths + $orchestratorAuxiliaryPaths + $reportContractMigrationBacklog)
 
 $automationScripts = @(
     $scriptFiles |
