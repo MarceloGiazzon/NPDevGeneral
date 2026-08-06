@@ -247,7 +247,6 @@ platform's. Separately, every model declares `"dslVersion": "1.0.0"` — that is
 format* version, unrelated to any of the above; it has never changed, including across the
 "DSL 2.0" flowStep-vocabulary change (`BREAKING.md`).
 
-**`beta1.5`'s tag sits one commit behind `main`** (a docs-only commit recording the merge and tag
-itself landed right after) — a fresh clone of `main` today is `beta1.5` plus that one commit, not a
-different, later release. Recorded here rather than moving the tag, since moving a tag needs
-explicit authorization this note doesn't have.
+`beta1.7` is cut exactly at `main`'s current head — no drift to record. (Superseded `beta1.5`'s and
+`beta1.6`'s own drift notes, each resolved the same way: cut the next tag fresh at `main` rather
+than move a published one.)
