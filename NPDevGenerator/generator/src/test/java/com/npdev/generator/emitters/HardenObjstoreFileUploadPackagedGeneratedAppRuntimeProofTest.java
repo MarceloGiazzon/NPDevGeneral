@@ -341,6 +341,37 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
     }
 
     private static Path ensureRuntimeHostLibs(Path evidenceRoot) throws Exception {
+        return withKernelBuildLock(() -> doEnsureRuntimeHostLibs(evidenceRoot));
+    }
+
+    /**
+     * CI_RED_PLAN.md I1 (2026-08-05): {@code HardenGcDeleteReplaceCascade...}, {@code
+     * HardenObjstoreFileUpload...}, and {@code TrustedSourceEmitter...} each call this method,
+     * which spawns its own {@code --no-daemon} Gradle subprocess against the SAME NPDevKernel
+     * project directory. {@code generator/build.gradle}'s {@code test} task runs with {@code
+     * maxParallelForks = 2}, so two of these three classes can run concurrently in separate
+     * forked JVMs -- two independent, uncoordinated Gradle processes writing to the same
+     * incremental-compilation state (e.g. {@code
+     * Build/gradle/npdev-kernel/adapters/authz-default/tmp/compileJava/previous-compilation-data.bin})
+     * corrupts it for whichever one loses the race: {@code Cannot access output property
+     * 'previousCompilationData' ... Failed to create MD5 hash for file ... as it does not
+     * exist}. Reproduced live by running all three together: all three failed (with three
+     * different symptoms) in the same run; the failure vanished running any one alone. A
+     * cross-process file lock is required -- JUnit 5's own {@code @ResourceLock} only
+     * coordinates within one JVM's thread pool, not across Gradle's separately forked test-worker
+     * processes.
+     */
+    private static <T> T withKernelBuildLock(java.util.concurrent.Callable<T> action) throws Exception {
+        java.nio.file.Path lockFile = WORKSPACE_ROOT.resolve("Build").resolve("npdev-kernel-adapter-build.lock");
+        Files.createDirectories(lockFile.getParent());
+        try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(
+                lockFile, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE);
+             java.nio.channels.FileLock lock = channel.lock()) {
+            return action.call();
+        }
+    }
+
+    private static Path doEnsureRuntimeHostLibs(Path evidenceRoot) throws Exception {
         Path runtimeHostLibs = OUTSIDE_ROOT.resolve("runtimehost-libs").toAbsolutePath().normalize();
         Path manifest = runtimeHostLibs.resolve("runtimehost-libs-manifest.json");
         CommandResult adapterJars = runCommand(
