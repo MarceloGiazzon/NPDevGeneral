@@ -1,5 +1,7 @@
 # NPDev
 
+[![NPDev CI Validation](https://github.com/MarceloGiazzon/NPDevGeneral/actions/workflows/npdev-ci-validation.yml/badge.svg?branch=main)](https://github.com/MarceloGiazzon/NPDevGeneral/actions/workflows/npdev-ci-validation.yml?query=branch%3Amain)
+
 **You declare what your application is. NPDev builds all of it — database, REST API, admin screens,
 role-based access, durable background processes — as Spring Boot source you own outright.**
 

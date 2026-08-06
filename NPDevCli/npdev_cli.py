@@ -1673,6 +1673,57 @@ def _try_download_runtimehost_libs(tag: str, libs_dir: Path, out: "_SetupOutput"
     return True
 
 
+_CI_VALIDATION_REPO = "MarceloGiazzon/NPDevGeneral"
+_CI_VALIDATION_WORKFLOW_FILE = "npdev-ci-validation.yml"
+
+
+def _check_remote_ci_status(branch: str = "main", lookback: int = 20) -> dict:
+    """CI_RED_PLAN.md I3: the mechanical fix for "a scheduled gate failed for twelve days and
+    nobody was looking" -- `NPDev CI Validation` failed on EVERY run from 2026-07-25 through
+    2026-08-05 (12 days, including nightly scheduled runs on `main`) while local T2 stayed green
+    throughout, because nothing connected the two. Queries the live GitHub Actions run history for
+    `branch` so `verify --tier T2/T3` can never again report a green local run while the same
+    branch's remote CI is red. Best-effort: any network failure marks `checked: false` rather than
+    failing the whole `verify` call -- an offline `verify` is still a real local claim, just not
+    one that could cross-check the remote signal that day.
+    """
+    import urllib.error
+    import urllib.request
+
+    url = (
+        f"https://api.github.com/repos/{_CI_VALIDATION_REPO}/actions/workflows/"
+        f"{_CI_VALIDATION_WORKFLOW_FILE}/runs?branch={branch}&per_page={lookback}"
+    )
+    request = urllib.request.Request(url, headers={"User-Agent": "npdev-cli", "Accept": "application/vnd.github+json"})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError):
+        return {"checked": False, "branch": branch}
+
+    runs = data.get("workflow_runs", [])
+    if not runs:
+        return {"checked": False, "branch": branch}
+
+    latest = runs[0]
+    conclusion = latest.get("conclusion")
+    failing_since = None
+    if conclusion != "success":
+        failing_since = latest.get("created_at")
+        for run in runs[1:]:
+            if run.get("conclusion") == "success":
+                break
+            failing_since = run.get("created_at")
+
+    return {
+        "checked": True,
+        "branch": branch,
+        "latestConclusion": conclusion,
+        "latestRunUrl": latest.get("html_url"),
+        "failingSince": failing_since,
+    }
+
+
 def run_setup(args: argparse.Namespace) -> int:
     """I4: a portable port of scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars --
     that script is 265 lines with zero Windows-specific constructs (measured); keeping `pwsh` as a
@@ -2943,11 +2994,26 @@ def run_verify(args: argparse.Namespace) -> dict:
             cadence_report = None
 
     cadence_passed = bool(cadence_report) and cadence_report.get("status") == "passed"
+
+    # CI_RED_PLAN.md I3: T2/T3 are the tiers used to claim "closing a Move" / "release-ready" --
+    # exactly the claims that stayed green locally for 12 days while main's own scheduled CI run
+    # was red. Cross-check it here so that claim can no longer be made without also being true.
+    remote_ci = _check_remote_ci_status() if tier in ("T2", "T3") else None
+    remote_ci_ok = True
+    if remote_ci is not None and remote_ci.get("checked"):
+        remote_ci_ok = remote_ci.get("latestConclusion") == "success"
+        if not remote_ci_ok:
+            print(
+                f"REMOTE CI ON main: FAILING since {remote_ci.get('failingSince')} -- {remote_ci.get('latestRunUrl')}",
+                file=sys.stderr,
+            )
+
     return {
-        "ok": exit_code == 0 and cadence_passed,
+        "ok": exit_code == 0 and cadence_passed and remote_ci_ok,
         "tier": tier,
         "gateExitCode": exit_code,
         "cadence": cadence_report,
+        "remoteCi": remote_ci,
     }
 
 
