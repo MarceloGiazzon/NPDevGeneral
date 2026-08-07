@@ -62,7 +62,8 @@ class FinalAppAssemblerTest {
                         migrations,
                         "npdev-generated",
                         "npdev-meta",
-                        true
+                        true,
+                        17
                 )
         );
 
@@ -126,6 +127,31 @@ class FinalAppAssemblerTest {
         assertTrue(gradlePropertiesContent.contains("npdevRuntimeHostLibsDir="));
         assertTrue(gradlePropertiesContent.contains("runtimehost-libs"));
         assertFalse(gradlePropertiesContent.contains("\\"), "path must use forward slashes -- \\ is a .properties escape character");
+
+        // deps-and-java/PLAN.md W1.4: same append-only convention as npdevRuntimeHostLibsDir above,
+        // for the app's own Gradle toolchain level.
+        assertTrue(gradlePropertiesContent.contains("npdevAppJavaVersion=17"));
+    }
+
+    @Test
+    void appendsTheRequestedJavaVersionNotAlwaysTheDefault() throws Exception {
+        Path workspace = Files.createTempDirectory("npdev-final-app-assembly-javaversion-");
+        Path host = workspace.resolve("RuntimeHost");
+        Path artifact = workspace.resolve("ArtifactNP");
+        Path finalApp = workspace.resolve("FinalExec");
+
+        write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
+        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+
+        new FinalAppAssembler().assemble(
+                new FinalAppAssembler.Options(
+                        host, artifact, finalApp, null, "npdev-generated", "npdev-meta", false, 21
+                )
+        );
+
+        String gradlePropertiesContent = Files.readString(finalApp.resolve("gradle.properties"));
+        assertTrue(gradlePropertiesContent.contains("npdevAppJavaVersion=21"));
     }
 
     private static void write(Path path, String content) throws Exception {

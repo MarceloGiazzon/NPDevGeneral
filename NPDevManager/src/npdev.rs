@@ -30,6 +30,10 @@ pub fn fake_mode() -> bool {
 const FIXTURE_DOCTOR_ALL_GREEN: &str = include_str!("../fixtures/doctor-all-green.json");
 const FIXTURE_DOCTOR_MISSING_JAVA: &str = include_str!("../fixtures/doctor-missing-java.json");
 const FIXTURE_DOCTOR_WRONG_JAVA: &str = include_str!("../fixtures/doctor-wrong-java.json");
+// deps-and-java/PLAN.md W1.7: hand-authored (no Java 11/22 install on the authoring machine to
+// capture live from) to match npdev_cli.py's new >=17-passes/warn-on->17 doctor shape -- every
+// other sibling fixture in this list IS a live capture; these two are the documented exception.
+const FIXTURE_DOCTOR_ACCEPTABLE_NEWER_JAVA: &str = include_str!("../fixtures/doctor-acceptable-newer-java.json");
 const FIXTURE_DOCTOR_NO_JARS: &str = include_str!("../fixtures/doctor-no-jars.json");
 const FIXTURE_INIT_RESULT: &str = include_str!("../fixtures/init-result.json");
 const FIXTURE_SETUP_EVENTS: &str = include_str!("../fixtures/setup-events.jsonl");
@@ -45,6 +49,7 @@ pub fn fake_doctor_scenario_names() -> Vec<&'static str> {
         "doctor-all-green",
         "doctor-missing-java",
         "doctor-wrong-java",
+        "doctor-acceptable-newer-java",
         "doctor-no-jars",
     ]
 }
@@ -53,6 +58,7 @@ fn doctor_fixture_text(name: &str) -> &'static str {
     match name {
         "doctor-missing-java" => FIXTURE_DOCTOR_MISSING_JAVA,
         "doctor-wrong-java" => FIXTURE_DOCTOR_WRONG_JAVA,
+        "doctor-acceptable-newer-java" => FIXTURE_DOCTOR_ACCEPTABLE_NEWER_JAVA,
         "doctor-no-jars" => FIXTURE_DOCTOR_NO_JARS,
         _ => FIXTURE_DOCTOR_ALL_GREEN,
     }

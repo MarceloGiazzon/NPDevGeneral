@@ -5,6 +5,14 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-07 — `config.json` gains an optional `build` block (deps-and-java/PLAN.md, per-app Java level + declared dependencies)
+
+**Not a breaking change — added, not modified.** `config.json`'s new `build.javaVersion` (17 or
+21, default 17) and `build.repositories[]`/`build.dependencies[]` are all optional; an app with no
+`build` block generates and behaves exactly as before this change. No `npdev migrate` codemod
+needed — the stability policy's codemod rule is for changes that require rewriting an EXISTING
+model/config to keep working, and nothing here does.
+
 ## 2026-08-03 — `npdev migrate bounded-contexts` codemod; ADR-0011 D4 gap fixed (S3, docs/adr/ADR-0011-bounded-contexts.md addendum)
 
 **Not a breaking change to any existing model — stated plainly, not overstated.** `contexts[]`

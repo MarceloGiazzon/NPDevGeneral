@@ -18,6 +18,7 @@ import com.npdev.dsl.v1.validation.SemanticValidator;
 import com.npdev.dsl.v1.validation.ValidationResult;
 import com.npdev.generator.assembly.FinalAppAssembler;
 import com.npdev.generator.api.GeneratorFacade;
+import com.npdev.generator.emitters.AppDependenciesEmitter;
 import com.npdev.generator.packs.BuiltinPackComposer;
 import com.npdev.generator.settings.ConfigSettingsReader;
 import com.npdev.generator.dbconfig.DockerDeploymentEmitter;
@@ -171,6 +172,9 @@ public final class GeneratorMain {
         System.out.println("Generation OK. Output: " + outRoot);
         System.out.println("Schema realization: " + schemaRealizationDir);
 
+        int javaVersion = resolveJavaVersion(config);
+        System.out.println("Setting build.javaVersion = " + javaVersion);
+
         FinalAppAssemblyRequest assemblyRequest = resolveFinalAppAssemblyRequest(a, config, outRoot, schemaRealizationDir);
         if (assemblyRequest.shouldAssemble()) {
             FinalAppAssembler.AssemblyResult assemblyResult = new FinalAppAssembler().assemble(
@@ -181,7 +185,8 @@ public final class GeneratorMain {
                             schemaRealizationDir,
                             assemblyRequest.generatedFolderName(),
                             assemblyRequest.metaFolderName(),
-                            assemblyRequest.deleteBeforeMount()
+                            assemblyRequest.deleteBeforeMount(),
+                            javaVersion
                     )
             );
 
@@ -220,6 +225,22 @@ public final class GeneratorMain {
             new DockerDeploymentEmitter().emit(config, assemblyResult.finalAppRoot(), databasePlan);
             System.out.println("Generated Docker deployment: "
                     + assemblyResult.finalAppRoot().resolve("docker-compose.yml").toAbsolutePath().normalize());
+
+            AppDependenciesEmitter dependenciesEmitter = new AppDependenciesEmitter();
+            AppDependenciesEmitter.EmitResult dependenciesResult = dependenciesEmitter.emit(
+                    config, assemblyResult.finalAppRoot(), assemblyResult.finalAppRoot().resolve("build.gradle"));
+            if (dependenciesResult.wroteFile()) {
+                System.out.println("Generated app dependencies: "
+                        + assemblyResult.finalAppRoot().resolve(AppDependenciesEmitter.RELATIVE_PATH)
+                                .toAbsolutePath().normalize());
+                for (String warning : dependenciesResult.collisionWarnings()) {
+                    System.out.println("WARNING (build.dependencies): " + warning);
+                }
+            }
+            List<String> copiedLocalJars = dependenciesEmitter.copyLocalJars(modelPath, assemblyResult.finalAppRoot());
+            if (!copiedLocalJars.isEmpty()) {
+                System.out.println("Copied local jars into npdev-app-libs/: " + copiedLocalJars);
+            }
         }
     }
 
@@ -358,6 +379,39 @@ public final class GeneratorMain {
             return args.cleanOut;
         }
         return readBoolean(config, false, "generator", "cleanOutputBeforeGenerate");
+    }
+
+    /**
+     * deps-and-java/PLAN.md W1.3: config.json's optional build.javaVersion, validated against the
+     * supported set BEFORE any assembly/build work starts -- a request outside {17, 21} fails HERE,
+     * with a message naming both the offending value and why the ceiling is where it is, rather than
+     * surfacing four minutes later as a bare Gradle toolchain-resolution stack trace.
+     */
+    private static final List<Integer> SUPPORTED_APP_JAVA_VERSIONS = List.of(17, 21);
+
+    static int resolveJavaVersion(JsonNode config) {
+        if (config == null) {
+            return 17;
+        }
+        JsonNode node = config.path("build").path("javaVersion");
+        if (node.isMissingNode() || node.isNull()) {
+            return 17;
+        }
+        if (!node.isIntegralNumber()) {
+            throw new IllegalArgumentException(
+                    "config.json's build.javaVersion must be an integer (one of " + SUPPORTED_APP_JAVA_VERSIONS
+                            + "), found: " + node);
+        }
+        int requested = node.asInt();
+        if (!SUPPORTED_APP_JAVA_VERSIONS.contains(requested)) {
+            throw new IllegalArgumentException(
+                    "config.json's build.javaVersion=" + requested + " is not supported. Supported: "
+                            + SUPPORTED_APP_JAVA_VERSIONS + " -- the ceiling is Gradle 8.5 (this platform's "
+                            + "wrapper version across all three modules), which resolves toolchains up to Java 21; "
+                            + "22 needs Gradle 8.8, 23 needs 8.10, 24/25 need Gradle 9. Raising the ceiling is a "
+                            + "Gradle-wrapper-bump change across every module, not a per-app setting.");
+        }
+        return requested;
     }
 
     static void rejectUnsupportedMigrationManagement(JsonNode config) {

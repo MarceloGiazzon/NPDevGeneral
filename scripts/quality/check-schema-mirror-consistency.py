@@ -24,6 +24,13 @@ with nothing checking them until S2 (B20 bounded contexts, S2_SPEC.md sec.0.1) a
 reason they could diverge (the new `contexts`/`imports` schema additions). Checked here as a second,
 independent group -- a drift in one pair never masks or is masked by a drift in the other.
 
+`config.schema.json` (deps-and-java/PLAN.md W1.2) has the same hazard in a third, independent group --
+three copies (`NPDevContract/schemas/config.schema.json`,
+`NPDevContract/schemas/authoring/config.schema.json`, `NPDevContract/dsl/resources/Schemas/config.schema.json`),
+no excused keys. Added as the FIRST step of the `build.javaVersion`/`build.dependencies[]` work
+(deps-and-java/PLAN.md), specifically before that work's own first schema edit lands, so the checker
+is already guarding the copy it would otherwise be easiest to forget.
+
 WHAT COUNTS AS "IDENTICAL"
 ---------------------------
 Semantic, not byte-for-byte: parsed JSON structures are deep-compared (so pretty-printing/key-order
@@ -61,6 +68,21 @@ PACK_SCHEMA_PATHS = (
     "NPDevContract/schemas/pack.schema.json",
     "NPDevContract/dsl/src/main/resources/schema/pack.schema.json",
 )
+
+# deps-and-java/PLAN.md W1.2: config.schema.json has the same three-copy hazard as model/pack --
+# added here (as the guard, before W1.1 lands the first real edit) rather than as an afterthought,
+# per open decision 4: "the authoring/ copy was not verified byte-equivalent in intent to the other
+# two -- W1.2's checker will surface any divergence." It did: the legacy-location copy carries the
+# same provenance-only keys as model.schema.json's own legacy copy (canonicalSchema, deprecated),
+# plus a "version" key none of the others declare -- excused here as the established convention for
+# this legacy location, not a real contract difference (same reasoning as MODEL_SCHEMA's own excuse).
+CONFIG_SCHEMA_PATHS = (
+    "NPDevContract/schemas/config.schema.json",
+    "NPDevContract/schemas/authoring/config.schema.json",
+    "NPDevContract/dsl/resources/Schemas/config.schema.json",
+)
+CONFIG_SCHEMA_LEGACY_COPY_INDEX = 2
+CONFIG_SCHEMA_EXCUSED_KEYS_ON_LEGACY_COPY = ("deprecated", "canonicalSchema", "version")
 
 
 def load_normalized(path: Path, excuse_keys: tuple[str, ...]) -> dict:
@@ -136,10 +158,16 @@ def main(argv: list[str]) -> int:
     )
     print()
     pack_ok, pack_hard_error = check_group(root, PACK_SCHEMA_PATHS, {}, "pack.schema.json")
+    print()
+    config_ok, config_hard_error = check_group(
+        root, CONFIG_SCHEMA_PATHS,
+        {CONFIG_SCHEMA_LEGACY_COPY_INDEX: CONFIG_SCHEMA_EXCUSED_KEYS_ON_LEGACY_COPY},
+        "config.schema.json",
+    )
 
-    if model_hard_error or pack_hard_error:
+    if model_hard_error or pack_hard_error or config_hard_error:
         return 2
-    if not model_ok or not pack_ok:
+    if not model_ok or not pack_ok or not config_ok:
         return 1
     return 0
 

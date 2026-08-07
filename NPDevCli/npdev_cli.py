@@ -1921,10 +1921,10 @@ def run_doctor(args: argparse.Namespace) -> int:
     if java_bin is None:
         checks.append(_check(
             "java-present", "Java", "fail", expected="installed and on PATH",
-            detail="Java not found on PATH -- NPDev requires Java 17 (Gradle needs it for everything).",
+            detail="Java not found on PATH -- NPDev requires Java 17+ (Gradle needs it for everything).",
             fix="Install Java 17 from https://adoptium.net/temurin/releases/",
         ))
-        checks.append(_check("java-version", "Java 17", "pass", expected="17"))
+        checks.append(_check("java-version", "Java 17+", "pass", expected="17+"))
         checks.append(_check("java-home-agreement", "JAVA_HOME", "pass",
                              expected="set, and agreeing with the java on PATH"))
     else:
@@ -1938,14 +1938,43 @@ def run_doctor(args: argparse.Namespace) -> int:
             version_output = ""
         match = re.search(r'version "(\d+)', version_output)
         found_version = match.group(1) if match else "unknown"
-        if found_version != "17":
+        # deps-and-java/PLAN.md W1.6: platform modules are pinned at 17, but the GENERATED app's own
+        # toolchain is Gradle-resolved (17 or 21, config.json's build.javaVersion) -- so any Java
+        # >= 17 on PATH/JAVA_HOME can drive the build; requiring exactly 17 was a false negative on a
+        # 21-only machine, one Gradle's own toolchain auto-detection (now backed by the foojay
+        # resolver, W1.5) already handles correctly while doctor kept reporting FAIL.
+        found_version_int = int(found_version) if found_version.isdigit() else None
+        if found_version_int is None:
             checks.append(_check(
-                "java-version", "Java 17", "fail", found=found_version, expected="17",
-                detail=f"Java {found_version} found ({java_bin}) -- NPDev requires Java 17 specifically.",
-                fix="Install Java 17. Other versions may be installed alongside it.",
+                "java-version", "Java 17+", "fail", found=found_version, expected="17+",
+                detail=f"Could not determine the Java version at {java_bin} (`java -version` output "
+                       f"did not match the expected pattern).",
+                fix="Install Java 17 (or newer). Other versions may be installed alongside it.",
             ))
+        elif found_version_int < 17:
+            checks.append(_check(
+                "java-version", "Java 17+", "fail", found=found_version, expected="17+",
+                detail=f"Java {found_version} found ({java_bin}) -- NPDev requires Java 17 or newer.",
+                fix="Install Java 17 (or newer). Other versions may be installed alongside it.",
+            ))
+        elif found_version_int == 17:
+            checks.append(_check("java-version", "Java 17+", "pass", found=found_version, expected="17+"))
         else:
-            checks.append(_check("java-version", "Java 17", "pass", found=found_version, expected="17"))
+            # >17: correct for platform work (which stays pinned at 17 regardless) and for a
+            # generated app that requested build.javaVersion=21, but a generated app at the 17
+            # DEFAULT needs Gradle to auto-provision a 17 toolchain it doesn't have locally -- this
+            # doctor command has no Gradle invocation of its own to confirm that will succeed, so it
+            # warns (network-dependent, opt-out-able per settings.gradle.template) rather than
+            # claiming a guarantee it cannot back up, or failing a machine that is very likely fine.
+            checks.append(_check(
+                "java-version", "Java 17+", "warn", found=found_version, expected="17+",
+                detail=f"Java {found_version} found ({java_bin}) -- fine for NPDev's own platform "
+                       f"work (pinned at 17 regardless) and for a generated app whose config.json "
+                       f"requests build.javaVersion=21 (the only supported value above 17). "
+                       f"A generated app at the 17 default needs Gradle to auto-provision a 17 "
+                       f"toolchain (via the foojay resolver, registered by default) the first time it "
+                       f"builds -- that needs network access once, then Gradle caches it.",
+            ))
 
         if java_home and path_java is None:
             # Nothing on PATH to disagree with -- the Manager's own shape (JAVA_HOME set, PATH

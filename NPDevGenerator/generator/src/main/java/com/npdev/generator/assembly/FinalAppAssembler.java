@@ -93,6 +93,7 @@ public final class FinalAppAssembler {
         writeSchemaRealizationManifest(normalized, schemaRealizationCount);
         writeAppReadme(normalized, generatedMount);
         appendRuntimeHostLibsDirDefault(normalized);
+        appendAppJavaVersionDefault(normalized);
 
         return new AssemblyResult(
                 normalized.finalAppRoot(),
@@ -498,6 +499,23 @@ public final class FinalAppAssembler {
         );
     }
 
+    /**
+     * deps-and-java/PLAN.md W1.4: append-only, mirroring {@link #appendRuntimeHostLibsDirDefault}'s
+     * own convention (REG-128) -- always bakes the resolved value in, even when it is the same 17
+     * the template's own fallback would already pick, so gradle.properties is never ambiguous about
+     * what level a given generated app actually targets.
+     */
+    private static void appendAppJavaVersionDefault(Options options) throws IOException {
+        Path gradleProperties = options.finalAppRoot().resolve("gradle.properties");
+        String appended = "\n# npdev generate app (deps-and-java/PLAN.md W1.4): this app's own Gradle toolchain level --\n"
+                + "# from config.json's build.javaVersion (default 17 when absent).\n"
+                + "npdevAppJavaVersion=" + options.javaVersion() + "\n";
+        Files.writeString(
+                gradleProperties, appended, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND
+        );
+    }
+
     private static void writeAiBetaLocalProfile(Options options, Path generatedMount) throws IOException {
         Path generatedModel = generatedMount
                 .resolve("src")
@@ -672,7 +690,11 @@ public final class FinalAppAssembler {
             Path canonicalMigrationsDir,
             String generatedFolderName,
             String metaFolderName,
-            boolean deleteBeforeMount
+            boolean deleteBeforeMount,
+            /** deps-and-java/PLAN.md W1.3/W1.4: the generated app's own Gradle toolchain level
+             *  (config.json's build.javaVersion, already validated against {17,21} by the caller).
+             *  Platform modules never read this -- only the assembled app's own gradle.properties. */
+            int javaVersion
     ) {
         Options normalized() {
             return new Options(
@@ -682,7 +704,8 @@ public final class FinalAppAssembler {
                     canonicalMigrationsDir == null ? null : normalize(canonicalMigrationsDir),
                     normalizeName(generatedFolderName, DEFAULT_GENERATED_FOLDER_NAME),
                     normalizeName(metaFolderName, "npdev-meta"),
-                    deleteBeforeMount
+                    deleteBeforeMount,
+                    javaVersion <= 0 ? 17 : javaVersion
             );
         }
 

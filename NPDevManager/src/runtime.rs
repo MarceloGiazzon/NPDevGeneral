@@ -74,9 +74,14 @@ struct AdoptiumPackage {
     name: String,
 }
 
-pub async fn resolve_jdk17() -> Result<DownloadTarget, String> {
+/// deps-and-java/PLAN.md W1.8: parameterized so a future caller can resolve a JDK matching an
+/// app's own `build.javaVersion` (17 or 21), not just the Manager's own private-JDK level. The
+/// Adoptium URL already had `17` as a literal path segment -- `major` just replaces it; the rest
+/// of the request/response shape is identical for any hotspot major version Adoptium serves.
+pub async fn resolve_jdk(major: u32) -> Result<DownloadTarget, String> {
     let url = format!(
-        "https://api.adoptium.net/v3/assets/latest/17/hotspot?architecture={}&image_type=jdk&os={}&vendor=eclipse",
+        "https://api.adoptium.net/v3/assets/latest/{}/hotspot?architecture={}&image_type=jdk&os={}&vendor=eclipse",
+        major,
         arch_name(),
         os_name()
     );
@@ -95,12 +100,20 @@ pub async fn resolve_jdk17() -> Result<DownloadTarget, String> {
     let first = assets
         .into_iter()
         .next()
-        .ok_or_else(|| format!("Adoptium API returned no JDK 17 build for {}/{}", os_name(), arch_name()))?;
+        .ok_or_else(|| format!("Adoptium API returned no JDK {} build for {}/{}", major, os_name(), arch_name()))?;
     Ok(DownloadTarget {
         url: first.binary.package.link,
         sha256: first.binary.package.checksum,
         file_name: first.binary.package.name,
     })
+}
+
+/// 17 stays the default install -- the Manager's OWN private JDK, used to run the CLI/Gradle for
+/// platform work, which is pinned at 17 regardless of what any generated app's build.javaVersion
+/// requests (deps-and-java/PLAN.md D1, Risk 3 -- wiring the Run screen to notice a per-app level
+/// and provision a SECOND private JDK is deferred, tracked but out of scope here).
+pub async fn resolve_jdk17() -> Result<DownloadTarget, String> {
+    resolve_jdk(17).await
 }
 
 /// True once `state::jdk_dir()/bin/java(.exe)` exists -- the private JDK is already installed.

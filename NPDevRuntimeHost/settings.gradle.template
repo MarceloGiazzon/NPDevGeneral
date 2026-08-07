@@ -1,0 +1,26 @@
+// Template only. NPDevGenerator materializes this file as settings.gradle in an assembled FinalExec
+// app (FinalAppAssembler#materializeRootTemplate -- same substitution-free, byte-for-byte copy
+// convention as build.gradle.template).
+
+// deps-and-java/PLAN.md W1.5/Risk 2: without a toolchain resolver, a machine whose only JDK is >17
+// (a 21-only machine building an app that stayed at the javaVersion=17 default, or vice versa) fails
+// with a bare "No matching toolchains found" instead of Gradle provisioning the missing one itself.
+//
+// The `plugins {}` block here is NOT a normal method call -- Gradle parses/resolves it specially at
+// settings-evaluation time, and it must be the FIRST statement in the file (only buildscript{}/
+// pluginManagement{} may precede it; even `rootProject.name = ...` above it is a hard compile
+// error, confirmed live -- "only buildscript {}, pluginManagement {} and other plugins {} script
+// blocks are allowed before plugins {} blocks"). It also cannot be wrapped in an `if` (a SECOND
+// confirmed-live error: "Could not find method plugins()") -- so the opt-out is Gradle's OWN native
+// toolchain-provisioning switch, not a conditional plugin registration: this plugin only ever makes
+// a network call when NO local JDK already satisfies the requested toolchain, AND ONLY if
+// auto-download is enabled -- pass -Dorg.gradle.java.installations.auto-download=false (or set
+// org.gradle.java.installations.auto-download=false in gradle.properties) on a machine whose
+// network blocks outbound JDK downloads. With auto-download disabled, this degrades to exactly
+// today's behavior (Gradle's own unchanged "No matching toolchains found" when nothing local
+// matches), never something worse.
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
+rootProject.name = 'FinalExec'
