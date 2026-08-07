@@ -360,6 +360,28 @@ else
       fail "editor: every manifested asset resolves (not just index.html)" \
            "no manifest at $EDITOR_MANIFEST -- cannot know what the build actually shipped"
     fi
+
+    # REG-139: a 200 on index.html AND every manifested chunk resolving is not proof the page
+    # rendered anything -- the model editor's default tab crashed on a genuinely fresh boot because
+    # the draft endpoint served the wrong SHAPE (the compiled model verbatim, no `entities` key at
+    # all), which neither of the two checks above can see since they never look at the app's own
+    # JSON responses. Hit the same endpoint the default tab's own first render depends on and check
+    # the shape directly -- this is the harness-level check REG-139 says was missing.
+    EDITOR_DRAFT=$(curl -sS "http://localhost:$APP_PORT/api/admin/model/editor/draft" -H 'X-Api-Key: dev-key' 2>/dev/null)
+    if printf '%s' "$EDITOR_DRAFT" | python3 -c "
+import json, sys
+try:
+    body = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if isinstance(body, dict) and isinstance(body.get('entities'), list) else 1)
+" 2>/dev/null; then
+      pass "editor: model editor draft endpoint returns a real ModelEditorDraft shape (entities[]), not the compiled model verbatim"
+    else
+      fail "editor: model editor draft endpoint returns a real ModelEditorDraft shape (entities[]), not the compiled model verbatim" \
+           "response was not a JSON object with an 'entities' array -- the default tab will crash on a fresh boot (REG-139)" \
+           "body: $(printf '%s' "$EDITOR_DRAFT" | tail -c 300)"
+    fi
   else
     fail "app-responds on :$APP_PORT" \
          "no HTTP response within 120s" \

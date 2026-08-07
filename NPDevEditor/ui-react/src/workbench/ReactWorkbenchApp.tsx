@@ -3,6 +3,7 @@ import AuditTimelinePanel from "../AuditTimelinePanel";
 import ModelEditorPanel from "../ModelEditorPanel";
 import OperatorConsolePanel from "../OperatorConsolePanel";
 import OrchestrationEditorPanel from "../OrchestrationEditorPanel";
+import PanelErrorBoundary from "../PanelErrorBoundary";
 import PluginProvenancePanel from "../PluginProvenancePanel";
 import PluginRepositoryPanel from "../PluginRepositoryPanel";
 import PromptHistoryPanel from "../PromptHistoryPanel";
@@ -188,7 +189,9 @@ export default function ReactWorkbenchApp({
             overflow: "hidden"
           }}
         >
-          {renderPanel(activeTab)}
+          <PanelErrorBoundary key={activeTab} panelLabel={activeTabLabel}>
+            {renderPanel(activeTab)}
+          </PanelErrorBoundary>
         </div>
       </main>
     </div>
