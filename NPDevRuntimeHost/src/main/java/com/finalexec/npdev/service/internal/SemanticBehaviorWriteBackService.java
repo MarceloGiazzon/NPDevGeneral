@@ -2,11 +2,19 @@ package com.finalexec.npdev.service.internal;
 
 import com.finalexec.npdev.service.*;
 
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
+import com.fasterxml.jackson.core.util.Separators;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.finalexec.npdev.dto.SemanticBehaviorCanonicalizationRequest;
 import com.finalexec.npdev.dto.SemanticBehaviorWriteBackRequest;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -18,6 +26,8 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.UUID;
 
 @Service
@@ -33,7 +43,8 @@ public class SemanticBehaviorWriteBackService {
 
     private static final Path REQUEST_ROOT = Paths.get("runtime-data", "semantic-behavior-writeback-requests");
     private static final Path EXECUTION_ROOT = Paths.get("runtime-data", "canonical-mutation-executions", "semantic-behavior");
-    private static final Path WORKSPACE_FILE = Paths.get("runtime-data", "canonical-workspace", "semantic-behavior", "semantic-behavior-workspace.json");
+    private static final String BUILD_INFO_RESOURCE = "npdev-build-info.properties";
+    private static final String MODEL_SOURCE_PATH_KEY = "npdev.model.sourcePath";
 
     private final ObjectMapper objectMapper;
     private final SemanticBehaviorWriteBackCanonicalizationService semanticBehaviorWriteBackCanonicalizationService;
@@ -116,7 +127,6 @@ public class SemanticBehaviorWriteBackService {
         executionRecord.put("submittedAt", submittedAt);
         executionRecord.put("executedAt", utcNow());
         executionRecord.put("canonicalizationPlan", canonicalizationPlan);
-        executionRecord.put("workspacePath", WORKSPACE_FILE.toString().replace("\\", "/"));
 
         if (!directlyExecutable) {
             executionRecord.put("status", "REVIEW_REQUIRED");
@@ -134,11 +144,34 @@ public class SemanticBehaviorWriteBackService {
         }
 
         Map<String, Object> mutation = buildMutation(requestId, tenantId, request, actionType);
-        applyMutationToWorkspace(mutation);
+        ModelSourceMutationResult modelSourceResult = applyMutationToModelSource(mutation);
+
+        if (!modelSourceResult.applied()) {
+            executionRecord.put("status", "REVIEW_REQUIRED");
+            executionRecord.put("mutation", mutation);
+            executionRecord.put("message", modelSourceResult.reason());
+            persistExecution(executionId, executionRecord);
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("requestId", requestId);
+            response.put("executionId", executionId);
+            response.put("tenantId", tenantId);
+            response.put("status", "REVIEW_REQUIRED");
+            response.put("canonicalizationPlan", canonicalizationPlan);
+            response.put("mutation", mutation);
+            response.put("message", modelSourceResult.reason());
+            return response;
+        }
+
+        mutation.put("modelSourcePath", modelSourceResult.modelSourcePath());
+        String appliedMessage = "Semantic behavior mutation written into the app's own model source at "
+                + modelSourceResult.modelSourcePath() + ". Regenerate and rebuild the app for it to take effect "
+                + "-- nothing in a running JVM re-reads flow definitions.";
 
         executionRecord.put("status", "EXECUTED");
         executionRecord.put("mutation", mutation);
-        executionRecord.put("message", "Semantic behavior mutation executed into runtime canonical workspace.");
+        executionRecord.put("requiresRebuild", true);
+        executionRecord.put("message", appliedMessage);
         persistExecution(executionId, executionRecord);
 
         Map<String, Object> response = new LinkedHashMap<>();
@@ -148,8 +181,9 @@ public class SemanticBehaviorWriteBackService {
         response.put("status", "EXECUTED");
         response.put("canonicalizationPlan", canonicalizationPlan);
         response.put("mutation", mutation);
-        response.put("workspacePath", WORKSPACE_FILE.toString().replace("\\", "/"));
-        response.put("message", "Semantic behavior mutation executed into runtime canonical workspace.");
+        response.put("modelSourcePath", modelSourceResult.modelSourcePath());
+        response.put("requiresRebuild", true);
+        response.put("message", appliedMessage);
         return response;
     }
 
@@ -159,7 +193,8 @@ public class SemanticBehaviorWriteBackService {
         summary.put("storagePath", REQUEST_ROOT.toString().replace("\\", "/"));
         summary.put("writeBackMode", "tenant-tagged-canonical-mutation-execution-v1");
         summary.put("executionStoragePath", EXECUTION_ROOT.toString().replace("\\", "/"));
-        summary.put("workspacePath", WORKSPACE_FILE.toString().replace("\\", "/"));
+        summary.put("directExecutionTarget", "the app's own model source ("
+                + MODEL_SOURCE_PATH_KEY + " from " + BUILD_INFO_RESOURCE + "), applied on next regenerate+rebuild");
         summary.put("directExecutionActions", List.of("addNotificationStep"));
         summary.put("tenantPropagation", "tenantId propagated into request, execution, and mutation artifacts");
         summary.put("canonicalization", semanticBehaviorWriteBackCanonicalizationService.summary());
@@ -219,33 +254,167 @@ public class SemanticBehaviorWriteBackService {
         return mutation;
     }
 
-    private void applyMutationToWorkspace(Map<String, Object> mutation) {
+    /**
+     * REG-138: the ONLY thing in this whole platform that mutates flow definitions is a
+     * regenerate+rebuild -- CompiledModelFlowDefinitionProvider builds an immutable flow map once
+     * at JVM boot from the compiled model baked into the jar, and nothing ever touches it again.
+     * So "execute" cannot mean "took effect in this JVM"; the honest, achievable version is
+     * "wrote a real, valid change into the app's own model.json, which the NEXT regenerate+rebuild
+     * will pick up" -- a structural mutation, same category as `npdev init`'s scaffolding, not a
+     * live capability. Every failure path below returns REVIEW_REQUIRED with a reason rather than
+     * throwing, on purpose: a malformed automatic edit that corrupts the model source is worse than
+     * declining and asking a human to apply it.
+     */
+    private ModelSourceMutationResult applyMutationToModelSource(Map<String, Object> mutation) {
+        Optional<Path> modelSourcePath = resolveModelSourcePath();
+        if (modelSourcePath.isEmpty()) {
+            return ModelSourceMutationResult.reviewRequired(
+                    "Model source path is unknown for this app (" + MODEL_SOURCE_PATH_KEY + " is UNKNOWN in "
+                            + BUILD_INFO_RESOURCE + ", e.g. because it predates REG-138's build-info fields). "
+                            + "Apply this change to the model manually and regenerate."
+            );
+        }
+        return applyMutationToModelSourceAt(mutation, modelSourcePath.get());
+    }
+
+    /** Split from {@link #applyMutationToModelSource} so the actual JSON surgery is testable
+     *  against a known temp-directory path, without needing a classpath-resource fixture. */
+    ModelSourceMutationResult applyMutationToModelSourceAt(Map<String, Object> mutation, Path path) {
+        if (!Files.exists(path)) {
+            return ModelSourceMutationResult.reviewRequired("Model source file not found at " + path + ".");
+        }
+
+        String actionType = String.valueOf(mutation.get("mutationType"));
+        if (!"addNotificationStep".equals(actionType)) {
+            return ModelSourceMutationResult.reviewRequired("Unsupported direct model-source mutation type: " + actionType);
+        }
+
+        ObjectNode modelRoot;
+        boolean originalUsesCrlf;
+        boolean originalHadTrailingNewline;
         try {
-            Files.createDirectories(WORKSPACE_FILE.getParent());
-
-            Map<String, Object> workspace;
-            if (Files.exists(WORKSPACE_FILE)) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> existing = objectMapper.readValue(WORKSPACE_FILE.toFile(), LinkedHashMap.class);
-                workspace = existing;
-            } else {
-                workspace = new LinkedHashMap<>();
-                workspace.put("workspaceType", "semantic-behavior-runtime-canonical-workspace");
-                workspace.put("createdAt", utcNow());
-                workspace.put("appliedMutations", new ArrayList<Map<String, Object>>());
+            String originalText = Files.readString(path);
+            // Jackson's tree writer always emits LF and never a trailing newline -- on a
+            // CRLF-checked-in file (this repo mixes both) that ends with one (most do), writing
+            // back with no adjustment turns a one-step insertion into a whole-file rewrite in
+            // `git diff`, the kind of noisy edit that hides the real change and makes the mutation
+            // look far riskier than it is.
+            originalUsesCrlf = originalText.contains("\r\n");
+            originalHadTrailingNewline = originalText.endsWith("\n");
+            JsonNode parsed = objectMapper.readTree(originalText);
+            if (!(parsed instanceof ObjectNode)) {
+                return ModelSourceMutationResult.reviewRequired("Model source at " + path + " is not a JSON object.");
             }
-
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> appliedMutations =
-                    (List<Map<String, Object>>) workspace.computeIfAbsent("appliedMutations", key -> new ArrayList<Map<String, Object>>());
-
-            appliedMutations.add(mutation);
-            workspace.put("lastAppliedAt", utcNow());
-            workspace.put("appliedMutationCount", appliedMutations.size());
-
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(WORKSPACE_FILE.toFile(), workspace);
+            modelRoot = (ObjectNode) parsed;
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to apply semantic behavior mutation to runtime canonical workspace.", e);
+            return ModelSourceMutationResult.reviewRequired("Failed to read model source at " + path + ": " + e.getMessage());
+        }
+
+        if (!declaresCapability(modelRoot, "notification")) {
+            return ModelSourceMutationResult.reviewRequired(
+                    "Model does not declare a 'notification' capability; a capabilityCall step targeting it would fail generation."
+            );
+        }
+
+        String flowName = String.valueOf(mutation.get("flowName"));
+        ObjectNode targetFlow = findFlowByName(modelRoot, flowName);
+        if (targetFlow == null) {
+            return ModelSourceMutationResult.reviewRequired("Flow '" + flowName + "' not found in model source.");
+        }
+
+        String stepName = String.valueOf(mutation.get("stepName"));
+        ArrayNode steps = targetFlow.withArray("steps");
+        for (JsonNode existingStep : steps) {
+            if (existingStep.isObject() && stepName.equalsIgnoreCase(existingStep.path("name").asText(""))) {
+                return ModelSourceMutationResult.reviewRequired(
+                        "Flow '" + flowName + "' already has a step named '" + stepName + "'."
+                );
+            }
+        }
+
+        ObjectNode newStep = objectMapper.createObjectNode();
+        newStep.put("name", stepName);
+        newStep.put("type", "capabilityCall");
+        newStep.put("capability", "notification");
+        newStep.put("operation", "send");
+        steps.add(newStep);
+
+        try {
+            String rewritten = objectMapper.writer(modelSourcePrettyPrinter()).writeValueAsString(modelRoot);
+            if (originalHadTrailingNewline) {
+                rewritten = rewritten + "\n";
+            }
+            if (originalUsesCrlf) {
+                rewritten = rewritten.replace("\r\n", "\n").replace("\n", "\r\n");
+            }
+            Files.writeString(path, rewritten);
+        } catch (Exception e) {
+            return ModelSourceMutationResult.reviewRequired("Failed to write model source at " + path + ": " + e.getMessage());
+        }
+
+        return ModelSourceMutationResult.applied(path.toString().replace("\\", "/"));
+    }
+
+    private boolean declaresCapability(ObjectNode modelRoot, String capabilityName) {
+        for (JsonNode capability : modelRoot.withArray("capabilities")) {
+            if (capability.isObject() && capabilityName.equalsIgnoreCase(capability.path("name").asText(""))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private ObjectNode findFlowByName(ObjectNode modelRoot, String flowName) {
+        for (JsonNode flow : modelRoot.withArray("flows")) {
+            if (flow.isObject() && flowName.equalsIgnoreCase(flow.path("name").asText(""))) {
+                return (ObjectNode) flow;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Every model.json this platform ships (npdev init's scaffold, every sample under
+     * NPDevContract/dsl/resources/Models/) uses 2-space indent, "key": value (no space before the
+     * colon), and one array element per line -- Jackson's own writerWithDefaultPrettyPrinter()
+     * instead writes "key" : value and puts array-of-object elements on the SAME line as `[`/`,`
+     * (a well-known Jackson default quirk), which turns a one-step insertion into a whole-file
+     * rewrite in `git diff` and makes an automatic edit look far riskier than it is.
+     */
+    private static DefaultPrettyPrinter modelSourcePrettyPrinter() {
+        DefaultIndenter indenter = new DefaultIndenter("  ", "\n");
+        DefaultPrettyPrinter printer = new DefaultPrettyPrinter()
+                .withSeparators(Separators.createDefaultInstance().withObjectFieldValueSpacing(Separators.Spacing.AFTER));
+        printer.indentObjectsWith(indenter);
+        printer.indentArraysWith(indenter);
+        return printer;
+    }
+
+    private Optional<Path> resolveModelSourcePath() {
+        ClassPathResource resource = new ClassPathResource(BUILD_INFO_RESOURCE);
+        if (!resource.exists()) {
+            return Optional.empty();
+        }
+        try (InputStream inputStream = resource.getInputStream()) {
+            Properties properties = new Properties();
+            properties.load(inputStream);
+            String value = properties.getProperty(MODEL_SOURCE_PATH_KEY, "UNKNOWN").trim();
+            if (value.isEmpty() || "UNKNOWN".equals(value)) {
+                return Optional.empty();
+            }
+            return Optional.of(Path.of(value));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    record ModelSourceMutationResult(boolean applied, String modelSourcePath, String reason) {
+        static ModelSourceMutationResult applied(String modelSourcePath) {
+            return new ModelSourceMutationResult(true, modelSourcePath, null);
+        }
+
+        static ModelSourceMutationResult reviewRequired(String reason) {
+            return new ModelSourceMutationResult(false, null, reason);
         }
     }
 

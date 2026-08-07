@@ -34,6 +34,21 @@ public final class BuildInfoEmitter {
     private static final String UNKNOWN = "UNKNOWN";
 
     public void emit(CompiledModel model, Path finalAppRoot) throws IOException {
+        emit(model, finalAppRoot, null, null);
+    }
+
+    /**
+     * REG-138: a running app previously had no way to know where its OWN editable model/config
+     * source lived on disk -- these two paths are the ONLY thing standing between "propose a
+     * mutation" and "actually apply it", so SemanticBehaviorWriteBackService can find and rewrite
+     * the real source file instead of a disconnected audit log nothing reads back. Absolute paths
+     * (the generator can be invoked with a relative --model, but the RUNNING app's working
+     * directory is unrelated to the generator's, so a relative path stored here would resolve
+     * against the wrong base); UNKNOWN when unavailable (e.g. the no-arg overload above, or a
+     * config-driven invocation with no discrete model path) -- callers must treat UNKNOWN as
+     * "cannot apply automatically", never guess a fallback location.
+     */
+    public void emit(CompiledModel model, Path finalAppRoot, Path modelSourcePath, Path configSourcePath) throws IOException {
         String nowUtc = Instant.now().toString();
         GitInfo git = resolveGitInfo();
 
@@ -46,6 +61,8 @@ public final class BuildInfoEmitter {
         properties.put("npdev.generator.tag", git.branch());
         // Back-compat key: GeneratedBuildInfoLogger reads generatedAtUtc, not builtAt.
         properties.put("npdev.generator.generatedAtUtc", nowUtc);
+        properties.put("npdev.model.sourcePath", valueOrUnknown(absolutePathOrNull(modelSourcePath)));
+        properties.put("npdev.config.sourcePath", valueOrUnknown(absolutePathOrNull(configSourcePath)));
 
         Path target = finalAppRoot.resolve(RELATIVE_PATH);
         Files.createDirectories(target.getParent());
@@ -60,6 +77,10 @@ public final class BuildInfoEmitter {
 
     private static String valueOrUnknown(String value) {
         return value == null || value.isBlank() ? UNKNOWN : value.trim();
+    }
+
+    private static String absolutePathOrNull(Path path) {
+        return path == null ? null : path.toAbsolutePath().normalize().toString().replace('\\', '/');
     }
 
     /**

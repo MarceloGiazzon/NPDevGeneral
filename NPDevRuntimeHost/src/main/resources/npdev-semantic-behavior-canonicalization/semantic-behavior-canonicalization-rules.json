@@ -2,13 +2,40 @@
     "resourceId":  "npdev-semantic-behavior-canonicalization/semantic-behavior-canonicalization-rules",
     "resourceType":  "rules",
     "templateOwned":  true,
-    "version":  "1.0.0",
-    "status":  "seeded",
-    "generatedAt":  "2026-04-23T00:00:00Z",
+    "version":  "1.1.0",
+    "status":  "seeded-plus-reg138",
+    "generatedAt":  "2026-08-07T00:00:00Z",
+    "supportedActions":  [
+        {
+            "actionType":  "addNotificationStep",
+            "defaultOutcome":  "CANONICALIZABLE",
+            "canonicalTarget":  "flow.steps[].capabilityCall(notification.send)",
+            "notes":  "REG-138: directly executable -- SemanticBehaviorWriteBackService.applyMutationToModelSourceAt writes a real capabilityCall step targeting the model's own 'notification' capability into the app's own model source (npdev.model.sourcePath), applied on the next regenerate+rebuild."
+        },
+        {
+            "actionType":  "addApprovalStep",
+            "defaultOutcome":  "REVIEW_REQUIRED",
+            "canonicalTarget":  "flow.steps[].capabilityCall(approval)",
+            "notes":  "No approval-capability convention exists in the DSL yet; a human must model this manually."
+        },
+        {
+            "actionType":  "setRetryPolicy",
+            "defaultOutcome":  "REVIEW_REQUIRED",
+            "canonicalTarget":  "flow.steps[].policy.retryCount",
+            "notes":  "A bare retryCount does not identify which step's policy to adjust; requires manual targeting."
+        },
+        {
+            "actionType":  "setTimeoutPolicy",
+            "defaultOutcome":  "REVIEW_REQUIRED",
+            "canonicalTarget":  "flow.steps[].policy.timeoutMs",
+            "notes":  "A bare timeoutSeconds does not identify which step's policy to adjust; requires manual targeting."
+        }
+    ],
+    "unsupportedActionsDefaultOutcome":  "UNSUPPORTED",
     "items":  [
 
               ],
     "notes":  [
-                  "Seeded template resource to satisfy runtime template completeness and allow future specialization."
+                  "REG-138 (2026-08-07): this file was a completely empty seeded placeholder (no supportedActions key at all) from the day this service shipped, which meant isDirectlyExecutable() could never return true for ANY app -- canonicalize() always fell through to the 'no matching rule' branch (outcome=UNSUPPORTED), regardless of what SemanticBehaviorWriteBackService itself checked for. Populated with the 4 action types SemanticBehaviorWriteBackCanonicalizationService/SemanticBehaviorWriteBackService already recognize by name; only addNotificationStep is currently backed by real execution logic."
               ]
 }

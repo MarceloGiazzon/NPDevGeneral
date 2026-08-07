@@ -6,126 +6,15 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**140 item(s) migrated: 2 open/partial, 138 done.**
+**140 item(s) migrated: 1 open/partial, 139 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
-| REG-138 | semantic-behavior-writeback (controller+service+canonicalization) is compiled out of EVERY generated app by the supported-runtime-surface allowlist (deferredControllers), so all 5 /api/admin/model/semantic-behavior-writeback[...] endpoints 404 by default -- and even the one directly-executable mutation only appends to a side JSON file nothing reads back | GAP | MEDIUM | OPEN | 2026-08-06 |
 | REG-139 | ModelEditorPanel.tsx crashes with an uncaught TypeError on a fresh generated app: GET /api/admin/model/editor/draft's no-draft-yet fallback returns the raw compiled model.json (concepts/procedures/panels) verbatim, but the frontend blindly casts it to ModelEditorDraft (entities), so draft.entities.find(...) throws on undefined | BUG | HIGH | OPEN | 2026-08-07 |
 
 ### Detail
-
-### REG-138 — semantic-behavior-writeback (controller+service+canonicalization) is compiled out of EVERY generated app by the supported-runtime-surface allowlist (deferredControllers), so all 5 /api/admin/model/semantic-behavior-writeback[...] endpoints 404 by default -- and even the one directly-executable mutation only appends to a side JSON file nothing reads back
-
-**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
-**Verification:** VERIFIED_LIVE
-**Source:** Found while implementing editor/ANALYSIS.md's E2 ("does semantic writeback actually apply?",
-__OutsideRepo, 2026-08-06 analysis against 6b1b3fb). That analysis's own §2.1 correction claimed
-"SemanticBehaviorWriteBackService accepts five request types ... validates them, assigns a
-requestId, and journals them" as evidence the editor "has a real write path", contrasting it with
-structural-writeback's missing controller/service (§3). Re-checking that claim against a REAL
-built app rather than trusting the source tree turned up a bigger gap than either §3 or E2
-anticipated.
-
-NPDevRuntimeHost/build.gradle(.template) computes `unsupportedRuntimeHostControllerSources` /
-`unsupportedRuntimeHostServiceSources` from src/main/resources/npdev/runtime-supported-
-controllers.json's `allowedControllers` / `supportedCoreServiceComponents` /
-`supportedCoreServicePatterns` ONLY -- it never consults `deferredControllers`, and this exclusion
-is applied unconditionally in `sourceSets.main.java` (not gated behind
-npdev.runtime.supported-surface-enforced or any -P flag). SemanticBehaviorWriteBackController is
-listed in the manifest's `deferredControllers` (not `allowedControllers`), and
-SemanticBehaviorWriteBackService / SemanticBehaviorWriteBackCanonicalizationService match none of
-supportedCoreServiceNames/-Patterns (both instead match the `Semantic*` entry in
-`nonDefaultServicePatterns`, an array the gradle exclusion logic never reads -- only
-scripts/quality/run-runtime-surface-evidence.ps1's governance classifier reads it, for a separate,
-non-blocking self-consistency check). Net effect: the three classes are excluded from
-`sourceSets.main.java` at compile time for every generated app, unconditionally -- this is by
-design (the manifest's `enforcedByProperty`/`surfaceProfileProperty` fields document a RUNTIME
-bean-filter toggle in RuntimeControllerAllowlistConfig, but that toggle can never re-add a class
-that was never compiled in the first place; the actual, load-bearing enforcement is this
-compile-time exclusion, as run-runtime-surface-evidence.ps1's own comment at line 587 already
-says: "the actual allowlist enforcement is the build-time controller exclusion in
-build.gradle.template").
-
-Verified empirically against an already-built real generated app (not just static analysis):
-D:\WorkSpace\NPDev\Build\generated-finalapps\claude-support-desk\App has the three .java source
-files under src/main/java (copied from the RuntimeHost template, as expected), but
-build/classes/java/main contains ONLY SemanticBehaviorWriteBackRequest.class (the DTO, in
-com.finalexec.npdev.dto, a package the exclusion logic never filters) -- no Controller.class, no
-Service.class, no CanonicalizationService.class anywhere in the compiled output. Cross-checked
-against com.finalexec.api.internal's actual compiled class list in the same app: it matches
-allowedControllers exactly (PublicationExecutorController, RealPublicationExecutorController,
-RollbackExecutionController, SemanticPublicationMappingController,
-StructuralPublicationMappingController, SourceMutation*GateController/-AuditRecordController/-
-RollbackAnchorController, PublicationRollbackExecutorController,
-PublicationTransactionRecordController -- 10 classes), confirming the allowlist is the actual
-mechanism and SemanticBehaviorWriteBackController is not merely late-loaded some other way.
-
-This is a DIFFERENT shape from structural-writeback (§3 of the same analysis): structural has zero
-implementation ever written. Semantic-behavior-writeback is fully implemented (request validation,
-canonicalization rules, execution, history, journaling to runtime-data/) but deliberately gated
-behind a profile (npdev.runtime.surface-profile=non-default) that no generated app enables by
-default -- and the gate is enforced so early (compile time) that even opting into that profile at
-runtime cannot resurrect it without a build change. Given the surrounding manifest also defers a
-large, clearly-intentional list of speculative/governance features (Explainability*, FlowBuilder*,
-GuidedTaskWorkspace*, Template*, etc.), this LOOKS like deliberate platform governance policy
-(minimize default attack surface / unfinished-feature exposure) rather than an accidental gap --
-unlike REG-104/REG-108's silent-drop shape, nothing here silently loses data. But two consequences
-were not previously documented anywhere:
-
-(1) NPDevEditor/ui-react/src/promptHistoryData.ts's HISTORY_SOURCES array unconditionally queries
-BOTH "structural" and "semantic-behavior" sources' three endpoints each. Exactly like structural's
-known-broken screen (analysis §3's "What a user sees"), the semantic-behavior source will also
-warn/empty-list in every default-profile generated app -- fetchPromptHistorySource already
-degrades gracefully via Promise.allSettled (a warning per failed endpoint, not a hard crash), so
-the failure mode is "silently empty history panel" rather than a thrown error, but it is still a
-UI panel presented as live that is unreachable in the shipped default.
-
-(2) Even in the one profile where it WOULD compile (npdev.runtime.surface-profile=non-default,
-which per this item's finding above cannot actually be reached without a build change today
-anyway), SemanticBehaviorWriteBackService.execute()'s only directly-executable path
-(isDirectlyExecutable: outcome==CANONICALIZABLE && actionType==addNotificationStep, i.e. only
-addOrchestrationStep requests with stepKind=notification; addInvariant, addLifecycleState,
-addLifecycleTransition, addAwaitEventStep, and addOrchestrationStep/stepKind=approval all land on
-status=REVIEW_REQUIRED and stop there) applies its mutation by appending to
-runtime-data/canonical-workspace/semantic-behavior/semantic-behavior-workspace.json --
-a repo-wide grep for readers of that path (or of "appliedMutations"/"canonical-workspace" in that
-sense) found none. So even a request that DOES reach EXECUTED status does not change the running
-app's actual flow/model behavior -- it only appends an audit-trail entry to a file nothing
-consumes. This is the exact "silent-answer" shape ANALYSIS.md's E2 flagged as the bigger possible
-finding ("a complete-looking pipeline whose last step is missing").
-
-**Surface:** `runtimehost/supported-surface-allowlist, editor/prompt-history`
-**Files:**
-- `NPDevRuntimeHost/build.gradle.template`
-- `NPDevRuntimeHost/build.gradle`
-- `NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json`
-- `NPDevRuntimeHost/src/main/java/com/finalexec/config/RuntimeControllerAllowlistConfig.java`
-- `NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/SemanticBehaviorWriteBackController.java`
-- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackService.java`
-- `NPDevEditor/ui-react/src/promptHistoryData.ts`
-- `scripts/quality/run-runtime-surface-evidence.ps1`
-
-Not fixed here -- filed to make the gap visible and durable, per ANALYSIS.md E2's own "report
-before fixing" instruction. Three independent follow-ups this item leaves open, each a separate
-judgment call outside this task's scope (editor/ANALYSIS.md's E1/§6 only budgeted a decision for
-structural-writeback):
-
-(a) Decide whether semantic-behavior-writeback should be promoted into allowedControllers/
-supportedCoreServiceComponents (ship it for real) or the promptHistoryData.ts UI source should stop
-presenting it as available by default (same "finish or delete" choice E1 made for structural,
-applied to this pair instead) -- a product call, not a mechanical fix.
-(b) If promoted, applyMutationToWorkspace's write-only workspace file needs an actual consumer (or
-needs replacing with a real mutation into the model/flow the running kernel reads) before "EXECUTED"
-is a true claim.
-(c) The manifest's `deferredControllers`/`nonDefaultServicePatterns` + `surface-profile=non-default`
-runtime toggle is currently unreachable for any class the gradle source-exclusion also strips
-(i.e. today, for every deferred controller/service) -- if the intent is genuinely "toggle back on
-at runtime for a non-default profile", the gradle exclusion needs to consult deferredControllers
-too (or the toggle's docs/tests should say plainly it only ever applies within RuntimeHost's own
-test suite, never to a generated app).
 
 ### REG-139 — ModelEditorPanel.tsx crashes with an uncaught TypeError on a fresh generated app: GET /api/admin/model/editor/draft's no-draft-yet fallback returns the raw compiled model.json (concepts/procedures/panels) verbatim, but the frontend blindly casts it to ModelEditorDraft (entities), so draft.entities.find(...) throws on undefined
 
@@ -201,7 +90,7 @@ genuinely fresh app (no prior draft) would have caught this before a real user d
 exactly the "no end-to-end proof it works inside a generated app" gap editor/ANALYSIS.md's own
 §4 flagged as weak, now with a concrete crash behind it.
 
-## Done (138)
+## Done (139)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -251,6 +140,7 @@ exactly the "no end-to-end proof it works inside a generated app" gap editor/ANA
 | REG-135 | Accepted boundaries (NPDev's designed limits, e.g. B13's 'no Java data-migration hooks') carry no machine-readable identity: ValidationDiagnostic has code/helpKey/suggestedFix but no boundaryId, B-numbers (B1/B2/B15/B27/...) appear in the validation package as Java comments only, and docs/ACCEPTED_BOUNDARIES.md is a markdown table nothing can query except a human reading it | GAP | MEDIUM | DONE | 2026-08-04 |
 | REG-136 | root/NPDevGenerator/NPDevKernel gradle.properties hardcode org.gradle.projectcachedir to this machine's own D:/WorkSpace/NPDev/Build/gradle-project-caches/<module> -- a Gradle START PARAMETER read before any -P/env override can apply, so every gradlew invocation the CLI or sync-runtimehost-libs.ps1 makes fails on any machine without that exact path, breaking the FIRST command in README's own Quickstart (./npdev validate model) | BUG | HIGH | DONE | 2026-08-04 |
 | REG-137 | NPDevRuntimeHost/build.gradle.template's resolveNpdevRuntimeLibsDir checked the gradle property before the NPDEV_RUNTIMEHOST_LIBS_DIR env var, so REG-128's generation-time-baked gradle.properties default permanently shadowed any build-time env var override -- breaking 3 generator packaged-app runtime proof tests on Linux CI | BUG | MEDIUM | DONE | 2026-08-05 |
+| REG-138 | semantic-behavior-writeback (controller+service+canonicalization) is compiled out of EVERY generated app by the supported-runtime-surface allowlist (deferredControllers), so all 5 /api/admin/model/semantic-behavior-writeback[...] endpoints 404 by default -- and even the one directly-executable mutation only appends to a side JSON file nothing reads back | GAP | MEDIUM | DONE | 2026-08-06 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
 | REG-16 | The other 23 launch items had zero adversarial review | PROCESS | HIGH | DONE | 2026-07-21 |
@@ -2861,6 +2751,161 @@ REG-128's own two fix shapes were):
 Also fixed in the same commit: the CI workflow's evidence-upload artifact glob (see files list),
 which is what made the real error message visible at all instead of the bare
 "AssertionFailedError at line 1009" console summary.
+
+### REG-138 — semantic-behavior-writeback (controller+service+canonicalization) is compiled out of EVERY generated app by the supported-runtime-surface allowlist (deferredControllers), so all 5 /api/admin/model/semantic-behavior-writeback[...] endpoints 404 by default -- and even the one directly-executable mutation only appends to a side JSON file nothing reads back
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-07)
+**Verification:** VERIFIED_LIVE
+**Source:** Found while implementing editor/ANALYSIS.md's E2 ("does semantic writeback actually apply?",
+__OutsideRepo, 2026-08-06 analysis against 6b1b3fb). That analysis's own §2.1 correction claimed
+"SemanticBehaviorWriteBackService accepts five request types ... validates them, assigns a
+requestId, and journals them" as evidence the editor "has a real write path", contrasting it with
+structural-writeback's missing controller/service (§3). Re-checking that claim against a REAL
+built app rather than trusting the source tree turned up a bigger gap than either §3 or E2
+anticipated.
+
+NPDevRuntimeHost/build.gradle(.template) computes `unsupportedRuntimeHostControllerSources` /
+`unsupportedRuntimeHostServiceSources` from src/main/resources/npdev/runtime-supported-
+controllers.json's `allowedControllers` / `supportedCoreServiceComponents` /
+`supportedCoreServicePatterns` ONLY -- it never consults `deferredControllers`, and this exclusion
+is applied unconditionally in `sourceSets.main.java` (not gated behind
+npdev.runtime.supported-surface-enforced or any -P flag). SemanticBehaviorWriteBackController is
+listed in the manifest's `deferredControllers` (not `allowedControllers`), and
+SemanticBehaviorWriteBackService / SemanticBehaviorWriteBackCanonicalizationService match none of
+supportedCoreServiceNames/-Patterns (both instead match the `Semantic*` entry in
+`nonDefaultServicePatterns`, an array the gradle exclusion logic never reads -- only
+scripts/quality/run-runtime-surface-evidence.ps1's governance classifier reads it, for a separate,
+non-blocking self-consistency check). Net effect: the three classes are excluded from
+`sourceSets.main.java` at compile time for every generated app, unconditionally -- this is by
+design (the manifest's `enforcedByProperty`/`surfaceProfileProperty` fields document a RUNTIME
+bean-filter toggle in RuntimeControllerAllowlistConfig, but that toggle can never re-add a class
+that was never compiled in the first place; the actual, load-bearing enforcement is this
+compile-time exclusion, as run-runtime-surface-evidence.ps1's own comment at line 587 already
+says: "the actual allowlist enforcement is the build-time controller exclusion in
+build.gradle.template").
+
+Verified empirically against an already-built real generated app (not just static analysis):
+D:\WorkSpace\NPDev\Build\generated-finalapps\claude-support-desk\App has the three .java source
+files under src/main/java (copied from the RuntimeHost template, as expected), but
+build/classes/java/main contains ONLY SemanticBehaviorWriteBackRequest.class (the DTO, in
+com.finalexec.npdev.dto, a package the exclusion logic never filters) -- no Controller.class, no
+Service.class, no CanonicalizationService.class anywhere in the compiled output. Cross-checked
+against com.finalexec.api.internal's actual compiled class list in the same app: it matches
+allowedControllers exactly (PublicationExecutorController, RealPublicationExecutorController,
+RollbackExecutionController, SemanticPublicationMappingController,
+StructuralPublicationMappingController, SourceMutation*GateController/-AuditRecordController/-
+RollbackAnchorController, PublicationRollbackExecutorController,
+PublicationTransactionRecordController -- 10 classes), confirming the allowlist is the actual
+mechanism and SemanticBehaviorWriteBackController is not merely late-loaded some other way.
+
+This is a DIFFERENT shape from structural-writeback (§3 of the same analysis): structural has zero
+implementation ever written. Semantic-behavior-writeback is fully implemented (request validation,
+canonicalization rules, execution, history, journaling to runtime-data/) but deliberately gated
+behind a profile (npdev.runtime.surface-profile=non-default) that no generated app enables by
+default -- and the gate is enforced so early (compile time) that even opting into that profile at
+runtime cannot resurrect it without a build change. Given the surrounding manifest also defers a
+large, clearly-intentional list of speculative/governance features (Explainability*, FlowBuilder*,
+GuidedTaskWorkspace*, Template*, etc.), this LOOKS like deliberate platform governance policy
+(minimize default attack surface / unfinished-feature exposure) rather than an accidental gap --
+unlike REG-104/REG-108's silent-drop shape, nothing here silently loses data. But two consequences
+were not previously documented anywhere:
+
+(1) NPDevEditor/ui-react/src/promptHistoryData.ts's HISTORY_SOURCES array unconditionally queries
+BOTH "structural" and "semantic-behavior" sources' three endpoints each. Exactly like structural's
+known-broken screen (analysis §3's "What a user sees"), the semantic-behavior source will also
+warn/empty-list in every default-profile generated app -- fetchPromptHistorySource already
+degrades gracefully via Promise.allSettled (a warning per failed endpoint, not a hard crash), so
+the failure mode is "silently empty history panel" rather than a thrown error, but it is still a
+UI panel presented as live that is unreachable in the shipped default.
+
+(2) Even in the one profile where it WOULD compile (npdev.runtime.surface-profile=non-default,
+which per this item's finding above cannot actually be reached without a build change today
+anyway), SemanticBehaviorWriteBackService.execute()'s only directly-executable path
+(isDirectlyExecutable: outcome==CANONICALIZABLE && actionType==addNotificationStep, i.e. only
+addOrchestrationStep requests with stepKind=notification; addInvariant, addLifecycleState,
+addLifecycleTransition, addAwaitEventStep, and addOrchestrationStep/stepKind=approval all land on
+status=REVIEW_REQUIRED and stop there) applies its mutation by appending to
+runtime-data/canonical-workspace/semantic-behavior/semantic-behavior-workspace.json --
+a repo-wide grep for readers of that path (or of "appliedMutations"/"canonical-workspace" in that
+sense) found none. So even a request that DOES reach EXECUTED status does not change the running
+app's actual flow/model behavior -- it only appends an audit-trail entry to a file nothing
+consumes. This is the exact "silent-answer" shape ANALYSIS.md's E2 flagged as the bigger possible
+finding ("a complete-looking pipeline whose last step is missing").
+
+**Surface:** `runtimehost/supported-surface-allowlist, editor/prompt-history`
+**Files:**
+- `NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json`
+- `NPDevRuntimeHost/src/test/java/com/finalexec/SupportedRuntimeSurfacePackagingTest.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackService.java`
+- `NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackServiceTest.java`
+- `NPDevRuntimeHost/src/main/resources/npdev-semantic-behavior-canonicalization/semantic-behavior-canonicalization-rules.json`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/provenance/BuildInfoEmitter.java`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java`
+- `NPDevGenerator/generator/src/test/java/com/npdev/generator/provenance/BuildInfoEmitterTest.java`
+
+Owner decision (asked directly, three options presented): **enable it for real**, not leave
+deferred or remove. Two more scope checks happened before writing code, both changing the shape of
+the fix -- documented here rather than silently absorbed, since each is exactly the kind of "looked
+bigger on inspection" finding this item itself is about:
+
+1. There is NO live flow-mutation mechanism ANYWHERE in this platform.
+   CompiledModelFlowDefinitionProvider builds an immutable flow map once at JVM boot from the
+   compiled model baked into the jar; nothing ever touches it again. This is true of every model
+   change in this platform, not special to this service -- so "EXECUTED" can never honestly mean
+   "took effect in this JVM." The only real primitive a "notification step" maps to is a
+   `capabilityCall` flowStep targeting the model's own `notification` capability's `send`
+   operation (there is no "notification" flowStep type in the DSL at all -- confirmed against
+   model.schema.json's 13-entry flowStep type enum).
+2. The running app had no way to know where its OWN source model.json lives on disk --
+   npdev-build-info.properties tracked git commit/version/timestamp but never the --model path
+   used at generation time. Fixed by threading modelPath/a.configPath through
+   BuildInfoEmitter.emit() (new 4-arg overload; the 2-arg overload used elsewhere is preserved,
+   recording UNKNOWN) into two new keys, npdev.model.sourcePath / npdev.config.sourcePath,
+   absolute paths so a running app's own CWD can't skew resolution.
+
+With both of those actually necessary (not speculative), the real fix:
+
+(a) Allowlist: SemanticBehaviorWriteBackController moved from deferredControllers to
+allowedControllers; SemanticBehaviorWriteBackService + SemanticBehaviorWriteBackCanonicalizationService
+added to supportedCoreServiceComponents. SupportedRuntimeSurfacePackagingTest's three
+assertNotPackaged assertions flipped to assertPackaged.
+
+(b) A THIRD, deeper root cause found while proving this live, not from static reading:
+npdev-semantic-behavior-canonicalization-rules.json (the file SemanticBehaviorWriteBackCanonicalizationService
+reads to decide CANONICALIZABLE vs REVIEW_REQUIRED) was a completely empty seeded template
+placeholder -- no `supportedActions` key at all, same shape as its still-empty sibling
+npdev-canonical-source-mutation-rules.json. This meant isDirectlyExecutable() could NEVER return
+true for ANY app, ever, regardless of the allowlist fix -- a live curl against a freshly-generated
+app confirmed outcome=UNSUPPORTED / status=REVIEW_REQUIRED even after (a). Populated the file with
+real entries for all 4 action types the code already recognizes by name (addNotificationStep ->
+CANONICALIZABLE; addApprovalStep/setRetryPolicy/setTimeoutPolicy -> REVIEW_REQUIRED, each with a
+reason -- none of the three map to an existing DSL primitive the way addNotificationStep does).
+
+(c) SemanticBehaviorWriteBackService.execute()'s addNotificationStep path rewritten:
+applyMutationToWorkspace (append-only, unread JSON) replaced by applyMutationToModelSourceAt
+(package-private, testable against a @TempDir path independent of the classpath-resource lookup),
+which: resolves npdev.model.sourcePath (REVIEW_REQUIRED with a clear reason if UNKNOWN or the file
+is missing -- never guesses a fallback location); parses the model as a Jackson ObjectNode;
+confirms the model actually declares a `notification` capability (REVIEW_REQUIRED otherwise, since
+the generated step would otherwise fail generation); finds the target flow by name
+(REVIEW_REQUIRED if absent); checks for a step-name collision (REVIEW_REQUIRED if duplicate); then
+appends a real `{"name","type":"capabilityCall","capability":"notification","operation":"send"}`
+step and writes the file back. Every failure path declines with a reason rather than throwing or
+writing something invalid -- a malformed automatic edit that corrupts the model source is worse
+than asking a human to apply it by hand. Response fields renamed/added (modelSourcePath,
+requiresRebuild:true) and the message text states plainly that a regenerate+rebuild is required --
+"EXECUTED" now means "wrote a real change to the source," never "took effect now."
+
+(d) Diff-fidelity, found and fixed during live verification, not anticipated up front: the first
+live round-trip produced a 929-insertion/1166-deletion diff on canonical-demo's model.json for a
+ONE-STEP insertion -- Jackson's writerWithDefaultPrettyPrinter() (i) always emits LF (this repo's
+model.json files are checked in CRLF), (ii) uses `"key" : value` (space before the colon; this
+repo's convention has none), and (iii) puts array-of-object elements on the same line as `[`/`,`
+(a well-known Jackson default quirk) instead of one per line. All three fixed: read the original
+text first to detect its line-ending style and whether it ends with a trailing newline, write with
+a custom DefaultPrettyPrinter (Separators.Spacing.AFTER + DefaultIndenter for both objects and
+arrays), then normalize line endings/trailing newline to match the original. Final verified diff
+for the SAME one-step insertion: 7 insertions, 1 deletion -- exactly the new step.
 
 ### REG-14 — LNCH-22: newcomer documentation test run for the first time
 
