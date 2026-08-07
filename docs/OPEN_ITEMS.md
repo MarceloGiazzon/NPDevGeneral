@@ -6,11 +6,78 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**142 item(s) migrated: 0 open/partial, 142 done.**
+**143 item(s) migrated: 1 open/partial, 142 done.**
 
 ## Open / partial
 
-None currently open.
+| ID | Title | Type | Sev | Status | Opened |
+|---|---|---|---|---|---|
+| REG-142 | /api/admin/model/export and /api/admin/model/ui (ui-model) still read classpath resource npdev/model.json directly, which can be RuntimeHost's own unreplaced template placeholder rather than the app's real model, depending on how generation resolved the model source | GAP | LOW | OPEN | 2026-08-07 |
+
+### Detail
+
+### REG-142 — /api/admin/model/export and /api/admin/model/ui (ui-model) still read classpath resource npdev/model.json directly, which can be RuntimeHost's own unreplaced template placeholder rather than the app's real model, depending on how generation resolved the model source
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found while implementing REG-139's layer 1 fix (editor/REG139_PLAN.md), not chased there to stay
+scoped. REG-139 itself already observed the underlying risk against `readDraftOrModel()`'s old
+fallback ("do NOT match canonical-demo's own model identity ... not chased further in this
+pass") but didn't identify the concrete root cause; this item does.
+
+`NPDevRuntimeHost/src/main/resources/npdev/model.json` is a literal, static placeholder file
+baked into the RuntimeHost template:
+
+    {"$schema":"model.schema.json","schemaVersion":"1.0.0","namespace":"npdev.template",
+     "name":"runtime-host-template-model","concepts":[],"procedures":[],"panels":[]}
+
+`RuntimeApiEmitter` (generator side) DOES overwrite this path with the app's real model source at
+generation time, but only conditionally: `if (resolvedModelSource != null) { ...write real
+model... } else if (modelSourcePath != null && Files.exists(modelSourcePath)) { ...write real
+model... }` -- there is no `else` branch, so if neither condition holds for a given generation
+path (confirmed to happen at least once: REG-139's own canonical-demo generation via a specific
+CLI path), the RuntimeHost template's placeholder survives untouched into the assembled app,
+served as if it were that app's real model.
+
+`AdminController.readDraftOrModel()` (the endpoint REG-139 fixed) no longer touches this resource
+at all -- it now reads `NPDevModelProvider.compiledModel()` instead, which is written
+UNCONDITIONALLY at generation time (`writer.writeRelative("src/main/resources/npdev/compiled-
+model.json", CompiledModelCanonicalJson.toJson(model))`, no `if` gate) and is therefore reliable
+regardless of this gap. Two OTHER endpoints in the same controller still read the raw,
+conditionally-written resource directly:
+
+    GET /api/admin/model/export   (exportModel)
+    GET /api/admin/model/ui, /ui-model   (exportUiModel)
+
+Neither is known to crash a client today (both are raw JSON exports / admin tooling, not typed
+client state the way ModelEditorDraft was), so this is filed as a data-correctness gap (an admin
+endpoint can silently return the WRONG app's model, or a placeholder, with no error), not a
+reproduced crash.
+
+**Surface:** `runtimehost/admin-controller`
+**Files:**
+- `NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-admin-controller.mustache`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java`
+- `NPDevRuntimeHost/src/main/resources/npdev/model.json`
+
+Not fixed here -- found during REG-139's layer 1 work and filed rather than chased, to stay
+scoped (REG-139's own fix sidesteps this entirely by switching to the always-reliable
+`NPDevModelProvider.compiledModel()`; these two endpoints were not part of that item's crash).
+
+Two independent fix shapes, not mutually exclusive:
+
+(1) Root cause in the generator: `RuntimeApiEmitter`'s `if (resolvedModelSource != null) { ... }
+    else if (modelSourcePath != null && Files.exists(modelSourcePath)) { ... }` should have a
+    third branch (or fail generation loudly) when neither holds, instead of silently leaving the
+    RuntimeHost template's placeholder in place. First needs reproducing exactly which generation
+    path leaves both conditions false (REG-139 hit it via `npdev run app` against
+    `NPDevContract/dsl/resources/Models/canonical-demo/model.json` at least once, but this was not
+    isolated to a minimal repro).
+(2) The two endpoints themselves: switch `exportModel`/`exportUiModel` to source from
+    `NPDevModelProvider.compiledModel()` (or the always-written `compiled-model.json` classpath
+    resource) the same way REG-139's fixed `readDraftOrModel` now does, rather than the
+    conditionally-written raw resource -- sidesteps the generator-side root cause the same way,
+    without needing to isolate it first.
 
 ## Done (142)
 
