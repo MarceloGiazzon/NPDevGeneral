@@ -2,8 +2,9 @@ id: REG-138
 title: "semantic-behavior-writeback (controller+service+canonicalization) is compiled out of EVERY generated app by the supported-runtime-surface allowlist (deferredControllers), so all 5 /api/admin/model/semantic-behavior-writeback[...] endpoints 404 by default -- and even the one directly-executable mutation only appends to a side JSON file nothing reads back"
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-06
+closed: 2026-08-07
 verification: VERIFIED_LIVE
 surface: runtimehost/supported-surface-allowlist, editor/prompt-history
 source: |
@@ -83,30 +84,112 @@ source: |
   consumes. This is the exact "silent-answer" shape ANALYSIS.md's E2 flagged as the bigger possible
   finding ("a complete-looking pipeline whose last step is missing").
 files:
-  - NPDevRuntimeHost/build.gradle.template
-  - NPDevRuntimeHost/build.gradle
   - NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json
-  - NPDevRuntimeHost/src/main/java/com/finalexec/config/RuntimeControllerAllowlistConfig.java
-  - NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/SemanticBehaviorWriteBackController.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/SupportedRuntimeSurfacePackagingTest.java
   - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackService.java
-  - NPDevEditor/ui-react/src/promptHistoryData.ts
-  - scripts/quality/run-runtime-surface-evidence.ps1
+  - NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackServiceTest.java
+  - NPDevRuntimeHost/src/main/resources/npdev-semantic-behavior-canonicalization/semantic-behavior-canonicalization-rules.json
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/provenance/BuildInfoEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/provenance/BuildInfoEmitterTest.java
 detail: |
-  Not fixed here -- filed to make the gap visible and durable, per ANALYSIS.md E2's own "report
-  before fixing" instruction. Three independent follow-ups this item leaves open, each a separate
-  judgment call outside this task's scope (editor/ANALYSIS.md's E1/§6 only budgeted a decision for
-  structural-writeback):
+  Owner decision (asked directly, three options presented): **enable it for real**, not leave
+  deferred or remove. Two more scope checks happened before writing code, both changing the shape of
+  the fix -- documented here rather than silently absorbed, since each is exactly the kind of "looked
+  bigger on inspection" finding this item itself is about:
 
-  (a) Decide whether semantic-behavior-writeback should be promoted into allowedControllers/
-  supportedCoreServiceComponents (ship it for real) or the promptHistoryData.ts UI source should stop
-  presenting it as available by default (same "finish or delete" choice E1 made for structural,
-  applied to this pair instead) -- a product call, not a mechanical fix.
-  (b) If promoted, applyMutationToWorkspace's write-only workspace file needs an actual consumer (or
-  needs replacing with a real mutation into the model/flow the running kernel reads) before "EXECUTED"
-  is a true claim.
-  (c) The manifest's `deferredControllers`/`nonDefaultServicePatterns` + `surface-profile=non-default`
-  runtime toggle is currently unreachable for any class the gradle source-exclusion also strips
-  (i.e. today, for every deferred controller/service) -- if the intent is genuinely "toggle back on
-  at runtime for a non-default profile", the gradle exclusion needs to consult deferredControllers
-  too (or the toggle's docs/tests should say plainly it only ever applies within RuntimeHost's own
-  test suite, never to a generated app).
+  1. There is NO live flow-mutation mechanism ANYWHERE in this platform.
+     CompiledModelFlowDefinitionProvider builds an immutable flow map once at JVM boot from the
+     compiled model baked into the jar; nothing ever touches it again. This is true of every model
+     change in this platform, not special to this service -- so "EXECUTED" can never honestly mean
+     "took effect in this JVM." The only real primitive a "notification step" maps to is a
+     `capabilityCall` flowStep targeting the model's own `notification` capability's `send`
+     operation (there is no "notification" flowStep type in the DSL at all -- confirmed against
+     model.schema.json's 13-entry flowStep type enum).
+  2. The running app had no way to know where its OWN source model.json lives on disk --
+     npdev-build-info.properties tracked git commit/version/timestamp but never the --model path
+     used at generation time. Fixed by threading modelPath/a.configPath through
+     BuildInfoEmitter.emit() (new 4-arg overload; the 2-arg overload used elsewhere is preserved,
+     recording UNKNOWN) into two new keys, npdev.model.sourcePath / npdev.config.sourcePath,
+     absolute paths so a running app's own CWD can't skew resolution.
+
+  With both of those actually necessary (not speculative), the real fix:
+
+  (a) Allowlist: SemanticBehaviorWriteBackController moved from deferredControllers to
+  allowedControllers; SemanticBehaviorWriteBackService + SemanticBehaviorWriteBackCanonicalizationService
+  added to supportedCoreServiceComponents. SupportedRuntimeSurfacePackagingTest's three
+  assertNotPackaged assertions flipped to assertPackaged.
+
+  (b) A THIRD, deeper root cause found while proving this live, not from static reading:
+  npdev-semantic-behavior-canonicalization-rules.json (the file SemanticBehaviorWriteBackCanonicalizationService
+  reads to decide CANONICALIZABLE vs REVIEW_REQUIRED) was a completely empty seeded template
+  placeholder -- no `supportedActions` key at all, same shape as its still-empty sibling
+  npdev-canonical-source-mutation-rules.json. This meant isDirectlyExecutable() could NEVER return
+  true for ANY app, ever, regardless of the allowlist fix -- a live curl against a freshly-generated
+  app confirmed outcome=UNSUPPORTED / status=REVIEW_REQUIRED even after (a). Populated the file with
+  real entries for all 4 action types the code already recognizes by name (addNotificationStep ->
+  CANONICALIZABLE; addApprovalStep/setRetryPolicy/setTimeoutPolicy -> REVIEW_REQUIRED, each with a
+  reason -- none of the three map to an existing DSL primitive the way addNotificationStep does).
+
+  (c) SemanticBehaviorWriteBackService.execute()'s addNotificationStep path rewritten:
+  applyMutationToWorkspace (append-only, unread JSON) replaced by applyMutationToModelSourceAt
+  (package-private, testable against a @TempDir path independent of the classpath-resource lookup),
+  which: resolves npdev.model.sourcePath (REVIEW_REQUIRED with a clear reason if UNKNOWN or the file
+  is missing -- never guesses a fallback location); parses the model as a Jackson ObjectNode;
+  confirms the model actually declares a `notification` capability (REVIEW_REQUIRED otherwise, since
+  the generated step would otherwise fail generation); finds the target flow by name
+  (REVIEW_REQUIRED if absent); checks for a step-name collision (REVIEW_REQUIRED if duplicate); then
+  appends a real `{"name","type":"capabilityCall","capability":"notification","operation":"send"}`
+  step and writes the file back. Every failure path declines with a reason rather than throwing or
+  writing something invalid -- a malformed automatic edit that corrupts the model source is worse
+  than asking a human to apply it by hand. Response fields renamed/added (modelSourcePath,
+  requiresRebuild:true) and the message text states plainly that a regenerate+rebuild is required --
+  "EXECUTED" now means "wrote a real change to the source," never "took effect now."
+
+  (d) Diff-fidelity, found and fixed during live verification, not anticipated up front: the first
+  live round-trip produced a 929-insertion/1166-deletion diff on canonical-demo's model.json for a
+  ONE-STEP insertion -- Jackson's writerWithDefaultPrettyPrinter() (i) always emits LF (this repo's
+  model.json files are checked in CRLF), (ii) uses `"key" : value` (space before the colon; this
+  repo's convention has none), and (iii) puts array-of-object elements on the same line as `[`/`,`
+  (a well-known Jackson default quirk) instead of one per line. All three fixed: read the original
+  text first to detect its line-ending style and whether it ends with a trailing newline, write with
+  a custom DefaultPrettyPrinter (Separators.Spacing.AFTER + DefaultIndenter for both objects and
+  arrays), then normalize line endings/trailing newline to match the original. Final verified diff
+  for the SAME one-step insertion: 7 insertions, 1 deletion -- exactly the new step.
+resolution: |
+  DONE (2026-08-07). Verified live end-to-end against a completely fresh app (npdev run app against
+  NPDevContract/dsl/resources/Models/canonical-demo/model.json, not a reused build), three full
+  generate+build+boot cycles:
+
+  1. Before promotion: POST .../semantic-behavior-writeback/apply -- 404 (route didn't exist).
+  2. After allowlist promotion, before the rules-file fix: 200, but status=REVIEW_REQUIRED,
+     outcome=UNSUPPORTED (the empty-rules-file root cause, found by this live call, not by reading
+     code first).
+  3. After the rules-file fix: status=EXECUTED, modelSourcePath correctly resolved to the real
+     absolute source path. Confirmed by direct file read: the real capabilityCall step was written
+     into the ACTUAL model.json used at generation time.
+  4. Regenerated + rebuilt + rebooted from that mutated model.json: READY, ok:true -- the written
+     step is schema-valid and does not break generation.
+  5. `git diff --stat` on the mutated file: 7 insertions(+), 1 deletion(-) -- confirms the
+     diff-fidelity work actually worked, not just that the JSON was valid.
+  Test mutation reverted (`git checkout`) after each round -- canonical-demo's own model.json is
+  unchanged in this commit.
+
+  New unit tests (SemanticBehaviorWriteBackServiceTest, 8 cases): happy-path insertion + untouched
+  sibling flow, missing-file/missing-capability/missing-flow/duplicate-step-name all decline with a
+  reason, CRLF preservation, trailing-newline preservation. BuildInfoEmitterTest: 2 new cases for the
+  4-arg overload's absolute-path recording and the 2-arg overload's UNKNOWN fallback.
+  NPDevRuntimeHost gate and NPDevGenerator gate both green with all changes.
+
+  What is NOT proven here: that the notification capability actually FIRES when CreateAppointment
+  runs post-regeneration (would need a full Patient/Provider/Appointment fixture chain through the
+  generated REST API, then inspecting InProcNotificationCapabilityAdapter's delivery record) -- the
+  proof stops at "the mutation is real, schema-valid, and the app builds and boots with it," which is
+  the load-bearing claim REG-138 was actually about. A future follow-up could close that last gap.
+
+  Explicitly out of scope (unchanged from before this item): addApprovalStep, setRetryPolicy,
+  setTimeoutPolicy, and the five semantic-behavior request types other than addOrchestrationStep/
+  notification (addInvariant, addLifecycleState, addLifecycleTransition, addAwaitEventStep, and
+  addOrchestrationStep/stepKind=approval) all still land on REVIEW_REQUIRED, same as before -- none
+  of them map to an existing DSL primitive the way a notification capabilityCall does, and inventing
+  one for each was never in scope here.

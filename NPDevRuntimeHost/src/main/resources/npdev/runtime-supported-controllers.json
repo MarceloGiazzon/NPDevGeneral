@@ -30,7 +30,8 @@
     "TenantAdminController",
     "CredentialAdminController",
     "FileUploadController",
-    "DocumentRenderController"
+    "DocumentRenderController",
+    "SemanticBehaviorWriteBackController"
   ],
   "deferredControllers": [
     "HelloController",
@@ -38,7 +39,6 @@
     "RuntimePluginPackagesController",
     "RuntimeRefreshController",
     "RuntimeTopologyExplorerController",
-    "SemanticBehaviorWriteBackController",
     "BetaOnboardingController",
     "FlowBuilderController"
   ],
@@ -79,7 +79,9 @@
     "TenantStoragePathResolver",
     "PromotionStateService",
     "TenantRegistryService",
-    "CredentialRegistryService"
+    "CredentialRegistryService",
+    "SemanticBehaviorWriteBackService",
+    "SemanticBehaviorWriteBackCanonicalizationService"
   ],
   "supportedCoreServicePatterns": [
     "*ArtifactRealizationProvider",

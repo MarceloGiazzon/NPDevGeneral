@@ -53,4 +53,39 @@ final class BuildInfoEmitterTest {
         }
         assertEquals("UNKNOWN", properties.getProperty("npdev.version"));
     }
+
+    @Test
+    void twoArgOverloadLeavesModelAndConfigSourcePathUnknown() throws Exception {
+        new BuildInfoEmitter().emit(new CompiledModel("trial.widgets", "1.0.0", "2.3", Map.of()), tempDir);
+
+        Properties properties = new Properties();
+        try (var in = Files.newInputStream(tempDir.resolve(BuildInfoEmitter.RELATIVE_PATH))) {
+            properties.load(in);
+        }
+        assertEquals("UNKNOWN", properties.getProperty("npdev.model.sourcePath"));
+        assertEquals("UNKNOWN", properties.getProperty("npdev.config.sourcePath"));
+    }
+
+    @Test
+    void fourArgOverloadRecordsAbsoluteModelAndConfigSourcePaths(@TempDir Path sourceDir) throws Exception {
+        Path modelPath = sourceDir.resolve("model.json");
+        Path configPath = sourceDir.resolve("config.json");
+
+        new BuildInfoEmitter().emit(
+                new CompiledModel("trial.widgets", "1.0.0", "2.3", Map.of()),
+                tempDir,
+                modelPath,
+                configPath
+        );
+
+        Properties properties = new Properties();
+        try (var in = Files.newInputStream(tempDir.resolve(BuildInfoEmitter.RELATIVE_PATH))) {
+            properties.load(in);
+        }
+        // REG-138: SemanticBehaviorWriteBackService reads this back to find the app's own editable
+        // model source -- it must be absolute (the running app's working directory has no relation
+        // to the generator's), so assert on toAbsolutePath() rather than the raw input path.
+        assertEquals(modelPath.toAbsolutePath().normalize().toString().replace('\\', '/'), properties.getProperty("npdev.model.sourcePath"));
+        assertEquals(configPath.toAbsolutePath().normalize().toString().replace('\\', '/'), properties.getProperty("npdev.config.sourcePath"));
+    }
 }

@@ -208,7 +208,12 @@ public final class GeneratorMain {
             );
             System.out.println("Generated operations runbook: " + opsRoot);
 
-            new BuildInfoEmitter().emit(compiled, assemblyResult.finalAppRoot());
+            new BuildInfoEmitter().emit(
+                    compiled,
+                    assemblyResult.finalAppRoot(),
+                    modelPath,
+                    a.configPath == null || a.configPath.isBlank() ? null : Path.of(a.configPath)
+            );
             System.out.println("Generated build-info: " + assemblyResult.finalAppRoot()
                     .resolve(BuildInfoEmitter.RELATIVE_PATH).toAbsolutePath().normalize());
 

@@ -27,13 +27,15 @@ class SupportedRuntimeSurfacePackagingTest {
         assertPackaged("com.finalexec.api.internal.SourceMutationAuditRecordController");
         assertPackaged("com.finalexec.api.internal.SourceMutationRollbackAnchorController");
         assertPackaged("com.finalexec.api.internal.StructuralPublicationMappingController");
+        // REG-138: promoted out of deferredControllers -- the semantic-behavior-writeback
+        // endpoints are now reachable in the default supported-core profile.
+        assertPackaged("com.finalexec.api.internal.SemanticBehaviorWriteBackController");
 
         assertNotPackaged("com.finalexec.HelloController");
         assertNotPackaged("com.finalexec.api.internal.ModelSyncStatusController");
         assertNotPackaged("com.finalexec.api.experimental.FlowBuilderController");
         assertNotPackaged("com.finalexec.api.internal.RuntimePluginPackagesController");
         assertNotPackaged("com.finalexec.api.internal.RuntimeRefreshController");
-        assertNotPackaged("com.finalexec.api.internal.SemanticBehaviorWriteBackController");
         assertNotPackaged("com.finalexec.api.internal.RuntimeTopologyExplorerController");
     }
 
@@ -73,11 +75,14 @@ class SupportedRuntimeSurfacePackagingTest {
         assertPackaged("com.finalexec.npdev.service.internal.SourceMutationRegenerationService");
         assertPackaged("com.finalexec.npdev.service.internal.SourceMutationRollbackAnchorService");
         assertPackaged("com.finalexec.npdev.service.internal.StructuralPublicationMappingService");
+        // REG-138: promoted alongside the controller -- execute() now writes a real capabilityCall
+        // step into the app's own model source instead of an unread workspace audit file.
+        assertPackaged("com.finalexec.npdev.service.internal.SemanticBehaviorWriteBackService");
+        assertPackaged("com.finalexec.npdev.service.internal.SemanticBehaviorWriteBackCanonicalizationService");
 
         assertNotPackaged("com.finalexec.npdev.service.experimental.FlowBuilderService");
         assertNotPackaged("com.finalexec.npdev.service.internal.ModelSyncStatusService");
         assertNotPackaged("com.finalexec.npdev.service.experimental.PreviewReferenceResolver");
-        assertNotPackaged("com.finalexec.npdev.service.internal.SemanticBehaviorWriteBackService");
         assertNotPackaged("com.finalexec.npdev.service.experimental.TemplateLibraryManagementService");
         assertNotPackaged("com.finalexec.npdev.service.internal.RuntimeTopologyExplorerService");
         assertNotPackaged("com.finalexec.npdev.service.internal.TenantOperationalAdministrationService");
