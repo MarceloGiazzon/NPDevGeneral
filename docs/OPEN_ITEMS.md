@@ -6,91 +6,13 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**142 item(s) migrated: 1 open/partial, 141 done.**
+**142 item(s) migrated: 0 open/partial, 142 done.**
 
 ## Open / partial
 
-| ID | Title | Type | Sev | Status | Opened |
-|---|---|---|---|---|---|
-| REG-139 | ModelEditorPanel.tsx crashes with an uncaught TypeError on a fresh generated app: GET /api/admin/model/editor/draft's no-draft-yet fallback returns the raw compiled model.json (concepts/procedures/panels) verbatim, but the frontend blindly casts it to ModelEditorDraft (entities), so draft.entities.find(...) throws on undefined | BUG | HIGH | OPEN | 2026-08-07 |
+None currently open.
 
-### Detail
-
-### REG-139 — ModelEditorPanel.tsx crashes with an uncaught TypeError on a fresh generated app: GET /api/admin/model/editor/draft's no-draft-yet fallback returns the raw compiled model.json (concepts/procedures/panels) verbatim, but the frontend blindly casts it to ModelEditorDraft (entities), so draft.entities.find(...) throws on undefined
-
-**Type:** BUG · **Severity:** HIGH · **Status:** OPEN
-**Verification:** VERIFIED_LIVE
-**Source:** Found while verifying editor/ANALYSIS.md E3's Playwright spec (e2e-generated-app/editor-in-
-generated-app.spec.ts) against a completely fresh app, generated end-to-end via
-`npdev run app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json ...` (not a
-reused/previously-exercised build) -- done specifically to prove a REG-138-adjacent asset-copy
-fix (npdev-templates/static-react-manifest.json) actually ships working chunk files, per a
-reviewer's request to confirm chunks resolve rather than just index.html. The asset-copy fix
-itself verified clean (curl 200 on all 5 manifested files); this is a SEPARATE, real bug the
-same verification pass surfaced.
-
-Reproduced live: opening a freshly-booted app's /npdev-ui-react/ (root, default Workbench
-surface, "Model Editor" the default active tab) throws
-`TypeError: Cannot read properties of undefined (reading 'find')` before the shell even paints
-(React has no error boundary here, so the whole tree -- including the <h1> -- fails to mount).
-Traced to ModelEditorPanel.tsx:53's `draft.entities.find(...)` inside a useMemo, fed by
-`loadDraft()` -> `npdevClient.fetchModelEditorDraft()` -> a bare `get<ModelEditorDraft>(...)`
-fetch with NO runtime shape validation, just a compile-time type assertion.
-
-Root cause on the backend: npdev-runtime-admin-controller.mustache's `readDraftOrModel()`, when
-the in-memory `MODEL_EDITOR_DRAFT` field is null (true on every fresh JVM start -- it is a plain
-static field, never persisted), falls back to reading classpath resource `npdev/model.json` and
-returning it VERBATIM as the "draft". That resource is the raw compiled model
-($schema/namespace/concepts/procedures/panels), not a `ModelEditorDraft`
-(namespace/dslVersion/version/entities) -- two different, incompatible shapes that happen to
-share a couple of field names. Confirmed via direct curl against the running app:
-
-    GET /api/admin/model/editor/draft ->
-    {"$schema":"model.schema.json","schemaVersion":"1.0.0","namespace":"npdev.template",
-     "name":"runtime-host-template-model","concepts":[],"procedures":[],"panels":[]}
-
-(Note this response's own namespace/name -- "npdev.template"/"runtime-host-template-model" -- do
-NOT match canonical-demo's own model identity, suggesting classpath resource resolution for
-`npdev/model.json` may not even be hitting the generated app's OWN compiled model here; not
-chased further in this pass.)
-
-NOT reproduced against NPDevSamples/generated-finalapps' claude-support-desk in the same
-session (its Workbench loaded and its own e2e assertions passed cleanly) -- that app's
-`npdev/model.json` classpath resolution may differ (possibly 404s there, which the frontend's
-catch block handles safely by leaving `draft` at its safe `emptyDraft()` default, unlike a 200
-with the wrong shape). The discrepancy between apps is not yet root-caused; flagging only that
-this is APP-DEPENDENT, not universal, so "it worked for me on one app" is not evidence against
-this bug.
-
-**Surface:** `editor/workbench, runtimehost/admin-controller`
-**Files:**
-- `NPDevEditor/ui-react/src/ModelEditorPanel.tsx`
-- `NPDevEditor/ui-react/src/api/npdevClient.ts`
-- `NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-admin-controller.mustache`
-- `NPDevEditor/ui-react/e2e-generated-app/editor-in-generated-app.spec.ts`
-
-Not fixed here -- found during a verification pass for an unrelated fix (the static-react asset
-manifest) and filed rather than chased, to stay scoped. Two independent fix shapes, not
-mutually exclusive:
-
-(1) Backend: readDraftOrModel()'s "no draft yet" fallback should return something already shaped
-    like ModelEditorDraft (e.g. transform concepts->entities, or simply return emptyDraft()'s
-    JSON shape) instead of the raw compiled model verbatim -- the two are conceptually different
-    documents (a model vs. an editable draft of one) that were never meant to be interchangeable.
-(2) Frontend: ModelEditorPanel/npdevClient should not trust a raw fetch's shape blindly -- either
-    validate the response against ModelEditorDraft before calling setDraft(), or make the
-    draft.entities accesses defensive (`draft.entities ?? []`) so a shape mismatch degrades to an
-    empty editor instead of a page-crashing uncaught exception. RuleEditorPanel/
-    OrchestrationEditorPanel share the same `readDraftOrModel()` backend and the same
-    no-validation fetch pattern on the frontend -- worth checking whether they have the same
-    exposure before scoping a fix.
-
-A first-run harness or E3-style e2e check that opens the Workbench's default tab against a
-genuinely fresh app (no prior draft) would have caught this before a real user did -- this is
-exactly the "no end-to-end proof it works inside a generated app" gap editor/ANALYSIS.md's own
-§4 flagged as weak, now with a concrete crash behind it.
-
-## Done (141)
+## Done (142)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -141,6 +63,7 @@ exactly the "no end-to-end proof it works inside a generated app" gap editor/ANA
 | REG-136 | root/NPDevGenerator/NPDevKernel gradle.properties hardcode org.gradle.projectcachedir to this machine's own D:/WorkSpace/NPDev/Build/gradle-project-caches/<module> -- a Gradle START PARAMETER read before any -P/env override can apply, so every gradlew invocation the CLI or sync-runtimehost-libs.ps1 makes fails on any machine without that exact path, breaking the FIRST command in README's own Quickstart (./npdev validate model) | BUG | HIGH | DONE | 2026-08-04 |
 | REG-137 | NPDevRuntimeHost/build.gradle.template's resolveNpdevRuntimeLibsDir checked the gradle property before the NPDEV_RUNTIMEHOST_LIBS_DIR env var, so REG-128's generation-time-baked gradle.properties default permanently shadowed any build-time env var override -- breaking 3 generator packaged-app runtime proof tests on Linux CI | BUG | MEDIUM | DONE | 2026-08-05 |
 | REG-138 | semantic-behavior-writeback (controller+service+canonicalization) is compiled out of EVERY generated app by the supported-runtime-surface allowlist (deferredControllers), so all 5 /api/admin/model/semantic-behavior-writeback[...] endpoints 404 by default -- and even the one directly-executable mutation only appends to a side JSON file nothing reads back | GAP | MEDIUM | DONE | 2026-08-06 |
+| REG-139 | ModelEditorPanel.tsx crashes with an uncaught TypeError on a fresh generated app: GET /api/admin/model/editor/draft's no-draft-yet fallback returns the raw compiled model.json (concepts/procedures/panels) verbatim, but the frontend blindly casts it to ModelEditorDraft (entities), so draft.entities.find(...) throws on undefined | BUG | HIGH | DONE | 2026-08-07 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-140 | Every generated app was hard-pinned to Java 17 (build.gradle.template's toolchain literal), with no per-app way to request a newer JDK -- deps-and-java/PLAN.md P2 | GAP | MEDIUM | DONE | 2026-08-07 |
 | REG-141 | A custom capability (plugin:java-source) had no supported way to declare a third-party Maven dependency or a local jar -- deps-and-java/PLAN.md P3 | GAP | MEDIUM | DONE | 2026-08-07 |
@@ -2908,6 +2831,83 @@ text first to detect its line-ending style and whether it ends with a trailing n
 a custom DefaultPrettyPrinter (Separators.Spacing.AFTER + DefaultIndenter for both objects and
 arrays), then normalize line endings/trailing newline to match the original. Final verified diff
 for the SAME one-step insertion: 7 insertions, 1 deletion -- exactly the new step.
+
+### REG-139 — ModelEditorPanel.tsx crashes with an uncaught TypeError on a fresh generated app: GET /api/admin/model/editor/draft's no-draft-yet fallback returns the raw compiled model.json (concepts/procedures/panels) verbatim, but the frontend blindly casts it to ModelEditorDraft (entities), so draft.entities.find(...) throws on undefined
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-07)
+**Verification:** VERIFIED_LIVE
+**Source:** Found while verifying editor/ANALYSIS.md E3's Playwright spec (e2e-generated-app/editor-in-
+generated-app.spec.ts) against a completely fresh app, generated end-to-end via
+`npdev run app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json ...` (not a
+reused/previously-exercised build) -- done specifically to prove a REG-138-adjacent asset-copy
+fix (npdev-templates/static-react-manifest.json) actually ships working chunk files, per a
+reviewer's request to confirm chunks resolve rather than just index.html. The asset-copy fix
+itself verified clean (curl 200 on all 5 manifested files); this is a SEPARATE, real bug the
+same verification pass surfaced.
+
+Reproduced live: opening a freshly-booted app's /npdev-ui-react/ (root, default Workbench
+surface, "Model Editor" the default active tab) throws
+`TypeError: Cannot read properties of undefined (reading 'find')` before the shell even paints
+(React has no error boundary here, so the whole tree -- including the <h1> -- fails to mount).
+Traced to ModelEditorPanel.tsx:53's `draft.entities.find(...)` inside a useMemo, fed by
+`loadDraft()` -> `npdevClient.fetchModelEditorDraft()` -> a bare `get<ModelEditorDraft>(...)`
+fetch with NO runtime shape validation, just a compile-time type assertion.
+
+Root cause on the backend: npdev-runtime-admin-controller.mustache's `readDraftOrModel()`, when
+the in-memory `MODEL_EDITOR_DRAFT` field is null (true on every fresh JVM start -- it is a plain
+static field, never persisted), falls back to reading classpath resource `npdev/model.json` and
+returning it VERBATIM as the "draft". That resource is the raw compiled model
+($schema/namespace/concepts/procedures/panels), not a `ModelEditorDraft`
+(namespace/dslVersion/version/entities) -- two different, incompatible shapes that happen to
+share a couple of field names. Confirmed via direct curl against the running app:
+
+    GET /api/admin/model/editor/draft ->
+    {"$schema":"model.schema.json","schemaVersion":"1.0.0","namespace":"npdev.template",
+     "name":"runtime-host-template-model","concepts":[],"procedures":[],"panels":[]}
+
+(Note this response's own namespace/name -- "npdev.template"/"runtime-host-template-model" -- do
+NOT match canonical-demo's own model identity, suggesting classpath resource resolution for
+`npdev/model.json` may not even be hitting the generated app's OWN compiled model here; not
+chased further in this pass.)
+
+NOT reproduced against NPDevSamples/generated-finalapps' claude-support-desk in the same
+session (its Workbench loaded and its own e2e assertions passed cleanly) -- that app's
+`npdev/model.json` classpath resolution may differ (possibly 404s there, which the frontend's
+catch block handles safely by leaving `draft` at its safe `emptyDraft()` default, unlike a 200
+with the wrong shape). The discrepancy between apps is not yet root-caused; flagging only that
+this is APP-DEPENDENT, not universal, so "it worked for me on one app" is not evidence against
+this bug.
+
+**Surface:** `editor/workbench, runtimehost/admin-controller`
+**Files:**
+- `NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-admin-controller.mustache`
+- `NPDevEditor/ui-react/src/api/npdevClient.ts`
+- `NPDevEditor/ui-react/src/PanelErrorBoundary.tsx`
+- `NPDevEditor/ui-react/src/workbench/ReactWorkbenchApp.tsx`
+- `NPDevEditor/ui-react/ui-boundary.json`
+- `NPDevEditor/ui-react/e2e-generated-app/editor-in-generated-app.spec.ts`
+- `scripts/quality/firstrun-harness/run-readme.sh`
+
+Not fixed here -- found during a verification pass for an unrelated fix (the static-react asset
+manifest) and filed rather than chased, to stay scoped. Two independent fix shapes, not
+mutually exclusive:
+
+(1) Backend: readDraftOrModel()'s "no draft yet" fallback should return something already shaped
+    like ModelEditorDraft (e.g. transform concepts->entities, or simply return emptyDraft()'s
+    JSON shape) instead of the raw compiled model verbatim -- the two are conceptually different
+    documents (a model vs. an editable draft of one) that were never meant to be interchangeable.
+(2) Frontend: ModelEditorPanel/npdevClient should not trust a raw fetch's shape blindly -- either
+    validate the response against ModelEditorDraft before calling setDraft(), or make the
+    draft.entities accesses defensive (`draft.entities ?? []`) so a shape mismatch degrades to an
+    empty editor instead of a page-crashing uncaught exception. RuleEditorPanel/
+    OrchestrationEditorPanel share the same `readDraftOrModel()` backend and the same
+    no-validation fetch pattern on the frontend -- worth checking whether they have the same
+    exposure before scoping a fix.
+
+A first-run harness or E3-style e2e check that opens the Workbench's default tab against a
+genuinely fresh app (no prior draft) would have caught this before a real user did -- this is
+exactly the "no end-to-end proof it works inside a generated app" gap editor/ANALYSIS.md's own
+§4 flagged as weak, now with a concrete crash behind it.
 
 ### REG-14 — LNCH-22: newcomer documentation test run for the first time
 

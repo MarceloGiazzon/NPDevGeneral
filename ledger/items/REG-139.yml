@@ -2,8 +2,9 @@ id: REG-139
 title: "ModelEditorPanel.tsx crashes with an uncaught TypeError on a fresh generated app: GET /api/admin/model/editor/draft's no-draft-yet fallback returns the raw compiled model.json (concepts/procedures/panels) verbatim, but the frontend blindly casts it to ModelEditorDraft (entities), so draft.entities.find(...) throws on undefined"
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-07
+closed: 2026-08-07
 verification: VERIFIED_LIVE
 surface: editor/workbench, runtimehost/admin-controller
 source: |
@@ -49,10 +50,13 @@ source: |
   this is APP-DEPENDENT, not universal, so "it worked for me on one app" is not evidence against
   this bug.
 files:
-  - NPDevEditor/ui-react/src/ModelEditorPanel.tsx
-  - NPDevEditor/ui-react/src/api/npdevClient.ts
   - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-admin-controller.mustache
+  - NPDevEditor/ui-react/src/api/npdevClient.ts
+  - NPDevEditor/ui-react/src/PanelErrorBoundary.tsx
+  - NPDevEditor/ui-react/src/workbench/ReactWorkbenchApp.tsx
+  - NPDevEditor/ui-react/ui-boundary.json
   - NPDevEditor/ui-react/e2e-generated-app/editor-in-generated-app.spec.ts
+  - scripts/quality/firstrun-harness/run-readme.sh
 detail: |
   Not fixed here -- found during a verification pass for an unrelated fix (the static-react asset
   manifest) and filed rather than chased, to stay scoped. Two independent fix shapes, not
@@ -74,3 +78,80 @@ detail: |
   genuinely fresh app (no prior draft) would have caught this before a real user did -- this is
   exactly the "no end-to-end proof it works inside a generated app" gap editor/ANALYSIS.md's own
   §4 flagged as weak, now with a concrete crash behind it.
+resolution: |
+  DONE (2026-08-07), per editor/REG139_PLAN.md's three-layer fix -- all three verified live against
+  a completely fresh generate+build+boot cycle (not a reused JVM; the static draft fields survive
+  within a JVM, so only a fresh boot reproduces the original bug).
+
+  Layer 1 (backend, root cause): `readDraftOrModel()` no longer falls back to classpath resource
+  `npdev/model.json` at all -- that resource turned out to be a SECOND, independent defect this fix
+  sidesteps rather than chases: it can be RuntimeHost's own unreplaced template placeholder
+  (`{"namespace":"npdev.template","name":"runtime-host-template-model", ...}`, literally present at
+  `NPDevRuntimeHost/src/main/resources/npdev/model.json`) rather than the app's real model,
+  depending on how generation resolved the model source -- exactly what this item's own source
+  section observed ("do NOT match canonical-demo's own model identity ... not chased further in
+  this pass"). `readDraftOrModel` now takes a `DraftKind` (MODEL/RULES/ORCHESTRATION, already
+  existed as an enum for the save path) and builds a genuinely empty, PANEL-SPECIFIC draft when no
+  draft has been saved yet -- ModelEditorDraft/RuleEditorDraft use `{namespace, version, entities:
+  []}` shape, the orchestration draft uses `{name, triggerRules: [], actionRules: [], scheduleRules:
+  []}` -- with namespace/version read from `NPDevModelProvider.compiledModel()` (unconditionally
+  written at generation time, the app's one reliable source of truth) rather than re-derived from a
+  resource that may not even be this app's own model. Per the plan's explicit instruction, this does
+  NOT attempt to project compiled-model concepts into draft-shaped entities ("a differently wrong
+  draft is not an improvement") -- an empty draft is the truthful state when nothing has been saved.
+
+  Layer 2 (client, defense in depth): `npdevClient.ts`'s three fetch functions
+  (`fetchModelEditorDraft`/`fetchRuleEditorDraft`/`fetchOrchestrationEditorDraft`) now validate the
+  top-level response shape before returning it (namespace/version as strings, entities/triggerRules/
+  actionRules/scheduleRules as arrays) and fall back to a well-formed empty draft plus a
+  `console.error` naming the endpoint on a mismatch, rather than trusting a bare TypeScript type
+  assertion against data that arrived over HTTP from another process. `RuleEditorPanel`/
+  `ruleEditorDraft.ts`'s own `normalizeRuleEditorDraft` already defended the rule editor at the
+  component level (confirmed live, this is why the plan's claim that the rule/orchestration panels
+  crash "the same way, latent" does not hold against the ACTUAL current codebase -- see the
+  discrepancy note below); `ModelEditorPanel.tsx` had no such guard at all, which is why it alone
+  crashed.
+
+  Layer 3 (UI, blast-radius containment): new `PanelErrorBoundary.tsx`
+  (`getDerivedStateFromError`/`componentDidCatch`), wrapped around `renderPanel(activeTab)` in
+  `ReactWorkbenchApp.tsx` and `key`-ed by the active tab so switching tabs always mounts a fresh
+  boundary instead of getting stuck on a stale error. Proven RED-then-GREEN, live, not just by
+  reading the source: generated+built+booted a SECOND fresh app with the boundary temporarily
+  removed, confirmed the exact expected failure (`Error: uncaught page error(s): Cannot read
+  properties of undefined (reading 'length')`, the fallback heading never appearing) via the new
+  Playwright test below, then restored the boundary, rebuilt, and reran the same test to confirm
+  GREEN. The malformed-response case this test uses is a REAL gap layer 2 deliberately does not
+  close (layer 2 validates the top-level shape only, not each nested entity -- an entity present in
+  a valid `entities[]` array but missing `fields` still reaches `ModelEditorPanel`'s
+  `selectedConcept.fields.map(...)` and throws), which is exactly the class of defect layer 3 exists
+  for, not a contrived scenario.
+
+  Live verification (fresh `npdev run app` against `NPDevContract/dsl/resources/Models/canonical-
+  demo`, both `--keep-running`, ports 8298/8299, cleaned up after):
+    1. `GET /api/admin/model/editor/draft` / `.../rules/draft` / `.../orchestration/draft` on first
+       boot each returned the correct, panel-specific empty shape, with namespace `canonical.
+       clinicdemo` (the real model, not the template placeholder).
+    2. Extended `editor-in-generated-app.spec.ts` run against the fresh boot: all 5 tests green,
+       including two new ones -- "all three editor panels render real content on a genuinely fresh
+       boot, not a blank mount" (clicks all three tabs, asserts each panel's own heading, plus a
+       real REST round-trip for the rule editor's GET) and "a malformed draft entity crashes only
+       the model editor panel, not the whole shell" (layer 3's RED/GREEN proof described above).
+    3. `scripts/quality/firstrun-harness/run-readme.sh` gained a new check hitting the same draft
+       endpoint the default tab's first render depends on and asserting the JSON shape directly (an
+       object with an `entities` array) -- the exact class of check this item's own DoD says a
+       200-on-index.html/chunks-resolve harness could never have caught.
+
+  Discrepancy from the plan, recorded rather than silently absorbed: `OrchestrationEditorPanel` does
+  not currently fetch its own draft at all in `ReactWorkbenchApp.tsx` (`<OrchestrationEditorPanel
+  />` is rendered with no `initialDraft` prop, and the component only reads that prop -- it has no
+  `useEffect`/`loadDraft` of its own, unlike `ModelEditorPanel`/`RuleEditorPanel`), so it was not
+  actually a "latent crash" today; and `RuleEditorPanel` already normalized its fetched draft
+  defensively via `ruleEditorDraft.ts`'s `normalizeRuleEditorDraft`, so it also did not crash before
+  this fix, though it WAS receiving the wrong (compiled-model) shape from the backend, which layer 1
+  now corrects regardless. Only `ModelEditorPanel` had a live, reproducible crash. Layers 1-3 were
+  still implemented exactly as the plan specified across all three endpoints/panels, since the
+  backend fix is correct engineering regardless of which client currently exercises it, and layer 3
+  protects all panels generally -- but wiring `OrchestrationEditorPanel` to actually fetch/save its
+  own draft (giving it the same live REST round-trip `RuleEditorPanel` already has) was judged out
+  of scope here: it is new data-flow wiring, not a fix to a crash, and the plan's own DoD items are
+  all satisfiable without it.
