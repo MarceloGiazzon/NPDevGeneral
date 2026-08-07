@@ -233,6 +233,49 @@ database lives in `db.definition.json`):
 Every REST call you make against the running app needs the header
 `X-Api-Key: dev-key` (or whatever `trialDefaults.apiKey` says).
 
+#### Optional: `build` — per-app Java level and third-party dependencies
+
+Absent by default, and absent means the generated app behaves exactly as it always has (Java 17,
+no extra repositories or dependencies). Add it when a custom capability
+(`plugin:java-source`, see §6 Level 4) needs a library newer than Java 17 targets, or needs a
+Maven dependency (or a local jar) on its classpath that NPDev doesn't already ship:
+
+```json
+{
+  "build": {
+    "javaVersion": 21,
+    "repositories": [
+      { "name": "corp", "url": "https://nexus.internal/repository/maven-public/" }
+    ],
+    "dependencies": [
+      "com.google.guava:guava:33.2.1-jre",
+      { "coordinate": "org.apache.poi:poi-ooxml:5.3.0", "scope": "implementation" },
+      { "jar": "libs/legacy-driver.jar", "scope": "implementation" },
+      { "platform": "com.fasterxml.jackson:jackson-bom:2.17.2" }
+    ]
+  }
+}
+```
+
+- **`javaVersion`** -- `17` (default) or `21`. Only the generated app's own toolchain changes;
+  the NPDev platform itself always stays on 17. An unsupported value fails generation immediately
+  with the reason (today's ceiling is Gradle 8.5, which resolves toolchains up to 21).
+- **`dependencies[]`** -- a plain string is shorthand for a Maven coordinate at `implementation`
+  scope. Use the object forms for a different scope (`implementation` / `runtimeOnly` /
+  `compileOnly` / `testImplementation`), a local jar, or a BOM (`platform`).
+- **Local jars** go in `<the folder holding this app's model.json>/libs/*.jar` -- the same
+  definition-folder convention `customCapabilities` already uses for
+  `<definition>/capabilities/<name>/src/main/java`. They're copied into the generated app
+  automatically; reference one with a `{ "jar": "libs/your-file.jar" }` dependency entry.
+- If a declared dependency's `groupId:artifactId` is already on the app's classpath (a Spring Boot
+  starter, Flyway, etc.), generation prints a warning naming the collision -- Gradle's own conflict
+  resolution decides which version wins, so check the warning rather than being surprised by a
+  runtime `NoSuchMethodError`.
+- **`capability.plugin.json` needs no change for any of this.** Dependencies declared here are
+  app-scoped, and a `plugin:java-source` capability compiles into the app's own source set, so it
+  picks up everything declared in `build.dependencies[]` automatically -- there is no separate
+  per-capability dependency slot to fill in.
+
 ### 5.2 `db.definition.json` — the database
 
 The **critical rule**: the database `engine` and `runtime.springProfile` in `config.json`
@@ -630,6 +673,15 @@ and method to wire up:
 
 The generator compiles that Java file straight into the generated application. Your flow can
 now call `triageAssistant.score` like any built-in capability.
+
+**Using a third-party library from `TriageAssistantCapability.java`.** A custom capability's own
+Java source compiles into the generated app's normal source set, so it can call anything the app's
+classpath already has (Jackson, SLF4J, everything Spring Boot pulls in) with no extra step. For a
+library NPDev doesn't already ship -- say a real ML scoring library that also needs Java 21 -- add
+a `build` block to `config.json` (see §5.1): `build.javaVersion: 21` moves the whole generated
+app's toolchain, and `build.dependencies[]` adds the Maven coordinate (or a local jar dropped in
+`<definition>/libs/`). `capability.plugin.json` itself needs no new field for this -- the
+dependency is app-scoped, not per-capability.
 
 **2. A hand-authored panel** (instead of relying on the automatic table/form):
 

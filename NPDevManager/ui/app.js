@@ -42,7 +42,7 @@ async function initFakeBanner() {
 
 const CHECK_NAMES = {
   "java-present": "Java",
-  "java-version": "Java 17",
+  "java-version": "Java 17+",
   "java-home-agreement": "JAVA_HOME",
   "python-version": "Python 3.9+",
   "git-present": "git",

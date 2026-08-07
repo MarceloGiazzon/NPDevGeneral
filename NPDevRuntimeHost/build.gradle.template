@@ -15,7 +15,15 @@ version = '0.1.0'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
+        // deps-and-java/PLAN.md D1/W1.4: only the GENERATED APP's own toolchain is variable --
+        // platform modules (dsl/kernel/generator/adapters/runtimehost source) stay pinned at 17
+        // regardless of this. FinalAppAssembler#appendAppJavaVersionDefault always bakes a resolved
+        // npdevAppJavaVersion into every generated app's gradle.properties at generation time (the
+        // same append-only convention npdevRuntimeHostLibsDir/REG-128 already uses), so the '17'
+        // fallback here only matters for a bare template checkout with no generated gradle.properties
+        // at all -- behaviour is byte-identical to before this property existed.
+        languageVersion = JavaLanguageVersion.of(
+                (providers.gradleProperty('npdevAppJavaVersion').orNull ?: '17') as Integer)
     }
 }
 
@@ -126,6 +134,16 @@ dependencies {
 
     // Runtime extension jars are staged outside the source/evidence workspace.
     implementation fileTree(dir: npdevRuntimeHostLibsDir, include: ['*.jar'])
+}
+
+// deps-and-java/PLAN.md W2.3/D3: this file stays a byte-for-byte, substitution-free copy
+// (materializeRootTemplate) -- an app's own third-party dependencies (config.json's build.
+// repositories[]/dependencies[]) live in a GENERATED sidecar instead (AppDependenciesEmitter,
+// W2.2), applied here only if present. An app with no build.dependencies/repositories declared
+// never gets this file at all, so this hook is then a no-op and behaviour is unchanged.
+def npdevAppDeps = file('npdev-dependencies.gradle')
+if (npdevAppDeps.isFile()) {
+    apply from: npdevAppDeps
 }
 
 configurations.configureEach {

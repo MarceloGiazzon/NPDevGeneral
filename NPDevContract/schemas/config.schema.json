@@ -187,6 +187,74 @@
         }
       }
     },
+    "build": {
+      "type": "object",
+      "description": "deps-and-java/PLAN.md D1/D2: build facts, not domain truth -- kept out of model.json on purpose (a new model.json array triggers the four-place threading hazard that produced REG-108).",
+      "additionalProperties": false,
+      "properties": {
+        "javaVersion": {
+          "type": "integer",
+          "description": "The generated app's own Gradle toolchain language version. Platform modules (dsl/kernel/generator/adapters/runtimehost source) stay pinned at 17 regardless of this value -- only the generated app's own compile/run toolchain is variable.",
+          "enum": [17, 21],
+          "default": 17
+        },
+        "repositories": {
+          "type": "array",
+          "description": "deps-and-java/PLAN.md W2.1: extra Maven repositories the app's own build.dependencies[] may need beyond mavenCentral() (always implicitly available).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "url": { "type": "string", "minLength": 1, "pattern": "^https?://" }
+            }
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "description": "deps-and-java/PLAN.md W2.1/D2 (AppDependenciesEmitter, npdev-dependencies.gradle): app-scoped third-party dependencies. String shorthand = implementation + Maven coordinate.",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[^:\\s]+:[^:\\s]+:[^:\\s]+$",
+                "description": "Maven coordinate shorthand (groupId:artifactId:version), implementation scope."
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["coordinate"],
+                "properties": {
+                  "coordinate": { "type": "string", "minLength": 1, "pattern": "^[^:\\s]+:[^:\\s]+:[^:\\s]+$" },
+                  "scope": { "type": "string", "enum": ["implementation", "runtimeOnly", "compileOnly", "testImplementation"] }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["jar"],
+                "description": "A local jar, resolved relative to <model.json's own directory>/libs/ at generation time.",
+                "properties": {
+                  "jar": { "type": "string", "minLength": 1 },
+                  "scope": { "type": "string", "enum": ["implementation", "runtimeOnly", "compileOnly", "testImplementation"] }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["platform"],
+                "description": "A Maven BOM, imported via Gradle's platform(...) so it constrains versions without itself becoming a direct dependency.",
+                "properties": {
+                  "platform": { "type": "string", "minLength": 1, "pattern": "^[^:\\s]+:[^:\\s]+:[^:\\s]+$" }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
     "trialDefaults": {
       "type": "object",
       "additionalProperties": false,

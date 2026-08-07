@@ -97,7 +97,8 @@ final class HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest {
                         schemaRoot,
                         "npdev-generated",
                         "npdev-meta",
-                        true
+                        true,
+                        17
                 )
         );
         Files.writeString(evidenceRoot.resolve("packaged-app-generation-output.txt"),

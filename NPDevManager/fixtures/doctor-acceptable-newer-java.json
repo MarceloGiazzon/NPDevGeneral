@@ -1,14 +1,14 @@
 {
   "schemaVersion": "npdev-cli-result.v1",
   "command": "doctor",
-  "ok": false,
-  "exitCode": 1,
+  "ok": true,
+  "exitCode": 0,
   "checks": [
     {
       "id": "java-present",
       "name": "Java",
       "status": "pass",
-      "found": "C:\\Program Files\\Java\\jdk-11\\bin\\java.exe",
+      "found": "C:\\Program Files\\Java\\jdk-22\\bin\\java.exe",
       "expected": "installed and on PATH",
       "detail": null,
       "fix": null,
@@ -17,18 +17,18 @@
     {
       "id": "java-version",
       "name": "Java 17+",
-      "status": "fail",
-      "found": "11",
+      "status": "warn",
+      "found": "22",
       "expected": "17+",
-      "detail": "Java 11 found (C:\\Program Files\\Java\\jdk-11\\bin\\java.exe) -- NPDev requires Java 17 or newer.",
-      "fix": "Install Java 17 (or newer). Other versions may be installed alongside it.",
+      "detail": "Java 22 found (C:\\Program Files\\Java\\jdk-22\\bin\\java.exe) -- fine for NPDev's own platform work (pinned at 17 regardless) and for a generated app whose config.json requests build.javaVersion=21. A generated app at the 17 default needs Gradle to auto-provision a 17 toolchain (via the foojay resolver, registered by default) the first time it builds -- that needs network access once, then Gradle caches it.",
+      "fix": null,
       "fixCommand": null
     },
     {
       "id": "java-home-agreement",
       "name": "JAVA_HOME",
       "status": "pass",
-      "found": "C:\\Program Files\\Java\\jdk-11",
+      "found": "C:\\Program Files\\Java\\jdk-22",
       "expected": "set, and agreeing with the java on PATH",
       "detail": null,
       "fix": null,
