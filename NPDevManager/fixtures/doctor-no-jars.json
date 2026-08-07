@@ -16,10 +16,10 @@
     },
     {
       "id": "java-version",
-      "name": "Java 17",
+      "name": "Java 17+",
       "status": "pass",
       "found": "17",
-      "expected": "17",
+      "expected": "17+",
       "detail": null,
       "fix": null,
       "fixCommand": null
