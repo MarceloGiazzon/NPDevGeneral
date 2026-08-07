@@ -6,13 +6,202 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**137 item(s) migrated: 0 open/partial, 137 done.**
+**140 item(s) migrated: 2 open/partial, 138 done.**
 
 ## Open / partial
 
-None currently open.
+| ID | Title | Type | Sev | Status | Opened |
+|---|---|---|---|---|---|
+| REG-138 | semantic-behavior-writeback (controller+service+canonicalization) is compiled out of EVERY generated app by the supported-runtime-surface allowlist (deferredControllers), so all 5 /api/admin/model/semantic-behavior-writeback[...] endpoints 404 by default -- and even the one directly-executable mutation only appends to a side JSON file nothing reads back | GAP | MEDIUM | OPEN | 2026-08-06 |
+| REG-139 | ModelEditorPanel.tsx crashes with an uncaught TypeError on a fresh generated app: GET /api/admin/model/editor/draft's no-draft-yet fallback returns the raw compiled model.json (concepts/procedures/panels) verbatim, but the frontend blindly casts it to ModelEditorDraft (entities), so draft.entities.find(...) throws on undefined | BUG | HIGH | OPEN | 2026-08-07 |
 
-## Done (137)
+### Detail
+
+### REG-138 — semantic-behavior-writeback (controller+service+canonicalization) is compiled out of EVERY generated app by the supported-runtime-surface allowlist (deferredControllers), so all 5 /api/admin/model/semantic-behavior-writeback[...] endpoints 404 by default -- and even the one directly-executable mutation only appends to a side JSON file nothing reads back
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found while implementing editor/ANALYSIS.md's E2 ("does semantic writeback actually apply?",
+__OutsideRepo, 2026-08-06 analysis against 6b1b3fb). That analysis's own §2.1 correction claimed
+"SemanticBehaviorWriteBackService accepts five request types ... validates them, assigns a
+requestId, and journals them" as evidence the editor "has a real write path", contrasting it with
+structural-writeback's missing controller/service (§3). Re-checking that claim against a REAL
+built app rather than trusting the source tree turned up a bigger gap than either §3 or E2
+anticipated.
+
+NPDevRuntimeHost/build.gradle(.template) computes `unsupportedRuntimeHostControllerSources` /
+`unsupportedRuntimeHostServiceSources` from src/main/resources/npdev/runtime-supported-
+controllers.json's `allowedControllers` / `supportedCoreServiceComponents` /
+`supportedCoreServicePatterns` ONLY -- it never consults `deferredControllers`, and this exclusion
+is applied unconditionally in `sourceSets.main.java` (not gated behind
+npdev.runtime.supported-surface-enforced or any -P flag). SemanticBehaviorWriteBackController is
+listed in the manifest's `deferredControllers` (not `allowedControllers`), and
+SemanticBehaviorWriteBackService / SemanticBehaviorWriteBackCanonicalizationService match none of
+supportedCoreServiceNames/-Patterns (both instead match the `Semantic*` entry in
+`nonDefaultServicePatterns`, an array the gradle exclusion logic never reads -- only
+scripts/quality/run-runtime-surface-evidence.ps1's governance classifier reads it, for a separate,
+non-blocking self-consistency check). Net effect: the three classes are excluded from
+`sourceSets.main.java` at compile time for every generated app, unconditionally -- this is by
+design (the manifest's `enforcedByProperty`/`surfaceProfileProperty` fields document a RUNTIME
+bean-filter toggle in RuntimeControllerAllowlistConfig, but that toggle can never re-add a class
+that was never compiled in the first place; the actual, load-bearing enforcement is this
+compile-time exclusion, as run-runtime-surface-evidence.ps1's own comment at line 587 already
+says: "the actual allowlist enforcement is the build-time controller exclusion in
+build.gradle.template").
+
+Verified empirically against an already-built real generated app (not just static analysis):
+D:\WorkSpace\NPDev\Build\generated-finalapps\claude-support-desk\App has the three .java source
+files under src/main/java (copied from the RuntimeHost template, as expected), but
+build/classes/java/main contains ONLY SemanticBehaviorWriteBackRequest.class (the DTO, in
+com.finalexec.npdev.dto, a package the exclusion logic never filters) -- no Controller.class, no
+Service.class, no CanonicalizationService.class anywhere in the compiled output. Cross-checked
+against com.finalexec.api.internal's actual compiled class list in the same app: it matches
+allowedControllers exactly (PublicationExecutorController, RealPublicationExecutorController,
+RollbackExecutionController, SemanticPublicationMappingController,
+StructuralPublicationMappingController, SourceMutation*GateController/-AuditRecordController/-
+RollbackAnchorController, PublicationRollbackExecutorController,
+PublicationTransactionRecordController -- 10 classes), confirming the allowlist is the actual
+mechanism and SemanticBehaviorWriteBackController is not merely late-loaded some other way.
+
+This is a DIFFERENT shape from structural-writeback (§3 of the same analysis): structural has zero
+implementation ever written. Semantic-behavior-writeback is fully implemented (request validation,
+canonicalization rules, execution, history, journaling to runtime-data/) but deliberately gated
+behind a profile (npdev.runtime.surface-profile=non-default) that no generated app enables by
+default -- and the gate is enforced so early (compile time) that even opting into that profile at
+runtime cannot resurrect it without a build change. Given the surrounding manifest also defers a
+large, clearly-intentional list of speculative/governance features (Explainability*, FlowBuilder*,
+GuidedTaskWorkspace*, Template*, etc.), this LOOKS like deliberate platform governance policy
+(minimize default attack surface / unfinished-feature exposure) rather than an accidental gap --
+unlike REG-104/REG-108's silent-drop shape, nothing here silently loses data. But two consequences
+were not previously documented anywhere:
+
+(1) NPDevEditor/ui-react/src/promptHistoryData.ts's HISTORY_SOURCES array unconditionally queries
+BOTH "structural" and "semantic-behavior" sources' three endpoints each. Exactly like structural's
+known-broken screen (analysis §3's "What a user sees"), the semantic-behavior source will also
+warn/empty-list in every default-profile generated app -- fetchPromptHistorySource already
+degrades gracefully via Promise.allSettled (a warning per failed endpoint, not a hard crash), so
+the failure mode is "silently empty history panel" rather than a thrown error, but it is still a
+UI panel presented as live that is unreachable in the shipped default.
+
+(2) Even in the one profile where it WOULD compile (npdev.runtime.surface-profile=non-default,
+which per this item's finding above cannot actually be reached without a build change today
+anyway), SemanticBehaviorWriteBackService.execute()'s only directly-executable path
+(isDirectlyExecutable: outcome==CANONICALIZABLE && actionType==addNotificationStep, i.e. only
+addOrchestrationStep requests with stepKind=notification; addInvariant, addLifecycleState,
+addLifecycleTransition, addAwaitEventStep, and addOrchestrationStep/stepKind=approval all land on
+status=REVIEW_REQUIRED and stop there) applies its mutation by appending to
+runtime-data/canonical-workspace/semantic-behavior/semantic-behavior-workspace.json --
+a repo-wide grep for readers of that path (or of "appliedMutations"/"canonical-workspace" in that
+sense) found none. So even a request that DOES reach EXECUTED status does not change the running
+app's actual flow/model behavior -- it only appends an audit-trail entry to a file nothing
+consumes. This is the exact "silent-answer" shape ANALYSIS.md's E2 flagged as the bigger possible
+finding ("a complete-looking pipeline whose last step is missing").
+
+**Surface:** `runtimehost/supported-surface-allowlist, editor/prompt-history`
+**Files:**
+- `NPDevRuntimeHost/build.gradle.template`
+- `NPDevRuntimeHost/build.gradle`
+- `NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/config/RuntimeControllerAllowlistConfig.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/SemanticBehaviorWriteBackController.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackService.java`
+- `NPDevEditor/ui-react/src/promptHistoryData.ts`
+- `scripts/quality/run-runtime-surface-evidence.ps1`
+
+Not fixed here -- filed to make the gap visible and durable, per ANALYSIS.md E2's own "report
+before fixing" instruction. Three independent follow-ups this item leaves open, each a separate
+judgment call outside this task's scope (editor/ANALYSIS.md's E1/§6 only budgeted a decision for
+structural-writeback):
+
+(a) Decide whether semantic-behavior-writeback should be promoted into allowedControllers/
+supportedCoreServiceComponents (ship it for real) or the promptHistoryData.ts UI source should stop
+presenting it as available by default (same "finish or delete" choice E1 made for structural,
+applied to this pair instead) -- a product call, not a mechanical fix.
+(b) If promoted, applyMutationToWorkspace's write-only workspace file needs an actual consumer (or
+needs replacing with a real mutation into the model/flow the running kernel reads) before "EXECUTED"
+is a true claim.
+(c) The manifest's `deferredControllers`/`nonDefaultServicePatterns` + `surface-profile=non-default`
+runtime toggle is currently unreachable for any class the gradle source-exclusion also strips
+(i.e. today, for every deferred controller/service) -- if the intent is genuinely "toggle back on
+at runtime for a non-default profile", the gradle exclusion needs to consult deferredControllers
+too (or the toggle's docs/tests should say plainly it only ever applies within RuntimeHost's own
+test suite, never to a generated app).
+
+### REG-139 — ModelEditorPanel.tsx crashes with an uncaught TypeError on a fresh generated app: GET /api/admin/model/editor/draft's no-draft-yet fallback returns the raw compiled model.json (concepts/procedures/panels) verbatim, but the frontend blindly casts it to ModelEditorDraft (entities), so draft.entities.find(...) throws on undefined
+
+**Type:** BUG · **Severity:** HIGH · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Found while verifying editor/ANALYSIS.md E3's Playwright spec (e2e-generated-app/editor-in-
+generated-app.spec.ts) against a completely fresh app, generated end-to-end via
+`npdev run app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json ...` (not a
+reused/previously-exercised build) -- done specifically to prove a REG-138-adjacent asset-copy
+fix (npdev-templates/static-react-manifest.json) actually ships working chunk files, per a
+reviewer's request to confirm chunks resolve rather than just index.html. The asset-copy fix
+itself verified clean (curl 200 on all 5 manifested files); this is a SEPARATE, real bug the
+same verification pass surfaced.
+
+Reproduced live: opening a freshly-booted app's /npdev-ui-react/ (root, default Workbench
+surface, "Model Editor" the default active tab) throws
+`TypeError: Cannot read properties of undefined (reading 'find')` before the shell even paints
+(React has no error boundary here, so the whole tree -- including the <h1> -- fails to mount).
+Traced to ModelEditorPanel.tsx:53's `draft.entities.find(...)` inside a useMemo, fed by
+`loadDraft()` -> `npdevClient.fetchModelEditorDraft()` -> a bare `get<ModelEditorDraft>(...)`
+fetch with NO runtime shape validation, just a compile-time type assertion.
+
+Root cause on the backend: npdev-runtime-admin-controller.mustache's `readDraftOrModel()`, when
+the in-memory `MODEL_EDITOR_DRAFT` field is null (true on every fresh JVM start -- it is a plain
+static field, never persisted), falls back to reading classpath resource `npdev/model.json` and
+returning it VERBATIM as the "draft". That resource is the raw compiled model
+($schema/namespace/concepts/procedures/panels), not a `ModelEditorDraft`
+(namespace/dslVersion/version/entities) -- two different, incompatible shapes that happen to
+share a couple of field names. Confirmed via direct curl against the running app:
+
+    GET /api/admin/model/editor/draft ->
+    {"$schema":"model.schema.json","schemaVersion":"1.0.0","namespace":"npdev.template",
+     "name":"runtime-host-template-model","concepts":[],"procedures":[],"panels":[]}
+
+(Note this response's own namespace/name -- "npdev.template"/"runtime-host-template-model" -- do
+NOT match canonical-demo's own model identity, suggesting classpath resource resolution for
+`npdev/model.json` may not even be hitting the generated app's OWN compiled model here; not
+chased further in this pass.)
+
+NOT reproduced against NPDevSamples/generated-finalapps' claude-support-desk in the same
+session (its Workbench loaded and its own e2e assertions passed cleanly) -- that app's
+`npdev/model.json` classpath resolution may differ (possibly 404s there, which the frontend's
+catch block handles safely by leaving `draft` at its safe `emptyDraft()` default, unlike a 200
+with the wrong shape). The discrepancy between apps is not yet root-caused; flagging only that
+this is APP-DEPENDENT, not universal, so "it worked for me on one app" is not evidence against
+this bug.
+
+**Surface:** `editor/workbench, runtimehost/admin-controller`
+**Files:**
+- `NPDevEditor/ui-react/src/ModelEditorPanel.tsx`
+- `NPDevEditor/ui-react/src/api/npdevClient.ts`
+- `NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-admin-controller.mustache`
+- `NPDevEditor/ui-react/e2e-generated-app/editor-in-generated-app.spec.ts`
+
+Not fixed here -- found during a verification pass for an unrelated fix (the static-react asset
+manifest) and filed rather than chased, to stay scoped. Two independent fix shapes, not
+mutually exclusive:
+
+(1) Backend: readDraftOrModel()'s "no draft yet" fallback should return something already shaped
+    like ModelEditorDraft (e.g. transform concepts->entities, or simply return emptyDraft()'s
+    JSON shape) instead of the raw compiled model verbatim -- the two are conceptually different
+    documents (a model vs. an editable draft of one) that were never meant to be interchangeable.
+(2) Frontend: ModelEditorPanel/npdevClient should not trust a raw fetch's shape blindly -- either
+    validate the response against ModelEditorDraft before calling setDraft(), or make the
+    draft.entities accesses defensive (`draft.entities ?? []`) so a shape mismatch degrades to an
+    empty editor instead of a page-crashing uncaught exception. RuleEditorPanel/
+    OrchestrationEditorPanel share the same `readDraftOrModel()` backend and the same
+    no-validation fetch pattern on the frontend -- worth checking whether they have the same
+    exposure before scoping a fix.
+
+A first-run harness or E3-style e2e check that opens the Workbench's default tab against a
+genuinely fresh app (no prior draft) would have caught this before a real user did -- this is
+exactly the "no end-to-end proof it works inside a generated app" gap editor/ANALYSIS.md's own
+§4 flagged as weak, now with a concrete crash behind it.
+
+## Done (138)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -61,6 +250,7 @@ None currently open.
 | REG-134 | main is left 29+ commits behind beta1-vision-spine with no tag covering S2-S8 or F1-F9 -- a fresh clone of the repo's own default branch gets none of this session's (or the last several sessions') work, including the first-run fixes (I0-I8) this same plan produces | GAP | HIGH | DONE | 2026-08-04 |
 | REG-135 | Accepted boundaries (NPDev's designed limits, e.g. B13's 'no Java data-migration hooks') carry no machine-readable identity: ValidationDiagnostic has code/helpKey/suggestedFix but no boundaryId, B-numbers (B1/B2/B15/B27/...) appear in the validation package as Java comments only, and docs/ACCEPTED_BOUNDARIES.md is a markdown table nothing can query except a human reading it | GAP | MEDIUM | DONE | 2026-08-04 |
 | REG-136 | root/NPDevGenerator/NPDevKernel gradle.properties hardcode org.gradle.projectcachedir to this machine's own D:/WorkSpace/NPDev/Build/gradle-project-caches/<module> -- a Gradle START PARAMETER read before any -P/env override can apply, so every gradlew invocation the CLI or sync-runtimehost-libs.ps1 makes fails on any machine without that exact path, breaking the FIRST command in README's own Quickstart (./npdev validate model) | BUG | HIGH | DONE | 2026-08-04 |
+| REG-137 | NPDevRuntimeHost/build.gradle.template's resolveNpdevRuntimeLibsDir checked the gradle property before the NPDEV_RUNTIMEHOST_LIBS_DIR env var, so REG-128's generation-time-baked gradle.properties default permanently shadowed any build-time env var override -- breaking 3 generator packaged-app runtime proof tests on Linux CI | BUG | MEDIUM | DONE | 2026-08-05 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
 | REG-16 | The other 23 launch items had zero adversarial review | PROCESS | HIGH | DONE | 2026-07-21 |
@@ -2595,6 +2785,82 @@ live `./npdev validate model`, `./npdev generate app`, and `sync-runtimehost-lib
 appearing inside any repo module (confirmed by direct `ls` after each). The definitive
 newcomer-facing proof is the clone-based harness (fresh `git clone` of the pushed branch, clean
 Ubuntu container) reaching GREEN, captured separately as this session's final evidence.
+
+### REG-137 — NPDevRuntimeHost/build.gradle.template's resolveNpdevRuntimeLibsDir checked the gradle property before the NPDEV_RUNTIMEHOST_LIBS_DIR env var, so REG-128's generation-time-baked gradle.properties default permanently shadowed any build-time env var override -- breaking 3 generator packaged-app runtime proof tests on Linux CI
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-05)
+**Verification:** VERIFIED_LIVE
+**Source:** Found while diagnosing a failing GitHub Actions scheduled run (npdev-ci-validation.yml, run
+30978607862, 2026-08-05). The Linux job's "Generator unit tests" step (:generator:test) failed
+3 tests deterministically (reproduced identically on a manual re-run, not flaky):
+  - TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.packagedGeneratedAppBootsHandlesHttpAndWritesJdbcEvidenceRows
+  - HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.deletingOrReplacingARecordCascadesTheUnderlyingFileBytes
+  - HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest.packagedGeneratedAppUploadsAndDownloadsAFileThroughARealObjectStore
+
+Gradle's default console reporter only prints "AssertionFailedError at Foo.java:1009" with no
+message text, and the workflow's evidence-upload step had a separate, independent bug (its
+artifact glob looked for `<Module>/**/build/test-results/test`, but dsl/kernel/generator/editor
+all redirect layout.buildDirectory to a sibling `Build/gradle/<rootProject>/<projectPath>` per
+this repo's build-output policy, so the glob never matched and the real JUnit XML was silently
+dropped every run -- fixed separately in the same commit as this item, see
+.github/workflows/npdev-ci-validation.yml). Fixing that glob first surfaced the real message:
+
+    > Task :verifyNpdevRuntimeHostLibs FAILED
+    Missing NPDev RuntimeHost libs manifest in /home/runner/work/NPDevGeneral/Build/runtimehost-libs.
+    Run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars.
+
+Root cause, in NPDevRuntimeHost/build.gradle.template's resolveNpdevRuntimeLibsDir:
+
+    def configured = providers.gradleProperty('npdevRuntimeHostLibsDir')
+            .orElse(providers.environmentVariable('NPDEV_RUNTIMEHOST_LIBS_DIR'))
+            .orNull
+
+REG-128 (2026-08-04) made FinalAppAssembler#appendRuntimeHostLibsDirDefault ALWAYS bake a
+resolved npdevRuntimeHostLibsDir line into every generated app's gradle.properties at
+generation time (belt-and-suspenders fix for apps generated outside the source repo, which
+previously fell through to a nonsensical relative-path default). But providers.gradleProperty()
+cannot distinguish "explicit -P on the command line" from "value read from the properties file"
+-- once gradle.properties always carries a baked value, the `.orElse(environmentVariable(...))`
+fallback branch is permanently dead. These 3 tests generate the app once (no
+NPDEV_RUNTIMEHOST_LIBS_DIR set at generation time, so the baked default is the global
+`Build/runtimehost-libs`), then try to override the libs dir via the NPDEV_RUNTIMEHOST_LIBS_DIR
+env var when invoking `bootJar`, pointing at their own test-local, freshly-built jar set
+(OUTSIDE_ROOT/runtimehost-libs) -- that override was silently ignored, and the build looked for
+a manifest at the (unpopulated, at that point in the CI pipeline) global Build/runtimehost-libs
+instead.
+
+Passed on the author's own dev machine only because D:\WorkSpace\NPDev\Build\runtimehost-libs
+already has valid jars there from routine platform work, masking the bug -- a clean CI checkout
+has nothing there until the workflow's later "Stage RuntimeHost libs" step runs (which happens
+AFTER "Generator unit tests" in the pipeline).
+
+**Surface:** `build-tooling/runtimehost-libs-staging`
+**Files:**
+- `NPDevRuntimeHost/build.gradle.template`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java`
+- `NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.java`
+- `NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.java`
+- `NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest.java`
+- `.github/workflows/npdev-ci-validation.yml`
+
+Two independent, complementary fixes landed together (both applied, not "either/or" like
+REG-128's own two fix shapes were):
+
+(1) NPDevRuntimeHost/build.gradle.template's resolveNpdevRuntimeLibsDir now checks
+    NPDEV_RUNTIMEHOST_LIBS_DIR BEFORE providers.gradleProperty(), restoring the build-time env
+    var override path for any caller (not just these 3 tests) while leaving REG-128's original
+    fix intact for the no-override case (no env var, no -P -> uses the baked
+    gradle.properties default). The only behavior change is the unusual case of an env var AND
+    an explicit -P being set simultaneously (env var now wins instead of -P) -- no caller in
+    this repo does that.
+
+(2) The 3 affected tests now ALSO pass -PnpdevRuntimeHostLibsDir=<path> on the bootJar command
+    line, alongside the existing NPDEV_RUNTIMEHOST_LIBS_DIR env var, as defense-in-depth --
+    this works regardless of fix (1) since an explicit -P always wins.
+
+Also fixed in the same commit: the CI workflow's evidence-upload artifact glob (see files list),
+which is what made the real error message visible at all instead of the bare
+"AssertionFailedError at line 1009" console summary.
 
 ### REG-14 — LNCH-22: newcomer documentation test run for the first time
 
