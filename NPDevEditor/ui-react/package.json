@@ -11,6 +11,7 @@
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "e2e:stage": "node ./scripts/stage-playwright-static-host.mjs",
+    "e2e:generated-app": "playwright test --config=playwright.generated-app.config.ts",
     "build:templates": "vite build && node ./scripts/export-to-generator.mjs"
   },
   "dependencies": {
