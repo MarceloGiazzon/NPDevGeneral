@@ -10,16 +10,16 @@
       "status": "fail",
       "found": null,
       "expected": "installed and on PATH",
-      "detail": "Java not found on PATH -- NPDev requires Java 17 (Gradle needs it for everything).",
+      "detail": "Java not found on PATH -- NPDev requires Java 17+ (Gradle needs it for everything).",
       "fix": "Install Java 17 from https://adoptium.net/temurin/releases/",
       "fixCommand": null
     },
     {
       "id": "java-version",
-      "name": "Java 17",
+      "name": "Java 17+",
       "status": "pass",
       "found": null,
-      "expected": "17",
+      "expected": "17+",
       "detail": null,
       "fix": null,
       "fixCommand": null

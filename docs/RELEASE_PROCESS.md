@@ -6,8 +6,8 @@ existing gate seed) and the beta0 tag-immutability rules already written into
 
 ## The process
 
-1. **Land the work.** All changes for the release are committed on the release branch (today:
-   `beta1-vision-spine` or whatever the current mainline is), gates green (DSL/kernel/generator/
+1. **Land the work.** All changes for the release are committed on `main` (the working branch since
+   2026-08-07 — see the "Merge cadence" section below), gates green (DSL/kernel/generator/
    RuntimeHost suites; `run-beta-release-gate.ps1` for anything claiming beta-release status).
 2. **Update `CHANGELOG.md`.** A new top-level entry, dated, under the version being released.
    Categorize entries (Added / Changed / Fixed / Security) — see the seed entry in
@@ -38,14 +38,22 @@ existing gate seed) and the beta0 tag-immutability rules already written into
 ## Merge cadence: keep `origin/main` current
 
 `main` is public and the default branch — it is what a clone gets, what GitHub renders, and what any
-first impression is formed from. Work lands on the active working branch (today: `beta1-vision-spine`)
-and `main` only advances on an explicit merge, so **nothing about normal development keeps it
-current on its own.** Left alone, this has silently reached 150 commits behind (pre-T1.6) and 71
-commits behind (2026-07-29, `docs/RECORD_SURFACES_PLAN.md` P1) — twice, with nothing measuring the
-gap either time.
+first impression is formed from. **As of 2026-08-07 (REG-139/I2), `main` is also the sole working
+branch** — the separate `beta1-vision-spine` branch this section used to describe was deleted (both
+locally and on `origin`) after sitting 6 commits behind `main` with no further work landing on it;
+every commit had been going directly to `main` for a long time before that made it official. This
+section's history is kept because the RISK it describes is still real if a second long-lived branch
+is ever reintroduced:
 
-- **Convention: merge forward whenever a plan closes.** A plan closing is a natural, memorable
-  checkpoint — don't let a gap accumulate across several.
+`main` used to only advance on an explicit merge from that separate branch, so **nothing about
+normal development kept it current on its own.** Left alone, this had silently reached 150 commits
+behind (pre-T1.6) and 71 commits behind (2026-07-29, `docs/RECORD_SURFACES_PLAN.md` P1) — twice,
+with nothing measuring the gap either time. With `main` itself as the working branch, this specific
+failure mode cannot recur — but the tripwire below stays wired in case a future working branch is
+ever spun off again.
+
+- **If a working branch is ever reintroduced: merge forward whenever a plan closes.** A plan closing
+  is a natural, memorable checkpoint — don't let a gap accumulate across several.
 - **Merge via PR, not a local fast-forward**, so both quality gates run on the merge itself before
   it lands — this is often the first *observed CI run* for changes to the gates themselves.
 - **Tag the merge** `v<version>` per the versioning scheme below. Per the beta0 tag-immutability
@@ -55,7 +63,8 @@ gap either time.
   `run-ai-knowledge-gate.ps1`, WARNs above 20 commits ahead of `origin/main` and FAILs above 50. A
   working branch is *meant* to run some commits ahead between merges — the threshold exists so a
   second unmerged release can't again reach 71 (or 150) unnoticed, not to force a merge on every
-  commit.
+  commit. With `main` as the working branch this stays at 0 by construction, but the check stays
+  wired rather than removed.
 
 ## Versioning
 
