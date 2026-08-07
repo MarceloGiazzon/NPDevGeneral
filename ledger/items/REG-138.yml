@@ -1,0 +1,112 @@
+id: REG-138
+title: "semantic-behavior-writeback (controller+service+canonicalization) is compiled out of EVERY generated app by the supported-runtime-surface allowlist (deferredControllers), so all 5 /api/admin/model/semantic-behavior-writeback[...] endpoints 404 by default -- and even the one directly-executable mutation only appends to a side JSON file nothing reads back"
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-06
+verification: VERIFIED_LIVE
+surface: runtimehost/supported-surface-allowlist, editor/prompt-history
+source: |
+  Found while implementing editor/ANALYSIS.md's E2 ("does semantic writeback actually apply?",
+  __OutsideRepo, 2026-08-06 analysis against 6b1b3fb). That analysis's own §2.1 correction claimed
+  "SemanticBehaviorWriteBackService accepts five request types ... validates them, assigns a
+  requestId, and journals them" as evidence the editor "has a real write path", contrasting it with
+  structural-writeback's missing controller/service (§3). Re-checking that claim against a REAL
+  built app rather than trusting the source tree turned up a bigger gap than either §3 or E2
+  anticipated.
+
+  NPDevRuntimeHost/build.gradle(.template) computes `unsupportedRuntimeHostControllerSources` /
+  `unsupportedRuntimeHostServiceSources` from src/main/resources/npdev/runtime-supported-
+  controllers.json's `allowedControllers` / `supportedCoreServiceComponents` /
+  `supportedCoreServicePatterns` ONLY -- it never consults `deferredControllers`, and this exclusion
+  is applied unconditionally in `sourceSets.main.java` (not gated behind
+  npdev.runtime.supported-surface-enforced or any -P flag). SemanticBehaviorWriteBackController is
+  listed in the manifest's `deferredControllers` (not `allowedControllers`), and
+  SemanticBehaviorWriteBackService / SemanticBehaviorWriteBackCanonicalizationService match none of
+  supportedCoreServiceNames/-Patterns (both instead match the `Semantic*` entry in
+  `nonDefaultServicePatterns`, an array the gradle exclusion logic never reads -- only
+  scripts/quality/run-runtime-surface-evidence.ps1's governance classifier reads it, for a separate,
+  non-blocking self-consistency check). Net effect: the three classes are excluded from
+  `sourceSets.main.java` at compile time for every generated app, unconditionally -- this is by
+  design (the manifest's `enforcedByProperty`/`surfaceProfileProperty` fields document a RUNTIME
+  bean-filter toggle in RuntimeControllerAllowlistConfig, but that toggle can never re-add a class
+  that was never compiled in the first place; the actual, load-bearing enforcement is this
+  compile-time exclusion, as run-runtime-surface-evidence.ps1's own comment at line 587 already
+  says: "the actual allowlist enforcement is the build-time controller exclusion in
+  build.gradle.template").
+
+  Verified empirically against an already-built real generated app (not just static analysis):
+  D:\WorkSpace\NPDev\Build\generated-finalapps\claude-support-desk\App has the three .java source
+  files under src/main/java (copied from the RuntimeHost template, as expected), but
+  build/classes/java/main contains ONLY SemanticBehaviorWriteBackRequest.class (the DTO, in
+  com.finalexec.npdev.dto, a package the exclusion logic never filters) -- no Controller.class, no
+  Service.class, no CanonicalizationService.class anywhere in the compiled output. Cross-checked
+  against com.finalexec.api.internal's actual compiled class list in the same app: it matches
+  allowedControllers exactly (PublicationExecutorController, RealPublicationExecutorController,
+  RollbackExecutionController, SemanticPublicationMappingController,
+  StructuralPublicationMappingController, SourceMutation*GateController/-AuditRecordController/-
+  RollbackAnchorController, PublicationRollbackExecutorController,
+  PublicationTransactionRecordController -- 10 classes), confirming the allowlist is the actual
+  mechanism and SemanticBehaviorWriteBackController is not merely late-loaded some other way.
+
+  This is a DIFFERENT shape from structural-writeback (§3 of the same analysis): structural has zero
+  implementation ever written. Semantic-behavior-writeback is fully implemented (request validation,
+  canonicalization rules, execution, history, journaling to runtime-data/) but deliberately gated
+  behind a profile (npdev.runtime.surface-profile=non-default) that no generated app enables by
+  default -- and the gate is enforced so early (compile time) that even opting into that profile at
+  runtime cannot resurrect it without a build change. Given the surrounding manifest also defers a
+  large, clearly-intentional list of speculative/governance features (Explainability*, FlowBuilder*,
+  GuidedTaskWorkspace*, Template*, etc.), this LOOKS like deliberate platform governance policy
+  (minimize default attack surface / unfinished-feature exposure) rather than an accidental gap --
+  unlike REG-104/REG-108's silent-drop shape, nothing here silently loses data. But two consequences
+  were not previously documented anywhere:
+
+  (1) NPDevEditor/ui-react/src/promptHistoryData.ts's HISTORY_SOURCES array unconditionally queries
+  BOTH "structural" and "semantic-behavior" sources' three endpoints each. Exactly like structural's
+  known-broken screen (analysis §3's "What a user sees"), the semantic-behavior source will also
+  warn/empty-list in every default-profile generated app -- fetchPromptHistorySource already
+  degrades gracefully via Promise.allSettled (a warning per failed endpoint, not a hard crash), so
+  the failure mode is "silently empty history panel" rather than a thrown error, but it is still a
+  UI panel presented as live that is unreachable in the shipped default.
+
+  (2) Even in the one profile where it WOULD compile (npdev.runtime.surface-profile=non-default,
+  which per this item's finding above cannot actually be reached without a build change today
+  anyway), SemanticBehaviorWriteBackService.execute()'s only directly-executable path
+  (isDirectlyExecutable: outcome==CANONICALIZABLE && actionType==addNotificationStep, i.e. only
+  addOrchestrationStep requests with stepKind=notification; addInvariant, addLifecycleState,
+  addLifecycleTransition, addAwaitEventStep, and addOrchestrationStep/stepKind=approval all land on
+  status=REVIEW_REQUIRED and stop there) applies its mutation by appending to
+  runtime-data/canonical-workspace/semantic-behavior/semantic-behavior-workspace.json --
+  a repo-wide grep for readers of that path (or of "appliedMutations"/"canonical-workspace" in that
+  sense) found none. So even a request that DOES reach EXECUTED status does not change the running
+  app's actual flow/model behavior -- it only appends an audit-trail entry to a file nothing
+  consumes. This is the exact "silent-answer" shape ANALYSIS.md's E2 flagged as the bigger possible
+  finding ("a complete-looking pipeline whose last step is missing").
+files:
+  - NPDevRuntimeHost/build.gradle.template
+  - NPDevRuntimeHost/build.gradle
+  - NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/RuntimeControllerAllowlistConfig.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/api/internal/SemanticBehaviorWriteBackController.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackService.java
+  - NPDevEditor/ui-react/src/promptHistoryData.ts
+  - scripts/quality/run-runtime-surface-evidence.ps1
+detail: |
+  Not fixed here -- filed to make the gap visible and durable, per ANALYSIS.md E2's own "report
+  before fixing" instruction. Three independent follow-ups this item leaves open, each a separate
+  judgment call outside this task's scope (editor/ANALYSIS.md's E1/§6 only budgeted a decision for
+  structural-writeback):
+
+  (a) Decide whether semantic-behavior-writeback should be promoted into allowedControllers/
+  supportedCoreServiceComponents (ship it for real) or the promptHistoryData.ts UI source should stop
+  presenting it as available by default (same "finish or delete" choice E1 made for structural,
+  applied to this pair instead) -- a product call, not a mechanical fix.
+  (b) If promoted, applyMutationToWorkspace's write-only workspace file needs an actual consumer (or
+  needs replacing with a real mutation into the model/flow the running kernel reads) before "EXECUTED"
+  is a true claim.
+  (c) The manifest's `deferredControllers`/`nonDefaultServicePatterns` + `surface-profile=non-default`
+  runtime toggle is currently unreachable for any class the gradle source-exclusion also strips
+  (i.e. today, for every deferred controller/service) -- if the intent is genuinely "toggle back on
+  at runtime for a non-default profile", the gradle exclusion needs to consult deferredControllers
+  too (or the toggle's docs/tests should say plainly it only ever applies within RuntimeHost's own
+  test suite, never to a generated app).
