@@ -38,7 +38,9 @@ These are the files most often edited; reading any one whole burns 40–100k tok
 against disk by `scripts/quality/check-record-surfaces.py` (±25% tolerance) — if this list drifts, that
 gate fails, so it should stay accurate without needing a manual re-audit:
 
-- `NPDevGenerator/.../npdev-templates/static-react/assets/app.js` (407 KB) — **generated bundle, ignore entirely**
+- `NPDevGenerator/.../npdev-templates/static-react/assets/app.js` (141 KB; sibling chunks
+  `AuthoringApp.js`/`ReactWorkbenchApp.js` in the same `assets/` dir) — **generated bundle, ignore
+  entirely**
 - `NPDevGenerator/.../npdev-templates/business-ui-app.mustache` (169 KB)
 - `NPDevKernel/adapters/expression-cel/.../GeneratedCrudRuntimeSupport.java` (158 KB)
 - `NPDevRuntimeHost/.../db/SchemaLifecycleExecutor.java` (138 KB)

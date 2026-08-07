@@ -47,7 +47,7 @@ export default function PromptHistoryPanel(): JSX.Element {
         <div>
           <h2 style={{ marginTop: 0, marginBottom: 8 }}>Prompt History</h2>
           <p style={{ margin: 0, color: "#555" }}>
-            Previous structural and semantic behavior prompts submitted through runtime write-back APIs.
+            Previous semantic behavior prompts submitted through the runtime write-back API.
           </p>
         </div>
 

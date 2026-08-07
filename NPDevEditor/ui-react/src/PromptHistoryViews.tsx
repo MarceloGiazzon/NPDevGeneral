@@ -6,7 +6,6 @@ type PromptHistorySummaryProps = {
 };
 
 export function PromptHistorySummary({ records }: PromptHistorySummaryProps): JSX.Element {
-  const structuralCount = records.filter((record) => record.sourceId === "structural").length;
   const resultCount = records.filter((record) => record.result.canonicalizationPlan || record.result.execution).length;
   const latestRecord = records[0] ?? null;
 
@@ -14,8 +13,6 @@ export function PromptHistorySummary({ records }: PromptHistorySummaryProps): JS
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
       <SummaryCard label="Total prompts" value={records.length} />
       <SummaryCard label="Results" value={resultCount} />
-      <SummaryCard label="Structural" value={structuralCount} />
-      <SummaryCard label="Semantic behavior" value={records.length - structuralCount} />
       <article style={{ border: "1px solid #d0d7de", borderRadius: 8, padding: 12, background: "#fff" }}>
         <strong>Latest</strong>
         <div style={{ fontWeight: 700, marginTop: 6 }}>{latestRecord?.requestType ?? "-"}</div>

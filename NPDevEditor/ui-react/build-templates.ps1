@@ -43,7 +43,9 @@ $distDir = if ([string]::IsNullOrWhiteSpace($env:NPDEV_UI_DIST_DIR)) {
   $env:NPDEV_UI_DIST_DIR
 }
 $nodeModulesDir = Join-Path $uiRoot "node_modules"
-$templateDir = Join-Path $gptRoot "generator\src\main\resources\npdev-templates\static-react"
+$npdevTemplatesDir = Join-Path $sourceRoot "NPDevGenerator\generator\src\main\resources\npdev-templates"
+$templateDir = Join-Path $npdevTemplatesDir "static-react"
+$manifestPath = Join-Path $npdevTemplatesDir "static-react-manifest.json"
 
 if (-not (Test-Path (Join-Path $uiRoot "package.json"))) {
   throw "package.json not found in ui-react root: $uiRoot"
@@ -95,7 +97,25 @@ foreach ($relativePath in $required) {
   }
 }
 
+# Vite code-splits into a variable, build-dependent set of chunk files (e.g. AuthoringApp.js,
+# ReactWorkbenchApp.js -- lazy-loaded from app.js, not referenced by index.html at all). The
+# generator's RuntimeApiEmitter.emitOptionalReactUiAssets() used to copy a hardcoded 3-file list
+# into every generated app's static resources, which silently dropped every chunk beyond
+# index.html/app.js/app.css the moment this build started splitting -- a real app would 404 the
+# instant a user opened the authoring or workbench surface. This manifest is the fix: every file
+# actually in $templateDir, so the emitter can copy the real set instead of a stale guess.
+$manifestEntries = Get-ChildItem -Path $templateDir -Recurse -File |
+  ForEach-Object { ($_.FullName.Substring($templateDir.Length + 1)) -replace '\\', '/' } |
+  Sort-Object
+
+# Built by hand rather than `ConvertTo-Json` on the array directly: that cmdlet collapses a
+# single-element array to a bare JSON string unless `-AsArray` is available, which Windows
+# PowerShell 5.1 (as opposed to pwsh 7+) does not have -- this stays correct on either.
+$manifestJson = "[`n" + (($manifestEntries | ForEach-Object { "  " + ($_ | ConvertTo-Json) }) -join ",`n") + "`n]`n"
+Set-Content -Path $manifestPath -Value $manifestJson -Encoding utf8NoBOM -NoNewline
+
 Write-Host "[react-templates] Export complete: $templateDir"
+Write-Host "[react-templates] Wrote asset manifest ($($manifestEntries.Count) file(s)): $manifestPath"
 
 if (-not $KeepGenerated) {
   Write-Host "[react-templates] Cleaning transient npm outputs"
