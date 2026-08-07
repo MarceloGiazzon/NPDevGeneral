@@ -318,6 +318,48 @@ else
 
   if [ "$UP" = "1" ]; then
     pass "app-responds on :$APP_PORT"
+
+    # editor/ANALYSIS.md E4: the editor ships inside every generated app at /npdev-ui-react/ --
+    # a broken screen there is a first-impression defect (the Manager's own hand-off is "open
+    # your running app"), so prove it is actually reachable rather than trusting that it compiled.
+    EDITOR_HTML=/work/editor-index.html
+    # -L: /npdev-ui-react/ 302-redirects to /npdev-ui-react/index.html (UiRedirectController).
+    EDITOR_STATUS=$(curl -sSL -o "$EDITOR_HTML" -w '%{http_code}' "http://localhost:$APP_PORT/npdev-ui-react/" 2>/dev/null)
+    if [ "$EDITOR_STATUS" = "200" ] && grep -q 'assets/app\.js' "$EDITOR_HTML"; then
+      pass "editor responds at /npdev-ui-react/ and references its own bundle"
+    else
+      fail "editor responds at /npdev-ui-react/ and references its own bundle" \
+           "HTTP status was '$EDITOR_STATUS', or the page did not reference assets/app.js" \
+           "see $EDITOR_HTML"
+    fi
+
+    # A 200 on index.html proves nothing about the OTHER shipped files -- Vite code-splits into a
+    # variable number of chunks (e.g. AuthoringApp.js, ReactWorkbenchApp.js) that index.html never
+    # references directly (they're lazy-loaded from app.js only once a user opens that surface), so
+    # a stale/incomplete generator copy step can drop one and still pass the check above. Read the
+    # manifest the SOURCE checkout says it shipped (written by build-templates.ps1, consumed by
+    # RuntimeApiEmitter.emitOptionalReactUiAssets()) and probe every one of those files for real,
+    # rather than trusting index.html's own text.
+    EDITOR_MANIFEST="$SRC/NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json"
+    if [ -f "$EDITOR_MANIFEST" ]; then
+      EDITOR_ASSET_FAILURES=""
+      for asset in $(python3 -c "import json,sys; print('\n'.join(json.load(open(sys.argv[1]))))" "$EDITOR_MANIFEST"); do
+        ASSET_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' "http://localhost:$APP_PORT/npdev-ui-react/$asset" 2>/dev/null)
+        if [ "$ASSET_STATUS" != "200" ]; then
+          EDITOR_ASSET_FAILURES="$EDITOR_ASSET_FAILURES $asset=$ASSET_STATUS"
+        fi
+      done
+      if [ -z "$EDITOR_ASSET_FAILURES" ]; then
+        pass "editor: every manifested asset resolves (not just index.html)"
+      else
+        fail "editor: every manifested asset resolves (not just index.html)" \
+             "non-200 for:$EDITOR_ASSET_FAILURES" \
+             "check RuntimeApiEmitter.emitOptionalReactUiAssets() actually copied everything the manifest lists"
+      fi
+    else
+      fail "editor: every manifested asset resolves (not just index.html)" \
+           "no manifest at $EDITOR_MANIFEST -- cannot know what the build actually shipped"
+    fi
   else
     fail "app-responds on :$APP_PORT" \
          "no HTTP response within 120s" \
