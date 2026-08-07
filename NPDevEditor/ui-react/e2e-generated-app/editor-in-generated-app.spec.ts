@@ -20,6 +20,63 @@ test("workbench shell loads at the real /npdev-ui-react/ base path", async ({ pa
   await expect(page.getByRole("button", { name: "Prompt History" })).toBeVisible();
 });
 
+// REG-139: on a FRESH boot, MODEL_EDITOR_DRAFT/RULE_EDITOR_DRAFT/ORCHESTRATION_EDITOR_DRAFT are
+// all null (plain static fields, never persisted) -- readDraftOrModel used to fall back to the
+// compiled model verbatim, a shape the model editor's default tab crashed on before painting
+// anything, with no error boundary to contain it. This asserts REAL content for the default tab
+// (not just the outer shell -- the shell alone was not proof, since a page-load failure this
+// specific bug does NOT even necessarily fail the outer header if only assessed loosely) plus the
+// other two panels the same fallback served, which is what a 200-on-index.html-only harness check
+// would never have caught.
+test("all three editor panels render real content on a genuinely fresh boot, not a blank mount", async ({ page }) => {
+  await page.goto("/npdev-ui-react/");
+
+  await expect(page.getByRole("heading", { name: "NPDev React Workbench" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visual Model Editor" })).toBeVisible();
+  await expect(page.getByText(/\d+ concepts/)).toBeVisible();
+
+  const ruleDraftResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/admin/model/rules/draft") && response.request().method() === "GET"
+  );
+  await page.getByRole("button", { name: "Rule Editor" }).click();
+  await expect(page.getByRole("heading", { name: "Visual Rule Editor" })).toBeVisible();
+  expect((await ruleDraftResponse).status()).toBe(200);
+
+  await page.getByRole("button", { name: "Orchestration Editor" }).click();
+  await expect(page.getByRole("heading", { name: "Visual Orchestration Editor" })).toBeVisible();
+  await expect(page.getByText("Flow name")).toBeVisible();
+});
+
+// REG-139 layer 3: layer 2 (npdevClient.ts) only validates the TOP-LEVEL draft shape (namespace/
+// version strings, entities as an array) -- it deliberately does not re-implement full schema
+// validation of every nested entity, so a response with a well-shaped top level but a malformed
+// entity (missing `fields`) still reaches ModelEditorPanel's render and throws at
+// `selectedConcept.fields.map(...)`. This is exactly the class of defect layer 3's error boundary
+// exists for: one layers 1+2 don't (and shouldn't have to) catch. Proves the boundary contains the
+// failure to the one panel while the rest of the shell -- header, tab navigation -- stays usable.
+test("a malformed draft entity crashes only the model editor panel, not the whole shell", async ({ page }) => {
+  await page.route("**/api/admin/model/editor/draft", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ namespace: "broken", version: "1", entities: [{ name: "Broken" }] })
+    });
+  });
+
+  await page.goto("/npdev-ui-react/");
+
+  await expect(page.getByRole("heading", { name: "Model Editor failed to render" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "NPDev React Workbench" })).toBeVisible();
+
+  await page.unroute("**/api/admin/model/editor/draft");
+  await page.getByRole("button", { name: "Rule Editor" }).click();
+  await expect(page.getByRole("heading", { name: "Visual Rule Editor" })).toBeVisible();
+});
+
 test("prompt history tab makes a real REST round-trip against the running app", async ({ page }) => {
   await page.goto("/npdev-ui-react/");
 

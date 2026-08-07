@@ -8,6 +8,7 @@ import type {
   UiModelResponse
 } from "../types";
 import { withApiKeyHeaders } from "./apiKey";
+import { emptyRuleEditorDraft } from "../ruleEditorDraft";
 
 function jsonHeaders(): Headers {
   return withApiKeyHeaders({
@@ -164,8 +165,46 @@ export async function fetchCorrelationTimeline(correlationId: string, limit = 50
   return toTimelineItems(response);
 }
 
+// REG-139 layer 2: a TypeScript type assertion (`get<ModelEditorDraft>(...)`) proves nothing at
+// runtime -- it is a compile-time claim about data that arrives over HTTP from another process,
+// and it was simply false here (the pre-fix backend served the compiled model verbatim on a fresh
+// boot). These guards validate the shape at the fetch boundary itself, independent of whatever a
+// given panel does with the result, and fall back to a well-formed empty draft plus a console
+// error naming the endpoint rather than letting a malformed response propagate into React state.
+function isValidModelEditorDraft(value: unknown): value is ModelEditorDraft {
+  return isRecord(value) && typeof value.namespace === "string" && typeof value.version === "string"
+    && Array.isArray(value.entities);
+}
+
+function emptyModelEditorDraft(): ModelEditorDraft {
+  return { namespace: "", version: "", entities: [] };
+}
+
+function isValidRuleEditorDraft(value: unknown): value is RuleEditorDraft {
+  return isRecord(value) && typeof value.namespace === "string" && typeof value.version === "string"
+    && Array.isArray(value.entities);
+}
+
+function isValidOrchestrationEditorDraftShape(value: unknown): boolean {
+  return isRecord(value) && Array.isArray(value.triggerRules) && Array.isArray(value.actionRules)
+    && Array.isArray(value.scheduleRules);
+}
+
+function emptyOrchestrationEditorDraft(): unknown {
+  return { name: "", triggerRules: [], actionRules: [], scheduleRules: [] };
+}
+
 export async function fetchModelEditorDraft(): Promise<ModelEditorDraft> {
-  return get<ModelEditorDraft>("/api/admin/model/editor/draft");
+  const payload = await get<unknown>("/api/admin/model/editor/draft");
+  if (isValidModelEditorDraft(payload)) {
+    return payload;
+  }
+  console.error(
+    "GET /api/admin/model/editor/draft returned a response that is not a valid ModelEditorDraft " +
+    "shape (namespace/version strings + entities array); falling back to an empty draft.",
+    payload
+  );
+  return emptyModelEditorDraft();
 }
 
 export async function saveModelEditorDraft(payload: ModelEditorDraft): Promise<ModelEditorDraft> {
@@ -177,7 +216,16 @@ export async function resetModelEditorDraft(): Promise<void> {
 }
 
 export async function fetchRuleEditorDraft(): Promise<RuleEditorDraft> {
-  return get<RuleEditorDraft>("/api/admin/model/rules/draft");
+  const payload = await get<unknown>("/api/admin/model/rules/draft");
+  if (isValidRuleEditorDraft(payload)) {
+    return payload;
+  }
+  console.error(
+    "GET /api/admin/model/rules/draft returned a response that is not a valid RuleEditorDraft " +
+    "shape (namespace/version strings + entities array); falling back to an empty draft.",
+    payload
+  );
+  return emptyRuleEditorDraft();
 }
 
 export async function saveRuleEditorDraft(payload: RuleEditorDraft): Promise<RuleEditorDraft> {
@@ -189,7 +237,17 @@ export async function resetRuleEditorDraft(): Promise<void> {
 }
 
 export async function fetchOrchestrationEditorDraft(): Promise<unknown> {
-  return get<unknown>("/api/admin/model/orchestration/draft");
+  const payload = await get<unknown>("/api/admin/model/orchestration/draft");
+  if (isValidOrchestrationEditorDraftShape(payload)) {
+    return payload;
+  }
+  console.error(
+    "GET /api/admin/model/orchestration/draft returned a response that is not a valid " +
+    "orchestration draft shape (triggerRules/actionRules/scheduleRules arrays); falling back to " +
+    "an empty draft.",
+    payload
+  );
+  return emptyOrchestrationEditorDraft();
 }
 
 export async function saveOrchestrationEditorDraft(payload: unknown): Promise<unknown> {
