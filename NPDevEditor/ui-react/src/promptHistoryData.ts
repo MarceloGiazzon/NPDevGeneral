@@ -38,13 +38,6 @@ export type PromptHistoryLoadResult = {
 
 const HISTORY_SOURCES: PromptHistorySource[] = [
   {
-    id: "structural",
-    label: "Structural",
-    requestEndpoint: "/api/admin/model/structural-writeback/history",
-    planEndpoint: "/api/admin/model/structural-writeback/canonicalization/history",
-    executionEndpoint: "/api/admin/model/structural-writeback/execution/history"
-  },
-  {
     id: "semantic-behavior",
     label: "Semantic behavior",
     requestEndpoint: "/api/admin/model/semantic-behavior-writeback/history",
