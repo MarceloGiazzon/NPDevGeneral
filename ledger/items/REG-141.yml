@@ -1,0 +1,85 @@
+id: REG-141
+title: "A custom capability (plugin:java-source) had no supported way to declare a third-party Maven dependency or a local jar -- deps-and-java/PLAN.md P3"
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-07
+closed: 2026-08-07
+verification: VERIFIED_LIVE
+surface: generator/build-assembly, schemas/config
+source: |
+  Filed directly from deps-and-java/PLAN.md's P3 (owner-authored plan, this repo), the sibling item
+  to REG-140 (P2, per-app Java level). A `plugin:java-source` custom capability compiles straight
+  into the generated app's own Gradle source set (capabilities/<name>/src/main/java/...), so it
+  automatically has access to whatever `dependencies{}` the assembled build.gradle already declares
+  -- but there was no config-driven, regeneration-safe way to ADD a new one. An app author needing a
+  library (Guava, a JSON/HTTP client, an internal local jar) had to hand-edit the assembled app's
+  build.gradle after every generate, which the platform's overwrite-on-generate regeneration model
+  silently discards on the next run -- the exact "workaround that fails regeneration-survival" the
+  plan calls out (see PLAN.md's W3.3 rationale).
+files:
+  - NPDevContract/schemas/config.schema.json
+  - NPDevContract/schemas/authoring/config.schema.json
+  - NPDevContract/dsl/resources/Schemas/config.schema.json
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/AppDependenciesEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java
+  - NPDevRuntimeHost/build.gradle.template
+  - docs/NPDEV_USER_MANUAL.md
+  - BREAKING.md
+detail: |
+  New optional `config.json` fields under `build`: `repositories[]` ({name, url}) and
+  `dependencies[]`, accepting three shapes -- a bare Maven coordinate string
+  (`"com.google.guava:guava:33.2.1-jre"`), an object `{coordinate, scope}`, or a local-jar object
+  `{jar: "libs/sample-lib.jar", scope}` (relative to the app definition directory) -- plus a
+  `{platform: "..."}` BOM shorthand. New `AppDependenciesEmitter.emit()` writes a generated
+  `npdev-dependencies.gradle` file into the assembled app root (one `implementation`/`api`/etc. line
+  per declared dependency, `implementation files('npdev-app-libs/<name>.jar')` for local jars);
+  `copyLocalJars()` copies each declared jar from the app definition's `libs/` directory into the
+  assembled app's `npdev-app-libs/` directory, with path-traversal and filename guards. A 3-line
+  `apply from:` hook was added to build.gradle.template right after its own `dependencies{}` block,
+  conditional on the generated file's existence (`if (npdevAppDeps.isFile())`) so apps with no
+  declared dependencies are completely unaffected. A generation-time collision check
+  (`collisionWarnings()`) regex-scans the materialized build.gradle for an already-present
+  `groupId:artifactId` pair and warns (does not fail) rather than silently double-declaring.
+  `capability.plugin.json` itself needs NO schema change -- a `plugin:java-source` capability already
+  compiles into the app's main source set, so it sees `npdev-dependencies.gradle`'s additions for
+  free once the toolchain resolves them.
+resolution: |
+  DONE (2026-08-07). Live-proven end-to-end via a from-scratch corpus app combining BOTH a Maven
+  dependency and a local jar, consumed from a real `plugin:java-source` capability, generated, built,
+  and booted (the same proof app used for REG-140's W3.2 case, since W3.1/W3.2/W3.3 share one app by
+  design per the plan's verification section):
+
+  1. `definition/config.json` declared `build.dependencies: ["com.google.guava:guava:33.2.1-jre",
+     {"jar": "libs/sample-lib.jar", "scope": "implementation"}]`. Generation produced
+     `npdev-dependencies.gradle` with both lines and copied `sample-lib.jar` into
+     `npdev-app-libs/sample-lib.jar`. `unzip -l` on the assembled bootJar confirmed both
+     `BOOT-INF/lib/guava-33.2.1-jre.jar` and `BOOT-INF/lib/sample-lib.jar` present on the runtime
+     classpath.
+  2. The proof capability's `run()` method calls `com.google.common.collect.Lists.newArrayList(...)`
+     (Guava) and `com.w3proof.lib.SampleLib.greet()` (the local jar) as its first two statements,
+     unconditionally, before building its result -- meaning any missing dependency would surface as
+     a `NoClassDefFoundError`/`ClassNotFoundException` at invocation, not silently.
+  3. Hit via a real REST create request against the booted app (POST /api/probes, 201 Created), with
+     the server log showing `NPDEV-PLUGIN-SANDBOX :: phase=finish status=SUCCESS` for the
+     `plugin:java-source` capability invocation -- proving both the Maven dependency and the local
+     jar were genuinely reachable and executed without error at runtime, not merely present on disk.
+  4. Regeneration-survival: regenerated the app a second time (config unchanged) and rebuilt --
+     `npdev-dependencies.gradle` and `npdev-app-libs/sample-lib.jar` were both freshly regenerated
+     with identical, correct content, and the rebuild succeeded (compileJava FROM-CACHE).
+
+  Two real model-authoring mistakes were found and fixed while building the proof app (not bugs in
+  P3 itself, but worth recording since they cost most of the live-proof time): (a) a `mode: create`
+  flow requires a `persistence` capability BOTH declared in the model's own `capabilities[]` array
+  AND bound in `bindings[]` -- declaring only the binding produces a
+  "Binding references unknown capability: persistence" boot-time failure; (b) a `db.definition.json`
+  with `engine: "InMemory"` combined with the `step0` Spring profile caused the persistence
+  capability dispatcher to silently resolve to `persistence-postgres-plugin` (which "succeeds" as a
+  no-op without a real Postgres instance) instead of the in-memory adapter, producing a
+  `"Create flow ... did not persist id ..."` runtime error; switching to `engine: "H2Local"` +
+  `dev,trial` profile (matching NPDevSamples/npdev-canary's known-working combination) resolved it.
+  Neither finding is filed as a separate ledger item -- both are model-authoring pitfalls in a
+  scratch proof app, not platform defects.
+
+  Generator gate (`:generator` module) compiled and passed with AppDependenciesEmitter and its
+  GeneratorMain wiring included.
