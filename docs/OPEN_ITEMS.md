@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**140 item(s) migrated: 1 open/partial, 139 done.**
+**142 item(s) migrated: 1 open/partial, 141 done.**
 
 ## Open / partial
 
@@ -90,7 +90,7 @@ genuinely fresh app (no prior draft) would have caught this before a real user d
 exactly the "no end-to-end proof it works inside a generated app" gap editor/ANALYSIS.md's own
 §4 flagged as weak, now with a concrete crash behind it.
 
-## Done (139)
+## Done (141)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -142,6 +142,8 @@ exactly the "no end-to-end proof it works inside a generated app" gap editor/ANA
 | REG-137 | NPDevRuntimeHost/build.gradle.template's resolveNpdevRuntimeLibsDir checked the gradle property before the NPDEV_RUNTIMEHOST_LIBS_DIR env var, so REG-128's generation-time-baked gradle.properties default permanently shadowed any build-time env var override -- breaking 3 generator packaged-app runtime proof tests on Linux CI | BUG | MEDIUM | DONE | 2026-08-05 |
 | REG-138 | semantic-behavior-writeback (controller+service+canonicalization) is compiled out of EVERY generated app by the supported-runtime-surface allowlist (deferredControllers), so all 5 /api/admin/model/semantic-behavior-writeback[...] endpoints 404 by default -- and even the one directly-executable mutation only appends to a side JSON file nothing reads back | GAP | MEDIUM | DONE | 2026-08-06 |
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
+| REG-140 | Every generated app was hard-pinned to Java 17 (build.gradle.template's toolchain literal), with no per-app way to request a newer JDK -- deps-and-java/PLAN.md P2 | GAP | MEDIUM | DONE | 2026-08-07 |
+| REG-141 | A custom capability (plugin:java-source) had no supported way to declare a third-party Maven dependency or a local jar -- deps-and-java/PLAN.md P3 | GAP | MEDIUM | DONE | 2026-08-07 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
 | REG-16 | The other 23 launch items had zero adversarial review | PROCESS | HIGH | DONE | 2026-07-21 |
 | REG-16-resid | Adversarial review of the other ~21 launch surfaces (6-round programme) | PROCESS | HIGH | DONE | 2026-07-24 |
@@ -2925,6 +2927,104 @@ standalone in a fresh worktree; the doc's claimed 400 status for an invariant vi
 422.
 
 *Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-14`
+
+### REG-140 — Every generated app was hard-pinned to Java 17 (build.gradle.template's toolchain literal), with no per-app way to request a newer JDK -- deps-and-java/PLAN.md P2
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-07)
+**Verification:** VERIFIED_LIVE
+**Source:** Filed directly from deps-and-java/PLAN.md's P2 (owner-authored plan, this repo). Before this
+change, NPDevRuntimeHost/build.gradle.template's `java { toolchain { languageVersion =
+JavaLanguageVersion.of(17) } }` was a hardcoded literal copied byte-for-byte into every generated
+FinalApp (FinalAppAssembler#materializeRootTemplate's substitution-free convention) -- there was
+no model/config field, no CLI flag, and no generator code path that could change it. An app
+wanting a library or language feature that needs Java 21 (or any non-17 JDK) had no way to ask for
+one without hand-editing the assembled app's build.gradle after every single regeneration, which
+the platform's own regeneration model (idempotent, overwrite-on-generate) treats as data loss on
+the next regenerate.
+
+**Surface:** `generator/build-assembly, schemas/config, cli/doctor, manager/runtime`
+**Files:**
+- `NPDevContract/schemas/config.schema.json`
+- `NPDevContract/schemas/authoring/config.schema.json`
+- `NPDevContract/dsl/resources/Schemas/config.schema.json`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java`
+- `NPDevGenerator/generator/src/test/java/com/npdev/generator/assembly/FinalAppAssemblerTest.java`
+- `NPDevGenerator/generator/src/test/java/com/npdev/generator/GeneratorMainJavaVersionResolutionTest.java`
+- `NPDevRuntimeHost/build.gradle.template`
+- `NPDevRuntimeHost/settings.gradle.template`
+- `NPDevCli/npdev_cli.py`
+- `NPDevManager/ui/app.js`
+- `NPDevManager/fixtures/doctor-wrong-java.json`
+- `NPDevManager/fixtures/doctor-acceptable-newer-java.json`
+- `NPDevManager/src/npdev.rs`
+- `NPDevManager/src/runtime.rs`
+- `docs/NPDEV_USER_MANUAL.md`
+- `BREAKING.md`
+
+New optional `config.json` field `build.javaVersion` (enum 17|21, default 17 when omitted --
+existing apps and configs are unaffected). Threaded generator-side: GeneratorMain.resolveJavaVersion()
+validates against SUPPORTED_APP_JAVA_VERSIONS and passes it into FinalAppAssembler.Options
+(normalized to 17 if <=0); FinalAppAssembler.appendAppJavaVersionDefault() appends
+`npdevAppJavaVersion=<n>` to the assembled app's gradle.properties (append-only, matching the
+existing appendRuntimeHostLibsDirDefault precedent). build.gradle.template's toolchain block reads
+that property at build time instead of a literal:
+`JavaLanguageVersion.of((providers.gradleProperty('npdevAppJavaVersion').orNull ?: '17') as Integer)`.
+A new settings.gradle.template registers the `org.gradle.toolchains.foojay-resolver-convention`
+plugin (0.8.0) so a machine without a matching local JDK auto-provisions one via the Adoptium API
+instead of failing -- opt-out is Gradle's own `-Dorg.gradle.java.installations.auto-download=false`
+property (a conditional plugin registration is not syntactically legal in Gradle's settings.gradle
+DSL, confirmed live). NPDevRuntimeHost/build.gradle itself (the platform's own module, not the
+template) stays pinned at 17 by design -- this field only affects the generated app's own toolchain.
+
+npdev doctor's Java check changed from an exact `== 17` pass/fail to a 4-way branch: missing/
+unparseable -> fail, `< 17` -> fail, `== 17` -> pass, `> 17` -> warn (not fail) with an explanation
+that the foojay resolver can still provision 17 for apps that need it. NPDevManager mirrored the
+same relaxation (label "Java 17" -> "Java 17+", `resolve_jdk17()` generalized to
+`resolve_jdk(major: u32)`, a new `doctor-acceptable-newer-java` fixture for the warn case).
+
+### REG-141 — A custom capability (plugin:java-source) had no supported way to declare a third-party Maven dependency or a local jar -- deps-and-java/PLAN.md P3
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-07)
+**Verification:** VERIFIED_LIVE
+**Source:** Filed directly from deps-and-java/PLAN.md's P3 (owner-authored plan, this repo), the sibling item
+to REG-140 (P2, per-app Java level). A `plugin:java-source` custom capability compiles straight
+into the generated app's own Gradle source set (capabilities/<name>/src/main/java/...), so it
+automatically has access to whatever `dependencies{}` the assembled build.gradle already declares
+-- but there was no config-driven, regeneration-safe way to ADD a new one. An app author needing a
+library (Guava, a JSON/HTTP client, an internal local jar) had to hand-edit the assembled app's
+build.gradle after every generate, which the platform's overwrite-on-generate regeneration model
+silently discards on the next run -- the exact "workaround that fails regeneration-survival" the
+plan calls out (see PLAN.md's W3.3 rationale).
+
+**Surface:** `generator/build-assembly, schemas/config`
+**Files:**
+- `NPDevContract/schemas/config.schema.json`
+- `NPDevContract/schemas/authoring/config.schema.json`
+- `NPDevContract/dsl/resources/Schemas/config.schema.json`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/AppDependenciesEmitter.java`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java`
+- `NPDevRuntimeHost/build.gradle.template`
+- `docs/NPDEV_USER_MANUAL.md`
+- `BREAKING.md`
+
+New optional `config.json` fields under `build`: `repositories[]` ({name, url}) and
+`dependencies[]`, accepting three shapes -- a bare Maven coordinate string
+(`"com.google.guava:guava:33.2.1-jre"`), an object `{coordinate, scope}`, or a local-jar object
+`{jar: "libs/sample-lib.jar", scope}` (relative to the app definition directory) -- plus a
+`{platform: "..."}` BOM shorthand. New `AppDependenciesEmitter.emit()` writes a generated
+`npdev-dependencies.gradle` file into the assembled app root (one `implementation`/`api`/etc. line
+per declared dependency, `implementation files('npdev-app-libs/<name>.jar')` for local jars);
+`copyLocalJars()` copies each declared jar from the app definition's `libs/` directory into the
+assembled app's `npdev-app-libs/` directory, with path-traversal and filename guards. A 3-line
+`apply from:` hook was added to build.gradle.template right after its own `dependencies{}` block,
+conditional on the generated file's existence (`if (npdevAppDeps.isFile())`) so apps with no
+declared dependencies are completely unaffected. A generation-time collision check
+(`collisionWarnings()`) regex-scans the materialized build.gradle for an already-present
+`groupId:artifactId` pair and warns (does not fail) rather than silently double-declaring.
+`capability.plugin.json` itself needs NO schema change -- a `plugin:java-source` capability already
+compiles into the app's main source set, so it sees `npdev-dependencies.gradle`'s additions for
+free once the toolchain resolves them.
 
 ### REG-15 — LNCH-23: trademark clearance N/A, release tag cut
 
