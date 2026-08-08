@@ -305,9 +305,7 @@ class DialectConformanceTierBTest {
         assumeTrue(DialectTestSupport.enforces(dialect, DialectTestSupport.Behaviour.DDL_TRANSACTIONALITY),
                 DialectTestSupport.whyNotVerified(dialect, DialectTestSupport.Behaviour.DDL_TRANSACTIONALITY));
         try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
-            // v1: a table WITH ROWS. The rows are what make step 2 fail on every engine -- adding a
-            // NOT NULL column with no default to an empty table succeeds, which would make this
-            // vector prove nothing.
+            // v1: a table WITH ROWS -- the state that makes a migration failure matter at all.
             execute(connection, "CREATE TABLE halfapply (id VARCHAR(36) PRIMARY KEY)");
             execute(connection, "INSERT INTO halfapply (id) VALUES ('A')");
 
@@ -315,7 +313,23 @@ class DialectConformanceTierBTest {
             execute(connection, "ALTER TABLE halfapply ADD step_one INT");
             boolean stepTwoFailed = false;
             try {
-                execute(connection, "ALTER TABLE halfapply ADD step_two INT NOT NULL");
+                // STEP 2 RE-ADDS STEP 1'S COLUMN, and the reason is a finding in its own right.
+                //
+                // The obvious step 2 -- "a NOT NULL column with no default, on a table with rows" --
+                // is what storage/FULL_SUPPORT_PLAN.md §5 proposed, on the stated assumption that it
+                // "must fail everywhere". Measured against a real MySQL 8.4 in CI run 31270440804:
+                // IT SUCCEEDS. MySQL fills the type's implicit default (0 for INT) instead of
+                // refusing, where Postgres and SQL Server reject the statement outright.
+                //
+                // A version of this vector without the guard below would have gone GREEN on MySQL
+                // having measured nothing at all: no failure means no half-application to observe,
+                // and the catalog assertions would then have been checking an ordinary successful
+                // migration. That is the exact "a fix that silently does nothing" shape this plan
+                // warns about, arriving in the test rather than in the fix.
+                //
+                // A duplicate column name fails on all four engines, needs no data-dependent
+                // behaviour, and -- usefully -- can only fail if step 1 really executed.
+                execute(connection, "ALTER TABLE halfapply ADD step_one INT");
             } catch (SQLException expected) {
                 stepTwoFailed = true;
             }
@@ -327,10 +341,12 @@ class DialectConformanceTierBTest {
             }
             connection.setAutoCommit(true);
 
+            // THE GUARD THAT EARNED ITS KEEP. It is what turned "MySQL accepts a NOT NULL column
+            // with no default" from a silent green into a named finding.
             assertTrue(stepTwoFailed,
-                    dialect.name() + ": step 2 (a NOT NULL column with no default, on a table with "
-                    + "rows) was expected to FAIL on every engine. It did not, so this vector measured "
-                    + "nothing -- the probe itself needs fixing before its result means anything.");
+                    dialect.name() + ": step 2 was expected to FAIL on every engine. It did not, so "
+                    + "there was no half-application to observe and this vector measured NOTHING -- "
+                    + "the probe itself needs fixing before its result means anything.");
 
             Set<String> columns = columnsOf(connection, dialect, "halfapply");
             boolean transactional = dialect.supports(StorageCapability.DDL_IN_TRANSACTION);

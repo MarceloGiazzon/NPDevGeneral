@@ -51,6 +51,14 @@ const CHECK_NAMES = {
   "ai-knowledge-index": "AI knowledge index",
   "docker-present": "Docker",
   "pwsh-present": "PowerShell 7",
+  // W5.3 requirement 3: the database checks sit on the Ready screen beside the Java/Python ones.
+  // They only appear when doctor found an app to check -- a machine with no NPDev app on it is not
+  // a broken machine, and rows that would always read "n/a" are noise.
+  "database-engine-support": "Database engine",
+  "database-reachable": "Database reachable",
+  "database-credentials": "Database credentials",
+  "database-privileges": "Database privileges",
+  "database-charset": "Database charset",
 };
 
 function markFor(status) {
@@ -288,14 +296,86 @@ async function refreshAppList() {
   });
 }
 
+// ---------------------------------------------------------------------------------------------
+// M5 + W5.3: the engine picker.
+//
+// Every option, default port, summary and warning below comes from `npdev engines --json`. Nothing
+// about engines is written in this file, deliberately: the Manager's job is to be a window onto the
+// CLI, and a hardcoded list here would be a second source of truth that goes stale exactly when it
+// matters -- the day an engine stops (or starts) being supported.
+// ---------------------------------------------------------------------------------------------
+
+let engineCatalog = [];
+
+async function loadEngines() {
+  const select = document.getElementById("new-app-engine");
+  try {
+    const listing = await invoke("list_engines");
+    engineCatalog = listing.engines || [];
+  } catch (err) {
+    // No installed NPDev version yet is the ordinary case on a fresh machine. Say so instead of
+    // silently offering an empty dropdown, which reads as "this app has no database options".
+    select.innerHTML = `<option value="">(install an NPDev version first)</option>`;
+    document.getElementById("new-app-engine-summary").textContent = String(err);
+    return;
+  }
+  select.innerHTML = engineCatalog
+    .map(
+      (e) =>
+        `<option value="${escapeHtml(e.key)}">${escapeHtml(e.externalName)}${
+          e.status === "supported" ? "" : "  (experimental)"
+        }</option>`
+    )
+    .join("");
+  applyEngineSelection();
+}
+
+function applyEngineSelection() {
+  const key = document.getElementById("new-app-engine").value;
+  const engine = engineCatalog.find((e) => e.key === key);
+  const summaryEl = document.getElementById("new-app-engine-summary");
+  const warningEl = document.getElementById("new-app-engine-warning");
+  const connectionEl = document.getElementById("new-app-connection");
+  if (!engine) {
+    summaryEl.textContent = "";
+    warningEl.hidden = true;
+    connectionEl.hidden = true;
+    return;
+  }
+  summaryEl.textContent = engine.summary || "";
+  // The honesty notice is composed by the CLI, not here, so the wording a user sees in the Manager
+  // and the wording they see in a terminal are the same sentence.
+  warningEl.textContent = engine.honestyNotice || "";
+  warningEl.hidden = !engine.honestyNotice;
+  connectionEl.hidden = !engine.needsServer;
+  if (engine.needsServer) {
+    const portEl = document.getElementById("new-app-db-port");
+    portEl.placeholder = String(engine.defaultPort || "");
+  }
+}
+
+document.getElementById("new-app-engine").addEventListener("change", applyEngineSelection);
+
 document.getElementById("new-app-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const name = document.getElementById("new-app-name").value.trim();
   const parentDir = document.getElementById("new-app-parent").value.trim();
+  const engine = document.getElementById("new-app-engine").value || null;
   const statusEl = document.getElementById("new-app-status");
+  const portRaw = document.getElementById("new-app-db-port").value.trim();
   statusEl.textContent = "creating…";
   try {
-    await invoke("create_app", { name, parentDir });
+    await invoke("create_app", {
+      name,
+      parentDir,
+      engine,
+      // Blank fields are sent as null rather than "" so the CLI's own per-engine defaults stay in
+      // charge -- an empty string would override a good default with nothing.
+      dbHost: document.getElementById("new-app-db-host").value.trim() || null,
+      dbPort: portRaw ? parseInt(portRaw, 10) : null,
+      dbUser: document.getElementById("new-app-db-user").value.trim() || null,
+      dbPassword: document.getElementById("new-app-db-password").value || null,
+    });
     statusEl.textContent = "created.";
     await refreshAppList();
   } catch (err) {
@@ -445,5 +525,6 @@ async function refreshVersionsScreen() {
   await refreshPythonStatus();
   await refreshTagList(false);
   await refreshAppList();
+  await loadEngines();
   await refreshVersionsScreen();
 })();

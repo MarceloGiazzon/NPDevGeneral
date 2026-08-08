@@ -77,6 +77,26 @@
       <form id="new-app-form">
         <label>Name <input id="new-app-name" required placeholder="my-app" /></label>
         <label>Folder <input id="new-app-parent" required placeholder="D:\Apps" /></label>
+        <!--
+          W5.3: the options are filled from `npdev engines --json` at load time, never written here.
+          A hardcoded copy would be free to drift the day an engine's support status changes, and the
+          status is the entire reason this control exists rather than defaulting silently.
+        -->
+        <label>Database <select id="new-app-engine"></select></label>
+        <p id="new-app-engine-summary" class="status-line"></p>
+        <!--
+          Shown ONLY for an engine the platform does not yet claim to support, and shown before the
+          Create button rather than after the fact. BREAKING.md saying "selectable but NOT supported"
+          in a changelog is not the user being told.
+        -->
+        <p id="new-app-engine-warning" class="engine-warning" hidden></p>
+        <!-- Revealed only for engines that actually connect somewhere. -->
+        <div id="new-app-connection" hidden>
+          <label>Host <input id="new-app-db-host" placeholder="localhost" /></label>
+          <label>Port <input id="new-app-db-port" type="number" placeholder="5432" /></label>
+          <label>User <input id="new-app-db-user" placeholder="postgres" /></label>
+          <label>Password <input id="new-app-db-password" type="password" /></label>
+        </div>
         <button type="submit">Create</button>
       </form>
       <p id="new-app-status" class="status-line"></p>

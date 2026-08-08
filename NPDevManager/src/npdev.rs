@@ -155,16 +155,67 @@ pub async fn run_doctor(python_exe: &Path, npdev_cli: &Path, java_home: Option<&
 // init
 // ---------------------------------------------------------------------------------------------
 
+/// The database choices, and the honest status of each, **read from the CLI**.
+///
+/// storage/FULL_SUPPORT_PLAN.md W5.3, requirement 1: the engine picker is "driven by the CLI's
+/// engine list, not a hardcoded copy". A copy here would be free to drift the day an engine's status
+/// changes -- and the status is the whole point, because BREAKING.md's "selectable but NOT
+/// supported" must reach the user AT THE POINT OF CHOICE. A dropdown that silently offers MySQL is
+/// the silent-answer defect in UI form.
+pub async fn run_engines(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+) -> Result<Value, String> {
+    let output = build_command(python_exe, npdev_cli, &["engines", "--json"], java_home, None)
+        .output()
+        .await
+        .map_err(|e| format!("could not list engines: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("npdev engines failed: {stderr}"));
+    }
+    parse_single_json(&output.stdout, &output.stderr, "engines")
+}
+
+/// Scaffold an app. `engine` and the connection fields are optional so the no-engine call is
+/// byte-identical to what it always was -- the CLI's own default is `h2local`, which is what this
+/// used to produce implicitly.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_init(
     python_exe: &Path,
     npdev_cli: &Path,
     java_home: Option<&str>,
     target_dir: &str,
+    engine: Option<&str>,
+    db_host: Option<&str>,
+    db_port: Option<u16>,
+    db_user: Option<&str>,
+    db_password: Option<&str>,
 ) -> Result<Value, String> {
     if fake_mode() {
         return serde_json::from_str(FIXTURE_INIT_RESULT).map_err(|e| e.to_string());
     }
-    let output = build_command(python_exe, npdev_cli, &["init", target_dir, "--json"], java_home, None)
+    let mut args: Vec<String> = vec!["init".into(), target_dir.into(), "--json".into()];
+    if let Some(value) = engine {
+        args.push("--engine".into());
+        args.push(value.into());
+    }
+    // Each connection field is forwarded only when the user actually typed one, so the CLI's own
+    // per-engine defaults stay in charge. Passing an empty --db-host would override a good default
+    // with nothing, which is the shape of bug where a UI "helpfully" sends blanks.
+    for (flag, value) in [("--db-host", db_host), ("--db-user", db_user), ("--db-password", db_password)] {
+        if let Some(value) = value.filter(|v| !v.is_empty()) {
+            args.push(flag.into());
+            args.push(value.into());
+        }
+    }
+    if let Some(port) = db_port.filter(|p| *p > 0) {
+        args.push("--db-port".into());
+        args.push(port.to_string());
+    }
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
         .output()
         .await
         .map_err(|e| format!("could not run init: {e}"))?;
