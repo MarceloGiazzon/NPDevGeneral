@@ -11,6 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -147,8 +148,8 @@ final class SchemaDropSnapshotWriter {
 
     private static boolean isJsonColumnType(ResultSetMetaData metaData, int index) {
         try {
-            String typeName = metaData.getColumnTypeName(index);
-            return typeName != null && ("JSON".equalsIgnoreCase(typeName) || "JSONB".equalsIgnoreCase(typeName));
+            // The engine's own JSON type names, not two spellings repeated at a third call site.
+            return SqlDialects.active().isJsonColumnType(metaData.getColumnTypeName(index));
         } catch (SQLException exception) {
             return false;
         }

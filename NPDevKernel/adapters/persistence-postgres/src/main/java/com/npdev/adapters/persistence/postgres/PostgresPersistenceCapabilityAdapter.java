@@ -7,6 +7,10 @@ import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.kernel.ports.PersistenceCapabilityContract;
+import com.npdev.kernel.storage.sql.H2Dialect;
+import com.npdev.kernel.storage.sql.PostgresDialect;
+import com.npdev.kernel.storage.sql.SqlDialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import com.npdev.kernel.ports.TenantScope;
 import com.npdev.kernel.ports.TenantScopedPersistenceCapabilityContract;
 
@@ -49,6 +53,7 @@ public final class PostgresPersistenceCapabilityAdapter
     private final DataSource dataSource;
     private final CompiledModel compiledModel;
     private final Map<String, TableColumns> tableColumnsCache = new ConcurrentHashMap<>();
+    private final SqlDialect dialect;
 
     public PostgresPersistenceCapabilityAdapter(DataSource dataSource) {
         this(dataSource, null);
@@ -61,8 +66,15 @@ public final class PostgresPersistenceCapabilityAdapter
     // unenforced on this path -- confirmed live: a flow-driven update jumped a Recebimento straight
     // from its initial stage to its terminal stage, skipping two required stages, with no error.
     public PostgresPersistenceCapabilityAdapter(DataSource dataSource, CompiledModel compiledModel) {
+        this(dataSource, compiledModel, SqlDialects.active());
+    }
+
+    /** Explicit dialect, for the conformance suite and for a host that pins its engine at boot. */
+    public PostgresPersistenceCapabilityAdapter(
+            DataSource dataSource, CompiledModel compiledModel, SqlDialect dialect) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.compiledModel = compiledModel;
+        this.dialect = Objects.requireNonNull(dialect, "dialect");
     }
 
     @Override
@@ -374,7 +386,9 @@ public final class PostgresPersistenceCapabilityAdapter
         try (Connection connection = dataSource.getConnection()) {
             TableColumns tableColumns = resolveTableColumns(connection, table);
             String column = resolveCriteriaColumn(table, fieldName, tableColumns);
-            String sql = "select 1 from " + table + " where " + column + " = ? limit 1";
+            // Existence probe: any matching row answers it, so no ORDER BY and no offset.
+            String sql = dialect.rowLimited(
+                    "select 1 from " + table + " where " + column + " = ? ", 1).stripTrailing();
 
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
                 ps.setObject(1, coerceValueForColumn(column, value));
@@ -503,8 +517,8 @@ public final class PostgresPersistenceCapabilityAdapter
                 return exists(concept, field, value);
             }
             String column = resolveCriteriaColumn(table, fieldName, tableColumns);
-            String sql = "select 1 from " + table + " where " + column + " = ? and "
-                    + tableColumns.columnName(TENANT_COLUMN) + " = ? limit 1";
+            String sql = dialect.rowLimited("select 1 from " + table + " where " + column + " = ? and "
+                    + tableColumns.columnName(TENANT_COLUMN) + " = ? ", 1).stripTrailing();
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
                 ps.setObject(1, coerceValueForColumn(column, value));
                 ps.setString(2, scope.tenantId());
@@ -888,11 +902,17 @@ public final class PostgresPersistenceCapabilityAdapter
         return sb.toString();
     }
 
+    /**
+     * PRE-EXTRACTION this method WAS the dialect layer: an inline probe of the connection's product
+     * name choosing between two hand-written statements. It stays connection-driven rather than
+     * moving to {@link SqlDialects#active()} because this adapter is also used to write into a
+     * SECOND, differently-engined database during cross-engine promotion, where the app's configured
+     * engine is the wrong answer. What changed is that the statements themselves now come from the
+     * dialect, so a third engine adds no branch here.
+     */
     private static String buildUpsertSql(Connection connection, String table, List<String> columns, String idColumn) {
-        if (isH2Connection(connection)) {
-            return buildH2UpsertSql(table, columns, idColumn);
-        }
-        return buildPostgresUpsertSql(table, columns, idColumn);
+        SqlDialect connectionDialect = isH2Connection(connection) ? H2Dialect.INSTANCE : PostgresDialect.INSTANCE;
+        return connectionDialect.upsert().statementFor(table, List.of(idColumn), columns);
     }
 
     private static boolean isH2Connection(Connection connection) {
@@ -907,35 +927,6 @@ public final class PostgresPersistenceCapabilityAdapter
         } catch (SQLException ignored) {
             return false;
         }
-    }
-
-    private static String buildPostgresUpsertSql(String table, List<String> columns, String idColumn) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("insert into ").append(table).append(" (");
-        sb.append(String.join(", ", columns));
-        sb.append(") values (");
-        sb.append(String.join(", ", Collections.nCopies(columns.size(), "?")));
-        sb.append(") on conflict (").append(idColumn).append(") do update set ");
-
-        List<String> sets = new ArrayList<>();
-        for (String col : columns) {
-            if (idColumn.equalsIgnoreCase(col)) {
-                continue;
-            }
-            sets.add(col + " = excluded." + col);
-        }
-        sb.append(String.join(", ", sets));
-        return sb.toString();
-    }
-
-    private static String buildH2UpsertSql(String table, List<String> columns, String idColumn) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("merge into ").append(table).append(" (");
-        sb.append(String.join(", ", columns));
-        sb.append(") key(").append(idColumn).append(") values (");
-        sb.append(String.join(", ", Collections.nCopies(columns.size(), "?")));
-        sb.append(")");
-        return sb.toString();
     }
 
     private static Object coerceValueForColumn(String column, Object value, String knownDslType) {

@@ -7,6 +7,9 @@ import com.npdev.kernel.capability.CircuitBreakerTransitions;
 import com.npdev.kernel.capability.CircuitState;
 import com.npdev.kernel.ports.CircuitBreakerStateStore;
 
+import com.npdev.kernel.storage.sql.SqlDialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
+
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -18,9 +21,23 @@ import java.util.Objects;
 
 public class JdbcCircuitBreakerStateStore implements CircuitBreakerStateStore {
     private final DataSource dataSource;
+    private final SqlDialect dialect;
 
     public JdbcCircuitBreakerStateStore(DataSource dataSource) {
+        this(dataSource, SqlDialects.active());
+    }
+
+    /**
+     * Explicit dialect, for the conformance suite and for a host that pins its engine at boot.
+     *
+     * <p>The no-dialect constructors resolve {@link SqlDialects#active()}, which is the engine the
+     * app was GENERATED for -- not one detected from the connection. Detection would make emitted
+     * SQL depend on runtime discovery, so a misconfiguration would quietly produce different SQL
+     * instead of failing.
+     */
+    public JdbcCircuitBreakerStateStore(DataSource dataSource, SqlDialect dialect) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
+        this.dialect = Objects.requireNonNull(dialect, "dialect");
     }
 
     @Override
@@ -235,7 +252,7 @@ public class JdbcCircuitBreakerStateStore implements CircuitBreakerStateStore {
         }
         int effectiveLimit = limit <= 0 ? 50 : Math.min(limit, 1000);
         int effectiveOffset = Math.max(offset, 0);
-        String sql = """
+        String sql = dialect.paginated("""
                 SELECT tenant_id, capability, operation, state, consecutive_failures, opened_at_ms,
                        last_failure_at_ms, half_open_allowed_at_ms, half_open_trial_count
                 FROM npdev_circuit_breaker
@@ -243,8 +260,7 @@ public class JdbcCircuitBreakerStateStore implements CircuitBreakerStateStore {
                   AND (? IS NULL OR capability = ?)
                   AND (? IS NULL OR operation = ?)
                 ORDER BY capability ASC, operation ASC
-                LIMIT ? OFFSET ?
-                """;
+                """);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             String scopedCapability = normalize(capabilityName);
@@ -254,8 +270,10 @@ public class JdbcCircuitBreakerStateStore implements CircuitBreakerStateStore {
             statement.setString(3, scopedCapability);
             statement.setString(4, scopedOperation);
             statement.setString(5, scopedOperation);
-            statement.setInt(6, effectiveLimit);
-            statement.setInt(7, effectiveOffset);
+            int pageIndex = 6;
+            for (int pageValue : dialect.limitOffset().values(effectiveLimit, effectiveOffset)) {
+                statement.setInt(pageIndex++, pageValue);
+            }
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<CircuitBreakerStateSummary> out = new ArrayList<>();
                 while (resultSet.next()) {

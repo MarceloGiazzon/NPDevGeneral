@@ -13,6 +13,10 @@ import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptStoreOptimisticLockException;
 import com.npdev.kernel.ports.ConceptStore;
+import com.npdev.kernel.storage.sql.H2Dialect;
+import com.npdev.kernel.storage.sql.PostgresDialect;
+import com.npdev.kernel.storage.sql.SqlDialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.datasource.DataSourceUtils;
@@ -41,12 +45,19 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     private static final Logger LOG = LoggerFactory.getLogger(JdbcBusinessConceptStore.class);
 
     private final DataSource dataSource;
+    private final SqlDialect dialect;
     private final Map<String, ConceptShape> shapesByConcept;
     private final Map<String, TableColumns> tableColumnsCache = new ConcurrentHashMap<>();
 
     public JdbcBusinessConceptStore(DataSource dataSource, CompiledModel compiledModel) {
+        this(dataSource, compiledModel, SqlDialects.active());
+    }
+
+    /** Explicit dialect, for the conformance suite and for a host that pins its engine at boot. */
+    public JdbcBusinessConceptStore(DataSource dataSource, CompiledModel compiledModel, SqlDialect dialect) {
         this.dataSource = dataSource;
         this.shapesByConcept = shapes(compiledModel);
+        this.dialect = java.util.Objects.requireNonNull(dialect, "dialect");
     }
 
     /**
@@ -193,14 +204,15 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             }
 
             List<ConceptRecord> items = new ArrayList<>();
-            String pageSql = "SELECT * FROM " + shape.tableName() + " WHERE " + whereSql + orderSql
-                    + " LIMIT ? OFFSET ?";
+            String pageSql = dialect.paginated("SELECT * FROM " + shape.tableName() + " WHERE " + whereSql
+                    + orderSql + " ").stripTrailing();
             LOG.debug("npdev.query.sql concept={} sql={} limit={} offset={}",
                     conceptName, pageSql, effective.limit(), effective.offset());
             try (PreparedStatement statement = connection.prepareStatement(pageSql)) {
                 int nextIndex = bindParams(statement, params, 1);
-                statement.setInt(nextIndex++, effective.limit());
-                statement.setInt(nextIndex, effective.offset());
+                for (int pageValue : dialect.limitOffset().values(effective.limit(), effective.offset())) {
+                    statement.setInt(nextIndex++, pageValue);
+                }
                 try (ResultSet resultSet = statement.executeQuery()) {
                     while (resultSet.next()) {
                         items.add(toRecord(shape, tenantId, resultSet));
@@ -672,10 +684,10 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     }
 
     private static boolean isJsonColumnType(ResultSetMetaData metaData, int index) throws SQLException {
-        String typeName = metaData.getColumnTypeName(index);
-        return typeName != null && (
-                "JSON".equalsIgnoreCase(typeName) || "JSONB".equalsIgnoreCase(typeName)
-        );
+        // Asks the dialect rather than spelling the two type names here for the third time. The set
+        // is per-engine (MySQL knows only JSON; Postgres reports jsonb) and both spellings had to be
+        // repeated correctly at every site before this.
+        return SqlDialects.active().isJsonColumnType(metaData.getColumnTypeName(index));
     }
 
     /**
@@ -809,18 +821,17 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         }
     }
 
+    /**
+     * PRE-EXTRACTION this method WAS the dialect layer, spelling H2's MERGE and Postgres's ON
+     * CONFLICT by hand behind a product-name probe. Kept connection-driven (rather than reading the
+     * app's configured engine) because the probe is what it always was; only the statements moved.
+     */
     private static String upsertSql(Connection connection, String table, String idColumn, List<String> columns) throws SQLException {
-        if (connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains("h2")) {
-            return "MERGE INTO " + table + " (" + String.join(", ", columns) + ") KEY(" + idColumn + ") VALUES ("
-                    + "?,".repeat(columns.size()).replaceAll(",$", "") + ")";
-        }
-        List<String> updates = columns.stream()
-                .filter(column -> !column.equalsIgnoreCase(idColumn))
-                .map(column -> column + " = EXCLUDED." + column)
-                .toList();
-        return "INSERT INTO " + table + " (" + String.join(", ", columns) + ") VALUES ("
-                + "?,".repeat(columns.size()).replaceAll(",$", "") + ") ON CONFLICT (" + idColumn + ") DO UPDATE SET "
-                + String.join(", ", updates);
+        SqlDialect connectionDialect =
+                connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains("h2")
+                        ? H2Dialect.INSTANCE
+                        : PostgresDialect.INSTANCE;
+        return connectionDialect.upsert().statementFor(table, List.of(idColumn), columns);
     }
 
     private static final ObjectMapper JSON_COLUMN_MAPPER = new ObjectMapper();

@@ -1098,39 +1098,14 @@ public final class SchemaRealizationEmitter {
             String constraintName,
             String addConstraintSql
     ) {
-        String statement = addConstraintSql.endsWith(";") ? addConstraintSql : addConstraintSql + ";";
-        if (engine != DatabaseEngine.POSTGRES) {
-            // REG-38: this lands in R__npdev_schema_additive_columns.sql, a Flyway *repeatable*
-            // migration that re-runs whenever its checksum changes (any model edit regenerates it).
-            // A bare "ADD CONSTRAINT" is not idempotent -- the re-run against a DB that already has
-            // the constraint fails with "Constraint already exists" and refuses the whole boot. H2
-            // supports "DROP CONSTRAINT IF EXISTS", so drop-then-add makes the statement idempotent
-            // the same way the Postgres branch below is (via its IF-NOT-EXISTS catalog guard).
-            return "ALTER TABLE " + tableName + " DROP CONSTRAINT IF EXISTS " + constraintName + ";\n"
-                    + statement + "\n";
-        }
-        // INFORMATION_SCHEMA.TABLE_CONSTRAINTS is standard SQL available in both PostgreSQL
-        // and H2 PostgreSQL-compatibility mode. pg_constraint/pg_class/pg_namespace are
-        // PostgreSQL-only system catalogs and must not be used even in the Postgres-only path,
-        // to keep both emitters byte-consistent and avoid drift when switching engines.
-        return """
-                DO $$
-                BEGIN
-                  IF NOT EXISTS (
-                    SELECT 1
-                    FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
-                    WHERE CONSTRAINT_NAME = '%s'
-                      AND TABLE_NAME = '%s'
-                      AND TABLE_SCHEMA = current_schema()
-                  ) THEN
-                    %s
-                  END IF;
-                END $$;
-                """.formatted(
-                sqlLiteral(constraintName),
-                sqlLiteral(tableName),
-                statement
-        );
+        // Both arms of the engine switch this method used to hold are now dialect methods: Postgres
+        // guards with a DO $$ ... $$ catalog check over INFORMATION_SCHEMA.TABLE_CONSTRAINTS, H2 with
+        // DROP CONSTRAINT IF EXISTS then ADD (REG-38 -- this lands in a Flyway *repeatable* migration,
+        // so the statement has to be idempotent). Those are different SHAPES, not different keywords,
+        // which is exactly the kind of difference an emitter should not be carrying. MySQL and SQL
+        // Server, neither of which has an anonymous DO block, now extend one dialect method instead
+        // of adding a third arm here.
+        return engine.dialect().guardedConstraintDdl(constraintName, tableName, addConstraintSql);
     }
 
     private static String sqlLiteral(String value) {
@@ -1584,16 +1559,11 @@ public final class SchemaRealizationEmitter {
         if (sqlType == null || sqlType.isBlank()) {
             return "VARCHAR(255)";
         }
-        String normalized = sqlType.trim();
-        if (engine == DatabaseEngine.H2_LOCAL || engine == DatabaseEngine.H2_SERVER) {
-            if ("JSONB".equalsIgnoreCase(normalized) || "JSON".equalsIgnoreCase(normalized)) {
-                return "JSON";
-            }
-            if ("TIMESTAMP WITH TIME ZONE".equalsIgnoreCase(normalized)) {
-                return "TIMESTAMP WITH TIME ZONE";
-            }
-        }
-        return normalized;
+        // Was an `if (engine == H2_*)` block spelling H2's narrowing inline. Asking the dialect keeps
+        // the answer in one place and is what a third engine will extend -- MySQL narrows more than
+        // H2 does (no native UUID, a different TIMESTAMP spelling), and an inline branch here would
+        // have had to grow a third arm that the emitter has no way to test.
+        return engine.dialect().portableColumnType(sqlType.trim());
     }
 
     private static String renderInternalType(InternalColumnType type, DatabaseEngine engine) {

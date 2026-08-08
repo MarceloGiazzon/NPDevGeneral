@@ -7,6 +7,8 @@ import com.npdev.kernel.execution.FlowInstance;
 import com.npdev.kernel.execution.FlowInstanceStatus;
 import com.npdev.kernel.ports.ExecutionSummaryStore;
 import com.npdev.kernel.ports.FlowInstanceStore;
+import com.npdev.kernel.storage.sql.SqlDialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -27,6 +29,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
 
     private final DataSource dataSource;
     private final ObjectMapper objectMapper;
+    private final SqlDialect dialect;
 
     public JdbcFlowInstanceStore(DataSource dataSource) {
         this(dataSource, new ObjectMapper().findAndRegisterModules()
@@ -34,8 +37,14 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
     }
 
     public JdbcFlowInstanceStore(DataSource dataSource, ObjectMapper objectMapper) {
+        this(dataSource, objectMapper, SqlDialects.active());
+    }
+
+    /** Explicit dialect, for the conformance suite and for a host that pins its engine at boot. */
+    public JdbcFlowInstanceStore(DataSource dataSource, ObjectMapper objectMapper, SqlDialect dialect) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
+        this.dialect = Objects.requireNonNull(dialect, "dialect");
     }
 
     @Override
@@ -112,7 +121,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
     @Override
     public List<FlowInstance> findAllWaiting(int limit) {
         int effectiveLimit = limit <= 0 ? 500 : limit;
-        String sql = """
+        String sql = dialect.limited("""
                 SELECT execution_id, flow_name, correlation_id, status, current_step_index,
                        waiting_for_event_name, state_json, tenant_id, actor_id, created_at, updated_at,
                        resume_attempt_count, last_resume_at, last_resume_error_code,
@@ -120,8 +129,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
                 FROM npdev_flow_instance
                 WHERE status = 'WAITING_EVENT'
                 ORDER BY updated_at ASC, execution_id ASC
-                LIMIT ?
-                """;
+                """);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, effectiveLimit);
@@ -144,7 +152,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
             return List.of();
         }
         int effectiveLimit = normalizeLimit(limit);
-        String sql = """
+        String sql = dialect.limited("""
                 SELECT execution_id, flow_name, correlation_id, status, current_step_index,
                        waiting_for_event_name, state_json, tenant_id, actor_id, created_at, updated_at,
                        resume_attempt_count, last_resume_at, last_resume_error_code,
@@ -154,8 +162,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
                   AND status = 'WAITING_EVENT'
                   AND (next_eligible_resume_at IS NULL OR next_eligible_resume_at <= ?)
                 ORDER BY next_eligible_resume_at ASC NULLS FIRST, updated_at DESC, execution_id ASC
-                LIMIT ?
-                """;
+                """);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, effectiveTenantId);
@@ -181,7 +188,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
         }
         int effectiveLimit = normalizeLimit(limit);
         int effectiveOffset = normalizeOffset(offset);
-        String sql = """
+        String sql = dialect.paginated("""
                 SELECT execution_id, flow_name, correlation_id, status, current_step_index,
                        waiting_for_event_name, state_json, tenant_id, actor_id, created_at, updated_at,
                        resume_attempt_count, last_resume_at, last_resume_error_code,
@@ -191,14 +198,15 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
                   AND status = 'WAITING_EVENT'
                   AND COALESCE(last_progress_at, created_at) <= ?
                 ORDER BY COALESCE(last_progress_at, created_at) ASC, execution_id ASC
-                LIMIT ? OFFSET ?
-                """;
+                """);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, effectiveTenantId);
             statement.setTimestamp(2, new Timestamp(olderThanEpochMs));
-            statement.setInt(3, effectiveLimit);
-            statement.setInt(4, effectiveOffset);
+            int pageIndex = 3;
+            for (int pageValue : dialect.limitOffset().values(effectiveLimit, effectiveOffset)) {
+                statement.setInt(pageIndex++, pageValue);
+            }
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<FlowInstance> out = new ArrayList<>();
                 while (resultSet.next()) {
@@ -219,7 +227,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
         }
         int effectiveLimit = normalizeLimit(limit);
         int effectiveOffset = normalizeOffset(offset);
-        String sql = """
+        String sql = dialect.paginated("""
                 SELECT execution_id, flow_name, correlation_id, status, current_step_index,
                        waiting_for_event_name, state_json, tenant_id, actor_id, created_at, updated_at,
                        resume_attempt_count, last_resume_at, last_resume_error_code,
@@ -227,8 +235,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
                 FROM npdev_flow_instance
                 WHERE tenant_id = ?
                 ORDER BY updated_at DESC, execution_id DESC
-                LIMIT ? OFFSET ?
-                """;
+                """);
         return queryScoped(sql, effectiveTenantId, effectiveLimit, effectiveOffset);
     }
 
@@ -240,7 +247,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
         }
         int effectiveLimit = normalizeLimit(limit);
         int effectiveOffset = normalizeOffset(offset);
-        String sql = """
+        String sql = dialect.paginated("""
                 SELECT execution_id, flow_name, correlation_id, status, current_step_index,
                        waiting_for_event_name, state_json, tenant_id, actor_id, created_at, updated_at,
                        resume_attempt_count, last_resume_at, last_resume_error_code,
@@ -248,8 +255,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
                 FROM npdev_flow_instance
                 WHERE tenant_id = ? AND status = 'WAITING_EVENT'
                 ORDER BY updated_at DESC, execution_id DESC
-                LIMIT ? OFFSET ?
-                """;
+                """);
         return queryScoped(sql, effectiveTenantId, effectiveLimit, effectiveOffset);
     }
 
@@ -294,7 +300,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
         int effectiveOffset = normalizeOffset(offset);
         boolean waitingOnly = "waiting".equalsIgnoreCase(mode);
         String sql = waitingOnly
-                ? """
+                ? dialect.paginated("""
                 SELECT execution_id, tenant_id, correlation_id, flow_name, status, current_step_index,
                        waiting_for_event_name, updated_at, resume_attempt_count, last_resume_at,
                        last_resume_error_code, next_eligible_resume_at, last_progress_at,
@@ -302,9 +308,8 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
                 FROM npdev_flow_instance
                 WHERE tenant_id = ? AND status = 'WAITING_EVENT'
                 ORDER BY updated_at DESC, execution_id DESC
-                LIMIT ? OFFSET ?
-                """
-                : """
+                """)
+                : dialect.paginated("""
                 SELECT execution_id, tenant_id, correlation_id, flow_name, status, current_step_index,
                        waiting_for_event_name, updated_at, resume_attempt_count, last_resume_at,
                        last_resume_error_code, next_eligible_resume_at, last_progress_at,
@@ -312,8 +317,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
                 FROM npdev_flow_instance
                 WHERE tenant_id = ?
                 ORDER BY updated_at DESC, execution_id DESC
-                LIMIT ? OFFSET ?
-                """;
+                """);
         return querySummaries(sql, effectiveTenantId, effectiveLimit, effectiveOffset);
     }
 
@@ -325,7 +329,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
         }
         int effectiveLimit = normalizeLimit(limit);
         int effectiveOffset = normalizeOffset(offset);
-        String sql = """
+        String sql = dialect.paginated("""
                 SELECT execution_id, tenant_id, correlation_id, flow_name, status, current_step_index,
                        waiting_for_event_name, updated_at, resume_attempt_count, last_resume_at,
                        last_resume_error_code, next_eligible_resume_at, last_progress_at,
@@ -333,14 +337,15 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
                 FROM npdev_flow_instance
                 WHERE tenant_id = ? AND correlation_id = ?
                 ORDER BY updated_at DESC, execution_id DESC
-                LIMIT ? OFFSET ?
-                """;
+                """);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, effectiveTenantId);
             statement.setString(2, correlationId);
-            statement.setInt(3, effectiveLimit);
-            statement.setInt(4, effectiveOffset);
+            int pageIndex = 3;
+            for (int pageValue : dialect.limitOffset().values(effectiveLimit, effectiveOffset)) {
+                statement.setInt(pageIndex++, pageValue);
+            }
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<ExecutionSummary> out = new ArrayList<>();
                 while (resultSet.next()) {
@@ -463,7 +468,7 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
         }
         int effectiveLimit = normalizeLimit(limit);
         int effectiveOffset = normalizeOffset(offset);
-        String sql = """
+        String sql = dialect.paginated("""
                 SELECT execution_id, tenant_id, correlation_id, flow_name, status, current_step_index,
                        waiting_for_event_name, updated_at, resume_attempt_count, last_resume_at,
                        last_resume_error_code, next_eligible_resume_at, last_progress_at,
@@ -471,14 +476,15 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
                 FROM npdev_flow_instance
                 WHERE tenant_id = ? AND status = ?
                 ORDER BY updated_at DESC, execution_id DESC
-                LIMIT ? OFFSET ?
-                """;
+                """);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, effectiveTenantId);
             statement.setString(2, status.name());
-            statement.setInt(3, effectiveLimit);
-            statement.setInt(4, effectiveOffset);
+            int pageIndex = 3;
+            for (int pageValue : dialect.limitOffset().values(effectiveLimit, effectiveOffset)) {
+                statement.setInt(pageIndex++, pageValue);
+            }
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<ExecutionSummary> out = new ArrayList<>();
                 while (resultSet.next()) {
@@ -516,8 +522,10 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, tenantId);
-            statement.setInt(2, limit);
-            statement.setInt(3, offset);
+            int pageIndex = 2;
+            for (int pageValue : dialect.limitOffset().values(limit, offset)) {
+                statement.setInt(pageIndex++, pageValue);
+            }
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<FlowInstance> out = new ArrayList<>();
                 while (resultSet.next()) {
@@ -539,8 +547,10 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, tenantId);
-            statement.setInt(2, limit);
-            statement.setInt(3, offset);
+            int pageIndex = 2;
+            for (int pageValue : dialect.limitOffset().values(limit, offset)) {
+                statement.setInt(pageIndex++, pageValue);
+            }
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<ExecutionSummary> out = new ArrayList<>();
                 while (resultSet.next()) {

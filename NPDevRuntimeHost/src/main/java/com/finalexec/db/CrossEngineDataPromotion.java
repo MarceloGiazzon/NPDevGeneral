@@ -5,6 +5,7 @@ import org.postgresql.util.PGobject;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import com.npdev.kernel.storage.sql.PostgresDialect;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -84,7 +85,9 @@ public final class CrossEngineDataPromotion {
                 String type = entry.getValue();
                 if (isJsonType(type)) {
                     notes.add(new TypeMappingNote(table, entry.getKey(), type,
-                            "structured JSON column -- copied via decode/re-encode as jsonb, not a raw byte passthrough"));
+                            "structured JSON column -- copied via decode/re-encode as "
+                            + PostgresDialect.INSTANCE.jsonColumnType()
+                            + ", not a raw byte passthrough"));
                 } else if ("UUID".equalsIgnoreCase(type)) {
                     notes.add(new TypeMappingNote(table, entry.getKey(), type,
                             "UUID column -- bound via setObject, relies on the target driver's own UUID coercion"));
@@ -182,7 +185,7 @@ public final class CrossEngineDataPromotion {
             if (isPostgres(insertStatement.getConnection())) {
                 try {
                     PGobject jsonValue = new PGobject();
-                    jsonValue.setType("jsonb");
+                    jsonValue.setType(PostgresDialect.INSTANCE.jsonColumnType());
                     jsonValue.setValue(OBJECT_MAPPER.writeValueAsString(decoded));
                     insertStatement.setObject(insertIndex, jsonValue);
                 } catch (Exception exception) {
@@ -201,7 +204,11 @@ public final class CrossEngineDataPromotion {
     }
 
     private static boolean isJsonType(String sqlType) {
-        return sqlType != null && ("JSONB".equalsIgnoreCase(sqlType) || "JSON".equalsIgnoreCase(sqlType));
+        // Promotion reads a manifest written by whichever engine was the SOURCE, so this asks the
+        // Postgres dialect specifically -- its JSON name set is the superset (json + jsonb) and is
+        // what the manifest can contain. Not SqlDialects.active(): the app's own engine is not
+        // necessarily either side of a cross-engine copy.
+        return PostgresDialect.INSTANCE.isJsonColumnType(sqlType);
     }
 
     private static boolean isPostgres(Connection connection) throws SQLException {

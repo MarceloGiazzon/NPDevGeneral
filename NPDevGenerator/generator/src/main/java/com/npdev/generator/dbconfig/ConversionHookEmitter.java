@@ -9,6 +9,7 @@ import com.networknt.schema.ValidationMessage;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledConversion;
 import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.kernel.storage.sql.H2Dialect;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.dsl.v1.compiled.SqlTypeSupport;
@@ -319,12 +320,18 @@ public final class ConversionHookEmitter {
                         + "' has no field '" + fieldName + "'"));
     }
 
-    /** JSONB has no H2 equivalent (H2 has JSON); every other {@link SqlTypeSupport#sqlType} result is
-     *  already identical on H2 and Postgres (confirmed by the schema engine's own {@code renderType}
-     *  and {@code addBackfillAndTightenColumn} precedents). */
+    /**
+     * The H2/Postgres COMMON form, deliberately -- this emitter has no {@code DatabaseEngine} and
+     * produces one hook artifact that must be valid on either engine, so it asks the narrower of the
+     * two. That was already true before extraction; the mapping simply stopped being spelled here.
+     *
+     * <p><b>S4b prerequisite.</b> "The narrower of H2 and Postgres" stops being a safe stand-in the
+     * moment a third engine exists: MySQL narrows types H2 does not (no native {@code UUID}). Making
+     * this engine-aware means threading {@code DatabaseEngine} into the emitter, which is a change to
+     * its call signature and therefore not S1's business -- but MySQL cannot ship without it.
+     */
     private static String portableSqlType(CompiledField field) {
-        String sqlType = SqlTypeSupport.sqlType(field);
-        return "JSONB".equalsIgnoreCase(sqlType) ? "JSON" : sqlType;
+        return H2Dialect.INSTANCE.portableColumnType(SqlTypeSupport.sqlType(field));
     }
 
     private static String splitExpression(String fromCol, String take) {
