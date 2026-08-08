@@ -19,6 +19,13 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+# W5 (storage/FULL_SUPPORT_PLAN.md): the engine list, its per-engine defaults, and the honesty
+# status for each, in one module. `npdev init --engine`, `npdev engines`, doctor's database
+# checks and the Manager's picker all read it, so none of them can hold a private copy that
+# drifts. Imported plainly (not lazily) because argparse needs engine_keys() to build --engine's
+# choices at parser-construction time.
+import npdev_engines
+
 VERSION = "0.9.0"
 # REG-130: the three numbers a bug report could cite, none of them derived from the others.
 # Keep in sync by hand (there is no single source of truth yet -- see REG-130's own ledger entry
@@ -970,11 +977,39 @@ def run_init(args: argparse.Namespace) -> int:
 
     shutil.copy2(seed_config_path, target / "config.json")
 
+    # W5.1 (storage/FULL_SUPPORT_PLAN.md, exit criterion E9). Until this flag existed, `npdev init`
+    # had no way to choose an engine at all: a user who wanted MySQL had to hand-edit
+    # db.definition.json, which is precisely the "you must know the internals" experience the Manager
+    # exists to remove. The default is `h2local`, which is byte-for-byte what the seed already wrote,
+    # so an existing invocation is unchanged.
+    engine_key = getattr(args, "engine", None) or "h2local"
+    try:
+        engine = npdev_engines.resolve(engine_key)
+    except ValueError as exc:
+        raise CliError(str(exc)) from exc
+
     seed_db_def_path = seed_dir / "db.definition.json"
-    if seed_db_def_path.exists():
-        db_def = json.loads(seed_db_def_path.read_text(encoding="utf-8"))
-        db_def.setdefault("database", {})["databaseName"] = db_name
+    if seed_db_def_path.exists() or engine["key"] != "h2local":
+        db_def = npdev_engines.db_definition_for(
+            engine["key"],
+            database_name=db_name,
+            host=getattr(args, "db_host", None),
+            port=getattr(args, "db_port", None),
+            username=getattr(args, "db_user", None),
+            password=getattr(args, "db_password", None),
+        )
         (target / "db.definition.json").write_text(json.dumps(db_def, indent=2) + "\n", encoding="utf-8")
+
+    # The scenario config's own database block must agree with the engine just chosen. It was
+    # previously copied verbatim from the seed, which declares `docker-postgres` -- so every app
+    # `npdev init` has ever scaffolded carried a provisioning block describing an engine it does not
+    # use. Harmless until something reads it; W6.1 made config.json enforceable, and an enforceable
+    # contract that contradicts the app beside it is worse than no contract.
+    _align_config_database(target / "config.json", engine, db_name,
+                           host=getattr(args, "db_host", None),
+                           port=getattr(args, "db_port", None),
+                           username=getattr(args, "db_user", None),
+                           password=getattr(args, "db_password", None))
 
     (target / "README.md").write_text(
         f"# {target.name}\n\n"
@@ -1029,6 +1064,11 @@ def run_init(args: argparse.Namespace) -> int:
                      ("model.json", "config.json", "db.definition.json", "README.md", ".gitignore")
                      if (target / name).exists()]
 
+    # W5.3's rule, applied to the CLI first: an experimental engine says so AT THE POINT OF CHOICE,
+    # not in a changelog. An interface that silently offers MySQL is the silent-answer defect wearing
+    # a dropdown.
+    notice = npdev_engines.honesty_notice(engine["key"])
+
     if getattr(args, "json", False):
         # I3: one object, nothing else on stdout -- absolute paths only, since the Manager has no
         # shared working directory to resolve a relative one against.
@@ -1043,6 +1083,14 @@ def run_init(args: argparse.Namespace) -> int:
                 "gitInitialised": True,
                 "nextCommand": "npdev dev",
             },
+            # Additive: every key above is byte-identical to before, so the Manager's existing
+            # contract is untouched.
+            "engine": {
+                "key": engine["key"],
+                "externalName": engine["externalName"],
+                "status": engine["status"],
+                "honestyNotice": notice,
+            },
         }
         print(json.dumps(result, indent=2))
         return 0
@@ -1050,9 +1098,50 @@ def run_init(args: argparse.Namespace) -> int:
     print(f"Created {target}")
     for name in created_files:
         print(f"  {name}")
+    print(f"\ndatabase: {engine['externalName']} -- {engine['summary']}")
+    if notice:
+        print(f"\n  ! {notice}")
     print(f"\ngit: initialized, 1 commit")
     print(f"\nNext:\n  cd {target.name}\n  npdev run app")
     return 0
+
+
+def _align_config_database(config_path: Path, engine: dict, database_name: str, *,
+                           host=None, port=None, username=None, password=None) -> None:
+    """Make the scaffolded config.json's `database` block describe the engine actually chosen.
+
+    The seed's config declares `docker-postgres`, so before W5.1 every scaffolded app shipped a
+    provisioning block for an engine it does not use. That was invisible while nothing validated
+    config.json; now that something does, it would be a contradiction between two files a user owns.
+
+    An engine that provisions nothing (h2local, in-memory) gets NO database block at all rather than
+    an invented one -- config.schema.json makes the section optional for exactly this case, and
+    fifteen working corpus apps have always omitted it.
+    """
+    if not config_path.exists():
+        return
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+
+    if not engine["server"]:
+        config.pop("database", None)
+    else:
+        config["database"] = {
+            "provider": engine["provider"],
+            "host": host or "localhost",
+            "port": int(port) if port else engine["port"],
+            "database": database_name,
+            "username": username if username is not None else "postgres" if engine["key"] == "postgres" else "sa",
+            "password": password if password is not None else "",
+            # `preserve`, not `reset`: a scaffold that wipes a server database the user pointed it at
+            # would be the single worst first-run surprise this command could produce.
+            "resetMode": "preserve",
+        }
+
+    trial = config.get("trialDefaults")
+    if isinstance(trial, dict):
+        trial["databaseMode"] = engine["provider"]
+
+    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
 
 def run_generate(args: argparse.Namespace) -> None:
@@ -2005,6 +2094,309 @@ def run_capabilities(args: argparse.Namespace) -> int:
     return 0
 
 
+def _find_db_definition(explicit: str | None) -> Path | None:
+    """The app's db.definition.json, from an explicit path or the current directory.
+
+    Doctor has always been a machine check with no app in scope. The database checks below only make
+    sense for a specific app, so they run when one is FINDABLE and are skipped -- visibly, as a
+    recorded pass with a stated reason -- when it is not. A machine with no NPDev app on it is not a
+    broken machine.
+    """
+    if explicit:
+        candidate = Path(explicit).expanduser().resolve()
+        if candidate.is_dir():
+            candidate = candidate / "db.definition.json"
+        return candidate if candidate.is_file() else None
+    here = Path.cwd() / "db.definition.json"
+    return here if here.is_file() else None
+
+
+def _database_checks(app_path: str | None) -> list[dict]:
+    """W5.2 (E10): is this app's database reachable, usable, and able to store what it will be given?
+
+    Doctor's ten pre-existing checks are all about the MACHINE -- Java, Python, git, disk, staged
+    jars. None of them touches a database, so the single commonest first-run failure ("Postgres is
+    not running") surfaced as a Spring stack trace during boot, after a Gradle build, with the real
+    cause several hundred lines up.
+
+    Each check below distinguishes a failure the previous one cannot:
+
+        database-reachable      the host/port refuses          -> "it is not running"
+        database-credentials    it answers, auth is rejected   -> "the password is wrong"
+        database-privileges     it authenticates, DDL denied   -> "this user cannot own a schema"
+        database-charset        it works, and mangles unicode  -> the silent one
+
+    The last is the reason this is worth building rather than letting boot fail: on MySQL's legacy
+    three-byte `utf8`, an insert of anything outside the BMP SUCCEEDS and the data is already wrong.
+    Nothing errors, ever. That is the only database problem here that no stack trace would have
+    reported.
+    """
+    checks: list[dict] = []
+    definition_path = _find_db_definition(app_path)
+    if definition_path is None:
+        return checks
+
+    try:
+        definition = json.loads(definition_path.read_text(encoding="utf-8"))
+        database = definition.get("database") or {}
+        engine = npdev_engines.resolve(database.get("engine") or "h2local")
+    except (json.JSONDecodeError, OSError, ValueError) as exc:
+        checks.append(_check(
+            "database-engine-support", "Database engine", "fail",
+            found=str(definition_path), expected="a readable db.definition.json",
+            detail=f"Could not read this app's database definition ({definition_path}): {exc}",
+            fix="Fix db.definition.json, or run `npdev init` to scaffold a valid one.",
+        ))
+        return checks
+
+    notice = npdev_engines.honesty_notice(engine["key"])
+    checks.append(_check(
+        "database-engine-support", "Database engine",
+        "pass" if notice is None else "warn",
+        found=engine["externalName"], expected="a supported engine",
+        # W5.3's honesty rule reaching doctor: an experimental engine is a WARNING, never a failure.
+        # Failing would tell a user their working machine is broken; saying nothing would be the
+        # footnote-in-BREAKING.md problem this whole item exists to fix.
+        detail=None if notice is None else notice,
+    ))
+
+    if not engine["server"]:
+        # H2Local / InMemory have nothing to reach, authenticate against, or mis-encode. Recording a
+        # pass rather than omitting the checks keeps the Manager's Ready screen shape stable across
+        # engines -- a row that vanishes reads as "not checked".
+        for check_id, name in (("database-reachable", "Database reachable"),
+                               ("database-credentials", "Database credentials"),
+                               ("database-privileges", "Database privileges"),
+                               ("database-charset", "Database charset")):
+            checks.append(_check(check_id, name, "pass", found=engine["externalName"],
+                                 expected="n/a for an engine with no server"))
+        return checks
+
+    host = database.get("host") or "localhost"
+    port = int(database.get("port") or engine["port"])
+
+    import socket
+    reachable = False
+    try:
+        with socket.create_connection((host, port), timeout=3):
+            reachable = True
+    except OSError as exc:
+        checks.append(_check(
+            "database-reachable", "Database reachable", "fail", found=f"{host}:{port}",
+            expected="accepting connections",
+            detail=f"Cannot reach {engine['externalName']} at {host}:{port} ({exc}). This is the "
+                   f"most common first-run failure, and without this check it surfaces as a Spring "
+                   f"stack trace after a full Gradle build.",
+            fix=f"Start {engine['externalName']}, or correct host/port in "
+                f"{definition_path}.",
+        ))
+    else:
+        checks.append(_check("database-reachable", "Database reachable", "pass",
+                             found=f"{host}:{port}", expected="accepting connections"))
+
+    if not reachable:
+        # Everything below needs a connection. Reported as warn-with-a-reason rather than invented
+        # failures: three red lines for one cause is noise that hides which one to fix.
+        for check_id, name in (("database-credentials", "Database credentials"),
+                               ("database-privileges", "Database privileges"),
+                               ("database-charset", "Database charset")):
+            checks.append(_check(
+                check_id, name, "warn", expected="checked once the server is reachable",
+                detail=f"Not checked: {host}:{port} is not reachable (see database-reachable).",
+            ))
+        return checks
+
+    # A real connection needs a JDBC driver, which lives in the staged runtimehost jars rather than
+    # in Python. Rather than add a Python driver per engine -- three more dependencies, three more
+    # ways to be wrong about what the app itself will do -- these run through the SAME jars the app
+    # boots with, via a tiny Java probe. When the jars are not staged, that is reported as the
+    # reason, not as a database failure.
+    probe = _run_database_probe(engine, database, host, port)
+    if probe.get("unavailable"):
+        for check_id, name in (("database-credentials", "Database credentials"),
+                               ("database-privileges", "Database privileges"),
+                               ("database-charset", "Database charset")):
+            checks.append(_check(
+                check_id, name, "warn", expected="checked with the app's own JDBC driver",
+                detail=f"Not checked: {probe['unavailable']}",
+                fix="Run npdev setup.", fixCommand="npdev setup",
+            ))
+        return checks
+
+    if probe.get("authenticated"):
+        checks.append(_check("database-credentials", "Database credentials", "pass",
+                             found=database.get("username") or "(none)", expected="accepted"))
+    else:
+        checks.append(_check(
+            "database-credentials", "Database credentials", "fail",
+            found=database.get("username") or "(none)", expected="accepted",
+            detail=f"{engine['externalName']} at {host}:{port} is running but rejected the "
+                   f"credentials in {definition_path}: {probe.get('authError', 'unknown error')}",
+            fix=f"Correct database.username / database.password in {definition_path}.",
+        ))
+        return checks
+
+    if probe.get("canCreateTable"):
+        checks.append(_check("database-privileges", "Database privileges", "pass",
+                             expected="can CREATE TABLE"))
+    else:
+        checks.append(_check(
+            "database-privileges", "Database privileges", "fail", expected="can CREATE TABLE",
+            detail=f"The user can connect but cannot CREATE TABLE: {probe.get('ddlError', 'unknown')}. "
+                   f"NPDev realizes its schema at boot, so a read-only user fails late and "
+                   f"confusingly -- after the build, during startup.",
+            fix="Grant schema-creation rights to this user, or point at a database it owns.",
+        ))
+
+    charset = probe.get("charset")
+    if charset is None:
+        checks.append(_check("database-charset", "Database charset", "pass",
+                             expected="n/a for this engine"))
+    elif probe.get("charsetOk"):
+        checks.append(_check("database-charset", "Database charset", "pass", found=charset,
+                             expected="utf8mb4"))
+    else:
+        checks.append(_check(
+            "database-charset", "Database charset", "fail", found=charset, expected="utf8mb4",
+            detail=f"MySQL is using '{charset}'. MySQL's legacy three-byte 'utf8' SILENTLY MANGLES "
+                   f"anything outside the BMP -- an emoji or many CJK characters insert without any "
+                   f"error and come back wrong. Nothing will ever report this at runtime.",
+            fix="Start MySQL with --character-set-server=utf8mb4 "
+                "--collation-server=utf8mb4_unicode_ci, or ALTER DATABASE ... CHARACTER SET utf8mb4.",
+        ))
+    return checks
+
+
+def _run_database_probe(engine: dict, database: dict, host: str, port: int) -> dict:
+    """Connect, try DDL, and read the charset -- using the app's OWN staged JDBC drivers.
+
+    Deliberately not a Python driver per engine. The question doctor is answering is "will the app be
+    able to do this", and the only honest way to answer it is with the driver the app will use.
+    """
+    libs = _default_runtimehost_libs_dir()
+    if libs is None:
+        return {"unavailable": "runtimehost jars are not staged, so the JDBC drivers the app uses "
+                               "are not available to check with -- run `npdev setup`"}
+    java_home = os.environ.get("JAVA_HOME")
+    java_bin = _resolve_java_home_binary(java_home) if java_home else None
+    if java_bin is None or not java_bin.exists():
+        path_java = shutil.which("java")
+        java_bin = Path(path_java) if path_java else None
+    if java_bin is None:
+        return {"unavailable": "no Java found (see the java-present check above)"}
+
+    source = _DATABASE_PROBE_SOURCE
+    with tempfile.TemporaryDirectory(prefix="npdev-dbprobe-") as temp_dir:
+        probe_file = Path(temp_dir) / "NpdevDatabaseProbe.java"
+        probe_file.write_text(source, encoding="utf-8")
+        try:
+            completed = subprocess.run(
+                [str(java_bin), "-cp", str(Path(libs) / "*"), str(probe_file),
+                 engine["key"], host, str(port),
+                 database.get("databaseName") or "", database.get("username") or "",
+                 database.get("password") or ""],
+                capture_output=True, text=True, timeout=45, check=False)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return {"unavailable": f"could not run the database probe ({exc})"}
+    try:
+        return json.loads(completed.stdout.strip() or "{}")
+    except json.JSONDecodeError:
+        return {"unavailable": "the database probe produced no readable result: "
+                               + (completed.stderr.strip()[:200] or "(no output)")}
+
+
+# Single-file source, run by `java <file>` (JEP 330) against the staged jars. Kept as a string rather
+# than a checked-in .java file on purpose: it is not part of any module's compilation, and a stray
+# source file inside a module's tree is exactly the sort of thing that ends up in a jar.
+_DATABASE_PROBE_SOURCE = r"""
+import java.sql.*;
+
+/** doctor's database probe: connect, attempt DDL, read the charset. Prints ONE JSON object. */
+public class NpdevDatabaseProbe {
+    public static void main(String[] args) {
+        String engine = args[0], host = args[1], port = args[2];
+        String db = args[3], user = args[4], password = args[5];
+        String url = switch (engine) {
+            case "postgres" -> "jdbc:postgresql://" + host + ":" + port + "/" + (db.isEmpty() ? "postgres" : db);
+            case "mysql" -> "jdbc:mysql://" + host + ":" + port + "/" + (db.isEmpty() ? "mysql" : db);
+            case "sqlserver" -> "jdbc:sqlserver://" + host + ":" + port + ";databaseName="
+                    + (db.isEmpty() ? "master" : db) + ";encrypt=false;trustServerCertificate=true";
+            case "h2server" -> "jdbc:h2:tcp://" + host + ":" + port + "/" + db;
+            default -> null;
+        };
+        if (url == null) { System.out.println("{\"unavailable\":\"no JDBC url for engine " + engine + "\"}"); return; }
+
+        StringBuilder out = new StringBuilder("{");
+        try (Connection connection = DriverManager.getConnection(url, user, password)) {
+            out.append("\"authenticated\":true");
+            // A uniquely-named table, created and dropped. Not a permissions VIEW query: what matters
+            // is whether this user can actually do it here, and every engine spells that question
+            // differently while all four answer the real one identically.
+            String probeTable = "npdev_doctor_probe_" + Math.abs(user.hashCode() % 100000);
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE " + probeTable + " (id INT)");
+                out.append(",\"canCreateTable\":true");
+                try { statement.execute("DROP TABLE " + probeTable); } catch (SQLException ignored) { }
+            } catch (SQLException ddl) {
+                out.append(",\"canCreateTable\":false,\"ddlError\":\"").append(escape(ddl.getMessage())).append("\"");
+            }
+            if ("mysql".equals(engine)) {
+                try (Statement statement = connection.createStatement();
+                     ResultSet rows = statement.executeQuery(
+                             "SELECT @@character_set_database, @@collation_database")) {
+                    if (rows.next()) {
+                        String charset = rows.getString(1);
+                        out.append(",\"charset\":\"").append(escape(charset)).append("\"");
+                        out.append(",\"charsetOk\":").append("utf8mb4".equalsIgnoreCase(charset));
+                    }
+                } catch (SQLException ignored) { }
+            }
+        } catch (SQLException exception) {
+            out.append("\"authenticated\":false,\"authError\":\"").append(escape(exception.getMessage())).append("\"");
+        }
+        System.out.println(out.append("}"));
+    }
+
+    private static String escape(String value) {
+        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", " ").replace("\r", " ");
+    }
+}
+"""
+
+
+def run_engines(args: argparse.Namespace) -> int:
+    """List the engines an app can persist to, and say plainly which are not yet proven.
+
+    W5.3's first requirement is that the Manager's engine picker be "driven by the CLI's engine list,
+    not a hardcoded copy" -- `--json` is that list. The human form exists for the same reason
+    `npdev capabilities` does: the person choosing should be able to see the answer without opening
+    a source file.
+    """
+    listing = npdev_engines.as_json()
+    if getattr(args, "json", False):
+        print(json.dumps(listing, indent=2))
+        return 0
+
+    print("npdev engines -- where an app can store its data")
+    print("=" * 72)
+    for engine in listing["engines"]:
+        mark = " " if engine["status"] == "supported" else "!"
+        port = f":{engine['defaultPort']}" if engine["needsServer"] else ""
+        print(f"\n{mark} {engine['key']:<10} {engine['externalName']}{port}")
+        print(f"    {engine['summary']}")
+        if engine["honestyNotice"]:
+            # Printed for EVERY experimental engine, every time. The point of this command is that a
+            # user cannot pick MySQL without being told what "selectable" does and does not mean --
+            # a caveat shown only on request is a caveat nobody reads.
+            print(f"    ! {engine['honestyNotice']}")
+    print()
+    print("  npdev init my-app --engine postgres --db-host localhost --db-user me --db-password ...")
+    print()
+    print("A '!' means experimental: " + listing["statusMeaning"]["experimental"])
+    return 0
+
+
 def run_doctor(args: argparse.Namespace) -> int:
     """I5: one screen, no scrolling -- exit non-zero listing only what MUST be fixed, warnings
     separate and never blocking. Every check here exists because this project already hit the
@@ -2219,6 +2611,8 @@ def run_doctor(args: argparse.Namespace) -> int:
         ))
     else:
         checks.append(_check("pwsh-present", "PowerShell 7", "pass", found=pwsh_path, expected="optional"))
+
+    checks.extend(_database_checks(getattr(args, "app", None)))
 
     problems = [c["detail"] for c in checks if c["status"] == "fail"]
     warnings = [c["detail"] for c in checks if c["status"] == "warn"]
@@ -3395,6 +3789,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit a single npdev-cli-result.v1 JSON object on stdout instead of the human "
              "summary (Phase 0 I3 -- the human summary is unchanged either way).",
     )
+    # W5.1 / E9. The choices come from npdev_engines so the flag, `npdev engines`, doctor's database
+    # checks and the Manager's picker cannot disagree about what exists.
+    init_parser.add_argument(
+        "--engine", default="h2local", choices=npdev_engines.engine_keys(), metavar="ENGINE",
+        help="Which database engine this app persists to (default: h2local -- a file, no server to "
+             "install). Server engines also accept --db-host/--db-port/--db-user/--db-password. "
+             "Run `npdev engines` for what each one is and which are experimental.",
+    )
+    init_parser.add_argument("--db-host", default=None,
+                             help="Database host for a server engine (default: localhost).")
+    init_parser.add_argument("--db-port", default=None, type=int,
+                             help="Database port for a server engine (default: the engine's standard port).")
+    init_parser.add_argument("--db-user", default=None,
+                             help="Database user for a server engine.")
+    init_parser.add_argument("--db-password", default=None,
+                             help="Database password for a server engine.")
+
+    engines_parser = subparsers.add_parser(
+        "engines", help="List the database engines an app can use, what each needs, and which are "
+                        "still experimental."
+    )
+    engines_parser.add_argument(
+        "--json", action="store_true",
+        help="Emit npdev-engine-list.v1 instead of the human table. This is what the Manager's "
+             "engine picker is built from -- a hardcoded copy there would be free to drift.",
+    )
 
     setup_parser = subparsers.add_parser(
         "setup", help="Build the runtimehost jars a generated app needs to compile, and the AI "
@@ -3421,6 +3841,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit a single npdev-cli-result.v1 JSON object (all checks, including passing ones) "
              "on stdout instead of the human summary (Phase 0 I1 -- the human summary is "
              "unchanged either way).",
+    )
+    doctor_parser.add_argument(
+        "--app", default=None, metavar="DIR",
+        help="An app directory (or a db.definition.json path) to run the database checks against. "
+             "Defaults to the current directory; when no app is found the database checks are "
+             "skipped -- a machine with no NPDev app on it is not a broken machine (W5.2).",
     )
 
     capabilities_parser = subparsers.add_parser(
@@ -3815,6 +4241,8 @@ def main(argv: list[str] | None = None) -> int:
             return _dev_run(args, sys.modules[__name__])
         if args.command == "capabilities":
             return run_capabilities(args)
+        if args.command == "engines":
+            return run_engines(args)
         if args.command == "doctor":
             return run_doctor(args)
         if args.command == "mcp" and args.mcp_command == "install":

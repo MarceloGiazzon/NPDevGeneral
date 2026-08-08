@@ -196,3 +196,15 @@ form input {
   font-size: 13px;
 }
 .run-banner.ok { border-color: var(--pass); color: var(--pass); }
+
+/* W5.3: an experimental engine's caveat, shown at the point of choice rather than in a changelog.
+   Deliberately loud -- the whole failure this guards against is a dropdown that offers MySQL as
+   though it were Postgres. Not an error colour: choosing it is allowed, just not silent. */
+.engine-warning {
+  border-left: 3px solid #d08700;
+  background: rgba(208, 135, 0, 0.08);
+  padding: 8px 10px;
+  margin: 6px 0;
+  font-size: 13px;
+  line-height: 1.45;
+}

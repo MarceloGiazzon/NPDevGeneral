@@ -194,13 +194,46 @@ fn list_apps(state: State<'_, AppState>) -> Vec<AppEntry> {
     state.manager.lock().expect("lock poisoned").apps.clone()
 }
 
+/// W5.3 requirement 1: the engine picker's options come from `npdev engines --json`, never from a
+/// list written here. The status attached to each engine ("experimental", and why) is what the form
+/// must show at the point of choice; a copy in this file would drift the day that changes, and the
+/// user would be told an engine is fine when the platform no longer claims so.
 #[tauri::command]
-async fn create_app(state: State<'_, AppState>, name: String, parent_dir: String) -> Result<Value, String> {
+async fn list_engines(state: State<'_, AppState>) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_engines(&python, &cli, java_home.as_deref()).await
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+async fn create_app(
+    state: State<'_, AppState>,
+    name: String,
+    parent_dir: String,
+    engine: Option<String>,
+    db_host: Option<String>,
+    db_port: Option<u16>,
+    db_user: Option<String>,
+    db_password: Option<String>,
+) -> Result<Value, String> {
     let java_home = resolve_java_home(&state);
     let python = resolve_python_exe(&state).await?;
     let cli = resolve_npdev_cli(&state)?;
     let target_dir = PathBuf::from(&parent_dir).join(&name);
-    let result = npdev::run_init(&python, &cli, java_home.as_deref(), &target_dir.to_string_lossy()).await?;
+    let result = npdev::run_init(
+        &python,
+        &cli,
+        java_home.as_deref(),
+        &target_dir.to_string_lossy(),
+        engine.as_deref(),
+        db_host.as_deref(),
+        db_port,
+        db_user.as_deref(),
+        db_password.as_deref(),
+    )
+    .await?;
 
     let directory = result
         .get("created")
@@ -317,6 +350,7 @@ fn main() {
             install_npdev_version,
             run_setup,
             list_apps,
+            list_engines,
             create_app,
             open_folder,
             open_url,
