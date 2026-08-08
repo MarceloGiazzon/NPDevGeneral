@@ -64,11 +64,74 @@ public final class DialectTestSupport {
      * parameter source handed h2 to a container-only run. All 13 threw
      * {@code IllegalArgumentException} in 0.1s total, against no database at all, which is what
      * distinguished them from the single real behavioural failure.
+     *
+     * <h2>PINNED TO DIGESTS, and why that came before promoting the CI trigger</h2>
+     *
+     * <p>These were moving tags ({@code mysql:8.4}, {@code postgres:16},
+     * {@code mcr.microsoft.com/mssql/server:2022-latest}) until 2026-08-08. A push-blocking gate on a
+     * moving tag <b>cannot tell "we broke it" from "the image changed"</b>, and a gate people cannot
+     * trust is a gate they re-run instead of read. So the digests were pinned FIRST and the trigger
+     * promoted second -- {@code storage/FULL_SUPPORT_PLAN.md} W1.1 before W1.2.
+     *
+     * <p><b>Digest ONLY -- the tag cannot be glued on, and finding that out cost one red test rather
+     * than one red CI job.</b> {@code repository:tag@sha256:...} is valid Docker syntax and the
+     * obvious way to keep the human-readable version beside the immutable identity. Testcontainers
+     * 1.21.4 does not parse it that way: {@code DockerImageName.parse("mysql:8.4@sha256:...")}
+     * splits on {@code @} only, so the repository comes back as {@code "mysql:8.4"}, which then
+     * fails {@code MySQLContainer}'s own {@code assertCompatibleWith(mysql)} <b>at container
+     * construction</b>. That failure would have landed thirty seconds into a CI job, inside a forked
+     * test JVM whose stdout Gradle does not forward. {@link DialectContainerImagePinningTest} asserts
+     * the parse instead, in milliseconds, with no Docker -- it is the test that caught this.
+     *
+     * <p>The tag each digest was resolved from is therefore kept as DATA in
+     * {@link #CONTAINER_IMAGE_TAGS} rather than as a comment, so {@code --resolve} can re-read the
+     * registry from it and a stale note cannot masquerade as a pin.
+     *
+     * <p><b>Refresh quarterly.</b> A digest that is never refreshed becomes its own problem -- CVEs
+     * accumulate and a pinned EOL image is a different kind of stale than a moving one. Re-resolve
+     * with {@code scripts/quality/check-container-images-pinned.py --resolve}, which reads the
+     * registry and prints the current digest for each tag, then update BOTH this map and the
+     * workflow's {@code PINNED_*} env block -- the checker fails the gate if they disagree.
+     *
+     * <pre>
+     *   pinned 2026-08-08   refresh due 2026-11-08
+     * </pre>
      */
     private static final Map<String, String> CONTAINER_IMAGES = Map.of(
+            "mysql",
+            "mysql@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb",
+            "postgres",
+            "postgres@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b",
+            "sqlserver",
+            "mcr.microsoft.com/mssql/server"
+            + "@sha256:ba4c8329f48fb8f02e1416be6a930ebfd71268caee78aa985f3af4315e457c89");
+
+    /**
+     * The tag each digest in {@link #CONTAINER_IMAGES} was resolved FROM, on the pin date.
+     *
+     * <p>Not documentation: {@code --resolve} re-reads the registry through these, so the refresh
+     * path cannot drift from what was actually pinned. A digest with no recorded tag is a digest
+     * nobody can refresh without archaeology.
+     */
+    private static final Map<String, String> CONTAINER_IMAGE_TAGS = Map.of(
             "mysql", "mysql:8.4",
             "postgres", "postgres:16",
             "sqlserver", "mcr.microsoft.com/mssql/server:2022-latest");
+
+    /**
+     * The pinned images, for the test that asserts they stay pinned and parseable.
+     *
+     * <p>Exposed rather than duplicated: a test that carries its own copy of the map proves the copy
+     * is well-formed, which is not the question.
+     */
+    public static Map<String, String> containerImages() {
+        return CONTAINER_IMAGES;
+    }
+
+    /** The tag each pinned digest came from. See {@link #CONTAINER_IMAGE_TAGS}. */
+    public static Map<String, String> containerImageTags() {
+        return CONTAINER_IMAGE_TAGS;
+    }
 
     /**
      * System property CI sets so ONE job means ONE engine: {@code -Dnpdev.dialect.only=mysql}.
