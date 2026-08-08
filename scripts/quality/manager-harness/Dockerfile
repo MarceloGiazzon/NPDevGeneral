@@ -34,12 +34,14 @@ COPY NPDevManager/capabilities ./capabilities
 COPY NPDevManager/icons ./icons
 COPY NPDevManager/tauri.conf.json ./tauri.conf.json
 COPY NPDevManager/ui ./ui
-# `quick`, not `release`: this build exists only to produce a binary for `--selftest`, and the
-# Manager's hot path is a blocking subprocess -- LTO across 531 crates optimises what nobody waits
-# on. `quick` is `release` with lto=false/codegen-units=16 (see NPDevManager/Cargo.toml). The
-# published installer still gets full LTO, because `cargo tauri build` uses `release` and cannot be
-# pointed elsewhere.
-RUN cargo build --profile quick --target-dir /build
+# Stays on `release`, and that is a MEASURED decision rather than an oversight. NPDevManager has a
+# faster `quick` profile (lto=false, codegen-units=16) and pointing this at it looks obvious -- but
+# this layer is a FROM-SCRATCH build every time the Manager's source changes (deps and app compile
+# in one RUN, so the COPY above invalidates the whole thing), and from-scratch is the one case where
+# `quick` did not win: measured 2026-08-08 on this project's dev machine, release 1039s vs quick
+# 1317s. `quick`'s gain is on WARM incremental rebuilds (~310s -> ~150s), which a container build
+# never gets. Re-point this only with a from-scratch measurement that says otherwise.
+RUN cargo build --release --target-dir /build
 
 # ---- runtime: the bare machine I4 actually tests ----
 FROM ubuntu:24.04
@@ -61,9 +63,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libgtk-3-0 libayatana-appindicator3-1 librsvg2-2 \
  && rm -rf /var/lib/apt/lists/*
 
-# /build/quick, not /build/release -- a custom cargo profile puts its output in a directory named
-# after the profile. This path and the `--profile` flag above are a pair; changing one alone gives
-# a COPY that fails the image build.
-COPY --from=builder /build/quick/npdev-manager /usr/local/bin/npdev-manager
+# Paired with the `--profile`/`--release` flag above: a cargo profile writes to a directory named
+# after itself, so changing one of these alone gives a COPY that fails the image build.
+COPY --from=builder /build/release/npdev-manager /usr/local/bin/npdev-manager
 
 ENTRYPOINT ["/usr/local/bin/npdev-manager", "--selftest"]

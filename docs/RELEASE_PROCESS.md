@@ -56,6 +56,16 @@ cargo tauri build
 gh release upload <tag> "$env:NPDEV_BUILD_ROOT\manager-target\release\bundle\nsis\NPDev Manager_<version>_x64-setup.exe" --clobber
 ```
 
+**Use `cargo tauri build` here and nothing else.** It builds the `release` profile, which is the
+fully-optimised one (`lto = true`, `codegen-units = 1`) — and tauri-cli 2.11 has no `--profile`
+flag, so `release` is the only profile the bundler can produce an installer from.
+
+While *developing* the Manager, build `cargo build --profile quick` instead. It is `release` with
+LTO off, and it roughly halves a warm rebuild (~310 s → ~150 s, measured 2026-08-08). It is **not**
+faster from scratch — a cold build is dominated by compiling 531 dependency crates, not by LTO — so
+it is an iteration profile, not a general speed-up, and the manager-harness container build stays on
+`release` for exactly that reason.
+
 (Linux `.AppImage` publishing needs a Linux build host — not done from this Windows-only
 development machine; tracked as part of the same CI-automation gap, not a separate one.)
 
