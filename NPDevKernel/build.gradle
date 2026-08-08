@@ -84,6 +84,20 @@ subprojects {
             }
         }
 
+        // Gradle does NOT forward a forked test JVM's stdout to the console -- it captures it into
+        // the JUnit XML. So DialectTestSupport's "[dialect-support] started <image> ..." line, whose
+        // entire purpose is that you should not need to download an artifact to learn whether a real
+        // container was used, was written, captured, and invisible. Measured on run 31268124428: the
+        // line is present in system-out and absent from the log, and the log has zero mentions of
+        // Testcontainers, Docker or Ryuk.
+        //
+        // Container backend only, so a local run stays quiet.
+        if ('container'.equalsIgnoreCase(System.getenv('NPDEV_DIALECT_BACKEND') ?: '')) {
+            testLogging {
+                showStandardStreams = true
+            }
+        }
+
         if (System.getProperty('os.name', '').toLowerCase().contains('win')
                 && System.getenv('DOCKER_HOST') == null) {
             environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'

@@ -34,14 +34,23 @@ from pathlib import Path
 DIALECT = re.compile(r"SqlDialect\[(\w+)\]")
 
 
-def collect(results_dir: Path) -> dict[str, dict]:
+def collect(results_dir: Path) -> tuple[dict[str, dict], list[str]]:
     per: dict[str, dict] = collections.defaultdict(
         lambda: {"passed": 0, "failed": 0, "skipped": 0, "seconds": 0.0, "failures": []})
+    containers: list[str] = []
     for xml in sorted(results_dir.rglob("TEST-*.xml")):
         try:
             root = ET.parse(xml).getroot()
         except ET.ParseError:
             continue
+        # DialectTestSupport prints one line per container start. Gradle captures a forked test JVM's
+        # stdout into system-out rather than forwarding it to the console, so this is where the
+        # evidence reliably lives -- and reading it here puts "a real container was used" beside the
+        # results rather than in an artifact nobody opens.
+        out = root.find("system-out")
+        for line in ((out.text or "") if out is not None else "").splitlines():
+            if "[dialect-support] started" in line:
+                containers.append(line.split("[dialect-support] started", 1)[1].strip())
         for case in root.iter("testcase"):
             match = DIALECT.search(case.get("name", "") or "")
             name = match.group(1) if match else "(unparameterised)"
@@ -58,10 +67,10 @@ def collect(results_dir: Path) -> dict[str, dict]:
                 row["failures"].append(f"{case.get('classname', '').split('.')[-1]} -- {kind}")
             else:
                 row["passed"] += 1
-    return per
+    return per, containers
 
 
-def render(per: dict[str, dict], title: str) -> str:
+def render(per: dict[str, dict], containers: list[str], title: str) -> str:
     if not per:
         return f"### {title}\n\nNo JUnit XML found -- the test step produced no results at all.\n"
     lines = [f"### {title}", "", "| dialect | passed | failed | skipped | seconds |",
@@ -79,6 +88,12 @@ def render(per: dict[str, dict], title: str) -> str:
         for name, row in sorted(failing.items()):
             for kind, count in sorted(collections.Counter(row["failures"]).items()):
                 lines.append(f"- `{name}`: {kind} × {count}")
+    lines += ["", "**Containers started**"]
+    if containers:
+        lines += [f"- `{c}`" for c in sorted(set(containers))]
+    else:
+        lines.append("- _none reported_ — no real engine was started. If the job name says "
+                     "\"real engine\", THAT is the failure, not the tests.")
     lines += ["", "_Seconds near zero means the engine was never reached._"]
     return "\n".join(lines) + "\n"
 
@@ -92,7 +107,8 @@ def main() -> int:
     args = parser.parse_args()
 
     results = Path(args.results_dir)
-    markdown = render(collect(results) if results.is_dir() else {}, args.title)
+    per, containers = collect(results) if results.is_dir() else ({}, [])
+    markdown = render(per, containers, args.title)
     if args.out:
         with open(args.out, "a", encoding="utf-8") as handle:
             handle.write(markdown)
