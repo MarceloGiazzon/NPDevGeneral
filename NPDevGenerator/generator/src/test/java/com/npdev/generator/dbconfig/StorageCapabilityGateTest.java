@@ -56,6 +56,9 @@ class StorageCapabilityGateTest {
             @Override public String quoteIdentifier(String raw) {
                 throw new UnsupportedOperationException();
             }
+            @Override public String keyableTextColumnType() {
+                throw new UnsupportedOperationException();
+            }
             @Override public boolean foldsUnquotedIdentifiersToLowerCase() {
                 throw new UnsupportedOperationException();
             }
