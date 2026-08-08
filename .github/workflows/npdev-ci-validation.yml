@@ -34,6 +34,23 @@ jobs:
 
     env:
       CI: true
+      # CI-2 (2026-08-08): pin the external build root so Gradle and PowerShell cannot disagree.
+      # Both resolvers (NPDevKernel/build.gradle's resolveNpdevBuildRoot and npdev-common.ps1's
+      # Get-NPDevBuildRoot) walk ancestors looking for a directory literally NAMED 'NPDev_General'.
+      # GitHub checks this repo out as 'NPDevGeneral' (no underscore), so the walk never matches and
+      # BOTH fall through to their own fallback -- and those fallbacks start from different places:
+      #   Gradle     rootDir.parentFile/Build  (rootDir=NPDevKernel) -> <workspace>/Build
+      #   PowerShell workspace.Parent/Build    (workspace=checkout)  -> <workspace>/../Build
+      # One directory apart. Gradle wrote the adapter jars to the first, sync-runtimehost-libs.ps1
+      # searched the second, found zero, and three packaged-app proof tests failed with "No
+      # RuntimeHost jars were discovered under build/libs after local jar build."
+      # Measured: on a checkout named 'NPDevGeneral' the two resolvers disagree; on one named
+      # 'NPDev_General' (the author's machine) they agree -- which is exactly why this was
+      # Linux-CI-only and invisible locally.
+      # Setting NPDEV_BUILD_ROOT makes both take their FIRST branch, so agreement is structural
+      # rather than coincidental. <workspace>/Build is where Gradle already wrote, so the artifact
+      # upload globs below (Build/gradle/...) stay valid.
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
       GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
 
     steps:
@@ -116,13 +133,20 @@ jobs:
       #
       # No heredoc here on purpose -- an unindented heredoc body escapes this `run: |` block scalar
       # and makes the whole workflow file unparseable (learned the hard way while writing it).
+      # The buildDir is REDIRECTED (NPDevGenerator/build.gradle:28) to
+      # <NPDEV_BUILD_ROOT>/gradle/<rootProject>/<path>, so NPDevGenerator/generator/build/ does not
+      # exist and the first version of this step printed "no generator test XML containing failures
+      # was found" on a run that had three failures. Commit eff0f43 had already fixed exactly this
+      # trap for the artifact-upload glob two days earlier; this is the same lesson, third instance.
+      # Search the redirected root, and keep the legacy path as a fallback so this still works if the
+      # redirect is ever removed.
       - name: On failure, surface generator test failure messages
         if: failure()
-        working-directory: NPDevGenerator
         run: |
           shopt -s nullglob
           found=0
-          for f in generator/build/test-results/*/*.xml; do
+          for f in "${NPDEV_BUILD_ROOT:-Build}"/gradle/*/generator/test-results/*/*.xml \
+                   NPDevGenerator/generator/build/test-results/*/*.xml; do
             if grep -q '<failure' "$f" || grep -q '<error' "$f"; then
               found=1
               echo "----- $f -----"
@@ -180,11 +204,23 @@ jobs:
       # message, so we can't tell WHICH postgres check fired (:260 connectivity / :274 flyway-history
       # missing / :282 no-successful-migrations). Dump the JUnit XML message= attributes on failure so
       # the next run pins it exactly. See NPDev_General__OutsideRepo/reg17-linux-validation-2026-07-22/.
+      # A step with `if: failure()` runs when ANY earlier step failed -- including one that failed
+      # before this app was ever generated. `working-directory` is resolved by the runner BEFORE the
+      # script runs, so a missing directory aborted the step itself with "An error occurred trying to
+      # start process '/usr/bin/bash' with working directory ... No such file or directory", adding a
+      # second, purely spurious red X to every run whose real failure was upstream. Resolve the path
+      # inside the script and say plainly when there is nothing to surface.
       - name: On failure, surface integration-test error messages (NEW-1)
         if: failure()
-        working-directory: NPDevSamples/superuser-admin-console/Output/App
         run: |
-          for f in build/test-results/integrationTest/*.xml; do
+          results="NPDevSamples/superuser-admin-console/Output/App/build/test-results/integrationTest"
+          if [ ! -d "$results" ]; then
+            echo "No integration-test results at $results -- the generated app was never built,"
+            echo "so this run's failure is upstream of the integration tests. Nothing to surface."
+            exit 0
+          fi
+          for f in "$results"/*.xml; do
+            [ -e "$f" ] || continue
             echo "----- $f -----"
             grep -oE '<(error|failure)[^>]*type="[^"]*"' "$f" | head -3 || true
             grep -oE '(Flyway[^<"]{0,200}|StartupValidator[^<"]{0,120}|mode=postgres[^<"]{0,120}|schema history[^<"]{0,120}|no successful migrations[^<"]{0,120})' "$f" | head -6 || true
