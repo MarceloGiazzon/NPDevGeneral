@@ -13,7 +13,7 @@ name: Storage dialect conformance
 # executed here.
 #
 # ---------------------------------------------------------------------------------------------
-# WHY workflow_dispatch ONLY, for now
+# THE TRIGGER, AND THE ORDER IT WAS PROMOTED IN
 #
 # FIRST RUN: 31264977219, at commit 5814886, 2026-08-08. Three jobs red -- and underneath, MySQL 8.4
 # passed 13/13 and Postgres 16 passed 13/13, against real containers, with ZERO vectors skipped. The
@@ -31,6 +31,26 @@ name: Storage dialect conformance
 # ---------------------------------------------------------------------------------------------
 
 on:
+  # W1.2, and it comes AFTER W1.1's pinning, deliberately -- see the note above. The paths are the
+  # ones the dispatch-only comment already drafted: the dialect package itself, the adapters that
+  # consume it, the generator's engine mapping, and this workflow. A change to any of them can move
+  # what an engine actually does, and nothing else re-verified that.
+  #
+  # `paths:` is a filter nobody should trust without watching it fire. Verified by pushing a
+  # whitespace-only change to one listed path and confirming a run started with no dispatch.
+  push:
+    branches: [main]
+    paths:
+      - 'NPDevKernel/kernel/src/**/storage/sql/**'
+      - 'NPDevKernel/adapters/**'
+      - 'NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/**'
+      - '.github/workflows/storage-dialect-conformance.yml'
+  pull_request:
+    paths:
+      - 'NPDevKernel/kernel/src/**/storage/sql/**'
+      - 'NPDevKernel/adapters/**'
+      - 'NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/**'
+      - '.github/workflows/storage-dialect-conformance.yml'
   workflow_dispatch:
     inputs:
       engine:
@@ -143,7 +163,11 @@ jobs:
       # did nothing the run still reported green, which is why DialectTestSupportSelectionTest now
       # pins the behaviour.
       - name: Tier B against a real ${{ matrix.engine }}
-        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+      # `github.event.inputs.engine` is EMPTY on a push -- there are no inputs. Without the
+      # `|| 'all'` fallback this condition is false for every engine, so the whole matrix would skip
+      # its real step and the job would report GREEN HAVING RUN NOTHING. That is the exact silent
+      # defect this suite exists to prevent, arriving through the trigger promotion itself.
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
         working-directory: NPDevKernel
         run: |
           ./gradlew :kernel:test --tests '*DialectConformanceTierBTest*' \
