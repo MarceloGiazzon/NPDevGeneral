@@ -18,6 +18,7 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.CapabilityRegistry;
+import com.npdev.kernel.exec.ExecutionSummary;
 import com.npdev.kernel.ports.EventMetaStore;
 import com.npdev.kernel.ports.EventRedactionPolicy;
 import com.npdev.kernel.ports.EventStore;
@@ -125,24 +126,65 @@ public class NpdevObservabilityConfig {
 
     @Bean
     public TraceSummaryStore traceSummaryStore(TraceStore traceStore) {
+        // ROUND2_PLAN.md R1c: returning `store` directly (an adapter like JdbcTraceStore implements
+        // both TraceStore and TraceSummaryStore) registers ONE object under TWO type-assignable
+        // beans -- any plain TraceStore-typed injection point (e.g. StorageWiringLogger) then finds
+        // two candidates ("jdbcTraceStore" and this "traceSummaryStore" bean) and fails to start.
+        // Previously masked: npdev.storage.mode=jdbc's DataSource dependency chain was broken for
+        // an InMemory-default-engine model forced into JDBC mode by the step0 trial profile (see
+        // application-step0.yml), so jdbcTraceStore never actually got created to collide with this.
+        // The method reference below implements only TraceSummaryStore, not the delegate's full
+        // interface list, so it is never itself a TraceStore autowire candidate.
         if (traceStore instanceof TraceSummaryStore store) {
-            return store;
+            return store::searchSummaries;
         }
         return query -> List.of();
     }
 
     @Bean
     public ExecutionSummaryStore executionSummaryStore(FlowInstanceStore flowInstanceStore) {
+        // ROUND2_PLAN.md R1c: same fix as traceSummaryStore above -- JdbcFlowInstanceStore
+        // implements both FlowInstanceStore and ExecutionSummaryStore, so returning it directly
+        // registered one object under two type-assignable beans, breaking any plain
+        // FlowInstanceStore-typed injection point (StorageWiringLogger) once npdev.storage.mode=jdbc
+        // actually created this bean. ExecutionSummaryStore has 3 real overridden methods beyond its
+        // single abstract one (JdbcFlowInstanceStore implements all 4 with real query logic, not the
+        // interface's List.of() defaults), so this delegates every method explicitly rather than a
+        // single method reference, which would have silently dropped back to the no-op defaults for
+        // the other 3.
         if (flowInstanceStore instanceof ExecutionSummaryStore store) {
-            return store;
+            return new ExecutionSummaryStore() {
+                @Override
+                public List<ExecutionSummary> listSummaries(String tenantId, String mode, int limit, int offset) {
+                    return store.listSummaries(tenantId, mode, limit, offset);
+                }
+
+                @Override
+                public List<ExecutionSummary> listByCorrelation(String tenantId, String correlationId, int limit, int offset) {
+                    return store.listByCorrelation(tenantId, correlationId, limit, offset);
+                }
+
+                @Override
+                public List<ExecutionSummary> listFailureSummaries(String tenantId, int limit, int offset) {
+                    return store.listFailureSummaries(tenantId, limit, offset);
+                }
+
+                @Override
+                public List<ExecutionSummary> listStuckSummaries(String tenantId, int limit, int offset) {
+                    return store.listStuckSummaries(tenantId, limit, offset);
+                }
+            };
         }
         return (tenantId, mode, limit, offset) -> List.of();
     }
 
     @Bean
     public EventMetaStore eventMetaStore(EventStore eventStore) {
+        // ROUND2_PLAN.md R1c: same fix as traceSummaryStore above (JdbcEventStore implements both
+        // EventStore and EventMetaStore). EventMetaStore is a pure single-method functional
+        // interface, so a method reference is sufficient here (no other methods to drop).
         if (eventStore instanceof EventMetaStore store) {
-            return store;
+            return store::listByCorrelation;
         }
         return (tenantId, correlationId, limit, offset) -> List.of();
     }

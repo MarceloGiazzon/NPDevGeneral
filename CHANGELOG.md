@@ -2,6 +2,51 @@
 
 Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit dates.
 
+## [beta1.8] - 2026-08-08
+
+Everything below is scoped to the 12 commits that landed on `main` between `beta1.7`
+(`6a87d8e`) and this tag, plus ROUND2_PLAN.md's R1 work landing directly before the tag — not a
+retroactive pass over the much larger `[Unreleased]` backlog below, which predates this entry and
+is tracked separately.
+
+### Added
+- Per-app Java level (`config.json`'s `build.javaVersion`) and declared third-party dependencies
+  (`build.repositories[]`/`build.dependencies[]`) for generated apps (deps-and-java/PLAN.md,
+  REG-140/REG-141). `AppDependenciesEmitterTest` added as regression cover for the dependency
+  emitter, which had shipped with none (ROUND2_PLAN.md R1a).
+- Semantic-behavior-writeback shipped for real (REG-138) — `execute()` now actually mutates the
+  model instead of the excluded-by-default stub.
+
+### Fixed
+- REG-139: blank-page-on-fresh-boot crash in the editor's `ModelEditorPanel`, three-layer fix,
+  verified live (RED/GREEN).
+- Editor: removed dead structural-writeback code; fixed an asset-copy bug that dropped JS chunks.
+- A generated app's "step0" zero-setup trial profile could fail to boot at all
+  (`UnsatisfiedDependencyException` for `DataSource`, then a second one for a duplicate
+  `TraceStore`/`FlowInstanceStore` bean) whenever its model resolved to the InMemory engine at
+  generation time — exactly the case for any app generated without a live database connection, and
+  exactly the path the Manager's "New app" zero-setup flow depends on. Found and fixed as part of
+  the Gradle/Spring Boot bump below; see `REG-143`.
+
+### Behavior changes
+- **`build.javaVersion` widened from `enum [17, 21]` to a floor-only `minimum: 17` — any integer
+  >= 17 is now accepted, with no upper bound (ROUND2_PLAN.md R1c).** Not a breaking change (every
+  config valid under the old enum stays valid). To make values above 21 actually buildable, not
+  just schema-accepted, `NPDevRuntimeHost`'s own bundled Gradle wrapper (copied into every
+  generated app) was bumped 8.5 → 9.5.1, `foojay-resolver-convention` 0.8.0 → 1.0.0,
+  `org.springframework.boot` plugin 3.3.2 → 3.5.16 (its `bootJar` task called a Copy API method
+  Gradle 9 changed — the only thing in the whole corpus that caught this was the generator's own
+  packaged-app boot-proof tests, which are also the only tests that run `bootJar` at all), ArchUnit
+  1.3.0 → 1.4.2, and Mockito 5.11.0 → 5.23.0 (with an explicit Byte Buddy 1.17.7 override) — all
+  three of the last found live to fail against Java 25's class file format otherwise. Platform
+  modules (dsl/kernel/generator/adapters/runtimehost source) are unaffected; only the template
+  shipped inside generated apps moved. See `BREAKING.md` and ledger `REG-143`.
+
+### Chore
+- Stale branches cleared, `docs/MANAGER.md` made discoverable from the README (FINAL_PLAN.md
+  F1+F2).
+- REG139_PLAN.md I2/I3: delete stale branch, sync remaining Java 17+ fixtures.
+
 ## [Unreleased]
 
 ### Added

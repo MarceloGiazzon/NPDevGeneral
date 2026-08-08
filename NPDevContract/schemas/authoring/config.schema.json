@@ -194,8 +194,8 @@
       "properties": {
         "javaVersion": {
           "type": "integer",
-          "description": "The generated app's own Gradle toolchain language version. Platform modules (dsl/kernel/generator/adapters/runtimehost source) stay pinned at 17 regardless of this value -- only the generated app's own compile/run toolchain is variable.",
-          "enum": [17, 21],
+          "description": "The generated app's own Gradle toolchain language version. Platform modules (dsl/kernel/generator/adapters/runtimehost source) stay pinned at 17 regardless of this value -- only the generated app's own compile/run toolchain is variable. ROUND2_PLAN.md R1c: no upper enum on purpose -- any integer >=17 is accepted at this layer; the real ceiling (whatever the generated app's own bundled Gradle wrapper/foojay resolver can actually resolve a JDK for) is enforced by Gradle itself at build time, not guessed at here.",
+          "minimum": 17,
           "default": 17
         },
         "repositories": {

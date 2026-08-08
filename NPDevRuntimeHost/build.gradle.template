@@ -4,7 +4,17 @@
 import groovy.json.JsonSlurper
 
 plugins {
-    id 'org.springframework.boot' version '3.3.2'
+    // ROUND2_PLAN.md R1c: bumped alongside the Gradle 8.5 -> 9.5.1 wrapper bump. 3.3.2's `bootJar`
+    // task (Spring Boot's own plugin, not core Gradle) called a Copy API method Gradle 9 changed --
+    // `bootJar FAILED > 'java.lang.Integer org.gradle.api.file.CopyProcessingSpec.getDirMode()'` --
+    // confirmed live via the generator module's own packaged-app runtime-proof tests, which run
+    // `bootJar` for real and are the only tests in the corpus that do (compileJava/test do not
+    // exercise this task at all, which is why the earlier round-2 proof runs missed it). 3.5.16 is
+    // the last Spring Boot 3.x patch (3.5 reached its own OSS EOL 2026-06-30) and the earliest 3.x
+    // line documented as Gradle-9-compatible -- deliberately NOT Boot 4.x, which is a Spring
+    // Framework 7 / Jakarta migration with a blast radius far beyond "can bootJar run under Gradle
+    // 9," and out of scope for this item.
+    id 'org.springframework.boot' version '3.5.16'
     id 'io.spring.dependency-management' version '1.1.6'
     id 'java'
     id 'org.flywaydb.flyway' version '10.10.0'
@@ -29,6 +39,25 @@ java {
 
 repositories {
     mavenCentral()
+}
+
+// ROUND2_PLAN.md R1c: `configurations.configureEach { resolutionStrategy.force(...) }` (below) does
+// NOT win against io.spring.dependency-management's own managed version for a TRANSITIVE dependency
+// like mockito-core (pulled in via spring-boot-starter-test) -- confirmed live: force() was present
+// and mockito-core still resolved to Boot 3.3.2's managed 5.11.0. The dependencyManagement {} block
+// is that plugin's own override mechanism and is what actually wins.
+dependencyManagement {
+    dependencies {
+        dependency 'org.mockito:mockito-core:5.23.0'
+        dependency 'org.mockito:mockito-junit-jupiter:5.23.0'
+        // Boot 3.3.2's BOM also separately manages byte-buddy at 1.14.18 (below Java 25 support) --
+        // that management wins over mockito-core 5.23.0's own transitive request for 1.17.7 unless
+        // overridden here too. Confirmed live: without this, byte-buddy still resolved to 1.14.18
+        // even with mockito-core correctly at 5.23.0, and mocks still failed to instrument under
+        // Java 25 (MockitoInitializationException).
+        dependency 'net.bytebuddy:byte-buddy:1.17.7'
+        dependency 'net.bytebuddy:byte-buddy-agent:1.17.7'
+    }
 }
 
 def resolveNpdevRuntimeLibsDir = {
@@ -121,7 +150,10 @@ dependencies {
     implementation 'com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'com.tngtech.archunit:archunit-junit5:1.3.0'
+    // ROUND2_PLAN.md R1c: 1.3.0 fails every ArchUnit rule with "failed to check any classes" under
+    // Java 25 (class file major version 69) -- its bytecode importer can't read it. 1.4.1 added
+    // that support; confirmed live.
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.2'
     testImplementation 'org.testcontainers:testcontainers:1.21.4'
     testImplementation 'org.testcontainers:jdbc:1.21.4'
     testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
@@ -131,6 +163,11 @@ dependencies {
     testImplementation 'com.icegreen:greenmail-junit5:2.1.0'
     runtimeOnly 'com.h2database:h2'
     testRuntimeOnly 'com.h2database:h2'
+    // ROUND2_PLAN.md R1c (Gradle 8.5 -> 9.5.1 bump): Gradle 9 stopped bundling the JUnit Platform
+    // launcher itself -- up through Gradle 8.x it was implicitly available on the test task's
+    // classpath; Gradle 9 requires it declared explicitly or `test` fails with "Failed to load
+    // JUnit Platform", confirmed live.
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
     // Runtime extension jars are staged outside the source/evidence workspace.
     implementation fileTree(dir: npdevRuntimeHostLibsDir, include: ['*.jar'])

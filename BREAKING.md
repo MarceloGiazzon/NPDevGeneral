@@ -5,13 +5,47 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-08 — `build.javaVersion`'s upper enum removed (ROUND2_PLAN.md R1c)
+
+**Not a breaking change — widened, not narrowed.** Every config that validated under the old
+`enum: [17, 21]` still validates identically. What's new: any integer `>= 17` is now accepted at
+the schema/validation layer, with no upper bound — the 3rd-party user who originally asked for "a
+newer Java version" (below) wanted this future-proofed against every Java version to come, not
+renegotiated every time a new JDK ships.
+
+Threaded: all 3 `config.schema.json` mirrors (`build.javaVersion.enum` → `build.javaVersion.minimum:
+17`), `GeneratorMain.resolveJavaVersion` (the `SUPPORTED_APP_JAVA_VERSIONS` allowlist replaced with a
+floor-only check), `GeneratorMainJavaVersionResolutionTest` (new cases: accepts 25, accepts a
+version that doesn't exist yet, rejects below the floor).
+
+**What still gates a value above 21 in practice, and everything that had to move to make it real:**
+every generated app's bundled Gradle wrapper (`NPDevRuntimeHost/gradle/wrapper`) moved 8.5 → 9.5.1,
+`foojay-resolver-convention` 0.8.0 → 1.0.0, `org.springframework.boot` plugin 3.3.2 → 3.5.16 (its
+`bootJar` task called a Copy API method Gradle 9 changed), ArchUnit 1.3.0 → 1.4.2 and Mockito
+5.11.0 → 5.23.0 / Byte Buddy → 1.17.7 (both couldn't read/instrument Java 25's class file format).
+Two more bugs surfaced only by actually booting a packaged jar as a real external process — the
+`application-step0.yml` "zero-setup trial" profile never cleared an inherited
+`spring.autoconfigure.exclude=DataSourceAutoConfiguration,...` (an empty-string YAML override was
+silently ignored; fixed with proper `exclude: []` list syntax), and three `NpdevObservabilityConfig`
+beans (`traceSummaryStore`/`executionSummaryStore`/`eventMetaStore`) registered a dual-interface
+adapter instance under two type-assignable bean names, breaking any plain
+`TraceStore`/`FlowInstanceStore`/`EventStore` injection once a real `DataSource` was available for
+the first time. Full chain, live-verification, and how each was isolated as genuinely new (not
+pre-existing): `REG-143`. Platform modules (dsl/kernel/generator/adapters/runtimehost source) are
+unaffected — they stay on Gradle 8.5 / Java 17; only the template shipped inside every *generated
+app* moved.
+
+No `npdev migrate` codemod needed — nothing here requires rewriting an existing config to keep
+working.
+
 ## 2026-08-07 — `config.json` gains an optional `build` block (deps-and-java/PLAN.md, per-app Java level + declared dependencies)
 
-**Not a breaking change — added, not modified.** `config.json`'s new `build.javaVersion` (17 or
-21, default 17) and `build.repositories[]`/`build.dependencies[]` are all optional; an app with no
-`build` block generates and behaves exactly as before this change. No `npdev migrate` codemod
-needed — the stability policy's codemod rule is for changes that require rewriting an EXISTING
-model/config to keep working, and nothing here does.
+**Not a breaking change — added, not modified.** `config.json`'s new `build.javaVersion` (originally
+17 or 21, default 17 — see the entry above for the same-day widening) and
+`build.repositories[]`/`build.dependencies[]` are all optional; an app with no `build` block
+generates and behaves exactly as before this change. No `npdev migrate` codemod needed — the
+stability policy's codemod rule is for changes that require rewriting an EXISTING model/config to
+keep working, and nothing here does.
 
 ## 2026-08-03 — `npdev migrate bounded-contexts` codemod; ADR-0011 D4 gap fixed (S3, docs/adr/ADR-0011-bounded-contexts.md addendum)
 
