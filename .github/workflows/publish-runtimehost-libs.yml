@@ -157,7 +157,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            NPDevManager/target
+            Build/manager-target
           key: manager-cargo-${{ runner.os }}-${{ hashFiles('NPDevManager/Cargo.lock') }}
 
       - name: Install the Tauri CLI
@@ -175,9 +175,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
-          SETUP="$(find NPDevManager/target/release/bundle/nsis -name '*-setup.exe' | head -1)"
+          # ASK CARGO where the bundle is; never assume NPDevManager/target.
+          #
+          # NPDevManager/.cargo/config.toml sets `target-dir = "../../Build/manager-target"` -- this
+          # repo's standing rule that build output lives OUTSIDE the source tree. Run 31279876726
+          # built the installer successfully and then failed to publish it, because this step looked
+          # in NPDevManager/target, which does not exist. `cargo metadata` reports the real directory
+          # whatever the config says, so the same mistake cannot recur if that path changes again.
+          TARGET_DIR="$(cd NPDevManager && cargo metadata --format-version 1 --no-deps             | python -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+          echo "cargo target directory: $TARGET_DIR"
+          SETUP="$(find "$TARGET_DIR/release/bundle/nsis" -name '*-setup.exe' 2>/dev/null | head -1)"
           if [ -z "$SETUP" ]; then
-            echo "::error::no NSIS installer produced -- nothing to publish"
+            echo "::error::no NSIS installer found under $TARGET_DIR/release/bundle/nsis"
+            find "$TARGET_DIR" -name '*.exe' -path '*bundle*' 2>/dev/null | head -20
             exit 1
           fi
           echo "installer: $SETUP"
