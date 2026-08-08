@@ -91,6 +91,216 @@ jobs:
           if-no-files-found: warn
 
   # -------------------------------------------------------------------------------------------
+  # storage/OPEN_ITEMS_PLAN.md W8 -- the three rows that were shipped, locally proven, and RED only
+  # because rule 1 requires a CI run id. Rule 1 was right to hold them; this pays it off.
+  #
+  # No database, no containers, no app boot -- so it runs in parallel with everything else and
+  # cannot collide with the dialect work (§8: "Doing 3 in parallel is deliberate").
+  # -------------------------------------------------------------------------------------------
+  cli-contracts:
+    name: E9 + E12 -- init --engine writes valid files, and the config gate REFUSES an invalid one
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: true
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install jsonschema
+
+      # E9: every engine the CLI offers must scaffold files that satisfy their OWN schemas. The
+      # point of `--engine` over hand-editing db.definition.json is that it cannot emit an invalid
+      # file; if it can, it has hidden the problem rather than removed it.
+      - name: E9 -- npdev init --engine, for every engine, validated
+        run: |
+          set -euo pipefail
+          for engine in $(python -c "import sys; sys.path.insert(0,'NPDevCli'); import npdev_engines; print(' '.join(npdev_engines.engine_keys()))"); do
+            APP="$RUNNER_TEMP/e9/$engine"
+            rm -rf "$APP"
+            python NPDevCli/npdev_cli.py init "$APP" --engine "$engine" --json > "$RUNNER_TEMP/e9-$engine.json"
+            echo "scaffolded $engine"
+          done
+          python - <<'PY'
+          import json, os, sys
+          sys.path.insert(0, "NPDevCli")
+          import npdev_engines
+          from jsonschema import Draft202012Validator
+          cfg = Draft202012Validator(json.load(open("NPDevContract/schemas/config.schema.json", encoding="utf-8")))
+          dbd = Draft202012Validator(json.load(open("schemas/ai/user-db-definition.schema.json", encoding="utf-8")))
+          failures = []
+          for engine in npdev_engines.engine_keys():
+              app = os.path.join(os.environ["RUNNER_TEMP"], "e9", engine)
+              for name, validator in (("config.json", cfg), ("db.definition.json", dbd)):
+                  path = os.path.join(app, name)
+                  if not os.path.exists(path):
+                      failures.append(f"{engine}: {name} was not written"); continue
+                  errors = [e.message for e in validator.iter_errors(json.load(open(path, encoding="utf-8")))]
+                  if errors:
+                      failures.append(f"{engine}: {name} -> {errors}")
+              result = json.load(open(os.environ["RUNNER_TEMP"] + f"/e9-{engine}.json", encoding="utf-8"))
+              status = result.get("engine", {}).get("status")
+              notice = result.get("engine", {}).get("honestyNotice")
+              if status != "supported" and not notice:
+                  failures.append(f"{engine}: '{status}' but --json carried no honestyNotice")
+          if failures:
+              for f in failures: print("::error::" + f)
+              sys.exit(1)
+          print(f"E9: {len(npdev_engines.engine_keys())} engines scaffolded; every config.json and "
+                f"db.definition.json validates, and every experimental engine says so")
+          PY
+
+      # E12, and the half that matters. §3: "a validator that has only ever seen valid input is the
+      # same species as a check that has only ever passed -- and this repo shipped a schema that was
+      # wrong in 93 places precisely because nothing ever ran it in anger."
+      - name: E12 -- the config gate must REFUSE an invalid config, then pass the corpus
+        run: |
+          set -uo pipefail
+          cp NPDevSamples/npdev-canary/Input/config.json "$RUNNER_TEMP/canary-config.bak"
+
+          echo "--- RED: an engine the platform does not have ---"
+          python - <<'PY'
+          import pathlib
+          p = pathlib.Path("NPDevSamples/npdev-canary/Input/config.json")
+          p.write_text(p.read_text(encoding="utf-8").replace('"h2-local"', '"sqlite"'), encoding="utf-8")
+          PY
+          if python scripts/quality/check-config-schema.py; then
+            echo "::error::the config gate PASSED an invalid provider -- it is not enforcing anything"
+            cp "$RUNNER_TEMP/canary-config.bak" NPDevSamples/npdev-canary/Input/config.json
+            exit 1
+          fi
+          echo "gate went red, as it must"
+
+          echo "--- RED: a server engine with no host ---"
+          cp "$RUNNER_TEMP/canary-config.bak" NPDevSamples/npdev-canary/Input/config.json
+          python - <<'PY'
+          import pathlib
+          p = pathlib.Path("NPDevSamples/npdev-canary/Input/config.json")
+          p.write_text(p.read_text(encoding="utf-8").replace('"h2-local"', '"postgres"'), encoding="utf-8")
+          PY
+          if python scripts/quality/check-config-schema.py; then
+            echo "::error::the config gate PASSED a postgres config with no host"
+            cp "$RUNNER_TEMP/canary-config.bak" NPDevSamples/npdev-canary/Input/config.json
+            exit 1
+          fi
+          echo "gate went red, as it must"
+
+          echo "--- GREEN: the real corpus ---"
+          cp "$RUNNER_TEMP/canary-config.bak" NPDevSamples/npdev-canary/Input/config.json
+          python scripts/quality/check-config-schema.py
+
+      # The generator's own refusal, which is the enforcement a USER meets -- the gate above is the
+      # maintainer's. Both, because they fail at different times: one at review, one at generate.
+      - name: E12 -- the generator refuses an invalid config at generation time
+        working-directory: NPDevGenerator
+        run: ./gradlew :generator:test --tests '*ConfigSchemaValidatorTest*' --no-daemon --console=plain
+
+  # -------------------------------------------------------------------------------------------
+  # E10's LAST failing fixture, and its OWN job -- storage/OPEN_ITEMS_PLAN.md W9 is explicit:
+  # "it does not depend on STOR-5: the check connects to a database; it does not need a generated
+  # app. Run it independently and do not let it wait."
+  #
+  # It was previously a step inside the MySQL job, which meant it only ran if the app proof had
+  # already passed -- so the one check that catches SILENT DATA LOSS was gated behind the slowest,
+  # most failure-prone thing in the workflow. That is backwards.
+  #
+  # Why this check is worth a job of its own: on MySQL's legacy three-byte `utf8`, inserting
+  # anything outside the BMP SUCCEEDS and the data is already wrong. No error, at any layer, ever.
+  # It is the only database problem in this repo that no stack trace would report.
+  # -------------------------------------------------------------------------------------------
+  doctor-charset-fixture:
+    name: E10 -- doctor must FAIL on a non-utf8mb4 MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: true
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Start a DELIBERATELY mis-configured MySQL (utf8mb3)
+        run: |
+          set -euo pipefail
+          echo "pinned image: $PINNED_MYSQL"
+          docker run -d --name npdev-mysql-utf8mb3 -p 3307:3306             -e MYSQL_ROOT_PASSWORD=npdevroot -e MYSQL_DATABASE=npdev_bad_charset             -e MYSQL_USER=npdev -e MYSQL_PASSWORD=npdev             "$PINNED_MYSQL"             --character-set-server=utf8mb3 --collation-server=utf8mb3_general_ci
+          for attempt in $(seq 1 90); do
+            (echo > /dev/tcp/127.0.0.1/3307) >/dev/null 2>&1 && break
+            sleep 1
+          done
+          sleep 15
+
+      # The jars doctor needs to run its probe at all. NOT an app build -- that is the dependency
+      # this job exists to avoid.
+      - name: Stage runtimehost jars
+        run: python NPDevCli/npdev_cli.py setup --build-local
+
+      # The MySQL JDBC driver, fetched directly rather than as a side effect of building a MySQL
+      # app. NPDEV_JDBC_DRIVER_MYSQL is the seam that makes this check independent; without it the
+      # only way onto a fresh machine is the app build W9 says this must not wait for.
+      - name: Fetch the MySQL JDBC driver
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/drivers"
+          curl -fsSL -o "$RUNNER_TEMP/drivers/mysql-connector-j.jar"             https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/9.1.0/mysql-connector-j-9.1.0.jar
+          ls -l "$RUNNER_TEMP/drivers"
+
+      - name: doctor must report the charset as FAILED
+        env:
+          NPDEV_JDBC_DRIVER_MYSQL: ${{ runner.temp }}/drivers/mysql-connector-j.jar
+        run: |
+          set -uo pipefail
+          APP_DIR="$RUNNER_TEMP/charset-fixture/npdev_bad_charset"
+          rm -rf "$APP_DIR"
+          python NPDevCli/npdev_cli.py init "$APP_DIR" --engine mysql             --db-host 127.0.0.1 --db-port 3307 --db-user npdev --db-password npdev
+          python NPDevCli/npdev_cli.py doctor --json --app "$APP_DIR"             > "$RUNNER_TEMP/doctor-utf8mb3.json" || true
+          python - <<'PY'
+          import json, os, sys
+          report = json.load(open(os.environ["RUNNER_TEMP"] + "/doctor-utf8mb3.json", encoding="utf-8"))
+          checks = {c["id"]: c for c in report["checks"]}
+          charset = checks.get("database-charset")
+          print(json.dumps(charset, indent=2))
+          if charset is None:
+              print("::error::doctor emitted no database-charset check at all")
+              sys.exit(1)
+          if charset["status"] != "fail":
+              print("::error::doctor did NOT flag a non-utf8mb4 MySQL. This is the check that catches "
+                    "SILENT data mangling -- one that only ever passes is not a check.")
+              sys.exit(1)
+          # The checks that must NOT fire: a fixture proving the wrong thing is worse than no fixture,
+          # and this repo has already shipped doctor calling a missing driver a credentials failure.
+          for other in ("database-reachable", "database-credentials", "database-exists"):
+              if checks.get(other, {}).get("status") == "fail":
+                  print(f"::error::{other} also failed -- the fixture is not isolating charset")
+                  sys.exit(1)
+          print("E10 charset fixture: doctor correctly reported FAIL on utf8mb3, and ONLY that")
+          PY
+
+      - name: Engine logs
+        if: always()
+        run: docker logs npdev-mysql-utf8mb3 2>&1 | tail -40 || true
+
+  # -------------------------------------------------------------------------------------------
   # E3/E4/E5 -- the largest single gap, and the one a third person hits first.
   # -------------------------------------------------------------------------------------------
   app-on-engine:
@@ -183,6 +393,116 @@ jobs:
       - name: Stage runtimehost jars
         if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
         run: python NPDevCli/npdev_cli.py setup --build-local
+
+      # Every probe database, created up front. Tier C gives each vector its OWN so that p2's
+      # model, p3's and p4's never share a
+      # schema fingerprint. Sharing one would make NPDev see each probe as an EVOLUTION of the last
+      # and -- correctly, under KeepExistingIfCompatible with no destructive recreate -- refuse the
+      # boot. The refusal would be right and the run would be measuring the harness.
+      #
+      # They have to be created here because NPDev creates TABLES at boot and never the database
+      # itself, which is precisely what doctor's `database-exists` check reports (added after run
+      # 31272786548 mistook a missing database for bad credentials). Run 31273028408 then hit the
+      # real thing: "FATAL: database npdev_p2_postgres does not exist".
+      - name: Create the Tier C databases
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
+        run: |
+          set -uo pipefail
+          # npdev_engine_probe is included: the MySQL and Postgres images create it from env vars,
+          # SQL Server's does not -- run 31273275129 failed with "Cannot open database
+          # npdev_engine_probe requested by the login". Creating it unconditionally means one code
+          # path instead of a per-engine exception nobody would notice going stale.
+          for suffix in engine_probe p2 p3 p4; do
+            if [ "$suffix" = "engine_probe" ]; then DB="npdev_engine_probe"; else DB="npdev_${suffix}_${{ matrix.engine }}"; fi
+            case "${{ matrix.engine }}" in
+              mysql)
+                # utf8mb4 explicitly, not inherited: these databases hold the evolution vectors, and
+                # a probe database on the legacy charset would fail for a reason unrelated to schema
+                # evolution.
+                docker exec npdev-engine mysql -uroot -pnpdevroot -e "CREATE DATABASE IF NOT EXISTS \`$DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON \`$DB\`.* TO 'npdev'@'%'; FLUSH PRIVILEGES;"
+                ;;
+              postgres)
+                # `|| true`: Postgres has no CREATE DATABASE IF NOT EXISTS, and a re-run finding it
+                # already there is success, not failure. A genuine problem surfaces at connect time
+                # with a clearer message than this step could produce.
+                docker exec npdev-engine psql -U npdev -d postgres -c "CREATE DATABASE $DB" || true
+                ;;
+              sqlserver)
+                docker exec npdev-engine /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Npdev!Probe123' -C -Q "IF DB_ID('$DB') IS NULL CREATE DATABASE [$DB];"
+                ;;
+            esac
+            echo "ensured $DB exists"
+          done
+
+      - name: Generate, build, boot and exercise the probe app on ${{ matrix.engine }}
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
+        run: |
+          case "${{ matrix.engine }}" in
+            mysql)     ARGS="--db-port 3306 --db-user npdev --db-password npdev" ;;
+            postgres)  ARGS="--db-port 5432 --db-user npdev --db-password npdev" ;;
+            sqlserver) ARGS="--db-port 1433 --db-user sa --db-password Npdev!Probe123" ;;
+          esac
+          python scripts/quality/run-engine-app-proof.py \
+            --engine ${{ matrix.engine }} \
+            --port 18310 \
+            --db-host 127.0.0.1 $ARGS \
+            --db-name npdev_engine_probe \
+            --report Build/reports/engine-app-proof-${{ matrix.engine }}.json
+
+      # `npdev doctor --app` against the REAL engine -- E10's happy path against a live database.
+      #
+      # AFTER the app proof, not before, and that ordering is load-bearing. Three of the five
+      # checks need a JDBC driver, and the staged runtimehost-libs contain NPDev's own module
+      # jars and no third-party drivers at all (measured, run 31272515969 -- the first version of
+      # this step reported `No suitable driver found` as a CREDENTIALS failure). The driver
+      # reaches the Gradle cache when the app for that engine is first built, which is exactly
+      # what the step above just did. Running this first would leave credentials/privileges/
+      # charset permanently reported as `not checked` -- and a check that has never run is not a
+      # check.
+      - name: doctor database checks against the real engine
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
+        run: |
+          case "${{ matrix.engine }}" in
+            mysql)     ENGINE_ARGS="--engine mysql --db-port 3306 --db-user npdev --db-password npdev" ;;
+            postgres)  ENGINE_ARGS="--engine postgres --db-port 5432 --db-user npdev --db-password npdev" ;;
+            sqlserver) ENGINE_ARGS="--engine sqlserver --db-port 1433 --db-user sa --db-password Npdev!Probe123" ;;
+          esac
+          # NOT under Build/: in CI NPDEV_BUILD_ROOT is inside the workspace, and `npdev init`
+          # REFUSES to scaffold inside the repo -- correctly, since a scaffold there "would never be
+          # found by anyone cloning NPDev fresh". Run 31272063422 hit exactly that refusal, on all
+          # three engines. RUNNER_TEMP is outside the checkout, which is what the refusal asks for.
+          # The directory NAME becomes the database name (npdev init derives it), so it is
+          # npdev_engine_probe -- the database the container actually has. Run 31272786548 used
+          # "probe" and doctor correctly reported the database missing; pointing a fixture at a
+          # database that does not exist tests the fixture, not the engine.
+          APP_DIR="$RUNNER_TEMP/doctor-app/npdev_engine_probe"
+          rm -rf "$APP_DIR"
+          python NPDevCli/npdev_cli.py init "$APP_DIR" $ENGINE_ARGS --db-host 127.0.0.1
+          mkdir -p Build
+          python NPDevCli/npdev_cli.py doctor --json --app "$APP_DIR" \
+            | tee Build/reports-doctor-${{ matrix.engine }}.json
+          python - <<'PY'
+          import json, os, sys
+          engine = os.environ["MATRIX_ENGINE"]
+          report = json.load(open(f"Build/reports-doctor-{engine}.json", encoding="utf-8"))
+          checks = {c["id"]: c for c in report["checks"] if c["id"].startswith("database")}
+          failed = [i for i, c in checks.items()
+                    if c["status"] == "fail" and i != "database-engine-support"]
+          # Every database check must have actually RUN. "A check that has only ever passed is not a
+          # check" applies twice over to one that never ran at all and reported `warn`.
+          notrun = [i for i, c in checks.items() if c["status"] == "warn"
+                    and i != "database-engine-support"]
+          if notrun:
+              print(f"::error::these database checks did not run against a real {engine}: {notrun} -- "
+                    f"a check that never executed is not evidence")
+              sys.exit(1)
+          print(json.dumps({i: c["status"] for i, c in checks.items()}, indent=2))
+          if failed:
+              print(f"::error::doctor's database checks failed against a real {engine}: {failed}")
+              sys.exit(1)
+          PY
+        env:
+          MATRIX_ENGINE: ${{ matrix.engine }}
 
       # Every probe database, created up front. Tier C gives each vector its OWN so that p2's
       # model, p3's and p4's never share a

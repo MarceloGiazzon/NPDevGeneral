@@ -102,6 +102,12 @@ public interface SqlDialect {
      * <p>A bounded type everywhere rather than only where it is required: an engine-conditional
      * width would make the SAME column a different type per engine, which is exactly the kind of
      * divergence that turns a later schema diff into a per-engine puzzle.
+     *
+     * <p><b>The width is 191, and that number is not arbitrary.</b> InnoDB caps an index key at 3072
+     * bytes and utf8mb4 costs 4 bytes per character, so VARCHAR(255) is 1020 bytes and a four-column
+     * index over such columns is 4080 -- MySQL error 1071, measured in CI run 31284112143. 191*4 =
+     * 764 fits four columns into 3056. Every engine uses the same width so the same column is the
+     * same type everywhere, which is the property that keeps a later schema diff readable.
      */
     String keyableTextColumnType();
 

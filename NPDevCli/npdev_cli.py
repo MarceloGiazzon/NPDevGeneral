@@ -2375,6 +2375,21 @@ def _find_jdbc_driver_jar(engine_key: str) -> Path | None:
     Deliberately not a Python driver per engine: the question doctor answers is "will THE APP be able
     to do this", and the only honest way to answer it is with the driver the app itself uses.
     """
+    # An explicit override wins, and exists for one concrete reason: doctor's charset check must be
+    # runnable WITHOUT first building an app for that engine (storage/OPEN_ITEMS_PLAN.md W9 -- "run
+    # it independently and do not let it wait"). Without this, the only way to get a MySQL driver
+    # onto a fresh machine is to build a MySQL app, which is exactly the dependency the charset
+    # fixture is supposed to be free of.
+    override = os.environ.get(f"NPDEV_JDBC_DRIVER_{engine_key.upper()}")
+    if override:
+        candidate = Path(override).expanduser()
+        if candidate.is_file():
+            return candidate
+        # Named but absent is a MISTAKE, not a fallback: silently searching the cache instead would
+        # let a CI job believe it tested with the driver it pinned.
+        raise CliError(
+            f"NPDEV_JDBC_DRIVER_{engine_key.upper()} points at {candidate}, which does not exist")
+
     coordinate = _JDBC_DRIVER_COORDINATES.get(engine_key)
     if coordinate is None:
         return None

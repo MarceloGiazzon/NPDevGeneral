@@ -141,12 +141,15 @@ public final class MySqlDialect implements SqlDialect {
      * prefix length (error 1170), so an internal table whose primary key is declared TEXT cannot
      * be CREATED at all -- the failure lands in Flyway on first boot, not at generation time.
      *
-     * <p>255 rather than a longer bound: on utf8mb4 that is 1020 bytes, comfortably inside the
-     * 3072-byte InnoDB index-key limit even for a multi-column index.
+     * <p><b>191, not 255, and the difference is measured.</b> InnoDB caps an index key at 3072
+     * bytes. On utf8mb4 a character costs 4, so VARCHAR(255) is 1020 bytes and a FOUR-column index
+     * over such columns is 4080 -- error 1071, "Specified key was too long", in CI run 31284112143,
+     * after the guarded-DDL fix finally let the script get that far. 191*4 = 764, so four columns
+     * are 3056 and fit. 191 is the conventional utf8mb4 answer for exactly this reason.
      */
     @Override
     public String keyableTextColumnType() {
-        return "VARCHAR(255)";
+        return "VARCHAR(191)";
     }
 
     @Override
