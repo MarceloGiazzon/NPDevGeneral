@@ -45,7 +45,7 @@ DEFAULT_SAMPLES_ROOT = REPO_ROOT / "NPDevSamples"
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "quality" / "corpus-parse-allowlist.json"
 ROLES_PATH = REPO_ROOT / "scripts" / "quality" / "corpus-roles.json"
 GRADLEW = REPO_ROOT / ("gradlew.bat" if sys.platform == "win32" else "gradlew")
-CORPUS_ROLES = ("dsl-fixture", "engine-variant", "repro-case", "showcase")
+CORPUS_ROLES = ("dsl-fixture", "engine-variant", "repro-case", "showcase", "canary", "probe")
 
 
 def project_cache_dir() -> Path:

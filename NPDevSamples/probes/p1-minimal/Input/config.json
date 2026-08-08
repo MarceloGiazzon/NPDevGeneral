@@ -1,0 +1,51 @@
+{
+  "$schema": "..\\\\..\\\\..\\\\..\\\\NPDevContract\\\\schemas\\\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "p1-minimal",
+    "description": "Storage probe P1/P2: the FLOOR -- one concept, three fields. Proves a realized table exists and paginates. Deliberately the smallest thing that can be generated.",
+    "outputRoot": "..\\\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": false,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": false
+  },
+  "bootstrap": {
+    "root": "..\\\\..\\\\..\\\\..\\\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\\\Output\\\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\\\Output\\\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "p1_minimal",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8151,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8151/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "Storage probe for conformance vector P1/P2. Do not add features."
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "..\\\\..\\\\..\\\\..\\\\NPDevContract\\\\schemas\\\\model.schema.json",
+  "namespace": "sample.probes.p3rename",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "Storage probe E2 (v2): a declared `renamedFrom` must MOVE the data, not drop and recreate the column. renamedFrom is a documented user-facing feature, so it has to mean the same thing on every engine or the docs are wrong for some users."
+  },
+  "concepts": [
+    {
+      "name": "Book",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "isbn13",
+          "type": "string",
+          "required": true,
+          "renamedFrom": "isbn"
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    }
+  ]
+}

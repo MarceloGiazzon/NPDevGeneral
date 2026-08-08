@@ -1,0 +1,51 @@
+{
+  "$schema": "..\\\\..\\\\..\\\\..\\\\NPDevContract\\\\schemas\\\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "p2-evolve-v2",
+    "description": "Storage probe E1 (v2): adding a NULLABLE column must preserve existing rows. Uses KeepExistingIfCompatible and forbids destructive recreate -- a probe that recreates cannot test preservation, which is the entire point of this one.",
+    "outputRoot": "..\\\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": false,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": false
+  },
+  "bootstrap": {
+    "root": "..\\\\..\\\\..\\\\..\\\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\\\Output\\\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\\\Output\\\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "p2_evolve_v2",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8153,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8153/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "Storage probe for conformance vector E1. Do not add features."
+    ]
+  }
+}

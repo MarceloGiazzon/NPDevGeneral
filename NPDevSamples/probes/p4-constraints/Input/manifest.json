@@ -1,0 +1,15 @@
+{
+  "id": "p4-constraints",
+  "title": "p4-constraints",
+  "complexity": "storage-probe",
+  "purpose": "Storage probe I2/I3: introspection must report a column's type, nullability and default, and must distinguish a UNIQUE index from a plain one. REG-129 was exactly that bug on one engine; a hand-written CREATE TABLE would test the test's SQL rather than NPDev's realized schema.",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo -- it serves conformance vector I2/I3 and nothing else.",
+    "Built by the storage conformance Tier C tests; not intended to be run by hand."
+  ],
+  "expectedOutcomes": [
+    "Introspection reports email as NOT NULL and nickname as NULLABLE.",
+    "The unique constraint on email is reported unique; ix_account_region is reported NOT unique."
+  ]
+}

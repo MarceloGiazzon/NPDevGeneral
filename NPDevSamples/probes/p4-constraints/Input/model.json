@@ -1,0 +1,63 @@
+{
+  "$schema": "..\\\\..\\\\..\\\\..\\\\NPDevContract\\\\schemas\\\\model.schema.json",
+  "namespace": "sample.probes.p4constraints",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "Storage probe I2/I3: introspection must report a column's type, nullability and default, and must distinguish a UNIQUE index from a plain one. REG-129 was exactly that bug on one engine; a hand-written CREATE TABLE would test the test's SQL rather than NPDev's realized schema."
+  },
+  "concepts": [
+    {
+      "name": "Account",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "required": true,
+          "unique": true
+        },
+        {
+          "name": "nickname",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "region",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_account_region",
+          "fields": [
+            "region"
+          ],
+          "unique": false
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    }
+  ]
+}

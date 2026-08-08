@@ -737,10 +737,26 @@ FEATURE_DETECTORS = {
 }
 
 
+# storage/PROBE_APPS.md: probes are FIXTURES serving one storage conformance vector each --
+# deliberately the fewest fields that work, with no panels, flows, roles or UI. They must NOT count
+# as DSL coverage.
+#
+# The failure this prevents is subtle and one-directional. p4-constraints declares a unique field and
+# an index because vectors I2/I3 need a realized schema to introspect. If that counted as coverage,
+# this gate would report `unique` and `indexes` as exercised by the corpus -- and a change breaking
+# them everywhere they are ACTUALLY used would pass, because a probe that only ever has its catalog
+# read would not notice. A narrow fixture satisfying a breadth check is a breadth check that has
+# stopped working.
+PROBE_LABEL_PREFIX = "NPDevSamples/probes/"
+
+
 def find_models(appgen_root: Path, samples_root: Path) -> list[tuple[str, Path]]:
     """Mirrors validate-corpus.py's own find_models() label convention exactly -- including its
     Output-dir exclusion (docs/CLOSEOUT_PLAN.md G2 aftermath: a generated model.json copy under
-    NPDevSamples/**/Output/ must never enter the tracked corpus; see that function's own docstring)."""
+    NPDevSamples/**/Output/ must never enter the tracked corpus; see that function's own docstring).
+
+    Storage probes are excluded here rather than in validate-corpus.py: they ARE corpus members (they
+    must parse, and they carry a `probe` corpusRole), they simply are not evidence of DSL coverage."""
     models: list[tuple[str, Path]] = []
     if appgen_root.exists():
         for p in sorted(appgen_root.rglob("model.json")):
@@ -755,7 +771,10 @@ def find_models(appgen_root: Path, samples_root: Path) -> list[tuple[str, Path]]
                 continue
             rel = p.relative_to(samples_root).parts
             app = "/".join(rel[:-2]) if len(rel) > 2 else rel[0]
-            models.append((f"NPDevSamples/{app}", p))
+            label = f"NPDevSamples/{app}"
+            if label.startswith(PROBE_LABEL_PREFIX):
+                continue
+            models.append((label, p))
     return models
 
 

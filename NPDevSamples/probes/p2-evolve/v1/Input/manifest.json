@@ -1,0 +1,15 @@
+{
+  "id": "p2-evolve-v1",
+  "title": "p2-evolve-v1",
+  "complexity": "storage-probe",
+  "purpose": "Storage probe E1 (v1): adding a NULLABLE column must preserve existing rows. Uses KeepExistingIfCompatible and forbids destructive recreate -- a probe that recreates cannot test preservation, which is the entire point of this one.",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo -- it serves conformance vector E1 and nothing else.",
+    "Built by the storage conformance Tier C tests; not intended to be run by hand."
+  ],
+  "expectedOutcomes": [
+    "Rows inserted against v1 are still present after evolving to v2.",
+    "The new `note` column is NULL for those rows, not a default."
+  ]
+}
