@@ -95,15 +95,17 @@ def main(argv: list[str] | None = None) -> int:
         status, signed = _engine_proof.http(
             "POST", f"{base}/api/flows/SignWithLibrary/execute", {"payload": PAYLOAD})
         digest = _extract(signed, "digest")
-        location = _extract(signed, "libraryLocation")
         ok = status == 200 and digest == EXPECTED_DIGEST
         results.append({
             "assertion": "external-library-called-at-runtime",
             "ok": ok,
             "detail": (f"status={status}; SHA-256 of {PAYLOAD!r} came back {digest!r}, expected "
-                       f"{EXPECTED_DIGEST!r}; Guava loaded from {location!r}. A correct digest proves "
-                       f"the library was on the RUNTIME classpath and executed -- compilation alone "
-                       f"would pass with a wrong runtime scope."),
+                       f"{EXPECTED_DIGEST!r}. A correct digest proves the library was on the RUNTIME "
+                       f"classpath and executed -- compilation alone would pass with a wrong runtime "
+                       f"scope. (Where Guava was loaded from is printed to the boot log, which this "
+                       f"job uploads: a diagnostic travelling with the PERSISTED record is a "
+                       f"diagnostic that can break persistence, which is how run 31272063422 went "
+                       f"red with the library working perfectly.)"),
         })
 
         # 2. The compileOnly dependency is NOT there. The interesting one: it fails silently in

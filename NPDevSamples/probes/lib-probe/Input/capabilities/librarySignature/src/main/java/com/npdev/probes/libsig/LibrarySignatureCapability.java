@@ -39,7 +39,25 @@ import java.util.Map;
  */
 public final class LibrarySignatureCapability {
 
-    /** SHA-256 of "npdev", computed by Guava rather than by java.security.MessageDigest. */
+    /**
+     * SHA-256 of the payload, computed by Guava rather than by {@code java.security.MessageDigest}.
+     *
+     * <p><b>The returned map contains EXACTLY the concept's own fields, and that is not a style
+     * choice.</b> The first CI run of this probe (31272063422) returned {@code library} and
+     * {@code libraryLocation} alongside them as diagnostics; the flow persists this map, and the
+     * persistence adapter correctly refused:
+     *
+     * <pre>
+     *   Unknown persistence field(s) for table lib_probe_records: [library, libraryLocation].
+     *   Allowed runtime fields: [digest, id, payload, version, rowVersion, tenantId]
+     * </pre>
+     *
+     * <p>That refusal is the platform working. What it cost was a red run whose headline said the
+     * external library had not been called, when the boot log showed the capability finishing
+     * SUCCESS in 5ms with Guava's answer in hand -- the failure was two steps later. Diagnostics that
+     * travel with a persisted record are diagnostics that can break persistence, so they go to the
+     * log instead, where the CI job already uploads them.
+     */
     public Map<String, Object> sign(Map<String, Object> input) {
         String payload = input == null || input.get("payload") == null
                 ? "" : String.valueOf(input.get("payload"));
@@ -48,12 +66,12 @@ public final class LibrarySignatureCapability {
         // same answer while proving nothing about the dependency, which is precisely the shape of
         // "a fix that silently does nothing" this whole plan warns about.
         String digest = Hashing.sha256().hashString(payload, StandardCharsets.UTF_8).toString();
+        System.out.println("[lib-probe] com.google.common.hash.Hashing loaded from "
+                + locationOf(Hashing.class));
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("payload", payload);
         result.put("digest", digest);
-        result.put("library", "com.google.common.hash.Hashing");
-        result.put("libraryLocation", locationOf(Hashing.class));
         return result;
     }
 
