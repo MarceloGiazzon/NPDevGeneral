@@ -22,19 +22,12 @@ name: Storage dialect conformance
 # because SQL Server's VARCHAR is non-Unicode. All six fixes in storage/CONFORMANCE_FIX_PLAN.md have
 # landed since.
 #
-# It stays dispatch-only anyway, and the reason changed: it is no longer "this has never run", it is
-# that the container images below are MOVING TAGS. A suite that changes underneath you cannot tell
-# "we broke it" from "the image changed", and that is a bad property for a gate that blocks pushes.
-# Pin the images, then add the `push`/`pull_request` triggers below -- that promotion is the last
-# step of storage/PLAN.md §11.7, and until it happens MySQL and SQL Server are "verified once",
-# NOT "supported". See ledger STOR-3.
-#
-#   on:
-#     push:
-#       branches: [main]
-#       paths: ['NPDevKernel/kernel/src/**/storage/sql/**', 'NPDevKernel/adapters/**',
-#               'NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/**',
-#               '.github/workflows/storage-dialect-conformance.yml']
+# It stayed dispatch-only for one more round, and the reason had changed: no longer "this has never
+# run", but that the container images were MOVING TAGS. A suite that changes underneath you cannot
+# tell "we broke it" from "the image changed", and that is a bad property for a gate that blocks
+# pushes. So the images were pinned to digests FIRST (storage/FULL_SUPPORT_PLAN.md W1.1), and only
+# then were the push triggers added (W1.2). Doing it the other way round buys a gate people re-run
+# instead of read.
 # ---------------------------------------------------------------------------------------------
 
 on:
@@ -44,6 +37,28 @@ on:
         description: 'Which engine to run against (all, mysql, postgres, sqlserver)'
         required: false
         default: 'all'
+
+env:
+  # ---------------------------------------------------------------------------------------------
+  # PINNED IMAGE DIGESTS -- the twin of DialectTestSupport.CONTAINER_IMAGES.
+  #
+  # These are NOT what starts the containers (Testcontainers reads the Java map). They exist so the
+  # digest is visible IN THE RUN rather than only in a source file, and so the pre-pull step below
+  # fails loudly if a digest stops resolving. check-container-images-pinned.py fails the knowledge
+  # gate the moment these two lists disagree -- registered as a twin-pair rule, because "one place
+  # updated, its twin forgotten" is this repo's most repeated defect (REG-89/104/112/144).
+  #
+  # DIGEST ONLY, no tag prefix: Testcontainers 1.21.4 parses `repo:tag@sha256:...` by splitting on
+  # `@` alone, so the repository comes back as `mysql:8.4` and the container refuses the image at
+  # construction. These stay byte-identical to the Java map so the checker can compare them directly;
+  # the tag each digest came from is recorded in DialectTestSupport.CONTAINER_IMAGE_TAGS.
+  #
+  # Pinned 2026-08-08 (mysql:8.4, postgres:16, mssql/server:2022-latest). Refresh due 2026-11-08:
+  #   python scripts/quality/check-container-images-pinned.py --resolve
+  # ---------------------------------------------------------------------------------------------
+  PINNED_MYSQL: 'mysql@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb'
+  PINNED_POSTGRES: 'postgres@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b'
+  PINNED_SQLSERVER: 'mcr.microsoft.com/mssql/server@sha256:ba4c8329f48fb8f02e1416be6a930ebfd71268caee78aa985f3af4315e457c89'
 
 jobs:
   tier-a:
@@ -97,6 +112,24 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      # W1.1's visible half. Two things this buys that the Java-side pin does not:
+      #   1. the digest appears IN THE RUN LOG, so a green tick's evidence is readable without
+      #      downloading a source file at the right commit;
+      #   2. a digest that has been garbage-collected upstream fails HERE, in seconds, with a pull
+      #      error -- instead of thirty seconds into a container start inside a forked test JVM whose
+      #      stdout Gradle does not forward (the exact way F5 stayed invisible).
+      - name: Pinned image for ${{ matrix.engine }}
+        run: |
+          case "${{ matrix.engine }}" in
+            mysql)     IMAGE="$PINNED_MYSQL" ;;
+            postgres)  IMAGE="$PINNED_POSTGRES" ;;
+            sqlserver) IMAGE="$PINNED_SQLSERVER" ;;
+            *) echo "no pinned image for engine '${{ matrix.engine }}'"; exit 1 ;;
+          esac
+          echo "pinned image: $IMAGE"
+          echo "### Pinned image: \`$IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
+          docker pull "$IMAGE"
 
       # No `services:` block: DialectTestSupport starts its own containers via Testcontainers, the
       # same lifecycle PostgresTestSupport already uses (one per engine per JVM, Ryuk-reaped). A
