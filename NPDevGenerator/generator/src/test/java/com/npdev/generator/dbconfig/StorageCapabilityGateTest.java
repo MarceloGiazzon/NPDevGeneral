@@ -98,13 +98,13 @@ class StorageCapabilityGateTest {
             @Override public Set<String> systemSchemas() {
                 throw new UnsupportedOperationException();
             }
-            @Override public String listTablesSql(String schema) {
+            @Override public String listTablesSql() {
                 throw new UnsupportedOperationException();
             }
-            @Override public String listColumnsSql(String schema, String table) {
+            @Override public String listColumnsSql() {
                 throw new UnsupportedOperationException();
             }
-            @Override public String listIndexesSql(String schema, String table) {
+            @Override public String listIndexesSql() {
                 throw new UnsupportedOperationException();
             }
             @Override public String constraintExistsSql() {
