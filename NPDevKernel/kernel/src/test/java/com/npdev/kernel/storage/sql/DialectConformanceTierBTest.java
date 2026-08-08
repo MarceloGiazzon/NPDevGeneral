@@ -285,6 +285,89 @@ class DialectConformanceTierBTest {
         }
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("T3: a HALF-APPLIED two-step migration leaves exactly what the dialect predicts")
+    void halfAppliedMigrationMatchesTheDeclaration(SqlDialect dialect) throws SQLException {
+        // storage/FULL_SUPPORT_PLAN.md W3, ranked FIRST among the behavioural work because it is the
+        // only item that CORRUPTS instead of failing loudly.
+        //
+        // T2 above proves the DECLARATION matches the engine for one statement. This is the shape a
+        // real migration actually has, and the one that decides an operator's next action: two DDL
+        // steps in one transaction where the SECOND must fail. On Postgres/SQL Server neither column
+        // survives and re-running is correct. On MySQL/H2 the first column is ALREADY PERMANENT, and
+        // an operator who re-runs after reading "the migration failed" is re-running against a schema
+        // that already moved -- which is STOR-2's false all-clear, one layer down.
+        //
+        // The assertion is deliberately not "the migration failed". It is: what the catalog CONTAINS
+        // afterwards matches what DDL_IN_TRANSACTION says it should. A dialect that declares wrongly
+        // fails here, on the real engine, in CI.
+        assumeTrue(DialectTestSupport.enforces(dialect, DialectTestSupport.Behaviour.DDL_TRANSACTIONALITY),
+                DialectTestSupport.whyNotVerified(dialect, DialectTestSupport.Behaviour.DDL_TRANSACTIONALITY));
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            // v1: a table WITH ROWS. The rows are what make step 2 fail on every engine -- adding a
+            // NOT NULL column with no default to an empty table succeeds, which would make this
+            // vector prove nothing.
+            execute(connection, "CREATE TABLE halfapply (id VARCHAR(36) PRIMARY KEY)");
+            execute(connection, "INSERT INTO halfapply (id) VALUES ('A')");
+
+            connection.setAutoCommit(false);
+            execute(connection, "ALTER TABLE halfapply ADD step_one INT");
+            boolean stepTwoFailed = false;
+            try {
+                execute(connection, "ALTER TABLE halfapply ADD step_two INT NOT NULL");
+            } catch (SQLException expected) {
+                stepTwoFailed = true;
+            }
+            try {
+                connection.rollback();
+            } catch (SQLException ignored) {
+                // An engine that already committed may have nothing to roll back. That is the
+                // behaviour under measurement, not an error -- the catalog read below is the verdict.
+            }
+            connection.setAutoCommit(true);
+
+            assertTrue(stepTwoFailed,
+                    dialect.name() + ": step 2 (a NOT NULL column with no default, on a table with "
+                    + "rows) was expected to FAIL on every engine. It did not, so this vector measured "
+                    + "nothing -- the probe itself needs fixing before its result means anything.");
+
+            Set<String> columns = columnsOf(connection, dialect, "halfapply");
+            boolean transactional = dialect.supports(StorageCapability.DDL_IN_TRANSACTION);
+            assertEquals(!transactional, columns.contains("step_one"),
+                    dialect.name() + " declares DDL_IN_TRANSACTION=" + transactional + ", so step 1 "
+                    + (transactional ? "must NOT have survived" : "MUST have survived (implicit commit)")
+                    + " the failure of step 2 -- but the catalog reports columns " + columns + ". "
+                    + "The engine and the declaration disagree, and the declaration is what the schema "
+                    + "engine's failure message trusts when it tells an operator what persisted.");
+            assertTrue(!columns.contains("step_two"),
+                    dialect.name() + ": step 2 FAILED, so its column must be absent on every engine. "
+                    + "Catalog reports " + columns);
+        }
+    }
+
+    /**
+     * The columns of {@code table}, read through the DIALECT's own introspection SQL.
+     *
+     * <p>Not {@code DatabaseMetaData}: the point of the vector above is whether the dialect's answer
+     * about this engine is true, and reading the catalog through a JDBC abstraction would be asking a
+     * different question. This is also conformance I2's statement, exercised incidentally.
+     */
+    private static Set<String> columnsOf(Connection connection, SqlDialect dialect, String table)
+            throws SQLException {
+        Set<String> columns = new LinkedHashSet<>();
+        try (PreparedStatement statement = connection.prepareStatement(dialect.listColumnsSql())) {
+            statement.setString(1, null);
+            statement.setString(2, table);
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    columns.add(rows.getString("column_name").toLowerCase(java.util.Locale.ROOT));
+                }
+            }
+        }
+        return columns;
+    }
+
     // ------------------------------------------------------------------ A1
 
     @ParameterizedTest(name = "{0}")

@@ -21,8 +21,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import com.npdev.kernel.storage.sql.SqlDialects;
-import com.npdev.kernel.storage.sql.StorageCapability;
+import com.npdev.kernel.storage.sql.PartialApplicationTruth;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -393,15 +392,17 @@ public final class ConversionHookRunner {
      * telling an operator the database is untouched when it is not: a false all-clear is what turns
      * a recoverable half-migration into one nobody goes looking for. So the behaviour is unchanged
      * and the SENTENCE is corrected -- the X0 rule applied to a message rather than to a code path.
+     *
+     * <p><b>The body moved to {@link PartialApplicationTruth#afterRollback()}</b>
+     * (storage/FULL_SUPPORT_PLAN.md W3). STOR-2 corrected this one call site, which left the NEXT one
+     * free to make the same mistake -- and {@code SchemaHistoryStore.recordStepPass} turned out to be
+     * exactly that next one, saying nothing at all about what a half-finished pass had already
+     * committed. The sentence now lives in one place, derived from the capability rather than from
+     * what an author assumed, and {@code check-rollback-claims.py} fails the gate on a
+     * storage-surface message that claims a rollback without going through it.
      */
     private static String rollbackTruth() {
-        if (SqlDialects.active().supports(StorageCapability.DDL_IN_TRANSACTION)) {
-            return "the hook's changes were rolled back; nothing persisted";
-        }
-        return "engine '" + SqlDialects.active().name() + "' COMMITS IMPLICITLY ON DDL, so the hook's "
-                + "schema changes (and any data change made before them) are ALREADY COMMITTED and were "
-                + "NOT rolled back -- only data changes made after the last DDL statement were undone. "
-                + "Inspect the schema before re-running";
+        return PartialApplicationTruth.afterRollback();
     }
 
     private record HookOutcome(boolean committed, boolean verifyRan, long verifyActual, String verifyError) {
