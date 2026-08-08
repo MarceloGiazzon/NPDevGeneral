@@ -108,6 +108,13 @@ public final class GeneratorMain {
         System.out.println("Storage mode: " + databasePlan.storageMode());
         System.out.println("Schema fingerprint: " + databasePlan.schemaFingerprint());
 
+        // S3 (storage/PLAN.md §4): refuse a model the chosen engine cannot honour, HERE -- before a
+        // single file is emitted. Refusing at boot, or at the first query that happens to take the
+        // unsupported path, is the same defect as not refusing: the app looks healthy and loses
+        // behaviour silently. With one SQL engine this never fires, which is exactly why it is built
+        // now rather than alongside the second engine that would otherwise discover the need.
+        com.npdev.generator.dbconfig.StorageCapabilityGate.verify(compiled, databasePlan);
+
         // LNCH-1 P6 (task 6.1): optional migration-plan computation, a thin adapter over
         // MigrationPlanEmitter's own pure logic -- this block does no diffing itself. Both flags
         // are optional and independent of each other: --previousCompiledModel alone (no

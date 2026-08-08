@@ -111,6 +111,75 @@ public final class SqlDialects {
                 .toList();
     }
 
+    /**
+     * The capability matrix, read out of the dialects themselves.
+     *
+     * <p>S3 requires this in {@code npdev doctor}, and requires it <b>generated from the code, never
+     * maintained as a doc that drifts</b>. A hand-written table of which engine supports what is the
+     * twin-pair defect family in its purest form: the day it disagrees with
+     * {@link SqlDialect#capabilities()}, either a valid model is rejected or an impossible one is
+     * accepted, and the table looks authoritative either way. So there is no table.
+     *
+     * <p>It lives here rather than beside the generator's capability gate so that rendering it needs
+     * nothing but the kernel jar -- which every install already stages. A matrix a tool cannot print
+     * without a full generator build is a matrix that quietly stops being printed.
+     */
+    public static String capabilityMatrix() {
+        List<SqlDialect> dialects = all();
+        StringBuilder out = new StringBuilder();
+        int width = 22;
+        out.append(String.format(Locale.ROOT, "%-" + width + "s", "capability"));
+        for (SqlDialect dialect : dialects) {
+            out.append(String.format(Locale.ROOT, "%-12s", dialect.name()));
+        }
+        out.append(System.lineSeparator());
+        out.append("-".repeat(width + 12 * dialects.size())).append(System.lineSeparator());
+        for (StorageCapability capability : StorageCapability.values()) {
+            out.append(String.format(Locale.ROOT, "%-" + width + "s", capability));
+            for (SqlDialect dialect : dialects) {
+                out.append(String.format(Locale.ROOT, "%-12s",
+                        dialect.capabilities().contains(capability) ? "yes" : "NO"));
+            }
+            out.append(System.lineSeparator());
+        }
+        return out.toString();
+    }
+
+    /** The same matrix as JSON, for a caller that renders rather than prints it. */
+    public static String capabilityMatrixJson() {
+        StringBuilder out = new StringBuilder();
+        String nl = System.lineSeparator();
+        out.append("{").append(nl);
+        out.append("  \"schemaVersion\": \"npdev-storage-capability-matrix.v1\",").append(nl);
+        out.append("  \"engines\": {").append(nl);
+        List<SqlDialect> dialects = all();
+        for (int d = 0; d < dialects.size(); d++) {
+            SqlDialect dialect = dialects.get(d);
+            out.append("    \"").append(dialect.name()).append("\": {").append(nl);
+            StorageCapability[] every = StorageCapability.values();
+            for (int c = 0; c < every.length; c++) {
+                out.append("      \"").append(every[c]).append("\": ")
+                        .append(dialect.capabilities().contains(every[c]))
+                        .append(c == every.length - 1 ? "" : ",").append(nl);
+            }
+            out.append("    }").append(d == dialects.size() - 1 ? "" : ",").append(nl);
+        }
+        out.append("  }").append(nl).append("}").append(nl);
+        return out.toString();
+    }
+
+    /**
+     * Entry point {@code npdev doctor} runs to print the matrix.
+     *
+     * <p>Doctor shells out to this rather than carrying its own copy in Python. If the kernel jar is
+     * not staged, doctor reports the section as unavailable and says why -- it never falls back to a
+     * remembered table, because a remembered table is the thing being avoided.
+     */
+    public static void main(String[] args) {
+        boolean json = args != null && args.length > 0 && "--json".equals(args[0]);
+        System.out.print(json ? capabilityMatrixJson() : capabilityMatrix());
+    }
+
     private static String knownNames() {
         return BY_NAME.keySet().stream().sorted().collect(Collectors.joining(", "));
     }
