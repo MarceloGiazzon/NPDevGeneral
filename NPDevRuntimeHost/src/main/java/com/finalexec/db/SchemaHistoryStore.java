@@ -2,6 +2,7 @@ package com.finalexec.db;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
+import com.npdev.kernel.storage.sql.PartialApplicationTruth;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -286,8 +287,65 @@ final class SchemaHistoryStore {
         }
         String from = SchemaLifecycleExecutor.readStoredFingerprintPublic(dataSource);
         String historyId = insertStepPendingRow(dataSource, from, manifest.schemaFingerprint(), stepName, itemDetails);
-        ddl.run();
+        try {
+            ddl.run();
+        } catch (SQLException failure) {
+            // storage/FULL_SUPPORT_PLAN.md W3, and the direct continuation of STOR-2.
+            //
+            // The PARTIAL-CRASH row above is already an accurate machine record. What was missing is
+            // the SENTENCE: this method used to let the raw SQLException propagate, and every caller
+            // wraps it as "Failed relaxing no-longer-required column(s)" -- true, and silent about
+            // the thing that decides the operator's next move.
+            //
+            // On Postgres/SQL Server the pass rolls back and re-running is correct. On MySQL and H2
+            // DDL COMMITS IMPLICITLY, so every item before the failure is ALREADY PERMANENT and the
+            // database is in a state neither model describes. Those two situations call for opposite
+            // actions, and until now the message did not distinguish them at all. That is the same
+            // false-all-clear shape as STOR-2, one layer down: the half-applied migration is the only
+            // storage failure that corrupts instead of failing loudly.
+            //
+            // Behaviour is deliberately unchanged -- the exception still propagates, the boot still
+            // refuses. Only the claim is corrected.
+            throw new SQLException(
+                    PartialApplicationTruth.afterFailedMultiStep(stepName, itemDetails, failedIndexOf(itemDetails, failure))
+                    + " History row: " + (historyId == null ? "(not written)" : historyId)
+                    + " (outcome PARTIAL-CRASH in " + HISTORY_TABLE + ").",
+                    failure.getSQLState(), failure.getErrorCode(), failure);
+        }
         markHistoryRowApplied(dataSource, historyId);
+    }
+
+    /**
+     * Which item threw, when the runnable is a loop this class cannot see inside.
+     *
+     * <p>Callers pass ONE lambda that iterates their own plan, so there is no per-item hook to count
+     * from. The engine's own error text names the object it failed on, and matching an item against
+     * it recovers the index in the common case.
+     *
+     * <p><b>Returns -1 rather than guessing.</b> An index this method is not sure of would put a
+     * specific, wrong list of "already permanent" items in front of an operator during the one
+     * failure where they are about to act on it -- strictly worse than saying the item is unknown.
+     */
+    private static int failedIndexOf(List<String> itemDetails, SQLException failure) {
+        String message = failure.getMessage();
+        if (message == null || message.isBlank()) {
+            return -1;
+        }
+        String haystack = message.toLowerCase(java.util.Locale.ROOT);
+        int match = -1;
+        for (int index = 0; index < itemDetails.size(); index++) {
+            // Item details read "RELAX_NOT_NULL <table>.<column>"; the identifier is the part an
+            // engine error would echo.
+            String[] words = itemDetails.get(index).toLowerCase(java.util.Locale.ROOT).split("\\s+");
+            String identifier = words[words.length - 1];
+            if (identifier.length() >= 3 && haystack.contains(identifier)) {
+                if (match >= 0) {
+                    return -1; // two items match the same error text -- do not guess between them
+                }
+                match = index;
+            }
+        }
+        return match;
     }
 
     /** Inserts a {@code PARTIAL-CRASH} history row carrying a raw step name (classification) and a

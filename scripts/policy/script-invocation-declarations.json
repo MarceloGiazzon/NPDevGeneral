@@ -178,6 +178,9 @@
     "scripts/quality/check-register-consistency.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-rollback-claims.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-schema-mirror-consistency.py": {
       "invocation": "ci-gate"
     },
