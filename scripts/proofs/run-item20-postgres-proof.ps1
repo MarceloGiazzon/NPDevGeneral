@@ -1,5 +1,7 @@
 param(
-  [string]$WorkspaceRoot = 'D:\WorkSpace\NPDev\NPDev_General',
+  # Portable default (REG-144): resolved from $PSScriptRoot below, not hardcoded to the author's
+  # D:\ layout. This script lives at <repo>/scripts/proofs/, so the repo root is two levels up.
+  [string]$WorkspaceRoot = '',
   [string]$EvidenceDir,
   [string]$DockerImage = 'postgres:16-alpine',
   [string]$ContainerName = '',
@@ -11,6 +13,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
+  $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+}
 
 if (-not $EvidenceDir) {
   $EvidenceDir = Join-Path $WorkspaceRoot '__item20_postgres_proof_evidence'

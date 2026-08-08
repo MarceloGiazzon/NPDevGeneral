@@ -29,7 +29,11 @@
 param(
   [Parameter(Mandatory = $true)]
   [string]$AppFolder,
-  [string]$ProductRepo = 'D:\WorkSpace\NPDev\NPDev_General',
+  # Portable default (REG-144): resolved from $PSScriptRoot below rather than hardcoded to the
+  # author's D:\ layout -- this script lives at <repo>/scripts/appgen/, so the repo root is two
+  # levels up, correct under any clone name. The AppGen/Build defaults below are deliberately NOT
+  # derived: they point outside the repo, into a layout that is genuinely per-machine.
+  [string]$ProductRepo = '',
   [string]$RuntimeCurrent = 'D:\WorkSpace\NPDev\AppGen\generator-runtime\current',
   [string]$BuildRoot = 'D:\WorkSpace\NPDev\Build\generated-finalapps',
   [string]$RuntimeHostLibsDir = 'D:\WorkSpace\NPDev\Build\runtimehost-libs',
@@ -71,6 +75,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($ProductRepo)) {
+  $ProductRepo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+}
 
 function Write-Step { param([string]$m) Write-Host "[$(Get-Date -Format 'HH:mm:ss')] $m" }
 function Read-JsonFile {

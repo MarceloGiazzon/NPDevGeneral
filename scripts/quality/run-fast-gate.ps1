@@ -41,8 +41,8 @@
     a T1 run that skipped its own reason for existing should not report "T1 passed".
 
 .PARAMETER RuntimeHostLibsDir
-    Defaults to the canonical D:\WorkSpace\NPDev\Build\runtimehost-libs (Get-NPDevRuntimeHostLibsDir's
-    own default). NOT refreshed by this script -- T1 targets <3 min; if kernel/adapter Java changed,
+    Defaults to whatever Get-NPDevRuntimeHostLibsDir resolves for this checkout -- resolved by
+    CALLING it, not by repeating its answer as a literal (REG-144). NOT refreshed by this script -- T1 targets <3 min; if kernel/adapter Java changed,
     refresh it yourself first (scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars) or run T2.
 
 .PARAMETER Tier
@@ -62,13 +62,33 @@ param(
     [string]$ModelDiffCurrentPath = "",
     [string]$ModelDiffBaselinePath = "",
     [switch]$SkipCanary,
-    [string]$RuntimeHostLibsDir = "D:\WorkSpace\NPDev\Build\runtimehost-libs",
-    [int]$CanaryBootTimeoutSeconds = 90,
+    [string]$RuntimeHostLibsDir = "",
+    # Was 90. Measured 2026-08-08 on a machine whose RAM was halved: the canary app itself starts in
+    # 24.1s ("Started FinalExecApplication in 24.132 seconds"), but this boot goes through
+    # `gradlew --no-daemon bootRun`, which first FORKS A SINGLE-USE GRADLE DAEMON and configures the
+    # build. That overhead -- not the app -- blew the 90s budget twice in a row, reporting a red T1
+    # while health/smoke/acceptance all passed at a longer timeout. A gate that fails for lack of a
+    # clock teaches people to ignore it, so the budget now fits the machine; 300s still catches a
+    # genuine hang, and a crashed process is detected immediately via HasExited rather than by
+    # waiting this out.
+    [int]$CanaryBootTimeoutSeconds = 300,
     [string]$ReportPath = "scripts/reports/out/fast-gate-report.json"
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+
+# REG-144: -RuntimeHostLibsDir used to default to the literal "D:\WorkSpace\NPDev\Build\runtimehost-libs"
+# while its own .PARAMETER text one line above claimed it was "Get-NPDevRuntimeHostLibsDir's own
+# default" -- a copy standing in for a call, which is the divergence shape this repo already tracks.
+# Call the function instead, so a third person's clone (and any drive) resolves correctly.
+# npdev-common.ps1 enables Set-StrictMode at dot-source time; this script was not written under it,
+# so restore this script's own mode immediately after loading the helpers.
+if ([string]::IsNullOrWhiteSpace($RuntimeHostLibsDir)) {
+    . (Join-Path $repoRoot "scripts\npdev-common.ps1")
+    Set-StrictMode -Off
+    $RuntimeHostLibsDir = Get-NPDevRuntimeHostLibsDir $repoRoot
+}
 $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
 # Every path below is built from $repoRoot and passed absolute -- deliberately never relying on
 # the process's current directory staying put across a run this long (several child pwsh.exe/java

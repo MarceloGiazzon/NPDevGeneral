@@ -1,10 +1,18 @@
 [CmdletBinding()]
 param(
-    [string]$WorkspaceRoot = 'D:\WorkSpace\NPDev_General'
+    [string]$WorkspaceRoot = ''
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Portable default (REG-144). The old default was 'D:\WorkSpace\NPDev_General' -- a path that does
+# not exist even on the author's machine (the repo is under D:\WorkSpace\NPDev\), so taking the
+# default failed for everyone. This script lives at <repo>/scripts/evidence/, so the repo root is
+# two levels up. Passing -WorkspaceRoot still wins.
+if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
+    $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+}
 
 $WorkspaceRoot = (Resolve-Path $WorkspaceRoot).Path
 $outDir = Join-Path $WorkspaceRoot 'scripts\reports\out'

@@ -1,9 +1,15 @@
 param(
   [Parameter(Mandatory = $false)]
-  [string] $WorkspaceRoot = 'D:\WorkSpace\NPDev\NPDev_General'
+  [string] $WorkspaceRoot = ''
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Portable default (REG-144) -- see run-internal-db-schema-source-of-truth-check.ps1's note. This
+# script lives at <repo>/scripts/quality/, so the repo root is two levels up.
+if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
+  $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+}
 
 $failures = New-Object System.Collections.Generic.List[string]
 
