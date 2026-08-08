@@ -1938,11 +1938,12 @@ def run_doctor(args: argparse.Namespace) -> int:
             version_output = ""
         match = re.search(r'version "(\d+)', version_output)
         found_version = match.group(1) if match else "unknown"
-        # deps-and-java/PLAN.md W1.6: platform modules are pinned at 17, but the GENERATED app's own
-        # toolchain is Gradle-resolved (17 or 21, config.json's build.javaVersion) -- so any Java
-        # >= 17 on PATH/JAVA_HOME can drive the build; requiring exactly 17 was a false negative on a
-        # 21-only machine, one Gradle's own toolchain auto-detection (now backed by the foojay
-        # resolver, W1.5) already handles correctly while doctor kept reporting FAIL.
+        # deps-and-java/PLAN.md W1.6, widened by ROUND2_PLAN.md R1c: platform modules are pinned at
+        # 17, but the GENERATED app's own toolchain is Gradle-resolved (any integer >= 17,
+        # config.json's build.javaVersion, no upper enum) -- so any Java >= 17 on PATH/JAVA_HOME can
+        # drive the build; requiring exactly 17 was a false negative on a newer-JDK-only machine, one
+        # Gradle's own toolchain auto-detection (backed by the foojay resolver, W1.5) already handles
+        # correctly while doctor kept reporting FAIL.
         found_version_int = int(found_version) if found_version.isdigit() else None
         if found_version_int is None:
             checks.append(_check(
@@ -3703,10 +3704,36 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except subprocess.CalledProcessError as exc:
         print(f"npdev command failed with exit code {exc.returncode}", file=sys.stderr)
+        _emit_json_error(args, f"npdev command failed with exit code {exc.returncode}")
         return exc.returncode
     except CliError as exc:
         print(f"npdev: {exc}", file=sys.stderr)
+        _emit_json_error(args, str(exc))
         return 1
+
+
+def _emit_json_error(args: argparse.Namespace | None, message: str) -> None:
+    """When --json was requested, a FAILURE must still produce one parseable object on stdout.
+
+    Found while diagnosing the Linux AppImage selftest's step 5/5 ("npdev setup: no JSON output").
+    That was not stdout pollution and not a container quirk: every command's JSON emit is the LAST
+    statement on its success path, and every error path raises straight past it to main()'s handler,
+    which printed prose to stderr and nothing at all to stdout. So `npdev setup --json` on any
+    failure produced an EMPTY stdout -- and the Manager's Install screen, which parses exactly that,
+    had nothing to show the user but a generic failure.
+
+    That is the silent-answer family inverted: not a wrong answer to a machine caller, but no answer.
+    A caller that asked for JSON gets JSON, success or failure.
+    """
+    if args is None or not getattr(args, "json", False):
+        return
+    print(json.dumps({
+        "schemaVersion": "npdev-cli-result.v1",
+        "command": getattr(args, "command", None),
+        "ok": False,
+        "exitCode": 1,
+        "error": {"message": message},
+    }))
 
 
 if __name__ == "__main__":

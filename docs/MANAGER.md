@@ -296,8 +296,9 @@ What the Ready screen tests, and what makes each one fail.
 **Wrong-Java used to be the classic failure; the Manager mostly removes it now.** The private JDK
 is passed only to the programs NPDev starts, so whatever Java is on your machine is irrelevant —
 including none at all. A Java newer than 17 on your machine now **warns** rather than fails (the
-generated app's own build can target either 17 or 21 per-app, and Gradle's toolchain resolver can
-provision whichever one a given app needs), so a warn here is informational, not a blocker.
+generated app's own build can target any Java version 17 or newer per-app, and Gradle's toolchain
+resolver can provision whichever one a given app needs), so a warn here is informational, not a
+blocker.
 
 ## Commands it runs for you
 

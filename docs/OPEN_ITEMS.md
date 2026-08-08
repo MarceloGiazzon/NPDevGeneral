@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**143 item(s) migrated: 1 open/partial, 142 done.**
+**144 item(s) migrated: 1 open/partial, 143 done.**
 
 ## Open / partial
 
@@ -79,7 +79,7 @@ Two independent fix shapes, not mutually exclusive:
     conditionally-written raw resource -- sidesteps the generator-side root cause the same way,
     without needing to isolate it first.
 
-## Done (142)
+## Done (143)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -134,6 +134,7 @@ Two independent fix shapes, not mutually exclusive:
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-140 | Every generated app was hard-pinned to Java 17 (build.gradle.template's toolchain literal), with no per-app way to request a newer JDK -- deps-and-java/PLAN.md P2 | GAP | MEDIUM | DONE | 2026-08-07 |
 | REG-141 | A custom capability (plugin:java-source) had no supported way to declare a third-party Maven dependency or a local jar -- deps-and-java/PLAN.md P3 | GAP | MEDIUM | DONE | 2026-08-07 |
+| REG-143 | build.javaVersion's upper enum [17, 21] removed -- floor-only (>=17), future-proofed against every Java version to come, not just 21 -- ROUND2_PLAN.md R1c | GAP | LOW | DONE | 2026-08-07 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
 | REG-16 | The other 23 launch items had zero adversarial review | PROCESS | HIGH | DONE | 2026-07-21 |
 | REG-16-resid | Adversarial review of the other ~21 launch surfaces (6-round programme) | PROCESS | HIGH | DONE | 2026-07-24 |
@@ -3092,6 +3093,141 @@ declared dependencies are completely unaffected. A generation-time collision che
 `capability.plugin.json` itself needs NO schema change -- a `plugin:java-source` capability already
 compiles into the app's main source set, so it sees `npdev-dependencies.gradle`'s additions for
 free once the toolchain resolves them.
+
+### REG-143 — build.javaVersion's upper enum [17, 21] removed -- floor-only (>=17), future-proofed against every Java version to come, not just 21 -- ROUND2_PLAN.md R1c
+
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-08-08)
+**Verification:** VERIFIED_LIVE
+**Source:** ROUND2_PLAN.md R1c asked whether the third-party user's original "newer Java version" request
+(REG-140, which shipped `enum [17, 21]`) was satisfied by 21, or whether they actually needed 25
+(current LTS at plan-writing time). The owner's answer, asked directly: "Make it future proof.
+Support ALL 17 and superiors. No negotiable condition." -- i.e. remove the enum entirely rather
+than widen it to a new fixed ceiling that would need renegotiating again at the next LTS.
+
+**Surface:** `generator/build-assembly, schemas/config, runtimehost/build-template, runtimehost/bean-wiring`
+**Files:**
+- `NPDevContract/schemas/config.schema.json`
+- `NPDevContract/schemas/authoring/config.schema.json`
+- `NPDevContract/dsl/resources/Schemas/config.schema.json`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java`
+- `NPDevGenerator/generator/src/test/java/com/npdev/generator/GeneratorMainJavaVersionResolutionTest.java`
+- `NPDevRuntimeHost/gradle/wrapper/gradle-wrapper.properties`
+- `NPDevRuntimeHost/settings.gradle.template`
+- `NPDevRuntimeHost/build.gradle.template`
+- `NPDevRuntimeHost/src/main/resources/application-step0.yml`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevObservabilityConfig.java`
+- `NPDevSamples/simple-contact-intake/Input/config.json`
+- `docs/MANAGER.md`
+- `NPDevCli/npdev_cli.py`
+- `NPDevManager/src/runtime.rs`
+- `BREAKING.md`
+
+Two layers, both changed:
+
+1. VALIDATION LAYER (the actual "no negotiable" promise): all 3 config.schema.json mirrors
+   changed `build.javaVersion` from `enum: [17, 21]` to `minimum: 17` (no maximum).
+   GeneratorMain.resolveJavaVersion's SUPPORTED_APP_JAVA_VERSIONS allowlist replaced with a
+   floor-only check (MINIMUM_APP_JAVA_VERSION = 17); rejects only values below the floor or
+   non-integers. Any integer >= 17 is accepted unconditionally, including versions that do not
+   exist yet -- there is deliberately no allowlist of "known good" versions to keep updating.
+
+2. MAKE-IT-REAL LAYER (so the promise isn't just accepted-then-failing four minutes later): the
+   generated app's own bundled toolchain was the actual ceiling, not the schema. Before this
+   change it was Gradle 8.5 (foojay-resolver-convention 0.8.0), which the removed error message
+   itself documented as capping resolvable Java versions at 21. Bumped, in NPDevRuntimeHost's
+   template only (platform modules -- dsl/kernel/generator/adapters/runtimehost source -- stay on
+   Gradle 8.5/Java 17, unaffected):
+     - Gradle 8.5 -> 9.5.1 (wrapper regenerated via a scratch project's `gradle wrapper
+       --gradle-version 9.5.1`, then gradle-wrapper.properties/jar + gradlew/gradlew.bat copied
+       over -- only gradle-wrapper.properties actually differed byte-for-byte from the 8.5
+       version; the bootstrap jar/scripts were already version-stable).
+     - foojay-resolver-convention 0.8.0 -> 1.0.0 (0.8.0 depended on a class Gradle 9 removed).
+
+   This bump broke FIVE separate, real things, each found only by actually running a build/boot,
+   never by reading a changelog. The first three were caught by the normal
+   `enforceSingleSchemaRealizationSource test` task; the last two were caught ONLY by the
+   generator module's own `PackagedGeneratedAppRuntimeProofTest`/
+   `HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest`, which are the only tests in
+   the whole corpus that run `bootJar` and then actually boot the packaged jar as an external
+   process and hit its HTTP health endpoint -- every other test/gate path (including this same
+   PLAN's own R1a/R1b live-proof, done first) exercises `compileJava`/`test` only, never `bootJar`
+   or a real external-process boot, so none of the last two would have been caught any other way:
+
+     a. Gradle 9 stopped bundling the JUnit Platform launcher -- added explicit
+        `testRuntimeOnly 'org.junit.platform:junit-platform-launcher'`.
+     b. ArchUnit 1.3.0's bytecode importer can't read Java 25's class file major version 69 --
+        every rule failed with "failed to check any classes" (not a real architecture violation).
+        Bumped to 1.4.2 (1.4.1 added Java 25 support upstream).
+     c. Mockito 5.11.0 / Byte Buddy 1.14.18 (Spring Boot 3.3.2's managed versions) cannot
+        instrument classes under Java 25 (MockitoException / MockitoInitializationException --
+        Byte Buddy needs 1.17.5+ for class file 69). `configurations.configureEach {
+        resolutionStrategy.force(...) }` does NOT win against io.spring.dependency-management's
+        own managed version for a transitive dependency -- confirmed live, force() was present
+        and mockito-core still resolved to 5.11.0. Required an explicit `dependencyManagement {
+        dependencies { ... } }` override instead (that plugin's own mechanism), for BOTH
+        mockito-core/mockito-junit-jupiter (5.11.0 -> 5.23.0) AND byte-buddy/byte-buddy-agent
+        (Boot's BOM manages byte-buddy separately from mockito-core and won even after mockito
+        was fixed -- 1.14.18 -> 1.17.7, matching what mockito-core 5.23.0 itself requests).
+     d. `bootJar` itself failed: `Execution failed for task ':bootJar' ... 'java.lang.Integer
+        org.gradle.api.file.CopyProcessingSpec.getDirMode()'` -- Spring Boot 3.3.2's OWN Gradle
+        plugin (not core Gradle) calls a Copy API method Gradle 9 changed. Fixed by bumping the
+        `org.springframework.boot` plugin 3.3.2 -> 3.5.16 (the last Spring Boot 3.x patch; 3.5
+        itself reached OSS EOL 2026-06-30, but is still the earliest 3.x line documented as
+        Gradle-9-compatible). Deliberately NOT Boot 4.x, the only currently-non-EOL line: a
+        Spring Framework 7 / Jakarta major migration is its own multi-day effort with a blast
+        radius far beyond "can bootJar run under Gradle 9," out of scope here. This ALSO
+        contradicts this item's own earlier resolution note (see below), which had claimed no
+        Boot version change was needed -- that was true for `test`, false for `bootJar`.
+     e. Once `bootJar` worked and the packaged jar was actually booted as an external process, it
+        failed to become healthy. Root cause, found via `--debug`'s condition-evaluation report:
+        `SchemaRealizationEmitter` bakes `spring.autoconfigure.exclude=DataSourceAutoConfiguration,
+        HibernateJpaAutoConfiguration,JpaRepositoriesAutoConfiguration,FlywayAutoConfiguration`
+        into the generated `application-npdev-db.properties` whenever a model resolves to the
+        InMemory engine at generation time (correct -- there is no real datasource in that mode).
+        `application-step0.yml` (the "zero-setup trial" profile, which forces a real H2 database
+        regardless of the model's resolved engine) only ever set `spring.datasource.*`/
+        `spring.jpa.*` -- it never cleared that inherited exclusion, so `DataSourceAutoConfiguration`
+        stayed excluded and `NpdevRuntimeModeConfig.jdbcConceptStore`'s `DataSource` parameter had
+        nothing to autowire (`UnsatisfiedDependencyException`). Adding
+        `spring.autoconfigure.exclude: ""` in step0's YAML did NOT fix it -- confirmed live via the
+        same `--debug` report, the four classes were still excluded. Spring's `Binder` treats an
+        *empty string* for this property as "absent" and falls through to the next-lower-precedence
+        source (the imported properties file); an *empty list* (`exclude: []`, proper YAML list
+        syntax) is a genuinely different bound value and DOES override correctly -- confirmed live
+        by first proving a non-empty bogus class name overrides correctly (ruling out "profile YAML
+        can never win over an import" as the theory), then confirming `[]` also overrides
+        correctly, then reverting `""` in favor of `[]`.
+
+        Clearing the exclusion once `DataSourceAutoConfiguration` could fire uncovered a THIRD,
+        separate bug, one bean-wiring level down: `JdbcTraceStore`/`JdbcFlowInstanceStore`/
+        `JdbcEventStore` (the tracestore-postgres/flowinstance-postgres/eventstore-postgres
+        adapters) each implement TWO interfaces at once (e.g. `TraceStore` and `TraceSummaryStore`
+        in one class). `NpdevObservabilityConfig`'s `traceSummaryStore`/`executionSummaryStore`/
+        `eventMetaStore` `@Bean` methods each returned that same dual-interface instance directly
+        when delegating, which registers ONE object under TWO type-assignable bean definitions --
+        any plain `TraceStore`/`FlowInstanceStore`/`EventStore`-typed injection point (here,
+        `StorageWiringLogger`, a startup diagnostic `ApplicationRunner`) then found two candidates
+        and failed with `UnsatisfiedDependencyException: ... required a single bean, but 2 were
+        found`. Previously invisible for the same reason as (e): `jdbcTraceStore` never got
+        created while `DataSourceAutoConfiguration` was excluded, so nothing ever collided. Fixed
+        by having each delegating `@Bean` method return a narrower wrapper that implements ONLY
+        the summary-typed interface: a plain method reference (`store::searchSummaries`,
+        `store::listByCorrelation`) for the two single-method interfaces
+        (`TraceSummaryStore`/`EventMetaStore`), and an explicit anonymous-class delegate for
+        `ExecutionSummaryStore` (which has 3 real overridden methods beyond its one abstract
+        method -- `JdbcFlowInstanceStore` implements all 4 with real query logic, not the
+        interface's `List.of()` defaults, so a single method reference would have silently
+        dropped 3 of them).
+
+   All three of (d)/(e)'s findings are specific to the narrow combination this item's own live
+   proof exercises: a model that resolves to the InMemory engine at generation time (the normal
+   outcome when generating without a live database connection, e.g. via `generate-sample.ps1`,
+   which is also how the failing proof tests generate their own fixture models), later forced into
+   JDBC mode at runtime by the "step0" zero-setup trial profile. A model generated against a real,
+   live `docker-postgres` connection never has the exclusion baked in the first place, so (e) and
+   the bean-wiring bug never trigger for it -- but step0/trial is exactly the path
+   ROUND2_PLAN.md's R5 (the clean-VM proof) and every "New app" / zero-setup flow through the
+   Manager depends on, so this was not a corner case worth leaving broken.
 
 ### REG-15 — LNCH-23: trademark clearance N/A, release tag cut
 
