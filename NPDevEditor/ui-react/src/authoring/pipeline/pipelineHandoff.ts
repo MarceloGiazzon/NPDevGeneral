@@ -142,10 +142,24 @@ function buildReadme(bundle: AuthoringBundle, handoffDir: string): string {
 }
 
 function buildHelperScript(handoffDir: string, artifactRoot: string): string {
+  // REG-144: this used to emit `$NPDevRoot = 'D:\WorkSpace\NPDev_General'` -- the author's machine,
+  // and not even a real path on it (the checkout is under D:\WorkSpace\NPDev\). Anyone running the
+  // generated helper got a confusing failure deep inside Gradle instead of being told what to pass.
+  // The handoff package is unpacked outside the repo, so the root cannot be derived from
+  // $PSScriptRoot; fall back to NPDEV_ROOT (the convention docs/GETTING_STARTED.md already
+  // documents) and otherwise stop immediately with an actionable message.
   return [
     "param(",
-    "  [string]$NPDevRoot = 'D:\\WorkSpace\\NPDev_General'",
+    "  [string]$NPDevRoot = $env:NPDEV_ROOT",
     ")",
+    "",
+    "if ([string]::IsNullOrWhiteSpace($NPDevRoot)) {",
+    "  throw \"Pass -NPDevRoot <path to your NPDev checkout>, or set the NPDEV_ROOT environment \" +",
+    "        \"variable. Example: .\\RUN-NP-HANDOFF.ps1 -NPDevRoot C:\\src\\NPDevGeneral\"",
+    "}",
+    "if (-not (Test-Path -LiteralPath (Join-Path $NPDevRoot 'NPDevGenerator'))) {",
+    "  throw \"'$NPDevRoot' does not look like an NPDev checkout (no NPDevGenerator directory).\"",
+    "}",
     "",
     "$generatorRoot = Join-Path $NPDevRoot 'NPDevGenerator'",
     "$modelPath = Join-Path $PSScriptRoot 'model.json'",

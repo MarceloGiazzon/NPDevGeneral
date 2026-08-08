@@ -65,7 +65,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$repo = "D:\WorkSpace\NPDev\NPDev_General"
+# Portable repo root (REG-144): was hardcoded to the author's D:\ layout, so the script could only
+# ever run on one machine. This file lives at <repo>/scripts/appgen/, so the repo root is two
+# levels up -- correct under any clone name and any drive.
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $generatorRoot = Join-Path $repo "NPDevGenerator"
 $gradlew = Join-Path $generatorRoot "gradlew.bat"
 if (-not (Test-Path -LiteralPath $gradlew)) { throw "Gradle wrapper not found: $gradlew" }

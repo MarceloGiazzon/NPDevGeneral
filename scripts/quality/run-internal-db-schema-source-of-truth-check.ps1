@@ -1,9 +1,17 @@
 param(
   [Parameter(Mandatory = $false)]
-  [string] $WorkspaceRoot = 'D:\WorkSpace\NPDev\NPDev_General'
+  [string] $WorkspaceRoot = ''
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Portable default (REG-144): this used to hardcode the author's own D:\WorkSpace\NPDev\NPDev_General,
+# so on anyone else's machine the default silently pointed at a path that does not exist. This script
+# lives at <repo>/scripts/quality/, so the repo root is exactly two levels up -- correct under any
+# clone name and any drive. Passing -WorkspaceRoot still wins.
+if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
+  $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+}
 
 $failures = New-Object System.Collections.Generic.List[string]
 $warnings = New-Object System.Collections.Generic.List[string]

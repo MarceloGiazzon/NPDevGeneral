@@ -38,7 +38,9 @@
 [CmdletBinding()]
 param(
   [string]$AppFolder = 'D:\WorkSpace\NPDev\AppGen\apps\_official\Claude',
-  [string]$ProductRepo = 'D:\WorkSpace\NPDev\NPDev_General',
+  # Portable default (REG-144): resolved from $PSScriptRoot below, not hardcoded to the author's
+  # D:\ layout. The AppGen/Build defaults around it point outside the repo and stay per-machine.
+  [string]$ProductRepo = '',
   [string]$RuntimeCurrent = 'D:\WorkSpace\NPDev\AppGen\generator-runtime\current',
   [string]$OutRoot = 'D:\WorkSpace\NPDev\Build\generated-finalapps\claude-support-desk',
   [int]$ServerPort = 8090,
@@ -50,6 +52,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($ProductRepo)) {
+  $ProductRepo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+}
 
 function Write-Step {
   param([string]$Message)
