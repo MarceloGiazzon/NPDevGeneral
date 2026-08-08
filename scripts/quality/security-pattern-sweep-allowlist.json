@@ -167,6 +167,11 @@
       "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:485",
       "why": "REG-46's tenant-scoped adapter methods (findByIdScoped/deleteScoped/existsScoped). The tenant predicate IS applied: the statement is built from TWO literals -- \"... where <id> = ? and \" + tableColumns.columnName(TENANT_COLUMN) + \" = ?\" -- and binds scope.tenantId(); the sweep matches only the first literal (its documented second-literal limitation). When the table has no tenant column the method delegates to the unscoped sibling, which is correct: a table with no tenant column holds no tenant-owned rows to scope."
     },
+    "18393194fab2": {
+      "rule": "A3",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:278",
+      "why": "NOT SQL. This is the TEXT OF A REFUSAL MESSAGE inside SqlServerDialect.rowLimited -- the UnsupportedOperationException thrown when a statement does not begin with SELECT and therefore has nowhere to put SQL Server's PREFIX row cap. The sweep is matching the words 'SELECT TOP n' and 'select' inside a human explanation, not a query. Nothing here reads any row, so there is no row set to scope to a tenant. Verified by reading the method: its only effect is to build a String and throw. storage/FULL_SUPPORT_PLAN.md W1.3."
+    },
     "194e25ea84a0": {
       "rule": "H2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/provenance/BuildInfoEmitter.java:134",
@@ -331,6 +336,11 @@
       "rule": "F2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1093",
       "why": "Generation-time emitter: builds DDL/UI text into an artifact and executes nothing. Its identifiers come from SqlIdentifierSupport, whose toSnake whitelist emits only [a-z0-9_]. Round 5 section 1."
+    },
+    "2d2cc1801562": {
+      "rule": "A3",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:272",
+      "why": "NOT SQL. This is the TEXT OF A REFUSAL MESSAGE inside SqlServerDialect.rowLimited -- the UnsupportedOperationException thrown when a statement does not begin with SELECT and therefore has nowhere to put SQL Server's PREFIX row cap. The sweep is matching the words 'SELECT TOP n' and 'select' inside a human explanation, not a query. Nothing here reads any row, so there is no row set to scope to a tenant. Verified by reading the method: its only effect is to build a String and throw. storage/FULL_SUPPORT_PLAN.md W1.3."
     },
     "2d55d71c5c3d": {
       "rule": "B4/G2",
@@ -551,6 +561,11 @@
       "rule": "F2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/schemaevolution/PlanItem.java:57",
       "why": "Generation-time emitter: builds DDL/UI text into an artifact and executes nothing. Its identifiers come from SqlIdentifierSupport, whose toSnake whitelist emits only [a-z0-9_]. Round 5 section 1."
+    },
+    "4fd1788802b8": {
+      "rule": "A1",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:277",
+      "why": "NOT SQL ASSEMBLY. `sql.strip()` is appended to the TEXT OF A REFUSAL MESSAGE so the operator can see WHICH statement could not be capped -- the method throws immediately afterwards and never executes anything. Echoing the offending statement back is the point of the message; a refusal that does not name what it refused is a riddle. The value is a caller's own SQL, never a caller's DATA, and it reaches a log rather than a database. storage/FULL_SUPPORT_PLAN.md W1.3."
     },
     "50769a3d7121": {
       "rule": "F1",
@@ -1017,6 +1032,11 @@
       "where": "NPDevKernel/adapters/circuit-postgres/src/main/java/com/npdev/adapters/circuit/jdbc/JdbcCircuitBreakerStateStore.java:36",
       "why": "REG-36: the idempotency key is bounded at the store's key chokepoints by IdempotencyKeys.bound. The remaining binds are tenant/capability/operation, which are author-declared identifiers rather than caller text."
     },
+    "9483b9489b62": {
+      "rule": "A1",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:278",
+      "why": "NOT SQL ASSEMBLY. `sql.strip()` is appended to the TEXT OF A REFUSAL MESSAGE so the operator can see WHICH statement could not be capped -- the method throws immediately afterwards and never executes anything. Echoing the offending statement back is the point of the message; a refusal that does not name what it refused is a riddle. The value is a caller's own SQL, never a caller's DATA, and it reaches a log rather than a database. storage/FULL_SUPPORT_PLAN.md W1.3."
+    },
     "94ff74f7dba1": {
       "rule": "D3",
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptGateway.java:92",
@@ -1402,6 +1422,11 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaDropSnapshotRestorer.java:204",
       "why": "Schema-snapshot restore -- rule G5's class: schema/claim/mark/publication stores are deliberately not tenant-scoped, the schema belongs to the database, not a tenant. Re-added 2026-08-01 after an accidental git checkout."
     },
+    "caa9b2447229": {
+      "rule": "A1",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:276",
+      "why": "NOT SQL ASSEMBLY. `sql.strip()` is appended to the TEXT OF A REFUSAL MESSAGE so the operator can see WHICH statement could not be capped -- the method throws immediately afterwards and never executes anything. Echoing the offending statement back is the point of the message; a refusal that does not name what it refused is a riddle. The value is a caller's own SQL, never a caller's DATA, and it reaches a log rather than a database. storage/FULL_SUPPORT_PLAN.md W1.3."
+    },
     "cd05403ca1ad": {
       "rule": "G3",
       "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:278",
@@ -1562,6 +1587,11 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:2120",
       "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. All 27 sites were read individually. Every value is bound."
     },
+    "e7a639b27baa": {
+      "rule": "A3",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:277",
+      "why": "NOT SQL. This is the TEXT OF A REFUSAL MESSAGE inside SqlServerDialect.rowLimited -- the UnsupportedOperationException thrown when a statement does not begin with SELECT and therefore has nowhere to put SQL Server's PREFIX row cap. The sweep is matching the words 'SELECT TOP n' and 'select' inside a human explanation, not a query. Nothing here reads any row, so there is no row set to scope to a tenant. Verified by reading the method: its only effect is to build a String and throw. storage/FULL_SUPPORT_PLAN.md W1.3."
+    },
     "e7c96c12a3af": {
       "rule": "I1",
       "where": "NPDevKernel/adapters/idempotency-postgres/src/main/java/com/npdev/adapters/idempotency/jdbc/JdbcIdempotencyStore.java:43",
@@ -1716,6 +1746,11 @@
       "rule": "I2",
       "where": "NPDevKernel/adapters/eventstore-postgres/src/main/java/com/npdev/adapters/eventstore/jdbc/JdbcEventStore.java:311",
       "why": "REG-47: a caller-supplied correlationId reaches four INDEXED columns -- and the primary key of npdev_correlation_owner -- with only trim() applied. REG-36's failure mode on a different key. Tracked as ONE item, not 29 hits. Re-triage when REG-47 closes."
+    },
+    "fb98cd0654c1": {
+      "rule": "A3",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:276",
+      "why": "NOT SQL. This is the TEXT OF A REFUSAL MESSAGE inside SqlServerDialect.rowLimited -- the UnsupportedOperationException thrown when a statement does not begin with SELECT and therefore has nowhere to put SQL Server's PREFIX row cap. The sweep is matching the words 'SELECT TOP n' and 'select' inside a human explanation, not a query. Nothing here reads any row, so there is no row set to scope to a tenant. Verified by reading the method: its only effect is to build a String and throw. storage/FULL_SUPPORT_PLAN.md W1.3."
     },
     "fccb16289042": {
       "rule": "A1",

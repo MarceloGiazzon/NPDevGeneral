@@ -386,6 +386,12 @@ All four are the direct, mechanical fallout of REG-120's fix (a new kernel metho
 |---|---|---|
 | `AuthoringMergeGate.java:100` — a whole-document-conflict violation message | 1 | Rule **false-positive**, the same class as `JdbcBusinessConceptStore.java:113`'s "(for update)" hit (§2.4): not SQL at all. The matched text is `"... disjoint-element merge cannot be attempted (H1: never guess). Reasons: " + String.join("; ", reasons)` — a human-readable diagnostic naming which elements collided. The sweep's `sql-string-building` regex fired on the English word "merge" (from the class name `AuthoringMergeGate` and the message prose "element merge") sitting near a `String.join` concatenation; there is no `DataSource`/JDBC/SQL anywhere in this class, which does an in-memory JSON element merge (`__OutsideRepo\s5\S5_SPEC.md`). |
 
+### 4.8 → 2026-08-08, storage/FULL_SUPPORT_PLAN.md W1.3 (SqlServerDialect.rowLimited)
+
+| Lead | Hits | Resolution |
+|---|---|---|
+| `SqlServerDialect.java:272–278` — the refusal message of the new prefix row cap | 7 | Rule **false-positive**, the same class as §4.7's `AuthoringMergeGate` hit: **the matched text is an exception message, not SQL.** `rowLimited` rewrites `SELECT` into `SELECT TOP n`, and when a statement does not begin with `SELECT` (a CTE, for instance) it throws — because there is nowhere to put a PREFIX cap and guessing would cap the wrong thing. Four hits are `read-without-tenant-predicate` firing on the words "SELECT TOP n" and "select" inside that English explanation; nothing in the method reads a row, so there is no row set to scope. Three are `sql-string-building` firing on `"... Statement: " + sql.strip()` — the caller's own statement echoed back so the operator can see WHICH one was refused. It reaches a log, never a database, and the method throws immediately afterwards. A refusal that does not name what it refused is a riddle, so the concatenation stays. |
+
 ## 5. Reproducing this
 
 ```bash
