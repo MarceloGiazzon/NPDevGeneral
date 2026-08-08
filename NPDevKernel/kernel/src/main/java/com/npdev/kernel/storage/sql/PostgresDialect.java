@@ -102,7 +102,7 @@ public final class PostgresDialect implements SqlDialect {
      *  Returning TEXT would make the same internal column a different type per engine. */
     @Override
     public String keyableTextColumnType() {
-        return "VARCHAR(255)";
+        return "VARCHAR(191)";
     }
 
     @Override

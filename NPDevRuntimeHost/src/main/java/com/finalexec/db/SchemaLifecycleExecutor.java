@@ -252,7 +252,60 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         };
     }
 
+    /**
+     * Pin {@link SqlDialects#active()} from the engine this app was GENERATED for.
+     *
+     * <p>Deliberately silent when the manifest names no engine or names {@code InMemory}: neither
+     * has SQL, and forcing a dialect there would be inventing an answer. Any other unrecognised
+     * value is left alone too -- {@code StorageDialectInitializer} is the component that refuses an
+     * unknown engine loudly, and duplicating that refusal here would give two different messages for
+     * one condition.
+     */
+    private static void pinDialectFromManifest(SchemaManifest manifest) {
+        String engine = manifest == null ? null : manifest.engine();
+        if (engine == null || engine.isBlank()) {
+            return;
+        }
+        String dialectName = switch (engine.trim().toLowerCase(Locale.ROOT)) {
+            case "postgres", "postgresql" -> "postgres";
+            case "h2local", "h2server", "h2" -> "h2";
+            case "mysql", "mariadb" -> "mysql";
+            case "sqlserver", "mssql" -> "sqlserver";
+            default -> null;
+        };
+        if (dialectName == null) {
+            return;
+        }
+        com.npdev.kernel.storage.sql.SqlDialect dialect;
+        try {
+            dialect = com.npdev.kernel.storage.sql.SqlDialects.forName(dialectName);
+        } catch (RuntimeException unknown) {
+            return;
+        }
+        if (!dialect.name().equals(com.npdev.kernel.storage.sql.SqlDialects.active().name())) {
+            System.out.println("NPDev schema lifecycle: pinning SQL dialect to '" + dialect.name()
+                    + "' from the manifest engine '" + engine + "' (schema realization runs before "
+                    + "StorageDialectInitializer's @PostConstruct is guaranteed to have).");
+            com.npdev.kernel.storage.sql.SqlDialects.setActive(dialect);
+        }
+    }
+
     void migrate(Flyway flyway, SchemaManifest manifest) {
+        // PIN THE DIALECT HERE, not only in StorageDialectInitializer.
+        //
+        // That class's @PostConstruct says it runs "before anything", and nothing enforced it:
+        // Spring builds `flywayInitializer` from its own dependencies (dataSource, flyway), which do
+        // not include StorageDialectInitializer, so schema realization could -- and on SQL Server
+        // did -- run first, while SqlDialects.active() was still the Postgres default.
+        //
+        // The symptom was maximally misleading. Every guarded DDL statement came out in the H2/
+        // Postgres form and SQL Server answered "Incorrect syntax near the keyword 'IF'" -- which
+        // reads like a bug in the new guards, and is in fact the guards never being consulted.
+        // Measured in CI run 31284112143.
+        //
+        // This is the entry point of everything that issues DDL, so pinning here cannot be too late,
+        // and pinning twice is harmless (setActive is idempotent for the same dialect).
+        pinDialectFromManifest(manifest);
         Configuration configuration = flyway.getConfiguration();
         DataSource dataSource = configuration.getDataSource();
         if (dataSource == null) {

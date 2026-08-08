@@ -38,7 +38,62 @@ async fn run_steps() -> Result<(), StepError> {
 
     run_setup_step(&python_path, &cli_path, java_home.as_deref()).await?;
 
+    run_engine_picker_step(&python_path, &cli_path, java_home.as_deref()).await?;
+
     run_doctor_step(&python_path, &cli_path, java_home.as_deref()).await
+}
+
+/// [5/6]: DRIVE THE ENGINE PICKER, rather than proving the Manager merely builds.
+///
+/// storage/OPEN_ITEMS_PLAN.md §3 is blunt about this: "A harness that proves the Manager *builds*
+/// proves nothing about a picker. Either drive it, or record E11 as BLOCKED with the reason -- do
+/// not soften it to green because the installer works."
+///
+/// So this exercises the exact command `list_engines` runs and asserts the two properties the picker
+/// depends on:
+///
+///   1. it returns engines at all -- an empty dropdown is the failure mode a build check cannot see;
+///   2. every EXPERIMENTAL engine carries an honesty notice.
+///
+/// (2) is the one that matters. BREAKING.md calling MySQL "selectable but NOT supported" is not the
+/// user being told; the notice has to arrive at the point of choice. A dropdown that silently offers
+/// MySQL beside PostgreSQL is the silent-answer defect wearing a UI.
+async fn run_engine_picker_step(python_path: &std::path::Path, cli_path: &std::path::Path,
+                                java_home: Option<&str>) -> Result<(), StepError> {
+    let listing = npdev::run_engines(python_path, cli_path, java_home)
+        .await
+        .map_err(|e| ("5/6 npdev engines", e))?;
+
+    let engines = listing
+        .get("engines")
+        .and_then(|e| e.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if engines.is_empty() {
+        return Err(("5/6 engine picker", "the engine list is EMPTY -- the picker would render an                     empty dropdown, which is exactly what a build-only check cannot see".to_string()));
+    }
+
+    let mut experimental = 0;
+    for engine in &engines {
+        let status = engine.get("status").and_then(|s| s.as_str()).unwrap_or("");
+        let name = engine.get("externalName").and_then(|s| s.as_str()).unwrap_or("?");
+        if status == "supported" {
+            continue;
+        }
+        experimental += 1;
+        let notice = engine.get("honestyNotice").and_then(|n| n.as_str()).unwrap_or("");
+        if notice.is_empty() {
+            return Err((
+                "5/6 engine picker",
+                format!("engine '{name}' is '{status}' but carries no honestyNotice -- the picker                          would offer it with no warning at the point of choice"),
+            ));
+        }
+    }
+    println!(
+        "  [5/6] engine picker driven ................... ok  ({} engine(s), {experimental}          experimental, each with a notice)",
+        engines.len()
+    );
+    Ok(())
 }
 
 /// [1/5]-[3/5] in the plan's sample output: resolve the Adoptium asset for this platform,
@@ -94,7 +149,7 @@ async fn resolve_python_step(app_state: &state::AppState) -> Result<std::path::P
     Ok(python_path)
 }
 
-/// Part of [5/5]: an installed NPDev CLI is a precondition for `doctor`, not a separate numbered
+/// Part of [6/6]: an installed NPDev CLI is a precondition for `doctor`, not a separate numbered
 /// step in the plan's sample -- installs the newest tag if none is present yet, the same path the
 /// Install screen's version picker drives (`versions::install_version`).
 async fn resolve_npdev_step(app_state: &state::AppState) -> Result<std::path::PathBuf, StepError> {
@@ -105,17 +160,17 @@ async fn resolve_npdev_step(app_state: &state::AppState) -> Result<std::path::Pa
             return Ok(cli);
         }
     }
-    let tags = versions::list_tags(false).await.map_err(|e| ("5/5 list NPDev tags", e))?;
+    let tags = versions::list_tags(false).await.map_err(|e| ("5/6 list NPDev tags", e))?;
     let newest = tags
         .first()
-        .ok_or_else(|| ("5/5 list NPDev tags", "the repository has no tags to install".to_string()))?;
+        .ok_or_else(|| ("5/6 list NPDev tags", "the repository has no tags to install".to_string()))?;
     versions::install_version(app_state, &newest.name, |_, _| {})
         .await
-        .map_err(|e| ("5/5 install NPDev version", e))?;
+        .map_err(|e| ("5/6 install NPDev version", e))?;
     Ok(npdev::npdev_cli_path(&state::versions_dir().join(&newest.name)))
 }
 
-/// Part of [5/5]: `npdev setup` (stages the runtimehost jars + AI knowledge index) is a
+/// Part of [6/6]: `npdev setup` (stages the runtimehost jars + AI knowledge index) is a
 /// precondition for `doctor` to report every check passing -- the same as it is for a real user
 /// via the Ready screen's Setup step. Found live (2026-08-05, I4's first container run): without
 /// this, `--selftest` reached doctor with jars unstaged and only 6/10 checks passing, which was
@@ -128,17 +183,17 @@ async fn run_setup_step(python_path: &std::path::Path, cli_path: &std::path::Pat
         |_value| {},
     )
     .await
-    .map_err(|e| ("5/5 npdev setup", e))?;
+    .map_err(|e| ("5/6 npdev setup", e))?;
     let jars_source = result.get("jarsSource").and_then(|v| v.as_str()).unwrap_or("?");
     println!("        npdev setup (stage jars + knowledge index) ..... ok  (jarsSource={jars_source})");
     Ok(())
 }
 
-/// [5/5]: the exact `doctor --json` call `check_doctor` makes, via the runtimes resolved above.
+/// [6/6]: the exact `doctor --json` call `check_doctor` makes, via the runtimes resolved above.
 async fn run_doctor_step(python_path: &std::path::Path, cli_path: &std::path::Path, java_home: Option<&str>) -> Result<(), StepError> {
     let result = npdev::run_doctor(python_path, cli_path, java_home)
         .await
-        .map_err(|e| ("5/5 npdev doctor", e))?;
+        .map_err(|e| ("6/6 npdev doctor", e))?;
     let checks = result.get("checks").and_then(|c| c.as_array()).cloned().unwrap_or_default();
     let total = checks.len();
     let passed = checks
@@ -147,12 +202,12 @@ async fn run_doctor_step(python_path: &std::path::Path, cli_path: &std::path::Pa
         .count();
     let ok = result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
     println!(
-        "  [5/5] npdev doctor via private runtimes ....... {}  ({passed}/{total} checks pass)",
+        "  [6/6] npdev doctor via private runtimes ....... {}  ({passed}/{total} checks pass)",
         if ok { "ok" } else { "FAIL" }
     );
     if ok {
         Ok(())
     } else {
-        Err(("5/5 npdev doctor", format!("doctor reported failure ({passed}/{total} checks passed): {result}")))
+        Err(("6/6 npdev doctor", format!("doctor reported failure ({passed}/{total} checks passed): {result}")))
     }
 }

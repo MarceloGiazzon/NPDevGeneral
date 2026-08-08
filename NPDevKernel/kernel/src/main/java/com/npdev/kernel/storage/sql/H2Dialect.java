@@ -104,7 +104,7 @@ public final class H2Dialect implements SqlDialect {
      *  engine realizes the SAME column type and a later schema diff has nothing to explain. */
     @Override
     public String keyableTextColumnType() {
-        return "VARCHAR(255)";
+        return "VARCHAR(191)";
     }
 
     @Override

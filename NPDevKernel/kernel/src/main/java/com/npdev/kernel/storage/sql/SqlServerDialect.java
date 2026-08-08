@@ -141,7 +141,7 @@ public final class SqlServerDialect implements SqlDialect {
      */
     @Override
     public String keyableTextColumnType() {
-        return "NVARCHAR(255)";
+        return "NVARCHAR(191)";
     }
 
     @Override
