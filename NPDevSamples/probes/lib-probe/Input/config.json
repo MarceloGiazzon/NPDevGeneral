@@ -1,0 +1,61 @@
+{
+  "$schema": "..\\\\..\\\\..\\\\..\\\\NPDevContract\\\\schemas\\\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "lib-probe",
+    "description": "External-library probe: one concept, one plugin:java-source capability, two declared dependencies -- one `implementation` used at runtime, one `compileOnly` that must NOT reach the runtime classpath. Kept SEPARATE from the engine probes on purpose: mixing them means a red run could be the dialect or the dependency.",
+    "outputRoot": "..\\\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": false
+  },
+  "bootstrap": {
+    "root": "..\\\\..\\\\..\\\\..\\\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\\\Output\\\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\\\Output\\\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "lib_probe",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8320,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8320/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "External-library probe for E8. Deliberately h2-local: this proves the dependency chain, not the dialect."
+    ]
+  },
+  "build": {
+    "javaVersion": 17,
+    "dependencies": [
+      "com.google.guava:guava:33.0.0-jre",
+      {
+        "coordinate": "org.apache.commons:commons-lang3:3.14.0",
+        "scope": "compileOnly"
+      }
+    ]
+  }
+}

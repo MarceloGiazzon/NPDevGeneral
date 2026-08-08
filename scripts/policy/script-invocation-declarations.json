@@ -297,6 +297,9 @@
     "scripts/quality/run-editor-gate.ps1": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/run-engine-app-proof.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/run-expanded-beta0-evidence.ps1": {
       "invocation": "manual-runbook"
     },
@@ -335,6 +338,9 @@
     },
     "scripts/quality/run-json-schema-validator-tests.ps1": {
       "invocation": "manual-runbook"
+    },
+    "scripts/quality/run-library-probe.py": {
+      "invocation": "ci-gate"
     },
     "scripts/quality/run-manager-harness.ps1": {
       "invocation": "manual-runbook"
@@ -434,6 +440,9 @@
     },
     "scripts/quality/run-structured-command-surface-alignment.ps1": {
       "invocation": "orchestrated"
+    },
+    "scripts/quality/run-tier-c-probes.py": {
+      "invocation": "ci-gate"
     },
     "scripts/quality/run-traceable-local-release.ps1": {
       "invocation": "ci-gate"

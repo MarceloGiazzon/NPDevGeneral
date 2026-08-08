@@ -1,0 +1,17 @@
+{
+  "id": "engine-probe",
+  "title": "engine-probe",
+  "complexity": "storage-probe",
+  "purpose": "Engine probe: the one app that is generated, built, booted and exercised against every engine, so a difference in outcome is the dialect (E3/E4/E5).",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo. Driven by scripts/quality/run-engine-app-proof.py in CI.",
+    "db.definition.json is written per engine at run time; there is deliberately none here."
+  ],
+  "expectedOutcomes": [
+    "The app boots against a real engine -- schema realization ran there.",
+    "A non-BMP unicode label survives a POST/GET round trip byte for byte.",
+    "A filtered, ordered, paginated query returns the right page.",
+    "Rows survive a stop and a restart."
+  ]
+}

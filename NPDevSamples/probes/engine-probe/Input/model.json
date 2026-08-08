@@ -1,0 +1,278 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.engineprobe",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "Engine probe (storage/FULL_SUPPORT_PLAN.md W2, exit criteria E3/E4/E5): the SAME model is generated, built, booted and exercised against EVERY engine, so any difference in outcome is the dialect and nothing else. Every field forces one engine-specific column type or behaviour through the FULL generated stack -- schema realization, CRUD, query, panel -- which Tier B's raw-JDBC vectors never touch. One model, not one per engine: two models could differ, and then a difference in outcome would prove nothing."
+  },
+  "concepts": [
+    {
+      "name": "ProbeRecord",
+      "ui": {
+        "label": "Probe record"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Code"
+          }
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Label"
+          }
+        },
+        {
+          "name": "quantity",
+          "type": "integer",
+          "required": true,
+          "ui": {
+            "label": "Quantity"
+          }
+        },
+        {
+          "name": "total",
+          "type": "long",
+          "required": true,
+          "ui": {
+            "label": "Total"
+          }
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": true,
+          "ui": {
+            "label": "Active"
+          }
+        },
+        {
+          "name": "recordedAt",
+          "type": "datetime",
+          "required": true,
+          "ui": {
+            "label": "Recorded at"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "ProbeRecordCodeRequired",
+          "expr": "code != null && code != ''"
+        },
+        {
+          "name": "ProbeRecordQuantityNonNegative",
+          "expr": "quantity >= 0"
+        }
+      ]
+    },
+    {
+      "name": "ProbeReserved",
+      "ui": {
+        "label": "Probe reserved-word holder"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Name"
+          }
+        },
+        {
+          "name": "position",
+          "type": "integer",
+          "required": true,
+          "ui": {
+            "label": "Position"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "ProbeReservedNameRequired",
+          "expr": "name != null && name != ''"
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    }
+  ],
+  "queries": [
+    {
+      "name": "ActiveProbeRecords",
+      "concept": "ProbeRecord",
+      "where": "active == true && quantity >= 1",
+      "orderBy": [
+        "quantity"
+      ],
+      "tracePolicy": "summary",
+      "auditPolicy": "read"
+    }
+  ],
+  "procedures": [
+    {
+      "name": "SaveProbeRecordProcedure",
+      "description": "Saves a probe record through the Concept Gateway and returns the governed record.",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        }
+      ],
+      "steps": [
+        {
+          "name": "save-probe-record-through-gateway",
+          "type": "saveConcept",
+          "concept": "ProbeRecord",
+          "id": "$id",
+          "data": {
+            "input": "$input"
+          },
+          "target": "savedRecord",
+          "trace": true,
+          "audit": true
+        },
+        {
+          "name": "return-saved-record",
+          "type": "return",
+          "value": "$savedRecord",
+          "trace": true
+        }
+      ],
+      "tracePolicy": "detailed",
+      "auditPolicy": "write"
+    }
+  ],
+  "panels": [
+    {
+      "name": "ProbePanel",
+      "route": "/probe/records",
+      "title": "Probe records",
+      "dataSources": [
+        {
+          "name": "activeProbeRecords",
+          "query": "ActiveProbeRecords"
+        }
+      ],
+      "layout": {
+        "type": "table",
+        "fields": [
+          "code",
+          "label",
+          "quantity",
+          "total",
+          "active"
+        ]
+      },
+      "fieldBindings": [
+        {
+          "field": "code",
+          "source": "activeProbeRecords.code"
+        },
+        {
+          "field": "label",
+          "source": "activeProbeRecords.label"
+        },
+        {
+          "field": "quantity",
+          "source": "activeProbeRecords.quantity"
+        },
+        {
+          "field": "total",
+          "source": "activeProbeRecords.total"
+        },
+        {
+          "field": "active",
+          "source": "activeProbeRecords.active"
+        }
+      ],
+      "actions": [
+        {
+          "name": "SaveProbeRecord",
+          "binding": "procedure",
+          "procedure": "SaveProbeRecordProcedure",
+          "label": "Save probe record",
+          "explainability": {
+            "semanticPath": "PanelRuntime -> ProcedureExecutor -> ConceptGateway"
+          }
+        }
+      ],
+      "explainability": {
+        "governedDataAccess": "ConceptGateway",
+        "ruleProfile": "always"
+      }
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateProbeRecord",
+      "input": {
+        "concept": "ProbeRecord",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "validate-probe-record",
+          "type": "invariantCheck",
+          "scope": "ProbeRecord",
+          "invariants": [
+            "ProbeRecordCodeRequired",
+            "ProbeRecordQuantityNonNegative"
+          ]
+        },
+        {
+          "name": "save-probe-record",
+          "type": "createConcept",
+          "scope": "ProbeRecord",
+          "input": "$input",
+          "output": "$saved"
+        },
+        {
+          "name": "return-probe-record",
+          "type": "return",
+          "value": "$saved"
+        }
+      ]
+    }
+  ]
+}

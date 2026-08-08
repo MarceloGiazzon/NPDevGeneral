@@ -1,0 +1,47 @@
+{
+  "$schema": "..\\\\..\\\\..\\\\..\\\\NPDevContract\\\\schemas\\\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "engine-probe",
+    "description": "Engine probe: generate/build/boot/serve the same app on every engine. The database block is deliberately absent -- run-engine-app-proof.py writes db.definition.json per engine from the CLI's own registry, because that is the file a real user's `npdev init --engine` produces.",
+    "outputRoot": "..\\\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": false,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\\\..\\\\..\\\\..\\\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\\\Output\\\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\\\Output\\\\App",
+    "deleteBeforeMount": true
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8310,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8310/",
+    "databaseMode": "postgres",
+    "notes": [
+      "Engine probe for E3/E4/E5. The engine is chosen by run-engine-app-proof.py, not by this file.",
+      "Do not add features: a probe that grows stops being comparable across engines."
+    ]
+  }
+}

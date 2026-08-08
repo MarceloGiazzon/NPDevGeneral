@@ -1,0 +1,15 @@
+{
+  "id": "lib-probe",
+  "title": "lib-probe",
+  "complexity": "storage-probe",
+  "purpose": "Proves a user capability can import and CALL an external library at runtime (E8), and that a compileOnly dependency is correctly ABSENT from the runtime classpath.",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo. Driven by scripts/quality/run-library-probe.py in CI.",
+    "The assertion is the RETURNED VALUE, not that it compiled."
+  ],
+  "expectedOutcomes": [
+    "SignWithLibrary returns Guava's SHA-256 of a known input, matching the known digest.",
+    "ProbeCompileOnlyAtRuntime reports the compileOnly class as ABSENT at runtime."
+  ]
+}

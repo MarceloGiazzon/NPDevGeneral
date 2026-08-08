@@ -278,6 +278,46 @@ class DialectConformanceTierATest {
         assertThrows(IllegalArgumentException.class, () -> dialect.rowLimit(-5));
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("C1: EVERY engine can cap a statement, whatever shape its cap takes")
+    void everyDialectCanCapAStatement(SqlDialect dialect) {
+        // storage/FULL_SUPPORT_PLAN.md W1.3. The gap was never "SQL Server cannot cap rows" -- it is
+        // that it cannot cap them with a SUFFIX. All four real call sites (two existence probes in
+        // PostgresPersistenceCapabilityAdapter, two first-by-order reads in JdbcEventStore) want
+        // "at most n rows", and suffix-vs-prefix is the engine's business, which is what a dialect is
+        // for. Pushing the question out to the call sites would have MOVED the engine switch rather
+        // than removed it -- the thing SqlDialect's own javadoc says this seam must never become.
+        String capped = dialect.rowLimited("select 1 from t where c = ?", 1);
+        assertTrue(capped.toLowerCase(java.util.Locale.ROOT).contains("select"), capped);
+        assertTrue(capped.contains("1"), capped);
+        if ("sqlserver".equals(dialect.name())) {
+            // Case-preserving on purpose: the rewrite must not reformat a caller's statement, only
+            // insert the cap. Asserting on the caller's own casing is how that stays true.
+            assertTrue(capped.regionMatches(true, 0, "select TOP 1 ", 0, "select TOP 1 ".length()),
+                    "SQL Server caps with a PREFIX: " + capped);
+        }
+    }
+
+    @Test
+    @DisplayName("C1: SQL Server's cap goes AFTER DISTINCT, and refuses what it cannot place")
+    void sqlServerPrefixCapHandlesDistinctAndRefusesCtes() {
+        // T-SQL's grammar is SELECT [ALL|DISTINCT] [TOP n] -- `SELECT TOP 1 DISTINCT` is a syntax
+        // error, and one that would only appear the day a caller wrote DISTINCT.
+        // No trailing newline, unlike the SUFFIX form: the default rowLimited appends a clause to a
+        // text block and re-adds the newline it consumed. A prefix rewrite consumes nothing, so
+        // adding one would be inventing whitespace inside the caller's statement.
+        assertEquals("select distinct TOP 1 a from t",
+                SqlServerDialect.INSTANCE.rowLimited("select distinct a from t", 1));
+
+        // A CTE needs the TOP inside its own final select, which no string surgery here can locate.
+        // Refusing beats emitting something that parses and caps the wrong thing -- the silent wrong
+        // answer this seam exists to prevent.
+        UnsupportedOperationException refusal = assertThrows(UnsupportedOperationException.class,
+                () -> SqlServerDialect.INSTANCE.rowLimited("with x as (select 1) select * from x", 1));
+        assertTrue(refusal.getMessage().contains("must begin with SELECT"), refusal.getMessage());
+    }
+
     // ------------------------------------------------------------------ C2 / T2: capabilities
 
     @Test

@@ -214,12 +214,71 @@ public final class SqlServerDialect implements SqlDialect {
     }
 
     /**
-     * A complete existence probe -- the shape {@link #rowLimit(long)} cannot express here.
+     * <b>The resolution of the S1/S5 open gap</b> (storage/FULL_SUPPORT_PLAN.md W1.3): a capped
+     * statement, built by rewriting {@code SELECT} into {@code SELECT TOP n}.
      *
-     * <p>{@code SELECT TOP 1 1 FROM t WHERE <predicate>}. Every other engine can answer this as a
-     * suffix, so the two call sites in {@code PostgresPersistenceCapabilityAdapter} still use
-     * {@code rowLimited}; adopting this method across them is the S5 wiring step, and until it
-     * happens those two sites are the only thing standing between this dialect and a live run.
+     * <h2>Why this and not "make callers consult capabilities()"</h2>
+     *
+     * <p>The plan offered two options -- implement it as a prefix rewrite, or declare the capability
+     * absent and make every caller ask first -- and said to <b>find out which call sites need it
+     * before choosing.</b> Measured: four, and all four want the same thing.
+     *
+     * <pre>
+     *   PostgresPersistenceCapabilityAdapter x2   SELECT 1 FROM t WHERE c = ?        exists probe
+     *   JdbcEventStore x2                          SELECT ... ORDER BY ... , cap 1    first by order
+     * </pre>
+     *
+     * <p>None of them wants a SUFFIX; they want "at most n rows". Suffix-vs-prefix is the engine's
+     * business, which is exactly what a dialect is for. Pushing the question out to four call sites
+     * would put an {@code if (dialect.supports(...))} branch in each -- the engine switch moved
+     * rather than removed, which the {@code SqlDialect} javadoc names as the thing this seam must
+     * never become.
+     *
+     * <p>{@link #rowLimit(long)} still THROWS, and that stays right: there genuinely is no suffix
+     * here, and a method that promised one would be lying about the shape. The suffix is the
+     * primitive; this is the question callers actually ask.
+     *
+     * <h2>What it refuses</h2>
+     *
+     * <p>Only a statement whose first keyword is {@code SELECT} can take a {@code TOP}. A CTE
+     * ({@code WITH ...}) needs the {@code TOP} inside its final select, and no amount of string
+     * surgery here can know where that is -- so it refuses rather than producing something that
+     * parses and caps the wrong thing. {@code DISTINCT} is handled because T-SQL's grammar is
+     * {@code SELECT [ALL|DISTINCT] [TOP n]}, in that order; emitting {@code SELECT TOP n DISTINCT}
+     * is a syntax error.
+     */
+    @Override
+    public String rowLimited(String sql, long rows) {
+        if (rows <= 0) {
+            throw new IllegalArgumentException(
+                    "engine 'sqlserver': rowLimited needs a positive count, got " + rows
+                    + " -- a cap of 0 reads as 'no rows matched' at every call site that uses this.");
+        }
+        Objects.requireNonNull(sql, "sql");
+        String leading = sql.substring(0, sql.length() - sql.stripLeading().length());
+        String body = sql.stripLeading();
+
+        java.util.regex.Matcher select = java.util.regex.Pattern
+                .compile("^select\\s+(distinct\\s+|all\\s+)?", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(body);
+        if (!select.find()) {
+            throw new UnsupportedOperationException(
+                    "engine 'sqlserver': a row cap is a PREFIX here (SELECT TOP n), so the statement "
+                    + "must begin with SELECT. This one does not, so there is nowhere to put the cap "
+                    + "-- a CTE needs the TOP inside its own final select, which this cannot locate. "
+                    + "Restructure the statement, or build it with selectTop(...). Statement: "
+                    + sql.strip());
+        }
+        return leading + body.substring(0, select.end()) + "TOP " + rows + " "
+                + body.substring(select.end());
+    }
+
+    /**
+     * A complete existence probe: {@code SELECT TOP 1 1 FROM t WHERE <predicate>}.
+     *
+     * <p>Kept as a named method even though {@link #rowLimited(String, long)} now handles the
+     * general case, because an existence probe is the commonest shape and reads better built than
+     * rewritten. Nothing depends on it today.
      */
     public String existsProbe(String table, String wherePredicate) {
         Objects.requireNonNull(table, "table");
