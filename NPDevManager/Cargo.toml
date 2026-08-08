@@ -29,8 +29,27 @@ win32job = "2"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# Two profiles, because the Manager is 1,860 lines of Rust that launches Java and serves a local
+# page: its hot path is a subprocess blocking for minutes, so whole-program optimisation across 531
+# crates buys ~0.01% of wall-clock and costs most of the build.
+#
+# `release` stays fully optimised because that is the profile `cargo tauri build` uses to produce
+# the published installer, and tauri-cli 2.11 has NO `--profile` flag -- it cannot be pointed at a
+# custom profile. (storage/PLAN.md §7.1 proposed the opposite split, fast `release` + slow `dist`;
+# that shape is not reachable through the bundler, so the roles are inverted here and the intent --
+# "only the artifact you publish pays for LTO" -- is preserved.) That build runs manually, once, per
+# release, where nobody waits.
+#
+# `quick` is for every OTHER consumer of an optimised binary -- above all the manager-harness
+# container build, which compiles the Manager only to run `--selftest` against it. Use
+# `cargo build --profile quick` there and locally; never `--release`.
 [profile.release]
 panic = "abort"
 codegen-units = 1
 lto = true
 opt-level = "s"
+
+[profile.quick]
+inherits = "release"
+lto = false
+codegen-units = 16
