@@ -40,9 +40,18 @@ libc = "0.2"
 # "only the artifact you publish pays for LTO" -- is preserved.) That build runs manually, once, per
 # release, where nobody waits.
 #
-# `quick` is for every OTHER consumer of an optimised binary -- above all the manager-harness
-# container build, which compiles the Manager only to run `--selftest` against it. Use
-# `cargo build --profile quick` there and locally; never `--release`.
+# `quick` is for LOCAL ITERATION: `cargo build --profile quick`.
+#
+# MEASURED 2026-08-08 on this project's dev machine, rather than assumed. storage/PLAN.md §7.1
+# predicted "16 min -> 2-4 min"; that is not what happened, and the real shape is worth knowing:
+#
+#   warm rebuild (touch src/main.rs)   release ~310s    quick ~150s     <- the real win, ~2x
+#   from scratch (cargo clean)         release 1039s    quick 1317s     <- quick does NOT help
+#
+# The 16-minute figure is real, but it belongs to the from-scratch case, and that is exactly the
+# case LTO is not the dominant cost in -- compiling 531 dependency crates is. So `quick` is a
+# genuine iteration win and NOT a fix for a cold build. The manager-harness container build is
+# cold every time and deliberately stays on `release`; see the note in its Dockerfile.
 [profile.release]
 panic = "abort"
 codegen-units = 1
