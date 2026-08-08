@@ -66,10 +66,24 @@ if ($BuildLocalJars) {
     Invoke-NPDevCommandStreaming -WorkingDirectory $generatorRoot -Executable $generatorGradleWrapper -Arguments @(":generator:jar", ":tools:npdev-cli:jar", "-PnpdevBuildRoot=$externalBuildRoot", "--project-cache-dir", $generatorProjectCacheDir, "--no-daemon", "--console=plain")
 }
 
+# NPDevContract/dsl, NPDevGenerator and NPDevKernel ALL redirect layout.buildDirectory to
+# <buildRoot>/gradle/<rootProject>/<path> (see NPDevGenerator/build.gradle:28 and its siblings), so a
+# freshly built jar lands in
+#     <buildRoot>/gradle/npdev-kernel/adapters/audit-postgres/libs/audit-postgres-0.1.0.jar
+# and NOT in NPDevKernel/adapters/audit-postgres/build/libs/. Searching only the three source roots
+# for "*/build/libs/*" therefore finds NOTHING after a real build -- measured: 0 jars under the old
+# path, 68 under the redirected one.
+#
+# This hid on Windows because a developer machine already has jars staged in runtimehost-libs, so
+# discovery never had to succeed. On a cold CI runner it must build and then find what it built, and
+# it could not -- three packaged-app proof tests failed with "No RuntimeHost jars were discovered
+# under build/libs after local jar build." That is the same warm-cache trap this workflow's own
+# comment records at npdev-ci-validation.yml's staging step.
 $sourceRoots = @(
     (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevContract"),
     (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevGenerator"),
-    (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevKernel")
+    (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevKernel"),
+    (Join-Path (Get-NPDevBuildRoot $WorkspaceRoot) "gradle")
 )
 
 $sourceByName = @{}
@@ -78,8 +92,13 @@ foreach ($sourceRoot in $sourceRoots) {
         continue
     }
 
+    # Under the redirected build root the "build/" segment is gone -- the jar sits directly in
+    # <project>/libs/. Accept both shapes rather than only the legacy one.
     $jars = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -Filter *.jar -File |
-            Where-Object { ($_.FullName -replace "\\", "/") -like "*/build/libs/*" } |
+            Where-Object {
+                $normalized = ($_.FullName -replace "\\", "/")
+                ($normalized -like "*/build/libs/*") -or ($normalized -like "*/libs/*")
+            } |
             Where-Object { $_.Name -notlike "npdev-migrations-*" })
 
     foreach ($jar in $jars) {
