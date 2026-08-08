@@ -1,0 +1,266 @@
+name: Engine support (application level)
+
+# ---------------------------------------------------------------------------------------------
+# storage/FULL_SUPPORT_PLAN.md W2/W4/W5 -- exit criteria E3, E4, E5, E8, E10.
+#
+# WHAT THIS COVERS THAT storage-dialect-conformance.yml DOES NOT
+#
+# That workflow proves 13 conformance vectors per engine over RAW JDBC. It never generates an app,
+# never realizes a schema through NPDev's own engine, never boots Spring, never serves a request --
+# and those are the paths a user actually uses. Until this workflow ran, NO GENERATED APPLICATION
+# HAD EVER BOOTED ON MySQL OR SQL SERVER. A third person picking MySQL would have been the first.
+#
+# Written-down expectations, so a result cannot be rationalised after the fact
+# (FULL_SUPPORT_PLAN.md §4.2 -- two of five were honest unknowns when this was authored):
+#
+#   MySQL boots + CRUD        should pass -- 13/13 Tier B against a real MySQL
+#   MySQL unicode             should pass -- the container forces utf8mb4
+#   MySQL restart-preserves   UNKNOWN, and the interesting one
+#   SQL Server boots + CRUD   likely; rowLimit() throwing may surface
+#   SQL Server unicode        GENUINELY UNCERTAIN -- the dialect maps VARCHAR->NVARCHAR; whether the
+#                             EMITTER asks it is untested, and Tier B's J2 failed for exactly that
+#                             reason one layer down
+#
+# workflow_dispatch for now, deliberately. Unlike the conformance suite, this one generates and
+# compiles a Spring Boot app per engine, which is minutes rather than seconds; promoting it to a push
+# trigger is a decision to make once its runtime is known and its images are pinned -- the same order
+# W1.1 before W1.2 that the conformance workflow followed.
+# ---------------------------------------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+    inputs:
+      engine:
+        description: 'Which engine (all, mysql, sqlserver, postgres)'
+        required: false
+        default: 'all'
+
+env:
+  # Same pinned digests as storage-dialect-conformance.yml, and for the same reason: a gate whose
+  # image moves cannot tell a regression from an upstream change. check-container-images-pinned.py
+  # enforces that these agree with DialectTestSupport.CONTAINER_IMAGES.
+  PINNED_MYSQL: 'mysql@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb'
+  PINNED_POSTGRES: 'postgres@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b'
+  PINNED_SQLSERVER: 'mcr.microsoft.com/mssql/server@sha256:ba4c8329f48fb8f02e1416be6a930ebfd71268caee78aa985f3af4315e457c89'
+
+jobs:
+  # -------------------------------------------------------------------------------------------
+  # E8 -- no database involved, so it runs first and fails in the least time. Kept SEPARATE from
+  # the engine jobs on purpose: mixing them means a red run could be the dialect or the dependency.
+  # -------------------------------------------------------------------------------------------
+  external-library:
+    name: E8 -- a user capability calls an external library at runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: true
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # The generated app compiles against the staged kernel/runtimehost jars; without this the
+      # build fails for a reason that has nothing to do with the dependency under test.
+      - name: Stage runtimehost jars
+        run: python NPDevCli/npdev_cli.py setup --build-local
+
+      - name: Probe
+        run: |
+          python scripts/quality/run-library-probe.py \
+            --port 18320 \
+            --report Build/reports/library-probe.json
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: library-probe
+          path: |
+            Build/reports/library-probe.json
+            Build/engine-proof/lib-probe/boot.log
+          if-no-files-found: warn
+
+  # -------------------------------------------------------------------------------------------
+  # E3/E4/E5 -- the largest single gap, and the one a third person hits first.
+  # -------------------------------------------------------------------------------------------
+  app-on-engine:
+    name: ${{ matrix.engine }} -- a generated app boots, serves and persists
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      # NOT fail-fast: when two engines break, seeing both in one run is the difference between one
+      # fix and two round trips. Same reasoning as the conformance matrix.
+      fail-fast: false
+      matrix:
+        engine: [mysql, sqlserver, postgres]
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: true
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Plain `docker run`, not a `services:` block. The engine needs per-engine flags that a
+      # services block cannot express -- utf8mb4 for MySQL above all, whose absence would make the
+      # unicode assertion fail for a reason that has nothing to do with NPDev -- and the digest has
+      # to be visible in the log, which is what W1.1 bought.
+      - name: Start ${{ matrix.engine }}
+        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        run: |
+          set -euo pipefail
+          case "${{ matrix.engine }}" in
+            mysql)
+              IMAGE="$PINNED_MYSQL"
+              echo "pinned image: $IMAGE"
+              docker run -d --name npdev-engine -p 3306:3306 \
+                -e MYSQL_ROOT_PASSWORD=npdevroot \
+                -e MYSQL_DATABASE=npdev_engine_probe \
+                -e MYSQL_USER=npdev -e MYSQL_PASSWORD=npdev \
+                "$IMAGE" \
+                --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+              ;;
+            postgres)
+              IMAGE="$PINNED_POSTGRES"
+              echo "pinned image: $IMAGE"
+              docker run -d --name npdev-engine -p 5432:5432 \
+                -e POSTGRES_PASSWORD=npdev -e POSTGRES_USER=npdev \
+                -e POSTGRES_DB=npdev_engine_probe "$IMAGE"
+              ;;
+            sqlserver)
+              IMAGE="$PINNED_SQLSERVER"
+              echo "pinned image: $IMAGE"
+              docker run -d --name npdev-engine -p 1433:1433 \
+                -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='Npdev!Probe123' "$IMAGE"
+              ;;
+          esac
+          echo "### ${{ matrix.engine }}: \`$IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # Waiting on the PORT rather than a fixed sleep. A sleep that is too short reports a red that
+      # says "connection refused" and means "not ready yet" -- the exact false RED the canary boot
+      # timeout produced twice on 2026-08-08, which cost two investigations.
+      - name: Wait for ${{ matrix.engine }} to accept connections
+        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        run: |
+          case "${{ matrix.engine }}" in
+            mysql) PORT=3306 ;;
+            postgres) PORT=5432 ;;
+            sqlserver) PORT=1433 ;;
+          esac
+          for attempt in $(seq 1 90); do
+            if (echo > /dev/tcp/127.0.0.1/$PORT) >/dev/null 2>&1; then
+              echo "port $PORT open after ${attempt}s"
+              # The port opening is necessary, not sufficient -- SQL Server in particular listens
+              # well before it will authenticate. A short settle beats a flaky first connection.
+              sleep 15
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::${{ matrix.engine }} never opened its port"
+          docker logs npdev-engine || true
+          exit 1
+
+      - name: Stage runtimehost jars
+        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        run: python NPDevCli/npdev_cli.py setup --build-local
+
+      # `npdev doctor --app` against the REAL engine, before the proof. Two things at once: it is
+      # E10's happy path against a live database, and when the proof fails afterwards this output
+      # says whether the database was ever the problem.
+      - name: doctor database checks against the real engine
+        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        run: |
+          case "${{ matrix.engine }}" in
+            mysql)     ENGINE_ARGS="--engine mysql --db-port 3306 --db-user npdev --db-password npdev" ;;
+            postgres)  ENGINE_ARGS="--engine postgres --db-port 5432 --db-user npdev --db-password npdev" ;;
+            sqlserver) ENGINE_ARGS="--engine sqlserver --db-port 1433 --db-user sa --db-password Npdev!Probe123" ;;
+          esac
+          mkdir -p Build/doctor-app
+          python NPDevCli/npdev_cli.py init Build/doctor-app/probe $ENGINE_ARGS --db-host 127.0.0.1
+          python NPDevCli/npdev_cli.py doctor --json --app Build/doctor-app/probe \
+            | tee Build/reports-doctor-${{ matrix.engine }}.json
+          python - <<'PY'
+          import json, os, sys
+          engine = os.environ["MATRIX_ENGINE"]
+          report = json.load(open(f"Build/reports-doctor-{engine}.json", encoding="utf-8"))
+          checks = {c["id"]: c for c in report["checks"] if c["id"].startswith("database")}
+          failed = [i for i, c in checks.items()
+                    if c["status"] == "fail" and i != "database-engine-support"]
+          print(json.dumps({i: c["status"] for i, c in checks.items()}, indent=2))
+          if failed:
+              print(f"::error::doctor's database checks failed against a real {engine}: {failed}")
+              sys.exit(1)
+          PY
+        env:
+          MATRIX_ENGINE: ${{ matrix.engine }}
+
+      - name: Generate, build, boot and exercise the probe app on ${{ matrix.engine }}
+        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        run: |
+          case "${{ matrix.engine }}" in
+            mysql)     ARGS="--db-port 3306 --db-user npdev --db-password npdev" ;;
+            postgres)  ARGS="--db-port 5432 --db-user npdev --db-password npdev" ;;
+            sqlserver) ARGS="--db-port 1433 --db-user sa --db-password Npdev!Probe123" ;;
+          esac
+          python scripts/quality/run-engine-app-proof.py \
+            --engine ${{ matrix.engine }} \
+            --port 18310 \
+            --db-host 127.0.0.1 $ARGS \
+            --db-name npdev_engine_probe \
+            --report Build/reports/engine-app-proof-${{ matrix.engine }}.json
+
+      # E7. Runs after the app proof, deliberately: if an app cannot boot on this engine at all,
+      # four schema-evolution vectors failing tells you nothing you did not already know, and a
+      # 4x-red job hides which failure is the cause.
+      - name: Tier C -- E1/E2/I2/I3 against a realized schema
+        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        run: |
+          case "${{ matrix.engine }}" in
+            mysql)     ARGS="--db-port 3306 --db-user npdev --db-password npdev" ;;
+            postgres)  ARGS="--db-port 5432 --db-user npdev --db-password npdev" ;;
+            sqlserver) ARGS="--db-port 1433 --db-user sa --db-password Npdev!Probe123" ;;
+          esac
+          python scripts/quality/run-tier-c-probes.py \
+            --engine ${{ matrix.engine }} \
+            --port 18330 \
+            --db-host 127.0.0.1 $ARGS \
+            --report Build/reports/tier-c-${{ matrix.engine }}.json
+
+      # Runs on failure too, and that is the point: the FIRST conformance run's headline said "3 jobs
+      # failed" while containing a 13/13 pass nobody could see without downloading an artifact.
+      - name: Engine logs
+        if: always()
+        run: docker logs npdev-engine 2>&1 | tail -80 || true
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-app-proof-${{ matrix.engine }}
+          path: |
+            Build/reports/engine-app-proof-${{ matrix.engine }}.json
+            Build/reports/tier-c-${{ matrix.engine }}.json
+            Build/reports-doctor-${{ matrix.engine }}.json
+            Build/engine-proof/${{ matrix.engine }}/boot.log
+            Build/tier-c/${{ matrix.engine }}/**/boot.log
+          if-no-files-found: warn

@@ -55,6 +55,8 @@
     "NPDevSamples/medium-expense-approval": "showcase",
     "NPDevSamples/npdev-canary": "canary",
     "NPDevSamples/npdev-init-seed": "showcase",
+    "NPDevSamples/probes/engine-probe": "probe",
+    "NPDevSamples/probes/lib-probe": "probe",
     "NPDevSamples/probes/p1-minimal": "probe",
     "NPDevSamples/probes/p2-evolve/v1": "probe",
     "NPDevSamples/probes/p2-evolve/v2": "probe",

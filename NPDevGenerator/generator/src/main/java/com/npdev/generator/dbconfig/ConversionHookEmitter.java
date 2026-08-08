@@ -10,6 +10,7 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledConversion;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.kernel.storage.sql.H2Dialect;
+import com.npdev.kernel.storage.sql.SqlDialect;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.dsl.v1.compiled.SqlTypeSupport;
@@ -50,6 +51,25 @@ public final class ConversionHookEmitter {
 
     private static final String SCHEMA_RESOURCE_PATH = "schema/conversion-hook.schema.json";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /**
+     * The engine this app is generated for, or {@code null} for the legacy engine-unaware callers.
+     *
+     * <p>W1.3 closed the "this emitter has no DatabaseEngine to ask" gap by threading it in from
+     * {@code GeneratorFacade}, which already holds the {@link GeneratedDatabasePlan}. Nullable rather
+     * than required so the existing no-arg constructor keeps working for tests that emit hooks with
+     * no plan in scope -- those keep the previous H2 behaviour exactly.
+     */
+    private final DatabaseEngine engine;
+
+    public ConversionHookEmitter() {
+        this(null);
+    }
+
+    /** The engine-aware form. Prefer this: a hook's column type is engine-bound. */
+    public ConversionHookEmitter(DatabaseEngine engine) {
+        this.engine = engine;
+    }
 
     public void emit(Path modelSourcePath, Path outRoot) throws IOException {
         emit(null, modelSourcePath, outRoot);
@@ -321,17 +341,31 @@ public final class ConversionHookEmitter {
     }
 
     /**
-     * The H2/Postgres COMMON form, deliberately -- this emitter has no {@code DatabaseEngine} and
-     * produces one hook artifact that must be valid on either engine, so it asks the narrower of the
-     * two. That was already true before extraction; the mapping simply stopped being spelled here.
+     * The column type for a hook's {@code ADD COLUMN}, <b>asked of the engine this app is actually
+     * generated for</b> (storage/FULL_SUPPORT_PLAN.md W1.3).
      *
-     * <p><b>S4b prerequisite.</b> "The narrower of H2 and Postgres" stops being a safe stand-in the
-     * moment a third engine exists: MySQL narrows types H2 does not (no native {@code UUID}). Making
-     * this engine-aware means threading {@code DatabaseEngine} into the emitter, which is a change to
-     * its call signature and therefore not S1's business -- but MySQL cannot ship without it.
+     * <h2>What this used to be, and why it stopped being safe</h2>
+     *
+     * <p>It used to return {@code H2Dialect.INSTANCE.portableColumnType(...)} unconditionally -- the
+     * H2/Postgres COMMON form -- because this emitter had no {@link DatabaseEngine} to ask. That was
+     * defensible while those were the only two engines: one hook artifact, valid on either, produced
+     * by asking the narrower.
+     *
+     * <p><b>A third engine ends that.</b> MySQL narrows types H2 does not (no native {@code UUID}),
+     * so the "common form" would have emitted a type MySQL cannot create -- and it would have done so
+     * in a conversion hook, which runs during a migration, on data. The plan's instruction was to
+     * thread the engine through exactly as {@code SchemaRealizationEmitter} already does, or, if that
+     * were structurally impossible, to add a generation-time refusal rather than keep the
+     * common-denominator type. It was not impossible: {@code GeneratorFacade} already holds the
+     * {@link GeneratedDatabasePlan} at the call site, two lines above.
+     *
+     * <p>{@code IN_MEMORY} has no SQL at all, so a hook has nothing to emit against; the H2 form is
+     * kept for that case only, which preserves the behaviour of every legacy caller that passes no
+     * plan (the two-argument {@code emit} overload, used by tests).
      */
-    private static String portableSqlType(CompiledField field) {
-        return H2Dialect.INSTANCE.portableColumnType(SqlTypeSupport.sqlType(field));
+    private String portableSqlType(CompiledField field) {
+        SqlDialect dialect = engine != null && engine.jdbc() ? engine.dialect() : H2Dialect.INSTANCE;
+        return dialect.portableColumnType(SqlTypeSupport.sqlType(field));
     }
 
     private static String splitExpression(String fromCol, String take) {

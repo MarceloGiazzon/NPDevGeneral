@@ -1,0 +1,58 @@
+{
+  "$schema": "npdev/capability-plugin.schema.json",
+  "packageFormatVersion": "1.0",
+  "packageId": "user-librarysignature-java-source-package",
+  "pluginId": "user-librarysignature-java-source-plugin",
+  "displayName": "Library signature probe capability",
+  "version": "1.0.0",
+  "description": "Calls Guava at runtime so E8 can assert the RETURNED VALUE rather than the emitted Gradle text.",
+  "capability": "librarySignature",
+  "capabilityType": "LibrarySignatureCapability",
+  "adapterId": "plugin:java-source",
+  "runtimeRef": "librarySignatureJavaSourceHandler",
+  "implementation": {
+    "kind": "javaSource",
+    "sourceRoot": "capabilities/librarySignature/src/main/java",
+    "mainClass": "com.npdev.probes.libsig.LibrarySignatureCapability",
+    "factory": {
+      "kind": "defaultConstructor"
+    }
+  },
+  "operationBindings": [
+    {
+      "operation": "sign",
+      "method": "sign",
+      "input": {
+        "mode": "firstArgument",
+        "expectedType": "java.util.Map"
+      },
+      "output": {
+        "mode": "returnValue",
+        "expectedType": "java.util.Map"
+      }
+    },
+    {
+      "operation": "compileOnlyProbe",
+      "method": "compileOnlyProbe",
+      "input": {
+        "mode": "firstArgument",
+        "expectedType": "java.util.Map"
+      },
+      "output": {
+        "mode": "returnValue",
+        "expectedType": "java.util.Map"
+      }
+    }
+  ],
+  "trust": {
+    "mode": "artifact-local-source",
+    "source": "external-artifact-bundle",
+    "level": "developer-supplied"
+  },
+  "generation": {
+    "mount": "compileIntoGeneratedApp",
+    "emitManifestContribution": true,
+    "emitPackageDescriptor": true,
+    "emitBinding": true
+  }
+}

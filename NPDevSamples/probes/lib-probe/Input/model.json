@@ -1,0 +1,138 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.libprobe",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "External-library probe (storage/FULL_SUPPORT_PLAN.md W4, exit criterion E8). build.dependencies[] is real -- AppDependenciesEmitter writes it, the npdev-dependencies.gradle sidecar applies it, and simple-contact-intake declares Guava, so CI does resolve a third-party dependency. But every test asserted EMITTED GRADLE TEXT. No procedure anywhere imported an external class, so the chain declare -> import -> compile -> CALL AT RUNTIME had never run end to end. This probe runs it, and asserts the RETURNED VALUE -- a known input has a known SHA-256, so a correct answer proves the library was on the RUNTIME classpath and executed. Compilation alone would pass even with a compileOnly-vs-implementation mistake, which is a real and common Gradle failure mode and silent until the code path runs."
+  },
+  "concepts": [
+    {
+      "name": "LibProbeRecord",
+      "ui": {
+        "label": "Library probe record"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "payload",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Payload"
+          }
+        },
+        {
+          "name": "digest",
+          "type": "string",
+          "required": false,
+          "ui": {
+            "label": "Digest"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "LibProbeRecordPayloadRequired",
+          "expr": "payload != null && payload != ''"
+        }
+      ]
+    }
+  ],
+  "customCapabilities": [
+    {
+      "name": "librarySignature",
+      "type": "LibrarySignatureCapability",
+      "operations": [
+        "sign",
+        "compileOnlyProbe"
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    },
+    {
+      "capability": "librarySignature",
+      "adapter": "plugin:java-source"
+    }
+  ],
+  "flows": [
+    {
+      "name": "SignWithLibrary",
+      "input": {
+        "concept": "LibProbeRecord",
+        "mode": "create"
+      },
+      "steps": [
+        {
+          "name": "call-the-library",
+          "type": "capabilityCall",
+          "capability": "librarySignature",
+          "operation": "sign",
+          "args": [
+            "$input"
+          ],
+          "output": "$signed"
+        },
+        {
+          "name": "persist-the-signature",
+          "type": "createConcept",
+          "scope": "LibProbeRecord",
+          "input": "$signed",
+          "output": "$saved"
+        },
+        {
+          "name": "return-signature",
+          "type": "return",
+          "value": "$signed"
+        }
+      ]
+    },
+    {
+      "name": "ProbeCompileOnlyAtRuntime",
+      "input": {
+        "concept": "LibProbeRecord",
+        "mode": "query"
+      },
+      "steps": [
+        {
+          "name": "touch-a-compileonly-class",
+          "type": "capabilityCall",
+          "capability": "librarySignature",
+          "operation": "compileOnlyProbe",
+          "args": [
+            "$input"
+          ],
+          "output": "$probe"
+        },
+        {
+          "name": "return-probe",
+          "type": "return",
+          "value": "$probe"
+        }
+      ]
+    }
+  ]
+}

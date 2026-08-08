@@ -222,7 +222,11 @@ public final class GeneratorFacade {
         // SER-P7.2: operator-authored conversion hooks (definition/migrations/<ordinal>-<slug>/), opt-in
         // -- a no-op when the app declares none. S7 Phase B (B13): also compiles model.conversions[]
         // (the declarative vocabulary) to the same destination -- one execution path, not two.
-        new ConversionHookEmitter().emit(model, modelSourcePath, outRoot);
+        // W1.3: the engine, from the plan already in scope two lines above. Before this the
+        // emitter asked H2 unconditionally, which was the narrower of the only two engines
+        // that existed -- and stops being safe with a third (MySQL has no native UUID).
+        new ConversionHookEmitter(databasePlan == null ? null : databasePlan.engine())
+                .emit(model, modelSourcePath, outRoot);
         new GeneratedFolderSignatureEmitter().emit(outRoot);
     }
 
