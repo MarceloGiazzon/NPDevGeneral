@@ -1,0 +1,83 @@
+id: STOR-3
+title: >-
+  MySQL and SQL Server dialects exist, are registered, and pass every locally-runnable conformance
+  vector -- but NEITHER IS SUPPORTED until the container suite has actually run
+type: GAP
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-08-08
+verification: UNIT_TESTED
+surface: kernel/storage-dialect, generator/dbconfig, ci/storage-dialect-conformance
+source: storage/PLAN.md S4b, S5 and S4a.
+detail: >-
+  MySqlDialect and SqlServerDialect are implemented, registered in SqlDialects, wired to new
+  DatabaseEngine values (MYSQL, SQL_SERVER -- new VALUES on the existing storageMode axis, not a
+  parallel concept), given JDBC URLs, drivers and default ports, and pinned at boot by
+  StorageDialectInitializer from npdev.database.engine.
+
+  That last piece matters more than it looks: without it, registering MySQL would have changed
+  NOTHING. Every store falls back to SqlDialects.active(), which defaults to Postgres, so an app
+  generated for MySQL would have booted happily and emitted Postgres SQL -- the silent-wrong-answer
+  failure the whole seam exists to prevent, arriving through the back door.
+
+  WHAT IS PROVEN
+    - Tier A, 78 assertions, all four engines: clause text, declared parameter order, quoting,
+      auto-increment spelling, capability declarations, and every refusal. Zero skips.
+    - Tier B, 52 executions, 12 skipped with printed reasons: behaviour against a real connection --
+      upsert idempotence, page non-overlap, JSON round-trip, reserved-word columns, DML rollback,
+      auto-increment monotonicity, enforced uniqueness.
+    - PostgresDialectGoldenSqlTest, 24 assertions (STOR-1).
+
+  WHAT IS NOT PROVEN, AND WHY IT IS LISTED AS PARTIAL
+
+  Local Tier B runs against H2 in each engine's compatibility MODE. H2 was PROBED rather than
+  trusted, and the results changed the test design:
+
+      MODE=PostgreSQL  CANNOT run ON CONFLICT      -> Postgres's own upsert is not locally verifiable
+      MODE=MySQL       CAN run ON DUPLICATE KEY    -> MySQL's upsert does get a real local check
+      MODE=MSSQLServer REJECTS LIMIT ? OFFSET ?    -> confirms SQL Server's pagination shape differs
+                       and accepts OFFSET..FETCH
+
+  So Tier B gates per CONSTRUCT, not per engine, and says out loud what it did not run. But no
+  vector has ever executed against a real MySQL or a real SQL Server. Specifically unproven:
+
+      T2  DDL transactionality        H2 does not model MySQL's implicit commit (see STOR-2)
+      U2  concurrent MERGE            SQL Server's HOLDLOCK hazard appears under load, not in H2
+      Q2  case sensitivity            depends on the real server's config AND host filesystem
+      J2  utf8mb4 fidelity            H2 stores anything; MySQL may truncate silently
+      I2/I3 catalog introspection     information_schema columns differ from the real engine
+
+  storage/PLAN.md §11 is explicit that an engine is supported only when "a real MySQL container ran
+  the conformance suite there". It has not. Calling MySQL supported on a green local run is the one
+  claim this entire plan exists to avoid making, and REG-36/REG-50 are the same lesson already
+  learned once with H2-in-PostgreSQL-mode.
+
+  Two known gaps that are recorded rather than fixed:
+    - SqlServerDialect.rowLimit() THROWS. SQL Server has no suffix row cap (TOP is a prefix; the
+      suffix form needs an ORDER BY an existence probe has none of). The two probe call sites in
+      PostgresPersistenceCapabilityAdapter must move to existsProbe() before SQL Server can run.
+    - ConversionHookEmitter.portableSqlType() emits the H2/Postgres COMMON form because the emitter
+      has no DatabaseEngine. That was already true; it stops being safe with a third engine (MySQL
+      has no native UUID), and threading the engine in is a signature change MySQL cannot ship
+      without.
+resolution: >-
+  PARTIAL. To close:
+
+    1. Run .github/workflows/storage-dialect-conformance.yml manually (workflow_dispatch). It is
+       dispatch-only ON PURPOSE: the Testcontainers path in DialectTestSupport was written on a
+       machine where local Docker is banned and HAS NEVER RUN, so wiring it to `push` would turn
+       main red for reasons its author cannot reproduce.
+    2. Fix whatever it finds.
+    3. Promote it to push/pull_request triggers -- the commented block is in the workflow file.
+    4. Move the two existence probes to SqlServerDialect.existsProbe().
+    5. Thread DatabaseEngine into ConversionHookEmitter.
+    6. Then, and only then, MySQL may be called supported.
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectTestSupport.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierBTest.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/StorageDialectInitializer.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DatabaseEngine.java
+  - .github/workflows/storage-dialect-conformance.yml
