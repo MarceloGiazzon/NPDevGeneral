@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
 import com.npdev.kernel.storage.sql.PartialApplicationTruth;
 
+import com.npdev.kernel.storage.sql.SqlDialects;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -119,10 +120,11 @@ final class SchemaHistoryStore {
      */
     private static void ensureHistoryTable(Connection connection) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "CREATE TABLE IF NOT EXISTS " + HISTORY_TABLE
+                SqlDialects.active().guardedCreateTable(HISTORY_TABLE,
+                        "CREATE TABLE " + HISTORY_TABLE
                         + " (id TEXT PRIMARY KEY, applied_at_utc BIGINT NOT NULL, from_fingerprint TEXT, "
                         + "to_fingerprint TEXT, classification TEXT, items_json TEXT, ack_token_used TEXT, "
-                        + "outcome TEXT NOT NULL)"
+                        + "outcome TEXT NOT NULL)")
         )) {
             statement.executeUpdate();
         }

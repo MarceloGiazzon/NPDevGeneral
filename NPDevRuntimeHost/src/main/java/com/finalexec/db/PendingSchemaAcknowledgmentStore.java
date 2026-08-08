@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.npdev.kernel.storage.sql.SqlDialects;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -54,9 +55,10 @@ public final class PendingSchemaAcknowledgmentStore {
 
     static void ensureTable(Connection connection) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "CREATE TABLE IF NOT EXISTS " + TABLE
+                SqlDialects.active().guardedCreateTable(TABLE,
+                        "CREATE TABLE " + TABLE
                         + " (id TEXT PRIMARY KEY, to_fingerprint TEXT NOT NULL, ack_token TEXT NOT NULL, "
-                        + "items_json TEXT, submitted_at_utc BIGINT, submitted_by TEXT)"
+                        + "items_json TEXT, submitted_at_utc BIGINT, submitted_by TEXT)")
         )) {
             statement.executeUpdate();
         }

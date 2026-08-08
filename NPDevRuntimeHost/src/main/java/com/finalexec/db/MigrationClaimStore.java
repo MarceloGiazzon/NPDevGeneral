@@ -2,6 +2,7 @@ package com.finalexec.db;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -100,9 +101,10 @@ public final class MigrationClaimStore {
 
     static void ensureTable(Connection connection) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "CREATE TABLE IF NOT EXISTS " + TABLE
+                SqlDialects.active().guardedCreateTable(TABLE,
+                        "CREATE TABLE " + TABLE
                         + " (claim_key TEXT PRIMARY KEY, instance_id TEXT, hostname TEXT, "
-                        + "claimed_at_utc BIGINT)"
+                        + "claimed_at_utc BIGINT)")
         )) {
             statement.executeUpdate();
         }

@@ -387,6 +387,69 @@ public final class SqlServerDialect implements SqlDialect {
                 + " AND LOWER(table_name) = '" + escapeLiteral(tableName).toLowerCase(Locale.ROOT) + "'";
     }
 
+    /*
+     * ------------------------------------------------------------------------------------------
+     * STOR-5. T-SQL has NONE of the three: `CREATE TABLE IF NOT EXISTS` is "Incorrect syntax near
+     * '<table>'", measured against a real SQL Server 2022 in CI.
+     *
+     * It does have cheap catalog functions, so each guard is an ordinary IF wrapping the statement --
+     * no prepared statements, no dynamic SQL. CREATE TABLE, CREATE INDEX and ALTER TABLE are all
+     * legal inside an IF block (unlike CREATE VIEW/PROCEDURE, which must start their own batch),
+     * which is why this stays readable.
+     * ------------------------------------------------------------------------------------------
+     */
+
+    @Override
+    public String guardedCreateTable(String tableName, String createStatement) {
+        // OBJECT_ID(..., 'U') is null when no USER TABLE of that name exists. 'U' rather than a bare
+        // OBJECT_ID: without it a view or procedure sharing the name would suppress the CREATE and
+        // the table would silently never appear.
+        if (SqlDdlGuards.alreadyGuarded(createStatement, "IF OBJECT_ID(")) {
+            return createStatement;
+        }
+        return "IF OBJECT_ID(N'" + escapeLiteral(tableName) + "', N'U') IS NULL\nBEGIN\n"
+                + indent(SqlDdlGuards.stripIfNotExists(createStatement))
+                + "\nEND;\n";
+    }
+
+    @Override
+    public String guardedCreateIndex(String indexName, String tableName, String createStatement) {
+        if (SqlDdlGuards.alreadyGuarded(createStatement,
+                "IF NOT EXISTS (SELECT 1 FROM sys.indexes")) {
+            return createStatement;
+        }
+        return "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'"
+                + escapeLiteral(indexName) + "'\n"
+                + "               AND object_id = OBJECT_ID(N'" + escapeLiteral(tableName) + "'))\nBEGIN\n"
+                + indent(SqlDdlGuards.stripIfNotExists(createStatement))
+                + "\nEND;\n";
+    }
+
+    @Override
+    public String guardedAddColumn(String tableName, String columnName, String alterStatement) {
+        // COL_LENGTH returns null for a column that does not exist -- the cheapest existence test
+        // here, and it does not need the schema spelled out.
+        //
+        // stripAddColumnKeyword is the SECOND incompatibility in this statement: T-SQL is
+        // `ALTER TABLE t ADD c TYPE`, with no COLUMN keyword. It sits underneath the IF NOT EXISTS
+        // one and would have surfaced as its own CI round after this one was fixed.
+        if (SqlDdlGuards.alreadyGuarded(alterStatement, "IF COL_LENGTH(")) {
+            return alterStatement;
+        }
+        return "IF COL_LENGTH(N'" + escapeLiteral(tableName) + "', N'"
+                + escapeLiteral(columnName) + "') IS NULL\nBEGIN\n"
+                + indent(SqlDdlGuards.stripAddColumnKeyword(SqlDdlGuards.stripIfNotExists(alterStatement)))
+                + "\nEND;\n";
+    }
+
+    private static String indent(String statement) {
+        String body = statement.strip();
+        if (!body.endsWith(";")) {
+            body = body + ";";
+        }
+        return body.lines().map(line -> "  " + line).reduce((a, b) -> a + "\n" + b).orElse("");
+    }
+
     @Override
     public String guardedConstraintDdl(String constraintName, String tableName, String ddlStatement) {
         // T-SQL has real IF/BEGIN/END at statement level -- no anonymous block needed, and no

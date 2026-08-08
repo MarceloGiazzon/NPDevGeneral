@@ -311,6 +311,60 @@ public interface SqlDialect {
      */
     String guardedConstraintDdl(String constraintName, String tableName, String ddlStatement);
 
+    /*
+     * ------------------------------------------------------------------------------------------
+     * THE THREE GUARDED-DDL IDIOMS -- ledger STOR-5.
+     *
+     * `SchemaRealizationEmitter` writes the script that creates NPDev's own internal tables and the
+     * app's business tables. It wrote them in PostgreSQL/H2 guarded DDL, unconditionally, whatever
+     * engine the app was for:
+     *
+     *     CREATE TABLE IF NOT EXISTS ...          Postgres yes   H2 yes   MySQL yes   SQL Server NO
+     *     CREATE INDEX IF NOT EXISTS ...          Postgres yes   H2 yes   MySQL NO    SQL Server NO
+     *     ALTER TABLE ... ADD COLUMN IF NOT EXISTS  Postgres yes H2 yes   MySQL NO    SQL Server NO
+     *
+     * So NPDev's own first migration could not run on two of its four engines. Measured one CI round
+     * at a time (Flyway stops at the first statement it cannot execute) until
+     * check-emitted-sql-portability.py made the whole set visible in one local scan.
+     *
+     * These are siblings of guardedConstraintDdl above, and for its stated reason: "a construct MySQL
+     * and SQL Server have no equivalent for, which is why this is a dialect question rather than a
+     * string the emitter builds."
+     *
+     * EVERY implementation must be IDEMPOTENT. The additive script is a Flyway *repeatable*
+     * migration that re-runs whenever its checksum changes, so a bare CREATE fails the whole boot the
+     * second time -- REG-38, learned on H2.
+     *
+     * Each takes the PLAIN statement and returns the guarded form, so the emitter never spells a
+     * guard itself and Postgres/H2 output stays byte-identical to what it was before the extraction.
+     * ------------------------------------------------------------------------------------------
+     */
+
+    /**
+     * {@code createStatement} ({@code CREATE TABLE t (...)}) made idempotent.
+     *
+     * @param tableName the table, for engines that need a catalog lookup rather than a keyword
+     */
+    String guardedCreateTable(String tableName, String createStatement);
+
+    /**
+     * {@code createStatement} ({@code CREATE [UNIQUE] INDEX i ON t (...)}) made idempotent.
+     *
+     * <p>The one MySQL rejects outright: it has {@code CREATE TABLE IF NOT EXISTS} but no
+     * {@code CREATE INDEX IF NOT EXISTS} (error 1064), which is why an engine that got past table
+     * creation still stopped here.
+     */
+    String guardedCreateIndex(String indexName, String tableName, String createStatement);
+
+    /**
+     * {@code alterStatement} ({@code ALTER TABLE t ADD COLUMN c TYPE}) made idempotent.
+     *
+     * <p><b>Also normalises the keyword.</b> T-SQL has no {@code COLUMN} in {@code ALTER TABLE t ADD
+     * c TYPE}, so an implementation for SQL Server must drop it -- a second, quieter incompatibility
+     * that sits underneath the {@code IF NOT EXISTS} one and would have surfaced as its own CI round.
+     */
+    String guardedAddColumn(String tableName, String columnName, String alterStatement);
+
     // ------------------------------------------------------------------ honesty
 
     /**

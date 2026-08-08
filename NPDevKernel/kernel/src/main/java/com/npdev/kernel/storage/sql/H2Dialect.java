@@ -234,6 +234,29 @@ public final class H2Dialect implements SqlDialect {
                 + "WHERE UPPER(CONSTRAINT_NAME) = UPPER(?) AND UPPER(TABLE_NAME) = UPPER(?)";
     }
 
+    /*
+     * ------------------------------------------------------------------------------------------
+     * STOR-5's three guarded idioms. This engine has them natively, so each returns the SAME TEXT
+     * the emitter used to write inline -- which is the regression guard: extracting these must not
+     * change one byte of H2 output, and PostgresDialectGoldenSqlTest is what proves it.
+     * ------------------------------------------------------------------------------------------
+     */
+
+    @Override
+    public String guardedCreateTable(String tableName, String createStatement) {
+        return SqlDdlGuards.insertAfter(createStatement, "CREATE TABLE", "IF NOT EXISTS");
+    }
+
+    @Override
+    public String guardedCreateIndex(String indexName, String tableName, String createStatement) {
+        return SqlDdlGuards.insertAfterIndexKeyword(createStatement, "IF NOT EXISTS");
+    }
+
+    @Override
+    public String guardedAddColumn(String tableName, String columnName, String alterStatement) {
+        return SqlDdlGuards.insertAfter(alterStatement, "ADD COLUMN", "IF NOT EXISTS");
+    }
+
     @Override
     public String guardedConstraintDdl(String constraintName, String tableName, String ddlStatement) {
         // REG-38: this lands in R__npdev_schema_additive_columns.sql, a Flyway *repeatable* migration

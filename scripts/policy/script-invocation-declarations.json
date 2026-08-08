@@ -160,6 +160,9 @@
     "scripts/quality/check-dsl-reference-output-floor.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-emitted-sql-portability.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-engine-variant-families.py": {
       "invocation": "ci-gate"
     },

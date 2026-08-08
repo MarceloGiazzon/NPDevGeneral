@@ -191,7 +191,8 @@ public final class ConversionHookEmitter {
                 CompiledField toField = requireField(concept, conversion.to());
                 String toCol = SqlIdentifierSupport.columnName(toField);
                 String fromCol = SqlIdentifierSupport.columnName(requireField(concept, conversion.from()));
-                statements.add("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS " + toCol + " " + portableSqlType(toField));
+                statements.add(guardedAddColumn(table, toCol,
+                        "ALTER TABLE " + table + " ADD COLUMN " + toCol + " " + portableSqlType(toField)));
                 statements.add("UPDATE " + table + " SET " + toCol + " = " + fromCol + " WHERE " + toCol + " IS NULL");
                 statements.add("ALTER TABLE " + table + " ALTER COLUMN " + toCol + " SET NOT NULL");
                 claims.add("ADD_REQUIRED_COLUMN:" + table + ":" + toCol);
@@ -202,7 +203,8 @@ public final class ConversionHookEmitter {
                 for (CompiledConversion.CompiledConversionSplitTarget target : conversion.into()) {
                     CompiledField targetField = requireField(concept, target.field());
                     String targetCol = SqlIdentifierSupport.columnName(targetField);
-                    statements.add("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS " + targetCol + " " + portableSqlType(targetField));
+                    statements.add(guardedAddColumn(table, targetCol,
+                            "ALTER TABLE " + table + " ADD COLUMN " + targetCol + " " + portableSqlType(targetField)));
                 }
                 StringBuilder setClause = new StringBuilder();
                 StringBuilder nullGuard = new StringBuilder();
@@ -239,7 +241,8 @@ public final class ConversionHookEmitter {
                 String matchIdCol = SqlIdentifierSupport.columnName(matchIdField);
                 CompiledField setField = requireField(concept, conversion.set());
                 String setCol = SqlIdentifierSupport.columnName(setField);
-                statements.add("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS " + setCol + " " + portableSqlType(setField));
+                statements.add(guardedAddColumn(table, setCol,
+                        "ALTER TABLE " + table + " ADD COLUMN " + setCol + " " + portableSqlType(setField)));
                 statements.add("UPDATE " + table + " SET " + setCol + " = (SELECT m." + matchIdCol
                         + " FROM " + matchTable + " m WHERE m." + onCol + " = " + table + "." + equalsCol
                         + ") WHERE " + setCol + " IS NULL");
@@ -274,7 +277,8 @@ public final class ConversionHookEmitter {
                     concatArgs.append(mergeCols.get(i));
                     nullGuard.append(mergeCols.get(i)).append(" IS NOT NULL");
                 }
-                statements.add("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS " + toCol + " " + portableSqlType(toField));
+                statements.add(guardedAddColumn(table, toCol,
+                        "ALTER TABLE " + table + " ADD COLUMN " + toCol + " " + portableSqlType(toField)));
                 statements.add("UPDATE " + table + " SET " + toCol + " = CONCAT(" + concatArgs
                         + ") WHERE " + toCol + " IS NULL AND " + nullGuard);
                 statements.add("ALTER TABLE " + table + " ALTER COLUMN " + toCol + " SET NOT NULL");
@@ -292,7 +296,8 @@ public final class ConversionHookEmitter {
                 String toCol = SqlIdentifierSupport.columnName(toField);
                 String toSqlType = portableSqlType(toField);
                 String fromCol = SqlIdentifierSupport.columnName(requireField(concept, conversion.from()));
-                statements.add("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS " + toCol + " " + toSqlType);
+                statements.add(guardedAddColumn(table, toCol,
+                        "ALTER TABLE " + table + " ADD COLUMN " + toCol + " " + toSqlType));
                 statements.add("UPDATE " + table + " SET " + toCol + " = CAST(" + fromCol + " AS " + toSqlType
                         + ") WHERE " + toCol + " IS NULL");
                 statements.add("ALTER TABLE " + table + " ALTER COLUMN " + toCol + " SET NOT NULL");
@@ -363,6 +368,19 @@ public final class ConversionHookEmitter {
      * kept for that case only, which preserves the behaviour of every legacy caller that passes no
      * plan (the two-argument {@code emit} overload, used by tests).
      */
+    /**
+     * A hook's {@code ADD COLUMN} in the form the target engine can run -- ledger STOR-5.
+     *
+     * <p>A conversion hook's convert SQL runs during a migration, on data, on whichever engine the
+     * app was generated for. Writing {@code ADD COLUMN IF NOT EXISTS} inline made every hook
+     * unrunnable on MySQL and SQL Server, and hid behind a corrupted regex in check-dialect-sites.py
+     * (a literal backspace where a word boundary was meant) until that was fixed.
+     */
+    private String guardedAddColumn(String table, String column, String alterStatement) {
+        SqlDialect dialect = engine != null && engine.jdbc() ? engine.dialect() : H2Dialect.INSTANCE;
+        return dialect.guardedAddColumn(table, column, alterStatement);
+    }
+
     private String portableSqlType(CompiledField field) {
         SqlDialect dialect = engine != null && engine.jdbc() ? engine.dialect() : H2Dialect.INSTANCE;
         return dialect.portableColumnType(SqlTypeSupport.sqlType(field));
