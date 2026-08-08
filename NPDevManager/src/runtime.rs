@@ -74,8 +74,9 @@ struct AdoptiumPackage {
     name: String,
 }
 
-/// deps-and-java/PLAN.md W1.8: parameterized so a future caller can resolve a JDK matching an
-/// app's own `build.javaVersion` (17 or 21), not just the Manager's own private-JDK level. The
+/// deps-and-java/PLAN.md W1.8, widened by ROUND2_PLAN.md R1c: parameterized so a future caller can
+/// resolve a JDK matching an app's own `build.javaVersion` (any integer >= 17, no upper enum), not
+/// just the Manager's own private-JDK level. The
 /// Adoptium URL already had `17` as a literal path segment -- `major` just replaces it; the rest
 /// of the request/response shape is identical for any hotspot major version Adoptium serves.
 pub async fn resolve_jdk(major: u32) -> Result<DownloadTarget, String> {
