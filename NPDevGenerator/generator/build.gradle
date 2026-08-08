@@ -122,6 +122,21 @@ configurations {
     behaviorTestRuntimeOnly.extendsFrom testRuntimeOnly
 }
 
+// storage/FULL_SUPPORT_PLAN.md W6.1: ConfigSchemaValidator needs config.schema.json on its
+// classpath. Copied from the CANONICAL file at build time rather than checked in as another mirror
+// -- model.schema.json already lives in four hand-maintained places and needs its own gate to keep
+// them equal, and making config.schema.json the fifth instance of that problem to solve a build
+// question would be trading one defect family for the same one.
+//
+// Resolved through the project's own directory, not an ancestor walk looking for a folder NAMED
+// NPDev_General: eleven such walks produced three different build roots in a clone named
+// NPDevGeneral and kept CI red for twelve days (REG-144). This path is exact.
+processResources {
+    from(rootProject.file('../NPDevContract/schemas/config.schema.json')) {
+        into 'schema'
+    }
+}
+
 dependencies {
     implementation project(':dsl')
     implementation project(':core')

@@ -142,6 +142,9 @@
     "scripts/quality/check-cadence-coverage.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-config-schema.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-container-images-pinned.py": {
       "invocation": "ci-gate"
     },
