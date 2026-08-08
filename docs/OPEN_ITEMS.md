@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**148 item(s) migrated: 2 open/partial, 146 done.**
+**149 item(s) migrated: 2 open/partial, 147 done.**
 
 ## Open / partial
 
@@ -141,16 +141,27 @@ The results are now unambiguous; the PROCESS is not yet support:
     behaviour under a half-applied migration is still unmeasured, and that is the one that
     corrupts data rather than failing loudly
 
-Two known gaps that are recorded rather than fixed:
-  - SqlServerDialect.rowLimit() THROWS. SQL Server has no suffix row cap (TOP is a prefix; the
-    suffix form needs an ORDER BY an existence probe has none of). The two probe call sites in
-    PostgresPersistenceCapabilityAdapter must move to existsProbe() before SQL Server can run.
-  - ConversionHookEmitter.portableSqlType() emits the H2/Postgres COMMON form because the emitter
-    has no DatabaseEngine. That was already true; it stops being safe with a third engine (MySQL
-    has no native UUID), and threading the engine in is a signature change MySQL cannot ship
-    without.
+BOTH RECORDED ENGINE GAPS ARE NOW CLOSED (storage/FULL_SUPPORT_PLAN.md W1.3), fixed rather than accepted as boundaries -- so there is nothing to add under ledger/boundaries/:
 
-## Done (146)
+  - SqlServerDialect.rowLimited() is a PREFIX rewrite (SELECT -> SELECT TOP n). The plan offered
+    two options and said to find out which call sites need it before choosing. Measured: FOUR --
+    two existence probes in PostgresPersistenceCapabilityAdapter, two first-by-order reads in
+    JdbcEventStore -- and all four want "at most n rows", not a suffix. Suffix-vs-prefix is the
+    engine's business, which is precisely what a dialect is for; pushing the question out to the
+    call sites would have MOVED the engine switch rather than removed it, which SqlDialect's own
+    javadoc names as the thing this seam must never become. rowLimit() -- the SUFFIX primitive --
+    still throws, and that stays correct: there genuinely is no suffix form there. TOP is placed
+    after DISTINCT (T-SQL's grammar is SELECT [ALL|DISTINCT] [TOP n]) and a CTE is REFUSED rather
+    than mis-capped, since no string surgery can find its final select.
+
+  - ConversionHookEmitter now takes the DatabaseEngine, threaded from GeneratorFacade, which
+    already held the GeneratedDatabasePlan two lines above the call. The claim that this was a
+    signature change MySQL could not ship without was right; the claim that it was structurally
+    hard was not. It had been asking H2 unconditionally -- the narrower of the only two engines
+    that existed -- and that stops being safe with a third (MySQL has no native UUID), in code
+    that runs during a migration, on data.
+
+## Done (147)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -303,6 +314,7 @@ Two known gaps that are recorded rather than fixed:
 | REG-99 | A band's transaction.visibleWhen was unreachable in EVERY spelling -- the validator accepts only the derived address 'collection.band', the expander read only the bare band name, so the predicate validated and was silently dropped | BUG | MEDIUM | DONE | 2026-07-31 |
 | STOR-1 | 41 dialect-bound SQL sites were inlined across 19 files, so a second database engine was a rewrite rather than a dialect -- and two files had already grown a hand-rolled H2-vs-Postgres fork | GAP | MEDIUM | DONE | 2026-08-08 |
 | STOR-2 | A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced | BUG | HIGH | DONE | 2026-08-08 |
+| STOR-4 | MySQL and SqlServer were selectable, dialect-complete and conformance-green -- and no generated app could ever have connected to either, because the app template carried no JDBC driver for them | BUG | HIGH | DONE | 2026-08-08 |
 
 ### Detail
 
@@ -7033,6 +7045,35 @@ All three refusal messages said, verbatim:
 
 and the comment above them said "Now 'nothing persisted' is literally true." On H2 -- the engine every NPDev dev app runs on -- it was already not true, and boundary B11 had recorded H2's DDL limitation independently without anyone connecting it to this message.
 WHY THIS IS THE HIGH-SEVERITY HALF. The failure mode is not the un-rolled-back DDL; it is the platform telling an operator the database is untouched when it is not. A false all-clear is what turns a recoverable half-migration into one nobody goes looking for. The operator reads "nothing persisted", fixes the model, and re-runs -- against a schema that already moved.
+
+### STOR-4 — MySQL and SqlServer were selectable, dialect-complete and conformance-green -- and no generated app could ever have connected to either, because the app template carried no JDBC driver for them
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-08)
+**Verification:** VERIFIED_LIVE
+**Source:** storage/FULL_SUPPORT_PLAN.md gap A ("no generated APPLICATION has ever booted on MySQL or SQL Server"), found the first time an application-level probe was actually run -- CI run 31272786548.
+**Surface:** `runtimehost/build-template, generator/dbconfig, ci/engine-support`
+**Files:**
+- `NPDevRuntimeHost/build.gradle`
+- `.github/workflows/engine-support.yml`
+- `scripts/quality/run-engine-app-proof.py`
+- `NPDevSamples/probes/engine-probe/Input/model.json`
+
+Everything pointed the other way. `MySQL` and `SqlServer` were valid values of `db.definition.json`'s `database.engine`; `DatabaseEngine` gave them JDBC URLs, drivers and default ports; `SqlDialects` registered complete `MySqlDialect` and `SqlServerDialect` implementations; `StorageDialectInitializer` pinned the active dialect at boot; and the conformance suite passed 14/14 behavioural vectors for each, with zero skips, against REAL containers (run 31271016482).
+A generated app for either engine died at DataSource creation, before one line of NPDev's own code executed:
+
+    Caused by: java.lang.IllegalStateException: Cannot load driver class: com.mysql.cj.jdbc.Driver
+        at DataSourceProperties.findDriverClassName(DataSourceProperties.java:184)
+
+NPDevRuntimeHost/build.gradle -- the template copied into EVERY generated FinalApp -- declared `org.postgresql:postgresql` and `com.h2database:h2` and nothing else. The MySQL and SQL Server drivers existed only on `:kernel`'s TEST classpath, where the conformance suite uses them.
+WHY EVERY EXISTING TEST MISSED IT, AND WHY THAT IS THE INTERESTING PART
+Tier A asserts dialect string generation: no database, no app. Tier B asserts behaviour against a real connection -- and it OBTAINS that connection from a driver the test classpath has. Neither tier ever asks the question "can the artifact we ship to a user load this driver?", because neither tier builds that artifact.
+So the platform could be, simultaneously and honestly:
+  - correct at the dialect layer (proven, three real engines),
+  - correct at the configuration layer (the enum, the URL, the port, the container name),
+  - and completely unusable end to end.
+
+"The dialect works" and "an app works" were different claims, and only an application-level probe could tell them apart. That is exactly why FULL_SUPPORT_PLAN.md ranks "a generated app boots" as gap A rather than a formality, and the ranking turned out to be right for a more concrete reason than the plan itself predicted.
+A third person following the supported path -- `npdev init --engine mysql`, then run -- would have hit this on their first boot, with a Spring stack trace and no indication that the engine had never been usable.
 
 </details>
 
