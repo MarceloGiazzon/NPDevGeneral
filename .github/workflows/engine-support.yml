@@ -195,9 +195,15 @@ jobs:
             postgres)  ENGINE_ARGS="--engine postgres --db-port 5432 --db-user npdev --db-password npdev" ;;
             sqlserver) ENGINE_ARGS="--engine sqlserver --db-port 1433 --db-user sa --db-password Npdev!Probe123" ;;
           esac
-          mkdir -p Build/doctor-app
-          python NPDevCli/npdev_cli.py init Build/doctor-app/probe $ENGINE_ARGS --db-host 127.0.0.1
-          python NPDevCli/npdev_cli.py doctor --json --app Build/doctor-app/probe \
+          # NOT under Build/: in CI NPDEV_BUILD_ROOT is inside the workspace, and `npdev init`
+          # REFUSES to scaffold inside the repo -- correctly, since a scaffold there "would never be
+          # found by anyone cloning NPDev fresh". Run 31272063422 hit exactly that refusal, on all
+          # three engines. RUNNER_TEMP is outside the checkout, which is what the refusal asks for.
+          APP_DIR="$RUNNER_TEMP/doctor-app/probe"
+          rm -rf "$APP_DIR"
+          python NPDevCli/npdev_cli.py init "$APP_DIR" $ENGINE_ARGS --db-host 127.0.0.1
+          mkdir -p Build
+          python NPDevCli/npdev_cli.py doctor --json --app "$APP_DIR" \
             | tee Build/reports-doctor-${{ matrix.engine }}.json
           python - <<'PY'
           import json, os, sys

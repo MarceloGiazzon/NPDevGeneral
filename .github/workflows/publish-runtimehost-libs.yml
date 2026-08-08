@@ -106,3 +106,89 @@ jobs:
               --title "$TAG" \
               --generate-notes
           fi
+
+  # -------------------------------------------------------------------------------------------
+  # storage/FULL_SUPPORT_PLAN.md W6.2 (exit criterion E13).
+  #
+  # beta1.7 carries NPDev.Manager_0.1.0_x64-setup.exe. beta1.8 and beta1.9 do NOT -- so a third
+  # person landing on the NEWEST release today gets libs and no installer, and the installer is the
+  # thing that removes the terminal. The cause was simply that nothing built it on a tag: beta1.7's
+  # asset was produced by hand from a Windows machine, which is a step that gets skipped.
+  #
+  # So this is the fix rather than a one-off upload. Every future tag carries both.
+  #
+  # Windows runner, because NSIS bundling needs one and the Manager's primary audience is on
+  # Windows. The Linux AppImage is a separate matter (proven buildable in Docker, never published
+  # from a tag) and is deliberately NOT bolted on here -- a job that sometimes produces two
+  # artifacts and sometimes one is harder to read than two jobs.
+  #
+  # `continue-on-error` is deliberate and narrow: the libs asset above is what `npdev setup`
+  # DEPENDS ON, and a Manager build failure must not stop it being published. A missing installer is
+  # an inconvenience; a missing libs zip breaks every fresh install. The job still shows red.
+  # -------------------------------------------------------------------------------------------
+  publish-manager-installer:
+    name: Build + publish the Manager installer
+    runs-on: windows-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="${{ github.ref_name }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            NPDevManager/target
+          key: manager-cargo-${{ runner.os }}-${{ hashFiles('NPDevManager/Cargo.lock') }}
+
+      - name: Install the Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      # The UI is plain JS with no bundler (SPEC.md 1.1), so there is no npm step -- `frontendDist`
+      # points straight at NPDevManager/ui.
+      - name: Build the installer
+        working-directory: NPDevManager
+        run: cargo tauri build --bundles nsis
+
+      - name: Publish to the Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          SETUP="$(find NPDevManager/target/release/bundle/nsis -name '*-setup.exe' | head -1)"
+          if [ -z "$SETUP" ]; then
+            echo "::error::no NSIS installer produced -- nothing to publish"
+            exit 1
+          fi
+          echo "installer: $SETUP"
+          sha256sum "$SETUP" | tee manager-installer-SHA256SUMS
+          # `--clobber` so re-publishing a tag replaces the asset rather than failing. The libs job
+          # may or may not have created the release yet -- these two run in parallel on purpose (the
+          # Windows build is the slow one), so this creates it if needed.
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$SETUP" manager-installer-SHA256SUMS \
+              --repo "${{ github.repository }}" --clobber
+          else
+            gh release create "$TAG" "$SETUP" manager-installer-SHA256SUMS \
+              --repo "${{ github.repository }}" --title "$TAG" --generate-notes
+          fi
