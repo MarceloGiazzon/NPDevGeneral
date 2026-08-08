@@ -13,7 +13,7 @@
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
 | REG-142 | /api/admin/model/export and /api/admin/model/ui (ui-model) still read classpath resource npdev/model.json directly, which can be RuntimeHost's own unreplaced template placeholder rather than the app's real model, depending on how generation resolved the model source | GAP | LOW | OPEN | 2026-08-07 |
-| STOR-3 | MySQL and SQL Server dialects exist, are registered, and pass every locally-runnable conformance vector -- but NEITHER IS SUPPORTED until the container suite has actually run | GAP | MEDIUM | PARTIAL | 2026-08-08 |
+| STOR-3 | MySQL and SQL Server dialects pass 13/13 Tier B vectors against REAL containers -- but neither is supported until that run is repeatable rather than a one-off manual dispatch | GAP | MEDIUM | PARTIAL | 2026-08-08 |
 
 ### Detail
 
@@ -80,10 +80,10 @@ Two independent fix shapes, not mutually exclusive:
     conditionally-written raw resource -- sidesteps the generator-side root cause the same way,
     without needing to isolate it first.
 
-### STOR-3 — MySQL and SQL Server dialects exist, are registered, and pass every locally-runnable conformance vector -- but NEITHER IS SUPPORTED until the container suite has actually run
+### STOR-3 — MySQL and SQL Server dialects pass 13/13 Tier B vectors against REAL containers -- but neither is supported until that run is repeatable rather than a one-off manual dispatch
 
 **Type:** GAP · **Severity:** MEDIUM · **Status:** PARTIAL
-**Verification:** UNIT_TESTED
+**Verification:** VERIFIED_LIVE
 **Source:** storage/PLAN.md S4b, S5 and S4a.
 **Surface:** `kernel/storage-dialect, generator/dbconfig, ci/storage-dialect-conformance`
 **Files:**
@@ -106,23 +106,32 @@ WHAT IS PROVEN
     auto-increment monotonicity, enforced uniqueness.
   - PostgresDialectGoldenSqlTest, 24 assertions (STOR-1).
 
-WHAT IS NOT PROVEN, AND WHY IT IS LISTED AS PARTIAL
-Local Tier B runs against H2 in each engine's compatibility MODE. H2 was PROBED rather than trusted, and the results changed the test design:
+WHAT THE FIRST REAL RUN PROVED (2026-08-08, run 31264977219 at commit 5814886)
+The suite was dispatched manually for the first time. Read from the uploaded JUnit XML, per dialect -- NOT from the job status, which was red for all three jobs:
 
-    MODE=PostgreSQL  CANNOT run ON CONFLICT      -> Postgres's own upsert is not locally verifiable
-    MODE=MySQL       CAN run ON DUPLICATE KEY    -> MySQL's upsert does get a real local check
-    MODE=MSSQLServer REJECTS LIMIT ? OFFSET ?    -> confirms SQL Server's pagination shape differs
-                     and accepts OFFSET..FETCH
+    dialect      passed  failed  seconds
+    mysql            13       0     23.7    <- real MySQL 8.4 with utf8mb4
+    postgres         13       0      8.3    <- no regression from the S1 seam
+    sqlserver        12       1     21.4    <- one failure, a TEST defect (see below)
+    h2                0      13      0.1    <- harness: no container exists for h2
+                                   0 skipped
 
-So Tier B gates per CONSTRUCT, not per engine, and says out loud what it did not run. But no vector has ever executed against a real MySQL or a real SQL Server. Specifically unproven:
+The seconds column is what separates "the harness broke" from "the engine ran": h2 fails in 0.1s (an immediate throw, no database) while mysql spends 23.7s (container time). The failure TYPES say the same thing independently -- IllegalArgumentException for all 13 h2 cases, AssertionFailedError for the one sqlserver case.
+ZERO SKIPS. The twelve vectors that print a skip reason on the local H2 backend all executed, including T2 (DDL transactionality), Q2 (case sensitivity) and J2 (charset fidelity). That was the entire purpose of the workflow and it worked on the first run.
+J2 on SQL Server is the one real finding, and it is the vector's own bug: it hand-wrote VARCHAR(4000) in its DDL, and SQL Server's VARCHAR is non-Unicode, so 'cafe [coffee emoji]' came back as 'cafe ?' -- silent per-character loss. SqlServerDialect.portableColumnType already returned NVARCHAR(4000) and was never asked. The general lesson is bigger than the line: a conformance vector that writes its own DDL is testing its own SQL, which is exactly the trap PLAN.md §6 named for probe apps and Tier B then walked into.
+WHY THIS IS STILL PARTIAL
+The results are good; the PROCESS is not yet support:
 
-    T2  DDL transactionality        H2 does not model MySQL's implicit commit (see STOR-2)
-    U2  concurrent MERGE            SQL Server's HOLDLOCK hazard appears under load, not in H2
-    Q2  case sensitivity            depends on the real server's config AND host filesystem
-    J2  utf8mb4 fidelity            H2 stores anything; MySQL may truncate silently
-    I2/I3 catalog introspection     information_schema columns differ from the real engine
+  - the workflow is workflow_dispatch-only, so nothing re-verifies MySQL when a dialect changes --
+    the next regression is found by a user
+  - the container images are moving tags (mssql/server:2022-latest), so a future red cannot be
+    told apart from "the image changed"
+  - E1, E2, I2 and I3 need a realized schema (Tier C + the probe apps) and cannot run here at all
+  - the MySQL DDL-implicit-commit decision (STOR-2) was reasoned about and is now exercised by T2,
+    but T2 asserts the DECLARATION matches the engine -- the schema engine's behaviour under a
+    half-applied migration is still unmeasured, and that is the one that corrupts data rather than
+    failing loudly
 
-storage/PLAN.md §11 is explicit that an engine is supported only when "a real MySQL container ran the conformance suite there". It has not. Calling MySQL supported on a green local run is the one claim this entire plan exists to avoid making, and REG-36/REG-50 are the same lesson already learned once with H2-in-PostgreSQL-mode.
 Two known gaps that are recorded rather than fixed:
   - SqlServerDialect.rowLimit() THROWS. SQL Server has no suffix row cap (TOP is a prefix; the
     suffix form needs an ORDER BY an existence probe has none of). The two probe call sites in

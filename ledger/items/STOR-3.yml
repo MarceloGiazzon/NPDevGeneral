@@ -1,12 +1,12 @@
 id: STOR-3
 title: >-
-  MySQL and SQL Server dialects exist, are registered, and pass every locally-runnable conformance
-  vector -- but NEITHER IS SUPPORTED until the container suite has actually run
+  MySQL and SQL Server dialects pass 13/13 Tier B vectors against REAL containers -- but neither is
+  supported until that run is repeatable rather than a one-off manual dispatch
 type: GAP
 severity: MEDIUM
 status: PARTIAL
 opened: 2026-08-08
-verification: UNIT_TESTED
+verification: VERIFIED_LIVE
 surface: kernel/storage-dialect, generator/dbconfig, ci/storage-dialect-conformance
 source: storage/PLAN.md S4b, S5 and S4a.
 detail: >-
@@ -28,29 +28,47 @@ detail: >-
       auto-increment monotonicity, enforced uniqueness.
     - PostgresDialectGoldenSqlTest, 24 assertions (STOR-1).
 
-  WHAT IS NOT PROVEN, AND WHY IT IS LISTED AS PARTIAL
+  WHAT THE FIRST REAL RUN PROVED (2026-08-08, run 31264977219 at commit 5814886)
 
-  Local Tier B runs against H2 in each engine's compatibility MODE. H2 was PROBED rather than
-  trusted, and the results changed the test design:
+  The suite was dispatched manually for the first time. Read from the uploaded JUnit XML, per
+  dialect -- NOT from the job status, which was red for all three jobs:
 
-      MODE=PostgreSQL  CANNOT run ON CONFLICT      -> Postgres's own upsert is not locally verifiable
-      MODE=MySQL       CAN run ON DUPLICATE KEY    -> MySQL's upsert does get a real local check
-      MODE=MSSQLServer REJECTS LIMIT ? OFFSET ?    -> confirms SQL Server's pagination shape differs
-                       and accepts OFFSET..FETCH
+      dialect      passed  failed  seconds
+      mysql            13       0     23.7    <- real MySQL 8.4 with utf8mb4
+      postgres         13       0      8.3    <- no regression from the S1 seam
+      sqlserver        12       1     21.4    <- one failure, a TEST defect (see below)
+      h2                0      13      0.1    <- harness: no container exists for h2
+                                     0 skipped
 
-  So Tier B gates per CONSTRUCT, not per engine, and says out loud what it did not run. But no
-  vector has ever executed against a real MySQL or a real SQL Server. Specifically unproven:
+  The seconds column is what separates "the harness broke" from "the engine ran": h2 fails in 0.1s
+  (an immediate throw, no database) while mysql spends 23.7s (container time). The failure TYPES say
+  the same thing independently -- IllegalArgumentException for all 13 h2 cases,
+  AssertionFailedError for the one sqlserver case.
 
-      T2  DDL transactionality        H2 does not model MySQL's implicit commit (see STOR-2)
-      U2  concurrent MERGE            SQL Server's HOLDLOCK hazard appears under load, not in H2
-      Q2  case sensitivity            depends on the real server's config AND host filesystem
-      J2  utf8mb4 fidelity            H2 stores anything; MySQL may truncate silently
-      I2/I3 catalog introspection     information_schema columns differ from the real engine
+  ZERO SKIPS. The twelve vectors that print a skip reason on the local H2 backend all executed,
+  including T2 (DDL transactionality), Q2 (case sensitivity) and J2 (charset fidelity). That was the
+  entire purpose of the workflow and it worked on the first run.
 
-  storage/PLAN.md §11 is explicit that an engine is supported only when "a real MySQL container ran
-  the conformance suite there". It has not. Calling MySQL supported on a green local run is the one
-  claim this entire plan exists to avoid making, and REG-36/REG-50 are the same lesson already
-  learned once with H2-in-PostgreSQL-mode.
+  J2 on SQL Server is the one real finding, and it is the vector's own bug: it hand-wrote
+  VARCHAR(4000) in its DDL, and SQL Server's VARCHAR is non-Unicode, so 'cafe [coffee emoji]' came
+  back as 'cafe ?' -- silent per-character loss. SqlServerDialect.portableColumnType already returned
+  NVARCHAR(4000) and was never asked. The general lesson is bigger than the line: a conformance
+  vector that writes its own DDL is testing its own SQL, which is exactly the trap PLAN.md §6 named
+  for probe apps and Tier B then walked into.
+
+  WHY THIS IS STILL PARTIAL
+
+  The results are good; the PROCESS is not yet support:
+
+    - the workflow is workflow_dispatch-only, so nothing re-verifies MySQL when a dialect changes --
+      the next regression is found by a user
+    - the container images are moving tags (mssql/server:2022-latest), so a future red cannot be
+      told apart from "the image changed"
+    - E1, E2, I2 and I3 need a realized schema (Tier C + the probe apps) and cannot run here at all
+    - the MySQL DDL-implicit-commit decision (STOR-2) was reasoned about and is now exercised by T2,
+      but T2 asserts the DECLARATION matches the engine -- the schema engine's behaviour under a
+      half-applied migration is still unmeasured, and that is the one that corrupts data rather than
+      failing loudly
 
   Two known gaps that are recorded rather than fixed:
     - SqlServerDialect.rowLimit() THROWS. SQL Server has no suffix row cap (TOP is a prefix; the
@@ -61,17 +79,31 @@ detail: >-
       has no native UUID), and threading the engine in is a signature change MySQL cannot ship
       without.
 resolution: >-
-  PARTIAL. To close:
+  PARTIAL.
 
-    1. Run .github/workflows/storage-dialect-conformance.yml manually (workflow_dispatch). It is
-       dispatch-only ON PURPOSE: the Testcontainers path in DialectTestSupport was written on a
-       machine where local Docker is banned and HAS NEVER RUN, so wiring it to `push` would turn
-       main red for reasons its author cannot reproduce.
-    2. Fix whatever it finds.
-    3. Promote it to push/pull_request triggers -- the commented block is in the workflow file.
-    4. Move the two existence probes to SqlServerDialect.existsProbe().
-    5. Thread DatabaseEngine into ConversionHookEmitter.
-    6. Then, and only then, MySQL may be called supported.
+  DONE (2026-08-08, storage/CONFORMANCE_FIX_PLAN.md):
+    F0  corrected BREAKING.md and this item -- both said "never executed", which was true when
+        written and had become false. A record that is wrong about its own evidence is worse than
+        one that is merely incomplete, and this one was wrong in the UNDER-claiming direction.
+    F1  the Tier B parameter source is backend-aware, so h2 is not asked for a container it has no
+        image for. The throw in containerFor() STAYS as the backstop for a dialect someone registers
+        and forgets to give an image -- that is the bug it was written for.
+    F2  each CI job runs only its own engine (-Dnpdev.dialect.only), so a job's red/green finally
+        means something about the engine in its name, and container work drops ~3x.
+    F3  J1 and J2 take their column type from dialect.portableColumnType() instead of hand-writing
+        VARCHAR(4000), plus an audit of every hand-written CREATE TABLE in the suite.
+    F4  a per-dialect table is written to the job summary, so a run whose headline is red no longer
+        hides a 13/13 pass inside an artifact.
+    F5  DialectTestSupport prints one line per container start, so "did it really use a container?"
+        stops being an inference.
+
+  STILL OPEN, and what actually gates DONE:
+    1. Promote the workflow to push triggers on the paths it already lists.
+    2. Pin the container images to digests or fixed versions.
+    3. Tier C: E1, E2, I2, I3 against the probe apps (NPDevSamples/probes, already built).
+    4. Decide the two recorded engine gaps -- SqlServerDialect.rowLimit() throws, and
+       ConversionHookEmitter has no DatabaseEngine to ask.
+    5. Measure the MySQL DDL-implicit-commit behaviour against the real engine (STOR-2).
 files:
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java

@@ -68,6 +68,22 @@ subprojects {
         maxHeapSize = '2g'
         maxParallelForks = 2
         jvmArgs '-XX:+UseParallelGC'
+
+        // Gradle sets -D on ITS OWN jvm, not on the forked test jvm, so a property passed on the
+        // command line silently does nothing inside a test unless it is forwarded here.
+        //
+        // Found the hard way: `-Dnpdev.dialect.only=mysql` ran all four dialects anyway and reported
+        // green. That is the exact failure shape the property exists to prevent one level up -- CI
+        // would have believed each job was scoped to one engine while every job kept running all of
+        // them, and the evidence for the scoping would have been the absence of an error.
+        // DialectTestSupportSelectionTest pins the behaviour so a silent no-op cannot come back.
+        ['npdev.dialect.only', 'npdev.storage.dialect'].each { key ->
+            String value = System.getProperty(key)
+            if (value != null && !value.trim().isEmpty()) {
+                systemProperty key, value
+            }
+        }
+
         if (System.getProperty('os.name', '').toLowerCase().contains('win')
                 && System.getenv('DOCKER_HOST') == null) {
             environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'

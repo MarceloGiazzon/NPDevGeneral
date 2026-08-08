@@ -56,7 +56,11 @@ class DialectConformanceTierBTest {
      * <p>A skip is visible in the runner and names what did not run. A narrowed matrix is invisible.
      */
     static Stream<SqlDialect> locallyRunnableDialects() {
-        return SqlDialects.all().stream();
+        // Filters on the BACKEND (container mode cannot serve a dialect with no image -- h2) and on
+        // -Dnpdev.dialect.only (CI scopes each job to one engine). Neither filter can hide a real
+        // failure: a dialect that is filtered out produces NO test cases at all rather than passing
+        // ones, so it cannot show up as a green tick for something that never ran.
+        return SqlDialects.all().stream().filter(DialectTestSupport::shouldRun);
     }
 
     private static void requireRunnable(SqlDialect dialect, DialectTestSupport.Construct construct) {
@@ -177,7 +181,13 @@ class DialectConformanceTierBTest {
             // Stored as text on purpose: this vector is about the VALUE surviving, and asserting on
             // Postgres jsonb's own normalisation (it reorders keys and drops whitespace) would be
             // asserting on the engine rather than on the platform.
-            execute(connection, "CREATE TABLE t (id VARCHAR(36) PRIMARY KEY, doc VARCHAR(4000))");
+            //
+            // The type comes from the DIALECT even so -- see textColumn(). This vector was passing
+            // by LUCK: its document is ASCII, so SQL Server's non-Unicode VARCHAR never had to
+            // represent a character it cannot, and only J2 (which uses an emoji) failed. Fixing only
+            // the vector that happened to fail would leave the next person who adds an accent here
+            // with the same failure and no explanation attached to it.
+            execute(connection, "CREATE TABLE t (id VARCHAR(36) PRIMARY KEY, doc " + textColumn(dialect) + ")");
             String document = "{\"a\":{\"b\":[1,2,3]},\"c\":\"x\"}";
             try (PreparedStatement insert = connection.prepareStatement("INSERT INTO t (id, doc) VALUES (?, ?)")) {
                 insert.setString(1, "A");
@@ -195,9 +205,11 @@ class DialectConformanceTierBTest {
         assumeTrue(DialectTestSupport.enforces(dialect, DialectTestSupport.Behaviour.CHARSET_FIDELITY),
                 DialectTestSupport.whyNotVerified(dialect, DialectTestSupport.Behaviour.CHARSET_FIDELITY));
         try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
-            execute(connection, "CREATE TABLE t (id VARCHAR(36) PRIMARY KEY, doc VARCHAR(4000))");
+            execute(connection, "CREATE TABLE t (id VARCHAR(36) PRIMARY KEY, doc " + textColumn(dialect) + ")");
             // The emoji is the point. MySQL's legacy three-byte "utf8" cannot represent it and
             // truncates or replaces SILENTLY -- the insert succeeds and the data is already wrong.
+            // SQL Server's non-Unicode VARCHAR does the same thing, which is what run 31264977219
+            // caught: this vector stored "cafe [U+2615]" and read back "cafe ?".
             String document = "{\"a\":\"say \\\"hi\\\"\",\"b\":\"café ☕\",\"c\":\"🚀\"}";
             try (PreparedStatement insert = connection.prepareStatement("INSERT INTO t (id, doc) VALUES (?, ?)")) {
                 insert.setString(1, "A");
@@ -320,6 +332,50 @@ class DialectConformanceTierBTest {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /**
+     * A text column type from the DIALECT, for any column whose CONTENT this suite asserts.
+     *
+     * <p><b>The rule, and the reason it is a rule.</b> A conformance vector that hand-writes its DDL
+     * is testing its own SQL rather than the dialect's -- exactly the trap {@code PLAN.md} §6 named
+     * for probe apps, which Tier B then walked into. Run 31264977219 is the proof: J2 declared
+     * {@code VARCHAR(4000)}, and SQL Server's {@code VARCHAR} is NON-UNICODE, so
+     * {@code "cafe \u2615"} came back as {@code "cafe ?"}. Silent, per-character data loss.
+     * {@code SqlServerDialect.portableColumnType} already answered {@code NVARCHAR(4000)} and was
+     * never asked.
+     *
+     * <p><b>Why {@code portableColumnType} and not {@code jsonColumnType} -- this is the whole
+     * fix.</b> {@code jsonColumnType()} is the obvious-looking choice and it is wrong here: on
+     * Postgres it yields {@code jsonb}, which REORDERS KEYS and DROPS WHITESPACE, so J1's exact-text
+     * assertion would start failing on Postgres. It would trade one red for another.
+     * {@code portableColumnType("VARCHAR(4000)")} returns the declaration UNCHANGED on Postgres,
+     * MySQL and H2, and {@code NVARCHAR(4000)} on SQL Server -- the only one of the two that fixes
+     * J2 without touching J1's meaning.
+     *
+     * <h4>The audit of the other eight hand-written CREATE TABLEs</h4>
+     *
+     * All ten were reviewed against one question: <b>does the vector assert this column's content
+     * fidelity?</b> Only J1 and J2 do, and both now use this helper. The rest keep their literal
+     * types deliberately, because the rule is about what a vector ASSERTS, not about purity:
+     *
+     * <ul>
+     *   <li>{@code id VARCHAR(36)} (U1 x2, Q1, T1, uniqueness) -- an ASCII key, only ever compared
+     *       for equality against a value this file wrote. No engine mangles {@code 'A'}.</li>
+     *   <li>{@code v INT}, {@code n INT}, {@code rollback_probe(id INT)} -- integers; the assertions
+     *       are counts, ordering and rollback, none of which is a text-encoding question.</li>
+     *   <li>{@code email VARCHAR(100) UNIQUE} -- the assertion is that a DUPLICATE IS REJECTED, not
+     *       that the address round-trips. Uniqueness is enforced identically for ASCII in VARCHAR
+     *       and NVARCHAR.</li>
+     *   <li>A1's key column already asks {@code dialect.autoIncrementColumn(...)} -- it was doing
+     *       the right thing before this fix and is the precedent for it.</li>
+     * </ul>
+     *
+     * <p>If a future vector starts asserting content on any of those columns, it must move to this
+     * helper first.
+     */
+    private static String textColumn(SqlDialect dialect) {
+        return dialect.portableColumnType("VARCHAR(4000)");
+    }
 
     private static void seedTenRows(Connection connection) throws SQLException {
         execute(connection, "CREATE TABLE t (n INT PRIMARY KEY)");

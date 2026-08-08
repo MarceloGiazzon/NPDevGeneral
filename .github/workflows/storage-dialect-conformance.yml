@@ -15,13 +15,19 @@ name: Storage dialect conformance
 # ---------------------------------------------------------------------------------------------
 # WHY workflow_dispatch ONLY, for now
 #
-# The container path in DialectTestSupport was written on a machine where local Docker is banned, so
-# IT HAS NEVER RUN. Wiring an unverified job to `push` would turn main red for reasons its author
-# cannot reproduce, which is a cost paid by whoever pushes next rather than by whoever wrote it.
+# FIRST RUN: 31264977219, at commit 5814886, 2026-08-08. Three jobs red -- and underneath, MySQL 8.4
+# passed 13/13 and Postgres 16 passed 13/13, against real containers, with ZERO vectors skipped. The
+# 14 failures per job were 13 harness (h2 has no container image) plus ONE real behavioural finding
+# on SQL Server: J2 stored "cafe [U+2615]" into a hand-written VARCHAR and read back "cafe ?",
+# because SQL Server's VARCHAR is non-Unicode. All six fixes in storage/CONFORMANCE_FIX_PLAN.md have
+# landed since.
 #
-# So: run this manually first. When a run is green, add the `push`/`pull_request` triggers below --
-# that promotion is the last step of storage/PLAN.md §11.7, not a formality, and until it happens
-# MySQL and SQL Server are "implemented and locally checked", NOT "supported".
+# It stays dispatch-only anyway, and the reason changed: it is no longer "this has never run", it is
+# that the container images below are MOVING TAGS. A suite that changes underneath you cannot tell
+# "we broke it" from "the image changed", and that is a bad property for a gate that blocks pushes.
+# Pin the images, then add the `push`/`pull_request` triggers below -- that promotion is the last
+# step of storage/PLAN.md §11.7, and until it happens MySQL and SQL Server are "verified once",
+# NOT "supported". See ledger STOR-3.
 #
 #   on:
 #     push:
@@ -95,10 +101,30 @@ jobs:
       # No `services:` block: DialectTestSupport starts its own containers via Testcontainers, the
       # same lifecycle PostgresTestSupport already uses (one per engine per JVM, Ryuk-reaped). A
       # services block would start a SECOND database that nothing connects to.
+      #
+      # -Dnpdev.dialect.only scopes the JVM to ONE engine. Without it the matrix selected jobs but
+      # the test class stayed parameterised over every dialect, so each job started three containers,
+      # verified MySQL three times, and reported SQL Server's failure three times -- and a job's
+      # red/green said nothing about the engine in its name. NPDevKernel/build.gradle forwards the
+      # property into the forked test JVM; Gradle does NOT do that on its own, and when it silently
+      # did nothing the run still reported green, which is why DialectTestSupportSelectionTest now
+      # pins the behaviour.
       - name: Tier B against a real ${{ matrix.engine }}
         if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
         working-directory: NPDevKernel
-        run: ./gradlew :kernel:test --tests '*DialectConformanceTierBTest*' --no-daemon --console=plain
+        run: |
+          ./gradlew :kernel:test --tests '*DialectConformanceTierBTest*' \
+            -Dnpdev.dialect.only=${{ matrix.engine }} \
+            --no-daemon --console=plain
+
+      # Runs on failure too, and that is the point: the first run's headline said "3 jobs failed"
+      # while containing a 13/13 pass nobody could see without downloading the artifact.
+      - name: Per-dialect summary
+        if: always()
+        run: |
+          python3 scripts/quality/summarize-dialect-conformance.py \
+            Build/gradle/npdev-kernel/kernel/test-results \
+            --title "Tier B -- ${{ matrix.engine }} (real engine)"
 
       - name: Upload test results
         if: always()
