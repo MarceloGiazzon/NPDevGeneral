@@ -20,6 +20,7 @@ import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
 import com.npdev.generator.templates.TemplateEngine;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.testcontainers.containers.MinIOContainer;
@@ -70,6 +71,11 @@ import org.junit.jupiter.api.condition.OS;
         "Uses a MinIO Testcontainers Linux container; GitHub windows-latest runners cannot run Linux "
         + "containers (unlike Linux runners / local Docker Desktop). Validated by the green Linux CI "
         + "job. Windows-CI Docker-test scoping is tracked as REG-34.")
+// storage/PLAN.md W2: the packaged-app proofs generate, build, boot and exercise a real
+// FinalApp -- minutes each, and they are what caught the Windows/Linux build-root
+// divergence. Tagged so a local `test` run can skip them (LOUDLY -- see build.gradle) while
+// CI always runs them. Do not remove the tag to "speed up CI"; CI is where they earn their keep.
+@Tag("packaged-proof")
 final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};

@@ -51,9 +51,15 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+// storage/PLAN.md W2: the packaged-app proofs generate, build, boot and exercise a real
+// FinalApp -- minutes each, and they are what caught the Windows/Linux build-root
+// divergence. Tagged so a local `test` run can skip them (LOUDLY -- see build.gradle) while
+// CI always runs them. Do not remove the tag to "speed up CI"; CI is where they earn their keep.
+@Tag("packaged-proof")
 final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};

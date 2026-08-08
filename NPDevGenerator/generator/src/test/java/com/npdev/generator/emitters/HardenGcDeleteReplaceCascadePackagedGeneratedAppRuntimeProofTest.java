@@ -19,6 +19,7 @@ import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
 import com.npdev.generator.templates.TemplateEngine;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -54,6 +55,11 @@ import java.util.stream.Stream;
  * controls) so bytes can be inspected directly on disk, same harness pattern as {@link
  * HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest}.
  */
+// storage/PLAN.md W2: the packaged-app proofs generate, build, boot and exercise a real
+// FinalApp -- minutes each, and they are what caught the Windows/Linux build-root
+// divergence. Tagged so a local `test` run can skip them (LOUDLY -- see build.gradle) while
+// CI always runs them. Do not remove the tag to "speed up CI"; CI is where they earn their keep.
+@Tag("packaged-proof")
 final class HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
