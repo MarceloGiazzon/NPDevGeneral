@@ -71,7 +71,9 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
 - **Quality gates — "all gates green" means ONE command:**
   `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1` (T2). It runs four gates by default, in
   this order, and keeps going past a failure so you see every red in one run:
-  `run-ai-knowledge-gate.ps1` (static, seconds; hosts all 16 `check-*.py`) → `run-generator-gate.ps1`
+  `run-ai-knowledge-gate.ps1` (static — no build, no boot; hosts all 20 `check-*.py` across 28
+  checks. **Measured 811 s / ~13.5 min on 2026-08-08**, not the "seconds" this line used to claim;
+  budget for it) → `run-generator-gate.ps1`
   → `run-runtimehost-gate.ps1` → `run-frontend-gate.ps1`. `run-beta-release-gate.ps1` (release
   posture, T3) is **deferred by default** since the Fast Lane plan's item 4 — pass
   `-IncludeReleaseGate` or `-Only betaRelease` to run it too. Run one gate with `-Only aiKnowledge`.
@@ -82,8 +84,15 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
 - **Faster mid-plan verification (the Fast Lane plan, 2026-08-01):** `scripts/quality/run-fast-gate.ps1`
   is the T1 tier — T0's checks (schema-mirror-consistency, plus an optional touched model/DSL-test
   check) plus generate+build+boot+REST-smoke of the ONE frozen canary app
-  (`NPDevSamples/npdev-canary`) and the three T1-scoped corpus checks. Target < 3 min vs. T2's
-  ~13-15 min; use it at the end of a wave/step, not as a substitute for T2 before closing a Move.
+  (`NPDevSamples/npdev-canary`) and the three T1-scoped corpus checks. Designed for < 3 min;
+  **measured 263 s / ~4.4 min on 2026-08-08** since the machine's RAM was halved. Use it at the end
+  of a wave/step, not as a substitute for T2 before closing a Move.
+  **If the canary reports `health: failed` with "connection refused", read the boot log before
+  believing it.** The app starts in ~24 s; the rest of the budget goes on `gradlew --no-daemon
+  bootRun` forking a single-use Gradle daemon. That overhead — not the app — produced two false REDs
+  on 2026-08-08 while health/smoke/acceptance all passed at a longer timeout, so the default
+  `-CanaryBootTimeoutSeconds` is now 300. A genuinely crashed app is reported as "Process exited
+  before health check passed", which is a different message and a real failure.
   `npdev verify --tier T0|T1|T2|T3` is the one CLI entry point for all four tiers, reading the same
   staleness ledger every tier writes to (`scripts/quality/verification-cadence.json` +
   `scripts/quality/cadence_state.py`) — a check that goes stale past its declared `maxStaleness`
@@ -106,6 +115,27 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `scripts/appgen/Rebuild-And-Restage.ps1`, which threads one value through every step.
 - **`AppGen\generator-runtime\current`** (the jar cache the AppGen builders read) is not auto-synced;
   refresh via `AppGen\generator-runtime\prepare-npdev-generator-runtime.ps1 -RuntimeRoot D:\WorkSpace\NPDev\AppGen\generator-runtime` (pass `-RuntimeRoot` explicitly).
+- **NEVER resolve the repo root by its directory NAME, and never hardcode `D:\WorkSpace\...` as a
+  default** (REG-144). Eleven copies of the external-build-root resolution walked up looking for a
+  directory literally named `NPDev_General`. GitHub checks this repo out as `NPDevGeneral`, so every
+  copy fell through to its own fallback — and those fallbacks started from different directories.
+  Measured in a real clone renamed to `NPDevGeneral`, running real Gradle: **three** different build
+  roots in one checkout (`<clone>/Build`, `<clone>/NPDevContract/Build`, `<clone>/../Build`). Gradle
+  wrote jars to one and `sync-runtimehost-libs.ps1` searched another, so three packaged-app proof
+  tests failed on Linux CI for twelve days.
+  **It passed locally the whole time because this machine's directory really is named
+  `NPDev_General` — the walks agreed by coincidence, not by construction, so no local gate could
+  ever have caught it.** Identify the root by its CONTENTS (the directory holding `NPDevContract` +
+  `NPDevGenerator` + `NPDevKernel`), the predicate `WorkspaceRootLocator.java` already established.
+  The eleven copies are pinned by twin-pair rule `build-root-resolution-eleven-place`: each carries
+  an `npdev-build-root-resolution` token, and dropping it from any one fails
+  `run-ai-knowledge-gate.ps1`. A script default that needs the repo root should use
+  `$PSScriptRoot`-relative arithmetic (exact, adds no twelfth walk) or **call**
+  `Get-NPDevBuildRoot` / `Get-NPDevRuntimeHostLibsDir` — never repeat their answer as a literal, which
+  is precisely what `run-fast-gate.ps1` did while its own docs claimed it called the function.
+- **A generated FinalApp carries its own `.npdev-root` marker**, so that file alone does NOT identify
+  this repo — every root resolution pairs it with the module directories. Only the marker's existence
+  is ever tested; nothing parses its content.
 
 ## Stability policy
 
