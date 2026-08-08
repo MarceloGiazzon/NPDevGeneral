@@ -126,15 +126,33 @@ resolution: >-
   produced nothing at all the first time -- the container line was written, captured into the JUnit
   XML, and invisible in the log, because Gradle does not forward a forked test JVM's stdout.
 
-  STILL OPEN, and what actually gates DONE:
-    1. Pin the container images to digests or fixed versions. THIS COMES FIRST -- promoting the
-       trigger while the images move would give a gate that cannot distinguish a regression from an
-       upstream image change.
-    2. Promote the workflow to push triggers on the paths it already lists.
-    3. Tier C: E1, E2, I2, I3 against the probe apps (NPDevSamples/probes, already built).
-    4. Decide the two recorded engine gaps -- SqlServerDialect.rowLimit() throws, and
-       ConversionHookEmitter has no DatabaseEngine to ask.
-    5. Measure the MySQL DDL-implicit-commit behaviour against the real engine (STOR-2).
+  DONE SINCE (2026-08-08, storage/FULL_SUPPORT_PLAN.md) -- four of the five gating steps:
+    1. Images PINNED to digests, in DialectTestSupport and in the workflow's own PINNED_* block,
+       held together by check-container-images-pinned.py. Proven in run 31269774692. Two defects
+       found doing it: `repo:tag@sha256:` is unparseable by Testcontainers 1.21.4, and MCR served a
+       schema-1 manifest whose digest modern Docker cannot pull.
+    2. Trigger PROMOTED to push/pull_request on the listed paths. Proven by run 31272122462, whose
+       event is `push` and which nobody dispatched. The promotion carried its own trap: every matrix
+       step was guarded on `github.event.inputs.engine`, which is EMPTY on a push -- the jobs would
+       have skipped their real step and reported green having run nothing.
+    4. BOTH engine gaps CLOSED (see above) -- not accepted as boundaries.
+    5. MySQL's DDL-implicit-commit behaviour MEASURED at the shape a migration actually has:
+       conformance vector T3, run 31271016482, 14/14 per engine with zero skips. The first attempt
+       measured NOTHING on MySQL -- the plan's proposed failing statement (a NOT NULL column with no
+       default, on a table with rows) SUCCEEDS there -- and only the vector's own guard caught it.
+
+  STILL OPEN, and it is no longer a process objection:
+    3. Tier C (E1, E2, I2, I3) has a driver and a CI job but has not passed: its seeding endpoint
+       returns 404 for the p2 probe, which is a probe-shape question rather than an engine one.
+    6. NEW, and the real blocker: STOR-5. The application-level probe -- the thing that had never
+       run -- showed that no generated app could execute NPDev's own V1 schema-realization script on
+       MySQL or SQL Server. Two causes are already fixed (STOR-4's missing JDBC drivers,
+       keyableTextColumnType for indexed TEXT columns); the third, the Postgres/H2 guarded-DDL
+       idioms in that script, is STOR-5 and is what now gates calling either engine supported.
+
+  PostgreSQL IS proven at application level in the same run (31279857141): boots, non-BMP unicode
+  round trip, filtered+ordered+paginated query, rows surviving a restart, and all six npdev doctor
+  database checks green against a real engine.
 files:
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java
