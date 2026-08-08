@@ -365,12 +365,27 @@ function Get-NPDevRuntimeHostLibsDir([string]$WorkspaceRoot) {
 # The Build root every generated artifact lives under. Kept beside the libs dir above so the two
 # cannot drift apart again: they are now one definition, not two conventions.
 #
-# Walks UP from the workspace root looking for a directory literally named 'NPDev_General' --
-# mirrors build.gradle's own resolveNpdevBuildRoot exactly (the Kernel/Generator Gradle builds do
-# the same walk, and take -PnpdevBuildRoot / NPDEV_BUILD_ROOT as an override the same way this does).
-# Falls back to <workspace>/Build when no such ancestor exists -- e.g. a `git clone` folder literally
-# named 'NPDevGeneral' (no underscore, exactly how GitHub's own checkout action names it) or a git
-# worktree under .../.claude/worktrees.
+# npdev-build-root-resolution. Walks UP from the workspace root for the directory that CONTAINS
+# NPDevContract + NPDevGenerator + NPDevKernel -- the repo root identified by its contents, never by
+# its name. Its parent holds Build. Mirrors resolveNpdevBuildRoot in all five build.gradle files,
+# which use the same predicate, and WorkspaceRootLocator.java, which established it.
+#
+# THIS WALK USED TO MATCH ON THE NAME 'NPDev_General', and the comment below already knew a clone
+# could be named 'NPDevGeneral' -- it just assumed the fallback handled that. It did not. When the
+# name did not match, this function and Gradle BOTH fell through, to fallbacks computed from
+# different starting points:
+#     Gradle      rootDir.parentFile/Build   rootDir = NPDevKernel  -> <workspace>/Build
+#     PowerShell  workspace.Parent/Build     workspace = checkout   -> <workspace>/../Build
+# One directory apart. Gradle wrote 30 adapter jars to the first; sync-runtimehost-libs.ps1 searched
+# the second, found zero, and three packaged-app proof tests failed on Linux CI with "No RuntimeHost
+# jars were discovered under build/libs after local jar build."
+#
+# Measured against simulated checkouts before and after the fix:
+#     folder 'NPDevGeneral'   OLD: PS .../NPDevGeneral/Build vs Gradle .../NPDevGeneral/NPDevGeneral/Build  DISAGREE
+#     folder 'NPDev_General'  OLD: both .../NPDev/Build                                                     agree
+# That second line is the whole story: on the author's machine the directory really is named
+# NPDev_General, so the two agreed by coincidence and the bug could only ever appear on CI or in
+# someone else's clone. Content-based detection makes them agree by construction, under any name.
 #
 # Found live (2026-08-06, CI_RED_PLAN.md follow-up): this function's OLD body was a bare
 # <workspace.parent>/Build guess, which diverged from a SEPARATE copy of this exact walk that
@@ -392,7 +407,10 @@ function Get-NPDevBuildRoot([string]$WorkspaceRoot) {
 
     $workspace = Get-Item -LiteralPath (Normalize-NPDevPath $WorkspaceRoot)
     $ancestor = $workspace
-    while ($null -ne $ancestor -and $ancestor.Name -ne 'NPDev_General') {
+    while ($null -ne $ancestor -and -not (
+            (Test-Path -LiteralPath (Join-Path $ancestor.FullName "NPDevContract") -PathType Container) -and
+            (Test-Path -LiteralPath (Join-Path $ancestor.FullName "NPDevGenerator") -PathType Container) -and
+            (Test-Path -LiteralPath (Join-Path $ancestor.FullName "NPDevKernel") -PathType Container))) {
         $ancestor = $ancestor.Parent
     }
     if ($null -ne $ancestor -and $null -ne $ancestor.Parent) {

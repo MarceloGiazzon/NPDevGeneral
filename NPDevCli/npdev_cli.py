@@ -73,12 +73,21 @@ except Exception:  # portability: if scripts/ai is absent, capture simply no-ops
     _diagnostic_signature = None
 
 
+def _is_npdev_repo_root(candidate: Path) -> bool:
+    """True when this directory holds the three top-level modules -- the repo root identified by
+    what it contains, so any clone name works. Same predicate as WorkspaceRootLocator.java."""
+    return all((candidate / name).is_dir()
+               for name in ("NPDevContract", "NPDevGenerator", "NPDevKernel"))
+
+
 def _ai_build_root() -> Path:
     env = os.environ.get("NPDEV_BUILD_ROOT")
     if env and env.strip():
         return Path(env).expanduser().resolve()
+    # npdev-build-root-resolution: identify the repo root by its CONTENTS, not its name -- see
+    # scripts/npdev-common.ps1's Get-NPDevBuildRoot comment for the CI failure the name match caused.
     cursor = repo_root()
-    while cursor is not None and cursor.name != "NPDev_General":
+    while cursor is not None and not _is_npdev_repo_root(cursor):
         cursor = cursor.parent if cursor.parent != cursor else None
     if cursor is not None and cursor.parent is not None:
         return cursor.parent / "Build"

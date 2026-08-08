@@ -10,8 +10,14 @@ def resolveNpdevBuildRoot = {
     if (configured != null && !configured.trim().isEmpty()) {
         return file(configured)
     }
+    // npdev-build-root-resolution: find the repo root by its CONTENTS, not its NAME. A clone named
+    // anything but 'NPDev_General' used to fall through to a fallback that disagreed with
+    // scripts/npdev-common.ps1's Get-NPDevBuildRoot by one directory -- see that function's comment
+    // for the CI failure it caused. Same predicate as WorkspaceRootLocator.java.
     def sourceRoot = rootDir
-    while (sourceRoot != null && sourceRoot.name != 'NPDev_General') {
+    while (sourceRoot != null && !(new File(sourceRoot, 'NPDevContract').isDirectory()
+            && new File(sourceRoot, 'NPDevGenerator').isDirectory()
+            && new File(sourceRoot, 'NPDevKernel').isDirectory())) {
         sourceRoot = sourceRoot.parentFile
     }
     if (sourceRoot != null && sourceRoot.parentFile != null) {

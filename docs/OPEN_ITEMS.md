@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**144 item(s) migrated: 1 open/partial, 143 done.**
+**145 item(s) migrated: 1 open/partial, 144 done.**
 
 ## Open / partial
 
@@ -79,7 +79,7 @@ Two independent fix shapes, not mutually exclusive:
     conditionally-written raw resource -- sidesteps the generator-side root cause the same way,
     without needing to isolate it first.
 
-## Done (143)
+## Done (144)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -135,6 +135,7 @@ Two independent fix shapes, not mutually exclusive:
 | REG-140 | Every generated app was hard-pinned to Java 17 (build.gradle.template's toolchain literal), with no per-app way to request a newer JDK -- deps-and-java/PLAN.md P2 | GAP | MEDIUM | DONE | 2026-08-07 |
 | REG-141 | A custom capability (plugin:java-source) had no supported way to declare a third-party Maven dependency or a local jar -- deps-and-java/PLAN.md P3 | GAP | MEDIUM | DONE | 2026-08-07 |
 | REG-143 | build.javaVersion's upper enum [17, 21] removed -- floor-only (>=17), future-proofed against every Java version to come, not just 21 -- ROUND2_PLAN.md R1c | GAP | LOW | DONE | 2026-08-07 |
+| REG-144 | Every external-build-root resolver found the repo root by its NAME ('NPDev_General'), so a clone named anything else resolved THREE different build roots and Linux CI stayed red for twelve days | BUG | HIGH | DONE | 2026-08-08 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
 | REG-16 | The other 23 launch items had zero adversarial review | PROCESS | HIGH | DONE | 2026-07-21 |
 | REG-16-resid | Adversarial review of the other ~21 launch surfaces (6-round programme) | PROCESS | HIGH | DONE | 2026-07-24 |
@@ -3228,6 +3229,51 @@ Two layers, both changed:
    the bean-wiring bug never trigger for it -- but step0/trial is exactly the path
    ROUND2_PLAN.md's R5 (the clean-VM proof) and every "New app" / zero-setup flow through the
    Manager depends on, so this was not a corner case worth leaving broken.
+
+### REG-144 — Every external-build-root resolver found the repo root by its NAME ('NPDev_General'), so a clone named anything else resolved THREE different build roots and Linux CI stayed red for twelve days
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-08)
+**Verification:** VERIFIED_LIVE
+**Source:** Found while fixing three packaged-app proof tests that failed only on the Linux CI runner (HardenGcDeleteReplaceCascade / HardenObjstoreFileUpload / TrustedSourceEmitter PackagedGeneratedAppRuntimeProofTest), red on main since 5317584 and passing on every local run.
+**Surface:** `build-tooling/root-resolution, ci/linux-maturity-validation`
+**Files:**
+- `build.gradle`
+- `NPDevContract/dsl/build.gradle`
+- `NPDevEditor/build.gradle`
+- `NPDevGenerator/build.gradle`
+- `NPDevKernel/build.gradle`
+- `scripts/npdev-common.ps1`
+- `npdev-gradlew.ps1`
+- `npdev-gradlew.sh`
+- `NPDevCli/npdev_cli.py`
+- `NPDevMcp/server.py`
+- `scripts/ai/npdev_ai_common.py`
+- `scripts/quality/twin-pair-registry.json`
+- `.npdev-root`
+- `.github/workflows/npdev-ci-validation.yml`
+
+Eleven independent copies of NPDev's external-build-root resolution located the repo root by walking ancestors for a directory literally NAMED 'NPDev_General':
+
+    NPDevKernel/build.gradle     while (sourceRoot.name != 'NPDev_General')
+    scripts/npdev-common.ps1     while ($ancestor.Name -ne 'NPDev_General')
+    ... and nine more (5 build.gradle, 2 .ps1, 1 .sh, 3 .py)
+
+GitHub's checkout action names the directory 'NPDevGeneral' -- no underscore. The walk never matched, so every copy fell through to its own fallback, and the fallbacks were computed from different starting points. Measured in a REAL clone renamed to 'NPDevGeneral', running real Gradle, not a simulation:
+
+    RED   NPDevKernel        -> <clone>/Build/gradle/npdev-kernel/root
+          NPDevContract/dsl  -> <clone>/NPDevContract/Build/gradle/npdev-dsl/root
+          Get-NPDevBuildRoot -> <clone>/../Build
+
+THREE build roots in one checkout. The proof tests build 30 adapter jars with Gradle (exit 0 -- the jars really were written), then run sync-runtimehost-libs.ps1, which searched a different root, found zero jars, and threw "No RuntimeHost jars were discovered under build/libs after local jar build."
+WHY IT SURVIVED SO LONG. On the author's machine the directory really is named NPDev_General, so every copy's walk succeeded and they agreed -- by coincidence, not by construction. The bug was therefore invisible to every local run and every local gate, and could only appear on CI or in someone else's clone. Get-NPDevBuildRoot's own comment already NAMED this hazard ("a git clone folder literally named 'NPDevGeneral' ... exactly how GitHub's own checkout action names it") and judged the fallback sufficient. It was not: the comment reasoned about one resolver in isolation and never compared the two fallbacks against each other.
+Two diagnostics hid the root cause and were fixed alongside it:
+  - the CI step that surfaces generator test failures globbed the non-redirected buildDir, so it
+    printed "no generator test XML containing failures was found" on a run with three failures.
+    Commit eff0f43 had fixed that identical trap for the artifact-upload glob two days earlier --
+    the redirected buildDir has now caught four separate call sites.
+  - NEW-1 declared working-directory on an `if: failure()` step; the runner resolves that before
+    the script runs, so a run failing upstream of app generation added a second, purely spurious
+    red X.
 
 ### REG-15 — LNCH-23: trademark clearance N/A, release tag cut
 

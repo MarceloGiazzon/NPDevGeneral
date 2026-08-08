@@ -1,27 +1,12 @@
-[CmdletBinding()]
-param(
-    [string]$WorkspaceRoot = 'D:\WorkSpace\NPDev_General'
-)
-
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-Set-Location $WorkspaceRoot
-
-Write-Host ''
-Write-Host '== Validate workspace ==' -ForegroundColor Cyan
-
-$branch = (git branch --show-current).Trim()
-if ($branch -ne 'main') {
-    throw "Expected branch main. Current branch: $branch"
-}
-
-Write-Host "Branch: $branch"
-
-Write-Host ''
-Write-Host '== Create stable NPDev root sentinel ==' -ForegroundColor Cyan
-
-@'
 NPDev General workspace root marker.
 Required by local/CI root resolution after roadmap cleanup.
 Do not delete.
+
+Only this file's EXISTENCE is ever tested (Get-NPDevWorkspaceRoot in scripts/npdev-common.ps1,
+NPDevRuntimeHost/build.gradle, FinalAppAssembler.java). Nothing parses its content.
+
+Note that a generated FinalApp carries its own copy of this marker, so the marker ALONE does not
+identify this repo -- every root resolution pairs it with the top-level module directories
+(NPDevContract / NPDevGenerator / NPDevKernel), which a generated app does not have. See
+Get-NPDevBuildRoot's comment in scripts/npdev-common.ps1 for why root detection must never key on
+the repo's directory NAME.
