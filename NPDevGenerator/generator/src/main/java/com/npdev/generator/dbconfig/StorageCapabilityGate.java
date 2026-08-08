@@ -7,7 +7,6 @@ import com.npdev.dsl.v1.compiled.CompiledIndex;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
-import com.npdev.dsl.v1.query.GroupByJoinGrammar;
 import com.npdev.kernel.storage.sql.SqlDialect;
 import com.npdev.kernel.storage.sql.SqlDialects;
 import com.npdev.kernel.storage.sql.StorageCapability;
@@ -163,18 +162,24 @@ public final class StorageCapabilityGate {
         return out;
     }
 
+    /**
+     * Whether a {@code groupBy} field reaches through a reference, i.e. needs a join.
+     *
+     * <p><b>Deliberately lexical, and deliberately not a parse.</b> An earlier version called
+     * {@code GroupByJoinGrammar.parse} and caught {@code RuntimeException} to return false for a
+     * malformed path. The security-pattern sweep flagged that as REG-39's shape, and it was right:
+     * this method's answer decides whether a model REQUIRES {@code SERVER_SIDE_JOIN}, so
+     * "unparseable" becoming "false" means an engine with no joins silently accepts a model that
+     * needs them -- the exact silent-wrong-answer this gate exists to prevent, introduced by the
+     * gate itself.
+     *
+     * <p>A dot IS the join in this grammar (a plain field name cannot contain one), so testing for
+     * it cannot throw and errs toward requiring the capability. Reporting a malformed path is the
+     * DSL validator's job and it does it with a better message; over-requiring a capability here at
+     * worst refuses a model that was already invalid.
+     */
     private static boolean isJoin(String groupByField) {
-        if (groupByField == null || groupByField.isBlank()) {
-            return false;
-        }
-        try {
-            return GroupByJoinGrammar.parse(groupByField) instanceof GroupByJoinGrammar.Target.Join;
-        } catch (RuntimeException unsupportedPath) {
-            // Not this gate's job to report a malformed path -- the DSL validator already refuses
-            // those with a better message. Swallowing it here would be wrong only if it were the
-            // ONLY check; it is not.
-            return false;
-        }
+        return groupByField != null && groupByField.indexOf('.') >= 0;
     }
 
     private static Map<StorageCapability, String> alternativesFor(Set<StorageCapability> missing) {

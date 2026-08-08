@@ -243,20 +243,22 @@ public final class MySqlDialect implements SqlDialect {
     }
 
     @Override
-    public String listTablesSql(String schema) {
-        return "SELECT table_name FROM information_schema.tables WHERE table_schema = "
-                + schemaPredicate(schema) + " AND table_type = 'BASE TABLE' ORDER BY table_name";
+    public String listTablesSql() {
+        return "SELECT table_name FROM information_schema.tables"
+                + " WHERE table_schema = COALESCE(?, DATABASE())"
+                + " AND table_type = 'BASE TABLE' ORDER BY table_name";
     }
 
     @Override
-    public String listColumnsSql(String schema, String table) {
+    public String listColumnsSql() {
         return "SELECT column_name, data_type, is_nullable, column_default"
-                + " FROM information_schema.columns WHERE table_schema = " + schemaPredicate(schema)
-                + " AND table_name = '" + escapeLiteral(table) + "' ORDER BY ordinal_position";
+                + " FROM information_schema.columns"
+                + " WHERE table_schema = COALESCE(?, DATABASE()) AND table_name = ?"
+                + " ORDER BY ordinal_position";
     }
 
     @Override
-    public String listIndexesSql(String schema, String table) {
+    public String listIndexesSql() {
         // information_schema.STATISTICS, not pg_index. NON_UNIQUE is inverted relative to the column
         // name every other dialect returns, so it is flipped HERE rather than at the caller --
         // getting index uniqueness backwards is REG-129's exact bug class, and a caller that has to
@@ -265,8 +267,7 @@ public final class MySqlDialect implements SqlDialect {
                 + " column_name AS column_name,"
                 + " (non_unique = 0) AS is_unique"
                 + " FROM information_schema.statistics"
-                + " WHERE table_name = '" + escapeLiteral(table) + "'"
-                + " AND table_schema = " + schemaPredicate(schema)
+                + " WHERE table_schema = COALESCE(?, DATABASE()) AND table_name = ?"
                 + " ORDER BY index_name, seq_in_index";
     }
 
