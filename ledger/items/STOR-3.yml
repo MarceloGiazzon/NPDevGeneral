@@ -82,14 +82,26 @@ detail: >-
       behaviour under a half-applied migration is still unmeasured, and that is the one that
       corrupts data rather than failing loudly
 
-  Two known gaps that are recorded rather than fixed:
-    - SqlServerDialect.rowLimit() THROWS. SQL Server has no suffix row cap (TOP is a prefix; the
-      suffix form needs an ORDER BY an existence probe has none of). The two probe call sites in
-      PostgresPersistenceCapabilityAdapter must move to existsProbe() before SQL Server can run.
-    - ConversionHookEmitter.portableSqlType() emits the H2/Postgres COMMON form because the emitter
-      has no DatabaseEngine. That was already true; it stops being safe with a third engine (MySQL
-      has no native UUID), and threading the engine in is a signature change MySQL cannot ship
-      without.
+  BOTH RECORDED ENGINE GAPS ARE NOW CLOSED (storage/FULL_SUPPORT_PLAN.md W1.3), fixed rather than
+  accepted as boundaries -- so there is nothing to add under ledger/boundaries/:
+
+    - SqlServerDialect.rowLimited() is a PREFIX rewrite (SELECT -> SELECT TOP n). The plan offered
+      two options and said to find out which call sites need it before choosing. Measured: FOUR --
+      two existence probes in PostgresPersistenceCapabilityAdapter, two first-by-order reads in
+      JdbcEventStore -- and all four want "at most n rows", not a suffix. Suffix-vs-prefix is the
+      engine's business, which is precisely what a dialect is for; pushing the question out to the
+      call sites would have MOVED the engine switch rather than removed it, which SqlDialect's own
+      javadoc names as the thing this seam must never become. rowLimit() -- the SUFFIX primitive --
+      still throws, and that stays correct: there genuinely is no suffix form there. TOP is placed
+      after DISTINCT (T-SQL's grammar is SELECT [ALL|DISTINCT] [TOP n]) and a CTE is REFUSED rather
+      than mis-capped, since no string surgery can find its final select.
+
+    - ConversionHookEmitter now takes the DatabaseEngine, threaded from GeneratorFacade, which
+      already held the GeneratedDatabasePlan two lines above the call. The claim that this was a
+      signature change MySQL could not ship without was right; the claim that it was structurally
+      hard was not. It had been asking H2 unconditionally -- the narrower of the only two engines
+      that existed -- and that stops being safe with a third (MySQL has no native UUID), in code
+      that runs during a migration, on data.
 resolution: >-
   PARTIAL.
 
