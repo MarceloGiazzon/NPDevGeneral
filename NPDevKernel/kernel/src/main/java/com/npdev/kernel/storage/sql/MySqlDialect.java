@@ -136,6 +136,19 @@ public final class MySqlDialect implements SqlDialect {
         return sqlTypeName != null && JSON_TYPE_NAMES.contains(sqlTypeName.trim().toLowerCase(Locale.ROOT));
     }
 
+    /**
+     * THE ENGINE THAT FORCED THIS METHOD. MySQL refuses to index a TEXT/BLOB column without a
+     * prefix length (error 1170), so an internal table whose primary key is declared TEXT cannot
+     * be CREATED at all -- the failure lands in Flyway on first boot, not at generation time.
+     *
+     * <p>255 rather than a longer bound: on utf8mb4 that is 1020 bytes, comfortably inside the
+     * 3072-byte InnoDB index-key limit even for a multi-column index.
+     */
+    @Override
+    public String keyableTextColumnType() {
+        return "VARCHAR(255)";
+    }
+
     @Override
     public String timestampColumnType() {
         // DATETIME, not TIMESTAMP: MySQL's TIMESTAMP is a 32-bit epoch that ends in 2038 and silently

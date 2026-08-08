@@ -100,6 +100,13 @@ public final class H2Dialect implements SqlDialect {
         return sqlTypeName != null && JSON_TYPE_NAMES.contains(sqlTypeName.trim().toLowerCase(Locale.ROOT));
     }
 
+    /** H2 indexes VARCHAR happily and has no key-length restriction; bounded anyway so every
+     *  engine realizes the SAME column type and a later schema diff has nothing to explain. */
+    @Override
+    public String keyableTextColumnType() {
+        return "VARCHAR(255)";
+    }
+
     @Override
     public String timestampColumnType() {
         return "TIMESTAMP WITH TIME ZONE";

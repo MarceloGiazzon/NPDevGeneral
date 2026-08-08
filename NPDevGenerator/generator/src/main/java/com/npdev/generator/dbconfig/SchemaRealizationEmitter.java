@@ -190,9 +190,11 @@ public final class SchemaRealizationEmitter {
     }
 
     private static void appendInternalTableAdditiveColumns(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
+        Set<String> keyed = keyedColumnsOf(table);
         for (InternalColumnDefinition column : table.columns()) {
             sql.append("ALTER TABLE ").append(table.name()).append(" ADD COLUMN IF NOT EXISTS ")
-                    .append(column.name()).append(" ").append(renderInternalType(column.type(), engine));
+                    .append(column.name()).append(" ")
+                    .append(renderInternalType(column.type(), engine, keyed.contains(column.name())));
             if (!column.defaultExpression().isBlank()) {
                 sql.append(" DEFAULT ").append(column.defaultExpression());
             } else if (column.required()) {
@@ -322,12 +324,13 @@ public final class SchemaRealizationEmitter {
 
     private static void appendTable(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
         sql.append("CREATE TABLE IF NOT EXISTS ").append(table.name()).append(" (\n");
+        Set<String> keyed = keyedColumnsOf(table);
         List<String> lines = new ArrayList<>();
         for (InternalColumnDefinition column : table.columns()) {
             StringBuilder line = new StringBuilder("  ")
                     .append(column.name())
                     .append(" ")
-                    .append(renderInternalType(column.type(), engine));
+                    .append(renderInternalType(column.type(), engine, keyed.contains(column.name())));
             if (column.required()) {
                 line.append(" NOT NULL");
             }
@@ -1566,16 +1569,53 @@ public final class SchemaRealizationEmitter {
         return engine.dialect().portableColumnType(sqlType.trim());
     }
 
-    private static String renderInternalType(InternalColumnType type, DatabaseEngine engine) {
+    /**
+     * The SQL type for one of NPDev's OWN internal columns.
+     *
+     * <p><b>{@code keyed} is not a refinement, it is the difference between an app that boots and one
+     * that does not.</b> This method used to return a flat {@code "TEXT"} for every text column,
+     * ignoring the engine entirely. Postgres and H2 index {@code TEXT} happily. MySQL refuses
+     * (error 1170, "BLOB/TEXT column used in key specification without a key length") and SQL Server
+     * cannot index {@code NVARCHAR(MAX)} either -- so {@code npdev_flow_instances}, whose primary key
+     * is the {@code TEXT} column {@code execution_id}, could not be CREATED on either engine.
+     *
+     * <p>Found by CI run 31273275129 -- the first application-level probe to get past the missing
+     * JDBC driver (STOR-4). It failed inside Flyway on first boot, which is the layer no unit test
+     * and no Tier B vector reaches.
+     *
+     * <p>A column that participates in a primary key or an index therefore asks the dialect for a
+     * type it can actually key on. Everything else keeps the engine's unbounded text, because
+     * truncating a message or a JSON document to fit an index it is not in would be a data loss to
+     * fix a problem that does not exist.
+     */
+    private static String renderInternalType(InternalColumnType type, DatabaseEngine engine, boolean keyed) {
         if (type == null) {
             return "VARCHAR(255)";
         }
         return switch (type) {
-            case TEXT, LARGE_TEXT, JSON_DOCUMENT -> "TEXT";
+            case TEXT, LARGE_TEXT, JSON_DOCUMENT ->
+                    keyed && engine != null && engine.jdbc()
+                            ? engine.dialect().keyableTextColumnType()
+                            : "TEXT";
             case TIMESTAMP -> "TIMESTAMP";
             case INTEGER -> "INTEGER";
             case BIGINT -> "BIGINT";
         };
+    }
+
+    /**
+     * Every column of {@code table} that a primary key or an index names.
+     *
+     * <p>Computed from the table's own declarations rather than a hand-kept list: a new index added
+     * to an internal table in {@code com.npdev.kernel.dbschema} must not need a second edit here to
+     * remain creatable on MySQL. That second edit is precisely what nobody would remember to make.
+     */
+    private static Set<String> keyedColumnsOf(InternalTableDefinition table) {
+        Set<String> keyed = new LinkedHashSet<>(table.primaryKey().columns());
+        for (InternalIndexDefinition index : table.indexes()) {
+            keyed.addAll(index.columns());
+        }
+        return keyed;
     }
 
     private static String truncate(String value) {
