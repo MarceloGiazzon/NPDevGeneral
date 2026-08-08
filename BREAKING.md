@@ -5,6 +5,30 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-08 — `database.engine` gains `MySQL` and `SqlServer` (storage/PLAN.md S4b/S5)
+
+**Not a breaking change — widened, not narrowed. No codemod needed, and that is a claim, not an
+omission.** Every existing `db.definition.json` validates identically: `Postgres`, `InMemory`,
+`H2Local` and `H2Server` keep their exact meaning, their exact conditional requirements, and their
+exact generated output. The enum grew by two values; nothing was renamed, removed or retyped, so
+there is no model text for `npdev migrate` to rewrite.
+
+Threaded: `schemas/ai/user-db-definition.schema.json` (enum + a host/port/username/password
+requirement for each new engine, matching Postgres's), `DatabaseEngine` (two new values on the
+EXISTING `storageMode` axis — both `jdbc`, because that second string is the split a document engine
+will use, not a dialect name), `UserDatabaseDefinitionLoader` (driver, JDBC URL, default port,
+container naming), and `SqlDialects` (registry).
+
+**`MySQL` and `SqlServer` are selectable but NOT supported.** The dialects pass every conformance
+vector that can run locally, and no vector has ever run against a real MySQL or SQL Server —
+`.github/workflows/storage-dialect-conformance.yml` is `workflow_dispatch`-only and has never been
+executed. Choosing either engine today gets you a generated app whose SQL is believed correct and
+unproven. See ledger item `STOR-3` for exactly what is unverified and the six steps to close it.
+
+Two engine-specific gaps are known and recorded rather than hidden: `SqlServerDialect.rowLimit()`
+throws (SQL Server has no suffix row cap — `TOP` is a prefix), and `ConversionHookEmitter` still
+emits the H2/Postgres common column type because it has no `DatabaseEngine` to ask.
+
 ## 2026-08-08 — `build.javaVersion`'s upper enum removed (ROUND2_PLAN.md R1c)
 
 **Not a breaking change — widened, not narrowed.** Every config that validated under the old

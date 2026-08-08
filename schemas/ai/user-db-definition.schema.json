@@ -11,7 +11,7 @@
       "additionalProperties": false,
       "required": ["engine", "createInternalTables", "createBusinessTables"],
       "properties": {
-        "engine": { "enum": ["Postgres", "InMemory", "H2Local", "H2Server"] },
+        "engine": { "enum": ["Postgres", "InMemory", "H2Local", "H2Server", "MySQL", "SqlServer"] },
         "host": { "type": "string", "minLength": 1 },
         "port": { "type": "integer", "minimum": 1 },
         "databaseName": { "type": "string", "minLength": 1 },
@@ -41,6 +41,14 @@
               { "required": ["host", "port"] }
             ]
           }
+        },
+        {
+          "if": { "properties": { "engine": { "const": "MySQL" } }, "required": ["engine"] },
+          "then": { "required": ["host", "port", "username", "password"] }
+        },
+        {
+          "if": { "properties": { "engine": { "const": "SqlServer" } }, "required": ["engine"] },
+          "then": { "required": ["host", "port", "username", "password"] }
         }
       ]
     },

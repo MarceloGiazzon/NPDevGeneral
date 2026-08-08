@@ -1,0 +1,79 @@
+id: STOR-2
+title: >-
+  A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on
+  engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-08
+closed: 2026-08-08
+verification: UNIT_TESTED
+surface: runtimehost/db/conversion-hooks, kernel/storage-dialect
+source: >-
+  storage/PLAN.md §5's instruction, followed literally: "Before writing MySqlDialect, find every
+  place the schema engine assumes a DDL rollback and decide, explicitly, what MySQL does instead."
+  Doing that search found a defect that predates MySQL entirely.
+detail: >-
+  ConversionHookRunner.executeAndVerify runs a hook's convert SQL and its verifySql in ONE
+  transaction on ONE connection, so a verify failure rolls the whole hook back. That design was
+  itself a fix (SER-P7 finding #1): before it, the convert committed first and a failing verify
+  aborted the boot with the hook's changes already landed.
+
+  A hook's convert SQL contains DDL. ConversionHookEmitter emits
+  `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` into it.
+
+  H2 and MySQL both COMMIT IMPLICITLY ON DDL. The ALTER ends the transaction the moment it runs,
+  taking any DML issued before it along with it. The subsequent rollback undoes only what came after
+  the last DDL statement -- so it is not a no-op, but it is not what the code said either.
+
+  All three refusal messages said, verbatim:
+
+      "-- refusing the boot (the hook's changes were rolled back; nothing persisted)."
+
+  and the comment above them said "Now 'nothing persisted' is literally true." On H2 -- the engine
+  every NPDev dev app runs on -- it was already not true, and boundary B11 had recorded H2's DDL
+  limitation independently without anyone connecting it to this message.
+
+  WHY THIS IS THE HIGH-SEVERITY HALF. The failure mode is not the un-rolled-back DDL; it is the
+  platform telling an operator the database is untouched when it is not. A false all-clear is what
+  turns a recoverable half-migration into one nobody goes looking for. The operator reads "nothing
+  persisted", fixes the model, and re-runs -- against a schema that already moved.
+resolution: >-
+  DONE (2026-08-08). The messages now come from the dialect, via a rollbackTruth() helper that asks
+  SqlDialects.active().supports(DDL_IN_TRANSACTION):
+
+    - transactional engine (Postgres, SQL Server): unchanged wording.
+    - implicit-commit engine (H2, MySQL): names the engine, states that the schema changes and any
+      data change made before them are ALREADY COMMITTED and were NOT rolled back, says only changes
+      after the last DDL were undone, and tells the operator to inspect the schema before re-running.
+
+  BEHAVIOUR IS DELIBERATELY UNCHANGED. Two alternatives were considered and rejected:
+
+    - Refuse to run hooks on an engine without DDL_IN_TRANSACTION. This would break every H2 app
+      using conversion hooks today, for a hazard those apps have already been living with, and H2 is
+      what every dev app runs on.
+    - Add a generation-time capability requirement for models declaring hooks. Same effect, further
+      from the point of failure, and it would refuse models that work.
+
+  The defect was the sentence, so the sentence is what changed. That is the X0 rule applied to a
+  message rather than to a code path: an engine that cannot do something must SAY SO.
+
+  Recorded here rather than only in code because storage/PLAN.md §11.5 requires the MySQL
+  DDL-commit decision to be written down in the ledger. The decision, in one line: MySQL declares
+  DDL_IN_TRANSACTION absent, the schema engine keeps working the way it already did (each statement
+  individually idempotent -- IF NOT EXISTS, and REG-38's drop-then-add), and the only place that
+  ASSUMED a rollback now asks instead of assuming.
+
+  Also traced and found NOT to need changes: SchemaLifecycleExecutor wraps no pass in an explicit
+  transaction (it relies on Flyway's per-migration handling plus per-statement idempotence, which
+  survives an engine without DDL rollback), and MigrationClaimStore is pure DML.
+
+  NOT YET PROVEN AGAINST A REAL MySQL. Conformance vector T2 asserts DDL transactionality matches
+  each dialect's declaration, and it SKIPS on the local H2 backend with a printed reason, because
+  H2-in-MySQL-mode does not reproduce the implicit commit. It runs in
+  .github/workflows/storage-dialect-conformance.yml, which has never been executed.
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/ConversionHookRunner.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/StorageCapability.java

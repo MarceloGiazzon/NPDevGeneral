@@ -6,13 +6,14 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**145 item(s) migrated: 1 open/partial, 144 done.**
+**148 item(s) migrated: 2 open/partial, 146 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
 | REG-142 | /api/admin/model/export and /api/admin/model/ui (ui-model) still read classpath resource npdev/model.json directly, which can be RuntimeHost's own unreplaced template placeholder rather than the app's real model, depending on how generation resolved the model source | GAP | LOW | OPEN | 2026-08-07 |
+| STOR-3 | MySQL and SQL Server dialects exist, are registered, and pass every locally-runnable conformance vector -- but NEITHER IS SUPPORTED until the container suite has actually run | GAP | MEDIUM | PARTIAL | 2026-08-08 |
 
 ### Detail
 
@@ -79,7 +80,59 @@ Two independent fix shapes, not mutually exclusive:
     conditionally-written raw resource -- sidesteps the generator-side root cause the same way,
     without needing to isolate it first.
 
-## Done (144)
+### STOR-3 — MySQL and SQL Server dialects exist, are registered, and pass every locally-runnable conformance vector -- but NEITHER IS SUPPORTED until the container suite has actually run
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** PARTIAL
+**Verification:** UNIT_TESTED
+**Source:** storage/PLAN.md S4b, S5 and S4a.
+**Surface:** `kernel/storage-dialect, generator/dbconfig, ci/storage-dialect-conformance`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectTestSupport.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierBTest.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/StorageDialectInitializer.java`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DatabaseEngine.java`
+- `.github/workflows/storage-dialect-conformance.yml`
+
+MySqlDialect and SqlServerDialect are implemented, registered in SqlDialects, wired to new DatabaseEngine values (MYSQL, SQL_SERVER -- new VALUES on the existing storageMode axis, not a parallel concept), given JDBC URLs, drivers and default ports, and pinned at boot by StorageDialectInitializer from npdev.database.engine.
+That last piece matters more than it looks: without it, registering MySQL would have changed NOTHING. Every store falls back to SqlDialects.active(), which defaults to Postgres, so an app generated for MySQL would have booted happily and emitted Postgres SQL -- the silent-wrong-answer failure the whole seam exists to prevent, arriving through the back door.
+WHAT IS PROVEN
+  - Tier A, 78 assertions, all four engines: clause text, declared parameter order, quoting,
+    auto-increment spelling, capability declarations, and every refusal. Zero skips.
+  - Tier B, 52 executions, 12 skipped with printed reasons: behaviour against a real connection --
+    upsert idempotence, page non-overlap, JSON round-trip, reserved-word columns, DML rollback,
+    auto-increment monotonicity, enforced uniqueness.
+  - PostgresDialectGoldenSqlTest, 24 assertions (STOR-1).
+
+WHAT IS NOT PROVEN, AND WHY IT IS LISTED AS PARTIAL
+Local Tier B runs against H2 in each engine's compatibility MODE. H2 was PROBED rather than trusted, and the results changed the test design:
+
+    MODE=PostgreSQL  CANNOT run ON CONFLICT      -> Postgres's own upsert is not locally verifiable
+    MODE=MySQL       CAN run ON DUPLICATE KEY    -> MySQL's upsert does get a real local check
+    MODE=MSSQLServer REJECTS LIMIT ? OFFSET ?    -> confirms SQL Server's pagination shape differs
+                     and accepts OFFSET..FETCH
+
+So Tier B gates per CONSTRUCT, not per engine, and says out loud what it did not run. But no vector has ever executed against a real MySQL or a real SQL Server. Specifically unproven:
+
+    T2  DDL transactionality        H2 does not model MySQL's implicit commit (see STOR-2)
+    U2  concurrent MERGE            SQL Server's HOLDLOCK hazard appears under load, not in H2
+    Q2  case sensitivity            depends on the real server's config AND host filesystem
+    J2  utf8mb4 fidelity            H2 stores anything; MySQL may truncate silently
+    I2/I3 catalog introspection     information_schema columns differ from the real engine
+
+storage/PLAN.md §11 is explicit that an engine is supported only when "a real MySQL container ran the conformance suite there". It has not. Calling MySQL supported on a green local run is the one claim this entire plan exists to avoid making, and REG-36/REG-50 are the same lesson already learned once with H2-in-PostgreSQL-mode.
+Two known gaps that are recorded rather than fixed:
+  - SqlServerDialect.rowLimit() THROWS. SQL Server has no suffix row cap (TOP is a prefix; the
+    suffix form needs an ORDER BY an existence probe has none of). The two probe call sites in
+    PostgresPersistenceCapabilityAdapter must move to existsProbe() before SQL Server can run.
+  - ConversionHookEmitter.portableSqlType() emits the H2/Postgres COMMON form because the emitter
+    has no DatabaseEngine. That was already true; it stops being safe with a third engine (MySQL
+    has no native UUID), and threading the engine in is a signature change MySQL cannot ship
+    without.
+
+## Done (146)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -230,6 +283,8 @@ Two independent fix shapes, not mutually exclusive:
 | REG-97 | CompiledModelCanonicalJson is not idempotent under write -> read -> write: the READER back-filled a concept invariant's empty fields[] from its field, so the CANONICAL form of a model depended on how many times it had been round-tripped | BUG | MEDIUM | DONE | 2026-07-31 |
 | REG-98 | Two differently-named concepts can compile to the SAME physical table and the model validates with zero errors -- SqlIdentifierSupport.toSnake() sanitizes by REPLACEMENT (every non-alphanumeric becomes '_'), and nothing checks the derived table names for collisions | BUG | HIGH | DONE | 2026-07-31 |
 | REG-99 | A band's transaction.visibleWhen was unreachable in EVERY spelling -- the validator accepts only the derived address 'collection.band', the expander read only the bare band name, so the predicate validated and was silently dropped | BUG | MEDIUM | DONE | 2026-07-31 |
+| STOR-1 | 41 dialect-bound SQL sites were inlined across 19 files, so a second database engine was a rewrite rather than a dialect -- and two files had already grown a hand-rolled H2-vs-Postgres fork | GAP | MEDIUM | DONE | 2026-08-08 |
+| STOR-2 | A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced | BUG | HIGH | DONE | 2026-08-08 |
 
 ### Detail
 
@@ -6903,6 +6958,63 @@ the `uiState` control compiles into the workbench descriptor, which it did. Noth
 the PREDICATE reached the band. The live run is what failed, and the assertion it produced
 (`AutoPanelUiStateValidationTest.bandVisibleWhenReachesTheBandDescriptor`) now pins both the
 address and the predicate on the band descriptor.
+
+### STOR-1 — 41 dialect-bound SQL sites were inlined across 19 files, so a second database engine was a rewrite rather than a dialect -- and two files had already grown a hand-rolled H2-vs-Postgres fork
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-08)
+**Verification:** UNIT_TESTED
+**Source:** storage/PLAN.md S1, executed against 5680551. The plan's own measurement (storage/helpers/dialect-site-inventory.py) found 41 real code sites across 19 files -- not the ~130 a keyword grep had suggested -- with pagination alone accounting for 23.
+**Surface:** `kernel/storage-dialect, adapters/*-postgres, runtimehost/db, generator/dbconfig`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PaginationClause.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialects.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/PostgresDialectGoldenSqlTest.java`
+- `NPDevKernel/adapters/flowinstance-postgres/src/main/java/com/npdev/adapters/flowinstance/jdbc/JdbcFlowInstanceStore.java`
+- `NPDevKernel/adapters/eventstore-postgres/src/main/java/com/npdev/adapters/eventstore/jdbc/JdbcEventStore.java`
+- `NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
+- `scripts/quality/check-dialect-sites.py`
+
+The eight *-postgres adapters hold ~3,900 lines of SQL, and only 41 places in the whole codebase were bound to a particular engine's spelling. That is a good position to be in, and it was invisible: nothing named those 41 places, so "add MySQL" looked like a rewrite of the adapters.
+Measured distribution, which is lopsided in a useful way:
+
+    pagination           23      more than half -- and IDENTICAL on MySQL
+    json-type             7
+    introspection         5
+    upsert                4
+    identifier-quoting    1      <- all of it a false positive, see below
+    auto-increment        1      <- likewise
+    returning             0      <- MySQL's hardest gap does not apply here
+
+THREE OF THE 41 WERE NOT SQL. `Function.identity(` matched the auto-increment pattern; a JSON writer emitting a key called "table" satisfied the identifier-quoting guard (TABLE is a noun, not a statement keyword). Both constructs' ENTIRE reported count was false. Two more turned up once the kernel was scanned for the first time: `limit > 0 ? limit : defaultCap` (ordinary Java) and the word "returning" inside an English error message -- the latter in the one construct whose count is load-bearing, since zero RETURNING sites is what makes MySQL cheap.
+THERE WERE ALREADY TWO DIALECTS. PostgresPersistenceCapabilityAdapter.buildUpsertSql and JdbcBusinessConceptStore.upsertSql each branched on getDatabaseProductName().contains("h2") and emitted a different statement; SchemaRealizationEmitter.addConstraintIfMissing guarded DDL with a Postgres DO $$ block or an H2 drop-then-add. Routing everything through one Postgres dialect would have handed H2 an ON CONFLICT it does not accept -- so leaving those inline was the behaviour-CHANGING option, not the safe one.
+THE PROOF ITSELF WAS BROKEN. capture-sql-baseline.py, the tool whose diff IS S1's exit condition, was blind to Java text blocks: a `"""..."""` literal opens with `String sql = """`, the regex saw two adjacent quotes, extracted an empty string and dropped it. JdbcFlowInstanceStore -- which holds NINE of the twenty-three pagination sites -- contributed ZERO baseline entries. The file most affected by S1 was the file the proof could not see.
+
+### STOR-2 — A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-08)
+**Verification:** UNIT_TESTED
+**Source:** storage/PLAN.md §5's instruction, followed literally: "Before writing MySqlDialect, find every place the schema engine assumes a DDL rollback and decide, explicitly, what MySQL does instead." Doing that search found a defect that predates MySQL entirely.
+**Surface:** `runtimehost/db/conversion-hooks, kernel/storage-dialect`
+**Files:**
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/ConversionHookRunner.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/StorageCapability.java`
+
+ConversionHookRunner.executeAndVerify runs a hook's convert SQL and its verifySql in ONE transaction on ONE connection, so a verify failure rolls the whole hook back. That design was itself a fix (SER-P7 finding #1): before it, the convert committed first and a failing verify aborted the boot with the hook's changes already landed.
+A hook's convert SQL contains DDL. ConversionHookEmitter emits `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` into it.
+H2 and MySQL both COMMIT IMPLICITLY ON DDL. The ALTER ends the transaction the moment it runs, taking any DML issued before it along with it. The subsequent rollback undoes only what came after the last DDL statement -- so it is not a no-op, but it is not what the code said either.
+All three refusal messages said, verbatim:
+
+    "-- refusing the boot (the hook's changes were rolled back; nothing persisted)."
+
+and the comment above them said "Now 'nothing persisted' is literally true." On H2 -- the engine every NPDev dev app runs on -- it was already not true, and boundary B11 had recorded H2's DDL limitation independently without anyone connecting it to this message.
+WHY THIS IS THE HIGH-SEVERITY HALF. The failure mode is not the un-rolled-back DDL; it is the platform telling an operator the database is untouched when it is not. A false all-clear is what turns a recoverable half-migration into one nobody goes looking for. The operator reads "nothing persisted", fixes the model, and re-runs -- against a schema that already moved.
 
 </details>
 

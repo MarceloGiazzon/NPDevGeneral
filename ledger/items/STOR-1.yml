@@ -1,0 +1,106 @@
+id: STOR-1
+title: >-
+  41 dialect-bound SQL sites were inlined across 19 files, so a second database engine was a rewrite
+  rather than a dialect -- and two files had already grown a hand-rolled H2-vs-Postgres fork
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-08
+closed: 2026-08-08
+verification: UNIT_TESTED
+surface: kernel/storage-dialect, adapters/*-postgres, runtimehost/db, generator/dbconfig
+source: >-
+  storage/PLAN.md S1, executed against 5680551. The plan's own measurement
+  (storage/helpers/dialect-site-inventory.py) found 41 real code sites across 19 files -- not the
+  ~130 a keyword grep had suggested -- with pagination alone accounting for 23.
+detail: >-
+  The eight *-postgres adapters hold ~3,900 lines of SQL, and only 41 places in the whole codebase
+  were bound to a particular engine's spelling. That is a good position to be in, and it was
+  invisible: nothing named those 41 places, so "add MySQL" looked like a rewrite of the adapters.
+
+  Measured distribution, which is lopsided in a useful way:
+
+      pagination           23      more than half -- and IDENTICAL on MySQL
+      json-type             7
+      introspection         5
+      upsert                4
+      identifier-quoting    1      <- all of it a false positive, see below
+      auto-increment        1      <- likewise
+      returning             0      <- MySQL's hardest gap does not apply here
+
+  THREE OF THE 41 WERE NOT SQL. `Function.identity(` matched the auto-increment pattern; a JSON
+  writer emitting a key called "table" satisfied the identifier-quoting guard (TABLE is a noun, not
+  a statement keyword). Both constructs' ENTIRE reported count was false. Two more turned up once
+  the kernel was scanned for the first time: `limit > 0 ? limit : defaultCap` (ordinary Java) and
+  the word "returning" inside an English error message -- the latter in the one construct whose
+  count is load-bearing, since zero RETURNING sites is what makes MySQL cheap.
+
+  THERE WERE ALREADY TWO DIALECTS. PostgresPersistenceCapabilityAdapter.buildUpsertSql and
+  JdbcBusinessConceptStore.upsertSql each branched on
+  getDatabaseProductName().contains("h2") and emitted a different statement;
+  SchemaRealizationEmitter.addConstraintIfMissing guarded DDL with a Postgres DO $$ block or an H2
+  drop-then-add. Routing everything through one Postgres dialect would have handed H2 an
+  ON CONFLICT it does not accept -- so leaving those inline was the behaviour-CHANGING option, not
+  the safe one.
+
+  THE PROOF ITSELF WAS BROKEN. capture-sql-baseline.py, the tool whose diff IS S1's exit condition,
+  was blind to Java text blocks: a `"""..."""` literal opens with `String sql = """`, the regex saw
+  two adjacent quotes, extracted an empty string and dropped it. JdbcFlowInstanceStore -- which
+  holds NINE of the twenty-three pagination sites -- contributed ZERO baseline entries. The file
+  most affected by S1 was the file the proof could not see.
+resolution: >-
+  DONE (2026-08-08). com.npdev.kernel.storage.sql in :kernel, where all three consumers already see
+  it -- adapters and generator via project(':kernel'), RuntimeHost via the staged kernel jar. No new
+  Gradle module: jar staging is this repo's most persistent defect family (REG-128/136/137/144).
+
+  Inventory 41 -> 0 sites outside the dialect package, and the scanner still finds all six construct
+  families in a planted control file, so the zero is coverage rather than a blinded detector. The
+  scanner was also pointed at NPDevKernel/kernel for the first time -- it had never been scanned, so
+  "0 outside the dialect package" had been trivially true for the entire kernel.
+
+  TWO PROOFS, because one was not enough:
+
+    - capture-sql-baseline.py now sees text blocks (341 -> 394 literals, 161 -> 213 distinct) and
+      folds the dialect calls back in before comparing, reading the clause text out of
+      PostgresDialect's own constants rather than hardcoding it. Verified against three synthetic
+      trees: honest extraction IDENTICAL, a reworded ORDER BY caught, a silently deleted pagination
+      clause caught. Result: 3 removals, 0 additions.
+    - PostgresDialectGoldenSqlTest, 24 assertions, each expected value quoted from the
+      pre-extraction source with its file named. This is the stronger of the two: it checks the
+      ASSEMBLED string, so it covers what a source scan cannot (the upserts, whose text depends on a
+      runtime column list).
+
+  The three residual removals are all upsert openers and are enumerated in
+  storage/evidence/S1_EVIDENCE.md. Two also reflect one deliberate normalisation: two call sites
+  spelled their upsert entirely lower-case and two entirely upper-case, so the dialect emits
+  canonical upper case. SQL keywords and the EXCLUDED pseudo-table are case-insensitive on all four
+  target engines, and every identifier at those sites comes from a variable, so nothing user-visible
+  changes case.
+
+  PaginationClause carries the parameter ORDER, not just the text, because SQL Server's
+  OFFSET..FETCH reverses it -- a String-returning paginate() would have let 23 call sites keep
+  setInt(n, limit); setInt(n+1, offset), correct on three engines and silently the wrong page on the
+  fourth. The kernel stays JDBC-free (still zero java.sql imports).
+
+  Conformance P3 turned out to be FREE: every paginated statement in the repo already declares an
+  explicit ORDER BY with a tie-breaker, so "refuse pagination without an order, on every engine" is
+  enforced from S1 at zero behaviour cost instead of arriving later with SQL Server as a new
+  restriction. JdbcBusinessConceptStore.orderByClause had independently written the same reasoning
+  in a comment.
+
+  check-dialect-sites.py keeps the zero at zero (run-ai-knowledge-gate [28/29]), proven to go red on
+  a planted site and green again when removed. run-runtimehost-gate.ps1 green -- generate, build and
+  boot a real sample app.
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PaginationClause.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialects.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/PostgresDialectGoldenSqlTest.java
+  - NPDevKernel/adapters/flowinstance-postgres/src/main/java/com/npdev/adapters/flowinstance/jdbc/JdbcFlowInstanceStore.java
+  - NPDevKernel/adapters/eventstore-postgres/src/main/java/com/npdev/adapters/eventstore/jdbc/JdbcEventStore.java
+  - NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
+  - scripts/quality/check-dialect-sites.py
