@@ -84,3 +84,9 @@ resolution: |
   Generator gate (`:generator` module) compiled and passed with all changes, including the new
   FinalAppAssemblerTest case (`appendsTheRequestedJavaVersionNotAlwaysTheDefault`) and the new
   GeneratorMainJavaVersionResolutionTest (6 cases covering valid/invalid/missing/default paths).
+
+  2026-08-08 follow-up: ROUND2_PLAN.md R1c asked whether 21 satisfied the third-party user's
+  original "newer Java version" request. Answer: no -- widen unconditionally, no new fixed ceiling.
+  The `enum: [17, 21]` from this item was removed in favor of a floor-only `minimum: 17` check; see
+  REG-143 for the schema/validation change and the Gradle 9.5.1 bump (+ ArchUnit/Mockito fallout
+  fixes) that makes values above 21 actually buildable, not just schema-accepted.
