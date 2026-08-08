@@ -280,6 +280,35 @@ class DialectConformanceTierATest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("dialects")
+    @DisplayName("I3: the keyable text type is BOUNDED on every engine, so a PK on it can be created")
+    void keyableTextTypeIsBounded(SqlDialect dialect) {
+        // storage/FULL_SUPPORT_PLAN.md gap A. NPDev's own npdev_flow_instances makes the TEXT column
+        // `execution_id` its PRIMARY KEY. Postgres and H2 index TEXT happily; MySQL refuses without a
+        // prefix length (error 1170) and SQL Server cannot index NVARCHAR(MAX) -- so the platform's
+        // own schema could not be CREATED on two of its four engines. Found by the first
+        // application-level probe to get that far (CI run 31273275129), inside Flyway, on first boot.
+        String type = dialect.keyableTextColumnType();
+        assertTrue(type.matches("(?i)N?VARCHAR\\(\\d+\\)"),
+                dialect.name() + ": a keyable text type must be BOUNDED -- an unbounded one cannot be "
+                + "indexed on MySQL or SQL Server. Got: " + type);
+        // Bounded on EVERY engine, not only where required: an engine-conditional width would make
+        // the same internal column a different type per engine, and a later schema diff would then
+        // have to explain the difference rather than ignore it.
+        assertTrue(!type.equalsIgnoreCase("TEXT"), dialect.name() + ": " + type);
+    }
+
+    @Test
+    @DisplayName("I3: SQL Server keys on NVARCHAR -- plain VARCHAR there loses characters silently")
+    void sqlServerKeyableTextIsUnicode() {
+        // Conformance J2's lesson applied to a different method: SQL Server's VARCHAR is non-Unicode.
+        // A primary key that silently drops characters would be worse than one that fails to create.
+        assertTrue(SqlServerDialect.INSTANCE.keyableTextColumnType().toUpperCase(java.util.Locale.ROOT)
+                        .startsWith("NVARCHAR"),
+                SqlServerDialect.INSTANCE.keyableTextColumnType());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
     @DisplayName("C1: EVERY engine can cap a statement, whatever shape its cap takes")
     void everyDialectCanCapAStatement(SqlDialect dialect) {
         // storage/FULL_SUPPORT_PLAN.md W1.3. The gap was never "SQL Server cannot cap rows" -- it is

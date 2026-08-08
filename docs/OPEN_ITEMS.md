@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**149 item(s) migrated: 2 open/partial, 147 done.**
+**150 item(s) migrated: 3 open/partial, 147 done.**
 
 ## Open / partial
 
@@ -14,6 +14,7 @@
 |---|---|---|---|---|---|
 | REG-142 | /api/admin/model/export and /api/admin/model/ui (ui-model) still read classpath resource npdev/model.json directly, which can be RuntimeHost's own unreplaced template placeholder rather than the app's real model, depending on how generation resolved the model source | GAP | LOW | OPEN | 2026-08-07 |
 | STOR-3 | MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images | GAP | MEDIUM | PARTIAL | 2026-08-08 |
+| STOR-5 | The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run | GAP | HIGH | OPEN | 2026-08-08 |
 
 ### Detail
 
@@ -160,6 +161,49 @@ BOTH RECORDED ENGINE GAPS ARE NOW CLOSED (storage/FULL_SUPPORT_PLAN.md W1.3), fi
     hard was not. It had been asking H2 unconditionally -- the narrower of the only two engines
     that existed -- and that stops being safe with a third (MySQL has no native UUID), in code
     that runs during a migration, on data.
+
+### STOR-5 — The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run
+
+**Type:** GAP · **Severity:** HIGH · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** storage/FULL_SUPPORT_PLAN.md gap A / exit criteria E3+E4. Uncovered one construct at a time by the application-level probe, once STOR-4's missing JDBC driver stopped hiding everything behind it.
+**Surface:** `generator/dbconfig/SchemaRealizationEmitter, kernel/storage-dialect`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java`
+- `scripts/quality/check-dialect-sites.py`
+- `.github/workflows/engine-support.yml`
+
+`SchemaRealizationEmitter` writes `V1__npdev_schema_realization.sql`, the Flyway script that creates NPDev's own internal tables and the app's business tables. It is written in the guarded-DDL dialect of Postgres and H2:
+
+    CREATE TABLE IF NOT EXISTS ...
+    CREATE INDEX IF NOT EXISTS ...
+    ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...
+
+MEASURED, one CI round each, against real containers:
+
+  run 31273275129  MySQL      error 1170 -- BLOB/TEXT column 'execution_id' used in key
+                              specification without a key length          [FIXED: STOR-4 / keyableTextColumnType]
+  run 31279857141  MySQL      error 1064 -- syntax error near 'IF NOT EXIST...'
+                              (MySQL has no CREATE INDEX IF NOT EXISTS)    [THIS ITEM]
+  run 31279857141  SQL Server "Incorrect syntax near 'probe_reserveds'"
+                              (T-SQL has no CREATE TABLE IF NOT EXISTS)    [THIS ITEM]
+
+WHY IT SURFACED ONLY NOW, AND WHY THAT IS THE POINT
+Every layer below this was green and stayed green: Tier A (78 assertions, four engines), Tier B (14/14 behavioural vectors per engine against REAL containers, zero skips), and the whole configuration path. None of them ever asks the engine to run NPDev's OWN generated DDL, because none of them generates an app. This is gap A restated concretely for a second time -- STOR-4 was the first -- and it is the reason the plan ranks "a generated app boots" above everything else.
+The failures are also strictly ordered: each fix reveals the next construct, because Flyway stops at the first statement it cannot run. That makes the remaining work bounded and visible rather than open-ended, but it does mean one CI round per construct until the seam is complete.
+WHAT THE FIX LOOKS LIKE
+This belongs in `SqlDialect`, beside `guardedConstraintDdl` which already exists for exactly this reason -- a Postgres `DO $$ ... $$` block that MySQL and SQL Server have no equivalent for. The same treatment is needed for the three idioms above:
+
+  Postgres / H2   native IF NOT EXISTS
+  MySQL           CREATE TABLE IF NOT EXISTS is supported; CREATE INDEX IF NOT EXISTS and
+                  ADD COLUMN IF NOT EXISTS are not -- they need an information_schema guard around
+                  a PREPARE/EXECUTE, or Flyway callbacks
+  SQL Server      none are supported -- each needs an IF OBJECT_ID(...) IS NULL / IF NOT EXISTS
+                  (SELECT ... FROM sys.*) wrapper
+
+`check-dialect-sites.py` should grow patterns for these three constructs at the same time, so the next one written inline fails the gate rather than a CI job.
+DO NOT let this be worked around in the workflow (for instance by pre-creating tables). The point of the probe is that a USER's first boot runs this script.
 
 ## Done (147)
 

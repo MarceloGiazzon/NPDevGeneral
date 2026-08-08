@@ -38,15 +38,40 @@ and read back `café ?`, because the vector hand-wrote `VARCHAR(4000)` and SQL S
 non-Unicode. `SqlServerDialect.portableColumnType` already answered `NVARCHAR(4000)` and was never
 asked. Fixed; the vector was right to fail.
 
-**Why this is still not "supported".** The workflow is `workflow_dispatch`-only, so nothing
-re-verifies any of it when a dialect changes — a green run is a snapshot, not a guarantee. Its
-container images are moving tags (`mssql/server:2022-latest`), so a future red could not be told
-apart from "the image changed". And four vectors (E1, E2, I2, I3) need a realized schema that Tier B
-cannot produce. `STOR-3` lists the five remaining steps.
+**Why this is still not "supported" — updated 2026-08-08, and the reasons have changed.**
 
-Two engine-specific gaps are known and recorded rather than hidden: `SqlServerDialect.rowLimit()`
-throws (SQL Server has no suffix row cap — `TOP` is a prefix), and `ConversionHookEmitter` still
-emits the H2/Postgres common column type because it has no `DatabaseEngine` to ask.
+The process objections are gone. The conformance workflow now runs on every relevant **push** (run
+`31272122462`, no dispatch) against **digest-pinned** images (run `31269774692`), so a green run is a
+guarantee rather than a snapshot and a future red cannot be an upstream image change. Both recorded
+engine gaps are closed, not deferred: `SqlServerDialect.rowLimited()` is a prefix rewrite
+(`SELECT TOP n`), chosen after measuring that all four real call sites want "at most n rows" rather
+than a suffix; and `ConversionHookEmitter` now takes the `DatabaseEngine` that `GeneratorFacade`
+already held two lines above the call.
+
+What replaced them is a concrete finding, and it is worth more than the objections it displaced.
+**The first application-level probe showed that no generated app could ever have run on either
+engine**, for two independent reasons neither Tier A nor Tier B can reach — because neither builds
+the artifact a user runs:
+
+| finding | measured | state |
+|---|---|---|
+| the app template declared no MySQL or SQL Server **JDBC driver** — `Cannot load driver class: com.mysql.cj.jdbc.Driver`, at DataSource creation | run `31272786548` | fixed — `STOR-4` |
+| NPDev's own `npdev_flow_instances` keys on a `TEXT` column, which **MySQL refuses to index** (error 1170) and SQL Server cannot index either | run `31273275129` | fixed — `SqlDialect.keyableTextColumnType()` |
+| `V1__npdev_schema_realization.sql` is written in Postgres/H2 **guarded-DDL idioms** (`CREATE TABLE/INDEX IF NOT EXISTS`) that MySQL supports only partly and T-SQL not at all | run `31279857141` | **OPEN — `STOR-5`** |
+
+So the honest status is narrower and better evidenced than before: the dialects are right, the
+configuration path is right, and NPDev's own schema script is not yet portable. That last item is
+what stands between these engines and "supported", and it is bounded — Flyway stops at the first
+statement it cannot run, so each construct is found in minutes by
+`.github/workflows/engine-support.yml` rather than by a user's first boot.
+
+**PostgreSQL, by contrast, is proven at application level** in the same run: a generated app boots,
+round-trips `café ☕ 🚀` byte-for-byte, paginates a filtered and ordered query, and keeps its rows
+across a restart — plus all six `npdev doctor` database checks passing live.
+
+`npdev engines` marks MySQL and SQL Server EXPERIMENTAL and says why **at the point of choice**, in
+the CLI, in the Manager's dropdown and in `docs/USING_MYSQL_AND_SQL_SERVER.md` — all from one
+registry, so none of them can drift into claiming otherwise.
 
 ## 2026-08-08 — `build.javaVersion`'s upper enum removed (ROUND2_PLAN.md R1c)
 
