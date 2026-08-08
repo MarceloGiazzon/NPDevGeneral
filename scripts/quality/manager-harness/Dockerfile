@@ -34,7 +34,12 @@ COPY NPDevManager/capabilities ./capabilities
 COPY NPDevManager/icons ./icons
 COPY NPDevManager/tauri.conf.json ./tauri.conf.json
 COPY NPDevManager/ui ./ui
-RUN cargo build --release --target-dir /build
+# `quick`, not `release`: this build exists only to produce a binary for `--selftest`, and the
+# Manager's hot path is a blocking subprocess -- LTO across 531 crates optimises what nobody waits
+# on. `quick` is `release` with lto=false/codegen-units=16 (see NPDevManager/Cargo.toml). The
+# published installer still gets full LTO, because `cargo tauri build` uses `release` and cannot be
+# pointed elsewhere.
+RUN cargo build --profile quick --target-dir /build
 
 # ---- runtime: the bare machine I4 actually tests ----
 FROM ubuntu:24.04
@@ -56,6 +61,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libgtk-3-0 libayatana-appindicator3-1 librsvg2-2 \
  && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /build/release/npdev-manager /usr/local/bin/npdev-manager
+# /build/quick, not /build/release -- a custom cargo profile puts its output in a directory named
+# after the profile. This path and the `--profile` flag above are a pair; changing one alone gives
+# a COPY that fails the image build.
+COPY --from=builder /build/quick/npdev-manager /usr/local/bin/npdev-manager
 
 ENTRYPOINT ["/usr/local/bin/npdev-manager", "--selftest"]
