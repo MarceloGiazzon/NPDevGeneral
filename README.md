@@ -11,13 +11,22 @@ fill in, a working application.
 
 ---
 
+## Prefer not to use a terminal?
+
+**NPDev Manager** installs everything for you — Java included — and runs your app from a window.
+[Download it](https://github.com/MarceloGiazzon/NPDevGeneral/releases/download/beta1.7/NPDev.Manager_0.1.0_x64-setup.exe)
+(Windows), double-click, and you never touch a command line. Full manual, Linux instructions, and
+troubleshooting → [`docs/MANAGER.md`](docs/MANAGER.md)
+
+---
+
 ## See it run
 
-**Requires Java 17 and Python 3** — Docker is optional, only needed for the Docker run path.
+**Requires Java 17+ and Python 3** — Docker is optional, only needed for the Docker run path.
 `npdev doctor` checks all of it and tells you exactly what is missing.
 
 ```sh
-npdev doctor                       # is this machine ready? (Java 17, Python, disk)
+npdev doctor                       # is this machine ready? (Java 17+, Python, disk)
 npdev setup                        # one-time: build NPDev's own jars locally
 npdev init my-app && cd my-app     # a small, runnable app to start from
 npdev dev                          # build it, run it, and watch it
@@ -251,10 +260,12 @@ format* version, unrelated to any of the above; it has never changed, including 
 `beta1.6`'s own drift notes, each resolved the same way: cut the next tag fresh at `main` rather
 than move a published one.)
 
-**`main` is the sole working branch** (as of 2026-08-07, REG-139/I2) — all work lands directly on
-`main`; there is no separate release/working branch to keep in sync. The `beta1-vision-spine`
-branch this repo used earlier in beta1 has been deleted (both locally and on `origin`) after
-sitting unused, 6 commits behind `main`, for several sessions' worth of work that had already moved
-to `main` directly. See `docs/RELEASE_PROCESS.md`'s "Merge cadence" section for why a drifting
-second branch was a real, previously-recurring problem (150 and then 71 commits of drift), and why
-collapsing to one branch removes that failure mode by construction.
+**`main` is the only branch** (as of 2026-08-07, REG-139/I2 + FINAL_PLAN.md/F1) — both locally and
+on `origin`, no exceptions. All work lands directly on `main`; there is no separate release/working
+branch to keep in sync. Four stale branches accumulated across earlier phases of this project
+(`beta1-vision-spine`, `beta0-ai-autonomous-loop`, `beta0-no-false-green-release-hardening`,
+`lnch19-ci-verify`) have all been deleted after confirming each had nothing `main` didn't already
+have (`git log main..<branch>` empty for all). See
+`docs/RELEASE_PROCESS.md`'s "Merge cadence" section for why a drifting second branch was a real,
+previously-recurring problem (150 and then 71 commits of drift), and why collapsing to one branch
+removes that failure mode by construction.

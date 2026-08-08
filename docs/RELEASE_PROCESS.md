@@ -35,6 +35,36 @@ existing gate seed) and the beta0 tag-immutability rules already written into
    release): confirm the trademark-check item in `docs/adr/ADR-0007-distribution-model.md` has
    actually been done, not just noted as pending.
 
+## Publishing the Manager (FINAL_PLAN.md/F2)
+
+**Deliberately manual, not part of tag-push automation, as of 2026-08-07.**
+`.github/workflows/publish-runtimehost-libs.yml` auto-builds and attaches `runtimehost-libs-
+<tag>.zip` to every pushed tag because that artifact is plain JVM bytecode — platform-independent,
+built once on `ubuntu-latest`. The Manager installer is the opposite shape: a platform-specific
+Tauri/Rust build (Windows NSIS `.exe`, Linux `.AppImage`) that needs a matching runner per
+platform, and (for Linux) system packages like `webkit2gtk` the CI image may not carry. Wiring that
+up as real, tested automation is real work, not a few lines copied from the JVM-artifact workflow —
+so rather than ship an unverified CI job, this is recorded as a known gap instead (grouped with the
+other explicitly-deferred items — macOS, code signing — in `FINAL_PLAN.md`'s §7).
+
+**Until that automation exists, publishing a Manager build is a manual step, run from a clean
+checkout of the tag being released:**
+
+```powershell
+cd NPDevManager
+cargo tauri build
+gh release upload <tag> "$env:NPDEV_BUILD_ROOT\manager-target\release\bundle\nsis\NPDev Manager_<version>_x64-setup.exe" --clobber
+```
+
+(Linux `.AppImage` publishing needs a Linux build host — not done from this Windows-only
+development machine; tracked as part of the same CI-automation gap, not a separate one.)
+
+**Before uploading:** confirm the binary was actually built from the tagged commit, not an older
+local build — `NPDevManager/src/`, `NPDevManager/ui/`, and `NPDevManager/fixtures/` all changed in
+sessions after the previous installer build (F1's Java 17→17+ doctor relaxation, among others), so
+an installer built before that change would ship a UI that disagrees with what `docs/MANAGER.md`
+documents.
+
 ## Merge cadence: keep `origin/main` current
 
 `main` is public and the default branch — it is what a clone gets, what GitHub renders, and what any
