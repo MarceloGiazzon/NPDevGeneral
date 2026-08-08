@@ -98,6 +98,13 @@ public final class PostgresDialect implements SqlDialect {
         return sqlTypeName != null && JSON_TYPE_NAMES.contains(sqlTypeName.trim().toLowerCase(Locale.ROOT));
     }
 
+    /** Postgres can index TEXT with no limit, so this is not a restriction here -- it is agreement.
+     *  Returning TEXT would make the same internal column a different type per engine. */
+    @Override
+    public String keyableTextColumnType() {
+        return "VARCHAR(255)";
+    }
+
     @Override
     public String timestampColumnType() {
         return "TIMESTAMP WITH TIME ZONE";

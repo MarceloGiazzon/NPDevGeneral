@@ -184,6 +184,46 @@ jobs:
         if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
         run: python NPDevCli/npdev_cli.py setup --build-local
 
+      # Every probe database, created up front. Tier C gives each vector its OWN so that p2's
+      # model, p3's and p4's never share a
+      # schema fingerprint. Sharing one would make NPDev see each probe as an EVOLUTION of the last
+      # and -- correctly, under KeepExistingIfCompatible with no destructive recreate -- refuse the
+      # boot. The refusal would be right and the run would be measuring the harness.
+      #
+      # They have to be created here because NPDev creates TABLES at boot and never the database
+      # itself, which is precisely what doctor's `database-exists` check reports (added after run
+      # 31272786548 mistook a missing database for bad credentials). Run 31273028408 then hit the
+      # real thing: "FATAL: database npdev_p2_postgres does not exist".
+      - name: Create the Tier C databases
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
+        run: |
+          set -uo pipefail
+          # npdev_engine_probe is included: the MySQL and Postgres images create it from env vars,
+          # SQL Server's does not -- run 31273275129 failed with "Cannot open database
+          # npdev_engine_probe requested by the login". Creating it unconditionally means one code
+          # path instead of a per-engine exception nobody would notice going stale.
+          for suffix in engine_probe p2 p3 p4; do
+            if [ "$suffix" = "engine_probe" ]; then DB="npdev_engine_probe"; else DB="npdev_${suffix}_${{ matrix.engine }}"; fi
+            case "${{ matrix.engine }}" in
+              mysql)
+                # utf8mb4 explicitly, not inherited: these databases hold the evolution vectors, and
+                # a probe database on the legacy charset would fail for a reason unrelated to schema
+                # evolution.
+                docker exec npdev-engine mysql -uroot -pnpdevroot -e "CREATE DATABASE IF NOT EXISTS \`$DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON \`$DB\`.* TO 'npdev'@'%'; FLUSH PRIVILEGES;"
+                ;;
+              postgres)
+                # `|| true`: Postgres has no CREATE DATABASE IF NOT EXISTS, and a re-run finding it
+                # already there is success, not failure. A genuine problem surfaces at connect time
+                # with a clearer message than this step could produce.
+                docker exec npdev-engine psql -U npdev -d postgres -c "CREATE DATABASE $DB" || true
+                ;;
+              sqlserver)
+                docker exec npdev-engine /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Npdev!Probe123' -C -Q "IF DB_ID('$DB') IS NULL CREATE DATABASE [$DB];"
+                ;;
+            esac
+            echo "ensured $DB exists"
+          done
+
       - name: Generate, build, boot and exercise the probe app on ${{ matrix.engine }}
         if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
         run: |
@@ -292,41 +332,6 @@ jobs:
           print("E10 charset fixture: doctor correctly reported FAIL on utf8mb3")
           PY
           docker rm -f npdev-engine-latin1 >/dev/null 2>&1 || true
-
-      # Tier C gives each vector its OWN database, so that p2's model, p3's and p4's never share a
-      # schema fingerprint. Sharing one would make NPDev see each probe as an EVOLUTION of the last
-      # and -- correctly, under KeepExistingIfCompatible with no destructive recreate -- refuse the
-      # boot. The refusal would be right and the run would be measuring the harness.
-      #
-      # They have to be created here because NPDev creates TABLES at boot and never the database
-      # itself, which is precisely what doctor's `database-exists` check reports (added after run
-      # 31272786548 mistook a missing database for bad credentials). Run 31273028408 then hit the
-      # real thing: "FATAL: database npdev_p2_postgres does not exist".
-      - name: Create the Tier C databases
-        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
-        run: |
-          set -uo pipefail
-          for suffix in p2 p3 p4; do
-            DB="npdev_${suffix}_${{ matrix.engine }}"
-            case "${{ matrix.engine }}" in
-              mysql)
-                # utf8mb4 explicitly, not inherited: these databases hold the evolution vectors, and
-                # a probe database on the legacy charset would fail for a reason unrelated to schema
-                # evolution.
-                docker exec npdev-engine mysql -uroot -pnpdevroot -e "CREATE DATABASE IF NOT EXISTS \`$DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON \`$DB\`.* TO 'npdev'@'%'; FLUSH PRIVILEGES;"
-                ;;
-              postgres)
-                # `|| true`: Postgres has no CREATE DATABASE IF NOT EXISTS, and a re-run finding it
-                # already there is success, not failure. A genuine problem surfaces at connect time
-                # with a clearer message than this step could produce.
-                docker exec npdev-engine psql -U npdev -d postgres -c "CREATE DATABASE $DB" || true
-                ;;
-              sqlserver)
-                docker exec npdev-engine /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Npdev!Probe123' -C -Q "IF DB_ID('$DB') IS NULL CREATE DATABASE [$DB];"
-                ;;
-            esac
-            echo "ensured $DB exists"
-          done
 
       # E7. Runs after the app proof, deliberately: if an app cannot boot on this engine at all,
       # four schema-evolution vectors failing tells you nothing you did not already know, and a

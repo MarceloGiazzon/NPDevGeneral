@@ -134,6 +134,16 @@ public final class SqlServerDialect implements SqlDialect {
         return sqlTypeName != null && JSON_TYPE_NAMES.contains(sqlTypeName.trim().toLowerCase(Locale.ROOT));
     }
 
+    /**
+     * SQL Server's index key is capped at 900 bytes, and NVARCHAR(MAX) cannot be indexed at all --
+     * the same problem MySQL states more loudly. NVARCHAR, never VARCHAR: VARCHAR here is
+     * non-Unicode and loses characters silently, which is conformance J2's own lesson.
+     */
+    @Override
+    public String keyableTextColumnType() {
+        return "NVARCHAR(255)";
+    }
+
     @Override
     public String timestampColumnType() {
         // datetime2, not `timestamp` -- SQL Server's TIMESTAMP is a row-version binary counter with

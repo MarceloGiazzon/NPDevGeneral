@@ -82,6 +82,30 @@ public interface SqlDialect {
     String timestampColumnType();
 
     /**
+     * The text type that is safe to put in a PRIMARY KEY or an INDEX.
+     *
+     * <p><b>Not the same question as "what is this engine's text type", and the difference is a
+     * boot failure.</b> Found by the first application-level probe to get past the driver
+     * (CI run 31273275129, MySQL 8.4):
+     *
+     * <pre>
+     *   Error Code : 1170
+     *   Message    : BLOB/TEXT column 'execution_id' used in key specification without a key length
+     * </pre>
+     *
+     * <p>NPDev's internal tables declare {@code execution_id} as {@code TEXT} and make it a primary
+     * key. Postgres and H2 accept that happily; MySQL refuses to index a {@code TEXT} column without
+     * a prefix length, and SQL Server cannot index {@code NVARCHAR(MAX)} either -- its index key is
+     * limited to 900 bytes. So the schema realized fine on two engines and could not be created at
+     * all on the other two, at Flyway migration time, on first boot.
+     *
+     * <p>A bounded type everywhere rather than only where it is required: an engine-conditional
+     * width would make the SAME column a different type per engine, which is exactly the kind of
+     * divergence that turns a later schema diff into a per-engine puzzle.
+     */
+    String keyableTextColumnType();
+
+    /**
      * Rewrite a DECLARED column type into this engine's nearest supported spelling, or return it
      * unchanged when the engine already understands it.
      *
