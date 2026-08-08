@@ -19,28 +19,30 @@ EXISTING `storageMode` axis — both `jdbc`, because that second string is the s
 will use, not a dialect name), `UserDatabaseDefinitionLoader` (driver, JDBC URL, default port,
 container naming), and `SqlDialects` (registry).
 
-**`MySQL` and `SqlServer` are selectable but NOT supported** — though less unproven than this
-entry first claimed. `storage-dialect-conformance.yml` was dispatched once, manually, at commit
-`5814886` (run `31264977219`), and against REAL containers it reported:
+**`MySQL` and `SqlServer` are selectable but NOT supported** — though far less unproven than this
+entry first claimed. `storage-dialect-conformance.yml` has now been dispatched and is green against
+REAL containers (run `31268402414`, commit `bec03b5`):
 
 | engine | Tier B | |
 |---|---|---|
-| MySQL 8.4 (utf8mb4) | **13 / 13** | first execution against a real MySQL |
+| MySQL 8.4 (utf8mb4) | **13 / 13** | |
 | PostgreSQL 16 | **13 / 13** | the S1 dialect seam caused no regression |
-| SQL Server 2022 | 12 / 13 | one failure, and it was the TEST's bug (see below) |
+| SQL Server 2022 | **13 / 13** | |
 
-Zero vectors were skipped: the twelve that print a skip reason on the local H2 backend all executed.
+**39 vectors, three real engines, zero failures, zero skips** — including the twelve that print a
+skip reason on the local H2 backend (T2 DDL transactionality, Q2 case sensitivity, J2 charset
+fidelity among them).
 
-**It is still not support, for reasons that are about the process rather than the results.** The
-workflow remains `workflow_dispatch`-only, so nothing re-verifies any of this when a dialect changes;
-its container images are moving tags (`mssql/server:2022-latest`), so the suite can change underneath
-you; and four vectors (E1, E2, I2, I3) need a realized schema Tier B cannot produce. `STOR-3` lists
-the five remaining steps.
+The first dispatch (`31264977219`) found one real defect, and it was in the TEST: J2 stored `café ☕`
+and read back `café ?`, because the vector hand-wrote `VARCHAR(4000)` and SQL Server's `VARCHAR` is
+non-Unicode. `SqlServerDialect.portableColumnType` already answered `NVARCHAR(4000)` and was never
+asked. Fixed; the vector was right to fail.
 
-The SQL Server failure is worth stating because it is the useful kind: J2 stored `café ☕` and read
-back `café ?`. The vector hand-wrote `VARCHAR(4000)` in its own DDL, and on SQL Server `VARCHAR` is
-non-Unicode — silent, per-character data loss. `SqlServerDialect.portableColumnType` already returned
-`NVARCHAR(4000)` and was simply never asked. The vector was right to fail.
+**Why this is still not "supported".** The workflow is `workflow_dispatch`-only, so nothing
+re-verifies any of it when a dialect changes — a green run is a snapshot, not a guarantee. Its
+container images are moving tags (`mssql/server:2022-latest`), so a future red could not be told
+apart from "the image changed". And four vectors (E1, E2, I2, I3) need a realized schema that Tier B
+cannot produce. `STOR-3` lists the five remaining steps.
 
 Two engine-specific gaps are known and recorded rather than hidden: `SqlServerDialect.rowLimit()`
 throws (SQL Server has no suffix row cap — `TOP` is a prefix), and `ConversionHookEmitter` still

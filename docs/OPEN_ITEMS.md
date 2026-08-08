@@ -13,7 +13,7 @@
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
 | REG-142 | /api/admin/model/export and /api/admin/model/ui (ui-model) still read classpath resource npdev/model.json directly, which can be RuntimeHost's own unreplaced template placeholder rather than the app's real model, depending on how generation resolved the model source | GAP | LOW | OPEN | 2026-08-07 |
-| STOR-3 | MySQL and SQL Server dialects pass 13/13 Tier B vectors against REAL containers -- but neither is supported until that run is repeatable rather than a one-off manual dispatch | GAP | MEDIUM | PARTIAL | 2026-08-08 |
+| STOR-3 | MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images | GAP | MEDIUM | PARTIAL | 2026-08-08 |
 
 ### Detail
 
@@ -80,7 +80,7 @@ Two independent fix shapes, not mutually exclusive:
     conditionally-written raw resource -- sidesteps the generator-side root cause the same way,
     without needing to isolate it first.
 
-### STOR-3 — MySQL and SQL Server dialects pass 13/13 Tier B vectors against REAL containers -- but neither is supported until that run is repeatable rather than a one-off manual dispatch
+### STOR-3 — MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images
 
 **Type:** GAP · **Severity:** MEDIUM · **Status:** PARTIAL
 **Verification:** VERIFIED_LIVE
@@ -106,9 +106,10 @@ WHAT IS PROVEN
     auto-increment monotonicity, enforced uniqueness.
   - PostgresDialectGoldenSqlTest, 24 assertions (STOR-1).
 
-WHAT THE FIRST REAL RUN PROVED (2026-08-08, run 31264977219 at commit 5814886)
-The suite was dispatched manually for the first time. Read from the uploaded JUnit XML, per dialect -- NOT from the job status, which was red for all three jobs:
+WHAT THE REAL RUNS PROVED (2026-08-08)
+Three dispatches. Every figure below is read from the uploaded JUnit XML, never from job status -- which is the lesson the first run taught, since it was red on all three jobs while containing the best news of the day.
 
+    run 31264977219 (commit 5814886) -- FIRST EVER, jobs red
     dialect      passed  failed  seconds
     mysql            13       0     23.7    <- real MySQL 8.4 with utf8mb4
     postgres         13       0      8.3    <- no regression from the S1 seam
@@ -116,21 +117,29 @@ The suite was dispatched manually for the first time. Read from the uploaded JUn
     h2                0      13      0.1    <- harness: no container exists for h2
                                    0 skipped
 
+    run 31268402414 (commit bec03b5) -- after F0-F5, ALL JOBS GREEN
+    mysql            13       0     23.8
+    postgres         13       0     10.8
+    sqlserver        13       0     19.5
+                                   0 skipped, h2 no longer selected
+
+39 vectors, three real engines, zero failures, zero skips. One engine per job (13 tests, not 52).
 The seconds column is what separates "the harness broke" from "the engine ran": h2 fails in 0.1s (an immediate throw, no database) while mysql spends 23.7s (container time). The failure TYPES say the same thing independently -- IllegalArgumentException for all 13 h2 cases, AssertionFailedError for the one sqlserver case.
 ZERO SKIPS. The twelve vectors that print a skip reason on the local H2 backend all executed, including T2 (DDL transactionality), Q2 (case sensitivity) and J2 (charset fidelity). That was the entire purpose of the workflow and it worked on the first run.
-J2 on SQL Server is the one real finding, and it is the vector's own bug: it hand-wrote VARCHAR(4000) in its DDL, and SQL Server's VARCHAR is non-Unicode, so 'cafe [coffee emoji]' came back as 'cafe ?' -- silent per-character loss. SqlServerDialect.portableColumnType already returned NVARCHAR(4000) and was never asked. The general lesson is bigger than the line: a conformance vector that writes its own DDL is testing its own SQL, which is exactly the trap PLAN.md §6 named for probe apps and Tier B then walked into.
+J2 on SQL Server was the one real finding, and it was the vector's own bug: it hand-wrote VARCHAR(4000) in its DDL, and SQL Server's VARCHAR is non-Unicode, so 'cafe [coffee emoji]' came back as 'cafe ?' -- silent per-character loss. SqlServerDialect.portableColumnType already returned NVARCHAR(4000) and was never asked. Fixed in F3, along with J1, which had the identical defect and was passing only because its document is ASCII. The general lesson is bigger than the line: a conformance vector that writes its own DDL is testing its own SQL, which is exactly the trap PLAN.md §6 named for probe apps and Tier B then walked into.
 WHY THIS IS STILL PARTIAL
-The results are good; the PROCESS is not yet support:
+The results are now unambiguous; the PROCESS is not yet support:
 
-  - the workflow is workflow_dispatch-only, so nothing re-verifies MySQL when a dialect changes --
-    the next regression is found by a user
+  - the workflow is workflow_dispatch-only, so nothing re-verifies any engine when a dialect
+    changes. A green run is a snapshot, not a guarantee, and the next regression is found by a user
   - the container images are moving tags (mssql/server:2022-latest), so a future red cannot be
-    told apart from "the image changed"
+    told apart from "the image changed". This is now the PRIMARY reason the trigger has not been
+    promoted -- pinning comes first
   - E1, E2, I2 and I3 need a realized schema (Tier C + the probe apps) and cannot run here at all
-  - the MySQL DDL-implicit-commit decision (STOR-2) was reasoned about and is now exercised by T2,
-    but T2 asserts the DECLARATION matches the engine -- the schema engine's behaviour under a
-    half-applied migration is still unmeasured, and that is the one that corrupts data rather than
-    failing loudly
+  - the MySQL DDL-implicit-commit decision (STOR-2) is now exercised by T2 against a real MySQL,
+    and T2 passed -- but T2 asserts the DECLARATION matches the engine. The schema engine's
+    behaviour under a half-applied migration is still unmeasured, and that is the one that
+    corrupts data rather than failing loudly
 
 Two known gaps that are recorded rather than fixed:
   - SqlServerDialect.rowLimit() THROWS. SQL Server has no suffix row cap (TOP is a prefix; the
