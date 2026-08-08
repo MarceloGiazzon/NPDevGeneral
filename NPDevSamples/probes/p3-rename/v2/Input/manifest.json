@@ -1,0 +1,15 @@
+{
+  "id": "p3-rename-v2",
+  "title": "p3-rename-v2",
+  "complexity": "storage-probe",
+  "purpose": "Storage probe E2 (v2): a declared `renamedFrom` must MOVE the data, not drop and recreate the column. renamedFrom is a documented user-facing feature, so it has to mean the same thing on every engine or the docs are wrong for some users.",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo -- it serves conformance vector E2 and nothing else.",
+    "Built by the storage conformance Tier C tests; not intended to be run by hand."
+  ],
+  "expectedOutcomes": [
+    "Values written to `isbn` under v1 are readable as `isbn13` under v2.",
+    "No row is lost and no value is blanked."
+  ]
+}

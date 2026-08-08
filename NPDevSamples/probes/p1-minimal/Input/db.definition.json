@@ -1,0 +1,16 @@
+{
+  "database": {
+    "engine": "H2Local",
+    "databaseName": "p1_minimal",
+    "username": "sa",
+    "password": "",
+    "createInternalTables": true,
+    "createBusinessTables": true
+  },
+  "schemaLifecycle": {
+    "strategy": "KeepExistingIfCompatible",
+    "allowDestructiveRecreate": true,
+    "destructiveRecreateConfirmation": "",
+    "scope": "NpdevOwnedTablesOnly"
+  }
+}

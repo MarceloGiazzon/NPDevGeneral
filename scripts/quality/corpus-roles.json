@@ -17,7 +17,14 @@
     "  canary         -- Fast Lane plan (2026-08-01): the ONE app T1's fast gate builds+boots.",
     "                    Deliberately minimal but pipeline-complete (concept/flow/panel/procedure/",
     "                    query with a real WHERE); frozen -- growing it defeats the reason it is",
-    "                    fast. Exactly one model should carry this role: NPDevSamples/npdev-canary."
+    "                    fast. Exactly one model should carry this role: NPDevSamples/npdev-canary.",
+    "  probe          -- storage/PROBE_APPS.md: a FIXTURE serving exactly one storage conformance",
+    "                    vector (E1, E2, I2, I3). One behaviour each, fewest fields that work, no",
+    "                    panels/flows/roles/UI. Deliberately narrow, so probes are EXCLUDED from",
+    "                    check-dsl-coverage.py -- counting one as coverage for a feature would let",
+    "                    that feature go untested everywhere it is actually used. Never run one as",
+    "                    an application, and never let one grow: add a new probe instead, they cost",
+    "                    a kilobyte."
   ],
   "roles": {
     "AppGen/apps/_official/AuxScreen": "showcase",
@@ -48,6 +55,12 @@
     "NPDevSamples/medium-expense-approval": "showcase",
     "NPDevSamples/npdev-canary": "canary",
     "NPDevSamples/npdev-init-seed": "showcase",
+    "NPDevSamples/probes/p1-minimal": "probe",
+    "NPDevSamples/probes/p2-evolve/v1": "probe",
+    "NPDevSamples/probes/p2-evolve/v2": "probe",
+    "NPDevSamples/probes/p3-rename/v1": "probe",
+    "NPDevSamples/probes/p3-rename/v2": "probe",
+    "NPDevSamples/probes/p4-constraints": "probe",
     "NPDevSamples/restaurant-saas-multitenant": "showcase",
     "NPDevSamples/simple-contact-intake": "showcase",
     "NPDevSamples/simple-user-registry": "engine-variant",

@@ -2,7 +2,21 @@ param(
     [string]$WorkspaceRoot = "",
     [string]$ReportPath = "",
     [string]$RunId = "",
-    [int]$MaxFileCount = 3400,
+    # 3400 -> 3500, 2026-08-08 (storage/PROBE_APPS.md). The four storage probes are 6 models x 4
+    # files and put the count at 3403.
+    #
+    # Recalibrating rather than trimming, because of what this guard is FOR: keeping generated build
+    # output out of the source tree (docs/BUILD_OUTPUT_LOCATION_POLICY.md -- an Output/ directory
+    # from a sample run adds hundreds of files at once, which is the shape it catches). Twenty-four
+    # tracked JSON fixtures totalling a few KB are the opposite: exactly what the repo should hold.
+    # The SIZE limit, which is the one that actually tracks bloat, sits at 26 of 75 MB and is
+    # untouched -- if the count ever rises without the size following, that is the signal worth
+    # having, and it still fires.
+    #
+    # Do not raise this to make a commit go through. Look at what added the files first: if the
+    # answer is "a generated Output/ directory", the fix is
+    # scripts/hygiene/clean-workspace-state.ps1, not this number.
+    [int]$MaxFileCount = 3500,
     [decimal]$MaxSizeMB = 75,
     [int]$MaxScriptsFileCount = 500,
     [decimal]$MaxScriptsSizeMB = 10,

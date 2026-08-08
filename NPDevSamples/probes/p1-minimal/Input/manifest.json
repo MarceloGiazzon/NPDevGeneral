@@ -1,0 +1,15 @@
+{
+  "id": "p1-minimal",
+  "title": "p1-minimal",
+  "complexity": "storage-probe",
+  "purpose": "Storage probe P1/P2: the FLOOR -- one concept, three fields. Proves a realized table exists and paginates. Deliberately the smallest thing that can be generated.",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo -- it serves conformance vector P1/P2 and nothing else.",
+    "Built by the storage conformance Tier C tests; not intended to be run by hand."
+  ],
+  "expectedOutcomes": [
+    "A realized `item` table exists with id/label/rank.",
+    "Listing pages deterministically under an explicit order."
+  ]
+}

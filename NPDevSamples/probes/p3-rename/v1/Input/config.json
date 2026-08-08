@@ -1,0 +1,51 @@
+{
+  "$schema": "..\\\\..\\\\..\\\\..\\\\NPDevContract\\\\schemas\\\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "p3-rename-v1",
+    "description": "Storage probe E2 (v1): a declared `renamedFrom` must MOVE the data, not drop and recreate the column. renamedFrom is a documented user-facing feature, so it has to mean the same thing on every engine or the docs are wrong for some users.",
+    "outputRoot": "..\\\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": false,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": false
+  },
+  "bootstrap": {
+    "root": "..\\\\..\\\\..\\\\..\\\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\\\Output\\\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\\\Output\\\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "p3_rename_v1",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8154,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8154/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "Storage probe for conformance vector E2. Do not add features."
+    ]
+  }
+}
