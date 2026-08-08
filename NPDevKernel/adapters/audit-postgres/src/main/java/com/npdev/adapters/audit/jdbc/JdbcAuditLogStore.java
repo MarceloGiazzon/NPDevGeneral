@@ -7,6 +7,9 @@ import com.npdev.kernel.audit.AuditRecord;
 import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.AuditQuery;
 
+import com.npdev.kernel.storage.sql.SqlDialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
+
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -26,6 +29,7 @@ public class JdbcAuditLogStore implements AuditLogStore {
 
     private final DataSource dataSource;
     private final ObjectMapper objectMapper;
+    private final SqlDialect dialect;
 
     public JdbcAuditLogStore(DataSource dataSource) {
         this(dataSource, new ObjectMapper().findAndRegisterModules()
@@ -33,8 +37,21 @@ public class JdbcAuditLogStore implements AuditLogStore {
     }
 
     public JdbcAuditLogStore(DataSource dataSource, ObjectMapper objectMapper) {
+        this(dataSource, objectMapper, SqlDialects.active());
+    }
+
+    /**
+     * Explicit dialect, for the conformance suite and for a host that pins its engine at boot.
+     *
+     * <p>The no-dialect constructors resolve {@link SqlDialects#active()}, which is the engine the
+     * app was GENERATED for -- not one detected from the connection. Detection would make emitted
+     * SQL depend on runtime discovery, so a misconfiguration would quietly produce different SQL
+     * instead of failing.
+     */
+    public JdbcAuditLogStore(DataSource dataSource, ObjectMapper objectMapper, SqlDialect dialect) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
+        this.dialect = Objects.requireNonNull(dialect, "dialect");
     }
 
     @Override
@@ -108,9 +125,10 @@ public class JdbcAuditLogStore implements AuditLogStore {
         }
 
         sql.append(" ORDER BY ts_ms DESC, audit_id DESC");
-        sql.append(" LIMIT ? OFFSET ?");
-        params.add(normalizeLimit(effective.limit()));
-        params.add(normalizeOffset(effective.offset()));
+        sql.append(" ").append(dialect.limitOffset().clause());
+        // SQL Server binds (offset, limit); the dialect declares the order so this list
+        // never has to assume it.
+        params.addAll(dialect.limitOffset().values(normalizeLimit(effective.limit()), normalizeOffset(effective.offset())));
 
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql.toString())) {

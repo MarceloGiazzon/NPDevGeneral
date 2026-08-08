@@ -5,6 +5,7 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -119,8 +120,7 @@ final class UniqueConstraintPass {
 
     private static boolean constraintExists(Connection connection, String table, String constraintName) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
-                        + "WHERE UPPER(CONSTRAINT_NAME) = UPPER(?) AND UPPER(TABLE_NAME) = UPPER(?)")) {
+                SqlDialects.active().constraintExistsSql())) {
             statement.setString(1, constraintName);
             statement.setString(2, table);
             try (ResultSet resultSet = statement.executeQuery()) {

@@ -23,6 +23,7 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -53,7 +54,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * owned -- the ownership evidence that makes acting on an orphaned table safe. */
     private static final String OWNED_TABLES_KEY = "ownedBusinessTables";
     private static final String SCHEMA_REALIZATION_LOCATION = "classpath:db/schema-realization";
-    private static final Set<String> SYSTEM_SCHEMAS = Set.of("information_schema", "pg_catalog");
+    /**
+     * From the dialect: {@code pg_catalog} is Postgres-only, so this hand-written pair was already
+     * wrong for any second engine (MySQL's are mysql / performance_schema / sys). It was also
+     * spelled identically in two files, which is the twin-pair shape this repo has been bitten by.
+     */
+    private static final Set<String> SYSTEM_SCHEMAS = SqlDialects.active().systemSchemas();
     /**
      * Columns the platform itself puts on every business table, never a user-modelled field.
      * VERIFIED against {@code SchemaRealizationEmitter#fullColumnNames} (which appends {@code id}

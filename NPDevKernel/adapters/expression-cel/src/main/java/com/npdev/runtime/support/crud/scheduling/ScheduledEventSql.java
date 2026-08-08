@@ -1,5 +1,8 @@
 package com.npdev.runtime.support.crud.scheduling;
 
+import com.npdev.kernel.storage.sql.SqlDialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
+
 import static com.npdev.runtime.support.GeneratedCrudRuntimeSupport.SCHEDULE_TABLE;
 
 /**
@@ -10,15 +13,19 @@ public final class ScheduledEventSql {
     private ScheduledEventSql() {
     }
 
+    /** Uses the process's configured engine; the overload exists for the conformance suite. */
     public static String selectDue(boolean forceDue) {
-        return "SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
+        return selectDue(forceDue, SqlDialects.active());
+    }
+
+    public static String selectDue(boolean forceDue, SqlDialect dialect) {
+        return dialect.limited("SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
                 + "trigger_correlation_id, event_name, due_at, status, attempt_count, created_at, updated_at, "
                 + "processed_at, payload "
                 + "FROM " + SCHEDULE_TABLE + " "
                 + "WHERE status = ? "
                 + (forceDue ? "" : "AND due_at <= ? ")
-                + "ORDER BY due_at ASC, created_at ASC "
-                + "LIMIT ?";
+                + "ORDER BY due_at ASC, created_at ASC ").stripTrailing();
     }
 
     public static String claim() {

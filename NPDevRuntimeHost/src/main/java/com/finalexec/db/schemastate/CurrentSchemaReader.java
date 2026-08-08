@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,8 +27,12 @@ import java.util.Set;
  */
 public final class CurrentSchemaReader {
 
-    /** System schemas whose tables are never part of an app's model (mirrors SchemaLifecycleExecutor). */
-    private static final Set<String> SYSTEM_SCHEMAS = Set.of("information_schema", "pg_catalog");
+    /**
+     * From the dialect: {@code pg_catalog} is Postgres-only, so this hand-written pair was already
+     * wrong for any second engine (MySQL's are mysql / performance_schema / sys). It was also
+     * spelled identically in two files, which is the twin-pair shape this repo has been bitten by.
+     */
+    private static final Set<String> SYSTEM_SCHEMAS = SqlDialects.active().systemSchemas();
 
     public CurrentSchema read(DataSource dataSource) {
         try (Connection connection = dataSource.getConnection()) {

@@ -8,6 +8,9 @@ import com.npdev.kernel.events.EventMetaSummary;
 import com.npdev.kernel.ports.EventMetaStore;
 import com.npdev.kernel.ports.EventStore;
 
+import com.npdev.kernel.storage.sql.SqlDialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
+
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -26,6 +29,7 @@ public class JdbcEventStore implements EventStore, EventMetaStore {
 
     private final DataSource dataSource;
     private final ObjectMapper objectMapper;
+    private final SqlDialect dialect;
 
     public JdbcEventStore(DataSource dataSource) {
         this(dataSource, new ObjectMapper().findAndRegisterModules()
@@ -33,8 +37,21 @@ public class JdbcEventStore implements EventStore, EventMetaStore {
     }
 
     public JdbcEventStore(DataSource dataSource, ObjectMapper objectMapper) {
+        this(dataSource, objectMapper, SqlDialects.active());
+    }
+
+    /**
+     * Explicit dialect, for the conformance suite and for a host that pins its engine at boot.
+     *
+     * <p>The no-dialect constructors resolve {@link SqlDialects#active()}, which is the engine the
+     * app was GENERATED for -- not one detected from the connection. Detection would make emitted
+     * SQL depend on runtime discovery, so a misconfiguration would quietly produce different SQL
+     * instead of failing.
+     */
+    public JdbcEventStore(DataSource dataSource, ObjectMapper objectMapper, SqlDialect dialect) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
+        this.dialect = Objects.requireNonNull(dialect, "dialect");
     }
 
     @Override
@@ -77,22 +94,20 @@ public class JdbcEventStore implements EventStore, EventMetaStore {
         }
         String effectiveTenantId = normalizeTenant(tenantId);
         String sql = effectiveTenantId == null
-                ? """
+                ? dialect.rowLimited("""
                 SELECT event_id, event_name, correlation_id, causation_id, flow_name, step_index,
                        timestamp_ms, payload_json, metadata_json, tenant_id, actor_id
                 FROM npdev_event_store
                 WHERE event_name = ? AND correlation_id = ?
                 ORDER BY timestamp_ms ASC, event_id ASC
-                LIMIT 1
-                """
-                : """
+                """, 1)
+                : dialect.rowLimited("""
                 SELECT event_id, event_name, correlation_id, causation_id, flow_name, step_index,
                        timestamp_ms, payload_json, metadata_json, tenant_id, actor_id
                 FROM npdev_event_store
                 WHERE event_name = ? AND correlation_id = ? AND tenant_id = ?
                 ORDER BY timestamp_ms ASC, event_id ASC
-                LIMIT 1
-                """;
+                """, 1);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, eventName);
@@ -184,14 +199,13 @@ public class JdbcEventStore implements EventStore, EventMetaStore {
         }
         int effectiveLimit = normalizeLimit(limit);
         int effectiveOffset = normalizeOffset(offset);
-        String sql = """
+        String sql = dialect.paginated("""
                 SELECT event_id, event_name, correlation_id, causation_id, flow_name, step_index,
                        timestamp_ms, payload_json, metadata_json, tenant_id, actor_id
                 FROM npdev_event_store
                 WHERE tenant_id = ? AND correlation_id = ?
                 ORDER BY timestamp_ms ASC, event_id ASC
-                LIMIT ? OFFSET ?
-                """;
+                """);
         return queryScoped(sql, effectiveTenantId, correlationId, effectiveLimit, effectiveOffset);
     }
 
@@ -203,14 +217,13 @@ public class JdbcEventStore implements EventStore, EventMetaStore {
         }
         int effectiveLimit = normalizeLimit(limit);
         int effectiveOffset = normalizeOffset(offset);
-        String sql = """
+        String sql = dialect.paginated("""
                 SELECT event_id, event_name, correlation_id, causation_id, flow_name, step_index,
                        timestamp_ms, payload_json, metadata_json, tenant_id, actor_id
                 FROM npdev_event_store
                 WHERE tenant_id = ? AND event_name = ?
                 ORDER BY timestamp_ms DESC, event_id DESC
-                LIMIT ? OFFSET ?
-                """;
+                """);
         return queryScoped(sql, effectiveTenantId, eventName, effectiveLimit, effectiveOffset);
     }
 
@@ -249,19 +262,20 @@ public class JdbcEventStore implements EventStore, EventMetaStore {
         }
         int effectiveLimit = normalizeLimit(limit);
         int effectiveOffset = normalizeOffset(offset);
-        String sql = """
+        String sql = dialect.paginated("""
                 SELECT event_id, tenant_id, correlation_id, event_name, flow_name, step_index, timestamp_ms
                 FROM npdev_event_store
                 WHERE tenant_id = ? AND correlation_id = ?
                 ORDER BY timestamp_ms ASC, event_id ASC
-                LIMIT ? OFFSET ?
-                """;
+                """);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, effectiveTenantId);
             statement.setString(2, correlationId);
-            statement.setInt(3, effectiveLimit);
-            statement.setInt(4, effectiveOffset);
+            int pageIndex = 3;
+            for (int pageValue : dialect.limitOffset().values(effectiveLimit, effectiveOffset)) {
+                statement.setInt(pageIndex++, pageValue);
+            }
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<EventMetaSummary> out = new ArrayList<>();
                 while (resultSet.next()) {
@@ -309,8 +323,10 @@ public class JdbcEventStore implements EventStore, EventMetaStore {
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, tenantId);
             statement.setString(2, filterValue);
-            statement.setInt(3, limit);
-            statement.setInt(4, offset);
+            int pageIndex = 3;
+            for (int pageValue : dialect.limitOffset().values(limit, offset)) {
+                statement.setInt(pageIndex++, pageValue);
+            }
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<EventEnvelope> out = new ArrayList<>();
                 while (resultSet.next()) {

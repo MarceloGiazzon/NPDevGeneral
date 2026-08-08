@@ -30,6 +30,8 @@ import com.npdev.kernel.capability.IdempotencyRecord;
 import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.CapabilityDispatcher;
 import com.npdev.kernel.ports.IdempotencyStore;
+import com.npdev.kernel.storage.sql.SqlDialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import com.npdev.kernel.ports.InvariantEngine;
 import com.npdev.kernel.ports.InvariantScopeProvider;
 import com.npdev.kernel.ports.PermissionEvaluator;
@@ -727,15 +729,18 @@ public final class GeneratedCrudRuntimeSupport {
         }
         int safeLimit = sanitizeScheduleLimit(limit);
         int safeOffset = sanitizeScheduleOffset(offset);
-        String sql = "SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
+        SqlDialect dialect = SqlDialects.active();
+        String sql = dialect.paginated("SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
                 + "trigger_correlation_id, event_name, due_at, status, attempt_count, created_at, "
                 + "updated_at, processed_at, payload "
                 + "FROM " + SCHEDULE_TABLE + " "
-                + "ORDER BY created_at DESC LIMIT ? OFFSET ?";
+                + "ORDER BY created_at DESC ").stripTrailing();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, safeLimit);
-            statement.setInt(2, safeOffset);
+            int pageIndex = 1;
+            for (int pageValue : dialect.limitOffset().values(safeLimit, safeOffset)) {
+                statement.setInt(pageIndex++, pageValue);
+            }
             try (ResultSet rows = statement.executeQuery()) {
                 List<Map<String, Object>> schedules = new ArrayList<>();
                 while (rows.next()) {

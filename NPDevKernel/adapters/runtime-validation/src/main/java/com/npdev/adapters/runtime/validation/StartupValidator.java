@@ -8,6 +8,7 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.ports.EventStore;
 import com.npdev.kernel.ports.FlowInstanceStore;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -400,8 +401,10 @@ public final class StartupValidator implements InitializingBean {
                 }
             }
             boolean flywayHistoryExists;
+            // "the current schema" is itself dialect-bound: CURRENT_SCHEMA() here, DATABASE() on
+            // MySQL, SCHEMA_NAME() on SQL Server -- so the whole statement comes from the dialect.
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT COUNT(*) FROM information_schema.tables WHERE LOWER(table_schema) = LOWER(CURRENT_SCHEMA()) AND LOWER(table_name) = 'flyway_schema_history'"
+                    SqlDialects.active().tableExistsInCurrentSchemaSql("flyway_schema_history")
             )) {
                 try (ResultSet rs = statement.executeQuery()) {
                     rs.next();
