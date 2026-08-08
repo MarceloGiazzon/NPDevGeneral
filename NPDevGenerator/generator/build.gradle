@@ -171,8 +171,35 @@ tasks.named('run') {
     workingDir rootProject.projectDir
 }
 
+// storage/PLAN.md W2. The three *PackagedGeneratedAppRuntimeProofTest classes (2,857 lines) each
+// generate, build, boot and exercise a real FinalApp. They are the most VALUABLE tests in the repo
+// -- they are what caught the Windows/Linux build-root divergence (REG-144) -- and also the most
+// expensive. The answer is not to delete them; it is to stop paying for them on every local run.
+//
+//   ./gradlew :generator:test                          fast tests only (local default)
+//   ./gradlew :generator:test -PincludePackagedProofs   the full thing
+//   CI                                                  always the full thing
+//
+// CI is detected by the CI env var, which GitHub Actions always sets -- so no workflow needed
+// changing, and no workflow can forget. The exclusion is deliberately LOUD (see doFirst below): a
+// suite that silently skips its most valuable tests is exactly how a gate stops running without
+// anyone noticing.
+def packagedProofsIncluded = project.hasProperty('includePackagedProofs') ||
+        (System.getenv('CI') != null && !System.getenv('CI').isEmpty())
+
+// Counted, not hardcoded: a fourth tagged proof must not leave the banner claiming three. The
+// banner is the whole point of W2, and a banner that quietly under-reports is the defect it exists
+// to prevent, one level up.
+def packagedProofCount = fileTree(dir: 'src/test/java', include: '**/*.java')
+        .filter { it.text.contains('@Tag("packaged-proof")') }
+        .files.size()
+
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        if (!packagedProofsIncluded) {
+            excludeTags 'packaged-proof'
+        }
+    }
     // Perf: forked test JVMs default to 512m and do NOT inherit org.gradle.jvmargs.
     // maxParallelForks is held at 2 (not 4): this suite drives Testcontainers/MinIO
     // and also packages and boots whole generated FinalApps (which bind ports),
@@ -180,6 +207,16 @@ tasks.named('test') {
     maxHeapSize = '2g'
     maxParallelForks = 2
     jvmArgs '-XX:+UseParallelGC'
+
+    doFirst {
+        if (packagedProofsIncluded) {
+            logger.lifecycle("[packaged-proof] RUNNING ${packagedProofCount} packaged-app proof " +
+                    'test(s) (generate + build + boot a real FinalApp -- minutes each).')
+        } else {
+            logger.lifecycle("[packaged-proof] SKIPPED ${packagedProofCount} packaged-app proof " +
+                    'test(s) (local run); CI runs them. Run them here with -PincludePackagedProofs.')
+        }
+    }
 }
 
 tasks.register('behaviorTest', Test) {
