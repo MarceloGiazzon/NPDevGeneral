@@ -1,0 +1,439 @@
+package com.npdev.kernel.storage.sql;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * Microsoft SQL Server 2016+.
+ *
+ * <p><b>The awkward engine, and the one the interface was shaped around.</b> Two of its differences
+ * are not spellings, and both were designed for in S1 rather than discovered here:
+ *
+ * <ol>
+ *   <li><b>Pagination REVERSES its parameters.</b> {@code OFFSET ? ROWS FETCH NEXT ? ROWS ONLY} binds
+ *       (offset, limit) where every other engine binds (limit, offset). A {@code String}-returning
+ *       {@code paginate()} would have let all 23 call sites keep {@code setInt(n, limit);
+ *       setInt(n + 1, offset)} -- correct on three engines and silently the WRONG PAGE here. Not a
+ *       crash: the query succeeds, the user sees rows that are not theirs and misses rows that are.
+ *       {@link PaginationClause} carries the order so the mistake is unrepresentable.</li>
+ *   <li><b>{@code OFFSET..FETCH} is a syntax error without {@code ORDER BY}.</b> Conformance P3.
+ *       {@link #requiresOrderByForPagination()} is true here and only here -- but the REFUSAL is
+ *       uniform across every dialect, because injecting an arbitrary order on the one engine that
+ *       needs it would hide the difference and still return overlapping pages. Measured: every
+ *       paginated statement in the repo already declares an ORDER BY with a tie-breaker, so this
+ *       costs nothing today.</li>
+ * </ol>
+ *
+ * <h2>The unresolved one: {@link #rowLimit(long)}</h2>
+ *
+ * <p>SQL Server has <b>no suffix row cap.</b> {@code SELECT TOP n} is a PREFIX, and the only suffix
+ * form needs an {@code ORDER BY} that an existence probe ({@code SELECT 1 FROM t WHERE c = ? LIMIT 1})
+ * does not have and should not need. So {@code rowLimit} <b>throws</b> here rather than returning
+ * something plausible.
+ *
+ * <p>That is deliberate and it is what the S1 write-up predicted. The two probe call sites in
+ * {@code PostgresPersistenceCapabilityAdapter} need a dialect-BUILT statement rather than a
+ * dialect-built suffix before SQL Server can run them -- see {@link #existsProbe(String, String)},
+ * which is the shape that fix takes. Throwing is the honest state: a plausible wrong answer in the
+ * least visible layer is the defect this whole seam exists to prevent.
+ */
+public final class SqlServerDialect implements SqlDialect {
+
+    public static final SqlServerDialect INSTANCE = new SqlServerDialect();
+
+    static final String LIMIT_OFFSET_CLAUSE = "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+    static final String LIMIT_ONLY_CLAUSE = "OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY";
+
+    /**
+     * SQL Server has no JSON type. JSON lives in {@code NVARCHAR(MAX)} with {@code ISJSON()} checks,
+     * which means a JSON column is INDISTINGUISHABLE from an ordinary long text column when read back
+     * from the catalog. Every site that asks {@link #isJsonColumnType(String)} is asking "should I
+     * parse this?", and here the honest answer is "the catalog cannot tell you" -- see that method.
+     */
+    private static final Set<String> JSON_TYPE_NAMES = Set.of("json");
+
+    private static final Set<String> SYSTEM_SCHEMAS =
+            Set.of("information_schema", "sys", "db_owner", "db_accessadmin", "db_securityadmin",
+                    "db_ddladmin", "db_backupoperator", "db_datareader", "db_datawriter",
+                    "db_denydatareader", "db_denydatawriter", "guest");
+
+    private static final Set<StorageCapability> CAPABILITIES = Set.of(
+            StorageCapability.TRANSACTIONS,
+            // SQL Server IS transactional for DDL -- unlike MySQL and H2. A failed migration rolls
+            // back, so the schema engine's original safety model holds here.
+            StorageCapability.DDL_IN_TRANSACTION,
+            StorageCapability.SCHEMA_EVOLUTION,
+            StorageCapability.FOREIGN_KEYS,
+            StorageCapability.UNIQUE_CONSTRAINTS,
+            StorageCapability.SERVER_SIDE_JOIN,
+            StorageCapability.AGGREGATION_PIPELINE,
+            StorageCapability.OPTIMISTIC_LOCKING,
+            StorageCapability.SNAPSHOT_RESTORE);
+
+    private final UpsertStrategy upsert = new SqlServerUpsertStrategy();
+    private final ReturningStrategy returning = new SqlServerReturningStrategy();
+
+    private SqlServerDialect() {
+    }
+
+    @Override
+    public String name() {
+        return "sqlserver";
+    }
+
+    // ------------------------------------------------------------------ identifiers
+
+    @Override
+    public String quoteIdentifier(String rawIdentifier) {
+        Objects.requireNonNull(rawIdentifier, "rawIdentifier");
+        return '[' + rawIdentifier.replace("]", "]]") + ']';
+    }
+
+    @Override
+    public boolean foldsUnquotedIdentifiersToLowerCase() {
+        // No folding: SQL Server preserves the case it was given and compares by COLLATION, which is
+        // usually case-insensitive but is a per-database (and per-column) setting. As with MySQL,
+        // there is no honest single answer, and NPDev does not need one -- it generates lower-case
+        // identifiers throughout. False states the portable assumption: do not rely on folding.
+        return false;
+    }
+
+    // ------------------------------------------------------------------ DDL types
+
+    @Override
+    public String autoIncrementColumn(SqlType type) {
+        return switch (type) {
+            case INT -> "INT IDENTITY(1,1)";
+            case BIGINT -> "BIGINT IDENTITY(1,1)";
+            default -> throw new IllegalArgumentException(
+                    "engine 'sqlserver': " + type + " cannot be an auto-increment column; use INT or BIGINT");
+        };
+    }
+
+    @Override
+    public String jsonColumnType() {
+        return "NVARCHAR(MAX)";
+    }
+
+    @Override
+    public boolean isJsonColumnType(String sqlTypeName) {
+        // NOT a lie of omission: `NVARCHAR(MAX)` is deliberately absent from the accepted set even
+        // though it is what jsonColumnType() returns. The question this method answers is "is the
+        // value in this column JSON I should parse?", and on SQL Server the catalog genuinely cannot
+        // say -- every long text column looks identical. Accepting NVARCHAR(MAX) would make the
+        // platform try to parse ordinary prose as JSON; rejecting it means a JSON column read back
+        // through the catalog is treated as text. The second is wrong in a way that shows up as an
+        // escaped string, the first is wrong in a way that shows up as a parse error on user data.
+        //
+        // Neither is good, which is the real finding: SQL Server needs the column's JSON-ness to come
+        // from the MODEL rather than from the catalog. Recorded here; conformance J1 will fail on
+        // this engine until it does, and that failure is the correct signal.
+        return sqlTypeName != null && JSON_TYPE_NAMES.contains(sqlTypeName.trim().toLowerCase(Locale.ROOT));
+    }
+
+    @Override
+    public String timestampColumnType() {
+        // datetime2, not `timestamp` -- SQL Server's TIMESTAMP is a row-version binary counter with
+        // no relationship to time at all, which is a genuinely dangerous false friend.
+        return "DATETIME2(6)";
+    }
+
+    @Override
+    public String portableColumnType(String declaredSqlType) {
+        if (declaredSqlType == null) {
+            return null;
+        }
+        String normalized = declaredSqlType.trim();
+        String upper = normalized.toUpperCase(Locale.ROOT);
+        if ("JSONB".equals(upper) || "JSON".equals(upper)) {
+            return "NVARCHAR(MAX)";
+        }
+        if ("TIMESTAMP WITH TIME ZONE".equals(upper) || "TIMESTAMPTZ".equals(upper)) {
+            return "DATETIMEOFFSET(6)";
+        }
+        if ("TIMESTAMP".equals(upper)) {
+            return "DATETIME2(6)";
+        }
+        if ("UUID".equals(upper)) {
+            return "UNIQUEIDENTIFIER";
+        }
+        if ("BOOLEAN".equals(upper) || "BOOL".equals(upper)) {
+            return "BIT";
+        }
+        if ("TEXT".equals(upper)) {
+            return "NVARCHAR(MAX)";
+        }
+        if ("BYTEA".equals(upper) || "BLOB".equals(upper)) {
+            return "VARBINARY(MAX)";
+        }
+        if ("SERIAL".equals(upper)) {
+            return "INT IDENTITY(1,1)";
+        }
+        if ("BIGSERIAL".equals(upper)) {
+            return "BIGINT IDENTITY(1,1)";
+        }
+        if (upper.startsWith("VARCHAR")) {
+            // NVARCHAR, not VARCHAR: SQL Server's VARCHAR is single-byte in a non-UTF8 collation, so
+            // a name with an accent in it round-trips as mojibake. Same class of silent data loss as
+            // MySQL's utf8-vs-utf8mb4 (conformance J2).
+            return "N" + normalized;
+        }
+        return normalized;
+    }
+
+    // ------------------------------------------------------------------ DML
+
+    @Override
+    public PaginationClause limitOffset() {
+        // *** REVERSED. *** See the class javadoc.
+        return new PaginationClause(LIMIT_OFFSET_CLAUSE,
+                List.of(PaginationClause.Parameter.OFFSET, PaginationClause.Parameter.LIMIT));
+    }
+
+    @Override
+    public PaginationClause limitOnly() {
+        // OFFSET 0 is not noise: FETCH NEXT is only legal as part of an OFFSET clause here.
+        return new PaginationClause(LIMIT_ONLY_CLAUSE, List.of(PaginationClause.Parameter.LIMIT));
+    }
+
+    @Override
+    public String rowLimit(long rows) {
+        if (rows <= 0) {
+            throw new IllegalArgumentException("engine 'sqlserver': rowLimit must be positive, got " + rows);
+        }
+        throw new UnsupportedOperationException(
+                "engine 'sqlserver': there is no SUFFIX row cap. SELECT TOP " + rows + " is a PREFIX, and "
+                + "the only suffix form (OFFSET 0 ROWS FETCH NEXT " + rows + " ROWS ONLY) requires an "
+                + "ORDER BY that an existence probe does not have. Use existsProbe(...) to have the "
+                + "dialect build the whole statement, or selectTop(...) for a capped SELECT. Returning "
+                + "a plausible suffix here would produce a syntax error at best and, if it happened to "
+                + "parse, the wrong rows.");
+    }
+
+    /**
+     * A complete existence probe -- the shape {@link #rowLimit(long)} cannot express here.
+     *
+     * <p>{@code SELECT TOP 1 1 FROM t WHERE <predicate>}. Every other engine can answer this as a
+     * suffix, so the two call sites in {@code PostgresPersistenceCapabilityAdapter} still use
+     * {@code rowLimited}; adopting this method across them is the S5 wiring step, and until it
+     * happens those two sites are the only thing standing between this dialect and a live run.
+     */
+    public String existsProbe(String table, String wherePredicate) {
+        Objects.requireNonNull(table, "table");
+        Objects.requireNonNull(wherePredicate, "wherePredicate");
+        return "SELECT TOP 1 1 FROM " + table + " WHERE " + wherePredicate;
+    }
+
+    /** {@code SELECT TOP n <columns> FROM ...} -- the prefix form, for a capped read with no offset. */
+    public String selectTop(long rows, String selectListOnwards) {
+        if (rows <= 0) {
+            throw new IllegalArgumentException("engine 'sqlserver': selectTop needs a positive count");
+        }
+        return "SELECT TOP " + rows + " " + selectListOnwards;
+    }
+
+    @Override
+    public boolean requiresOrderByForPagination() {
+        return true;
+    }
+
+    @Override
+    public UpsertStrategy upsert() {
+        return upsert;
+    }
+
+    @Override
+    public ReturningStrategy returning() {
+        return returning;
+    }
+
+    @Override
+    public String cast(String expression, SqlType type) {
+        return "CAST(" + expression + " AS " + castTypeName(type) + ")";
+    }
+
+    private static String castTypeName(SqlType type) {
+        return switch (type) {
+            case TEXT, JSON -> "NVARCHAR(MAX)";
+            case INT -> "INT";
+            case BIGINT -> "BIGINT";
+            case UUID -> "UNIQUEIDENTIFIER";
+            case BOOLEAN -> "BIT";
+            case NUMERIC -> "DECIMAL(38,10)";
+            case TIMESTAMP -> "DATETIME2(6)";
+            case BLOB -> "VARBINARY(MAX)";
+        };
+    }
+
+    // ------------------------------------------------------------------ introspection
+
+    @Override
+    public Set<String> systemSchemas() {
+        return SYSTEM_SCHEMAS;
+    }
+
+    @Override
+    public String listTablesSql(String schema) {
+        return "SELECT table_name FROM information_schema.tables WHERE table_schema = "
+                + schemaPredicate(schema) + " AND table_type = 'BASE TABLE' ORDER BY table_name";
+    }
+
+    @Override
+    public String listColumnsSql(String schema, String table) {
+        return "SELECT column_name, data_type, is_nullable, column_default"
+                + " FROM information_schema.columns WHERE table_schema = " + schemaPredicate(schema)
+                + " AND table_name = '" + escapeLiteral(table) + "' ORDER BY ordinal_position";
+    }
+
+    @Override
+    public String listIndexesSql(String schema, String table) {
+        // sys.indexes, aliased to the same three column names every other dialect returns.
+        return "SELECT i.name AS index_name,"
+                + " c.name AS column_name,"
+                + " i.is_unique AS is_unique"
+                + " FROM sys.indexes i"
+                + " JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id"
+                + " JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id"
+                + " JOIN sys.tables t ON t.object_id = i.object_id"
+                + " JOIN sys.schemas s ON s.schema_id = t.schema_id"
+                + " WHERE t.name = '" + escapeLiteral(table) + "'"
+                + " AND s.name = " + schemaPredicate(schema)
+                + " ORDER BY i.name, ic.key_ordinal";
+    }
+
+    @Override
+    public String constraintExistsSql() {
+        return "SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+                + "WHERE UPPER(CONSTRAINT_NAME) = UPPER(?) AND UPPER(TABLE_NAME) = UPPER(?)";
+    }
+
+    @Override
+    public String tableExistsInCurrentSchemaSql(String tableName) {
+        return "SELECT COUNT(*) FROM information_schema.tables"
+                + " WHERE table_schema = SCHEMA_NAME()"
+                + " AND LOWER(table_name) = '" + escapeLiteral(tableName).toLowerCase(Locale.ROOT) + "'";
+    }
+
+    @Override
+    public String guardedConstraintDdl(String constraintName, String tableName, String ddlStatement) {
+        // T-SQL has real IF/BEGIN/END at statement level -- no anonymous block needed, and no
+        // prepared-statement dance like MySQL's. The DDL still has to be idempotent because it lands
+        // in a Flyway repeatable migration (REG-38).
+        String statement = ddlStatement.endsWith(";") ? ddlStatement : ddlStatement + ";";
+        return "IF NOT EXISTS (\n"
+                + "  SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS\n"
+                + "  WHERE CONSTRAINT_NAME = '" + escapeLiteral(constraintName) + "'\n"
+                + "    AND TABLE_NAME = '" + escapeLiteral(tableName) + "'\n"
+                + "    AND TABLE_SCHEMA = SCHEMA_NAME()\n"
+                + ")\n"
+                + "BEGIN\n"
+                + "  " + statement + "\n"
+                + "END;\n";
+    }
+
+    private static String schemaPredicate(String schema) {
+        return schema == null || schema.isBlank() ? "SCHEMA_NAME()" : "'" + escapeLiteral(schema) + "'";
+    }
+
+    private static String escapeLiteral(String value) {
+        return value == null ? "" : value.replace("'", "''");
+    }
+
+    // ------------------------------------------------------------------ honesty
+
+    @Override
+    public Set<StorageCapability> capabilities() {
+        return CAPABILITIES;
+    }
+
+    @Override
+    public String toString() {
+        return "SqlDialect[sqlserver]";
+    }
+
+    /**
+     * {@code MERGE} -- a different STATEMENT, not a different keyword, which is why
+     * {@link UpsertStrategy} returns a statement rather than a suffix.
+     *
+     * <p><b>{@code HOLDLOCK} is not optional.</b> SQL Server's MERGE has documented race conditions
+     * under the default isolation level: two concurrent merges on the same key can both find no match
+     * and both insert, producing a duplicate-key error or a duplicate row depending on the indexes.
+     * The serializable hint on the target closes it. Conformance U2 exists for exactly this, and it is
+     * the kind of defect that only appears in production under load -- never in a unit test.
+     */
+    static final class SqlServerUpsertStrategy implements UpsertStrategy {
+        @Override
+        public String statementFor(String table, List<String> keyColumns, List<String> valueColumns) {
+            if (keyColumns == null || keyColumns.isEmpty()) {
+                throw new IllegalArgumentException("engine 'sqlserver': upsert needs at least one key column");
+            }
+            if (valueColumns == null || valueColumns.isEmpty()) {
+                throw new IllegalArgumentException("engine 'sqlserver': upsert needs at least one value column");
+            }
+            Set<String> keys = new LinkedHashSet<>();
+            for (String key : keyColumns) {
+                keys.add(key.toLowerCase(Locale.ROOT));
+            }
+            String placeholders = String.join(", ", java.util.Collections.nCopies(valueColumns.size(), "?"));
+            String sourceColumns = String.join(", ", valueColumns);
+            String onClause = keyColumns.stream()
+                    .map(key -> "target." + key + " = source." + key)
+                    .reduce((a, b) -> a + " AND " + b)
+                    .orElseThrow();
+            List<String> updates = valueColumns.stream()
+                    .filter(column -> !keys.contains(column.toLowerCase(Locale.ROOT)))
+                    .map(column -> "target." + column + " = source." + column)
+                    .toList();
+            String insertColumns = String.join(", ", valueColumns);
+            String insertValues = valueColumns.stream()
+                    .map(column -> "source." + column)
+                    .reduce((a, b) -> a + ", " + b)
+                    .orElseThrow();
+
+            StringBuilder sql = new StringBuilder()
+                    .append("MERGE ").append(table).append(" WITH (HOLDLOCK) AS target")
+                    .append(" USING (VALUES (").append(placeholders).append(")) AS source (")
+                    .append(sourceColumns).append(")")
+                    .append(" ON ").append(onClause);
+            if (!updates.isEmpty()) {
+                sql.append(" WHEN MATCHED THEN UPDATE SET ").append(String.join(", ", updates));
+            }
+            sql.append(" WHEN NOT MATCHED THEN INSERT (").append(insertColumns)
+                    .append(") VALUES (").append(insertValues).append(")")
+                    // The terminating semicolon is MANDATORY on MERGE. Omitting it is a syntax error,
+                    // and it is the single most common way a hand-written MERGE fails to run at all.
+                    .append(";");
+            return sql.toString();
+        }
+    }
+
+    /** SQL Server returns generated columns via {@code OUTPUT}, which is inline. */
+    static final class SqlServerReturningStrategy implements ReturningStrategy {
+        @Override
+        public boolean isInline() {
+            return true;
+        }
+
+        @Override
+        public String inlineClause(List<String> columns) {
+            if (columns == null || columns.isEmpty()) {
+                throw new IllegalArgumentException("engine 'sqlserver': OUTPUT needs at least one column");
+            }
+            // OUTPUT sits BEFORE the VALUES clause, not after it like RETURNING -- a caller that
+            // appends this the way it appends RETURNING gets a syntax error rather than a wrong
+            // answer, which is the better of the two failures but still worth knowing.
+            return "OUTPUT " + columns.stream().map(column -> "INSERTED." + column)
+                    .reduce((a, b) -> a + ", " + b).orElseThrow();
+        }
+
+        @Override
+        public String secondQuerySql() {
+            throw new UnsupportedOperationException(
+                    "engine 'sqlserver': generated keys come back inline via OUTPUT. Check isInline() "
+                    + "and use inlineClause(...) -- note OUTPUT goes BEFORE VALUES, unlike RETURNING.");
+        }
+    }
+}

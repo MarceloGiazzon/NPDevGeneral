@@ -1,0 +1,271 @@
+package com.npdev.kernel.storage.sql;
+
+import org.testcontainers.containers.JdbcDatabaseContainer;
+import org.testcontainers.containers.MSSQLServerContainer;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.utility.DockerImageName;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * Hands out a connection for the behavioural conformance tiers -- <b>without Docker.</b>
+ *
+ * <p>Local Docker is banned on this project's dev machine and its RAM was halved, but 16 of the 20
+ * behavioural vectors only need "a database and a table". This gives one, backed by H2 in the target
+ * engine's compatibility MODE locally and by a real container in CI. <b>The test never knows which it
+ * got</b> -- that is what lets one suite serve both.
+ *
+ * <p>A sibling of the existing {@code PostgresTestSupport}, which uses Testcontainers and stays as it
+ * is; replacing it would trade a working Docker-based suite for an approximation.
+ *
+ * <h2>Be honest about what H2-in-MySQL-mode proves</h2>
+ *
+ * <p>It catches SYNTAX and SHAPE. It does not enforce everything a real engine does, and this
+ * codebase has already learned that once with H2-in-PostgreSQL-mode (REG-36, REG-50: an adapter's
+ * fallback needed a real Postgres to prove against). <b>Local H2 is the fast signal; the CI container
+ * is the true one. Never claim engine support from a green local run alone.</b>
+ *
+ * <p>{@link #enforces} is how a vector says so out loud. A check H2 cannot be trusted for is
+ * REPORTED as not-verified-here, never quietly passed -- a suite that reports green for checks it did
+ * not really run is the silent-answer defect wearing a test's clothes.
+ */
+public final class DialectTestSupport {
+
+    /** Set {@code NPDEV_DIALECT_BACKEND=container} in CI. Anything else (or unset) means local H2. */
+    private static final String BACKEND =
+            System.getenv().getOrDefault("NPDEV_DIALECT_BACKEND", "h2");
+
+    /** Each call gets its own database; a shared one is how a suite starts passing only in order. */
+    private static final AtomicLong SEQUENCE = new AtomicLong();
+
+    /** One container per engine per JVM. Started lazily so a local run never touches Docker. */
+    private static final Map<String, JdbcDatabaseContainer<?>> CONTAINERS = new ConcurrentHashMap<>();
+
+    private DialectTestSupport() {
+    }
+
+    public static boolean isContainerBacked() {
+        return "container".equalsIgnoreCase(BACKEND);
+    }
+
+    /**
+     * An ISOLATED, EMPTY database speaking {@code dialect}.
+     *
+     * <p>Isolated per call on purpose: vectors must not depend on each other's leftovers. A shared
+     * schema is how a suite starts passing only in the order it happens to run in, which is
+     * indistinguishable from a real bug when it eventually fails.
+     */
+    public static Connection connectionFor(SqlDialect dialect) throws SQLException {
+        if (!isContainerBacked()) {
+            return DriverManager.getConnection(h2Url(dialect.name()));
+        }
+        JdbcDatabaseContainer<?> container = containerFor(dialect);
+        // A FRESH SCHEMA per call, not a fresh container: starting one container per test would put
+        // minutes on every CI run for no isolation the schema does not already give.
+        Connection connection = DriverManager.getConnection(
+                container.getJdbcUrl(), container.getUsername(), container.getPassword());
+        resetSchema(connection, dialect);
+        return connection;
+    }
+
+    /**
+     * One container per engine per JVM, started on first use and reused.
+     *
+     * <p>Mirrors {@code PostgresTestSupport}'s lifecycle deliberately: a container per TEST would
+     * dominate the CI clock, and Ryuk reaps these when the JVM exits.
+     */
+    private static synchronized JdbcDatabaseContainer<?> containerFor(SqlDialect dialect) {
+        return CONTAINERS.computeIfAbsent(dialect.name(), name -> {
+            JdbcDatabaseContainer<?> started = switch (name) {
+                case "mysql" -> new MySQLContainer<>(DockerImageName.parse("mysql:8.4"))
+                        // utf8mb4 is not optional: MySQL's legacy three-byte "utf8" silently mangles
+                        // anything outside the BMP, so a default container would make conformance J2
+                        // fail for a reason that has nothing to do with the dialect.
+                        .withCommand("--character-set-server=utf8mb4",
+                                     "--collation-server=utf8mb4_unicode_ci");
+                case "postgres" -> new PostgreSQLContainer<>(DockerImageName.parse("postgres:16"));
+                case "sqlserver" -> new MSSQLServerContainer<>(
+                        DockerImageName.parse("mcr.microsoft.com/mssql/server:2022-latest"))
+                        .acceptLicense();
+                case "h2" -> throw new IllegalArgumentException(
+                        "h2 has no container -- it is the LOCAL backend. Asking for one means the "
+                        + "backend selection is confused, which would otherwise surface as a "
+                        + "mysteriously slow test rather than as this message.");
+                default -> throw new IllegalArgumentException(
+                        "no container image registered for dialect '" + name + "'. Add one here AND to "
+                        + "the CI workflow matrix, or the vector silently never runs against the real "
+                        + "engine while the suite reports green.");
+            };
+            started.start();
+            return started;
+        });
+    }
+
+    /**
+     * Drop everything the previous test left behind.
+     *
+     * <p>Vectors must not depend on each other's leftovers. Locally that is free -- each call gets a
+     * new in-memory database -- so this exists to give the container path the SAME guarantee, rather
+     * than letting CI be the one place where test order matters.
+     */
+    private static void resetSchema(Connection connection, SqlDialect dialect) throws SQLException {
+        List<String> tables = new ArrayList<>();
+        try (ResultSet rows = connection.getMetaData().getTables(
+                connection.getCatalog(), connection.getSchema(), "%", new String[] {"TABLE"})) {
+            while (rows.next()) {
+                tables.add(rows.getString("TABLE_NAME"));
+            }
+        }
+        for (String table : tables) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("DROP TABLE " + dialect.quoteIdentifier(table));
+            } catch (SQLException ignored) {
+                // A table another table references cannot be dropped first. The second pass below
+                // catches those; a table that survives both is reported by the vector that trips
+                // over it, which is a better message than anything this loop could produce.
+            }
+        }
+        for (String table : tables) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("DROP TABLE IF EXISTS " + dialect.quoteIdentifier(table));
+            } catch (SQLException ignored) {
+                // as above
+            }
+        }
+    }
+
+    private static String h2Url(String dialectName) {
+        String mode = switch (dialectName.toLowerCase(Locale.ROOT)) {
+            case "mysql" -> "MySQL";
+            case "sqlserver" -> "MSSQLServer";
+            case "postgres", "postgresql" -> "PostgreSQL";
+            case "h2" -> null;
+            default -> throw new IllegalArgumentException(
+                    "unknown dialect '" + dialectName + "' -- add it here AND to SqlDialects, or a typo "
+                    + "silently becomes plain H2 and the vector proves nothing");
+        };
+        return "jdbc:h2:mem:dialect_" + dialectName + "_" + SEQUENCE.incrementAndGet()
+                + ";DB_CLOSE_DELAY=-1"
+                + (mode == null ? "" : ";MODE=" + mode + ";DATABASE_TO_LOWER=TRUE");
+    }
+
+    /**
+     * True when this backend enforces {@code behaviour} faithfully enough to assert on it.
+     *
+     * <p><b>Use this instead of skipping silently.</b> Prefer {@code assumeTrue(enforces(...))} so the
+     * runner records a skip WITH ITS REASON rather than a pass.
+     */
+    public static boolean enforces(SqlDialect dialect, Behaviour behaviour) {
+        if (isContainerBacked()) {
+            return true; // the real engine enforces what it claims to
+        }
+        return switch (behaviour) {
+            // H2 honours these well enough in compatibility mode.
+            case SYNTAX_SHAPE, IDENTIFIER_QUOTING, PAGINATION, UNIQUENESS, DML_TRANSACTIONALITY -> true;
+            // H2 does NOT faithfully reproduce these. CI, against the real engine, or not at all.
+            case DDL_TRANSACTIONALITY,     // MySQL commits implicitly on DDL; H2-in-MySQL-mode does not model it
+                 NATIVE_UPSERT_SEMANTICS,  // ON DUPLICATE KEY vs MERGE concurrency behaviour
+                 CATALOG_INTROSPECTION,    // information_schema columns differ from the real engine
+                 CHARSET_FIDELITY,         // utf8 vs utf8mb4: H2 stores anything, MySQL may truncate
+                 CASE_SENSITIVITY,         // depends on the real server's config AND host filesystem
+                 TYPE_COERCION             // silent widening/narrowing is engine-specific
+                 -> false;
+        };
+    }
+
+    /**
+     * Whether the LOCAL backend can even EXECUTE this dialect's spelling of {@code construct}.
+     *
+     * <p>Distinct from {@link #enforces}, and the distinction matters. {@code enforces} asks "would I
+     * believe the result?"; this asks "will the statement parse at all?". Both must be true for a
+     * local run to mean anything, and conflating them produces the worst kind of red: a syntax error
+     * from the BACKEND that reads exactly like a bug in the DIALECT.
+     *
+     * <p><b>The table below is measured, not assumed</b> -- probed against H2 2.2.224 in each
+     * compatibility mode on 2026-08-08. Three of its entries are counter-intuitive enough to be worth
+     * naming:
+     *
+     * <ul>
+     *   <li><b>H2 in {@code MODE=PostgreSQL} cannot run {@code ON CONFLICT}.</b> Postgres's own upsert
+     *       is therefore NOT locally verifiable at all -- it needs the real Postgres that
+     *       {@code PostgresTestSupport} already starts in CI. This is the single clearest instance of
+     *       "be honest about what H2-in-mode proves", and it was found by a red test rather than by
+     *       reading documentation.</li>
+     *   <li><b>H2 in {@code MODE=MySQL} CAN run {@code ON DUPLICATE KEY UPDATE}.</b> So MySQL's upsert
+     *       -- the most divergent construct in the interface -- does get a real local behavioural
+     *       check, which is exactly the fast signal the tiering was designed to buy.</li>
+     *   <li><b>H2 in {@code MODE=MSSQLServer} correctly REJECTS {@code LIMIT ? OFFSET ?}</b> and
+     *       accepts {@code OFFSET..FETCH}. The backend independently confirms that SQL Server's
+     *       pagination shape is a real difference and not a stylistic one.</li>
+     * </ul>
+     *
+     * <p>Re-probe and update this table when the H2 version changes; a stale entry turns a skip into
+     * a failure or, worse, hides a construct that stopped working.
+     */
+    public static boolean canExecuteLocally(SqlDialect dialect, Construct construct) {
+        if (isContainerBacked()) {
+            return true; // the real engine runs its own SQL by definition
+        }
+        String name = dialect.name();
+        return switch (construct) {
+            // Every mode accepts standard DML, DDL and both symmetric quoting styles.
+            case BASIC_DML, PAGINATION, IDENTIFIER_QUOTING, TRANSACTIONS, UNIQUE_CONSTRAINT -> true;
+            // Each mode accepts its OWN auto-increment spelling and no other.
+            case AUTO_INCREMENT -> true;
+            // Measured: only h2's MERGE...KEY and mysql's ON DUPLICATE KEY parse locally.
+            case UPSERT -> "h2".equals(name) || "mysql".equals(name);
+        };
+    }
+
+    /** A SQL construct a vector needs the backend to parse. */
+    public enum Construct {
+        BASIC_DML,
+        PAGINATION,
+        IDENTIFIER_QUOTING,
+        AUTO_INCREMENT,
+        UNIQUE_CONSTRAINT,
+        TRANSACTIONS,
+        UPSERT
+    }
+
+    /** Why a vector could not RUN here, for the skip message. */
+    public static String whyNotRunnable(SqlDialect dialect, Construct construct) {
+        return "NOT RUN for " + dialect.name() + ": the local H2 backend cannot parse this engine's "
+                + construct + " syntax (measured -- see DialectTestSupport.canExecuteLocally). This is a "
+                + "backend limitation, NOT a dialect failure. It runs in CI against a real "
+                + dialect.name() + " (NPDEV_DIALECT_BACKEND=container).";
+    }
+
+    /** What a backend might or might not reproduce faithfully. */
+    public enum Behaviour {
+        SYNTAX_SHAPE,
+        IDENTIFIER_QUOTING,
+        PAGINATION,
+        UNIQUENESS,
+        DML_TRANSACTIONALITY,
+        DDL_TRANSACTIONALITY,
+        NATIVE_UPSERT_SEMANTICS,
+        CATALOG_INTROSPECTION,
+        CHARSET_FIDELITY,
+        CASE_SENSITIVITY,
+        TYPE_COERCION
+    }
+
+    /** Why a vector was not verified here, for the skip message. */
+    public static String whyNotVerified(SqlDialect dialect, Behaviour behaviour) {
+        return "NOT VERIFIED for " + dialect.name() + ": local H2-in-compatibility-mode does not "
+                + "faithfully reproduce " + behaviour + ". This vector needs a real " + dialect.name()
+                + " (NPDEV_DIALECT_BACKEND=container in CI). A green local run does NOT mean this passed.";
+    }
+}

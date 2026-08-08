@@ -35,7 +35,11 @@ public final class SqlDialects {
     private static final Map<String, SqlDialect> BY_NAME = Map.of(
             "postgres", PostgresDialect.INSTANCE,
             "postgresql", PostgresDialect.INSTANCE,
-            "h2", H2Dialect.INSTANCE);
+            "h2", H2Dialect.INSTANCE,
+            "mysql", MySqlDialect.INSTANCE,
+            "mariadb", MySqlDialect.INSTANCE,
+            "sqlserver", SqlServerDialect.INSTANCE,
+            "mssql", SqlServerDialect.INSTANCE);
 
     /** System property that pins the dialect for a running app. */
     public static final String DIALECT_PROPERTY = "npdev.storage.dialect";

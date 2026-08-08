@@ -1,0 +1,109 @@
+name: Storage dialect conformance
+
+# storage/PLAN.md §6 and §11.7. The conformance vectors run locally against H2 in each engine's
+# compatibility MODE, which catches syntax and shape in seconds with no Docker. This workflow is the
+# OTHER half, and the half that decides whether an engine may be CALLED supported:
+#
+#   "H2-in-MySQL-mode catches syntax, not semantics. REG-36 and REG-50 are this lesson already
+#    learned once. Never claim MySQL support from a green local run alone."
+#
+# NPDEV_DIALECT_BACKEND=container flips DialectTestSupport from H2 to a real Testcontainers engine.
+# The SAME test classes run -- the suite never learns which backend it got, which is what lets one
+# suite serve both -- so the 12 vectors SKIPPED locally (each printing its reason) are genuinely
+# executed here.
+#
+# ---------------------------------------------------------------------------------------------
+# WHY workflow_dispatch ONLY, for now
+#
+# The container path in DialectTestSupport was written on a machine where local Docker is banned, so
+# IT HAS NEVER RUN. Wiring an unverified job to `push` would turn main red for reasons its author
+# cannot reproduce, which is a cost paid by whoever pushes next rather than by whoever wrote it.
+#
+# So: run this manually first. When a run is green, add the `push`/`pull_request` triggers below --
+# that promotion is the last step of storage/PLAN.md §11.7, not a formality, and until it happens
+# MySQL and SQL Server are "implemented and locally checked", NOT "supported".
+#
+#   on:
+#     push:
+#       branches: [main]
+#       paths: ['NPDevKernel/kernel/src/**/storage/sql/**', 'NPDevKernel/adapters/**',
+#               'NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/**',
+#               '.github/workflows/storage-dialect-conformance.yml']
+# ---------------------------------------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+    inputs:
+      engine:
+        description: 'Which engine to run against (all, mysql, postgres, sqlserver)'
+        required: false
+        default: 'all'
+
+jobs:
+  tier-a:
+    name: Tier A -- string generation, no database
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: true
+      # REG-144: pin the build root so Gradle and PowerShell cannot resolve different ones on a
+      # checkout not named NPDev_General. Same reasoning as npdev-ci-validation.yml.
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      # Runs first and needs no container: a typo in a clause should fail in seconds, not after an
+      # engine has finished starting.
+      - name: Tier A
+        working-directory: NPDevKernel
+        run: ./gradlew :kernel:test --tests '*DialectConformanceTierATest*' --no-daemon --console=plain
+
+  conformance:
+    name: Tier B -- ${{ matrix.engine }} (real engine)
+    needs: tier-a
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      # NOT fail-fast: when two engines break, seeing both in one run is the difference between one
+      # fix and two round trips.
+      fail-fast: false
+      matrix:
+        engine: [mysql, postgres, sqlserver]
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: true
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2
+      # The flip. Without it this job would run H2 and report a green that means nothing.
+      NPDEV_DIALECT_BACKEND: container
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # No `services:` block: DialectTestSupport starts its own containers via Testcontainers, the
+      # same lifecycle PostgresTestSupport already uses (one per engine per JVM, Ryuk-reaped). A
+      # services block would start a SECOND database that nothing connects to.
+      - name: Tier B against a real ${{ matrix.engine }}
+        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        working-directory: NPDevKernel
+        run: ./gradlew :kernel:test --tests '*DialectConformanceTierBTest*' --no-daemon --console=plain
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-${{ matrix.engine }}
+          path: Build/gradle/npdev-kernel/kernel/test-results/**/*.xml
+          if-no-files-found: warn

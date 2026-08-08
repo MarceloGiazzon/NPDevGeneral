@@ -1,0 +1,404 @@
+package com.npdev.kernel.storage.sql;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Stream;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+/**
+ * <b>Tier B of the conformance suite: a connection and a hand-made table.</b> No model, no
+ * generation, no Spring Boot, no app -- the shape all 16 existing Postgres adapter tests already
+ * use. Seconds, not minutes, and no Docker.
+ *
+ * <h2>The one rule</h2>
+ *
+ * <p><b>Assert on OBSERVABLE BEHAVIOUR, never on generated SQL text.</b> A test asserting the string
+ * {@code ON CONFLICT} passes only for Postgres and must be rewritten for every engine -- which is the
+ * duplication the whole dialect layer exists to remove. Assert that upserting twice leaves ONE row;
+ * every dialect can satisfy that in its own spelling. (Tier A is where text is asserted, deliberately
+ * and separately.)
+ *
+ * <h2>What a green run here does and does not mean</h2>
+ *
+ * <p>Locally these run against H2 in each engine's compatibility MODE. That catches syntax and shape.
+ * It does not prove the real engine behaves the same, and this codebase already learned that with
+ * H2-in-PostgreSQL-mode (REG-36, REG-50). Vectors whose behaviour H2 cannot be trusted for are
+ * SKIPPED WITH A REASON rather than passed -- see {@link DialectTestSupport#enforces}. A skip is
+ * visible in the runner; a false pass is not.
+ */
+@DisplayName("Conformance Tier B -- behaviour against a real connection")
+class DialectConformanceTierBTest {
+
+    /**
+     * Every registered dialect, on every backend.
+     *
+     * <p>The local matrix is NOT narrowed here. Narrowing it by engine would be the coarse answer,
+     * and it would be wrong in both directions: H2 in {@code MODE=MySQL} really can run MySQL's
+     * upsert, while H2 in {@code MODE=PostgreSQL} really cannot run Postgres's. What a local backend
+     * can do varies by CONSTRUCT, not by engine, so each vector asks
+     * {@link DialectTestSupport#canExecuteLocally} for the construct it actually needs and records a
+     * SKIP WITH A REASON when the answer is no.
+     *
+     * <p>A skip is visible in the runner and names what did not run. A narrowed matrix is invisible.
+     */
+    static Stream<SqlDialect> locallyRunnableDialects() {
+        return SqlDialects.all().stream();
+    }
+
+    private static void requireRunnable(SqlDialect dialect, DialectTestSupport.Construct construct) {
+        assumeTrue(DialectTestSupport.canExecuteLocally(dialect, construct),
+                DialectTestSupport.whyNotRunnable(dialect, construct));
+    }
+
+    // ------------------------------------------------------------------ U1
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("U1: upserting the same key twice leaves exactly ONE row, with the second value")
+    void upsertTwiceYieldsOneRow(SqlDialect dialect) throws SQLException {
+        requireRunnable(dialect, DialectTestSupport.Construct.UPSERT);
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            execute(connection, "CREATE TABLE t (id VARCHAR(36) PRIMARY KEY, v INT NOT NULL)");
+
+            String sql = dialect.upsert().statementFor("t", List.of("id"), List.of("id", "v"));
+            upsert(connection, sql, "A", 1);
+            upsert(connection, sql, "A", 2);
+
+            assertEquals(1, count(connection, "SELECT COUNT(*) FROM t"),
+                    dialect.name() + ": upserting one key twice must leave one row");
+            assertEquals(2, count(connection, "SELECT v FROM t WHERE id = 'A'"),
+                    dialect.name() + ": the second upsert must win");
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("U1: two DIFFERENT keys produce two rows -- the upsert is not collapsing everything")
+    void upsertDistinctKeysYieldsTwoRows(SqlDialect dialect) throws SQLException {
+        // Without this, an upsert that matched every row would pass the test above perfectly.
+        requireRunnable(dialect, DialectTestSupport.Construct.UPSERT);
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            execute(connection, "CREATE TABLE t (id VARCHAR(36) PRIMARY KEY, v INT NOT NULL)");
+            String sql = dialect.upsert().statementFor("t", List.of("id"), List.of("id", "v"));
+            upsert(connection, sql, "A", 1);
+            upsert(connection, sql, "B", 2);
+            assertEquals(2, count(connection, "SELECT COUNT(*) FROM t"), dialect.name());
+        }
+    }
+
+    // ------------------------------------------------------------------ P1/P2/P3
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("P1: limit returns exactly N rows")
+    void limitReturnsExactlyN(SqlDialect dialect) throws SQLException {
+        requireRunnable(dialect, DialectTestSupport.Construct.PAGINATION);
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            seedTenRows(connection);
+            String sql = dialect.paginated("SELECT n FROM t ORDER BY n\n");
+            assertEquals(3, readPage(connection, sql, dialect, 3, 0).size(), dialect.name());
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("P2: offset skips, and consecutive pages neither overlap nor gap")
+    void pagesDoNotOverlapOrGap(SqlDialect dialect) throws SQLException {
+        requireRunnable(dialect, DialectTestSupport.Construct.PAGINATION);
+        // Off-by-one here is SILENT: it shows up as missing records in a UI, never as an error. It is
+        // also exactly what a reversed (limit, offset) binding produces on SQL Server, which is why
+        // this vector matters more than its simplicity suggests.
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            seedTenRows(connection);
+            String sql = dialect.paginated("SELECT n FROM t ORDER BY n\n");
+            List<Integer> first = readPage(connection, sql, dialect, 3, 0);
+            List<Integer> second = readPage(connection, sql, dialect, 3, 3);
+
+            assertEquals(List.of(0, 1, 2), first, dialect.name() + ": first page");
+            assertEquals(List.of(3, 4, 5), second, dialect.name() + ": second page");
+            Set<Integer> union = new LinkedHashSet<>(first);
+            union.addAll(second);
+            assertEquals(6, union.size(), dialect.name() + ": pages overlapped -- " + first + " " + second);
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("P2: an offset past the end returns nothing rather than wrapping")
+    void offsetPastTheEndReturnsNothing(SqlDialect dialect) throws SQLException {
+        requireRunnable(dialect, DialectTestSupport.Construct.PAGINATION);
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            seedTenRows(connection);
+            String sql = dialect.paginated("SELECT n FROM t ORDER BY n\n");
+            assertTrue(readPage(connection, sql, dialect, 3, 100).isEmpty(), dialect.name());
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("P1: limitOnly caps without an offset")
+    void limitOnlyCaps(SqlDialect dialect) throws SQLException {
+        requireRunnable(dialect, DialectTestSupport.Construct.PAGINATION);
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            seedTenRows(connection);
+            String sql = dialect.limited("SELECT n FROM t ORDER BY n\n");
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                int index = 1;
+                for (int value : dialect.limitOnly().values(4, 0)) {
+                    statement.setInt(index++, value);
+                }
+                assertEquals(4, drain(statement).size(), dialect.name());
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ J1/J2
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("J1: a nested JSON value round-trips structurally")
+    void jsonRoundTrips(SqlDialect dialect) throws SQLException {
+        requireRunnable(dialect, DialectTestSupport.Construct.BASIC_DML);
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            // Stored as text on purpose: this vector is about the VALUE surviving, and asserting on
+            // Postgres jsonb's own normalisation (it reorders keys and drops whitespace) would be
+            // asserting on the engine rather than on the platform.
+            execute(connection, "CREATE TABLE t (id VARCHAR(36) PRIMARY KEY, doc VARCHAR(4000))");
+            String document = "{\"a\":{\"b\":[1,2,3]},\"c\":\"x\"}";
+            try (PreparedStatement insert = connection.prepareStatement("INSERT INTO t (id, doc) VALUES (?, ?)")) {
+                insert.setString(1, "A");
+                insert.setString(2, document);
+                insert.executeUpdate();
+            }
+            assertEquals(document, readString(connection, "SELECT doc FROM t WHERE id = 'A'"), dialect.name());
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("J2: quotes and non-BMP unicode survive")
+    void jsonWithQuotesAndUnicodeSurvives(SqlDialect dialect) throws SQLException {
+        assumeTrue(DialectTestSupport.enforces(dialect, DialectTestSupport.Behaviour.CHARSET_FIDELITY),
+                DialectTestSupport.whyNotVerified(dialect, DialectTestSupport.Behaviour.CHARSET_FIDELITY));
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            execute(connection, "CREATE TABLE t (id VARCHAR(36) PRIMARY KEY, doc VARCHAR(4000))");
+            // The emoji is the point. MySQL's legacy three-byte "utf8" cannot represent it and
+            // truncates or replaces SILENTLY -- the insert succeeds and the data is already wrong.
+            String document = "{\"a\":\"say \\\"hi\\\"\",\"b\":\"café ☕\",\"c\":\"🚀\"}";
+            try (PreparedStatement insert = connection.prepareStatement("INSERT INTO t (id, doc) VALUES (?, ?)")) {
+                insert.setString(1, "A");
+                insert.setString(2, document);
+                insert.executeUpdate();
+            }
+            assertEquals(document, readString(connection, "SELECT doc FROM t WHERE id = 'A'"), dialect.name());
+        }
+    }
+
+    // ------------------------------------------------------------------ Q1
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("Q1: a column literally named 'order' can be written and read")
+    void reservedWordColumnWorks(SqlDialect dialect) throws SQLException {
+        // A user WILL name a field `order` or `group`. This is the vector that proves quoteIdentifier
+        // is not merely well-formed but actually accepted by the engine.
+        requireRunnable(dialect, DialectTestSupport.Construct.IDENTIFIER_QUOTING);
+        assumeTrue(DialectTestSupport.enforces(dialect, DialectTestSupport.Behaviour.IDENTIFIER_QUOTING),
+                DialectTestSupport.whyNotVerified(dialect, DialectTestSupport.Behaviour.IDENTIFIER_QUOTING));
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            String column = dialect.quoteIdentifier("order");
+            execute(connection, "CREATE TABLE t (id VARCHAR(36) PRIMARY KEY, " + column + " INT NOT NULL)");
+            try (PreparedStatement insert = connection.prepareStatement(
+                    "INSERT INTO t (id, " + column + ") VALUES (?, ?)")) {
+                insert.setString(1, "A");
+                insert.setInt(2, 7);
+                insert.executeUpdate();
+            }
+            assertEquals(7, count(connection, "SELECT " + column + " FROM t WHERE id = 'A'"), dialect.name());
+        }
+    }
+
+    // ------------------------------------------------------------------ T1/T2
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("T1: a rolled-back DML transaction persists nothing")
+    void dmlRollsBack(SqlDialect dialect) throws SQLException {
+        requireRunnable(dialect, DialectTestSupport.Construct.TRANSACTIONS);
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            execute(connection, "CREATE TABLE t (id VARCHAR(36) PRIMARY KEY)");
+            connection.setAutoCommit(false);
+            execute(connection, "INSERT INTO t (id) VALUES ('A')");
+            connection.rollback();
+            connection.setAutoCommit(true);
+            assertEquals(0, count(connection, "SELECT COUNT(*) FROM t"), dialect.name());
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("T2: DDL in a transaction behaves as the dialect DECLARES -- do not assume")
+    void ddlTransactionalityMatchesTheDeclaration(SqlDialect dialect) throws SQLException {
+        // THE vector that gates whether MySQL can be called safe. A migration that half-applies and
+        // reports success is the worst failure this system can produce, so the declaration must be
+        // red before it is trusted -- not green afterwards.
+        assumeTrue(DialectTestSupport.enforces(dialect, DialectTestSupport.Behaviour.DDL_TRANSACTIONALITY),
+                DialectTestSupport.whyNotVerified(dialect, DialectTestSupport.Behaviour.DDL_TRANSACTIONALITY));
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            connection.setAutoCommit(false);
+            execute(connection, "CREATE TABLE rollback_probe (id INT)");
+            connection.rollback();
+            connection.setAutoCommit(true);
+            boolean survived = tableExists(connection, "rollback_probe");
+            assertEquals(!dialect.supports(StorageCapability.DDL_IN_TRANSACTION), survived,
+                    dialect.name() + " declares DDL_IN_TRANSACTION="
+                    + dialect.supports(StorageCapability.DDL_IN_TRANSACTION)
+                    + " but the table " + (survived ? "SURVIVED" : "did not survive")
+                    + " a rollback. The declaration and the engine disagree, and the declaration is "
+                    + "what the schema engine trusts.");
+        }
+    }
+
+    // ------------------------------------------------------------------ A1
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("A1: an auto-increment column produces distinct, increasing keys")
+    void autoIncrementProducesIncreasingKeys(SqlDialect dialect) throws SQLException {
+        requireRunnable(dialect, DialectTestSupport.Construct.AUTO_INCREMENT);
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            execute(connection, "CREATE TABLE t (id " + dialect.autoIncrementColumn(SqlType.INT)
+                    + " PRIMARY KEY, v INT NOT NULL)");
+            for (int i = 0; i < 3; i++) {
+                execute(connection, "INSERT INTO t (v) VALUES (" + i + ")");
+            }
+            List<Integer> keys = readAll(connection, "SELECT id FROM t ORDER BY id");
+            assertEquals(3, new LinkedHashSet<>(keys).size(), dialect.name() + ": keys not distinct " + keys);
+            for (int i = 1; i < keys.size(); i++) {
+                assertTrue(keys.get(i) > keys.get(i - 1), dialect.name() + ": not increasing " + keys);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ C1 (uniqueness)
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("locallyRunnableDialects")
+    @DisplayName("UNIQUE_CONSTRAINTS is declared, so a duplicate must actually be rejected")
+    void declaredUniquenessIsEnforced(SqlDialect dialect) throws SQLException {
+        // C2 in miniature: a declared capability that does not work is worse than an absent one,
+        // because the generator accepts models against it.
+        assumeTrue(dialect.supports(StorageCapability.UNIQUE_CONSTRAINTS));
+        requireRunnable(dialect, DialectTestSupport.Construct.UNIQUE_CONSTRAINT);
+        assumeTrue(DialectTestSupport.enforces(dialect, DialectTestSupport.Behaviour.UNIQUENESS),
+                DialectTestSupport.whyNotVerified(dialect, DialectTestSupport.Behaviour.UNIQUENESS));
+        try (Connection connection = DialectTestSupport.connectionFor(dialect)) {
+            execute(connection, "CREATE TABLE t (id VARCHAR(36) PRIMARY KEY, email VARCHAR(100) UNIQUE)");
+            execute(connection, "INSERT INTO t (id, email) VALUES ('A', 'x@example.com')");
+            boolean rejected = false;
+            try {
+                execute(connection, "INSERT INTO t (id, email) VALUES ('B', 'x@example.com')");
+            } catch (SQLException expected) {
+                rejected = true;
+            }
+            assertTrue(rejected, dialect.name() + " declares UNIQUE_CONSTRAINTS but accepted a duplicate");
+        }
+    }
+
+    // ------------------------------------------------------------------ helpers
+
+    private static void seedTenRows(Connection connection) throws SQLException {
+        execute(connection, "CREATE TABLE t (n INT PRIMARY KEY)");
+        for (int i = 0; i < 10; i++) {
+            execute(connection, "INSERT INTO t (n) VALUES (" + i + ")");
+        }
+    }
+
+    private static List<Integer> readPage(Connection connection, String sql, SqlDialect dialect,
+                                          int limit, int offset) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            int index = 1;
+            // Bound through the dialect's DECLARED order -- the whole point. A hardcoded
+            // (limit, offset) here would pass on three engines and quietly page wrongly on the fourth.
+            for (int value : dialect.limitOffset().values(limit, offset)) {
+                statement.setInt(index++, value);
+            }
+            return drain(statement);
+        }
+    }
+
+    private static List<Integer> drain(PreparedStatement statement) throws SQLException {
+        List<Integer> out = new ArrayList<>();
+        try (ResultSet rows = statement.executeQuery()) {
+            while (rows.next()) {
+                out.add(rows.getInt(1));
+            }
+        }
+        return out;
+    }
+
+    private static void upsert(Connection connection, String sql, String id, int value) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, id);
+            statement.setInt(2, value);
+            statement.executeUpdate();
+        }
+    }
+
+    private static void execute(Connection connection, String sql) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute(sql);
+        }
+    }
+
+    private static int count(Connection connection, String sql) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(sql)) {
+            return rows.next() ? rows.getInt(1) : -1;
+        }
+    }
+
+    private static String readString(Connection connection, String sql) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(sql)) {
+            return rows.next() ? rows.getString(1) : null;
+        }
+    }
+
+    private static List<Integer> readAll(Connection connection, String sql) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(sql)) {
+            List<Integer> out = new ArrayList<>();
+            while (rows.next()) {
+                out.add(rows.getInt(1));
+            }
+            return out;
+        }
+    }
+
+    private static boolean tableExists(Connection connection, String table) throws SQLException {
+        try (ResultSet tables = connection.getMetaData().getTables(
+                null, null, table.toUpperCase(java.util.Locale.ROOT), null)) {
+            if (tables.next()) {
+                return true;
+            }
+        }
+        try (ResultSet tables = connection.getMetaData().getTables(null, null, table, null)) {
+            return tables.next();
+        }
+    }
+}

@@ -21,6 +21,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import com.npdev.kernel.storage.sql.SqlDialects;
+import com.npdev.kernel.storage.sql.StorageCapability;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -181,7 +183,11 @@ public final class ConversionHookRunner {
             // verify mismatch (or a verifySql that errors) rolls the WHOLE hook back -- nothing persists.
             // Previously the convert SQL committed first and verify ran on a separate connection, so a
             // failing verify aborted the boot but the hook's (possibly destructive) changes stayed
-            // committed and a re-boot silently proceeded. Now "nothing persisted" is literally true.
+            // committed and a re-boot silently proceeded.
+            //
+            // "Nothing persisted" is literally true only on an engine that keeps DDL inside the
+            // transaction. H2 does not (boundary B11) and MySQL does not, so what the refusal says
+            // now comes from rollbackTruth() rather than from this assumption. See its javadoc.
             HookOutcome outcome;
             try {
                 outcome = executeAndVerify(dataSource, sql, hook.verifySql(), hook.verifyExpect());
@@ -189,7 +195,7 @@ public final class ConversionHookRunner {
                 historyWriter.write(historyLabel(hook), "HOOK_FAILED",
                         List.of("sqlHash=" + sqlHash, "error=" + exception.getMessage()));
                 throw new IllegalStateException("Conversion hook '" + hook.id()
-                        + "' failed executing its convert SQL (transaction rolled back, nothing persisted): "
+                        + "' failed executing its convert SQL (" + rollbackTruth() + "): "
                         + exception.getMessage() + " -- refusing the boot.", exception);
             }
 
@@ -198,14 +204,14 @@ public final class ConversionHookRunner {
                         List.of("verifySql failed to run: " + outcome.verifyError()));
                 throw new IllegalStateException("Conversion hook '" + hook.id()
                         + "' verifySql failed to run: " + outcome.verifyError()
-                        + " -- refusing the boot (the hook's changes were rolled back; nothing persisted).");
+                        + " -- refusing the boot (" + rollbackTruth() + ").");
             }
             if (outcome.verifyRan() && !outcome.committed()) {
                 historyWriter.write(historyLabel(hook), "HOOK_VERIFY_FAILED",
                         List.of("expected=" + hook.verifyExpect(), "actual=" + outcome.verifyActual()));
                 throw new IllegalStateException("Conversion hook '" + hook.id()
                         + "' verification failed: expected " + hook.verifyExpect() + " but got " + outcome.verifyActual()
-                        + " -- refusing the boot (the hook's changes were rolled back; nothing persisted).");
+                        + " -- refusing the boot (" + rollbackTruth() + ").");
             }
             if (outcome.verifyRan()) {
                 historyWriter.write(historyLabel(hook), "HOOK_VERIFIED",
@@ -370,6 +376,34 @@ public final class ConversionHookRunner {
      *  on a mismatch or a verifySql that itself errored, the transaction was rolled back
      *  ({@code committed=false}) and nothing persisted. {@code verifyError} is non-null only when the
      *  verifySql failed to execute. */
+    /**
+     * What a rollback here actually undid, in words that are true on THIS engine.
+     *
+     * <p>A conversion hook's convert SQL contains DDL ({@code ALTER TABLE ... ADD COLUMN}, emitted by
+     * ConversionHookEmitter). This class runs convert + verify in one transaction and rolls back on a
+     * verify failure, and every refusal below used to say "nothing persisted".
+     *
+     * <p><b>That sentence is false on any engine that commits implicitly on DDL</b> -- which is H2
+     * today (boundary B11) and MySQL tomorrow. There, the ALTER already committed, and it took any
+     * DML executed before it along with it. The rollback still undoes DML issued AFTER the last DDL
+     * statement, so it is not a no-op; it is just not what the message claimed.
+     *
+     * <p>Refusing to run hooks on such an engine would break every H2 app that uses them today and
+     * would be a far larger change than the defect warrants. What must not survive is the platform
+     * telling an operator the database is untouched when it is not: a false all-clear is what turns
+     * a recoverable half-migration into one nobody goes looking for. So the behaviour is unchanged
+     * and the SENTENCE is corrected -- the X0 rule applied to a message rather than to a code path.
+     */
+    private static String rollbackTruth() {
+        if (SqlDialects.active().supports(StorageCapability.DDL_IN_TRANSACTION)) {
+            return "the hook's changes were rolled back; nothing persisted";
+        }
+        return "engine '" + SqlDialects.active().name() + "' COMMITS IMPLICITLY ON DDL, so the hook's "
+                + "schema changes (and any data change made before them) are ALREADY COMMITTED and were "
+                + "NOT rolled back -- only data changes made after the last DDL statement were undone. "
+                + "Inspect the schema before re-running";
+    }
+
     private record HookOutcome(boolean committed, boolean verifyRan, long verifyActual, String verifyError) {
     }
 
