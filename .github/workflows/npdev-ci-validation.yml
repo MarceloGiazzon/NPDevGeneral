@@ -10,6 +10,13 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 3 * * *'  # 03:00 UTC daily
+  # Until now this gate ran ONLY nightly or by hand, so a commit could sit unverified on main for
+  # up to 24 hours -- and did: three Linux-only generator failures landed and were not reported
+  # until the next night's run. It is also the structural half of how this workflow once stayed red
+  # for twelve days unobserved. Local T2 cannot substitute: it runs on Windows, and every failure
+  # of this class so far (REG-136, REG-137, and these three) passes there and fails here.
+  push:
+    branches: [main]
 
 concurrency:
   group: npdev-ci-validation-${{ github.ref }}
@@ -99,6 +106,32 @@ jobs:
         timeout-minutes: 30
         run: |
           ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
+
+      # A failing generator test printed only "AssertionFailedError at <File>.java:458" -- the
+      # assertion MESSAGE (which for the packaged-app proofs is the full output of the command that
+      # failed) never reached the log, because the only error-surfacing step in this workflow reads
+      # NPDevSamples/superuser-admin-console/.../integrationTest/*.xml while these results live in
+      # NPDevGenerator/generator/build/test-results/. Three Linux-only failures were undiagnosable
+      # for a full day as a result: the run said WHERE, never WHY.
+      #
+      # No heredoc here on purpose -- an unindented heredoc body escapes this `run: |` block scalar
+      # and makes the whole workflow file unparseable (learned the hard way while writing it).
+      - name: On failure, surface generator test failure messages
+        if: failure()
+        working-directory: NPDevGenerator
+        run: |
+          shopt -s nullglob
+          found=0
+          for f in generator/build/test-results/*/*.xml; do
+            if grep -q '<failure' "$f" || grep -q '<error' "$f"; then
+              found=1
+              echo "----- $f -----"
+              # message="..." carries the assertion text; for the packaged-app proofs that is the
+              # entire captured output of the command that exited non-zero.
+              grep -o '<\(failure\|error\) [^>]*' "$f" | head -20
+            fi
+          done
+          if [ "$found" = "0" ]; then echo "no generator test XML containing failures was found"; fi
 
       - name: Portable NPDev CLI smoke
         timeout-minutes: 45
