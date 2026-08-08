@@ -293,6 +293,41 @@ jobs:
           PY
           docker rm -f npdev-engine-latin1 >/dev/null 2>&1 || true
 
+      # Tier C gives each vector its OWN database, so that p2's model, p3's and p4's never share a
+      # schema fingerprint. Sharing one would make NPDev see each probe as an EVOLUTION of the last
+      # and -- correctly, under KeepExistingIfCompatible with no destructive recreate -- refuse the
+      # boot. The refusal would be right and the run would be measuring the harness.
+      #
+      # They have to be created here because NPDev creates TABLES at boot and never the database
+      # itself, which is precisely what doctor's `database-exists` check reports (added after run
+      # 31272786548 mistook a missing database for bad credentials). Run 31273028408 then hit the
+      # real thing: "FATAL: database npdev_p2_postgres does not exist".
+      - name: Create the Tier C databases
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
+        run: |
+          set -uo pipefail
+          for suffix in p2 p3 p4; do
+            DB="npdev_${suffix}_${{ matrix.engine }}"
+            case "${{ matrix.engine }}" in
+              mysql)
+                # utf8mb4 explicitly, not inherited: these databases hold the evolution vectors, and
+                # a probe database on the legacy charset would fail for a reason unrelated to schema
+                # evolution.
+                docker exec npdev-engine mysql -uroot -pnpdevroot -e "CREATE DATABASE IF NOT EXISTS \`$DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON \`$DB\`.* TO 'npdev'@'%'; FLUSH PRIVILEGES;"
+                ;;
+              postgres)
+                # `|| true`: Postgres has no CREATE DATABASE IF NOT EXISTS, and a re-run finding it
+                # already there is success, not failure. A genuine problem surfaces at connect time
+                # with a clearer message than this step could produce.
+                docker exec npdev-engine psql -U npdev -d postgres -c "CREATE DATABASE $DB" || true
+                ;;
+              sqlserver)
+                docker exec npdev-engine /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Npdev!Probe123' -C -Q "IF DB_ID('$DB') IS NULL CREATE DATABASE [$DB];"
+                ;;
+            esac
+            echo "ensured $DB exists"
+          done
+
       # E7. Runs after the app proof, deliberately: if an app cannot boot on this engine at all,
       # four schema-evolution vectors failing tells you nothing you did not already know, and a
       # 4x-red job hides which failure is the cause.

@@ -124,6 +124,40 @@ dependencies {
     implementation 'org.flywaydb:flyway-database-postgresql'
     implementation 'org.postgresql:postgresql:42.7.4'
 
+    // ---------------------------------------------------------------------------------------
+    // storage/FULL_SUPPORT_PLAN.md gap A / ledger STOR-4 -- and THIS is the file that matters.
+    //
+    // MySQL and SQL Server were selectable in db.definition.json, wired through DatabaseEngine
+    // with JDBC URLs and default ports, given complete SqlDialect implementations, and green on
+    // 14/14 conformance vectors against REAL containers. And no generated app could ever have
+    // connected to either, because this template -- the build file every FinalApp actually gets --
+    // declared drivers for Postgres and H2 only. Measured, CI run 31272786548:
+    //
+    //     Cannot load driver class: com.mysql.cj.jdbc.Driver
+    //
+    // at DataSource creation, before a single line of NPDev's own code ran.
+    //
+    // Tier B could never have caught it: it takes a raw JDBC connection from a driver the TEST
+    // classpath has, so "the dialect works" and "an app works" were entirely different claims.
+    //
+    // NOTE FOR THE NEXT EDITOR: NPDevRuntimeHost/build.gradle is the PLATFORM's own build file and
+    // is NOT what a generated app gets -- fixing it alone changes nothing downstream, which cost
+    // one CI round (run 31273028408 failed with the identical error). Both files carry these
+    // dependencies; this one is the one users run.
+    //
+    // Declared unconditionally, like h2 and postgres already are. Emitting them per engine would
+    // be smaller on disk and would put an engine's basic usability behind a code path that only
+    // runs for that engine -- the shape of the bug being fixed.
+    //
+    // Flyway 10 needs a per-database module beside the driver (hence flyway-database-postgresql
+    // above); without the matching two, Flyway refuses the engine at boot with a DIFFERENT message
+    // and the driver fix alone looks wrong.
+    // ---------------------------------------------------------------------------------------
+    runtimeOnly 'com.mysql:mysql-connector-j:9.1.0'
+    runtimeOnly 'com.microsoft.sqlserver:mssql-jdbc:12.8.1.jre11'
+    implementation 'org.flywaydb:flyway-mysql'
+    implementation 'org.flywaydb:flyway-sqlserver'
+
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     // LNCH-8: the Prometheus registry so /actuator/prometheus actually exposes something --
     // Actuator alone only gives the generic /actuator/metrics JSON view, not the scrape format.

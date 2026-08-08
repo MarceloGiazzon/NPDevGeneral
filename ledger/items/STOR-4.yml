@@ -1,0 +1,74 @@
+id: STOR-4
+title: >-
+  MySQL and SqlServer were selectable, dialect-complete and conformance-green -- and no generated
+  app could ever have connected to either, because the app template carried no JDBC driver for them
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-08
+closed: 2026-08-08
+verification: VERIFIED_LIVE
+surface: runtimehost/build-template, generator/dbconfig, ci/engine-support
+source: >-
+  storage/FULL_SUPPORT_PLAN.md gap A ("no generated APPLICATION has ever booted on MySQL or SQL
+  Server"), found the first time an application-level probe was actually run -- CI run 31272786548.
+detail: >-
+  Everything pointed the other way. `MySQL` and `SqlServer` were valid values of
+  `db.definition.json`'s `database.engine`; `DatabaseEngine` gave them JDBC URLs, drivers and default
+  ports; `SqlDialects` registered complete `MySqlDialect` and `SqlServerDialect` implementations;
+  `StorageDialectInitializer` pinned the active dialect at boot; and the conformance suite passed
+  14/14 behavioural vectors for each, with zero skips, against REAL containers (run 31271016482).
+
+  A generated app for either engine died at DataSource creation, before one line of NPDev's own code
+  executed:
+
+      Caused by: java.lang.IllegalStateException: Cannot load driver class: com.mysql.cj.jdbc.Driver
+          at DataSourceProperties.findDriverClassName(DataSourceProperties.java:184)
+
+  NPDevRuntimeHost/build.gradle -- the template copied into EVERY generated FinalApp -- declared
+  `org.postgresql:postgresql` and `com.h2database:h2` and nothing else. The MySQL and SQL Server
+  drivers existed only on `:kernel`'s TEST classpath, where the conformance suite uses them.
+
+  WHY EVERY EXISTING TEST MISSED IT, AND WHY THAT IS THE INTERESTING PART
+
+  Tier A asserts dialect string generation: no database, no app. Tier B asserts behaviour against a
+  real connection -- and it OBTAINS that connection from a driver the test classpath has. Neither
+  tier ever asks the question "can the artifact we ship to a user load this driver?", because neither
+  tier builds that artifact.
+
+  So the platform could be, simultaneously and honestly:
+    - correct at the dialect layer (proven, three real engines),
+    - correct at the configuration layer (the enum, the URL, the port, the container name),
+    - and completely unusable end to end.
+
+  "The dialect works" and "an app works" were different claims, and only an application-level probe
+  could tell them apart. That is exactly why FULL_SUPPORT_PLAN.md ranks "a generated app boots" as
+  gap A rather than a formality, and the ranking turned out to be right for a more concrete reason
+  than the plan itself predicted.
+
+  A third person following the supported path -- `npdev init --engine mysql`, then run -- would have
+  hit this on their first boot, with a Spring stack trace and no indication that the engine had never
+  been usable.
+resolution: >-
+  DONE.
+
+  NPDevRuntimeHost/build.gradle now declares `com.mysql:mysql-connector-j` and
+  `com.microsoft.sqlserver:mssql-jdbc` as `runtimeOnly`, plus Flyway 10's per-database modules
+  `flyway-mysql` and `flyway-sqlserver` alongside the existing `flyway-database-postgresql`. Without
+  those Flyway modules the driver fix alone fails one step later with a different message, which
+  would have made the fix look wrong.
+
+  Declared UNCONDITIONALLY, exactly as h2 and postgres already are, rather than emitted per engine.
+  Conditional emission would be smaller on disk and would put an engine's basic usability behind a
+  code path that only runs for that engine -- which is the shape of the bug being fixed.
+
+  The permanent control is `.github/workflows/engine-support.yml`: per engine, against a real pinned
+  container, it generates the probe app, builds it, boots it, round-trips non-BMP unicode, exercises
+  a filtered/ordered/paginated query, and restarts to confirm rows survive. A regression of this kind
+  cannot be silent again, because "the app boots" is now something a job asserts rather than
+  something nobody had tried.
+files:
+  - NPDevRuntimeHost/build.gradle
+  - .github/workflows/engine-support.yml
+  - scripts/quality/run-engine-app-proof.py
+  - NPDevSamples/probes/engine-probe/Input/model.json
