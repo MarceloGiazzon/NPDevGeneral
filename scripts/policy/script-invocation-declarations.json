@@ -142,6 +142,9 @@
     "scripts/quality/check-cadence-coverage.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-dialect-sites.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-dsl-conformance-generates.py": {
       "invocation": "ci-gate"
     },
@@ -190,14 +193,14 @@
     "scripts/quality/check-x0-evaluator-coverage.py": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/firstrun-harness/run-readme.sh": {
-      "invocation": "manual-runbook"
-    },
     "scripts/quality/firstrun-harness/check-wrongjava.sh": {
       "invocation": "manual-runbook"
     },
     "scripts/quality/firstrun-harness/inject_field.py": {
       "invocation": "orchestrated"
+    },
+    "scripts/quality/firstrun-harness/run-readme.sh": {
+      "invocation": "manual-runbook"
     },
     "scripts/quality/fix-statezip-visible-timestamps.ps1": {
       "invocation": "manual-runbook"

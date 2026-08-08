@@ -75,6 +75,10 @@ public final class UserDatabaseDefinitionLoader {
         String driver = switch (engine) {
             case POSTGRES -> "org.postgresql.Driver";
             case H2_LOCAL, H2_SERVER -> "org.h2.Driver";
+            // com.mysql.cj.jdbc.Driver, not the pre-8 com.mysql.jdbc.Driver -- the old name still
+            // loads with a deprecation warning and then behaves differently around time zones.
+            case MYSQL -> "com.mysql.cj.jdbc.Driver";
+            case SQL_SERVER -> "com.microsoft.sqlserver.jdbc.SQLServerDriver";
             case IN_MEMORY -> "";
         };
         List<String> fingerprintInputs = fingerprintInputs(definition, model);
@@ -138,10 +142,13 @@ public final class UserDatabaseDefinitionLoader {
         if (definition.username().isBlank()) {
             throw new IllegalArgumentException("database.username is required for " + engine.externalName());
         }
-        if (engine == DatabaseEngine.POSTGRES) {
+        if (engine == DatabaseEngine.POSTGRES || engine == DatabaseEngine.MYSQL
+                || engine == DatabaseEngine.SQL_SERVER) {
+            // Every server engine needs a reachable address. Grouped rather than repeated so a
+            // fourth one cannot be added without a host/port requirement by simply not noticing.
             require(definition.host(), "database.host");
             if (definition.port() <= 0) {
-                throw new IllegalArgumentException("database.port is required for Postgres");
+                throw new IllegalArgumentException("database.port is required for " + engine.externalName());
             }
         } else if (engine == DatabaseEngine.H2_SERVER && definition.jdbcUrl().isBlank()
                 && (definition.host().isBlank() || definition.port() <= 0)) {
@@ -176,14 +183,14 @@ public final class UserDatabaseDefinitionLoader {
                 ? appDatabaseRoot.resolve(resolvedName)
                 : appDatabaseRoot;
         String dataRoot = dataRootPath.toAbsolutePath().normalize().toString().replace('\\', '/');
-        String containerName = engine == DatabaseEngine.POSTGRES ? "npdev-" + slug(instanceId) : "";
+        String containerName = engine.usesContainer() ? "npdev-" + slug(instanceId) : "";
         String host = resolveHost(definition);
         int hostPort = resolveHostPort(definition);
-        int containerPort = engine == DatabaseEngine.POSTGRES ? 5432 : (engine == DatabaseEngine.H2_SERVER ? 9092 : 0);
+        int containerPort = engine.defaultPort();
         String dbeaverHost = engine == DatabaseEngine.H2_LOCAL ? "" : host;
         int dbeaverPort = engine == DatabaseEngine.H2_LOCAL ? 0 : hostPort;
         String dbeaverDatabase = switch (engine) {
-            case POSTGRES -> resolvedName;
+            case POSTGRES, MYSQL, SQL_SERVER -> resolvedName;
             case H2_LOCAL -> dataRoot + "/" + resolvedName;
             case H2_SERVER -> dataRoot + "/" + resolvedName;
             case IN_MEMORY -> "";
@@ -223,6 +230,21 @@ public final class UserDatabaseDefinitionLoader {
             case H2_SERVER -> "jdbc:h2:tcp://" + identity.host() + ":" + identity.hostPort()
                     + "/" + identity.resolvedDataRoot() + "/" + identity.resolvedDatabaseName()
                     + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0";
+            // characterEncoding=UTF-8 and connectionCollation=utf8mb4 are NOT cosmetic. MySQL's
+            // legacy "utf8" is a three-byte encoding that cannot represent anything outside the
+            // BMP, so on a default connection an emoji or some CJK text is truncated or replaced
+            // SILENTLY -- the insert succeeds and the data is already wrong. Conformance J2 exists
+            // for exactly this. serverTimezone=UTC keeps DATETIME values meaning what they said.
+            case MYSQL -> "jdbc:mysql://" + identity.host() + ":" + identity.hostPort()
+                    + "/" + identity.resolvedDatabaseName()
+                    + "?characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci"
+                    + "&serverTimezone=UTC&rewriteBatchedStatements=true";
+            // encrypt=true is the driver default from mssql-jdbc 10 onward; stating both it and
+            // trustServerCertificate keeps a local/dev instance with a self-signed cert working
+            // without silently turning encryption off in production too.
+            case SQL_SERVER -> "jdbc:sqlserver://" + identity.host() + ":" + identity.hostPort()
+                    + ";databaseName=" + identity.resolvedDatabaseName()
+                    + ";encrypt=true;trustServerCertificate=true";
         };
     }
 
@@ -249,11 +271,7 @@ public final class UserDatabaseDefinitionLoader {
                 return Integer.parseInt(matcher.group(1));
             }
         }
-        return switch (definition.engine()) {
-            case POSTGRES -> 5432;
-            case H2_SERVER -> 9092;
-            default -> 0;
-        };
+        return definition.engine().defaultPort();
     }
 
     private static String resolveAppId(Path definitionPath) {
