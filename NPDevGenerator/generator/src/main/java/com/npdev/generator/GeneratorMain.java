@@ -45,6 +45,12 @@ public final class GeneratorMain {
         Args a = Args.parse(args);
 
         JsonNode config = readConfig(a.configPath);
+        // storage/FULL_SUPPORT_PLAN.md W6.1. Every config.json's own $schema property has always
+        // claimed this contract; nothing had ever checked it, and the first check found 93 violations
+        // across 27 corpus configs -- the shipped T1 canary among them. Runs FIRST, before anything
+        // reads a field out of the config, so a violation is reported as a contract error rather than
+        // discovered later as a missing default.
+        ConfigSchemaValidator.verify(config, a.configPath);
         rejectUnsupportedMigrationManagement(config);
 
         // Resolution pipeline: cascade platform defaults <- config defaults <- config overrides.

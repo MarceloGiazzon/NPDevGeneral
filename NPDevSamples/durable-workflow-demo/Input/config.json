@@ -38,7 +38,7 @@
     "apiKey": "dev-key",
     "recommendedProfiles": "dev,trial",
     "runtimeUrl": "http://localhost:8097/",
-    "databaseMode": "h2local-file",
+    "databaseMode": "h2-local",
     "pluginDiscoveryMode": "filesystem-folder",
     "pluginPackageDirectory": "./npdev-generated/src/main/resources/npdev/plugin-packages",
     "notes": [

@@ -3,6 +3,7 @@
   "$id": "https://npdev.local/schema/npdev-config-v1.schema.json",
   "title": "NPDev Config v1",
   "type": "object",
+  "$comment": "storage/FULL_SUPPORT_PLAN.md W6.1. NOTHING validated this file until 2026-08-08, and the moment something did, 27 corpus configs failed with 93 errors -- including the T1-frozen, shipped npdev-canary. The schema, not the corpus, was mostly wrong: it demanded a `database` block 15 working apps have never had, demanded Postgres connection fields from engines that do not listen on a port, and forbade a `console` section four official apps use and a gate already reads. Widening a schema nobody checks is widening a comment, so the contract was corrected FIRST and the enforcement (check-config-schema.py) added second.",
   "additionalProperties": false,
   "required": [
     "configVersion",
@@ -11,7 +12,6 @@
     "bootstrap",
     "artifact",
     "finalExec",
-    "database",
     "runtime"
   ],
   "properties": {
@@ -25,7 +25,10 @@
     "scenario": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "outputRoot"],
+      "required": [
+        "name",
+        "outputRoot"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -52,18 +55,33 @@
         "emitUiAssets"
       ],
       "properties": {
-        "failIfModelMissing": { "type": "boolean" },
-        "failIfConfigMissing": { "type": "boolean" },
-        "cleanOutputBeforeGenerate": { "type": "boolean" },
-        "emitPluginAssets": { "type": "boolean" },
-        "emitRuntimeAssets": { "type": "boolean" },
-        "emitUiAssets": { "type": "boolean" }
+        "failIfModelMissing": {
+          "type": "boolean"
+        },
+        "failIfConfigMissing": {
+          "type": "boolean"
+        },
+        "cleanOutputBeforeGenerate": {
+          "type": "boolean"
+        },
+        "emitPluginAssets": {
+          "type": "boolean"
+        },
+        "emitRuntimeAssets": {
+          "type": "boolean"
+        },
+        "emitUiAssets": {
+          "type": "boolean"
+        }
       }
     },
     "bootstrap": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["root", "mergeStrategy"],
+      "required": [
+        "root",
+        "mergeStrategy"
+      ],
       "properties": {
         "root": {
           "type": "string",
@@ -71,14 +89,22 @@
         },
         "mergeStrategy": {
           "type": "string",
-          "enum": ["clean-copy", "robocopy-merge"]
+          "enum": [
+            "clean-copy",
+            "robocopy-merge"
+          ]
         }
       }
     },
     "artifact": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["root", "generatedFolderName", "libsFolderName", "metaFolderName"],
+      "required": [
+        "root",
+        "generatedFolderName",
+        "libsFolderName",
+        "metaFolderName"
+      ],
       "properties": {
         "root": {
           "type": "string",
@@ -101,7 +127,10 @@
     "finalExec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["root", "deleteBeforeMount"],
+      "required": [
+        "root",
+        "deleteBeforeMount"
+      ],
       "properties": {
         "root": {
           "type": "string",
@@ -114,21 +143,55 @@
     },
     "database": {
       "type": "object",
+      "description": "How the SCENARIO provisions a database for this app. Optional: an app whose engine needs no provisioning (h2-local, in-memory) is complete without it, and 15 corpus apps have always been -- `database` was in `required` until 2026-08-08 only because nothing ever checked. The app's own persistence contract is db.definition.json; this block is the scenario harness's side of it.",
       "additionalProperties": false,
       "required": [
         "provider",
-        "host",
-        "port",
         "database",
-        "username",
-        "password",
-        "adminDatabase",
         "resetMode"
+      ],
+      "allOf": [
+        {
+          "$comment": "storage/FULL_SUPPORT_PLAN.md W6.1: the connection fields are required for the engines that LISTEN, and meaningless for the ones that do not. Demanding host/port/username/password from h2-local is what made the shipped canary invalid against its own schema; making them optional for everyone would be the opposite error -- a postgres/mysql/sqlserver scenario with no host is a configuration that cannot work, and it should fail here rather than at connect time.",
+          "if": {
+            "properties": {
+              "provider": {
+                "enum": [
+                  "docker-postgres",
+                  "postgres",
+                  "mysql",
+                  "sqlserver",
+                  "h2-server"
+                ]
+              }
+            },
+            "required": [
+              "provider"
+            ]
+          },
+          "then": {
+            "required": [
+              "host",
+              "port",
+              "username",
+              "password"
+            ]
+          }
+        }
       ],
       "properties": {
         "provider": {
           "type": "string",
-          "enum": ["docker-postgres", "postgres"]
+          "description": "The engine this scenario provisions. Kept in step with DatabaseEngine (NPDevGenerator/.../dbconfig/DatabaseEngine.java) -- an engine selectable there but absent here would be a configuration the platform supports and its own schema rejects, which is what `h2-local` was for as long as this enum said Postgres or nothing.",
+          "enum": [
+            "docker-postgres",
+            "postgres",
+            "mysql",
+            "sqlserver",
+            "h2-local",
+            "h2-server",
+            "in-memory"
+          ]
         },
         "host": {
           "type": "string",
@@ -156,7 +219,10 @@
         },
         "resetMode": {
           "type": "string",
-          "enum": ["reset", "preserve"]
+          "enum": [
+            "reset",
+            "preserve"
+          ]
         },
         "containerName": {
           "type": "string"
@@ -166,7 +232,12 @@
     "runtime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["springProfile", "serverPort", "javaArgs", "gradleTask"],
+      "required": [
+        "springProfile",
+        "serverPort",
+        "javaArgs",
+        "gradleTask"
+      ],
       "properties": {
         "springProfile": {
           "type": "string",
@@ -179,11 +250,15 @@
         },
         "javaArgs": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "gradleTask": {
           "type": "string",
-          "enum": ["bootRun"]
+          "enum": [
+            "bootRun"
+          ]
         }
       }
     },
@@ -204,10 +279,19 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["url"],
+            "required": [
+              "url"
+            ],
             "properties": {
-              "name": { "type": "string", "minLength": 1 },
-              "url": { "type": "string", "minLength": 1, "pattern": "^https?://" }
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^https?://"
+              }
             }
           }
         },
@@ -225,29 +309,62 @@
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["coordinate"],
+                "required": [
+                  "coordinate"
+                ],
                 "properties": {
-                  "coordinate": { "type": "string", "minLength": 1, "pattern": "^[^:\\s]+:[^:\\s]+:[^:\\s]+$" },
-                  "scope": { "type": "string", "enum": ["implementation", "runtimeOnly", "compileOnly", "testImplementation"] }
+                  "coordinate": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[^:\\s]+:[^:\\s]+:[^:\\s]+$"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "implementation",
+                      "runtimeOnly",
+                      "compileOnly",
+                      "testImplementation"
+                    ]
+                  }
                 }
               },
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["jar"],
+                "required": [
+                  "jar"
+                ],
                 "description": "A local jar, resolved relative to <model.json's own directory>/libs/ at generation time.",
                 "properties": {
-                  "jar": { "type": "string", "minLength": 1 },
-                  "scope": { "type": "string", "enum": ["implementation", "runtimeOnly", "compileOnly", "testImplementation"] }
+                  "jar": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "implementation",
+                      "runtimeOnly",
+                      "compileOnly",
+                      "testImplementation"
+                    ]
+                  }
                 }
               },
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["platform"],
+                "required": [
+                  "platform"
+                ],
                 "description": "A Maven BOM, imported via Gradle's platform(...) so it constrains versions without itself becoming a direct dependency.",
                 "properties": {
-                  "platform": { "type": "string", "minLength": 1, "pattern": "^[^:\\s]+:[^:\\s]+:[^:\\s]+$" }
+                  "platform": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[^:\\s]+:[^:\\s]+:[^:\\s]+$"
+                  }
                 }
               }
             ]
@@ -273,11 +390,30 @@
         },
         "databaseMode": {
           "type": "string",
-          "enum": ["step0-h2", "docker-postgres", "postgres"]
+          "description": "ADVISORY. Which persistence mode this scenario's notes describe; the app's real engine comes from db.definition.json's database.engine, and no code reads this field. It stays enumerated anyway so a typo is caught (`h2local-file` was one, found the day this schema was first enforced), and it accepts BOTH spellings the corpus uses: the kebab scenario names and DatabaseEngine's own externalName values -- both are canonical somewhere in the platform, and rewriting ten app definitions in a non-repo layer to unify cosmetics would be churn, not correctness.",
+          "enum": [
+            "step0-h2",
+            "docker-postgres",
+            "postgres",
+            "mysql",
+            "sqlserver",
+            "h2-local",
+            "h2-server",
+            "in-memory",
+            "InMemory",
+            "H2Local",
+            "H2Server",
+            "Postgres",
+            "MySQL",
+            "SqlServer"
+          ]
         },
         "pluginDiscoveryMode": {
           "type": "string",
-          "enum": ["classpath", "filesystem-folder"]
+          "enum": [
+            "classpath",
+            "filesystem-folder"
+          ]
         },
         "pluginPackageDirectory": {
           "type": "string",
@@ -295,7 +431,12 @@
       "type": "object",
       "description": "Behaviour-setting defaults for the whole app, as settingId -> value (NPDev resolution-pipeline envelope).",
       "additionalProperties": {
-        "type": ["boolean", "string", "integer", "number"]
+        "type": [
+          "boolean",
+          "string",
+          "integer",
+          "number"
+        ]
       }
     },
     "overrides": {
@@ -304,7 +445,23 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": {
-          "type": ["boolean", "string", "integer", "number"]
+          "type": [
+            "boolean",
+            "string",
+            "integer",
+            "number"
+          ]
+        }
+      }
+    },
+    "console": {
+      "type": "object",
+      "description": "The generated app's admin console posture (scripts/appgen/New-AppConsole.ps1). Four official apps have carried this for months and run-app-upgrade-contract-gate.ps1 already branches on whether an app definition declares it -- so it is real, used, and was rejected by this schema purely because nothing had ever validated a config.json. additionalProperties stays open: this is an AppGen-layer section whose shape is owned by the console generator, and pinning a shape here from a single example is how a schema starts refusing valid input again.",
+      "additionalProperties": true,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
