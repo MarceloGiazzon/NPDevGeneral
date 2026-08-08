@@ -20,7 +20,9 @@
 // today's behavior (Gradle's own unchanged "No matching toolchains found" when nothing local
 // matches), never something worse.
 plugins {
-    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+    // ROUND2_PLAN.md R1c: bumped to the latest release (1.0.0) alongside the Gradle 9.5.1 wrapper
+    // bump -- 0.8.0 depended on FoojayToolchainsPlugin, a class Gradle 9 removed.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
 }
 
 rootProject.name = 'FinalExec'

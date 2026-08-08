@@ -382,12 +382,16 @@ public final class GeneratorMain {
     }
 
     /**
-     * deps-and-java/PLAN.md W1.3: config.json's optional build.javaVersion, validated against the
-     * supported set BEFORE any assembly/build work starts -- a request outside {17, 21} fails HERE,
-     * with a message naming both the offending value and why the ceiling is where it is, rather than
-     * surfacing four minutes later as a bare Gradle toolchain-resolution stack trace.
+     * deps-and-java/PLAN.md W1.3, widened by ROUND2_PLAN.md R1c: config.json's optional
+     * build.javaVersion, validated BEFORE any assembly/build work starts -- a request below the
+     * platform's floor fails HERE, with a named reason, rather than surfacing four minutes later as
+     * a bare Gradle toolchain-resolution stack trace. There is deliberately no upper bound: NPDev
+     * does not maintain its own allowlist of "known good" Java versions that would need updating
+     * every time a new JDK ships. Whether a given value ABOVE the floor actually resolves depends on
+     * the generated app's own bundled Gradle wrapper/foojay resolver (NPDevRuntimeHost/gradle/wrapper)
+     * -- that is Gradle's failure to report, honestly, not this method's to predict.
      */
-    private static final List<Integer> SUPPORTED_APP_JAVA_VERSIONS = List.of(17, 21);
+    private static final int MINIMUM_APP_JAVA_VERSION = 17;
 
     static int resolveJavaVersion(JsonNode config) {
         if (config == null) {
@@ -399,17 +403,17 @@ public final class GeneratorMain {
         }
         if (!node.isIntegralNumber()) {
             throw new IllegalArgumentException(
-                    "config.json's build.javaVersion must be an integer (one of " + SUPPORTED_APP_JAVA_VERSIONS
+                    "config.json's build.javaVersion must be an integer (>= " + MINIMUM_APP_JAVA_VERSION
                             + "), found: " + node);
         }
         int requested = node.asInt();
-        if (!SUPPORTED_APP_JAVA_VERSIONS.contains(requested)) {
+        if (requested < MINIMUM_APP_JAVA_VERSION) {
             throw new IllegalArgumentException(
-                    "config.json's build.javaVersion=" + requested + " is not supported. Supported: "
-                            + SUPPORTED_APP_JAVA_VERSIONS + " -- the ceiling is Gradle 8.5 (this platform's "
-                            + "wrapper version across all three modules), which resolves toolchains up to Java 21; "
-                            + "22 needs Gradle 8.8, 23 needs 8.10, 24/25 need Gradle 9. Raising the ceiling is a "
-                            + "Gradle-wrapper-bump change across every module, not a per-app setting.");
+                    "config.json's build.javaVersion=" + requested + " is below the platform floor of "
+                            + MINIMUM_APP_JAVA_VERSION + " -- NPDevRuntimeHost's own template/adapters are not "
+                            + "verified below Java " + MINIMUM_APP_JAVA_VERSION + ". Any value >= "
+                            + MINIMUM_APP_JAVA_VERSION + " is accepted here; whether it actually builds depends on "
+                            + "what the generated app's own Gradle wrapper can resolve a JDK for.");
         }
         return requested;
     }

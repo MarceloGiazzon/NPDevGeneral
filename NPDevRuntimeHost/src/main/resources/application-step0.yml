@@ -20,6 +20,22 @@
 # step0 was the one profile whose URL had silently drifted from the real per-engine URLs it's
 # supposed to sandbox.
 spring:
+  # ROUND2_PLAN.md R1c, found via the Gradle 9.5.1/Spring Boot 3.5.16 bump's own generator proof
+  # tests: an app whose model resolves to the InMemory engine at generation time gets
+  # `spring.autoconfigure.exclude=...DataSourceAutoConfiguration,HibernateJpaAutoConfiguration,
+  # JpaRepositoriesAutoConfiguration,FlywayAutoConfiguration` baked into
+  # application-npdev-db.properties (SchemaRealizationEmitter) -- correct for that engine, since
+  # there is no real datasource to wire up. step0 forces a REAL H2 database below regardless of the
+  # model's own resolved engine, but only ever set spring.datasource.*/spring.jpa.* -- it never
+  # cleared the exclusion an InMemory-engine model already baked in, so DataSourceAutoConfiguration
+  # stayed excluded and `jdbcConceptStore`'s DataSource parameter had nothing to autowire
+  # ("UnsatisfiedDependencyException: ... required a bean of type 'javax.sql.DataSource'").
+  # Confirmed live: this exact command line boots successfully once this is cleared, and fails
+  # identically without it. Passed under Spring Boot 3.3.2 only by outcome, not by design -- the same
+  # unconditional import-vs-profile precedence gap was already there; 3.5.16 is simply the version
+  # that stopped letting it work by accident.
+  autoconfigure:
+    exclude: []
   datasource:
     url: jdbc:h2:mem:finalexec_step0;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     username: sa
