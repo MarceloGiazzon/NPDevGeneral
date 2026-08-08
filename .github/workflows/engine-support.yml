@@ -221,7 +221,11 @@ jobs:
           # REFUSES to scaffold inside the repo -- correctly, since a scaffold there "would never be
           # found by anyone cloning NPDev fresh". Run 31272063422 hit exactly that refusal, on all
           # three engines. RUNNER_TEMP is outside the checkout, which is what the refusal asks for.
-          APP_DIR="$RUNNER_TEMP/doctor-app/probe"
+          # The directory NAME becomes the database name (npdev init derives it), so it is
+          # npdev_engine_probe -- the database the container actually has. Run 31272786548 used
+          # "probe" and doctor correctly reported the database missing; pointing a fixture at a
+          # database that does not exist tests the fixture, not the engine.
+          APP_DIR="$RUNNER_TEMP/doctor-app/npdev_engine_probe"
           rm -rf "$APP_DIR"
           python NPDevCli/npdev_cli.py init "$APP_DIR" $ENGINE_ARGS --db-host 127.0.0.1
           mkdir -p Build
@@ -234,6 +238,14 @@ jobs:
           checks = {c["id"]: c for c in report["checks"] if c["id"].startswith("database")}
           failed = [i for i, c in checks.items()
                     if c["status"] == "fail" and i != "database-engine-support"]
+          # Every database check must have actually RUN. "A check that has only ever passed is not a
+          # check" applies twice over to one that never ran at all and reported `warn`.
+          notrun = [i for i, c in checks.items() if c["status"] == "warn"
+                    and i != "database-engine-support"]
+          if notrun:
+              print(f"::error::these database checks did not run against a real {engine}: {notrun} -- "
+                    f"a check that never executed is not evidence")
+              sys.exit(1)
           print(json.dumps({i: c["status"] for i, c in checks.items()}, indent=2))
           if failed:
               print(f"::error::doctor's database checks failed against a real {engine}: {failed}")

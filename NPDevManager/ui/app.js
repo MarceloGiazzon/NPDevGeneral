@@ -57,6 +57,7 @@ const CHECK_NAMES = {
   "database-engine-support": "Database engine",
   "database-reachable": "Database reachable",
   "database-credentials": "Database credentials",
+  "database-exists": "Database exists",
   "database-privileges": "Database privileges",
   "database-charset": "Database charset",
 };

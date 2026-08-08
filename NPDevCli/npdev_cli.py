@@ -2219,6 +2219,7 @@ def _database_checks(app_path: str | None) -> list[dict]:
         # engines -- a row that vanishes reads as "not checked".
         for check_id, name in (("database-reachable", "Database reachable"),
                                ("database-credentials", "Database credentials"),
+                               ("database-exists", "Database exists"),
                                ("database-privileges", "Database privileges"),
                                ("database-charset", "Database charset")):
             checks.append(_check(check_id, name, "pass", found=engine["externalName"],
@@ -2251,6 +2252,7 @@ def _database_checks(app_path: str | None) -> list[dict]:
         # Everything below needs a connection. Reported as warn-with-a-reason rather than invented
         # failures: three red lines for one cause is noise that hides which one to fix.
         for check_id, name in (("database-credentials", "Database credentials"),
+                               ("database-exists", "Database exists"),
                                ("database-privileges", "Database privileges"),
                                ("database-charset", "Database charset")):
             checks.append(_check(
@@ -2270,6 +2272,7 @@ def _database_checks(app_path: str | None) -> list[dict]:
         # credentials failure is what the first CI run of this check produced, and a wrong diagnosis
         # is worse than no diagnosis: it sends the reader to fix a password that was never wrong.
         for check_id, name in (("database-credentials", "Database credentials"),
+                               ("database-exists", "Database exists"),
                                ("database-privileges", "Database privileges"),
                                ("database-charset", "Database charset")):
             checks.append(_check(
@@ -2278,9 +2281,34 @@ def _database_checks(app_path: str | None) -> list[dict]:
             ))
         return checks
 
+    if probe.get("databaseMissing"):
+        # Credentials PROVEN good (the admin database accepted them); the database itself is absent.
+        # A distinct first-run failure with a distinct fix -- NPDev creates TABLES at boot, never the
+        # database -- and reporting it as a credentials problem sends the reader to the wrong file.
+        checks.append(_check("database-credentials", "Database credentials", "pass",
+                             found=database.get("username") or "(none)", expected="accepted"))
+        checks.append(_check(
+            "database-exists", "Database exists", "fail",
+            found=database.get("databaseName") or "(none)", expected="present on the server",
+            detail=f"{engine['externalName']} at {host}:{port} accepted these credentials, but the "
+                   f"database '{database.get('databaseName')}' does not exist: "
+                   f"{probe.get('databaseError', '')}. NPDev creates TABLES at boot; it never creates "
+                   f"the database itself.",
+            fix=f"Create it once, e.g. CREATE DATABASE {database.get('databaseName')};",
+        ))
+        for check_id, name in (("database-privileges", "Database privileges"),
+                               ("database-charset", "Database charset")):
+            checks.append(_check(
+                check_id, name, "warn", expected="checked once the database exists",
+                detail=f"Not checked: the database does not exist yet (see database-exists)."))
+        return checks
+
     if probe.get("authenticated"):
         checks.append(_check("database-credentials", "Database credentials", "pass",
                              found=database.get("username") or "(none)", expected="accepted"))
+        checks.append(_check("database-exists", "Database exists", "pass",
+                             found=database.get("databaseName") or "(none)",
+                             expected="present on the server"))
     else:
         checks.append(_check(
             "database-credentials", "Database credentials", "fail",
@@ -2419,14 +2447,7 @@ public class NpdevDatabaseProbe {
     public static void main(String[] args) {
         String engine = args[0], host = args[1], port = args[2];
         String db = args[3], user = args[4], password = args[5];
-        String url = switch (engine) {
-            case "postgres" -> "jdbc:postgresql://" + host + ":" + port + "/" + (db.isEmpty() ? "postgres" : db);
-            case "mysql" -> "jdbc:mysql://" + host + ":" + port + "/" + (db.isEmpty() ? "mysql" : db);
-            case "sqlserver" -> "jdbc:sqlserver://" + host + ":" + port + ";databaseName="
-                    + (db.isEmpty() ? "master" : db) + ";encrypt=false;trustServerCertificate=true";
-            case "h2server" -> "jdbc:h2:tcp://" + host + ":" + port + "/" + db;
-            default -> null;
-        };
+        String url = urlFor(engine, host, port, db);
         if (url == null) { System.out.println("{\"unavailable\":\"no JDBC url for engine " + engine + "\"}"); return; }
 
         StringBuilder out = new StringBuilder("{");
@@ -2455,9 +2476,44 @@ public class NpdevDatabaseProbe {
                 } catch (SQLException ignored) { }
             }
         } catch (SQLException exception) {
-            out.append("\"authenticated\":false,\"authError\":\"").append(escape(exception.getMessage())).append("\"");
+            // A CONNECTION failure is not automatically a credentials failure, and the difference is
+            // the whole value of the check. Measured (CI run 31272786548): pointing at a database
+            // that does not exist yet reported "rejected the credentials", sending the reader to fix
+            // a password that was never wrong.
+            //
+            // So: re-try against the engine's ADMIN database. If THAT connects, the credentials are
+            // PROVEN good and the real problem is the missing database -- which is a different
+            // first-run failure with a different fix (NPDev creates tables, not databases).
+            String adminUrl = urlFor(engine, host, port, "");
+            boolean credentialsOk = false;
+            if (adminUrl != null && !adminUrl.equals(url)) {
+                try (Connection admin = DriverManager.getConnection(adminUrl, user, password)) {
+                    credentialsOk = admin != null;
+                } catch (SQLException ignored) {
+                    credentialsOk = false;
+                }
+            }
+            if (credentialsOk) {
+                out.append("\"authenticated\":true,\"databaseMissing\":true,\"databaseError\":\"")
+                   .append(escape(exception.getMessage())).append("\"");
+            } else {
+                out.append("\"authenticated\":false,\"authError\":\"")
+                   .append(escape(exception.getMessage())).append("\"");
+            }
         }
         System.out.println(out.append("}"));
+    }
+
+    /** The JDBC URL for this engine; an EMPTY db means the engine's admin/default database. */
+    private static String urlFor(String engine, String host, String port, String db) {
+        return switch (engine) {
+            case "postgres" -> "jdbc:postgresql://" + host + ":" + port + "/" + (db.isEmpty() ? "postgres" : db);
+            case "mysql" -> "jdbc:mysql://" + host + ":" + port + "/" + (db.isEmpty() ? "mysql" : db);
+            case "sqlserver" -> "jdbc:sqlserver://" + host + ":" + port + ";databaseName="
+                    + (db.isEmpty() ? "master" : db) + ";encrypt=false;trustServerCertificate=true";
+            case "h2server" -> "jdbc:h2:tcp://" + host + ":" + port + "/" + (db.isEmpty() ? "npdev_admin_probe" : db);
+            default -> null;
+        };
     }
 
     private static String escape(String value) {

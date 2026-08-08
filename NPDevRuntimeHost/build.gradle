@@ -70,6 +70,35 @@ dependencies {
     implementation 'org.flywaydb:flyway-database-postgresql'
     implementation 'org.postgresql:postgresql:42.7.4'
 
+    // ---------------------------------------------------------------------------------------
+    // storage/FULL_SUPPORT_PLAN.md gap A, and this is its concrete cause.
+    //
+    // MySQL and SQL Server were selectable in db.definition.json, wired through DatabaseEngine
+    // with JDBC URLs and default ports, given full SqlDialect implementations, and green on
+    // 14/14 conformance vectors against REAL containers. And NO GENERATED APP COULD EVER HAVE
+    // CONNECTED TO EITHER, because this file -- the template copied into every FinalApp -- put
+    // no driver for them on the classpath. Measured, CI run 31272786548:
+    //
+    //     Cannot load driver class: com.mysql.cj.jdbc.Driver
+    //
+    // The app failed at DataSource creation, before a single line of NPDev's own code ran. Tier B
+    // could never have caught it: it hands out a raw JDBC connection from a driver the TEST
+    // classpath has. That is the whole reason the plan ranks "a generated app boots" as gap A --
+    // "the dialect works" and "an app works" turn out to be very different claims.
+    //
+    // Declared like h2 and postgres already are: unconditionally, not per-engine. Conditional
+    // emission would be smaller on disk and would put an engine's usability behind a code path
+    // that only runs for that engine -- which is the shape of the bug being fixed.
+    //
+    // Flyway 10+ needs a per-database module alongside the driver, which is why
+    // flyway-database-postgresql is above; without the matching two, Flyway refuses the engine at
+    // boot with a different message and the driver fix alone would have looked wrong.
+    // ---------------------------------------------------------------------------------------
+    runtimeOnly 'com.mysql:mysql-connector-j:9.1.0'
+    runtimeOnly 'com.microsoft.sqlserver:mssql-jdbc:12.8.1.jre11'
+    implementation 'org.flywaydb:flyway-mysql'
+    implementation 'org.flywaydb:flyway-sqlserver'
+
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     // LNCH-8: the Prometheus registry so /actuator/prometheus actually exposes something --
     // Actuator alone only gives the generic /actuator/metrics JSON view, not the scrape format.
