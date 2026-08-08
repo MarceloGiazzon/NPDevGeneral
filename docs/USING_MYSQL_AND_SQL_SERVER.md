@@ -45,11 +45,23 @@ cannot disagree about the engine.
 An engine becomes **supported** when a *generated application* boots, serves and persists on it in
 CI — not when its dialect passes unit tests. That distinction is the entire point:
 
-| Layer | MySQL / SQL Server |
-|---|---|
-| Dialect string generation (Tier A) | proven — 78 assertions, four engines |
-| Behaviour over raw JDBC (Tier B) | proven — **14/14 vectors per engine, 0 skips**, against real containers (run `31271016482`) |
-| A generated app booting and serving | see the CI badge for `Engine support (application level)` |
+| Layer | MySQL / SQL Server | PostgreSQL |
+|---|---|---|
+| Dialect string generation (Tier A) | proven — 78 assertions, four engines | proven |
+| Behaviour over raw JDBC (Tier B) | proven — **14/14 vectors per engine, 0 skips**, real containers (run `31271016482`) | proven |
+| **A generated app booting and serving** | **NOT YET** — `STOR-5` | **proven** (run `31279857141`): boots, non-BMP unicode round trip, paginated query, rows survive a restart |
+
+**What `STOR-5` is, plainly.** NPDev's own first migration script
+(`V1__npdev_schema_realization.sql`) is written in PostgreSQL/H2 idioms —
+`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`. MySQL supports one of those and rejects
+the others; T-SQL rejects all of them. So an app generated for either engine currently fails during
+its first Flyway migration. Two earlier causes in the same area are already fixed: the app template
+carried no JDBC driver for these engines at all (`STOR-4`), and NPDev's own `execution_id` primary
+key was a `TEXT` column that MySQL will not index.
+
+Nothing about this is hidden: the failures are found in minutes by a CI job rather than by your
+first boot, and they are strictly ordered — Flyway stops at the first statement it cannot run — so
+the remaining work is bounded and visible.
 
 Tier B runs against **real** MySQL 8.4 and SQL Server 2022 containers, pinned by digest so a red
 result cannot be an upstream image change. It covers upsert idempotence, pagination non-overlap,
@@ -57,8 +69,10 @@ JSON round-trip, reserved-word columns, DDL/DML transactionality, auto-increment
 charset fidelity and enforced uniqueness.
 
 **What it does not cover** is everything above raw JDBC: schema realization through NPDev's own
-engine, Spring boot-up, the REST surface. That is what the application-level workflow exists for, and
-until it is green on an engine, that engine stays experimental here and in `npdev engines`.
+engine, Spring boot-up, the REST surface. That distinction is not academic — the application-level
+probe found three separate reasons no generated app could run on these engines while every layer
+below stayed green. Until that probe passes for an engine, it stays experimental here and in
+`npdev engines`.
 
 ---
 
@@ -69,16 +83,21 @@ cd my-app
 npdev doctor
 ```
 
-Five database checks run when doctor can find your app, each distinguishing a failure the previous
-one cannot:
+Six database checks run when doctor can find your app, each distinguishing a failure the previous
+one cannot — a distinction that matters, because three of them would otherwise all read as "the
+password is wrong":
 
 | check | fails when | why it is separate |
 |---|---|---|
 | `database-reachable` | host/port refuses | the #1 first-run failure — otherwise a Spring stack trace after a full build |
 | `database-credentials` | it answers, auth rejected | tells "wrong password" apart from "not running" |
+| `database-exists` | credentials accepted, database absent | **NPDev creates TABLES at boot, never the database.** Create it once yourself |
 | `database-privileges` | connects, cannot `CREATE TABLE` | NPDev realizes schema at boot; a read-only user fails late and confusingly |
 | `database-charset` | MySQL is not `utf8mb4` | **the silent one** — see below |
 | `database-engine-support` | the engine is experimental | honest status, not a footnote |
+
+All six pass against a real PostgreSQL in CI (run `31279857141`); four are proven by fixtures built
+to make them fail, because a check that has only ever passed is not a check.
 
 Three of these need your engine's JDBC driver, which arrives in your Gradle cache the first time you
 build an app for that engine. Before then doctor says so plainly and checks reachability anyway — it

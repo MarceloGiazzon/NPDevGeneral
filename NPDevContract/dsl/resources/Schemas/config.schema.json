@@ -454,6 +454,20 @@
         }
       }
     },
+    "packs": {
+      "type": "object",
+      "description": "Third-party packs to compose into this app's model. GeneratorMain.readInstalledPackAliases reads `packs.included` on every run -- and this schema forbade the whole section until 2026-08-08, so a user following the documented pack-install path would have written a config the generator accepts and the contract rejects. Found by enforcing the schema for the first time; no corpus app used it yet, which is exactly why it went unnoticed.",
+      "additionalProperties": false,
+      "properties": {
+        "included": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     "console": {
       "type": "object",
       "description": "The generated app's admin console posture (scripts/appgen/New-AppConsole.ps1). Four official apps have carried this for months and run-app-upgrade-contract-gate.ps1 already branches on whether an app definition declares it -- so it is real, used, and was rejected by this schema purely because nothing had ever validated a config.json. additionalProperties stays open: this is an AppGen-layer section whose shape is owned by the console generator, and pinning a shape here from a single example is how a schema starts refusing valid input again.",
