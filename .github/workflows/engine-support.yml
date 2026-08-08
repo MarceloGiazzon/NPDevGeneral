@@ -125,7 +125,7 @@ jobs:
       # unicode assertion fail for a reason that has nothing to do with NPDev -- and the digest has
       # to be visible in the log, which is what W1.1 bought.
       - name: Start ${{ matrix.engine }}
-        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
         run: |
           set -euo pipefail
           case "${{ matrix.engine }}" in
@@ -159,7 +159,7 @@ jobs:
       # says "connection refused" and means "not ready yet" -- the exact false RED the canary boot
       # timeout produced twice on 2026-08-08, which cost two investigations.
       - name: Wait for ${{ matrix.engine }} to accept connections
-        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
         run: |
           case "${{ matrix.engine }}" in
             mysql) PORT=3306 ;;
@@ -181,14 +181,14 @@ jobs:
           exit 1
 
       - name: Stage runtimehost jars
-        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
         run: python NPDevCli/npdev_cli.py setup --build-local
 
       # `npdev doctor --app` against the REAL engine, before the proof. Two things at once: it is
       # E10's happy path against a live database, and when the proof fails afterwards this output
       # says whether the database was ever the problem.
       - name: doctor database checks against the real engine
-        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
         run: |
           case "${{ matrix.engine }}" in
             mysql)     ENGINE_ARGS="--engine mysql --db-port 3306 --db-user npdev --db-password npdev" ;;
@@ -215,7 +215,7 @@ jobs:
           MATRIX_ENGINE: ${{ matrix.engine }}
 
       - name: Generate, build, boot and exercise the probe app on ${{ matrix.engine }}
-        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
         run: |
           case "${{ matrix.engine }}" in
             mysql)     ARGS="--db-port 3306 --db-user npdev --db-password npdev" ;;
@@ -233,7 +233,7 @@ jobs:
       # four schema-evolution vectors failing tells you nothing you did not already know, and a
       # 4x-red job hides which failure is the cause.
       - name: Tier C -- E1/E2/I2/I3 against a realized schema
-        if: ${{ github.event.inputs.engine == 'all' || github.event.inputs.engine == matrix.engine }}
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
         run: |
           case "${{ matrix.engine }}" in
             mysql)     ARGS="--db-port 3306 --db-user npdev --db-password npdev" ;;
