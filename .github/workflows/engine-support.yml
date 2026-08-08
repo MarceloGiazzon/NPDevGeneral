@@ -184,9 +184,31 @@ jobs:
         if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
         run: python NPDevCli/npdev_cli.py setup --build-local
 
-      # `npdev doctor --app` against the REAL engine, before the proof. Two things at once: it is
-      # E10's happy path against a live database, and when the proof fails afterwards this output
-      # says whether the database was ever the problem.
+      - name: Generate, build, boot and exercise the probe app on ${{ matrix.engine }}
+        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
+        run: |
+          case "${{ matrix.engine }}" in
+            mysql)     ARGS="--db-port 3306 --db-user npdev --db-password npdev" ;;
+            postgres)  ARGS="--db-port 5432 --db-user npdev --db-password npdev" ;;
+            sqlserver) ARGS="--db-port 1433 --db-user sa --db-password Npdev!Probe123" ;;
+          esac
+          python scripts/quality/run-engine-app-proof.py \
+            --engine ${{ matrix.engine }} \
+            --port 18310 \
+            --db-host 127.0.0.1 $ARGS \
+            --db-name npdev_engine_probe \
+            --report Build/reports/engine-app-proof-${{ matrix.engine }}.json
+
+      # `npdev doctor --app` against the REAL engine -- E10's happy path against a live database.
+      #
+      # AFTER the app proof, not before, and that ordering is load-bearing. Three of the five
+      # checks need a JDBC driver, and the staged runtimehost-libs contain NPDev's own module
+      # jars and no third-party drivers at all (measured, run 31272515969 -- the first version of
+      # this step reported `No suitable driver found` as a CREDENTIALS failure). The driver
+      # reaches the Gradle cache when the app for that engine is first built, which is exactly
+      # what the step above just did. Running this first would leave credentials/privileges/
+      # charset permanently reported as `not checked` -- and a check that has never run is not a
+      # check.
       - name: doctor database checks against the real engine
         if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
         run: |
@@ -220,20 +242,44 @@ jobs:
         env:
           MATRIX_ENGINE: ${{ matrix.engine }}
 
-      - name: Generate, build, boot and exercise the probe app on ${{ matrix.engine }}
-        if: ${{ (github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine }}
+      # E10's LAST failing fixture, and the only one that needs a second container.
+      #
+      # "Every one of these must be proven by a fixture that makes it fail. A check that has only
+      # ever passed is not a check." Four of the five are proven elsewhere: reachable (nothing
+      # listening), credentials (a wrong password), privileges (a user that cannot CREATE TABLE) and
+      # engine-support (an experimental engine) -- all RED-verified against a real H2 TCP server on
+      # 2026-08-08. charset is MySQL-specific and cannot be provoked without a mis-configured MySQL,
+      # so here is one: the SAME image, started on the legacy three-byte utf8mb3.
+      #
+      # This is the check worth building. On utf8mb3 an insert of anything outside the BMP SUCCEEDS
+      # and the data is already wrong -- no error, ever. It is the one database problem in this list
+      # that no stack trace would have reported.
+      - name: E10 fixture -- doctor must FAIL on a non-utf8mb4 MySQL
+        if: ${{ matrix.engine == 'mysql' && ((github.event.inputs.engine || 'all') == 'all' || github.event.inputs.engine == matrix.engine) }}
         run: |
-          case "${{ matrix.engine }}" in
-            mysql)     ARGS="--db-port 3306 --db-user npdev --db-password npdev" ;;
-            postgres)  ARGS="--db-port 5432 --db-user npdev --db-password npdev" ;;
-            sqlserver) ARGS="--db-port 1433 --db-user sa --db-password Npdev!Probe123" ;;
-          esac
-          python scripts/quality/run-engine-app-proof.py \
-            --engine ${{ matrix.engine }} \
-            --port 18310 \
-            --db-host 127.0.0.1 $ARGS \
-            --db-name npdev_engine_probe \
-            --report Build/reports/engine-app-proof-${{ matrix.engine }}.json
+          set -euo pipefail
+          docker run -d --name npdev-engine-latin1 -p 3307:3306             -e MYSQL_ROOT_PASSWORD=npdevroot -e MYSQL_DATABASE=npdev_bad_charset             -e MYSQL_USER=npdev -e MYSQL_PASSWORD=npdev             "$PINNED_MYSQL" --character-set-server=utf8mb3 --collation-server=utf8mb3_general_ci
+          for attempt in $(seq 1 90); do
+            (echo > /dev/tcp/127.0.0.1/3307) >/dev/null 2>&1 && break
+            sleep 1
+          done
+          sleep 15
+          APP_DIR="$RUNNER_TEMP/charset-fixture/probe"
+          rm -rf "$APP_DIR"
+          python NPDevCli/npdev_cli.py init "$APP_DIR" --engine mysql             --db-host 127.0.0.1 --db-port 3307 --db-user npdev --db-password npdev
+          python NPDevCli/npdev_cli.py doctor --json --app "$APP_DIR"             > "$RUNNER_TEMP/doctor-latin1.json" || true
+          python - <<'PY'
+          import json, os, sys
+          report = json.load(open(os.environ["RUNNER_TEMP"] + "/doctor-latin1.json", encoding="utf-8"))
+          charset = next(c for c in report["checks"] if c["id"] == "database-charset")
+          print(json.dumps(charset, indent=2))
+          if charset["status"] != "fail":
+              print("::error::doctor did NOT flag a non-utf8mb4 MySQL. This is the check that catches "
+                    "SILENT data mangling -- one that only ever passes is not a check.")
+              sys.exit(1)
+          print("E10 charset fixture: doctor correctly reported FAIL on utf8mb3")
+          PY
+          docker rm -f npdev-engine-latin1 >/dev/null 2>&1 || true
 
       # E7. Runs after the app proof, deliberately: if an app cannot boot on this engine at all,
       # four schema-evolution vectors failing tells you nothing you did not already know, and a

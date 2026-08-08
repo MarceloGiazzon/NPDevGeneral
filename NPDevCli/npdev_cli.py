@@ -2266,13 +2266,15 @@ def _database_checks(app_path: str | None) -> list[dict]:
     # reason, not as a database failure.
     probe = _run_database_probe(engine, database, host, port)
     if probe.get("unavailable"):
+        # WARN with the real reason, never a verdict. "No suitable driver found" reported as a
+        # credentials failure is what the first CI run of this check produced, and a wrong diagnosis
+        # is worse than no diagnosis: it sends the reader to fix a password that was never wrong.
         for check_id, name in (("database-credentials", "Database credentials"),
                                ("database-privileges", "Database privileges"),
                                ("database-charset", "Database charset")):
             checks.append(_check(
                 check_id, name, "warn", expected="checked with the app's own JDBC driver",
                 detail=f"Not checked: {probe['unavailable']}",
-                fix="Run npdev setup.", fixCommand="npdev setup",
             ))
         return checks
 
@@ -2320,16 +2322,62 @@ def _database_checks(app_path: str | None) -> list[dict]:
     return checks
 
 
-def _run_database_probe(engine: dict, database: dict, host: str, port: int) -> dict:
-    """Connect, try DDL, and read the charset -- using the app's OWN staged JDBC drivers.
+# Where each engine's JDBC driver comes from, as a Gradle-cache coordinate.
+#
+# MEASURED, not assumed (CI run 31272515969): the staged runtimehost-libs contain NPDev's OWN module
+# jars and no third-party drivers at all, so the first version of this probe reported
+# "No suitable driver found for jdbc:postgresql://..." as a CREDENTIALS failure. A missing driver is
+# not a wrong password, and saying so was its own small version of the defect this plan is about.
+#
+# The drivers live in the machine's Gradle module cache, put there by the build that needed them:
+# Postgres by `npdev setup` (the RuntimeHost template declares it), MySQL and SQL Server the first
+# time an app for those engines is built. So the checks are REAL when the driver is there and say
+# exactly why they cannot run when it is not -- never a guess dressed as a verdict.
+_JDBC_DRIVER_COORDINATES = {
+    "postgres": ("org.postgresql", "postgresql"),
+    "mysql": ("com.mysql", "mysql-connector-j"),
+    "sqlserver": ("com.microsoft.sqlserver", "mssql-jdbc"),
+    "h2server": ("com.h2database", "h2"),
+}
 
-    Deliberately not a Python driver per engine. The question doctor is answering is "will the app be
-    able to do this", and the only honest way to answer it is with the driver the app will use.
+
+def _find_jdbc_driver_jar(engine_key: str) -> Path | None:
+    """The engine's driver jar from this machine's Gradle module cache, or None.
+
+    Deliberately not a Python driver per engine: the question doctor answers is "will THE APP be able
+    to do this", and the only honest way to answer it is with the driver the app itself uses.
     """
+    coordinate = _JDBC_DRIVER_COORDINATES.get(engine_key)
+    if coordinate is None:
+        return None
+    group, artifact = coordinate
+    roots = [Path.home() / ".gradle" / "caches" / "modules-2" / "files-2.1" / group / artifact,
+             Path.home() / ".m2" / "repository" / group.replace(".", "/") / artifact]
+    for root in roots:
+        if not root.is_dir():
+            continue
+        # Newest first: a machine that has built two app versions has two, and the later one is the
+        # one a fresh build would use.
+        jars = sorted((jar for jar in root.rglob("*.jar") if "sources" not in jar.name
+                       and "javadoc" not in jar.name),
+                      key=lambda jar: jar.stat().st_mtime, reverse=True)
+        if jars:
+            return jars[0]
+    return None
+
+
+def _run_database_probe(engine: dict, database: dict, host: str, port: int) -> dict:
+    """Connect, try DDL, and read the charset -- using the driver the app itself would use."""
     libs = _default_runtimehost_libs_dir()
     if libs is None:
-        return {"unavailable": "runtimehost jars are not staged, so the JDBC drivers the app uses "
-                               "are not available to check with -- run `npdev setup`"}
+        return {"unavailable": "runtimehost jars are not staged -- run `npdev setup`"}
+    driver_jar = _find_jdbc_driver_jar(engine["key"])
+    if driver_jar is None:
+        return {"unavailable": (
+            f"the JDBC driver for {engine['externalName']} is not in this machine's Gradle cache "
+            f"yet, so there is nothing to connect with. It is downloaded the first time an app for "
+            f"this engine is built -- run the app once, then re-run doctor. (Reachability above is "
+            f"checked without a driver and is unaffected.)")}
     java_home = os.environ.get("JAVA_HOME")
     java_bin = _resolve_java_home_binary(java_home) if java_home else None
     if java_bin is None or not java_bin.exists():
@@ -2342,9 +2390,11 @@ def _run_database_probe(engine: dict, database: dict, host: str, port: int) -> d
     with tempfile.TemporaryDirectory(prefix="npdev-dbprobe-") as temp_dir:
         probe_file = Path(temp_dir) / "NpdevDatabaseProbe.java"
         probe_file.write_text(source, encoding="utf-8")
+        separator = ";" if os.name == "nt" else ":"
+        classpath = separator.join([str(Path(libs) / "*"), str(driver_jar)])
         try:
             completed = subprocess.run(
-                [str(java_bin), "-cp", str(Path(libs) / "*"), str(probe_file),
+                [str(java_bin), "-cp", classpath, str(probe_file),
                  engine["key"], host, str(port),
                  database.get("databaseName") or "", database.get("username") or "",
                  database.get("password") or ""],
