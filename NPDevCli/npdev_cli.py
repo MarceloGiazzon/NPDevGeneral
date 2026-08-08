@@ -1053,12 +1053,7 @@ def run_init(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
 
-    subprocess.run(["git", "init", "--quiet"], cwd=target, check=True)
-    subprocess.run(["git", "add", "."], cwd=target, check=True)
-    subprocess.run(
-        ["git", "commit", "--quiet", "-m", f"npdev init: scaffold {target.name}"],
-        cwd=target, check=True,
-    )
+    git_note = _scaffold_git_history(target)
 
     created_files = [name for name in
                      ("model.json", "config.json", "db.definition.json", "README.md", ".gitignore")
@@ -1091,6 +1086,10 @@ def run_init(args: argparse.Namespace) -> int:
                 "status": engine["status"],
                 "honestyNotice": notice,
             },
+            # Non-null only when git had no identity and one was substituted for this repo alone.
+            # The Manager can surface it beside "created." -- a substitution nobody is told about is
+            # a worse surprise than the substitution itself.
+            "gitIdentityNotice": git_note,
         }
         print(json.dumps(result, indent=2))
         return 0
@@ -1102,8 +1101,62 @@ def run_init(args: argparse.Namespace) -> int:
     if notice:
         print(f"\n  ! {notice}")
     print(f"\ngit: initialized, 1 commit")
+    if git_note:
+        print(f"\n  ! {git_note}")
     print(f"\nNext:\n  cd {target.name}\n  npdev run app")
     return 0
+
+
+def _scaffold_git_history(target: Path) -> str | None:
+    """`git init` + first commit -- and never fail the whole scaffold because git has no identity.
+
+    FOUND IN CI, 2026-08-08 (engine-support run 31272295843), and it is a real third-person defect
+    rather than a CI quirk. `git commit` on a machine with no `user.name`/`user.email` exits 128 with
+    "Author identity unknown" -- and a machine with no git identity is precisely a FRESH machine, the
+    one this command exists for. Before this, `npdev init` propagated that exit code and left a
+    half-scaffolded directory: files written, no repository, and a git error the user has to decode.
+    The Manager shells straight to this command, so it would have failed there too, on a first run.
+
+    The scaffold's git history is not decoration -- README and YOUR_FIRST_APP both say so: the model
+    IS the application, and a scaffold with no history is a trap rather than a convenience. So the
+    commit is retried with an identity scoped to THAT repository only (`-c`, which never writes to
+    the user's global config), and the substitution is REPORTED rather than done quietly. A tool that
+    silently commits under a name the user did not choose is a small surprise; one that does it
+    without saying so is a bigger one.
+    """
+    subprocess.run(["git", "init", "--quiet"], cwd=target, check=True)
+    subprocess.run(["git", "add", "."], cwd=target, check=True)
+    message = f"npdev init: scaffold {target.name}"
+
+    first = subprocess.run(["git", "commit", "--quiet", "-m", message],
+                           cwd=target, capture_output=True, text=True)
+    if first.returncode == 0:
+        return None
+
+    stderr = (first.stderr or "") + (first.stdout or "")
+    if "ident" not in stderr.lower() and "author identity" not in stderr.lower():
+        # A different failure -- an empty commit, a hook, a broken repo. Not this function's problem
+        # to paper over, and inventing an identity would not fix it anyway.
+        raise CliError(
+            f"could not create the first commit in {target}: {stderr.strip() or 'git failed'}")
+
+    fallback_name, fallback_email = "NPDev", "npdev@localhost"
+    retried = subprocess.run(
+        ["git", "-c", f"user.name={fallback_name}", "-c", f"user.email={fallback_email}",
+         "commit", "--quiet", "-m", message],
+        cwd=target, capture_output=True, text=True)
+    if retried.returncode != 0:
+        raise CliError(
+            f"git has no configured identity and the fallback commit also failed in {target}: "
+            f"{(retried.stderr or '').strip()}\n"
+            f"Set one and commit by hand:\n"
+            f"  git config --global user.name \"Your Name\"\n"
+            f"  git config --global user.email \"you@example.com\"")
+    return (f"git has no configured user.name/user.email on this machine, so the first commit was "
+            f"authored as {fallback_name} <{fallback_email}> -- in this repository only, nothing "
+            f"global was changed. Set your own with:\n"
+            f"  git config --global user.name \"Your Name\"\n"
+            f"  git config --global user.email \"you@example.com\"")
 
 
 def _align_config_database(config_path: Path, engine: dict, database_name: str, *,

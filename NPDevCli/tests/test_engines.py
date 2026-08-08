@@ -123,5 +123,75 @@ class EngineRegistryTest(unittest.TestCase):
         self.assertEqual("h2local", npdev_engines.resolve("H2Local")["key"])
 
 
+class ScaffoldGitHistoryTest(unittest.TestCase):
+    """`npdev init` must not die because git has no identity -- found in CI, run 31272295843.
+
+    Not a CI quirk. `git commit` exits 128 with "Author identity unknown" on a machine with no
+    user.name/user.email, and a machine with no git identity is precisely a FRESH machine -- the one
+    this command exists for. Before the fix, the scaffold left files written, no repository, and a
+    git error for the user to decode; the Manager shells straight to this command, so it failed
+    there too, on a first run.
+
+    The test reproduces the exact precondition (an environment where git can find no identity)
+    rather than mocking the failure, because "a fix verified only on the author's machine can still
+    be wrong" is a lesson this repo has already paid for.
+    """
+
+    def test_first_commit_succeeds_with_no_git_identity_configured(self):
+        import os
+        import subprocess
+        import tempfile
+
+        import npdev_cli
+
+        if shutil_which("git") is None:
+            self.skipTest("git is not installed")
+
+        with tempfile.TemporaryDirectory(prefix="npdev-gitless-") as temp:
+            target = Path(temp) / "app"
+            target.mkdir()
+            (target / "model.json").write_text("{}", encoding="utf-8")
+
+            # HOME/XDG/GIT_CONFIG_* all redirected at an empty directory, plus the explicit
+            # GIT_CONFIG_GLOBAL=/dev/null equivalent: this is what makes git genuinely identity-less
+            # even on a developer machine whose real ~/.gitconfig has a name in it.
+            empty = Path(temp) / "empty-home"
+            empty.mkdir()
+            env = dict(os.environ)
+            env.update({
+                "HOME": str(empty), "USERPROFILE": str(empty), "XDG_CONFIG_HOME": str(empty),
+                "GIT_CONFIG_GLOBAL": str(empty / "nonexistent-gitconfig"),
+                "GIT_CONFIG_SYSTEM": str(empty / "nonexistent-gitconfig"),
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_AUTHOR_NAME": "", "GIT_AUTHOR_EMAIL": "",
+                "GIT_COMMITTER_NAME": "", "GIT_COMMITTER_EMAIL": "",
+            })
+
+            original = os.environ.copy()
+            try:
+                os.environ.update(env)
+                note = npdev_cli._scaffold_git_history(target)
+            finally:
+                os.environ.clear()
+                os.environ.update(original)
+
+            log = subprocess.run(["git", "log", "--oneline"], cwd=target,
+                                 capture_output=True, text=True)
+            self.assertEqual(0, log.returncode,
+                             f"the scaffold must end with a real repository: {log.stderr}")
+            self.assertIn("npdev init: scaffold app", log.stdout,
+                          "the promised first commit is missing -- a scaffold with no history is a "
+                          "trap, not a convenience")
+            self.assertIsNotNone(
+                note,
+                "when an identity is SUBSTITUTED the user must be told; a tool that commits under a "
+                "name nobody chose, silently, is the bigger surprise")
+            self.assertIn("git config --global user.name", note)
+
+
+def shutil_which(name):
+    import shutil
+    return shutil.which(name)
+
 if __name__ == "__main__":
     unittest.main()
