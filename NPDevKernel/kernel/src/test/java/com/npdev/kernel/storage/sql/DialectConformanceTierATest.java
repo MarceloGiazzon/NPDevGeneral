@@ -348,12 +348,12 @@ class DialectConformanceTierATest {
         // The result SHAPE is part of the contract, not just the SQL. If each dialect aliased its
         // catalog differently, the caller would need a per-engine branch to read the answer and the
         // dialect layer would have MOVED the engine switch rather than removed it.
-        assertTrue(dialect.listTablesSql(null).contains("table_name"), dialect.name());
-        String columns = dialect.listColumnsSql(null, "t");
+        assertTrue(dialect.listTablesSql().contains("table_name"), dialect.name());
+        String columns = dialect.listColumnsSql();
         for (String expected : List.of("column_name", "data_type", "is_nullable", "column_default")) {
             assertTrue(columns.contains(expected), dialect.name() + " missing " + expected + ": " + columns);
         }
-        String indexes = dialect.listIndexesSql(null, "t");
+        String indexes = dialect.listIndexesSql();
         for (String expected : List.of("index_name", "column_name", "is_unique")) {
             assertTrue(indexes.contains(expected), dialect.name() + " missing " + expected + ": " + indexes);
         }
@@ -361,10 +361,20 @@ class DialectConformanceTierATest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("dialects")
-    @DisplayName("Q1: a hostile table name cannot break out of an introspection literal")
-    void introspectionEscapesLiterals(SqlDialect dialect) {
-        String sql = dialect.listColumnsSql(null, "o'brien");
-        assertTrue(sql.contains("o''brien"), dialect.name() + ": unescaped quote in " + sql);
+    @DisplayName("a hostile table name cannot break out of an introspection statement -- because none is spliced")
+    void introspectionBindsRatherThanSplices(SqlDialect dialect) {
+        // The first version of these three methods took (schema, table) and embedded them, escaped.
+        // The security-pattern sweep flagged all twelve, and it was right to: escaping-then-splicing
+        // works until the day a fourth dialect forgets the escape helper, and a bind parameter
+        // cannot forget. In information_schema (and pg_catalog, and sys.*) a table name is compared
+        // as a VALUE, so it binds on every engine and there was never a reason to build it in.
+        for (String sql : List.of(dialect.listTablesSql(), dialect.listColumnsSql(),
+                                  dialect.listIndexesSql())) {
+            assertTrue(sql.contains("?"), dialect.name() + ": expected bind parameters in " + sql);
+        }
+        assertEquals(1, dialect.listTablesSql().chars().filter(c -> c == '?').count(), dialect.name());
+        assertEquals(2, dialect.listColumnsSql().chars().filter(c -> c == '?').count(), dialect.name());
+        assertEquals(2, dialect.listIndexesSql().chars().filter(c -> c == '?').count(), dialect.name());
     }
 
     @ParameterizedTest(name = "{0}")

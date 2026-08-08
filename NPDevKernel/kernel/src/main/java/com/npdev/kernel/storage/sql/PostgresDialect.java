@@ -174,28 +174,30 @@ public final class PostgresDialect implements SqlDialect {
     }
 
     @Override
-    public String listTablesSql(String schema) {
-        return "SELECT table_name FROM information_schema.tables WHERE table_schema = "
-                + schemaPredicate(schema) + " AND table_type = 'BASE TABLE' ORDER BY table_name";
+    public String listTablesSql() {
+        return "SELECT table_name FROM information_schema.tables"
+                + " WHERE table_schema = COALESCE(?, current_schema())"
+                + " AND table_type = 'BASE TABLE' ORDER BY table_name";
     }
 
     @Override
-    public String listColumnsSql(String schema, String table) {
+    public String listColumnsSql() {
         return "SELECT column_name, data_type, is_nullable, column_default"
-                + " FROM information_schema.columns WHERE table_schema = " + schemaPredicate(schema)
-                + " AND table_name = '" + escapeLiteral(table) + "' ORDER BY ordinal_position";
+                + " FROM information_schema.columns"
+                + " WHERE table_schema = COALESCE(?, current_schema()) AND table_name = ?"
+                + " ORDER BY ordinal_position";
     }
 
     @Override
-    public String listIndexesSql(String schema, String table) {
+    public String listIndexesSql() {
         // information_schema has no index view; every engine answers this from its own catalog.
-        return "SELECT i.relname AS index_name, ix.indisunique AS is_unique, a.attname AS column_name"
+        return "SELECT i.relname AS index_name, a.attname AS column_name, ix.indisunique AS is_unique"
                 + " FROM pg_class t"
                 + " JOIN pg_index ix ON t.oid = ix.indrelid"
                 + " JOIN pg_class i ON i.oid = ix.indexrelid"
                 + " JOIN pg_namespace n ON n.oid = t.relnamespace"
                 + " JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)"
-                + " WHERE t.relname = '" + escapeLiteral(table) + "' AND n.nspname = " + schemaPredicate(schema)
+                + " WHERE n.nspname = COALESCE(?, current_schema()) AND t.relname = ?"
                 + " ORDER BY i.relname, a.attnum";
     }
 

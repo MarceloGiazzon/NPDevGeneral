@@ -226,8 +226,23 @@ public interface SqlDialect {
      * it. So the column names below are fixed, and each dialect aliases its catalog to them.
      */
 
-    /** Every base table in {@code schema} (current schema when null). Columns: {@code table_name}. */
-    String listTablesSql(String schema);
+    /*
+     * BIND, DO NOT SPLICE. All three take their schema and table as PARAMETERS -- the statements
+     * below carry `?` placeholders and the caller binds. In information_schema (and pg_catalog, and
+     * sys.*) a table or schema name is compared as a VALUE, not used as an identifier, so it binds
+     * cleanly on every engine and there is no reason to build the name into the text.
+     *
+     * Escaping-then-splicing would also have worked and is what the first version did. Binding is
+     * better for the boring reason: an escape helper is one edit away from being forgotten on a
+     * fourth dialect, and a bind parameter cannot be.
+     */
+
+    /**
+     * Every base table in a schema. Columns: {@code table_name}.
+     *
+     * <p>Binds: 1 = schema name, or NULL for the current schema.
+     */
+    String listTablesSql();
 
     /**
      * Every column of {@code table} -- conformance I2.
@@ -235,16 +250,20 @@ public interface SqlDialect {
      * <p>Columns: {@code column_name}, {@code data_type}, {@code is_nullable}, {@code column_default}.
      * The schema DIFF depends on all four: nullability coming back wrong makes evolution propose
      * changes that are not needed, or miss ones that are.
+     *
+     * <p>Binds: 1 = schema name (NULL for the current schema), 2 = table name.
      */
-    String listColumnsSql(String schema, String table);
+    String listColumnsSql();
 
     /**
      * Every index of {@code table} -- conformance I3, and REG-129's exact bug class.
      *
      * <p>Columns: {@code index_name}, {@code column_name}, {@code is_unique}, one row per indexed
      * column in ordinal order.
+     *
+     * <p>Binds: 1 = schema name (NULL for the current schema), 2 = table name.
      */
-    String listIndexesSql(String schema, String table);
+    String listIndexesSql();
 
     /** Whether a named constraint exists; binds (constraintName, tableName) in that order. */
     String constraintExistsSql();

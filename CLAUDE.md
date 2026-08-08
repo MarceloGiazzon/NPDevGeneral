@@ -217,6 +217,25 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
   reference consumer. `propertyScopes[]`'s declared order IS resolution order (most specific first);
   the implicit root scope (no `from`) must be declared last, enforced at compile time (REG-116).
 
+- **Dialect-bound SQL goes in ONE package** (`NPDevKernel/kernel/.../storage/sql/`, STOR-1). The
+  41 sites that used to spell `LIMIT ? OFFSET ?` / `ON CONFLICT` / `jsonb` / `information_schema`
+  inline are now `SqlDialect` calls, and `scripts/quality/check-dialect-sites.py`
+  (`run-ai-knowledge-gate` [28/29]) fails the moment a new one appears outside that package. **Do
+  not add a dialect-bound construct anywhere else** — if the dialect has no method for it, add one.
+  Pagination in particular returns `PaginationClause`, not a String, because SQL Server binds
+  `(offset, limit)` in the REVERSED order: a hardcoded `setInt(n, limit); setInt(n+1, offset)` is
+  correct on three engines and silently returns the wrong page on the fourth. **A paginated query
+  must declare `ORDER BY`** — enforced on every engine (conformance P3), and free today because
+  every existing one already does.
+- **`MySQL` and `SqlServer` are selectable engines but NOT supported** (STOR-3). The dialects exist,
+  are registered, and pass every conformance vector that can run locally — and no vector has ever
+  run against a real MySQL or SQL Server, because
+  `.github/workflows/storage-dialect-conformance.yml` is `workflow_dispatch`-only and has never been
+  executed. Do not describe either as supported until it has. **H2 and MySQL COMMIT IMPLICITLY ON
+  DDL**, so `DDL_IN_TRANSACTION` is absent from their capabilities and a "nothing persisted" claim is
+  false there (STOR-2) — ask `SqlDialects.active().supports(...)` rather than assuming a rollback.
+  `npdev capabilities` prints the matrix, generated from the dialects so it cannot drift.
+
 ## Key docs
 
 `docs/GETTING_STARTED.md`, `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`,

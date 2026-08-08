@@ -183,20 +183,22 @@ public final class H2Dialect implements SqlDialect {
     }
 
     @Override
-    public String listTablesSql(String schema) {
-        return "SELECT table_name FROM information_schema.tables WHERE table_schema = "
-                + schemaPredicate(schema) + " AND table_type = 'BASE TABLE' ORDER BY table_name";
+    public String listTablesSql() {
+        return "SELECT table_name FROM information_schema.tables"
+                + " WHERE table_schema = COALESCE(?, current_schema())"
+                + " AND table_type = 'BASE TABLE' ORDER BY table_name";
     }
 
     @Override
-    public String listColumnsSql(String schema, String table) {
+    public String listColumnsSql() {
         return "SELECT column_name, data_type, is_nullable, column_default"
-                + " FROM information_schema.columns WHERE table_schema = " + schemaPredicate(schema)
-                + " AND table_name = '" + escapeLiteral(table) + "' ORDER BY ordinal_position";
+                + " FROM information_schema.columns"
+                + " WHERE table_schema = COALESCE(?, current_schema()) AND table_name = ?"
+                + " ORDER BY ordinal_position";
     }
 
     @Override
-    public String listIndexesSql(String schema, String table) {
+    public String listIndexesSql() {
         // H2 2.x moved index metadata to INFORMATION_SCHEMA.INDEXES + INDEX_COLUMNS; there is no
         // pg_index here, so this is genuinely a different query rather than a reworded one.
         // Uniqueness comes from INDEX_TYPE_NAME ('UNIQUE INDEX' / 'PRIMARY KEY' / 'INDEX') -- getting
@@ -208,8 +210,7 @@ public final class H2Dialect implements SqlDialect {
                 + " FROM information_schema.indexes i"
                 + " JOIN information_schema.index_columns ic"
                 + " ON ic.index_name = i.index_name AND ic.table_name = i.table_name"
-                + " WHERE i.table_name = '" + escapeLiteral(table) + "'"
-                + " AND i.table_schema = " + schemaPredicate(schema)
+                + " WHERE i.table_schema = COALESCE(?, current_schema()) AND i.table_name = ?"
                 + " ORDER BY i.index_name, ic.ordinal_position";
     }
 

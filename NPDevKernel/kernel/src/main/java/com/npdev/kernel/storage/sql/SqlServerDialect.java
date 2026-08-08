@@ -276,20 +276,22 @@ public final class SqlServerDialect implements SqlDialect {
     }
 
     @Override
-    public String listTablesSql(String schema) {
-        return "SELECT table_name FROM information_schema.tables WHERE table_schema = "
-                + schemaPredicate(schema) + " AND table_type = 'BASE TABLE' ORDER BY table_name";
+    public String listTablesSql() {
+        return "SELECT table_name FROM information_schema.tables"
+                + " WHERE table_schema = COALESCE(?, SCHEMA_NAME())"
+                + " AND table_type = 'BASE TABLE' ORDER BY table_name";
     }
 
     @Override
-    public String listColumnsSql(String schema, String table) {
+    public String listColumnsSql() {
         return "SELECT column_name, data_type, is_nullable, column_default"
-                + " FROM information_schema.columns WHERE table_schema = " + schemaPredicate(schema)
-                + " AND table_name = '" + escapeLiteral(table) + "' ORDER BY ordinal_position";
+                + " FROM information_schema.columns"
+                + " WHERE table_schema = COALESCE(?, SCHEMA_NAME()) AND table_name = ?"
+                + " ORDER BY ordinal_position";
     }
 
     @Override
-    public String listIndexesSql(String schema, String table) {
+    public String listIndexesSql() {
         // sys.indexes, aliased to the same three column names every other dialect returns.
         return "SELECT i.name AS index_name,"
                 + " c.name AS column_name,"
@@ -299,8 +301,7 @@ public final class SqlServerDialect implements SqlDialect {
                 + " JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id"
                 + " JOIN sys.tables t ON t.object_id = i.object_id"
                 + " JOIN sys.schemas s ON s.schema_id = t.schema_id"
-                + " WHERE t.name = '" + escapeLiteral(table) + "'"
-                + " AND s.name = " + schemaPredicate(schema)
+                + " WHERE s.name = COALESCE(?, SCHEMA_NAME()) AND t.name = ?"
                 + " ORDER BY i.name, ic.key_ordinal";
     }
 
