@@ -59,6 +59,15 @@ class StorageCapabilityGateTest {
             @Override public String keyableTextColumnType() {
                 throw new UnsupportedOperationException();
             }
+            @Override public String guardedCreateTable(String table, String statement) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public String guardedCreateIndex(String index, String table, String statement) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public String guardedAddColumn(String table, String column, String statement) {
+                throw new UnsupportedOperationException();
+            }
             @Override public boolean foldsUnquotedIdentifiersToLowerCase() {
                 throw new UnsupportedOperationException();
             }

@@ -397,8 +397,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     private void applyMigrationMark(DataSource dataSource, String stored, SchemaManifest manifest, MigrationMarkStore.Mark mark) {
         try (Connection connection = dataSource.getConnection()) {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS " + METADATA_TABLE
-                            + " (metadata_key TEXT PRIMARY KEY, metadata_value TEXT NOT NULL, updated_at_ms BIGINT NOT NULL)"
+                    SqlDialects.active().guardedCreateTable(METADATA_TABLE,
+                            "CREATE TABLE " + METADATA_TABLE
+                            + " (metadata_key TEXT PRIMARY KEY, metadata_value TEXT NOT NULL, updated_at_ms BIGINT NOT NULL)")
             )) {
                 statement.executeUpdate();
             }
@@ -1725,8 +1726,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         UniqueConstraintPass.applyUniqueConstraints(dataSource, manifest);
         try (Connection connection = dataSource.getConnection()) {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "CREATE TABLE IF NOT EXISTS " + METADATA_TABLE
-                            + " (metadata_key TEXT PRIMARY KEY, metadata_value TEXT NOT NULL, updated_at_ms BIGINT NOT NULL)"
+                    SqlDialects.active().guardedCreateTable(METADATA_TABLE,
+                            "CREATE TABLE " + METADATA_TABLE
+                            + " (metadata_key TEXT PRIMARY KEY, metadata_value TEXT NOT NULL, updated_at_ms BIGINT NOT NULL)")
             )) {
                 statement.executeUpdate();
             }

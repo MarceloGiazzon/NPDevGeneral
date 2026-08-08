@@ -16,6 +16,7 @@ import com.npdev.dsl.v1.compiled.SqlTypeSupport;
 import com.npdev.generator.bonds.BondModelSupport;
 import com.npdev.generator.bonds.BondModelSupport.Bond;
 import com.npdev.generator.bonds.BondModelSupport.Cardinality;
+import com.npdev.kernel.storage.sql.SqlDialect;
 import com.npdev.kernel.dbschema.InternalColumnDefinition;
 import com.npdev.kernel.dbschema.InternalColumnType;
 import com.npdev.kernel.dbschema.InternalIndexDefinition;
@@ -136,6 +137,12 @@ public final class SchemaRealizationEmitter {
         if (plan.createBusinessTables() || plan.createInternalTables()) {
             StringBuilder additive = new StringBuilder();
             additive.append("-- NPDev safe-additive schema columns (Flyway repeatable migration)\n");
+            // The engine, in the header, for the same reason V1 carries it: since STOR-5 this
+            // script's DDL is engine-SPECIFIC, so anything reading it back -- a reviewer, or
+            // check-emitted-sql-portability.py -- has to know which engine to judge it against.
+            // Without this line the linter fell back to judging it against every engine and reported
+            // problems that cannot happen.
+            additive.append("-- Engine: ").append(plan.engine().externalName()).append("\n");
             additive.append("-- Adds new non-bond columns to already-existing tables (internal + business) without\n");
             additive.append("-- destructive recreation, and self-heals a business table (or bond junction table)\n");
             additive.append("-- that doesn't exist yet on this database -- CREATE TABLE IF NOT EXISTS is a no-op\n");
@@ -192,18 +199,24 @@ public final class SchemaRealizationEmitter {
     private static void appendInternalTableAdditiveColumns(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
         Set<String> keyed = keyedColumnsOf(table);
         for (InternalColumnDefinition column : table.columns()) {
-            sql.append("ALTER TABLE ").append(table.name()).append(" ADD COLUMN IF NOT EXISTS ")
-                    .append(column.name()).append(" ")
+            StringBuilder alter = new StringBuilder("ALTER TABLE ").append(table.name())
+                    .append(" ADD COLUMN ").append(column.name()).append(" ")
                     .append(renderInternalType(column.type(), engine, keyed.contains(column.name())));
             if (!column.defaultExpression().isBlank()) {
-                sql.append(" DEFAULT ").append(column.defaultExpression());
+                alter.append(" DEFAULT ").append(column.defaultExpression());
             } else if (column.required()) {
-                sql.append("; -- NOTE: '").append(column.name()).append("' on ").append(table.name())
+                // The note follows the statement rather than being spliced into it: the guarded form
+                // is a WRAPPER on two engines, so a comment appended mid-statement would land inside
+                // an IF block on SQL Server and swallow whatever came after it on the same line.
+                alter.append(";");
+                appendGuardedAddColumn(sql, engine, table.name(), column.name(), alter.toString());
+                sql.append("-- NOTE: '").append(column.name()).append("' on ").append(table.name())
                         .append(" is required but added nullable here (no default declared); ")
                         .append("existing rows will have NULL until backfilled\n");
                 continue;
             }
-            sql.append(";\n");
+            alter.append(";");
+            appendGuardedAddColumn(sql, engine, table.name(), column.name(), alter.toString());
         }
         sql.append("\n");
     }
@@ -231,22 +244,25 @@ public final class SchemaRealizationEmitter {
         // every tenant-scoped read (WHERE tenant_id = ?) would silently make all existing data
         // unreachable. The DB-level DEFAULT also guards the kernel-injected-synthetic-column class of
         // bug, mirroring how 'version BIGINT NOT NULL DEFAULT 0' is handled.
-        sql.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS tenant_id ")
-                .append(renderType("VARCHAR(120)", engine)).append(" DEFAULT 'default';\n");
+        appendGuardedAddColumn(sql, engine, table, "tenant_id",
+                "ALTER TABLE " + table + " ADD COLUMN tenant_id "
+                        + renderType("VARCHAR(120)", engine) + " DEFAULT 'default';");
         // LNCH-16: same in-place-upgrade reasoning as tenant_id above -- DEFAULT 0 backfills
         // pre-existing rows so JdbcBusinessConceptStore's row_version-aware save path (gated on
         // TableColumns#has("row_version")) works the moment this column lands, no separate
         // migration step needed.
-        sql.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS row_version ")
-                .append(renderType("BIGINT", engine)).append(" DEFAULT 0;\n");
+        appendGuardedAddColumn(sql, engine, table, "row_version",
+                "ALTER TABLE " + table + " ADD COLUMN row_version "
+                        + renderType("BIGINT", engine) + " DEFAULT 0;");
         // LNCH-1 T2 (finding T-B2): 'version' is added here for exactly the same reason, and with
         // exactly the same type and default, as row_version above. Before this it was the one column
         // fullColumnNames DECLARED but additiveColumnNames never marked additive, so no migration
         // could ever add it to an existing table: a table missing it produced an UNKNOWN delta item,
         // and since closeout C1 an UNKNOWN REFUSES the boot unless an itemized token authorizing a
         // whole-schema wipe is supplied. A missing platform column now self-heals instead.
-        sql.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS version ")
-                .append(renderType("BIGINT", engine)).append(" DEFAULT 0;\n");
+        appendGuardedAddColumn(sql, engine, table, "version",
+                "ALTER TABLE " + table + " ADD COLUMN version "
+                        + renderType("BIGINT", engine) + " DEFAULT 0;");
         // DELIBERATE ASYMMETRY (LNCH-1 T2, do not "fix" by adding NOT NULL here): the three platform
         // columns above are emitted with a DEFAULT but WITHOUT NOT NULL, while appendBusinessTable's
         // fresh CREATE TABLE emits them NOT NULL DEFAULT. Adding NOT NULL to an ADD COLUMN against a
@@ -263,8 +279,9 @@ public final class SchemaRealizationEmitter {
             // A bond column takes the bound anchor's SQL type (matches appendBusinessTable's
             // fresh-CREATE handling), not the reference default (UUID).
             String sqlType = bond.isPresent() ? bond.get().effectiveSqlType() : SqlTypeSupport.sqlType(field);
-            sql.append("ALTER TABLE ").append(table).append(" ADD COLUMN IF NOT EXISTS ")
-                    .append(column).append(" ").append(renderType(sqlType, engine)).append(";\n");
+            appendGuardedAddColumn(sql, engine, table, column,
+                    "ALTER TABLE " + table + " ADD COLUMN " + column + " "
+                            + renderType(sqlType, engine) + ";");
             if (field.isRequired()) {
                 CompiledSchema schema = field.getSchema();
                 Object literalDefault = schema == null ? null : schema.getDefaultValue();
@@ -323,7 +340,7 @@ public final class SchemaRealizationEmitter {
     }
 
     private static void appendTable(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
-        sql.append("CREATE TABLE IF NOT EXISTS ").append(table.name()).append(" (\n");
+        StringBuilder create = new StringBuilder("CREATE TABLE ").append(table.name()).append(" (\n");
         Set<String> keyed = keyedColumnsOf(table);
         List<String> lines = new ArrayList<>();
         for (InternalColumnDefinition column : table.columns()) {
@@ -340,17 +357,19 @@ public final class SchemaRealizationEmitter {
             lines.add(line.toString());
         }
         lines.add("  PRIMARY KEY (" + String.join(", ", table.primaryKey().columns()) + ")");
-        sql.append(String.join(",\n", lines)).append("\n);\n\n");
+        create.append(String.join(",\n", lines)).append("\n);");
+        appendGuardedCreateTable(sql, engine, table.name(), create.toString());
         for (InternalIndexDefinition index : table.indexes()) {
-            sql.append("CREATE ")
+            StringBuilder createIndex = new StringBuilder("CREATE ")
                     .append(index.unique() ? "UNIQUE " : "")
-                    .append("INDEX IF NOT EXISTS ")
+                    .append("INDEX ")
                     .append(index.name())
                     .append(" ON ")
                     .append(table.name())
                     .append(" (")
                     .append(String.join(", ", index.columns()))
-                    .append(");\n");
+                    .append(");");
+            appendGuardedCreateIndex(sql, engine, index.name(), table.name(), createIndex.toString());
         }
         sql.append("\n");
     }
@@ -428,8 +447,8 @@ public final class SchemaRealizationEmitter {
         lines.add("  row_version BIGINT NOT NULL DEFAULT 0");
         lines.add("  tenant_id " + renderType("VARCHAR(120)", engine) + " NOT NULL DEFAULT 'default'");
         lines.add("  PRIMARY KEY (" + idColumn + ")");
-        sql.append("CREATE TABLE IF NOT EXISTS ").append(table).append(" (\n");
-        sql.append(String.join(",\n", lines)).append("\n);\n\n");
+        appendGuardedCreateTable(sql, engine, table,
+                "CREATE TABLE " + table + " (\n" + String.join(",\n", lines) + "\n);");
     }
 
     /**
@@ -460,13 +479,10 @@ public final class SchemaRealizationEmitter {
                 // two separate tenants may each have a user with email 'alice@x.com', and a global
                 // index would both forbid that and leak cross-tenant existence via 409 collisions.
                 // This also aligns the DB constraint with the per-tenant existsUnique pre-check.
-                sql.append("CREATE UNIQUE INDEX IF NOT EXISTS ")
-                        .append(truncate("ux_" + table + "_" + column))
-                        .append(" ON ")
-                        .append(table)
-                        .append(" (tenant_id, ")
-                        .append(column)
-                        .append(");\n");
+                String uniqueIndex = truncate("ux_" + table + "_" + column);
+                appendGuardedCreateIndex(sql, engine, uniqueIndex, table,
+                        "CREATE UNIQUE INDEX " + uniqueIndex + " ON " + table
+                                + " (tenant_id, " + column + ");");
             }
         }
 
@@ -498,7 +514,7 @@ public final class SchemaRealizationEmitter {
             sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
         }
 
-        appendSecondaryIndexes(sql, concept, table, implicitIndexFields);
+        appendSecondaryIndexes(sql, concept, table, implicitIndexFields, engine);
         appendExplicitIndexes(sql, concept, table, engine);
         sql.append("\n");
     }
@@ -543,13 +559,10 @@ public final class SchemaRealizationEmitter {
                         + " UNIQUE (tenant_id, " + String.join(", ", columns) + ")";
                 sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
             } else {
-                sql.append("CREATE INDEX IF NOT EXISTS ")
-                        .append(truncate("idxx_" + table + "_" + baseName))
-                        .append(" ON ")
-                        .append(table)
-                        .append(" (tenant_id, ")
-                        .append(String.join(", ", columns))
-                        .append(");\n");
+                String compositeIndex = truncate("idxx_" + table + "_" + baseName);
+                appendGuardedCreateIndex(sql, engine, compositeIndex, table,
+                        "CREATE INDEX " + compositeIndex + " ON " + table + " (tenant_id, "
+                                + String.join(", ", columns) + ");");
             }
         }
     }
@@ -562,7 +575,7 @@ public final class SchemaRealizationEmitter {
      * limits, matching the unique-index naming.
      */
     private static void appendSecondaryIndexes(StringBuilder sql, CompiledConcept concept, String table,
-            Set<String> indexFields) {
+            Set<String> indexFields, DatabaseEngine engine) {
         if (indexFields == null || indexFields.isEmpty()) {
             return;
         }
@@ -580,13 +593,10 @@ public final class SchemaRealizationEmitter {
             if (!emittedColumns.add(column.toLowerCase(Locale.ROOT))) {
                 continue;
             }
-            sql.append("CREATE INDEX IF NOT EXISTS ")
-                    .append(truncate("idx_" + table + "_" + column))
-                    .append(" ON ")
-                    .append(table)
-                    .append(" (tenant_id, ")
-                    .append(column)
-                    .append(");\n");
+            String columnIndex = truncate("idx_" + table + "_" + column);
+            appendGuardedCreateIndex(sql, engine, columnIndex, table,
+                    "CREATE INDEX " + columnIndex + " ON " + table + " (tenant_id, "
+                            + column + ");");
         }
     }
 
@@ -1025,17 +1035,22 @@ public final class SchemaRealizationEmitter {
             String junctionTable = bond.junctionTable();
             String sourceColumn = SqlIdentifierSupport.sourceJunctionColumn(sourceId);
             String targetColumn = SqlIdentifierSupport.targetJunctionColumn(bond.anchorField());
-            sql.append("CREATE TABLE IF NOT EXISTS ").append(junctionTable).append(" (\n")
-                    .append("  ").append(sourceColumn).append(" ").append(renderType(SqlTypeSupport.sqlType(sourceId), engine)).append(" NOT NULL,\n")
-                    .append("  ").append(targetColumn).append(" ").append(renderType(bond.effectiveSqlType(), engine)).append(" NOT NULL,\n")
-                    .append("  PRIMARY KEY (").append(sourceColumn).append(", ").append(targetColumn).append(")\n")
-                    .append(");\n");
-            sql.append("CREATE INDEX IF NOT EXISTS ")
-                    .append(SqlIdentifierSupport.safeSqlIdentifier("idx_" + junctionTable + "_" + sourceColumn))
-                    .append(" ON ").append(junctionTable).append(" (").append(sourceColumn).append(");\n");
-            sql.append("CREATE INDEX IF NOT EXISTS ")
-                    .append(SqlIdentifierSupport.safeSqlIdentifier("idx_" + junctionTable + "_" + targetColumn))
-                    .append(" ON ").append(junctionTable).append(" (").append(targetColumn).append(");\n");
+            appendGuardedCreateTable(sql, engine, junctionTable,
+                    "CREATE TABLE " + junctionTable + " (\n"
+                            + "  " + sourceColumn + " " + renderType(SqlTypeSupport.sqlType(sourceId), engine) + " NOT NULL,\n"
+                            + "  " + targetColumn + " " + renderType(bond.effectiveSqlType(), engine) + " NOT NULL,\n"
+                            + "  PRIMARY KEY (" + sourceColumn + ", " + targetColumn + ")\n"
+                            + ");");
+            String sourceIndex = SqlIdentifierSupport.safeSqlIdentifier(
+                    "idx_" + junctionTable + "_" + sourceColumn);
+            appendGuardedCreateIndex(sql, engine, sourceIndex, junctionTable,
+                    "CREATE INDEX " + sourceIndex + " ON " + junctionTable
+                            + " (" + sourceColumn + ");");
+            String targetIndex = SqlIdentifierSupport.safeSqlIdentifier(
+                    "idx_" + junctionTable + "_" + targetColumn);
+            appendGuardedCreateIndex(sql, engine, targetIndex, junctionTable,
+                    "CREATE INDEX " + targetIndex + " ON " + junctionTable
+                            + " (" + targetColumn + ");");
         }
     }
 
@@ -1558,6 +1573,61 @@ public final class SchemaRealizationEmitter {
         return out;
     }
 
+    /*
+     * ------------------------------------------------------------------------------------------
+     * STOR-5: every guarded DDL statement leaves this class through the DIALECT.
+     *
+     * These three helpers exist so the fourteen emission sites below say WHAT they want (a table, an
+     * index, a column, idempotently) and never HOW an engine spells the guard. Before them, each site
+     * wrote `IF NOT EXISTS` inline -- PostgreSQL/H2 syntax, emitted unconditionally, which MySQL
+     * accepts for tables only and SQL Server rejects entirely. NPDev's own first migration could
+     * therefore not run on two of its four engines.
+     *
+     * A site that builds a statement and appends it raw is the bug coming back;
+     * check-emitted-sql-portability.py scans the OUTPUT and check-dialect-sites.py scans THIS FILE,
+     * so it now fails in seconds locally rather than after twelve minutes in CI.
+     * ------------------------------------------------------------------------------------------
+     */
+
+    /** {@code CREATE TABLE t (...)} -> the engine's idempotent form, plus the script's blank line. */
+    private static void appendGuardedCreateTable(StringBuilder sql, DatabaseEngine engine,
+                                                 String table, String createStatement) {
+        sql.append(guard(engine, d -> d.guardedCreateTable(table, createStatement), createStatement))
+                .append("\n\n");
+    }
+
+    /** {@code CREATE [UNIQUE] INDEX i ON t (...)} -> the engine's idempotent form. */
+    private static void appendGuardedCreateIndex(StringBuilder sql, DatabaseEngine engine,
+                                                 String index, String table, String createStatement) {
+        sql.append(guard(engine, d -> d.guardedCreateIndex(index, table, createStatement),
+                createStatement)).append("\n");
+    }
+
+    /** {@code ALTER TABLE t ADD COLUMN c TYPE} -> the engine's idempotent form. */
+    private static void appendGuardedAddColumn(StringBuilder sql, DatabaseEngine engine,
+                                               String table, String column, String alterStatement) {
+        sql.append(guard(engine, d -> d.guardedAddColumn(table, column, alterStatement),
+                alterStatement)).append("\n");
+    }
+
+    /**
+     * Ask the dialect, unless there is no dialect to ask.
+     *
+     * <p>{@code IN_MEMORY} has no SQL at all, so {@link DatabaseEngine#dialect()} throws for it by
+     * design. It also never reaches a database, so the PostgreSQL/H2 form is the harmless answer --
+     * and stating that here keeps every call site free of the question.
+     */
+    private static String guard(DatabaseEngine engine,
+                                java.util.function.Function<com.npdev.kernel.storage.sql.SqlDialect, String> ask,
+                                String plainStatement) {
+        if (engine == null || !engine.jdbc()) {
+            return com.npdev.kernel.storage.sql.H2Dialect.INSTANCE == null
+                    ? plainStatement
+                    : ask.apply(com.npdev.kernel.storage.sql.H2Dialect.INSTANCE);
+        }
+        return ask.apply(engine.dialect());
+    }
+
     private static String renderType(String sqlType, DatabaseEngine engine) {
         if (sqlType == null || sqlType.isBlank()) {
             return "VARCHAR(255)";
@@ -1592,14 +1662,41 @@ public final class SchemaRealizationEmitter {
         if (type == null) {
             return "VARCHAR(255)";
         }
+        // EVERY branch asks the dialect. The keyed/TEXT split above was the first half of this fix;
+        // the rest stayed hardcoded and was still wrong on SQL Server in a quieter, worse way:
+        //
+        //   TEXT       accepted but DEPRECATED on SQL Server; NVARCHAR(MAX) is the real answer
+        //   TIMESTAMP  a SILENT WRONG ANSWER -- SQL Server's TIMESTAMP is a rowversion BINARY
+        //              counter with no relationship to time at all. SqlServerDialect's own javadoc
+        //              calls it "a genuinely dangerous false friend", and portableColumnType has
+        //              answered DATETIME2(6) the whole time. Nothing asked it.
+        //
+        // Found by reading the emitted SQL Server script after the guarded-DDL fix let one exist at
+        // all -- not by the portability linter, which is why the linter now knows both (STOR-5).
+        if (engine == null || !engine.jdbc()) {
+            return switch (type) {
+                case TEXT, LARGE_TEXT, JSON_DOCUMENT -> "TEXT";
+                case TIMESTAMP -> "TIMESTAMP";
+                case INTEGER -> "INTEGER";
+                case BIGINT -> "BIGINT";
+            };
+        }
+        SqlDialect dialect = engine.dialect();
         return switch (type) {
             case TEXT, LARGE_TEXT, JSON_DOCUMENT ->
-                    keyed && engine != null && engine.jdbc()
-                            ? engine.dialect().keyableTextColumnType()
-                            : "TEXT";
-            case TIMESTAMP -> "TIMESTAMP";
-            case INTEGER -> "INTEGER";
-            case BIGINT -> "BIGINT";
+                    keyed ? dialect.keyableTextColumnType() : dialect.portableColumnType("TEXT");
+            // portableColumnType, NOT timestampColumnType(). The difference is drift: asking for
+            // the engine's PREFERRED timestamp gives H2 `TIMESTAMP WITH TIME ZONE`, which changes
+            // output on an engine that was already correct and which the internal tables were
+            // deliberately kept neutral of (SchemaRealizationEmitterInternalLogicalTypesTest asserts
+            // exactly that, and caught this).
+            //
+            // portableColumnType asks the narrower question -- "rewrite this DECLARED type only if
+            // you must" -- so H2 and Postgres keep plain TIMESTAMP and SQL Server gets DATETIME2(6),
+            // which is the one place the neutral form is not merely unidiomatic but WRONG.
+            case TIMESTAMP -> dialect.portableColumnType("TIMESTAMP");
+            case INTEGER -> dialect.portableColumnType("INTEGER");
+            case BIGINT -> dialect.portableColumnType("BIGINT");
         };
     }
 

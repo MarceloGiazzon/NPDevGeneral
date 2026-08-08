@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.npdev.kernel.storage.sql.SqlDialects;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -58,9 +59,10 @@ public final class MigrationMarkStore {
         // never honored again -- the safer of the two backward-compat options (a fresh beta has none
         // anyway).
         try (PreparedStatement statement = connection.prepareStatement(
-                "CREATE TABLE IF NOT EXISTS " + TABLE
+                SqlDialects.active().guardedCreateTable(TABLE,
+                        "CREATE TABLE " + TABLE
                         + " (id TEXT PRIMARY KEY, marked_fingerprint TEXT NOT NULL, marked_at_utc BIGINT NOT NULL, "
-                        + "marked_by TEXT, note TEXT, from_fingerprint TEXT)"
+                        + "marked_by TEXT, note TEXT, from_fingerprint TEXT)")
         )) {
             statement.executeUpdate();
         }
@@ -75,7 +77,8 @@ public final class MigrationMarkStore {
         // column, so this branch never fires there.
         if (!hasFromFingerprintColumn(connection)) {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "ALTER TABLE " + TABLE + " ADD COLUMN IF NOT EXISTS from_fingerprint TEXT"
+                    SqlDialects.active().guardedAddColumn(TABLE, "from_fingerprint",
+                            "ALTER TABLE " + TABLE + " ADD COLUMN from_fingerprint TEXT")
             )) {
                 statement.executeUpdate();
             }
@@ -85,8 +88,9 @@ public final class MigrationMarkStore {
         // ensureTable calls; NULLs are never considered equal by a unique index on either engine, so
         // this does not constrain pre-fix unbound rows against each other or against a real mark.
         try (PreparedStatement statement = connection.prepareStatement(
-                "CREATE UNIQUE INDEX IF NOT EXISTS ux_" + TABLE + "_transition ON " + TABLE
-                        + " (from_fingerprint, marked_fingerprint)"
+                SqlDialects.active().guardedCreateIndex("ux_" + TABLE + "_transition", TABLE,
+                        "CREATE UNIQUE INDEX ux_" + TABLE + "_transition ON " + TABLE
+                        + " (from_fingerprint, marked_fingerprint)")
         )) {
             statement.executeUpdate();
         }

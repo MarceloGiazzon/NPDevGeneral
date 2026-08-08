@@ -299,6 +299,69 @@ public final class MySqlDialect implements SqlDialect {
                 + " AND LOWER(table_name) = '" + escapeLiteral(tableName).toLowerCase(Locale.ROOT) + "'";
     }
 
+    /*
+     * ------------------------------------------------------------------------------------------
+     * STOR-5. MySQL has CREATE TABLE IF NOT EXISTS and NOTHING else in this family: an index or a
+     * column guarded that way is error 1064, a plain syntax error. Measured on a real MySQL 8.4 in
+     * CI, which is where an app first got past the driver and stopped here instead.
+     *
+     * The working shape is the one guardedConstraintDdl already uses on this engine: look the object
+     * up in INFORMATION_SCHEMA, build either the real statement or a no-op SELECT as a string, and
+     * PREPARE/EXECUTE it. Genuinely idempotent, and it needs no DO block MySQL does not have.
+     * ------------------------------------------------------------------------------------------
+     */
+
+    @Override
+    public String guardedCreateTable(String tableName, String createStatement) {
+        // Native, and identical to Postgres here -- the only one of the three MySQL supports.
+        return SqlDdlGuards.insertAfter(createStatement, "CREATE TABLE", "IF NOT EXISTS");
+    }
+
+    @Override
+    public String guardedCreateIndex(String indexName, String tableName, String createStatement) {
+        return preparedGuard(
+                "INFORMATION_SCHEMA.STATISTICS",
+                "INDEX_NAME = '" + escapeLiteral(indexName) + "'\n"
+                + "    AND TABLE_NAME = '" + escapeLiteral(tableName) + "'\n"
+                + "    AND TABLE_SCHEMA = DATABASE()",
+                createStatement);
+    }
+
+    @Override
+    public String guardedAddColumn(String tableName, String columnName, String alterStatement) {
+        return preparedGuard(
+                "INFORMATION_SCHEMA.COLUMNS",
+                "COLUMN_NAME = '" + escapeLiteral(columnName) + "'\n"
+                + "    AND TABLE_NAME = '" + escapeLiteral(tableName) + "'\n"
+                + "    AND TABLE_SCHEMA = DATABASE()",
+                // MySQL accepts ADD COLUMN, but the statement is about to be wrapped in a string
+                // literal, so any IF NOT EXISTS the caller left in would be a syntax error inside it.
+                SqlDdlGuards.stripIfNotExists(alterStatement));
+    }
+
+    /**
+     * The catalog-lookup + PREPARE/EXECUTE shape, shared by the two idioms MySQL cannot guard.
+     *
+     * <p>Identical in structure to {@link #guardedConstraintDdl}, deliberately: three sites doing the
+     * same thing three slightly different ways is how one of them ends up missing an escape.
+     */
+    private static String preparedGuard(String catalogTable, String predicate, String statement) {
+        if (SqlDdlGuards.alreadyGuarded(statement, "SET @npdev_ddl")) {
+            return statement;
+        }
+        String ddl = statement.strip();
+        if (!ddl.endsWith(";")) {
+            ddl = ddl + ";";
+        }
+        return "SET @npdev_ddl := (SELECT IF(COUNT(*) > 0, 'SELECT 1',\n"
+                + "    " + quoteSqlLiteral(ddl) + ")\n"
+                + "  FROM " + catalogTable + "\n"
+                + "  WHERE " + predicate + ");\n"
+                + "PREPARE npdev_stmt FROM @npdev_ddl;\n"
+                + "EXECUTE npdev_stmt;\n"
+                + "DEALLOCATE PREPARE npdev_stmt;\n";
+    }
+
     @Override
     public String guardedConstraintDdl(String constraintName, String tableName, String ddlStatement) {
         // MySQL has no anonymous DO block and no ADD CONSTRAINT IF NOT EXISTS. It DOES have

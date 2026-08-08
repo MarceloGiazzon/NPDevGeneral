@@ -380,7 +380,9 @@ final class BackfillPass {
         String safeColumn = SchemaLifecycleExecutor.safeIdentifier(column);
         String safeType = TypeWideningPass.safeSqlType(sqlType);
         try (PreparedStatement add = connection.prepareStatement(
-                "ALTER TABLE " + safeTable + " ADD COLUMN IF NOT EXISTS " + safeColumn + " " + safeType)) {
+                com.npdev.kernel.storage.sql.SqlDialects.active().guardedAddColumn(
+                        safeTable, safeColumn,
+                        "ALTER TABLE " + safeTable + " ADD COLUMN " + safeColumn + " " + safeType))) {
             add.executeUpdate();
         }
         Object literalValue = decodeLiteralDefault(literalDefaultJson);
@@ -417,7 +419,9 @@ final class BackfillPass {
         String sqlType = manifest.businessTableColumnTypes().getOrDefault(table, Map.of()).get(column);
         String safeType = TypeWideningPass.safeSqlType(sqlType);
         try (PreparedStatement add = connection.prepareStatement(
-                "ALTER TABLE " + safeTable + " ADD COLUMN IF NOT EXISTS " + safeColumn + " " + safeType)) {
+                com.npdev.kernel.storage.sql.SqlDialects.active().guardedAddColumn(
+                        safeTable, safeColumn,
+                        "ALTER TABLE " + safeTable + " ADD COLUMN " + safeColumn + " " + safeType))) {
             add.executeUpdate();
         }
         List<ExpressionBackfillPreview.RowValue> rows =
