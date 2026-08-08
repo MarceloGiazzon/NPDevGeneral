@@ -444,6 +444,9 @@
     "scripts/quality/security-pattern-sweep.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/summarize-dialect-conformance.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/validate-corpus.py": {
       "invocation": "ci-gate"
     },

@@ -19,11 +19,28 @@ EXISTING `storageMode` axis — both `jdbc`, because that second string is the s
 will use, not a dialect name), `UserDatabaseDefinitionLoader` (driver, JDBC URL, default port,
 container naming), and `SqlDialects` (registry).
 
-**`MySQL` and `SqlServer` are selectable but NOT supported.** The dialects pass every conformance
-vector that can run locally, and no vector has ever run against a real MySQL or SQL Server —
-`.github/workflows/storage-dialect-conformance.yml` is `workflow_dispatch`-only and has never been
-executed. Choosing either engine today gets you a generated app whose SQL is believed correct and
-unproven. See ledger item `STOR-3` for exactly what is unverified and the six steps to close it.
+**`MySQL` and `SqlServer` are selectable but NOT supported** — though less unproven than this
+entry first claimed. `storage-dialect-conformance.yml` was dispatched once, manually, at commit
+`5814886` (run `31264977219`), and against REAL containers it reported:
+
+| engine | Tier B | |
+|---|---|---|
+| MySQL 8.4 (utf8mb4) | **13 / 13** | first execution against a real MySQL |
+| PostgreSQL 16 | **13 / 13** | the S1 dialect seam caused no regression |
+| SQL Server 2022 | 12 / 13 | one failure, and it was the TEST's bug (see below) |
+
+Zero vectors were skipped: the twelve that print a skip reason on the local H2 backend all executed.
+
+**It is still not support, for reasons that are about the process rather than the results.** The
+workflow remains `workflow_dispatch`-only, so nothing re-verifies any of this when a dialect changes;
+its container images are moving tags (`mssql/server:2022-latest`), so the suite can change underneath
+you; and four vectors (E1, E2, I2, I3) need a realized schema Tier B cannot produce. `STOR-3` lists
+the five remaining steps.
+
+The SQL Server failure is worth stating because it is the useful kind: J2 stored `café ☕` and read
+back `café ?`. The vector hand-wrote `VARCHAR(4000)` in its own DDL, and on SQL Server `VARCHAR` is
+non-Unicode — silent, per-character data loss. `SqlServerDialect.portableColumnType` already returned
+`NVARCHAR(4000)` and was simply never asked. The vector was right to fail.
 
 Two engine-specific gaps are known and recorded rather than hidden: `SqlServerDialect.rowLimit()`
 throws (SQL Server has no suffix row cap — `TOP` is a prefix), and `ConversionHookEmitter` still

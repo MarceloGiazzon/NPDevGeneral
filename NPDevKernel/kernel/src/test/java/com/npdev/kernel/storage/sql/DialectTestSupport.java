@@ -55,6 +55,56 @@ public final class DialectTestSupport {
     private DialectTestSupport() {
     }
 
+    /**
+     * Images this suite knows how to start, by dialect name. <b>The single source of truth for "can
+     * the container backend serve this dialect".</b>
+     *
+     * <p>h2 is deliberately absent: it IS the local backend and has no container. Run 31264977219
+     * -- the first real execution of the CI suite -- reported 13 failures per job purely because the
+     * parameter source handed h2 to a container-only run. All 13 threw
+     * {@code IllegalArgumentException} in 0.1s total, against no database at all, which is what
+     * distinguished them from the single real behavioural failure.
+     */
+    private static final Map<String, String> CONTAINER_IMAGES = Map.of(
+            "mysql", "mysql:8.4",
+            "postgres", "postgres:16",
+            "sqlserver", "mcr.microsoft.com/mssql/server:2022-latest");
+
+    /**
+     * System property CI sets so ONE job means ONE engine: {@code -Dnpdev.dialect.only=mysql}.
+     *
+     * <p>Before this existed the matrix selected jobs but the test class was parameterised over
+     * every dialect, so each job started three containers, verified MySQL three times, and reported
+     * SQL Server's failure three times. A job's red/green said nothing about the engine in its name.
+     */
+    public static final String ONLY_PROPERTY = "npdev.dialect.only";
+
+    /**
+     * Whether {@code dialect} should run on the CURRENT backend, honouring {@link #ONLY_PROPERTY}.
+     *
+     * <p>Two independent filters, deliberately kept separate:
+     * <ul>
+     *   <li><b>backend capability</b> -- container mode can only serve a dialect with a registered
+     *       image. Locally every dialect is servable (H2 impersonates each one).</li>
+     *   <li><b>explicit scoping</b> -- {@code -Dnpdev.dialect.only}, unset locally.</li>
+     * </ul>
+     *
+     * @throws IllegalArgumentException when {@code npdev.dialect.only} names a dialect that is not
+     *         registered. A typo must NOT quietly select nothing and let the suite report green on
+     *         zero tests -- that is strictly worse than the bug this filter fixes, because it looks
+     *         like proof.
+     */
+    public static boolean shouldRun(SqlDialect dialect) {
+        String only = System.getProperty(ONLY_PROPERTY, "").trim();
+        if (!only.isEmpty()) {
+            SqlDialects.forName(only); // throws, listing the known names, if it is a typo
+            if (!only.equalsIgnoreCase(dialect.name())) {
+                return false;
+            }
+        }
+        return !isContainerBacked() || CONTAINER_IMAGES.containsKey(dialect.name());
+    }
+
     public static boolean isContainerBacked() {
         return "container".equalsIgnoreCase(BACKEND);
     }
@@ -87,27 +137,42 @@ public final class DialectTestSupport {
      */
     private static synchronized JdbcDatabaseContainer<?> containerFor(SqlDialect dialect) {
         return CONTAINERS.computeIfAbsent(dialect.name(), name -> {
+            String image = CONTAINER_IMAGES.get(name);
+            if (image == null) {
+                // STILL A THROW, and deliberately so even though shouldRun() now filters these out
+                // before they reach here. This is the backstop for the bug it was written for: a
+                // dialect added to SqlDialects and never given an image. Without it that dialect
+                // would silently fall back to H2 while the job name said "real engine" -- a green
+                // tick over an approximation. The filter is the ergonomics; this is the safety.
+                throw new IllegalArgumentException(
+                        "no container image registered for dialect '" + name + "' (h2 has none by "
+                        + "design -- it IS the local backend). Add one to CONTAINER_IMAGES and to the "
+                        + "CI workflow matrix, or the vector silently never runs against the real "
+                        + "engine while the suite reports green.");
+            }
             JdbcDatabaseContainer<?> started = switch (name) {
-                case "mysql" -> new MySQLContainer<>(DockerImageName.parse("mysql:8.4"))
+                case "mysql" -> new MySQLContainer<>(DockerImageName.parse(image))
                         // utf8mb4 is not optional: MySQL's legacy three-byte "utf8" silently mangles
                         // anything outside the BMP, so a default container would make conformance J2
                         // fail for a reason that has nothing to do with the dialect.
                         .withCommand("--character-set-server=utf8mb4",
                                      "--collation-server=utf8mb4_unicode_ci");
-                case "postgres" -> new PostgreSQLContainer<>(DockerImageName.parse("postgres:16"));
-                case "sqlserver" -> new MSSQLServerContainer<>(
-                        DockerImageName.parse("mcr.microsoft.com/mssql/server:2022-latest"))
+                case "postgres" -> new PostgreSQLContainer<>(DockerImageName.parse(image));
+                case "sqlserver" -> new MSSQLServerContainer<>(DockerImageName.parse(image))
                         .acceptLicense();
-                case "h2" -> throw new IllegalArgumentException(
-                        "h2 has no container -- it is the LOCAL backend. Asking for one means the "
-                        + "backend selection is confused, which would otherwise surface as a "
-                        + "mysteriously slow test rather than as this message.");
                 default -> throw new IllegalArgumentException(
-                        "no container image registered for dialect '" + name + "'. Add one here AND to "
-                        + "the CI workflow matrix, or the vector silently never runs against the real "
-                        + "engine while the suite reports green.");
+                        "dialect '" + name + "' has an image registered but no container type here -- "
+                        + "the two halves of the mapping have drifted.");
             };
+            // F5: one line per container start. Before this, the console log had ZERO mentions of
+            // Testcontainers, Docker, Ryuk or any image name -- whether a container had started at
+            // all had to be INFERRED from the fact that the h2 path threw. The failure this guards
+            // against is a backend silently falling back to H2 while the job says "real engine", and
+            // one printed line makes that impossible to miss.
+            long startedAt = System.nanoTime();
             started.start();
+            System.out.printf("[dialect-support] started %s for '%s' -> %s (%.1fs)%n",
+                    image, name, started.getJdbcUrl(), (System.nanoTime() - startedAt) / 1_000_000_000.0);
             return started;
         });
     }
