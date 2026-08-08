@@ -27,7 +27,12 @@ $cwd = (Get-Location).Path
 $buildRoot = Find-Up $cwd { param($d) (Test-Path (Join-Path $d 'gradlew.bat')) -or (Test-Path (Join-Path $d 'gradlew')) }
 if (-not $buildRoot) { throw "No gradlew found from '$cwd' upward; run this from inside an NPDev Gradle build root." }
 
-$srcRoot = Find-Up $buildRoot { param($d) (Split-Path $d -Leaf) -eq 'NPDev_General' }
+# npdev-build-root-resolution: identify the repo root by its CONTENTS, not its name -- see
+# scripts/npdev-common.ps1's Get-NPDevBuildRoot comment for the CI failure the name match caused.
+$srcRoot = Find-Up $buildRoot { param($d)
+    (Test-Path (Join-Path $d 'NPDevContract')) -and
+    (Test-Path (Join-Path $d 'NPDevGenerator')) -and
+    (Test-Path (Join-Path $d 'NPDevKernel')) }
 
 if ($env:NPDEV_BUILD_ROOT) {
     $externalRoot = $env:NPDEV_BUILD_ROOT

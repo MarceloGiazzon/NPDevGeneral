@@ -17,7 +17,10 @@
       "listFile": "NPDevRuntimeHost/build.gradle",
       "listMarker": "modelSpecificGeneratedAppTests",
       "groups": [
-        ["com/finalexec/RuntimeMetadataServiceTest.java", "com/finalexec/PanelRuntimeTest.java"]
+        [
+          "com/finalexec/RuntimeMetadataServiceTest.java",
+          "com/finalexec/PanelRuntimeTest.java"
+        ]
       ]
     },
     {
@@ -25,7 +28,12 @@
       "citedBy": "REG-108",
       "description": "A top-level model array field contributed by a pack/fragment (not just the app's own root) must be threaded through ModelSourceResolver.MODEL_ARRAY_KEYS, BOTH copies of pack.schema.json, ModelResolver.resolve(), and the CompiledModelCanonicalJson/Reader pair -- CLAUDE.md's own documented four-place rule.",
       "kind": "field-in-all-files",
-      "trackedFields": ["roles", "propertyScopes", "properties", "conversions"],
+      "trackedFields": [
+        "roles",
+        "propertyScopes",
+        "properties",
+        "conversions"
+      ],
       "caseSensitive": false,
       "files": [
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
@@ -41,7 +49,9 @@
       "citedBy": "REG-104",
       "description": "A new AST-level field needs a live path through parser -> compiler -> canonical writer+reader -> ModelResolver, or it survives parsing but silently never reaches the generator/runtime (REG-104's shape: RolePermissions.toRole() had no diagnostic for an app-declared role because roles[] did not yet exist end to end).",
       "kind": "field-in-all-files",
-      "trackedFields": ["roles"],
+      "trackedFields": [
+        "roles"
+      ],
       "caseSensitive": false,
       "files": [
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
@@ -56,7 +66,10 @@
       "citedBy": "B20 (S2, __OutsideRepo\\s1\\b20-design.md, ADR-0011); physicallyIsolate added S8 Wave 4 (ADR-0011 D4 v2)",
       "description": "The contexts[] registry (which bounded contexts a model declares) needs the same live path the ast-compiled-four-place rule requires for roles[] -- parser, compiler, ModelResolver, and the canonical writer+reader pair -- or a declared context's registry entry survives parsing but silently never reaches the generator/runtime. physicallyIsolate (Wave 4, ADR-0011 D4's v2 opt-in) is a field ON each context entry, not a new top-level array, so it rides this same rule rather than a fourth one.",
       "kind": "field-in-all-files",
-      "trackedFields": ["contexts", "physicallyisolate"],
+      "trackedFields": [
+        "contexts",
+        "physicallyisolate"
+      ],
       "caseSensitive": false,
       "files": [
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
@@ -72,7 +85,9 @@
       "citedBy": "S7 Phase B (B13 declarative conversion vocabulary)",
       "description": "conversions[] needs the same live path the ast-compiled-four-place rule requires for roles[] -- parser, compiler, ModelResolver, and the canonical writer+reader pair -- or a declared conversion survives parsing but silently never reaches the generator, which emits nothing under db/conversion-hooks/ and the author gets no error anywhere (the X0 shape REG-104 found for roles[]).",
       "kind": "field-in-all-files",
-      "trackedFields": ["conversions"],
+      "trackedFields": [
+        "conversions"
+      ],
       "caseSensitive": false,
       "files": [
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
@@ -87,7 +102,9 @@
       "citedBy": "B20 (S2, __OutsideRepo\\s1\\b20-design.md D3, ADR-0011)",
       "description": "D3's import-gate field (imports[], declared on a context fragment, pack-shaped per D2) must stay schema-declared on BOTH pack.schema.json copies and enforced by ModelSourceResolver -- a copy that lost the schema key would reject every context fragment that declares imports[], and a resolver that lost the enforcement would silently let an undeclared cross-context reference through (the exact X0 shape D3 exists to prevent).",
       "kind": "field-in-all-files",
-      "trackedFields": ["imports"],
+      "trackedFields": [
+        "imports"
+      ],
       "caseSensitive": false,
       "files": [
         "NPDevContract/schemas/pack.schema.json",
@@ -97,10 +114,14 @@
     },
     {
       "id": "readme-portable-tooling-substrings",
-      "citedBy": "F7 (FIRST_IMPRESSION_SPEC.md I6, `§0`'s trap)",
+      "citedBy": "F7 (FIRST_IMPRESSION_SPEC.md I6, `\u00a70`'s trap)",
       "description": "run-portable-tooling-check.ps1 asserts README.md contains these three EXACT command substrings verbatim (its own linuxCommandExamplesPresent check, case-sensitive .Contains()). F1/F3/F6's own doc edits to README.md all had to preserve them by hand with no gate telling them so beforehand -- this rule is that gate: an edit that reflows or rewords any of the three now fails loud instead of the check silently going red for a reason that looks unrelated to whatever the edit was actually about.",
       "kind": "field-in-all-files",
-      "trackedFields": ["./npdev validate model", "./npdev normalize ai-model", "./npdev generate app"],
+      "trackedFields": [
+        "./npdev validate model",
+        "./npdev normalize ai-model",
+        "./npdev generate app"
+      ],
       "caseSensitive": true,
       "files": [
         "README.md",
@@ -109,10 +130,13 @@
     },
     {
       "id": "getting-started-portable-tooling-substrings",
-      "citedBy": "F7 (FIRST_IMPRESSION_SPEC.md I6, `§0`'s trap)",
+      "citedBy": "F7 (FIRST_IMPRESSION_SPEC.md I6, `\u00a70`'s trap)",
       "description": "Same trap as readme-portable-tooling-substrings, for docs/GETTING_STARTED.md's two required substrings (run-portable-tooling-check.ps1's linuxCommandExamplesPresent check). F6's full rewrite of this file had to preserve both verbatim with no gate telling it so beforehand.",
       "kind": "field-in-all-files",
-      "trackedFields": ["Linux and macOS", "./npdev report bootstrap"],
+      "trackedFields": [
+        "Linux and macOS",
+        "./npdev report bootstrap"
+      ],
       "caseSensitive": true,
       "files": [
         "docs/GETTING_STARTED.md",
@@ -122,9 +146,11 @@
     {
       "id": "ci-workflow-report-bootstrap-substring",
       "citedBy": "F7 (FIRST_IMPRESSION_SPEC.md I6)",
-      "description": "run-portable-tooling-check.ps1's cliReportBootstrapCallable check separately asserts '.github/workflows/npdev-ci-validation.yml' contains the exact substring './npdev report bootstrap' -- a third location for the same literal string this script depends on, found while registering the README/GETTING_STARTED trap above (not itself part of §0's stated five, but the identical failure shape).",
+      "description": "run-portable-tooling-check.ps1's cliReportBootstrapCallable check separately asserts '.github/workflows/npdev-ci-validation.yml' contains the exact substring './npdev report bootstrap' -- a third location for the same literal string this script depends on, found while registering the README/GETTING_STARTED trap above (not itself part of \u00a70's stated five, but the identical failure shape).",
       "kind": "field-in-all-files",
-      "trackedFields": ["./npdev report bootstrap"],
+      "trackedFields": [
+        "./npdev report bootstrap"
+      ],
       "caseSensitive": true,
       "files": [
         ".github/workflows/npdev-ci-validation.yml",
@@ -136,7 +162,9 @@
       "citedBy": "REG-133",
       "description": "scripts/quality/schema-consumers.json's own PROTECTED entry for generate_dsl_reference.py names check-dsl-reference-output-floor.py as its enforcing gate -- if a future refactor renames or removes that script from run-generator-gate.ps1 without updating the registry (or vice versa), the registry silently claims protection that no longer runs, exactly the 'consumers nobody enumerated' shape this whole item exists to close. Both must name the enforcing script consistently.",
       "kind": "field-in-all-files",
-      "trackedFields": ["check-dsl-reference-output-floor.py"],
+      "trackedFields": [
+        "check-dsl-reference-output-floor.py"
+      ],
       "caseSensitive": true,
       "files": [
         "scripts/quality/schema-consumers.json",
@@ -148,11 +176,36 @@
       "citedBy": "REG-135",
       "description": "ledger/boundaries/B16.yml declares codeLinked:true, naming ValidationDiagnosticNormalizer.java's DESCOPED_PROPERTY_BOUNDARY_IDS map as B16's real enforcement. If a future refactor removes the 'B16' mapping from that Java file without updating the registry entry (or vice versa -- someone adds a new boundaryId string in code without a matching ledger/boundaries/*.yml file), the registry would claim a code link that does not exist, or code would silently attach an unregistered boundaryId -- the exact 'every hittable boundary has an enforcing code, and vice versa' check REG-135 names as its own twin-pair gate.",
       "kind": "field-in-all-files",
-      "trackedFields": ["B16"],
+      "trackedFields": [
+        "B16"
+      ],
       "caseSensitive": true,
       "files": [
         "ledger/boundaries/B16.yml",
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ValidationDiagnosticNormalizer.java"
+      ]
+    },
+    {
+      "id": "build-root-resolution-eleven-place",
+      "citedBy": "REG-144",
+      "description": "Eleven independent copies of NPDev's external-build-root resolution must agree on HOW they find the repo root, because Gradle writes build output to the root they compute and the PowerShell/Python tooling reads it back from the root THEY compute. They used to walk up looking for a directory literally NAMED 'NPDev_General'; a clone named anything else (GitHub checks this repo out as 'NPDevGeneral') made every copy fall through to its own fallback, and the fallbacks disagreed -- measured in a real renamed clone: NPDevKernel resolved to <clone>/Build, NPDevContract/dsl to <clone>/NPDevContract/Build, and Get-NPDevBuildRoot to <clone>/../Build. THREE roots. Gradle built 30 adapter jars into one and sync-runtimehost-libs.ps1 searched another, so three packaged-app proof tests failed on Linux CI for twelve days while passing locally, because the author's directory really is named NPDev_General and the walk succeeded there by coincidence. All eleven now identify the repo root by its CONTENTS (the NPDevContract + NPDevGenerator + NPDevKernel modules), never by its name, and each carries the 'npdev-build-root-resolution' token so dropping one is a gate failure rather than a silent return to three roots.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev-build-root-resolution"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "build.gradle",
+        "NPDevContract/dsl/build.gradle",
+        "NPDevEditor/build.gradle",
+        "NPDevGenerator/build.gradle",
+        "NPDevKernel/build.gradle",
+        "scripts/npdev-common.ps1",
+        "npdev-gradlew.ps1",
+        "npdev-gradlew.sh",
+        "NPDevCli/npdev_cli.py",
+        "NPDevMcp/server.py",
+        "scripts/ai/npdev_ai_common.py"
       ]
     }
   ]

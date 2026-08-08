@@ -25,9 +25,12 @@ def build_root() -> Path:
     if env_root and env_root.strip():
         return Path(env_root).expanduser().resolve()
     source_root = repo_root()
-    # Walk up to the NPDev_General source dir, then use its sibling Build.
+    # npdev-build-root-resolution: walk up to the repo root -- identified by its CONTENTS, not its
+    # name -- then use its sibling Build. See scripts/npdev-common.ps1's Get-NPDevBuildRoot comment
+    # for the CI failure the name match caused.
     cursor = source_root
-    while cursor is not None and cursor.name != "NPDev_General":
+    while cursor is not None and not all(
+            (cursor / name).is_dir() for name in ("NPDevContract", "NPDevGenerator", "NPDevKernel")):
         cursor = cursor.parent if cursor.parent != cursor else None
     if cursor is not None and cursor.parent is not None:
         return cursor.parent / "Build"

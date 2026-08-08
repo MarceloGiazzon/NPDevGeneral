@@ -1,0 +1,96 @@
+id: REG-144
+title: >-
+  Every external-build-root resolver found the repo root by its NAME ('NPDev_General'), so a clone
+  named anything else resolved THREE different build roots and Linux CI stayed red for twelve days
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-08
+closed: 2026-08-08
+verification: VERIFIED_LIVE
+surface: build-tooling/root-resolution, ci/linux-maturity-validation
+source: >-
+  Found while fixing three packaged-app proof tests that failed only on the Linux CI runner
+  (HardenGcDeleteReplaceCascade / HardenObjstoreFileUpload / TrustedSourceEmitter
+  PackagedGeneratedAppRuntimeProofTest), red on main since 5317584 and passing on every local run.
+detail: >-
+  Eleven independent copies of NPDev's external-build-root resolution located the repo root by
+  walking ancestors for a directory literally NAMED 'NPDev_General':
+
+      NPDevKernel/build.gradle     while (sourceRoot.name != 'NPDev_General')
+      scripts/npdev-common.ps1     while ($ancestor.Name -ne 'NPDev_General')
+      ... and nine more (5 build.gradle, 2 .ps1, 1 .sh, 3 .py)
+
+  GitHub's checkout action names the directory 'NPDevGeneral' -- no underscore. The walk never
+  matched, so every copy fell through to its own fallback, and the fallbacks were computed from
+  different starting points. Measured in a REAL clone renamed to 'NPDevGeneral', running real
+  Gradle, not a simulation:
+
+      RED   NPDevKernel        -> <clone>/Build/gradle/npdev-kernel/root
+            NPDevContract/dsl  -> <clone>/NPDevContract/Build/gradle/npdev-dsl/root
+            Get-NPDevBuildRoot -> <clone>/../Build
+
+  THREE build roots in one checkout. The proof tests build 30 adapter jars with Gradle (exit 0 --
+  the jars really were written), then run sync-runtimehost-libs.ps1, which searched a different
+  root, found zero jars, and threw "No RuntimeHost jars were discovered under build/libs after
+  local jar build."
+
+  WHY IT SURVIVED SO LONG. On the author's machine the directory really is named NPDev_General, so
+  every copy's walk succeeded and they agreed -- by coincidence, not by construction. The bug was
+  therefore invisible to every local run and every local gate, and could only appear on CI or in
+  someone else's clone. Get-NPDevBuildRoot's own comment already NAMED this hazard ("a git clone
+  folder literally named 'NPDevGeneral' ... exactly how GitHub's own checkout action names it") and
+  judged the fallback sufficient. It was not: the comment reasoned about one resolver in isolation
+  and never compared the two fallbacks against each other.
+
+  Two diagnostics hid the root cause and were fixed alongside it:
+    - the CI step that surfaces generator test failures globbed the non-redirected buildDir, so it
+      printed "no generator test XML containing failures was found" on a run with three failures.
+      Commit eff0f43 had fixed that identical trap for the artifact-upload glob two days earlier --
+      the redirected buildDir has now caught four separate call sites.
+    - NEW-1 declared working-directory on an `if: failure()` step; the runner resolves that before
+      the script runs, so a run failing upstream of app generation added a second, purely spurious
+      red X.
+resolution: >-
+  DONE (2026-08-08), in two commits so each isolates one variable.
+
+  865c74b pins NPDEV_BUILD_ROOT=${{ github.workspace }}/Build in the Linux CI job, making both
+  resolvers take their first branch so agreement is structural rather than coincidental. Verified:
+  the full run went green (Linux + Windows), including the three proof tests.
+
+  This commit removes the cause rather than masking it. All eleven resolvers now identify the repo
+  root by its CONTENTS -- the directory holding NPDevContract + NPDevGenerator + NPDevKernel --
+  never by its name. That predicate is not new: WorkspaceRootLocator.java already used it, with a
+  comment saying it existed "so a third caller does not become a third copy". The lesson was
+  already written down; it had not reached these eleven.
+
+  RED/GREEN proven in a real `git clone` into a directory named 'NPDevGeneral', running real Gradle
+  in each build:
+      RED   three roots (above)
+      GREEN one root -- all four Gradle builds, Get-NPDevBuildRoot, npdev_cli.py,
+            npdev_ai_common.py and npdev-gradlew.sh all resolve <clone>/../Build
+
+  Registered as twin-pair rule 'build-root-resolution-eleven-place' so dropping the marker token
+  from any one copy fails run-ai-knowledge-gate.ps1 instead of silently restoring three roots --
+  proven to bite by removing the token from NPDevMcp/server.py (checker went RED) and restoring it.
+
+  Also corrected: .npdev-root, the repo-root sentinel, contained a stray truncated PowerShell script
+  instead of marker text (an accidental shell redirect). Only the file's existence is ever tested,
+  so this was harmless, but it now documents the convention and warns that a generated FinalApp
+  carries its own copy of the marker -- which is why root detection pairs the marker with the module
+  directories rather than trusting it alone.
+files:
+  - build.gradle
+  - NPDevContract/dsl/build.gradle
+  - NPDevEditor/build.gradle
+  - NPDevGenerator/build.gradle
+  - NPDevKernel/build.gradle
+  - scripts/npdev-common.ps1
+  - npdev-gradlew.ps1
+  - npdev-gradlew.sh
+  - NPDevCli/npdev_cli.py
+  - NPDevMcp/server.py
+  - scripts/ai/npdev_ai_common.py
+  - scripts/quality/twin-pair-registry.json
+  - .npdev-root
+  - .github/workflows/npdev-ci-validation.yml

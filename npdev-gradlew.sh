@@ -30,14 +30,16 @@ buildRoot="$(find_up "$cwd" gradlew)" || {
     exit 1
 }
 
+# npdev-build-root-resolution: identify the repo root by its CONTENTS, not its name -- see
+# scripts/npdev-common.ps1's Get-NPDevBuildRoot comment for the CI failure the name match caused.
 srcRoot="$buildRoot"
-while [ "$(basename "$srcRoot")" != "NPDev_General" ] && [ "$srcRoot" != "/" ]; do
+while [ "$srcRoot" != "/" ] && ! { [ -d "$srcRoot/NPDevContract" ] && [ -d "$srcRoot/NPDevGenerator" ] && [ -d "$srcRoot/NPDevKernel" ]; }; do
     srcRoot="$(dirname "$srcRoot")"
 done
 
 if [ -n "${NPDEV_BUILD_ROOT:-}" ]; then
     externalRoot="$NPDEV_BUILD_ROOT"
-elif [ "$(basename "$srcRoot")" = "NPDev_General" ]; then
+elif [ -d "$srcRoot/NPDevContract" ] && [ -d "$srcRoot/NPDevGenerator" ] && [ -d "$srcRoot/NPDevKernel" ]; then
     externalRoot="$(dirname "$srcRoot")/Build"
 else
     externalRoot="$(dirname "$buildRoot")/Build"
