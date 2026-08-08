@@ -129,6 +129,7 @@ processes, screens, permissions, and how it all changes over time.
 | **Audit + trace policies** | declared per operation, not scattered through code |
 | **`npdev dev`** | watch the model; rebuild, restart, and evolve the schema on every save |
 | **`npdev doctor`** | check the machine before you spend an hour finding out |
+| **`npdev capabilities`** | what each storage engine can do — read from the dialects, so it always matches what the generator refuses |
 | **`npdev migrate`** | when NPDev's own DSL changes, a codemod rewrites your models |
 | **`npdev validate`** | typed, machine-readable diagnostics with the exact path and a suggested fix |
 | **MCP server + AI authoring** | 16 tools so an agent can author, validate, correct itself, and generate |

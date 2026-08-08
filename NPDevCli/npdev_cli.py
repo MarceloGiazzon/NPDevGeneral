@@ -1891,6 +1891,120 @@ def _check(id_: str, name: str, status: str, *, found: str | None = None,
     }
 
 
+def _storage_capability_matrix() -> tuple[str | None, str]:
+    """The storage capability matrix, READ OUT OF THE DIALECTS by running them.
+
+    storage/PLAN.md S3 requires this in `npdev doctor` and requires it *generated from the code,
+    never maintained as a doc that drifts*. A table of which engine supports what, kept by hand in
+    this file, is the twin-pair defect family in its purest form: the day it disagrees with
+    SqlDialect.capabilities(), either a valid model gets rejected or an impossible one gets accepted
+    -- and the table looks authoritative either way.
+
+    So there is no table here. This runs SqlDialects' own main against the staged kernel jar. When
+    the jars are not staged it returns None and a REASON, and doctor prints the reason. It never
+    falls back to a remembered copy, because a remembered copy is the thing being avoided.
+
+    Returns (matrix_text_or_None, reason_when_None).
+    """
+    libs = _default_runtimehost_libs_dir()
+    if libs is None:
+        return None, "jars not staged -- run `npdev setup`"
+    # The staged jar is `kernel-<version>.jar` (the Gradle project is :kernel, so the artifact is
+    # not prefixed) and it needs :core and :dsl alongside it. A wildcard classpath over the staged
+    # libs directory is both correct and immune to the artifact ever being renamed -- which is the
+    # sort of detail a hardcoded jar name gets wrong silently, reporting "unavailable" on a machine
+    # that is in fact perfectly set up.
+    if not sorted(Path(libs).glob("kernel-*.jar")):
+        return None, f"no kernel jar in {libs} -- run `npdev setup`"
+    classpath = str(Path(libs) / "*")
+    java_home = os.environ.get("JAVA_HOME")
+    java_bin = _resolve_java_home_binary(java_home) if java_home else None
+    if java_bin is None or not java_bin.exists():
+        path_java = shutil.which("java")
+        java_bin = Path(path_java) if path_java else None
+    if java_bin is None:
+        return None, "no Java found -- see the java-present check above"
+    try:
+        completed = subprocess.run(
+            [str(java_bin), "-cp", classpath, "com.npdev.kernel.storage.sql.SqlDialects"],
+            capture_output=True, text=True, timeout=60, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"could not run the kernel jar ({exc})"
+    if completed.returncode != 0:
+        return None, f"the kernel jar exited {completed.returncode}: {completed.stderr.strip()[:200]}"
+    return completed.stdout, ""
+
+
+def _summarize_capability_matrix(matrix: str) -> list[str]:
+    """One line per engine: its name, then only what it CANNOT do.
+
+    Listing absences rather than the whole grid is the useful shape for doctor, whose stated design
+    goal is one screen with no scrolling. What a reader needs here is "is anything missing on the
+    engine I chose"; an engine that supports everything should say so in one short line rather than
+    ten identical `yes` rows. The full grid is `npdev capabilities`."""
+    rows = [line for line in matrix.splitlines() if line.strip() and not line.startswith("-")]
+    if len(rows) < 2:
+        return ["(matrix produced no rows)"]
+    engines = rows[0].split()[1:]
+    missing: dict[str, list[str]] = {engine: [] for engine in engines}
+    for row in rows[1:]:
+        parts = row.split()
+        if len(parts) != len(engines) + 1:
+            continue
+        for engine, verdict in zip(engines, parts[1:]):
+            if verdict != "yes":
+                missing[engine].append(parts[0])
+    return [
+        f"{engine}: supports everything NPDev asks for" if not missing[engine]
+        else f"{engine}: cannot do {', '.join(missing[engine])}"
+        for engine in engines
+    ]
+
+
+def run_capabilities(args: argparse.Namespace) -> int:
+    """Print the full storage capability grid.
+
+    Nothing here knows which engine supports what -- it runs the dialects and prints their answer.
+    See _storage_capability_matrix() for why that indirection is the point rather than an
+    inconvenience."""
+    matrix, reason = _storage_capability_matrix()
+    if matrix is None:
+        if getattr(args, "json", False):
+            print(json.dumps({
+                "schemaVersion": "npdev-cli-result.v1",
+                "command": "capabilities",
+                "ok": False,
+                "exitCode": 1,
+                "detail": reason,
+            }, indent=2))
+        else:
+            print(f"npdev capabilities: unavailable -- {reason}")
+        return 1
+    if getattr(args, "json", False):
+        # Re-run for the machine-readable form rather than parsing the human grid: parsing your own
+        # output back is how a renderer and its data quietly disagree.
+        libs = _default_runtimehost_libs_dir()
+        java_home = os.environ.get("JAVA_HOME")
+        java_bin = _resolve_java_home_binary(java_home) if java_home else None
+        if java_bin is None or not java_bin.exists():
+            path_java = shutil.which("java")
+            java_bin = Path(path_java) if path_java else None
+        completed = subprocess.run(
+            [str(java_bin), "-cp", str(Path(libs) / "*"),
+             "com.npdev.kernel.storage.sql.SqlDialects", "--json"],
+            capture_output=True, text=True, timeout=60, check=False)
+        print(completed.stdout, end="")
+        return 0 if completed.returncode == 0 else 1
+    print("npdev capabilities -- what each storage engine can do")
+    print("=" * 60)
+    print(matrix, end="")
+    print()
+    print("Generated from the dialects themselves (SqlDialects.capabilityMatrix), so it cannot")
+    print("disagree with what the generator actually refuses. A model needing a capability its")
+    print("engine lacks is refused at GENERATION time, naming the model element.")
+    return 0
+
+
 def run_doctor(args: argparse.Namespace) -> int:
     """I5: one screen, no scrolling -- exit non-zero listing only what MUST be fixed, warnings
     separate and never blocking. Every check here exists because this project already hit the
@@ -2111,12 +2225,18 @@ def run_doctor(args: argparse.Namespace) -> int:
     ok = not problems
 
     if getattr(args, "json", False):
+        matrix, matrix_reason = _storage_capability_matrix()
         result = {
             "schemaVersion": "npdev-cli-result.v1",
             "command": "doctor",
             "ok": ok,
             "exitCode": 1 if problems else 0,
             "checks": checks,
+            # Additive: `checks` is byte-identical to before, so the Manager's contract is untouched.
+            # Deliberately NOT a check -- an engine lacking a capability is not a broken machine, and
+            # making it one would tie doctor's exit code to which engines happen to be registered.
+            "storageCapabilities": matrix if matrix is not None else None,
+            "storageCapabilitiesUnavailableReason": matrix_reason or None,
         }
         print(json.dumps(result, indent=2))
         return result["exitCode"]
@@ -2133,6 +2253,18 @@ def run_doctor(args: argparse.Namespace) -> int:
             print(f"  [WARN] {w}")
     if not problems and not warnings:
         print("\nEverything checked out.")
+
+    # S3: the storage capability matrix, generated from the dialects rather than written down.
+    # Compact per-engine summary here to keep doctor's "one screen, no scrolling" promise;
+    # `npdev capabilities` prints the full grid. Informational, never part of the exit code.
+    matrix, matrix_reason = _storage_capability_matrix()
+    print("\nStorage engines:")
+    if matrix is None:
+        print(f"  (capability matrix unavailable: {matrix_reason})")
+    else:
+        for line in _summarize_capability_matrix(matrix):
+            print(f"  {line}")
+        print("  Full grid: npdev capabilities")
     return 1 if problems else 0
 
 
@@ -3291,6 +3423,15 @@ def build_parser() -> argparse.ArgumentParser:
              "unchanged either way).",
     )
 
+    capabilities_parser = subparsers.add_parser(
+        "capabilities", help="Show what each storage engine can do -- read from the dialects, so "
+                             "it always matches what the generator refuses."
+    )
+    capabilities_parser.add_argument(
+        "--json", action="store_true",
+        help="Emit the matrix as JSON (npdev-storage-capability-matrix.v1) instead of the grid.",
+    )
+
     dev_parser = subparsers.add_parser(
         "dev", help="Watch the model and rebuild + restart the app on every save -- the "
                     "change-a-field loop, automatic."
@@ -3672,6 +3813,8 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             from dev_loop import dev as _dev_run  # local import, as elsewhere
             return _dev_run(args, sys.modules[__name__])
+        if args.command == "capabilities":
+            return run_capabilities(args)
         if args.command == "doctor":
             return run_doctor(args)
         if args.command == "mcp" and args.mcp_command == "install":
