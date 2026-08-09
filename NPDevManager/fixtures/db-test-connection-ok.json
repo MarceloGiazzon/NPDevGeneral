@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "db test-connection",
+  "ok": true,
+  "exitCode": 0,
+  "checks": [
+    {
+      "id": "database-engine-support",
+      "name": "Database engine",
+      "status": "pass",
+      "found": "Postgres",
+      "expected": "a supported engine",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "database-reachable",
+      "name": "Database reachable",
+      "status": "pass",
+      "found": "localhost:15432",
+      "expected": "accepting connections",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "database-credentials",
+      "name": "Database credentials",
+      "status": "pass",
+      "found": "npdev",
+      "expected": "accepted",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "database-exists",
+      "name": "Database exists",
+      "status": "pass",
+      "found": "(none)",
+      "expected": "present on the server",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "database-privileges",
+      "name": "Database privileges",
+      "status": "pass",
+      "found": null,
+      "expected": "can CREATE TABLE",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    },
+    {
+      "id": "database-charset",
+      "name": "Database charset",
+      "status": "pass",
+      "found": null,
+      "expected": "n/a for this engine",
+      "detail": null,
+      "fix": null,
+      "fixCommand": null
+    }
+  ],
+  "engine": "Postgres"
+}

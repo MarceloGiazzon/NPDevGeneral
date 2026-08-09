@@ -191,7 +191,9 @@ async fn run_setup_step(python_path: &std::path::Path, cli_path: &std::path::Pat
 
 /// [6/6]: the exact `doctor --json` call `check_doctor` makes, via the runtimes resolved above.
 async fn run_doctor_step(python_path: &std::path::Path, cli_path: &std::path::Path, java_home: Option<&str>) -> Result<(), StepError> {
-    let result = npdev::run_doctor(python_path, cli_path, java_home)
+    // None: the selftest proves the MACHINE is ready (its whole point is a clean-machine install
+    // path), and it has no app. Doctor's database checks are correctly absent from that question.
+    let result = npdev::run_doctor(python_path, cli_path, java_home, None)
         .await
         .map_err(|e| ("6/6 npdev doctor", e))?;
     let checks = result.get("checks").and_then(|c| c.as_array()).cloned().unwrap_or_default();

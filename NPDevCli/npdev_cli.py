@@ -2202,6 +2202,31 @@ def _database_checks(app_path: str | None) -> list[dict]:
         ))
         return checks
 
+    return _database_checks_for(
+        engine, database,
+        source=str(definition_path),
+        fix_host_port=f"Start {engine['externalName']}, or correct host/port in {definition_path}.",
+        fix_credentials=f"Correct database.username / database.password in {definition_path}.",
+    )
+
+
+def _database_checks_for(engine: dict, database: dict, *, source: str,
+                         fix_host_port: str, fix_credentials: str) -> list[dict]:
+    """The database checks themselves, for an ALREADY-RESOLVED engine + connection.
+
+    Split out of `_database_checks` so the same five checks can answer the question BEFORE an app
+    exists (`npdev db test-connection`, M13). The Manager's "Test connection" button sits beside the
+    host/port/user/password fields on the *create* form, where there is no `db.definition.json` yet
+    to point `--app` at -- so a check that can only read a file could not answer the one question
+    being asked at that moment.
+
+    The three `fix_*`/`source` strings are the only thing that differs between the two callers: an
+    app-scoped run names the file to edit, an ad-hoc run names the fields the user just typed.
+    Everything else -- the check ids, their order, and what each one distinguishes -- is shared on
+    purpose. The Ready screen and the Test-connection button render the same records through the same
+    code path, so they cannot drift into disagreeing about the same database.
+    """
+    checks: list[dict] = []
     notice = npdev_engines.honesty_notice(engine["key"])
     checks.append(_check(
         "database-engine-support", "Database engine",
@@ -2241,8 +2266,7 @@ def _database_checks(app_path: str | None) -> list[dict]:
             detail=f"Cannot reach {engine['externalName']} at {host}:{port} ({exc}). This is the "
                    f"most common first-run failure, and without this check it surfaces as a Spring "
                    f"stack trace after a full Gradle build.",
-            fix=f"Start {engine['externalName']}, or correct host/port in "
-                f"{definition_path}.",
+            fix=fix_host_port,
         ))
     else:
         checks.append(_check("database-reachable", "Database reachable", "pass",
@@ -2314,8 +2338,8 @@ def _database_checks(app_path: str | None) -> list[dict]:
             "database-credentials", "Database credentials", "fail",
             found=database.get("username") or "(none)", expected="accepted",
             detail=f"{engine['externalName']} at {host}:{port} is running but rejected the "
-                   f"credentials in {definition_path}: {probe.get('authError', 'unknown error')}",
-            fix=f"Correct database.username / database.password in {definition_path}.",
+                   f"credentials in {source}: {probe.get('authError', 'unknown error')}",
+            fix=fix_credentials,
         ))
         return checks
 
@@ -2569,6 +2593,205 @@ def run_engines(args: argparse.Namespace) -> int:
     print()
     print("A '!' means experimental: " + listing["statusMeaning"]["experimental"])
     return 0
+
+
+def run_db_test_connection(args: argparse.Namespace) -> int:
+    """Answer "can NPDev actually use this database?" for a connection that is being TYPED, not one
+    that has already been written to a file.
+
+    M13 (storage/stabilize/STABILIZE_PLAN.md). `npdev doctor --app DIR` has run these same checks
+    since W5.2, but only against an existing `db.definition.json`. The moment a user most needs the
+    answer is earlier than that: standing in front of the host/port/user/password fields, before any
+    app is scaffolded and long before a Gradle build. Today a wrong port at that moment is discovered
+    minutes later, as a Spring stack trace, by someone who does not read Spring.
+
+    Same checks, same ids, same order as doctor's -- deliberately. This shares
+    `_database_checks_for` with doctor rather than reimplementing the probe, so "test connection said
+    fine" and "Ready says fine" can never come to different conclusions about the same database.
+    """
+    try:
+        engine = npdev_engines.resolve(args.engine)
+    except ValueError as exc:
+        raise CliError(str(exc)) from exc
+
+    # The same shape `npdev init` would have written, built from what the user typed. Going through
+    # db_definition_for (rather than assembling a dict here) means the per-engine defaults -- the
+    # default port, the default username -- are the SAME ones the scaffolded app will get. A test
+    # that silently probes a different port than the app will use is worse than no test.
+    database = npdev_engines.db_definition_for(
+        engine["key"],
+        # Empty, not a placeholder name, when the user did not give one: the probe then connects to
+        # the engine's ADMIN database, which answers "is this server usable" instead of "does a
+        # database I just invented exist". A made-up name here would report `database-exists: fail`
+        # on a perfectly good server -- a wrong verdict, which is worse than no verdict.
+        database_name=args.db_name or "",
+        host=args.db_host,
+        port=args.db_port,
+        username=args.db_user,
+        password=args.db_password,
+    )["database"]
+
+    checks = _database_checks_for(
+        engine, database,
+        source="the connection details you entered",
+        fix_host_port=f"Start {engine['externalName']}, or correct the host and port above.",
+        fix_credentials="Correct the user and password above.",
+    )
+
+    problems = [c for c in checks if c["status"] == "fail"]
+    ok = not problems
+
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1",
+            "command": "db test-connection",
+            "ok": ok,
+            "exitCode": 1 if problems else 0,
+            "checks": checks,
+            "engine": engine["externalName"],
+        }, indent=2))
+        return 1 if problems else 0
+
+    print(f"npdev db test-connection -- {engine['externalName']}")
+    print("=" * 60)
+    for check in checks:
+        mark = {"pass": "ok  ", "warn": "warn", "fail": "FAIL"}[check["status"]]
+        print(f"  [{mark}] {check['name']}" + (f" -- {check['found']}" if check["found"] else ""))
+        if check["status"] != "pass" and check["detail"]:
+            print(f"         {check['detail']}")
+        if check["status"] == "fail" and check["fix"]:
+            print(f"         fix: {check['fix']}")
+    print()
+    print("Connection usable." if ok else "This connection is NOT usable yet -- see the FAIL rows.")
+    return 1 if problems else 0
+
+
+# M14: the five environment operations, mapped to the scripts the GENERATOR already emits.
+#
+# Nothing here knows how to start a database. Each entry names a generated script, and that script
+# does the work by reading `resolved-db-plan.json` and branching on `profile.kind` -- which is what
+# made the five byte-identical across Postgres, MySQL and SQL Server (E15). A second implementation
+# in Python (or in the Manager's Rust) would be a new twin to drift, and this project has already
+# paid for that class of bug more than once.
+_DB_OPERATIONS = {
+    "start": ("Start-Environment.ps1", "Start this app's database."),
+    "stop": ("Stop-Environment.ps1", "Stop it, leaving the data in place."),
+    "status": ("Status-Environment.ps1", "Say whether it is running."),
+    "connection": ("Print-DbConnectionInfo.ps1", "Print the connection details, for DBeaver or psql."),
+    "reset": ("Reset-Environment.ps1", "DELETE the data and start clean."),
+}
+_DB_RESET_CONFIRMATION = "I_UNDERSTAND_DB_DATA_WILL_BE_DELETED"
+
+
+def _find_ops_root(app_path: str | None) -> Path | None:
+    """The `_ops` toolbox for an app, or None.
+
+    The generator writes it as a SIBLING of the generated FinalApp root
+    (`OperationalRunbookEmitter`: `finalAppRoot.getParent().resolve("_ops")`), and `npdev init`'s
+    layout puts the model directory alongside that same parent -- so `<app>/../_ops` is the toolbox
+    for `<app>`. Resolved HERE, once, rather than in the Manager: a second derivation in Rust would
+    be a twelfth copy of "where does the build output live", and REG-144 is what eleven copies of
+    that question already cost.
+    """
+    base = Path(app_path).expanduser().resolve() if app_path else Path.cwd()
+    candidate = base.parent / "_ops"
+    return candidate if candidate.is_dir() else None
+
+
+def _find_powershell() -> str | None:
+    """A PowerShell able to run the generated scripts, or None.
+
+    `pwsh` first, then Windows PowerShell -- both were measured running the emitted
+    `Status-Environment.ps1` unchanged, so requiring the 7.x install would have been a needless
+    dependency on a machine that already has 5.1. Returns None rather than guessing: a
+    "powershell not found" sentence is a fixable answer, and a silent no-op is not.
+    """
+    for candidate in ("pwsh", "powershell"):
+        found = shutil.which(candidate)
+        if found:
+            return found
+    return None
+
+
+def run_db_operation(args: argparse.Namespace) -> int:
+    """Drive one of the generated `_ops` scripts.
+
+    M14 exists because the Manager's whole purpose is to remove the terminal, and the database
+    toolbox was terminal-only: a user could pick MySQL in a window and then had to open PowerShell
+    to start it. This is the CLI half -- the Manager calls these commands rather than the scripts,
+    keeping `_ops` location and PowerShell discovery in one place.
+    """
+    operation = args.db_command
+    script_name, _ = _DB_OPERATIONS[operation]
+
+    if operation == "reset" and args.confirm != _DB_RESET_CONFIRMATION:
+        # Refused HERE as well as in the script. The script's own guard is the real one; this exists
+        # so the refusal is identical whether a human typed the command or a button sent it -- a
+        # button is much easier to press than this token is to type.
+        raise CliError(
+            f"Reset refused: it DELETES this app's data. Re-run with --confirm {_DB_RESET_CONFIRMATION}")
+
+    ops_root = _find_ops_root(getattr(args, "app", None))
+    if ops_root is None:
+        raise CliError(
+            "no _ops toolbox found for this app. It is written when the app is generated -- run "
+            "`npdev run app` (or `npdev dev`) once, then try again.")
+    script = ops_root / script_name
+    if not script.is_file():
+        raise CliError(f"{script} does not exist. Regenerate the app to refresh its _ops toolbox.")
+
+    shell = _find_powershell()
+    if shell is None:
+        raise CliError(
+            "no PowerShell found (looked for `pwsh`, then `powershell`). The generated database "
+            "toolbox is PowerShell, so these five operations need one. Install PowerShell 7 "
+            "(https://aka.ms/powershell), or run the scripts in " + str(ops_root) + " yourself.")
+
+    # WHICH app this toolbox actually describes, stated every time.
+    #
+    # `_ops` is written to the PARENT of the generated FinalApp root, so two apps scaffolded into
+    # the same folder share ONE `_ops`, and the second generation overwrites the first's
+    # resolved-db-plan.json -- container name included (QUAL-3). Nothing here can safely guess which
+    # was intended, and a heuristic that refused the legitimate case would be worse than the
+    # ambiguity. So it is made VISIBLE instead: every operation reports the appId and FinalApp path
+    # it is about, which turns "Reset silently deleted the other app's data" into something the
+    # operator can see before pressing the button a second time.
+    target = {}
+    plan_path = ops_root / "resolved-db-plan.json"
+    if plan_path.is_file():
+        try:
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            target = {"appId": plan.get("appId"), "finalAppPath": plan.get("finalAppPath"),
+                      "engine": plan.get("engine"), "containerName": plan.get("containerName")}
+        except (json.JSONDecodeError, OSError):
+            target = {}
+
+    command = [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)]
+    if operation == "reset":
+        command += ["-Confirm", _DB_RESET_CONFIRMATION]
+
+    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    output = (completed.stdout or "") + (completed.stderr or "")
+
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1",
+            "command": f"db {operation}",
+            "ok": completed.returncode == 0,
+            "exitCode": completed.returncode,
+            # The generated scripts print human text, not JSON. Passed through verbatim rather than
+            # parsed into a shape this file invents: the script is the source of truth about what it
+            # did, and re-describing its output here would be a second story to keep true.
+            "output": output.strip(),
+            "script": str(script),
+            "target": target,
+        }, indent=2))
+        return completed.returncode
+
+    if target.get("appId"):
+        print(f"[{target['appId']} | {target.get('engine')} | {target.get('finalAppPath')}]")
+    print(output, end="" if output.endswith("\n") else "\n")
+    return completed.returncode
 
 
 def run_doctor(args: argparse.Namespace) -> int:
@@ -3684,6 +3907,12 @@ def run_verify(args: argparse.Namespace) -> dict:
     py = sys.executable or "python"
     cadence_script = root / "scripts" / "quality" / "cadence_state.py"
 
+    if getattr(args, "release_candidate", False):
+        if tier != "T3":
+            raise CliError("--release-candidate belongs to T3, the declared release ceremony. "
+                           "Re-run with --tier T3.")
+        return run_release_candidate(args, root)
+
     if tier in ("T0", "T1"):
         script = root / "scripts" / "quality" / "run-fast-gate.ps1"
         if not script.exists():
@@ -3754,6 +3983,137 @@ def run_verify(args: argparse.Namespace) -> dict:
         "cadence": cadence_report,
         "remoteCi": remote_ci,
     }
+
+
+def run_release_candidate(args: argparse.Namespace, root: Path) -> dict:
+    """S3: the seven steps that turn a sha into a handover, stopping at the first failure.
+
+    Stopping matters. A gate that runs everything and reports a list lets a reader take the greens
+    and skip the red -- which is how "gates green" got claimed three times while a checker sat
+    failing. Here each step is a precondition for the next being MEANINGFUL: there is no point
+    pricing artifacts for a sha whose CI never ran.
+    """
+    import release_candidate as rc
+
+    py = sys.executable or "python"
+    steps_run: list[str] = []
+    verified: list[dict] = []
+
+    def announce(number: int, what: str) -> None:
+        steps_run.append(what)
+        print(f"[{number}/7] {what}", file=sys.stderr)
+
+    try:
+        # 1 -----------------------------------------------------------------------------------
+        announce(1, "tree clean, HEAD pushed, no untracked files")
+        tree = rc.check_tree_state(root)
+        sha = tree["sha"]
+        tag = args.tag or ""
+        if not tag:
+            raise rc.StepFailed("tag", "--tag is required: a manifest describes a TAG's artifacts, "
+                                       "and a branch name moves")
+
+        # 2 -----------------------------------------------------------------------------------
+        announce(2, "T2 -- all four gates")
+        gates = root / "scripts" / "quality" / "run-all-gates.ps1"
+        t2_code = subprocess.run(["pwsh", "-NoProfile", "-File", str(gates)], cwd=root).returncode
+        if t2_code != 0:
+            raise rc.StepFailed("t2-gates", f"run-all-gates.ps1 exited {t2_code}")
+        verified.append({
+            "id": "t2-gates", "result": "pass-with-named-skip",
+            "evidence": "local:scripts/quality/run-all-gates.ps1",
+            "namedSkip": "3 packaged-app proof tests are skipped on a local run and are run by CI "
+                         "(-PincludePackagedProofs runs them here).",
+            "note": "Local greens are inputs; the CI run ids below are the evidence.",
+        })
+
+        # 3 -----------------------------------------------------------------------------------
+        announce(3, "generator determinism -- same model twice, byte-for-byte")
+        det_report = root / "scripts" / "reports" / "out" / "deterministic-generation-report.json"
+        # Read the report T2's generator gate just produced rather than generating twice AGAIN:
+        # re-running would double a multi-minute step to re-answer a question already answered in
+        # this same invocation, and a second answer that disagreed would be the real story anyway.
+        if not det_report.is_file():
+            raise rc.StepFailed("determinism", f"no determinism report at {det_report}")
+        det = json.loads(det_report.read_text(encoding="utf-8"))
+        if det.get("overallStatus") != "passed":
+            raise rc.StepFailed("determinism",
+                                f"{det.get('differingFileCount')} file(s) differ between two runs: "
+                                + ", ".join(d.get("path", "") for d in det.get("differingFiles", [])[:5]))
+        verified.append({
+            "id": "determinism", "result": "pass",
+            "evidence": "local:scripts/hygiene/check-deterministic-generation.ps1",
+            "note": (f"{det.get('firstFileCount')} files compared across two generations of "
+                     f"{det.get('sampleId')}, 0 differing. Excludes npdev-build-info.properties and "
+                     f"generation-run.json -- declared, non-reproducible provenance."),
+        })
+
+        # 4 -----------------------------------------------------------------------------------
+        announce(4, "CI at this exact sha (main CI, engine support, conformance)")
+        token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        verified.extend(rc.check_ci_at_sha(_CI_VALIDATION_REPO, sha, token))
+
+        # 5 -----------------------------------------------------------------------------------
+        announce(5, "first-run harness")
+        harness = root / "scripts" / "quality" / "firstrun-harness"
+        build = subprocess.run(["docker", "build", "-q", "-t", "npdev-firstrun", str(harness)],
+                               cwd=root, capture_output=True, text=True, check=False)
+        if build.returncode != 0:
+            raise rc.StepFailed("firstrun-harness", f"could not build the harness image: {build.stderr.strip()[:300]}")
+        run = subprocess.run(["docker", "run", "--rm", "-e", f"REPO_REF={tag}", "npdev-firstrun"],
+                             cwd=root, capture_output=True, text=True, check=False)
+        if run.returncode != 0:
+            raise rc.StepFailed("firstrun-harness",
+                                f"exited {run.returncode} -- it follows README.md literally on a machine "
+                                f"with nothing installed, so a red here is a documentation defect a "
+                                f"second machine WILL hit:\n{run.stdout.strip()[-1500:]}")
+        verified.append({
+            "id": "firstrun-harness", "result": "pass",
+            "evidence": f"local:docker run npdev-firstrun (REPO_REF={tag})",
+            "note": "Follows README.md literally in a container with no Java, Python or PowerShell.",
+        })
+
+        # 6 -----------------------------------------------------------------------------------
+        announce(6, "both installers, published for this tag")
+        launched = {}
+        for entry in (args.launched or []):
+            launched[entry] = True
+        artifacts = rc.collect_artifacts(_CI_VALIDATION_REPO, tag, token, launched)
+        names = [a["name"] for a in artifacts]
+        missing = []
+        if not any(n.endswith(".exe") for n in names):
+            missing.append("a Windows installer (.exe)")
+        if not any(n.endswith(".AppImage") for n in names):
+            missing.append("a Linux AppImage")
+        if missing:
+            raise rc.StepFailed("artifacts", f"the release for {tag} is missing {' and '.join(missing)}. "
+                                             f"Present: {', '.join(names) or '(none)'}")
+        # `builtBy` is the CI run that produced the release. Recorded from main-ci's run at this sha
+        # rather than left blank: the schema asks who built it precisely so a hand-uploaded artifact
+        # cannot pass as a reproducible one.
+        built_by = next((v["evidence"] for v in verified if v["id"] == "main-ci"), "")
+        for artifact in artifacts:
+            artifact["builtBy"] = built_by
+
+        # 7 -----------------------------------------------------------------------------------
+        announce(7, "emit STABILITY_MANIFEST.json")
+        manifest = rc.build_manifest(
+            sha=sha, tag=tag, tree=tree, verified=verified,
+            not_verified=rc.not_verified_entries(artifacts),
+            artifacts=artifacts, known_limitations=rc.known_limitations(),
+            open_items=rc.open_items_at_head(root),
+        )
+    except rc.StepFailed as failure:
+        # Named, with the step that stopped it. A release gate that fails vaguely gets overridden.
+        print(f"\nRELEASE CANDIDATE REFUSED at step '{failure.step}':\n  {failure.detail}", file=sys.stderr)
+        return {"ok": False, "tier": "T3", "releaseCandidate": True,
+                "failedStep": failure.step, "detail": failure.detail, "stepsRun": steps_run}
+
+    out_path = Path(args.manifest_out) if getattr(args, "manifest_out", None) else (root / "STABILITY_MANIFEST.json")
+    out_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    print(f"\nWrote {out_path}", file=sys.stderr)
+    return {"ok": True, "tier": "T3", "releaseCandidate": True, "manifestPath": str(out_path),
+            "sha": manifest["sha"], "tag": manifest["tag"], "stepsRun": steps_run}
 
 
 def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
@@ -3989,6 +4349,54 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit npdev-engine-list.v1 instead of the human table. This is what the Manager's "
              "engine picker is built from -- a hardcoded copy there would be free to drift.",
     )
+
+    # M13: the same database checks `doctor --app` runs, but against a connection that has not been
+    # written anywhere yet -- the state the user is in while typing it into a form.
+    db_parser = subparsers.add_parser(
+        "db", help="Work with an app's database before (and after) the app exists."
+    )
+    db_sub = db_parser.add_subparsers(dest="db_command")
+    db_test = db_sub.add_parser(
+        "test-connection",
+        help="Check a database connection is reachable, authenticates, can create tables, and will "
+             "not mangle unicode -- WITHOUT needing an app to exist yet.",
+    )
+    db_test.add_argument("--engine", required=True, help="Engine key: " + ", ".join(npdev_engines.engine_keys()))
+    db_test.add_argument("--db-host", default=None, help="Defaults to localhost.")
+    db_test.add_argument("--db-port", type=int, default=None, help="Defaults to the engine's port.")
+    db_test.add_argument("--db-user", default=None, help="Defaults to the engine's usual admin user.")
+    db_test.add_argument("--db-password", default=None)
+    db_test.add_argument(
+        "--db-name", default=None,
+        help="The database to look for. Omit it and the check reports whether the SERVER is usable "
+             "rather than whether one particular database exists -- which is the right question "
+             "before `npdev init` has chosen a name.",
+    )
+    db_test.add_argument(
+        "--json", action="store_true",
+        help="Emit an npdev-cli-result.v1 object whose `checks` are the SAME records, with the same "
+             "ids, that `doctor --json` emits for a database. The Manager renders both with one "
+             "renderer for that reason.",
+    )
+
+    # M14: the five environment operations. Each RUNS the generated `_ops` script of the same name
+    # rather than reimplementing it -- see _DB_OPERATIONS.
+    for _op_name, (_script, _help) in _DB_OPERATIONS.items():
+        _op_parser = db_sub.add_parser(_op_name, help=_help + f"  (runs _ops/{_script})")
+        _op_parser.add_argument(
+            "--app", default=None, metavar="DIR",
+            help="The app directory. Defaults to the current directory.",
+        )
+        _op_parser.add_argument(
+            "--json", action="store_true",
+            help="Emit an npdev-cli-result.v1 object wrapping the script's own output verbatim.",
+        )
+        if _op_name == "reset":
+            _op_parser.add_argument(
+                "--confirm", default=None, metavar="TOKEN",
+                help=f"Must be exactly {_DB_RESET_CONFIRMATION}. Reset DELETES this app's data; the "
+                     f"token exists so it cannot happen by accident, from a terminal or a button.",
+            )
 
     setup_parser = subparsers.add_parser(
         "setup", help="Build the runtimehost jars a generated app needs to compile, and the AI "
@@ -4326,6 +4734,23 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--generate-reports", action="store_true",
                          help="T3 only: also run the ~540s release-evidence orchestration, not just "
                               "evaluate what evidence already exists.")
+    # S3. T3 already evaluates evidence; this is the form that PRODUCES the handover.
+    verify.add_argument("--release-candidate", action="store_true",
+                         help="T3 only: run the seven-step release-candidate gate and emit "
+                              "STABILITY_MANIFEST.json. Stops at the first failure. Step 4 resolves "
+                              "real CI runs AT THIS SHA and records their ids -- local greens are "
+                              "inputs, CI run ids are the evidence.")
+    verify.add_argument("--tag", default=None,
+                         help="The tag this manifest describes. Required with --release-candidate: a "
+                              "manifest about a branch describes nothing, because a branch moves.")
+    verify.add_argument("--manifest-out", default=None,
+                         help="Where to write the manifest (default: STABILITY_MANIFEST.json at the "
+                              "repo root).")
+    verify.add_argument("--launched", action="append", default=None, metavar="ASSET",
+                         help="Name an artifact you have actually STARTED, not merely downloaded. "
+                              "Repeatable. Nothing can infer this, so it defaults to false and the "
+                              "manifest says so -- an AppImage that has never been launched is a "
+                              "download, not an installer.")
 
     review = subparsers.add_parser(
         "review", help="Build a review pack, or ingest a review verdict."
@@ -4419,6 +4844,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_engines(args)
         if args.command == "doctor":
             return run_doctor(args)
+        if args.command == "db" and args.db_command == "test-connection":
+            return run_db_test_connection(args)
+        if args.command == "db" and args.db_command in _DB_OPERATIONS:
+            return run_db_operation(args)
         if args.command == "mcp" and args.mcp_command == "install":
             return run_mcp_install(args)
         if args.command == "generate" and args.generate_command == "app":

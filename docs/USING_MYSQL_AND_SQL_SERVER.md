@@ -103,6 +103,43 @@ Three of these need your engine's JDBC driver, which arrives in your Gradle cach
 build an app for that engine. Before then doctor says so plainly and checks reachability anyway — it
 never guesses.
 
+### 3.1 Before the app exists: `npdev db test-connection`
+
+`npdev doctor` needs an app to check. The moment you most want these answers is *earlier* — while
+you are still deciding what to type into `--db-host` and `--db-port`:
+
+```sh
+npdev db test-connection --engine mysql --db-host localhost --db-port 3306 \
+    --db-user root --db-password ...
+```
+
+Same five checks, same ids, same order — it shares one code path with `doctor`, so the two can never
+disagree about one database. Omit `--db-name` and it asks whether the **server** is usable rather
+than whether some particular database exists, which is the right question before `npdev init` has
+chosen a name.
+
+This is what the Manager's **Test connection** button runs, beside the connection fields on its
+create-app form.
+
+### 3.2 Running the database itself: `npdev db`
+
+Once an app is generated, five operations drive its own generated `_ops` scripts:
+
+```sh
+npdev db start       # start this app's database
+npdev db stop        # stop it, data intact
+npdev db status      # is it running?
+npdev db connection  # connection details, for DBeaver or psql
+npdev db reset --confirm I_UNDERSTAND_DB_DATA_WILL_BE_DELETED
+```
+
+Each prints which app it is acting on (`[appId | engine | path]`) before anything else. That is
+worth reading: the generated `_ops` toolbox is written next to the FinalApp's *parent*, so two apps
+scaffolded into the same folder share one toolbox — see `QUAL-3`.
+
+`reset` deletes data and removes the container, so it refuses without the acknowledgement token,
+from a terminal and from the Manager's button alike.
+
 ---
 
 ## 4. MySQL: the two things that are genuinely different

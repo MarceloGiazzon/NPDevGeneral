@@ -87,15 +87,69 @@ fn set_fake_doctor_scenario(name: String) {
 // M2: Ready screen
 // -------------------------------------------------------------------------------------------
 
+/// `app_dir` (M15) selects WHICH app's database the six database checks run against. Optional
+/// because doctor's other ten checks are about the machine and must still answer on a machine with
+/// no app on it at all -- "no app yet" is not a broken machine.
 #[tauri::command]
-async fn check_doctor(state: State<'_, AppState>) -> Result<Value, String> {
+async fn check_doctor(state: State<'_, AppState>, app_dir: Option<String>) -> Result<Value, String> {
     let java_home = resolve_java_home(&state);
     if npdev::fake_mode() {
-        return npdev::run_doctor(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"), java_home.as_deref()).await;
+        return npdev::run_doctor(
+            &PathBuf::from("python"),
+            &PathBuf::from("npdev_cli.py"),
+            java_home.as_deref(),
+            app_dir.as_deref(),
+        )
+        .await;
     }
     let python = resolve_python_exe(&state).await?;
     let cli = resolve_npdev_cli(&state)?;
-    npdev::run_doctor(&python, &cli, java_home.as_deref()).await
+    npdev::run_doctor(&python, &cli, java_home.as_deref(), app_dir.as_deref()).await
+}
+
+/// M13: "Test connection", beside the connection fields on the create-app form.
+///
+/// The highest-value half-day in the stabilize plan, and it is pure wiring: every check it renders
+/// already existed and was already RED-proven by failing fixtures. What did not exist was any way to
+/// ask them BEFORE an app was scaffolded -- which is precisely when a user has just typed a port and
+/// wants to know if it is right.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+async fn test_connection(
+    state: State<'_, AppState>,
+    engine: String,
+    db_host: Option<String>,
+    db_port: Option<u16>,
+    db_user: Option<String>,
+    db_password: Option<String>,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_db_test_connection(
+            &PathBuf::from("python"),
+            &PathBuf::from("npdev_cli.py"),
+            java_home.as_deref(),
+            &engine,
+            db_host.as_deref(),
+            db_port,
+            db_user.as_deref(),
+            db_password.as_deref(),
+        )
+        .await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_db_test_connection(
+        &python,
+        &cli,
+        java_home.as_deref(),
+        &engine,
+        db_host.as_deref(),
+        db_port,
+        db_user.as_deref(),
+        db_password.as_deref(),
+    )
+    .await
 }
 
 // -------------------------------------------------------------------------------------------
@@ -252,6 +306,37 @@ async fn create_app(
     Ok(result)
 }
 
+/// M14: Start / Stop / Status / Connection details / Reset, without a terminal.
+///
+/// The Manager exists to remove the terminal, and until now the newest feature was terminal-only: a
+/// user could pick MySQL in this window and then had to open PowerShell to start it. `reset` carries
+/// the same acknowledgement token the CLI and the generated script both demand -- a button is far
+/// easier to press than that token is to type, so the window must be at least as careful as the
+/// terminal, never less.
+#[tauri::command]
+async fn db_operation(
+    state: State<'_, AppState>,
+    app_dir: String,
+    operation: String,
+    confirm: Option<String>,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_db_operation(
+            &PathBuf::from("python"),
+            &PathBuf::from("npdev_cli.py"),
+            java_home.as_deref(),
+            &app_dir,
+            &operation,
+            confirm.as_deref(),
+        )
+        .await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_db_operation(&python, &cli, java_home.as_deref(), &app_dir, &operation, confirm.as_deref()).await
+}
+
 #[tauri::command]
 fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
@@ -342,6 +427,7 @@ fn main() {
             fake_doctor_scenarios,
             set_fake_doctor_scenario,
             check_doctor,
+            test_connection,
             jdk_status,
             install_jdk,
             python_status,
@@ -352,6 +438,7 @@ fn main() {
             list_apps,
             list_engines,
             create_app,
+            db_operation,
             open_folder,
             open_url,
             start_dev,
