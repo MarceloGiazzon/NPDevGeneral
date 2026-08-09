@@ -370,6 +370,34 @@ class DialectConformanceTierATest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("dialects")
+    @DisplayName("R1: EVERY engine can rename a column, and one of them does not use ALTER TABLE")
+    void everyDialectCanRenameAColumn(SqlDialect dialect) {
+        // STOR-10 finding 5. ColumnRenamePass chose between TWO spellings with
+        // `"Postgres".equals(engine) ? ... : ...`, so MySQL silently got H2's -- and SQL Server does
+        // not use ALTER TABLE for this at all, so the two-way shape could never have covered four
+        // engines. Measured on a real MySQL 8.4: the rename pass half-applied, on an engine that
+        // commits implicitly on DDL, which is the one migration where being wrong loses data.
+        String sql = dialect.renameColumn("books", "isbn", "isbn13");
+        assertTrue(sql.contains("isbn") && sql.contains("isbn13") && sql.contains("books"), sql);
+        switch (dialect.name()) {
+            case "sqlserver" -> {
+                assertTrue(sql.startsWith("EXEC sp_rename"), sql);
+                // The OLD name is qualified by its table, the NEW one is bare. Passing the new name
+                // qualified renames the column to a literal string containing a dot -- which
+                // SUCCEEDS, and leaves a column nothing can address.
+                assertTrue(sql.contains("'books.isbn'"), sql);
+                assertTrue(sql.contains("'isbn13'") && !sql.contains("'books.isbn13'"), sql);
+                assertTrue(sql.endsWith("'COLUMN'"), sql);
+            }
+            case "h2" -> assertEquals("ALTER TABLE books ALTER COLUMN isbn RENAME TO isbn13", sql);
+            // MySQL shares Postgres's spelling here, not H2's -- which is exactly the pairing the
+            // old two-way branch got backwards.
+            default -> assertEquals("ALTER TABLE books RENAME COLUMN isbn TO isbn13", sql);
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
     @DisplayName("C1: EVERY engine can cap a statement, whatever shape its cap takes")
     void everyDialectCanCapAStatement(SqlDialect dialect) {
         // storage/FULL_SUPPORT_PLAN.md W1.3. The gap was never "SQL Server cannot cap rows" -- it is

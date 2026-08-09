@@ -120,20 +120,29 @@ final class ColumnRenamePass {
     }
 
     /**
-     * Dialect-specific rename-column DDL (§6.1): Postgres uses {@code RENAME COLUMN}, H2 uses
-     * {@code ALTER COLUMN ... RENAME TO}. {@code manifest.engine()} is one of exactly
-     * {@code "InMemory"}, {@code "H2Local"}, {@code "H2Server"}, {@code "Postgres"} -- and by the
-     * time this is called {@code migrate()} has already returned early for InMemory (no physical
-     * database), so only the two H2 variants and Postgres are ever seen here.
+     * Rename-column DDL, from the dialect.
+     *
+     * <p>This javadoc used to say {@code manifest.engine()} "is one of exactly InMemory, H2Local,
+     * H2Server, Postgres" and the code was a two-way {@code "Postgres".equals(engine) ? ... : ...}.
+     * Both stopped being true when MySQL and SQL Server became selectable, and nothing said so --
+     * MySQL silently got H2's spelling, which it does not accept (STOR-10):
+     *
+     * <pre>
+     *   schema pass 'COLUMN_RENAME' failed at RENAME_COLUMN books.isbn -&gt; isbn13.
+     *   Engine 'mysql' COMMITS IMPLICITLY ON DDL, so this pass is HALF APPLIED
+     * </pre>
+     *
+     * <p>SQL Server does not use {@code ALTER TABLE} for this at all ({@code sp_rename}), so the
+     * shape could not be a two-way choice even in principle. {@code engine} is kept as a parameter
+     * for the caller's error messages; the SQL itself now comes from {@link SqlDialect#renameColumn}.
      */
     static void executeRenameColumn(Connection connection, String engine, String table, String oldName, String newName)
             throws SQLException {
         String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
         String safeOld = SchemaLifecycleExecutor.safeIdentifier(oldName);
         String safeNew = SchemaLifecycleExecutor.safeIdentifier(newName);
-        String sql = "Postgres".equals(engine)
-                ? "ALTER TABLE " + safeTable + " RENAME COLUMN " + safeOld + " TO " + safeNew
-                : "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeOld + " RENAME TO " + safeNew;
+        String sql = com.npdev.kernel.storage.sql.SqlDialects.forConnection(connection)
+                .renameColumn(safeTable, safeOld, safeNew);
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.executeUpdate();
         }

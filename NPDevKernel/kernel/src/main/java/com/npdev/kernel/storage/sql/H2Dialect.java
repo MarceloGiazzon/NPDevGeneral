@@ -121,6 +121,11 @@ public final class H2Dialect implements SqlDialect {
     }
 
     @Override
+    public String renameColumn(String table, String from_, String to) {
+        return "ALTER TABLE " + table + " ALTER COLUMN " + from_ + " RENAME TO " + to;
+    }
+
+    @Override
     public String timestampColumnType() {
         return "TIMESTAMP WITH TIME ZONE";
     }

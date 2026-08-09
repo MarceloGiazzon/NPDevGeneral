@@ -108,6 +108,77 @@ public final class SqlDialects {
         return dialect;
     }
 
+    /**
+     * The dialect for the engine on the other end of {@code connection}, from its own JDBC metadata.
+     *
+     * <h2>Why this exists, and why it refuses</h2>
+     *
+     * <p>Three call sites asked this question by hand, and all three asked it as a TWO-WAY choice:
+     *
+     * <pre>
+     *   SqlDialect d = isH2Connection(connection) ? H2Dialect.INSTANCE : PostgresDialect.INSTANCE;
+     * </pre>
+     *
+     * <p>On a MySQL connection that answers <b>Postgres</b>, and the caller then emits
+     * {@code INSERT ... ON CONFLICT (id) DO UPDATE SET x = EXCLUDED.x}, which MySQL rejects. Measured
+     * against a real MySQL 8.4 container: the app booted, realized its schema correctly, and every
+     * single write returned 500 (STOR-10). The dialect seam did not catch it because there is no
+     * {@code ON CONFLICT} literal anywhere in the caller -- the statement came from
+     * {@code PostgresDialect.upsert()}, correctly, in answer to a question that was asked wrong.
+     *
+     * <p><b>An unrecognised product throws</b>, per the X0 rule the rest of this package follows: a
+     * dialect that cannot honour a question must refuse it, never return the Postgres answer. That is
+     * precisely the failure mode above, and defaulting is what made it invisible for as long as the
+     * only two engines anyone connected with were H2 and Postgres.
+     *
+     * <p>Connection-driven rather than {@link #active()} because two of the three callers write into
+     * a SECOND, differently-engined database during cross-engine promotion, where the app's own
+     * configured engine is the wrong answer.
+     *
+     * @throws IllegalStateException if the product name matches no registered dialect, or the
+     *         metadata cannot be read at all
+     */
+    public static SqlDialect forConnection(java.sql.Connection connection) {
+        if (connection == null) {
+            throw new IllegalStateException("cannot resolve a storage dialect from a null connection");
+        }
+        String product;
+        try {
+            java.sql.DatabaseMetaData metaData = connection.getMetaData();
+            product = metaData == null ? null : metaData.getDatabaseProductName();
+        } catch (java.sql.SQLException failure) {
+            throw new IllegalStateException(
+                    "could not read the database product name from this connection, so the storage "
+                    + "dialect is unknown. Guessing one would emit SQL for the wrong engine.", failure);
+        }
+        if (product == null || product.isBlank()) {
+            throw new IllegalStateException(
+                    "this connection reports no database product name, so the storage dialect is "
+                    + "unknown. Known: " + knownNames());
+        }
+        String normalized = product.toLowerCase(Locale.ROOT);
+        // Matched on the JDBC-reported product name, which is NOT the dialect's own name:
+        //   H2 -> "H2", PostgreSQL -> "PostgreSQL", MySQL -> "MySQL",
+        //   SQL Server -> "Microsoft SQL Server"
+        if (normalized.contains("h2")) {
+            return H2Dialect.INSTANCE;
+        }
+        if (normalized.contains("postgres")) {
+            return PostgresDialect.INSTANCE;
+        }
+        if (normalized.contains("mysql") || normalized.contains("mariadb")) {
+            return MySqlDialect.INSTANCE;
+        }
+        if (normalized.contains("sql server")) {
+            return SqlServerDialect.INSTANCE;
+        }
+        throw new IllegalStateException(
+                "no registered storage dialect matches the database product '" + product
+                + "'. Known: " + knownNames() + ". Refusing rather than defaulting -- the default "
+                + "used to be Postgres, and on MySQL that meant every write failed with an ON "
+                + "CONFLICT syntax error after a clean boot (STOR-10).");
+    }
+
     /** Every distinct registered dialect, for {@code npdev doctor}'s capability matrix. */
     public static List<SqlDialect> all() {
         return BY_NAME.values().stream().distinct()

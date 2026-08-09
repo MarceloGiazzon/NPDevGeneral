@@ -167,6 +167,32 @@ public final class MySqlDialect implements SqlDialect {
     }
 
     @Override
+    public String renameColumn(String table, String from_, String to) {
+        // MySQL 8.0 added RENAME COLUMN; it shares Postgres's spelling, NOT H2's. It used to
+        // get H2's by falling through a `"Postgres".equals(engine) ? ... : ...` (STOR-10).
+        return "ALTER TABLE " + table + " RENAME COLUMN " + from_ + " TO " + to;
+    }
+
+    @Override
+    public Object readValue(Object value) {
+        // DATETIME(6) carries no offset, so mysql-connector hands back a LocalDateTime and the
+        // platform's `datetime` type (OffsetDateTime) cannot bind it. serverTimezone=UTC in the
+        // generated JDBC URL means the stored instant IS UTC, so this is the exact inverse of the
+        // write rather than an assumed zone (STOR-10).
+        return value instanceof java.time.LocalDateTime local
+                ? local.atOffset(java.time.ZoneOffset.UTC)
+                : value;
+    }
+
+    @Override
+    public Object bindableValue(Object value) {
+        // No native UUID column type here -- portableColumnType("UUID") answers CHAR(36) -- so a
+        // java.util.UUID must arrive as text. Handing the OBJECT to setObject makes the driver
+        // Java-serialize it into the column (STOR-10).
+        return value instanceof java.util.UUID uuid ? uuid.toString() : value;
+    }
+
+    @Override
     public String timestampColumnType() {
         // DATETIME, not TIMESTAMP: MySQL's TIMESTAMP is a 32-bit epoch that ends in 2038 and silently
         // converts to and from the session time zone. DATETIME(6) stores what it was given, at
@@ -437,9 +463,21 @@ public final class MySqlDialect implements SqlDialect {
      *
      * <p>Note what MySQL does NOT let you say: there is no "on conflict with THIS key". The clause
      * fires for a clash on <i>any</i> unique index on the table, so a table with a second unique
-     * column can have an upsert keyed on the id update a row the caller never named. Nothing in
-     * NPDev's generated schema puts a second unique index on a table it also upserts by id today,
-     * and the divergence is recorded here rather than discovered later.
+     * column can have an upsert keyed on the id update a row the caller never named.
+     *
+     * <p><b>This javadoc used to end "nothing in NPDev's generated schema puts a second unique index
+     * on a table it also upserts by id today, and the divergence is recorded here rather than
+     * discovered later." That was wrong, and it was discovered later (STOR-11).</b> Any model field
+     * declaring {@code unique: true} produces exactly that shape. Measured against a real MySQL 8.4:
+     * the {@code p4-constraints} probe declares {@code email} unique, and POSTing a second account
+     * with the same email returned <b>200</b> -- MySQL took the clash on {@code ux_accounts_email} as
+     * a signal to UPDATE the existing row. On Postgres and H2 the same request is rejected, because
+     * {@code ON CONFLICT (id)} names the key it reacts to.
+     *
+     * <p>So on MySQL a create that violates a unique constraint silently overwrites the row that
+     * already held that value, instead of failing. Filed rather than patched here: the fix changes
+     * the semantics of every write on the engine, and doing it inside a fix for something else is
+     * how a subtle write-path change ships unreviewed.
      */
     static final class MySqlUpsertStrategy implements UpsertStrategy {
         @Override

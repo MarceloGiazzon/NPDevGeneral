@@ -95,7 +95,7 @@ def vector_e1(root: Path, args, work: Path, results: list[dict]) -> None:
     staged_v1 = _prepare(root, probe / "v1" / "Input", args, database, work / "p2-v1")
     app = _boot(root, staged_v1, work / "p2-v1", args.port, args.boot_timeout, args.engine)
     try:
-        status, _ = http("POST", f"{app.base()}/api/concepts/rows", {"label": marker})
+        status, _ = http("POST", f"{app.base()}/api/concepts/evolve_rows", {"label": marker})
         if status not in (200, 201):
             raise RuntimeError(f"v1 seed failed with {status}")
     finally:
@@ -106,7 +106,7 @@ def vector_e1(root: Path, args, work: Path, results: list[dict]) -> None:
     staged_v2 = _prepare(root, probe / "v2" / "Input", args, database, work / "p2-v2")
     app = _boot(root, staged_v2, work / "p2-v2", args.port, args.boot_timeout, args.engine)
     try:
-        status, listed = http("GET", f"{app.base()}/api/concepts/rows?where=label:eq:{marker}")
+        status, listed = http("GET", f"{app.base()}/api/concepts/evolve_rows?where=label:eq:{marker}")
         rows = (listed or {}).get("content") or []
         survived = len(rows) == 1
         has_note = survived and "note" in rows[0]

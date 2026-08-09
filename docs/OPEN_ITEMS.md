@@ -6,18 +6,62 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**154 item(s) migrated: 4 open/partial, 150 done.**
+**156 item(s) migrated: 5 open/partial, 151 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
+| STOR-11 | On MySQL a create that violates a unique constraint returns 200 and OVERWRITES the row that held the value, because ON DUPLICATE KEY UPDATE reacts to every unique index -- the dialect's own javadoc said no NPDev schema could produce this shape, and any `unique: true` field does | BUG | HIGH | OPEN | 2026-08-08 |
 | STOR-3 | MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images | GAP | MEDIUM | PARTIAL | 2026-08-08 |
 | STOR-5 | The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run | GAP | HIGH | OPEN | 2026-08-08 |
 | STOR-6 | The generator never quotes business identifiers, so a model field named after a reserved word (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the dialect layer and never exercised at application level | BUG | MEDIUM | OPEN | 2026-08-08 |
 | STOR-8 | db.definition.json's `h2FilePath` and `jdbcUrl` are parsed, validated and then ignored -- a user who sets either gets no error and no effect | BUG | LOW | OPEN | 2026-08-08 |
 
 ### Detail
+
+### STOR-11 — On MySQL a create that violates a unique constraint returns 200 and OVERWRITES the row that held the value, because ON DUPLICATE KEY UPDATE reacts to every unique index -- the dialect's own javadoc said no NPDev schema could produce this shape, and any `unique: true` field does
+
+**Type:** BUG · **Severity:** HIGH · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** storage/OPEN_ITEMS_PLAN.md W10, Tier C vector I3 against a REAL MySQL 8.4 container. Every other Tier C vector (E1, E2, I2) passed in the same run.
+**Surface:** `kernel/storage-dialect (MySqlUpsertStrategy)`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java`
+- `NPDevSamples/probes/p4-constraints/Input/model.json`
+- `scripts/quality/run-tier-c-probes.py`
+
+MySQL has no "on conflict with THIS key". `INSERT ... ON DUPLICATE KEY UPDATE` fires on a clash
+with ANY unique index on the table, so an upsert keyed on the id updates a row the caller never
+named. Postgres and H2 say `ON CONFLICT (id)`, which reacts only to the primary key and raises on
+any other unique violation.
+
+MEASURED, not inferred:
+
+    POST /api/concepts/accounts {email: X, region: R}   -> 200   (row created)
+    POST /api/concepts/accounts {email: X, region: R}   -> 200   <-- must be >= 400
+    SHOW INDEX FROM accounts   ->  ux_accounts_email  Non_unique = 0   (the index IS there)
+    SELECT ... FROM accounts   ->  2 rows, both emails distinct       (nothing duplicated)
+
+The constraint exists and is correct. The engine simply treats the violation as an instruction to
+update. So a user creating a record whose unique field collides with someone else's does not get
+an error -- they overwrite that person's row, with their own values, and are told it succeeded.
+
+WHY IT SURVIVED, AND WHY THAT PART MATTERS MOST
+
+This divergence was KNOWN. `MySqlUpsertStrategy`'s javadoc described it exactly, and then closed
+with:
+
+    "Nothing in NPDev's generated schema puts a second unique index on a table it also upserts by
+     id today, and the divergence is recorded here rather than discovered later."
+
+That sentence was false when it was written. Any model field declaring `unique: true` produces
+precisely that shape, and `unique: true` is an ordinary thing to declare. The record was correct
+about the ENGINE and wrong about NPDEV, which is the more dangerous half -- it turned a real
+hazard into a closed question, and the assumption was never tested because no corpus app had ever
+run on MySQL at all.
+
+The javadoc has been corrected in the same commit that filed this. The behaviour has not.
 
 ### STOR-3 — MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images
 
@@ -188,7 +232,7 @@ It is MEDIUM rather than HIGH only because it fails loudly at first boot, on eve
 and nothing downstream reads either one. `jdbcUrl(definition, identity)` composes the URL for every engine from `identity`, whose data root is always `<workspace>/Build/databases/<appId>` -- appId being the `manifest.json` id, never anything the database block says. So a user who writes an explicit `jdbcUrl` to point at an existing database, or an `h2FilePath` to put the file somewhere else, gets silence: no error, no warning, and a connection to a different database than the one they named.
 Not the same defect as an unknown key. An unknown key would at least be visibly unrecognized; these two are in the schema, survive validation, and read as supported.
 
-## Done (150)
+## Done (151)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -341,6 +385,7 @@ Not the same defect as an unknown key. An unknown key would at least be visibly 
 | REG-98 | Two differently-named concepts can compile to the SAME physical table and the model validates with zero errors -- SqlIdentifierSupport.toSnake() sanitizes by REPLACEMENT (every non-alphanumeric becomes '_'), and nothing checks the derived table names for collisions | BUG | HIGH | DONE | 2026-07-31 |
 | REG-99 | A band's transaction.visibleWhen was unreachable in EVERY spelling -- the validator accepts only the derived address 'collection.band', the expander read only the bare band name, so the predicate validated and was silently dropped | BUG | MEDIUM | DONE | 2026-07-31 |
 | STOR-1 | 41 dialect-bound SQL sites were inlined across 19 files, so a second database engine was a rewrite rather than a dialect -- and two files had already grown a hand-rolled H2-vs-Postgres fork | GAP | MEDIUM | DONE | 2026-08-08 |
+| STOR-10 | Five more two-engine assumptions between "the app boots" and "the app works" -- a Postgres-by- default dialect probe, UUID and timestamp values bound and read in shapes only two engines accept, a schema differ comparing the catalog against a type it never emitted, and a two-way column rename | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-2 | A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-4 | MySQL and SqlServer were selectable, dialect-complete and conformance-green -- and no generated app could ever have connected to either, because the app template carried no JDBC driver for them | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-7 | A text column plays three roles -- payload, key, defaulted -- and only two were ever asked about; MySQL rejected a TEXT DEFAULT and SQL Server could not index the runtime host's own bootstrap tables, so no generated app booted on either engine | BUG | HIGH | DONE | 2026-08-08 |
@@ -7112,6 +7157,85 @@ Measured distribution, which is lopsided in a useful way:
 THREE OF THE 41 WERE NOT SQL. `Function.identity(` matched the auto-increment pattern; a JSON writer emitting a key called "table" satisfied the identifier-quoting guard (TABLE is a noun, not a statement keyword). Both constructs' ENTIRE reported count was false. Two more turned up once the kernel was scanned for the first time: `limit > 0 ? limit : defaultCap` (ordinary Java) and the word "returning" inside an English error message -- the latter in the one construct whose count is load-bearing, since zero RETURNING sites is what makes MySQL cheap.
 THERE WERE ALREADY TWO DIALECTS. PostgresPersistenceCapabilityAdapter.buildUpsertSql and JdbcBusinessConceptStore.upsertSql each branched on getDatabaseProductName().contains("h2") and emitted a different statement; SchemaRealizationEmitter.addConstraintIfMissing guarded DDL with a Postgres DO $$ block or an H2 drop-then-add. Routing everything through one Postgres dialect would have handed H2 an ON CONFLICT it does not accept -- so leaving those inline was the behaviour-CHANGING option, not the safe one.
 THE PROOF ITSELF WAS BROKEN. capture-sql-baseline.py, the tool whose diff IS S1's exit condition, was blind to Java text blocks: a `"""..."""` literal opens with `String sql = """`, the regex saw two adjacent quotes, extracted an empty string and dropped it. JdbcFlowInstanceStore -- which holds NINE of the twenty-three pagination sites -- contributed ZERO baseline entries. The file most affected by S1 was the file the proof could not see.
+
+### STOR-10 — Five more two-engine assumptions between "the app boots" and "the app works" -- a Postgres-by- default dialect probe, UUID and timestamp values bound and read in shapes only two engines accept, a schema differ comparing the catalog against a type it never emitted, and a two-way column rename
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-08)
+**Verification:** VERIFIED_LIVE
+**Source:** storage/OPEN_ITEMS_PLAN.md W10. Found by running run-engine-app-proof.py and run-tier-c-probes.py LOCALLY against real MySQL 8.4 and SQL Server 2022 containers instead of spending a ~12-minute CI round per error -- which is what made five sequential failures affordable to find in one sitting.
+**Surface:** `kernel/storage-dialect, kernel/persistence-postgres, runtimehost/db`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialects.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java`
+- `NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/ColumnRenamePass.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/schemastate/SchemaDiffEngine.java`
+- `scripts/quality/run-engine-app-proof.py`
+
+STOR-4/5/7/9 got a generated app to BOOT on MySQL and SQL Server. Everything below is what happens
+after that, and every one of them is the same shape: a question that has four answers, asked as if
+it had two.
+
+1. THE DIALECT PROBE ITSELF (the root of three of the others)
+
+       SqlDialect d = isH2Connection(connection) ? H2Dialect.INSTANCE : PostgresDialect.INSTANCE;
+
+   Three call sites, all reading the connection's product name, all TWO-WAY. On MySQL that answers
+   Postgres, and the caller emitted `ON CONFLICT (id) DO UPDATE SET x = EXCLUDED.x`:
+
+       You have an error in your SQL syntax ... near 'CONFLICT (id) DO UPDATE SET active = ...'
+
+   Every write returned 500 after a clean boot and a correctly realized schema. The dialect seam
+   could not see it -- there is no `ON CONFLICT` literal in any caller; the statement came from
+   PostgresDialect, correctly, in answer to a question asked wrong.
+
+2. UUID BOUND AS A SERIALIZED JAVA OBJECT
+
+       Incorrect string value: '<0xACED0005>...' for column 'id' at row 1
+
+   0xACED0005 is the Java serialization stream header. The persistence adapter coerces ids to
+   java.util.UUID because Postgres and H2 have a native uuid type; MySQL's column is CHAR(36) and
+   the driver serialized the object into it.
+
+3. TIMESTAMP READ BACK IN A SHAPE THE DTO CANNOT BIND
+
+       MySQL:      Cannot deserialize `java.time.OffsetDateTime` from String "2026-08-08T12:00:00"
+       SQL Server: Unexpected token (START_OBJECT) ... for java.time.OffsetDateTime value
+
+   The DSL's `datetime` compiles to OffsetDateTime on every engine. MySQL's DATETIME(6) has no
+   offset so the driver returns a LocalDateTime; SQL Server's DATETIMEOFFSET(6) returns
+   microsoft.sql.DateTimeOffset, the driver's own class, which Jackson renders as a nested object.
+   Both requests returned 4xx AFTER the persistence capability had reported SUCCESS -- a write that
+   really happened, reported as a failure.
+
+4. THE SCHEMA DIFFER COMPARED THE CATALOG AGAINST A TYPE IT NEVER EMITTED
+
+       !!  DESTRUCTIVE_NARROW_TYPE  evolve_rows  id  CHAR(36) -> UUID  1
+           MANUAL_REVIEW: non-character-length narrowing
+
+   The column did not change. MySQL realizes `uuid` as CHAR(36); the differ compared the catalog's
+   CHAR(36) against the MODEL's UUID and refused to boot. Every MySQL and SQL Server app would hit
+   this on its SECOND boot after any model change -- the first boot creates the schema and the
+   fingerprint matches, so nothing diffs and nothing looks wrong.
+
+5. COLUMN RENAME, TWO WAYS FOR FOUR ENGINES
+
+       "Postgres".equals(engine) ? "ALTER TABLE t RENAME COLUMN a TO b"
+                                 : "ALTER TABLE t ALTER COLUMN a RENAME TO b"
+
+   MySQL got H2's spelling. SQL Server does not use ALTER TABLE for this at all (sp_rename), so the
+   shape could not have been a two-way choice even in principle. The failure is the worst one this
+   layer produces:
+
+       schema pass 'COLUMN_RENAME' failed at RENAME_COLUMN books.isbn -> isbn13.
+       Engine 'mysql' COMMITS IMPLICITLY ON DDL, so this pass is HALF APPLIED
+
+   A rename is the one migration where getting it wrong loses data rather than time.
 
 ### STOR-2 — A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced
 

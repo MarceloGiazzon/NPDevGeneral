@@ -117,7 +117,7 @@ public final class PostgresPersistenceCapabilityAdapter
                 for (String column : columns) {
                     Object value = sqlRecord.get(column);
                     value = coerceValueForColumn(column, value, dslTypeByColumn.get(column));
-                    ps.setObject(idx++, value);
+                    ps.setObject(idx++, bindable(ps, value));
                 }
                 ps.executeUpdate();
                 return immutableRecord(runtimeRecord);
@@ -170,7 +170,7 @@ public final class PostgresPersistenceCapabilityAdapter
         boolean rowExists = false;
         String sql = "SELECT " + statusColumn + " FROM " + table + " WHERE " + idColumn + " = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setObject(1, coerceValueForColumn(idColumn, id));
+            ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     rowExists = true;
@@ -294,7 +294,7 @@ public final class PostgresPersistenceCapabilityAdapter
             String sql = "select * from " + table + " where " + idColumn + " = ?";
 
             try (PreparedStatement ps = c.prepareStatement(sql)) {
-                ps.setObject(1, coerceValueForColumn(idColumn, id));
+                ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) {
                         return null;
@@ -336,7 +336,7 @@ public final class PostgresPersistenceCapabilityAdapter
 
             try (PreparedStatement ps = connection.prepareStatement(sql.toString())) {
                 for (int i = 0; i < params.size(); i++) {
-                    ps.setObject(i + 1, params.get(i));
+                    ps.setObject(i + 1, bindable(ps, params.get(i)));
                 }
 
                 List<Map<String, Object>> out = new ArrayList<>();
@@ -366,7 +366,7 @@ public final class PostgresPersistenceCapabilityAdapter
             String sql = "delete from " + table + " where " + idColumn + " = ?";
 
             try (PreparedStatement ps = c.prepareStatement(sql)) {
-                ps.setObject(1, coerceValueForColumn(idColumn, id));
+                ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
                 return ps.executeUpdate() > 0;
             }
 
@@ -391,7 +391,7 @@ public final class PostgresPersistenceCapabilityAdapter
                     "select 1 from " + table + " where " + column + " = ? ", 1).stripTrailing();
 
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                ps.setObject(1, coerceValueForColumn(column, value));
+                ps.setObject(1, bindable(ps, coerceValueForColumn(column, value)));
                 try (ResultSet rs = ps.executeQuery()) {
                     return rs.next();
                 }
@@ -457,7 +457,7 @@ public final class PostgresPersistenceCapabilityAdapter
             String sql = "select * from " + table + " where " + idColumn + " = ? and "
                     + tableColumns.columnName(TENANT_COLUMN) + " = ?";
             try (PreparedStatement ps = c.prepareStatement(sql)) {
-                ps.setObject(1, coerceValueForColumn(idColumn, id));
+                ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
                 ps.setString(2, scope.tenantId());
                 try (ResultSet rs = ps.executeQuery()) {
                     return rs.next() ? rowToMap(rs) : null;
@@ -493,7 +493,7 @@ public final class PostgresPersistenceCapabilityAdapter
             String sql = "delete from " + table + " where " + idColumn + " = ? and "
                     + tableColumns.columnName(TENANT_COLUMN) + " = ?";
             try (PreparedStatement ps = c.prepareStatement(sql)) {
-                ps.setObject(1, coerceValueForColumn(idColumn, id));
+                ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
                 ps.setString(2, scope.tenantId());
                 return ps.executeUpdate() > 0;
             }
@@ -520,7 +520,7 @@ public final class PostgresPersistenceCapabilityAdapter
             String sql = dialect.rowLimited("select 1 from " + table + " where " + column + " = ? and "
                     + tableColumns.columnName(TENANT_COLUMN) + " = ? ", 1).stripTrailing();
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                ps.setObject(1, coerceValueForColumn(column, value));
+                ps.setObject(1, bindable(ps, coerceValueForColumn(column, value)));
                 ps.setString(2, scope.tenantId());
                 try (ResultSet rs = ps.executeQuery()) {
                     return rs.next();
@@ -907,11 +907,19 @@ public final class PostgresPersistenceCapabilityAdapter
      * name choosing between two hand-written statements. It stays connection-driven rather than
      * moving to {@link SqlDialects#active()} because this adapter is also used to write into a
      * SECOND, differently-engined database during cross-engine promotion, where the app's configured
-     * engine is the wrong answer. What changed is that the statements themselves now come from the
-     * dialect, so a third engine adds no branch here.
+     * engine is the wrong answer.
+     *
+     * <p><b>The probe was still a TWO-WAY choice, and that was the bug (STOR-10).</b> It read
+     * {@code isH2Connection(c) ? H2 : Postgres}, so a MySQL connection got the Postgres dialect and
+     * this method returned {@code ON CONFLICT (id) DO UPDATE SET ... EXCLUDED}, which MySQL rejects.
+     * Measured against a real MySQL 8.4: the app booted, realized its schema, and every write
+     * returned 500. Nothing in the dialect seam could see it -- the statement came from
+     * PostgresDialect, correctly, in answer to a question asked wrong. It now asks
+     * {@link SqlDialects#forConnection}, which knows all four engines and REFUSES an unrecognised
+     * one instead of defaulting.
      */
     private static String buildUpsertSql(Connection connection, String table, List<String> columns, String idColumn) {
-        SqlDialect connectionDialect = isH2Connection(connection) ? H2Dialect.INSTANCE : PostgresDialect.INSTANCE;
+        SqlDialect connectionDialect = SqlDialects.forConnection(connection);
         return connectionDialect.upsert().statementFor(table, List.of(idColumn), columns);
     }
 
@@ -942,6 +950,24 @@ public final class PostgresPersistenceCapabilityAdapter
             }
         }
         return coerceValueForColumn(column, value);
+    }
+
+    /**
+     * The last step before {@code setObject}: let the connection's dialect shape the value.
+     *
+     * <p>Every bind in this class goes through here. Before STOR-10 they went straight to
+     * {@code setObject}, which is correct on the two engines this adapter was written against and
+     * silently wrong on the other two -- MySQL Java-SERIALIZED the {@code java.util.UUID} that
+     * {@code coerceUuid} produces, and reported it as an {@code Incorrect string value} on the
+     * {@code id} column -- the offending bytes being the Java serialization stream header
+     * ({@code 0xACED0005}) rather than text at all.
+     *
+     * <p>Resolving the dialect from the statement's own connection (rather than
+     * {@code SqlDialects.active()}) keeps cross-engine promotion correct, which is the same reason
+     * {@code buildUpsertSql} is connection-driven.
+     */
+    private static Object bindable(PreparedStatement statement, Object value) throws SQLException {
+        return SqlDialects.forConnection(statement.getConnection()).bindableValue(value);
     }
 
     private static Object coerceValueForColumn(String column, Object value) {
@@ -1134,13 +1160,25 @@ public final class PostgresPersistenceCapabilityAdapter
         return value;
     }
 
+    /**
+     * One row as a runtime record, with every value passed through the connection's dialect.
+     *
+     * <p>{@code rs.getObject} returns whatever the DRIVER thinks the column is, and that differs per
+     * engine for the same declared model type. A {@code datetime} field is an
+     * {@code OffsetDateTime} on Postgres and H2 and a zone-less {@code LocalDateTime} on MySQL, so
+     * this map used to hand back a value the generated DTO could not bind -- and only on MySQL, only
+     * after a write that had already SUCCEEDED (STOR-10). {@link SqlDialect#readValue} is the inverse
+     * of {@link SqlDialect#bindableValue}, and both live on the dialect for the same reason: the
+     * shape of a value is the engine's business.
+     */
     private static Map<String, Object> rowToMap(ResultSet rs) throws SQLException {
         ResultSetMetaData md = rs.getMetaData();
         int cols = md.getColumnCount();
+        SqlDialect dialect = SqlDialects.forConnection(rs.getStatement().getConnection());
         Map<String, Object> out = new LinkedHashMap<>();
         for (int i = 1; i <= cols; i++) {
             String columnLabel = md.getColumnLabel(i);
-            out.put(toRuntimeField(columnLabel), rs.getObject(i));
+            out.put(toRuntimeField(columnLabel), dialect.readValue(rs.getObject(i)));
         }
         return immutableRecord(out);
     }

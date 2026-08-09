@@ -117,6 +117,11 @@ public final class PostgresDialect implements SqlDialect {
     }
 
     @Override
+    public String renameColumn(String table, String from_, String to) {
+        return "ALTER TABLE " + table + " RENAME COLUMN " + from_ + " TO " + to;
+    }
+
+    @Override
     public String timestampColumnType() {
         return "TIMESTAMP WITH TIME ZONE";
     }

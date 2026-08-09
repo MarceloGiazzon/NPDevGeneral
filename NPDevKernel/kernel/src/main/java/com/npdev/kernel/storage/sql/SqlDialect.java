@@ -272,6 +272,94 @@ public interface SqlDialect {
      */
     String selectForUpdate(String columns, String table, String whereClause);
 
+    /**
+     * A value ready to hand to {@code PreparedStatement.setObject} for THIS engine.
+     *
+     * <p>Today this settles exactly one question -- <b>how a {@code java.util.UUID} is bound</b> --
+     * and it is a question with no safe default in either direction:
+     *
+     * <ul>
+     *   <li>Postgres and H2 have a native {@code uuid} column type. Binding the STRING form fails:
+     *       <i>"column id is of type uuid but expression is of type character varying"</i>.</li>
+     *   <li>MySQL and SQL Server do not get a {@code uuid} column from
+     *       {@link #portableColumnType(String)} -- they get {@code CHAR}/{@code NVARCHAR}. Binding a
+     *       {@code UUID} OBJECT there makes the driver fall back to Java serialization, and MySQL
+     *       reports the result as a charset problem:
+     *       <pre>Incorrect string value: '\xAC\xED\x00\x05sr...' for column 'id' at row 1</pre>
+     *       {@code 0xACED0005} is the Java serialization stream header, not text at all.</li>
+     * </ul>
+     *
+     * <p>Measured against a real MySQL 8.4 container (STOR-10): every write returned 500, after a
+     * clean boot and a correctly realized schema. The persistence adapter coerced ids to
+     * {@code UUID} objects because that is what the two engines anyone had run needed -- the same
+     * two-engine assumption that produced the wrong upsert one layer up.
+     *
+     * <p>Deliberately a value-shaping hook rather than a boolean capability flag: the caller should
+     * not have to know WHICH types need shaping, only that the dialect gets to shape them. A future
+     * engine that needs an array or an interval bound differently extends this method instead of
+     * adding a second flag every call site must learn about.
+     */
+    default Object bindableValue(Object value) {
+        return value;
+    }
+
+    /**
+     * The inverse of {@link #bindableValue}: a value just read out of a {@code ResultSet}, restored
+     * to the shape the rest of the platform expects.
+     *
+     * <p>Today this settles one question -- <b>a timestamp that came back without its zone</b>. The
+     * DSL's {@code datetime} compiles to {@code java.time.OffsetDateTime} on every engine, but only
+     * Postgres and H2 have a column type that keeps an offset. MySQL's {@code DATETIME(6)} does not,
+     * so mysql-connector returns a {@code LocalDateTime} and the response then fails to bind:
+     *
+     * <pre>
+     *   Cannot deserialize value of type `java.time.OffsetDateTime` from String
+     *   "2026-08-08T12:00:00": Text could not be parsed at index 19
+     * </pre>
+     *
+     * <p>Measured against a real MySQL 8.4 (STOR-10): the row was WRITTEN correctly -- the
+     * persistence capability reported SUCCESS -- and the request still returned 400 while mapping the
+     * saved record back to its DTO. A write that succeeds and then reports failure is worse than one
+     * that fails, because the row is really there.
+     *
+     * <p>UTC is the right offset to restore, not a guess: the generated JDBC URL pins
+     * {@code serverTimezone=UTC}, so the instant the driver stored IS the UTC instant. Reading it
+     * back as UTC is the exact inverse of writing it.
+     */
+    default Object readValue(Object value) {
+        return value;
+    }
+
+    /**
+     * Rename a column, in this engine's own spelling.
+     *
+     * <p>Four engines, three syntaxes, and one of them is not an {@code ALTER TABLE} at all:
+     *
+     * <pre>
+     *   Postgres, MySQL 8+   ALTER TABLE t RENAME COLUMN old TO new
+     *   H2                   ALTER TABLE t ALTER COLUMN old RENAME TO new
+     *   SQL Server           EXEC sp_rename 't.old', 'new', 'COLUMN'
+     * </pre>
+     *
+     * <p>{@code ColumnRenamePass} chose between the first two with
+     * {@code "Postgres".equals(engine) ? ... : ...} -- so MySQL got H2's spelling and SQL Server got
+     * it too. Measured on a real MySQL 8.4 (STOR-10), and the failure is the worst shape this layer
+     * produces:
+     *
+     * <pre>
+     *   schema pass 'COLUMN_RENAME' failed at RENAME_COLUMN books.isbn -&gt; isbn13.
+     *   Engine 'mysql' COMMITS IMPLICITLY ON DDL, so this pass is HALF APPLIED
+     * </pre>
+     *
+     * <p>A rename is the one migration where getting it wrong loses data rather than time -- the
+     * fallback for an unhandled rename is drop-plus-add, which silently empties the column.
+     *
+     * @param table the table, already safe
+     * @param from  the current column name, already safe
+     * @param to    the new column name, already safe
+     */
+    String renameColumn(String table, String from, String to);
+
     /** Insert-or-update. See {@link UpsertStrategy} for why this is a strategy and not a template. */
     UpsertStrategy upsert();
 

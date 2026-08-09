@@ -161,6 +161,66 @@ public final class SqlServerDialect implements SqlDialect {
     }
 
     @Override
+    public String renameColumn(String table, String from_, String to) {
+        // Not an ALTER TABLE at all. sp_rename takes the OLD name qualified by its table and
+        // the NEW name bare -- passing the new one qualified renames it to a literal string
+        // containing a dot, which succeeds and leaves an unusable column.
+        return "EXEC sp_rename '" + escapeLiteral(table + "." + from_) + "', '"
+                + escapeLiteral(to) + "', 'COLUMN'";
+    }
+
+    /**
+     * SQL Server's timestamp comes back as a DRIVER type, not a JDK one.
+     *
+     * <p>A {@code datetime} field realizes as {@code DATETIMEOFFSET(6)} here, and mssql-jdbc returns
+     * {@code microsoft.sql.DateTimeOffset} for it -- its own class, which is neither a
+     * {@code java.time} type nor a {@code java.sql.Timestamp}. Jackson has no idea what it is, so it
+     * serializes it as a nested OBJECT and the generated DTO refuses it (STOR-10):
+     *
+     * <pre>
+     *   Unexpected token (START_OBJECT), expected one of [VALUE_STRING, VALUE_NUMBER_INT,
+     *   VALUE_NUMBER_FLOAT] for java.time.OffsetDateTime value
+     *   (through reference chain: ProbeRecord["recordedAt"])
+     * </pre>
+     *
+     * <p>Reached by REFLECTION on purpose: the kernel must not compile against a JDBC driver, and
+     * adding mssql-jdbc to its classpath to convert one type would put a vendor driver in every
+     * app's kernel regardless of engine. The class is matched by name and the conversion is the
+     * driver's own {@code getOffsetDateTime()}, so nothing is reimplemented.
+     *
+     * <p>The {@code LocalDateTime} arm stays for the {@code DATETIME2} case -- an inverse that only
+     * handles the shapes observed today is exactly how the MySQL half of this bug stayed invisible.
+     */
+    @Override
+    public Object readValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if ("microsoft.sql.DateTimeOffset".equals(value.getClass().getName())) {
+            try {
+                return value.getClass().getMethod("getOffsetDateTime").invoke(value);
+            } catch (ReflectiveOperationException | RuntimeException unavailable) {
+                // Never swallow into a wrong value: if the driver's own accessor is gone, the caller
+                // gets the driver object it would have got before, and the DTO binding fails loudly
+                // rather than silently producing a timestamp nobody can trace.
+                return value;
+            }
+        }
+        return value instanceof java.time.LocalDateTime local
+                ? local.atOffset(java.time.ZoneOffset.UTC)
+                : value;
+    }
+
+    @Override
+    public Object bindableValue(Object value) {
+        // UNIQUEIDENTIFIER is a real type here, but the mssql-jdbc driver does not bind a
+        // java.util.UUID to it -- it wants the string form, and Java-serializes the object
+        // otherwise, exactly as MySQL does (STOR-10). So the answer is the same for a
+        // different reason, which is why this is per-dialect rather than one shared branch.
+        return value instanceof java.util.UUID uuid ? uuid.toString() : value;
+    }
+
+    @Override
     public String timestampColumnType() {
         // datetime2, not `timestamp` -- SQL Server's TIMESTAMP is a row-version binary counter with
         // no relationship to time at all, which is a genuinely dangerous false friend.
