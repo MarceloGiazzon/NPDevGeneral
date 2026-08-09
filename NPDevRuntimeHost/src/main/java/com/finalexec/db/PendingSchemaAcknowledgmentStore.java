@@ -57,8 +57,11 @@ public final class PendingSchemaAcknowledgmentStore {
         try (PreparedStatement statement = connection.prepareStatement(
                 SqlDialects.active().guardedCreateTable(TABLE,
                         "CREATE TABLE " + TABLE
-                        + " (id TEXT PRIMARY KEY, to_fingerprint TEXT NOT NULL, ack_token TEXT NOT NULL, "
-                        + "items_json TEXT, submitted_at_utc BIGINT, submitted_by TEXT)")
+                        + " (id " + InternalDdlTypes.keyText() + " PRIMARY KEY, "
+                        + "to_fingerprint " + InternalDdlTypes.text() + " NOT NULL, "
+                        + "ack_token " + InternalDdlTypes.text() + " NOT NULL, "
+                        + "items_json " + InternalDdlTypes.text() + ", submitted_at_utc BIGINT, "
+                        + "submitted_by " + InternalDdlTypes.text() + ")")
         )) {
             statement.executeUpdate();
         }

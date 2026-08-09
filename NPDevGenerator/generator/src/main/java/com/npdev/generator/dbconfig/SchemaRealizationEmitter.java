@@ -201,7 +201,8 @@ public final class SchemaRealizationEmitter {
         for (InternalColumnDefinition column : table.columns()) {
             StringBuilder alter = new StringBuilder("ALTER TABLE ").append(table.name())
                     .append(" ADD COLUMN ").append(column.name()).append(" ")
-                    .append(renderInternalType(column.type(), engine, keyed.contains(column.name())));
+                    .append(renderInternalType(column.type(), engine, keyed.contains(column.name()),
+                            !column.defaultExpression().isBlank()));
             if (!column.defaultExpression().isBlank()) {
                 alter.append(" DEFAULT ").append(column.defaultExpression());
             } else if (column.required()) {
@@ -347,7 +348,8 @@ public final class SchemaRealizationEmitter {
             StringBuilder line = new StringBuilder("  ")
                     .append(column.name())
                     .append(" ")
-                    .append(renderInternalType(column.type(), engine, keyed.contains(column.name())));
+                    .append(renderInternalType(column.type(), engine, keyed.contains(column.name()),
+                            !column.defaultExpression().isBlank()));
             if (column.required()) {
                 line.append(" NOT NULL");
             }
@@ -1658,7 +1660,8 @@ public final class SchemaRealizationEmitter {
      * truncating a message or a JSON document to fit an index it is not in would be a data loss to
      * fix a problem that does not exist.
      */
-    private static String renderInternalType(InternalColumnType type, DatabaseEngine engine, boolean keyed) {
+    private static String renderInternalType(InternalColumnType type, DatabaseEngine engine,
+                                             boolean keyed, boolean defaulted) {
         if (type == null) {
             return "VARCHAR(255)";
         }
@@ -1683,8 +1686,12 @@ public final class SchemaRealizationEmitter {
         }
         SqlDialect dialect = engine.dialect();
         return switch (type) {
-            case TEXT, LARGE_TEXT, JSON_DOCUMENT ->
-                    keyed ? dialect.keyableTextColumnType() : dialect.portableColumnType("TEXT");
+            // Three roles, three answers -- see SqlDialect.defaultableTextColumnType(). `keyed` wins
+            // when a column is both, because a key width is a hard engine limit while a default is
+            // only a type restriction, and the keyable width satisfies both.
+            case TEXT, LARGE_TEXT, JSON_DOCUMENT -> keyed
+                    ? dialect.keyableTextColumnType()
+                    : defaulted ? dialect.defaultableTextColumnType() : dialect.portableColumnType("TEXT");
             // portableColumnType, NOT timestampColumnType(). The difference is drift: asking for
             // the engine's PREFERRED timestamp gives H2 `TIMESTAMP WITH TIME ZONE`, which changes
             // output on an engine that was already correct and which the internal tables were

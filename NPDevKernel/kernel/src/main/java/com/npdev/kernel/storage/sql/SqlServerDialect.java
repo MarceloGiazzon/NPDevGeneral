@@ -145,6 +145,13 @@ public final class SqlServerDialect implements SqlDialect {
     }
 
     @Override
+    public String defaultableTextColumnType() {
+        // NVARCHAR(MAX) accepts a DEFAULT (unlike the deprecated TEXT type, which SQL Server
+        // itself refuses to default and which this dialect never emits).
+        return portableColumnType("TEXT");
+    }
+
+    @Override
     public String timestampColumnType() {
         // datetime2, not `timestamp` -- SQL Server's TIMESTAMP is a row-version binary counter with
         // no relationship to time at all, which is a genuinely dangerous false friend.

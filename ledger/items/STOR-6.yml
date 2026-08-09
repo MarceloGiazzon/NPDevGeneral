@@ -1,0 +1,64 @@
+id: STOR-6
+title: >-
+  The generator never quotes business identifiers, so a model field named after a reserved word
+  (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the
+  dialect layer and never exercised at application level
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-08
+verification: VERIFIED_LIVE
+surface: generator/dbconfig/SchemaRealizationEmitter, kernel/storage-dialect
+source: >-
+  storage/OPEN_ITEMS_PLAN.md W10. Found while unblocking Tier C: the p2-evolve probe declares a
+  field called `value`, and the app it generates has never been able to boot.
+detail: >-
+  `SqlDialect.quoteIdentifier` exists, is implemented by all four dialects, and is asserted by
+  conformance vector Q1 (Tier A) with this exact justification in its own javadoc:
+
+      "A user will eventually name a field `order` or `group`."
+
+  `SchemaRealizationEmitter` never calls it. Measured: zero occurrences of `quoteIdentifier`
+  anywhere under `NPDevGenerator/generator/src/main`. Business column names go into the emitted DDL
+  raw, so a model whose field is a reserved word produces a script the engine rejects:
+
+      Syntax error in SQL statement "CREATE TABLE IF NOT EXISTS rows (
+        id UUID NOT NULL,
+        [*]value VARCHAR(255) NOT NULL, ..."; expected "identifier"   [H2 42001]
+
+  The probe that found it -- `NPDevSamples/probes/p2-evolve`, which serves Tier C's E1 -- has
+  therefore NEVER booted since it was written. That is why E7 has never been green, and the reason
+  looked like a harness problem until the boot log was read.
+
+  WHY IT SURVIVED THIS LONG
+
+  The same shape as STOR-4 and STOR-5, a third time: the capability is correct at the layer that owns
+  it and is never consulted by the layer that emits. Q1 passes on all four engines because it asks
+  the DIALECT to quote a string. No corpus app happens to use a reserved word for a business field --
+  the canary uses title/priority/status -- so nothing downstream ever exercised the path.
+
+  It is MEDIUM rather than HIGH only because it fails loudly at first boot, on every engine, rather
+  than silently. A user hits it the moment they model a field called `value`, `order`, `group`,
+  `user` or `key` -- which is not an exotic thing to do.
+resolution: >-
+  OPEN. Not started; measured and scoped.
+
+  The fix is to route business identifiers through `dialect.quoteIdentifier` in
+  `SchemaRealizationEmitter` (and to check whether the CRUD/query paths need the same). It is NOT a
+  one-line change: quoting alters every emitted table and column name, and PostgreSQL folds unquoted
+  identifiers to lower case today, so quoting pins the case permanently and an already-deployed
+  database would need its identifiers to match exactly. `foldsUnquotedIdentifiersToLowerCase()`
+  exists on the dialect for precisely this question, and its answer decides whether the change is
+  safe to apply to existing schemas or needs a migration.
+
+  Because of that it is deliberately NOT bundled with STOR-5: one is "the DDL uses idioms the engine
+  cannot parse", the other is "the DDL uses names the engine reserves", and mixing them would make a
+  red run ambiguous.
+
+  UNBLOCKED IN THE MEANTIME: p2-evolve's field was renamed `value` -> `label` so Tier C can run at
+  all. That is a workaround for the PROBE, not for the platform, and the probe carries a comment
+  saying so -- a fixture quietly shaped around a bug is how the bug stops being visible.
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevSamples/probes/p2-evolve/v1/Input/model.json

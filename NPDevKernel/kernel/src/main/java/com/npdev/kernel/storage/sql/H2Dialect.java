@@ -108,6 +108,14 @@ public final class H2Dialect implements SqlDialect {
     }
 
     @Override
+    public String defaultableTextColumnType() {
+        // H2 carries a DEFAULT on its unbounded text type without complaint, so the payload
+        // answer is also the defaulted answer -- narrowing here would change a column type on an
+        // engine that never had the problem.
+        return portableColumnType("TEXT");
+    }
+
+    @Override
     public String timestampColumnType() {
         return "TIMESTAMP WITH TIME ZONE";
     }

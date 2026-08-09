@@ -103,8 +103,9 @@ public final class MigrationClaimStore {
         try (PreparedStatement statement = connection.prepareStatement(
                 SqlDialects.active().guardedCreateTable(TABLE,
                         "CREATE TABLE " + TABLE
-                        + " (claim_key TEXT PRIMARY KEY, instance_id TEXT, hostname TEXT, "
-                        + "claimed_at_utc BIGINT)")
+                        + " (claim_key " + InternalDdlTypes.keyText() + " PRIMARY KEY, "
+                        + "instance_id " + InternalDdlTypes.text() + ", "
+                        + "hostname " + InternalDdlTypes.text() + ", claimed_at_utc BIGINT)")
         )) {
             statement.executeUpdate();
         }

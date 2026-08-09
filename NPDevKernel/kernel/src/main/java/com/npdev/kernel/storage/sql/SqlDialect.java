@@ -112,6 +112,29 @@ public interface SqlDialect {
     String keyableTextColumnType();
 
     /**
+     * The text type that is safe to give a {@code DEFAULT}.
+     *
+     * <p><b>The third role a text column can play, and the third boot failure.</b> "Payload",
+     * "key" and "defaulted" are three different questions, and MySQL answers them differently:
+     *
+     * <pre>
+     *   Error Code : 1101
+     *   Message    : BLOB, TEXT, GEOMETRY or JSON column 'state' can't have a default value
+     * </pre>
+     *
+     * <p>Measured in CI run 31284450437 on MySQL 8.4, at Flyway line 417 of the realization script:
+     * {@code npdev_circuit_breakers.state} is declared {@code TEXT DEFAULT 'CLOSED'}. Postgres, H2
+     * and SQL Server all accept a default on their unbounded text type; MySQL refuses outright. The
+     * column is not in any key, so {@link #keyableTextColumnType()} was never consulted for it --
+     * which is why fixing the key case did not fix this one, and why it is a separate method rather
+     * than a widened meaning of that one.
+     *
+     * <p>Most dialects answer exactly what {@link #portableColumnType(String) portableColumnType("TEXT")}
+     * answers; only the engine that cannot carry a default on unbounded text narrows.
+     */
+    String defaultableTextColumnType();
+
+    /**
      * Rewrite a DECLARED column type into this engine's nearest supported spelling, or return it
      * unchanged when the engine already understands it.
      *

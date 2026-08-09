@@ -122,9 +122,14 @@ final class SchemaHistoryStore {
         try (PreparedStatement statement = connection.prepareStatement(
                 SqlDialects.active().guardedCreateTable(HISTORY_TABLE,
                         "CREATE TABLE " + HISTORY_TABLE
-                        + " (id TEXT PRIMARY KEY, applied_at_utc BIGINT NOT NULL, from_fingerprint TEXT, "
-                        + "to_fingerprint TEXT, classification TEXT, items_json TEXT, ack_token_used TEXT, "
-                        + "outcome TEXT NOT NULL)")
+                        + " (id " + InternalDdlTypes.keyText() + " PRIMARY KEY, "
+                        + "applied_at_utc BIGINT NOT NULL, "
+                        + "from_fingerprint " + InternalDdlTypes.text() + ", "
+                        + "to_fingerprint " + InternalDdlTypes.text() + ", "
+                        + "classification " + InternalDdlTypes.text() + ", "
+                        + "items_json " + InternalDdlTypes.text() + ", "
+                        + "ack_token_used " + InternalDdlTypes.text() + ", "
+                        + "outcome " + InternalDdlTypes.text() + " NOT NULL)")
         )) {
             statement.executeUpdate();
         }

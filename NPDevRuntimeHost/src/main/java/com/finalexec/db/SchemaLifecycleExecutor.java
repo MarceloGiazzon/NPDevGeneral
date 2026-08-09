@@ -452,7 +452,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             try (PreparedStatement statement = connection.prepareStatement(
                     SqlDialects.active().guardedCreateTable(METADATA_TABLE,
                             "CREATE TABLE " + METADATA_TABLE
-                            + " (metadata_key TEXT PRIMARY KEY, metadata_value TEXT NOT NULL, updated_at_ms BIGINT NOT NULL)")
+                            + " (metadata_key " + InternalDdlTypes.keyText() + " PRIMARY KEY, "
+                            + "metadata_value " + InternalDdlTypes.text() + " NOT NULL, "
+                            + "updated_at_ms BIGINT NOT NULL)")
             )) {
                 statement.executeUpdate();
             }
@@ -1781,7 +1783,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             try (PreparedStatement statement = connection.prepareStatement(
                     SqlDialects.active().guardedCreateTable(METADATA_TABLE,
                             "CREATE TABLE " + METADATA_TABLE
-                            + " (metadata_key TEXT PRIMARY KEY, metadata_value TEXT NOT NULL, updated_at_ms BIGINT NOT NULL)")
+                            + " (metadata_key " + InternalDdlTypes.keyText() + " PRIMARY KEY, "
+                            + "metadata_value " + InternalDdlTypes.text() + " NOT NULL, "
+                            + "updated_at_ms BIGINT NOT NULL)")
             )) {
                 statement.executeUpdate();
             }

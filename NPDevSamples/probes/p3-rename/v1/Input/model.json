@@ -4,7 +4,8 @@
   "dslVersion": "1.0.0",
   "version": "1.0",
   "metadata": {
-    "purpose": "Storage probe E2 (v1): a declared `renamedFrom` must MOVE the data, not drop and recreate the column. renamedFrom is a documented user-facing feature, so it has to mean the same thing on every engine or the docs are wrong for some users."
+    "purpose": "Storage probe E2 (v1): a declared `renamedFrom` must MOVE the data, not drop and recreate the column. renamedFrom is a documented user-facing feature, so it has to mean the same thing on every engine or the docs are wrong for some users.",
+    "seedPath": "Rows are seeded through the generated app's own CRUD endpoint, which is why this concept carries a ui label: without one the app emits no such endpoint and Tier C's seed 404s. Inserting over JDBC instead would prove the rows survive, but not that the platform wrote them (storage/OPEN_ITEMS_PLAN.md 5.1)."
   },
   "concepts": [
     {
@@ -21,7 +22,10 @@
           "type": "string",
           "required": true
         }
-      ]
+      ],
+      "ui": {
+        "label": "Book"
+      }
     }
   ],
   "capabilities": [

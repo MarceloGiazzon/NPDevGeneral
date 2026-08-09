@@ -1,0 +1,95 @@
+id: STOR-7
+title: >-
+  A text column plays three roles -- payload, key, defaulted -- and only two were ever asked about;
+  MySQL rejected a TEXT DEFAULT and SQL Server could not index the runtime host's own bootstrap
+  tables, so no generated app booted on either engine
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-08
+closed: 2026-08-08
+verification: VERIFIED_LIVE
+surface: kernel/storage-dialect, runtimehost/db, generator/dbconfig
+source: >-
+  storage/OPEN_ITEMS_PLAN.md. Found by CI run 31284450437 -- the first engine-support run in which
+  the guarded-DDL fix (STOR-5) let a schema script get far enough into Flyway to fail on something
+  else.
+detail: >-
+  Two independent failures, both at Flyway time on first boot, both invisible to every layer below.
+
+  A. MySQL 8.4, V1__npdev_schema_realization.sql line 417:
+
+      Error Code : 1101
+      BLOB, TEXT, GEOMETRY or JSON column 'state' can't have a default value
+
+  `npdev_circuit_breakers.state` is declared `TEXT DEFAULT 'CLOSED'` (and `npdev_tenants
+  .persistence_mode` the same way). MySQL will not put a DEFAULT on unbounded text at all. Neither
+  column is in a key, so STOR-4's `keyableTextColumnType()` fix -- which had already narrowed every
+  KEYED text column to VARCHAR(191) -- never touched them.
+
+  B. SQL Server 2022, at `afterMigrate`:
+
+      Column 'metadata_key' in table 'npdev_schema_metadata' is of a type that is invalid for use
+      as a key column in an index.
+
+  Six `CREATE TABLE` statements are issued by the runtime host ITSELF, inline, in Java, around the
+  migration rather than by it -- npdev_schema_migration_claim, npdev_schema_migration_mark,
+  npdev_schema_pending_ack, npdev_schema_history and npdev_schema_metadata (twice). Every one spelled
+  `id TEXT PRIMARY KEY`. They are not in the `internalTables` catalog, so no amount of work on
+  SchemaRealizationEmitter could ever have reached them; SQL Server renders TEXT as NVARCHAR(MAX),
+  which it cannot index at all.
+
+  WHY IT SURVIVED
+
+  The same shape as STOR-4 and STOR-5 for the third and fourth time: the capability is right in the
+  layer that owns it and is not consulted by the layer that emits. `keyableTextColumnType()` existed,
+  was conformance-tested at Tier A on all four engines, and answered correctly -- for the one role
+  anyone had thought to ask about. Tier B takes a raw JDBC connection and hand-writes its tables, so
+  it never sees NPDev's own DDL. Only generating, building and BOOTING an app reaches this code, and
+  until STOR-4 and STOR-5 were fixed nothing ever got this far.
+resolution: >-
+  DONE, both halves, with the mechanical controls that make a fifth instance fail locally in seconds
+  instead of costing a ~12-minute CI round each.
+
+  A. New dialect method `defaultableTextColumnType()`, implemented by all four dialects (only MySQL
+  narrows -- to the same VARCHAR(191) the keyable answer uses, so the same column is the same type
+  wherever it appears). `SchemaRealizationEmitter.renderInternalType` now takes `defaulted` alongside
+  `keyed` and asks the dialect for all three roles. Conformance vector I4 (Tier A) asserts the answer
+  on every engine, and asserts that the three engines which DO accept a default on unbounded text do
+  not narrow -- the drift half matters as much as the fix half.
+
+  B. New `com.finalexec.db.InternalDdlTypes` (`keyText()` / `text()`), and all six inline statements
+  plus one inline ADD COLUMN now route through it. One approved spelling in the runtime host, which
+  is what makes the gate below possible.
+
+  CONTROLS (each RED-proven by writing a violating file and watching it fail, then removing it):
+    - check-dialect-sites.py gains `text-key-column` and `text-default-column` -- a seventh inline
+      `TEXT PRIMARY KEY` or a new `TEXT DEFAULT` in Java fails the AI-knowledge gate.
+    - check-emitted-sql-portability.py gains the same two constructs, engine-aware: `text PRIMARY
+      KEY` in a Postgres script is correct and is not flagged; the same text in a MySQL script is.
+      Verified both ways -- the Postgres script passes as postgres and FAILS as mysql.
+    - run-engine-app-proof.py now lints the emitted script immediately after generation, before it
+      builds anything. Flyway stops at the FIRST statement it cannot run, which is how STOR-5 and
+      STOR-7 were each discovered one error at a time; the linter reports every construct at once.
+
+  PROVEN: emitted MySQL script line 421 is now `state VARCHAR(191) NOT NULL DEFAULT 'CLOSED'`;
+  SQL Server's is `NVARCHAR(MAX) ... DEFAULT` (it accepts one, so it does not narrow); Postgres and
+  H2 are byte-identical to before. Tier C E1/E2/I2/I3 all pass on h2local -- the first time E7 has
+  ever been green on any engine.
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/InternalDdlTypes.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaHistoryStore.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationClaimStore.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationMarkStore.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/PendingSchemaAcknowledgmentStore.java
+  - scripts/quality/check-dialect-sites.py
+  - scripts/quality/check-emitted-sql-portability.py
+  - scripts/quality/run-engine-app-proof.py
