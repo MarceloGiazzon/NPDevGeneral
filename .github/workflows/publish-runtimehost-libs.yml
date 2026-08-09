@@ -256,6 +256,17 @@ jobs:
       # Tauri 2 needs webkit2gtk 4.1 specifically (v1 used 4.0). libayatana-appindicator3 is the
       # tray dependency; patchelf and libfuse2 are what the AppImage tooling itself needs -- without
       # libfuse2 the bundler produces an image that cannot mount itself on the user's machine.
+      #
+      # xdg-utils (provides /usr/bin/xdg-open) is NOT optional and NOT obvious: the Rust build
+      # succeeds without it and the bundler then fails at the very last step with
+      #   "failed to bundle project: xdg-open binary not found /usr/bin/xdg-open"
+      # Tauri EMBEDS xdg-open into the AppImage because tauri-plugin-opener needs it at runtime --
+      # which the Manager uses for "Open folder" and for opening the running app in a browser.
+      # Measured 2026-08-09 by building this job's steps in a clean ubuntu:22.04 container: the
+      # release profile finished in 4m59s and bundling then failed on exactly this. GitHub's hosted
+      # runner image happens to ship xdg-utils, so CI could have kept passing while the documented
+      # recipe did not reproduce anywhere else -- the "works because of what happens to be installed"
+      # family this project has already paid for repeatedly.
       - name: Linux build dependencies
         run: |
           sudo apt-get update
@@ -265,6 +276,7 @@ jobs:
             librsvg2-dev \
             patchelf \
             libfuse2 \
+            xdg-utils \
             file
 
       - name: Install the Tauri CLI
