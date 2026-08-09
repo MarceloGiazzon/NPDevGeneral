@@ -236,6 +236,39 @@ if ($plan.profile.kind -eq 'server') {
   if ($existing -eq $plan.containerName) {
     docker start $plan.containerName | Out-Null
   } else {
+    # A machine that ALREADY runs PostgreSQL or SQL Server is the likely case, not the exotic one --
+    # people pick the engine they already use. Without this check, `docker run -p 5432:5432` collides
+    # with their own server and reports a raw Docker port-binding error, and "the tool fought my
+    # database" is a first impression that has nothing to do with whether the tool is any good.
+    #
+    # DETECT, do not solve. NPDev has no EXTERNAL engine kind yet -- a mode where the toolbox knows
+    # the server is not its to manage and disables Start/Stop/Reset -- and adding one touches the
+    # profile model, all five scripts, the picker and the schema. Naming the collision converts a
+    # confusing failure into a sentence for a fraction of that.
+    #
+    # Same shape `npdev dev` already uses for the APP port ("Port N is already in use before this run
+    # even started"), one layer down, and emitted HERE so the CLI, the Manager and a terminal user all
+    # inherit one answer instead of three.
+    $probe = New-Object System.Net.Sockets.TcpClient
+    $portInUse = $false
+    try {
+      $wait = $probe.BeginConnect($plan.host, [int]$plan.hostPort, $null, $null)
+      if ($wait.AsyncWaitHandle.WaitOne(1500) -and $probe.Connected) { $portInUse = $true }
+    } catch { $portInUse = $false } finally { $probe.Close() }
+    if ($portInUse) {
+      # Write-Host + exit, NOT throw: `throw` wraps the text in a PowerShell exception trace
+      # (`Line | 117 | throw @"` and a column of tildes) and the sentence the user needs arrives
+      # buried in it. The point of this check is the sentence.
+      Write-Host ""
+      Write-Host "Something is already listening on $($plan.host):$($plan.hostPort)."
+      Write-Host ""
+      Write-Host "If that is your own $($plan.profile.guiLabel), you do not need this button -- NPDev will"
+      Write-Host "connect to it. Use `"Test connection`" to confirm, then Run."
+      Write-Host ""
+      Write-Host "If it is a container from another app, stop it first, or give this app a"
+      Write-Host "different port in db.definition.json."
+      exit 1
+    }
     $runArgs = @('run', '-d', '--name', $plan.containerName)
     foreach ($name in $plan.profile.containerEnv.PSObject.Properties.Name) {
       $value = Expand-ProfileToken -Value ([string]$plan.profile.containerEnv.$name) -Plan $plan

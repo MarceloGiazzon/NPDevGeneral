@@ -2198,6 +2198,25 @@ def _find_db_definition(explicit: str | None) -> Path | None:
     return here if here.is_file() else None
 
 
+def _engine_requiring_docker(app_path: str | None) -> str | None:
+    """This app's engine name if it needs Docker, else None.
+
+    None covers three genuinely different situations, and all three mean the same thing for this
+    check: no app is in scope (a machine with no NPDev app on it is not a broken machine), the
+    definition is unreadable (`database-engine-support` reports that, and one cause should not
+    produce two red lines), or the engine has nothing to containerize.
+    """
+    definition_path = _find_db_definition(app_path)
+    if definition_path is None:
+        return None
+    try:
+        definition = json.loads(definition_path.read_text(encoding="utf-8"))
+        engine = npdev_engines.resolve((definition.get("database") or {}).get("engine") or "h2local")
+    except (json.JSONDecodeError, OSError, ValueError):
+        return None
+    return engine["externalName"] if engine.get("containerized") else None
+
+
 def _database_checks(app_path: str | None) -> list[dict]:
     """W5.2 (E10): is this app's database reachable, usable, and able to store what it will be given?
 
@@ -3048,14 +3067,34 @@ def run_doctor(args: argparse.Namespace) -> int:
         checks.append(_check("ai-knowledge-index", "AI knowledge index", "pass", expected="built",
                              found=str(knowledge_index)))
 
+    # Docker is "optional" IN GENERAL and false for the choice this particular user made. An app on
+    # Postgres, MySQL or SQL Server gets its database created by `docker run`, so telling that user
+    # Docker is optional -- on the Ready screen, before they find out the hard way -- is exactly the
+    # true-in-general/false-for-you failure the capability work removed everywhere else.
+    #
+    # Keyed on `containerized`, not `needsServer`: H2Server is a server engine whose environment is a
+    # Java process, so Docker really is optional for it.
+    docker_engine = _engine_requiring_docker(getattr(args, "app", None))
     docker_path = shutil.which("docker")
-    if docker_path is None:
+    if docker_engine is None:
+        if docker_path is None:
+            checks.append(_check(
+                "docker-present", "Docker", "warn", expected="optional",
+                detail="Docker not found -- only needed for the docker-compose run path.",
+            ))
+        else:
+            checks.append(_check("docker-present", "Docker", "pass", found=docker_path, expected="optional"))
+    elif docker_path is None:
         checks.append(_check(
-            "docker-present", "Docker", "warn", expected="optional",
-            detail="Docker not found -- only needed for the docker-compose run path.",
+            "docker-present", "Docker", "fail", expected="required",
+            detail=f"Docker not found, and this app's engine is {docker_engine} -- NPDev creates its "
+                   f"database in a container, so `npdev db start` cannot work without it.",
+            fix="Install Docker Desktop (https://docs.docker.com/get-docker/), or choose H2Local, "
+                "which needs no server at all.",
         ))
     else:
-        checks.append(_check("docker-present", "Docker", "pass", found=docker_path, expected="optional"))
+        checks.append(_check("docker-present", "Docker", "pass", found=docker_path, expected="required",
+                             detail=f"required by this app's engine ({docker_engine})"))
 
     pwsh_path = shutil.which("pwsh")
     if pwsh_path is None:

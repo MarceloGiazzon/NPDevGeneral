@@ -578,6 +578,9 @@
     },
     "scripts/tests/fixtures/controlled-runner/slow-build.ps1": {
       "invocation": "orchestrated"
+    },
+    "scripts/quality/check-readme-contract.py": {
+      "invocation": "ci-gate"
     }
   }
 }
