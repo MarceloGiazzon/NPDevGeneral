@@ -83,7 +83,14 @@ run_cmd_list() {
   while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
     case "$cmd" in
-      *java\ -jar*|*docker\ compose\ up*)
+      # `npdev dev` belongs here for the same reason as the other two: it is a WATCH LOOP that
+      # never exits on its own. It was absent from this list only because README's own quickstart
+      # used a bare `npdev dev`, which died instantly with "command not found" -- so the hang could
+      # not happen. Fixing that command to `./npdev dev` turned a fast failure into a container that
+      # sat for 55 minutes with the app healthy and READY behind it, looking exactly like a stall.
+      # A harness that can hang is worse than one that fails: nothing reports, and the reader has to
+      # guess whether it is working. Section 8 exercises `npdev dev` properly, with its own timeout.
+      *java\ -jar*|*docker\ compose\ up*|*npdev\ dev*)
         echo
         echo "  \$ $cmd"
         echo "        (long-running/foreground command -- not executed by this loop)"
