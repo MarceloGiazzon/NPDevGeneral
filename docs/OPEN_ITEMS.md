@@ -6,99 +6,17 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**157 item(s) migrated: 4 open/partial, 153 done.**
+**157 item(s) migrated: 3 open/partial, 154 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
-| STOR-3 | MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images | GAP | MEDIUM | PARTIAL | 2026-08-08 |
 | STOR-5 | The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run | GAP | HIGH | OPEN | 2026-08-08 |
 | STOR-6 | The generator never quotes business identifiers, so a model field named after a reserved word (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the dialect layer and never exercised at application level | BUG | MEDIUM | OPEN | 2026-08-08 |
 | STOR-8 | db.definition.json's `h2FilePath` and `jdbcUrl` are parsed, validated and then ignored -- a user who sets either gets no error and no effect | BUG | LOW | OPEN | 2026-08-08 |
 
 ### Detail
-
-### STOR-3 — MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images
-
-**Type:** GAP · **Severity:** MEDIUM · **Status:** PARTIAL
-**Verification:** VERIFIED_LIVE
-**Source:** storage/PLAN.md S4b, S5 and S4a.
-**Surface:** `kernel/storage-dialect, generator/dbconfig, ci/storage-dialect-conformance`
-**Files:**
-- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java`
-- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java`
-- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectTestSupport.java`
-- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java`
-- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierBTest.java`
-- `NPDevRuntimeHost/src/main/java/com/finalexec/db/StorageDialectInitializer.java`
-- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DatabaseEngine.java`
-- `.github/workflows/storage-dialect-conformance.yml`
-
-MySqlDialect and SqlServerDialect are implemented, registered in SqlDialects, wired to new DatabaseEngine values (MYSQL, SQL_SERVER -- new VALUES on the existing storageMode axis, not a parallel concept), given JDBC URLs, drivers and default ports, and pinned at boot by StorageDialectInitializer from npdev.database.engine.
-That last piece matters more than it looks: without it, registering MySQL would have changed NOTHING. Every store falls back to SqlDialects.active(), which defaults to Postgres, so an app generated for MySQL would have booted happily and emitted Postgres SQL -- the silent-wrong-answer failure the whole seam exists to prevent, arriving through the back door.
-WHAT IS PROVEN
-  - Tier A, 78 assertions, all four engines: clause text, declared parameter order, quoting,
-    auto-increment spelling, capability declarations, and every refusal. Zero skips.
-  - Tier B, 52 executions, 12 skipped with printed reasons: behaviour against a real connection --
-    upsert idempotence, page non-overlap, JSON round-trip, reserved-word columns, DML rollback,
-    auto-increment monotonicity, enforced uniqueness.
-  - PostgresDialectGoldenSqlTest, 24 assertions (STOR-1).
-
-WHAT THE REAL RUNS PROVED (2026-08-08)
-Three dispatches. Every figure below is read from the uploaded JUnit XML, never from job status -- which is the lesson the first run taught, since it was red on all three jobs while containing the best news of the day.
-
-    run 31264977219 (commit 5814886) -- FIRST EVER, jobs red
-    dialect      passed  failed  seconds
-    mysql            13       0     23.7    <- real MySQL 8.4 with utf8mb4
-    postgres         13       0      8.3    <- no regression from the S1 seam
-    sqlserver        12       1     21.4    <- one failure, a TEST defect (see below)
-    h2                0      13      0.1    <- harness: no container exists for h2
-                                   0 skipped
-
-    run 31268402414 (commit bec03b5) -- after F0-F5, ALL JOBS GREEN
-    mysql            13       0     23.8
-    postgres         13       0     10.8
-    sqlserver        13       0     19.5
-                                   0 skipped, h2 no longer selected
-
-39 vectors, three real engines, zero failures, zero skips. One engine per job (13 tests, not 52).
-The seconds column is what separates "the harness broke" from "the engine ran": h2 fails in 0.1s (an immediate throw, no database) while mysql spends 23.7s (container time). The failure TYPES say the same thing independently -- IllegalArgumentException for all 13 h2 cases, AssertionFailedError for the one sqlserver case.
-ZERO SKIPS. The twelve vectors that print a skip reason on the local H2 backend all executed, including T2 (DDL transactionality), Q2 (case sensitivity) and J2 (charset fidelity). That was the entire purpose of the workflow and it worked on the first run.
-J2 on SQL Server was the one real finding, and it was the vector's own bug: it hand-wrote VARCHAR(4000) in its DDL, and SQL Server's VARCHAR is non-Unicode, so 'cafe [coffee emoji]' came back as 'cafe ?' -- silent per-character loss. SqlServerDialect.portableColumnType already returned NVARCHAR(4000) and was never asked. Fixed in F3, along with J1, which had the identical defect and was passing only because its document is ASCII. The general lesson is bigger than the line: a conformance vector that writes its own DDL is testing its own SQL, which is exactly the trap PLAN.md §6 named for probe apps and Tier B then walked into.
-WHY THIS IS STILL PARTIAL
-The results are now unambiguous; the PROCESS is not yet support:
-
-  - the workflow is workflow_dispatch-only, so nothing re-verifies any engine when a dialect
-    changes. A green run is a snapshot, not a guarantee, and the next regression is found by a user
-  - the container images are moving tags (mssql/server:2022-latest), so a future red cannot be
-    told apart from "the image changed". This is now the PRIMARY reason the trigger has not been
-    promoted -- pinning comes first
-  - E1, E2, I2 and I3 need a realized schema (Tier C + the probe apps) and cannot run here at all
-  - the MySQL DDL-implicit-commit decision (STOR-2) is now exercised by T2 against a real MySQL,
-    and T2 passed -- but T2 asserts the DECLARATION matches the engine. The schema engine's
-    behaviour under a half-applied migration is still unmeasured, and that is the one that
-    corrupts data rather than failing loudly
-
-BOTH RECORDED ENGINE GAPS ARE NOW CLOSED (storage/FULL_SUPPORT_PLAN.md W1.3), fixed rather than accepted as boundaries -- so there is nothing to add under ledger/boundaries/:
-
-  - SqlServerDialect.rowLimited() is a PREFIX rewrite (SELECT -> SELECT TOP n). The plan offered
-    two options and said to find out which call sites need it before choosing. Measured: FOUR --
-    two existence probes in PostgresPersistenceCapabilityAdapter, two first-by-order reads in
-    JdbcEventStore -- and all four want "at most n rows", not a suffix. Suffix-vs-prefix is the
-    engine's business, which is precisely what a dialect is for; pushing the question out to the
-    call sites would have MOVED the engine switch rather than removed it, which SqlDialect's own
-    javadoc names as the thing this seam must never become. rowLimit() -- the SUFFIX primitive --
-    still throws, and that stays correct: there genuinely is no suffix form there. TOP is placed
-    after DISTINCT (T-SQL's grammar is SELECT [ALL|DISTINCT] [TOP n]) and a CTE is REFUSED rather
-    than mis-capped, since no string surgery can find its final select.
-
-  - ConversionHookEmitter now takes the DatabaseEngine, threaded from GeneratorFacade, which
-    already held the GeneratedDatabasePlan two lines above the call. The claim that this was a
-    signature change MySQL could not ship without was right; the claim that it was structurally
-    hard was not. It had been asking H2 unconditionally -- the narrower of the only two engines
-    that existed -- and that stops being safe with a third (MySQL has no native UUID), in code
-    that runs during a migration, on data.
 
 ### STOR-5 — The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run
 
@@ -188,7 +106,7 @@ It is MEDIUM rather than HIGH only because it fails loudly at first boot, on eve
 and nothing downstream reads either one. `jdbcUrl(definition, identity)` composes the URL for every engine from `identity`, whose data root is always `<workspace>/Build/databases/<appId>` -- appId being the `manifest.json` id, never anything the database block says. So a user who writes an explicit `jdbcUrl` to point at an existing database, or an `h2FilePath` to put the file somewhere else, gets silence: no error, no warning, and a connection to a different database than the one they named.
 Not the same defect as an unknown key. An unknown key would at least be visibly unrecognized; these two are in the schema, survive validation, and read as supported.
 
-## Done (153)
+## Done (154)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -345,6 +263,7 @@ Not the same defect as an unknown key. An unknown key would at least be visibly 
 | STOR-11 | On MySQL a create that violates a unique constraint returns 200 and OVERWRITES the row that held the value, because ON DUPLICATE KEY UPDATE reacts to every unique index -- the dialect's own javadoc said no NPDev schema could produce this shape, and any `unique: true` field does | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-12 | A MySQL or SQL Server app boots once and never again -- the migration-claim store tested for Postgres's SQLSTATE 23505, so the ordinary "the canonical row already exists" case was reported as a hard failure, with a message asserting the exact opposite of the truth | BUG | HIGH | DONE | 2026-08-09 |
 | STOR-2 | A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced | BUG | HIGH | DONE | 2026-08-08 |
+| STOR-3 | MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images | GAP | MEDIUM | DONE | 2026-08-08 |
 | STOR-4 | MySQL and SqlServer were selectable, dialect-complete and conformance-green -- and no generated app could ever have connected to either, because the app template carried no JDBC driver for them | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-7 | A text column plays three roles -- payload, key, defaulted -- and only two were ever asked about; MySQL rejected a TEXT DEFAULT and SQL Server could not index the runtime host's own bootstrap tables, so no generated app booted on either engine | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-9 | A row lock is a suffix on three engines and a table hint on SQL Server, and three sites spelled the suffix inline -- so every app's FIRST boot on SQL Server died taking the migration lock, after the schema had already realized correctly | BUG | HIGH | DONE | 2026-08-08 |
@@ -7202,7 +7121,13 @@ it had two.
 **Source:** storage/OPEN_ITEMS_PLAN.md W10, Tier C vector I3 against a REAL MySQL 8.4 container. Every other Tier C vector (E1, E2, I2) passed in the same run.
 **Surface:** `kernel/storage-dialect (MySqlUpsertStrategy)`
 **Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/UpsertPlan.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/UpsertStrategy.java`
 - `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java`
+- `NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java`
+- `NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java`
 - `NPDevSamples/probes/p4-constraints/Input/model.json`
 - `scripts/quality/run-tier-c-probes.py`
 
@@ -7308,6 +7233,87 @@ All three refusal messages said, verbatim:
 
 and the comment above them said "Now 'nothing persisted' is literally true." On H2 -- the engine every NPDev dev app runs on -- it was already not true, and boundary B11 had recorded H2's DDL limitation independently without anyone connecting it to this message.
 WHY THIS IS THE HIGH-SEVERITY HALF. The failure mode is not the un-rolled-back DDL; it is the platform telling an operator the database is untouched when it is not. A false all-clear is what turns a recoverable half-migration into one nobody goes looking for. The operator reads "nothing persisted", fixes the model, and re-runs -- against a schema that already moved.
+
+### STOR-3 — MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-09)
+**Verification:** VERIFIED_LIVE
+**Source:** storage/PLAN.md S4b, S5 and S4a.
+**Surface:** `kernel/storage-dialect, generator/dbconfig, ci/storage-dialect-conformance`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectTestSupport.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierBTest.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/StorageDialectInitializer.java`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DatabaseEngine.java`
+- `.github/workflows/storage-dialect-conformance.yml`
+
+MySqlDialect and SqlServerDialect are implemented, registered in SqlDialects, wired to new DatabaseEngine values (MYSQL, SQL_SERVER -- new VALUES on the existing storageMode axis, not a parallel concept), given JDBC URLs, drivers and default ports, and pinned at boot by StorageDialectInitializer from npdev.database.engine.
+That last piece matters more than it looks: without it, registering MySQL would have changed NOTHING. Every store falls back to SqlDialects.active(), which defaults to Postgres, so an app generated for MySQL would have booted happily and emitted Postgres SQL -- the silent-wrong-answer failure the whole seam exists to prevent, arriving through the back door.
+WHAT IS PROVEN
+  - Tier A, 78 assertions, all four engines: clause text, declared parameter order, quoting,
+    auto-increment spelling, capability declarations, and every refusal. Zero skips.
+  - Tier B, 52 executions, 12 skipped with printed reasons: behaviour against a real connection --
+    upsert idempotence, page non-overlap, JSON round-trip, reserved-word columns, DML rollback,
+    auto-increment monotonicity, enforced uniqueness.
+  - PostgresDialectGoldenSqlTest, 24 assertions (STOR-1).
+
+WHAT THE REAL RUNS PROVED (2026-08-08)
+Three dispatches. Every figure below is read from the uploaded JUnit XML, never from job status -- which is the lesson the first run taught, since it was red on all three jobs while containing the best news of the day.
+
+    run 31264977219 (commit 5814886) -- FIRST EVER, jobs red
+    dialect      passed  failed  seconds
+    mysql            13       0     23.7    <- real MySQL 8.4 with utf8mb4
+    postgres         13       0      8.3    <- no regression from the S1 seam
+    sqlserver        12       1     21.4    <- one failure, a TEST defect (see below)
+    h2                0      13      0.1    <- harness: no container exists for h2
+                                   0 skipped
+
+    run 31268402414 (commit bec03b5) -- after F0-F5, ALL JOBS GREEN
+    mysql            13       0     23.8
+    postgres         13       0     10.8
+    sqlserver        13       0     19.5
+                                   0 skipped, h2 no longer selected
+
+39 vectors, three real engines, zero failures, zero skips. One engine per job (13 tests, not 52).
+The seconds column is what separates "the harness broke" from "the engine ran": h2 fails in 0.1s (an immediate throw, no database) while mysql spends 23.7s (container time). The failure TYPES say the same thing independently -- IllegalArgumentException for all 13 h2 cases, AssertionFailedError for the one sqlserver case.
+ZERO SKIPS. The twelve vectors that print a skip reason on the local H2 backend all executed, including T2 (DDL transactionality), Q2 (case sensitivity) and J2 (charset fidelity). That was the entire purpose of the workflow and it worked on the first run.
+J2 on SQL Server was the one real finding, and it was the vector's own bug: it hand-wrote VARCHAR(4000) in its DDL, and SQL Server's VARCHAR is non-Unicode, so 'cafe [coffee emoji]' came back as 'cafe ?' -- silent per-character loss. SqlServerDialect.portableColumnType already returned NVARCHAR(4000) and was never asked. Fixed in F3, along with J1, which had the identical defect and was passing only because its document is ASCII. The general lesson is bigger than the line: a conformance vector that writes its own DDL is testing its own SQL, which is exactly the trap PLAN.md §6 named for probe apps and Tier B then walked into.
+WHY THIS IS STILL PARTIAL
+The results are now unambiguous; the PROCESS is not yet support:
+
+  - the workflow is workflow_dispatch-only, so nothing re-verifies any engine when a dialect
+    changes. A green run is a snapshot, not a guarantee, and the next regression is found by a user
+  - the container images are moving tags (mssql/server:2022-latest), so a future red cannot be
+    told apart from "the image changed". This is now the PRIMARY reason the trigger has not been
+    promoted -- pinning comes first
+  - E1, E2, I2 and I3 need a realized schema (Tier C + the probe apps) and cannot run here at all
+  - the MySQL DDL-implicit-commit decision (STOR-2) is now exercised by T2 against a real MySQL,
+    and T2 passed -- but T2 asserts the DECLARATION matches the engine. The schema engine's
+    behaviour under a half-applied migration is still unmeasured, and that is the one that
+    corrupts data rather than failing loudly
+
+BOTH RECORDED ENGINE GAPS ARE NOW CLOSED (storage/FULL_SUPPORT_PLAN.md W1.3), fixed rather than accepted as boundaries -- so there is nothing to add under ledger/boundaries/:
+
+  - SqlServerDialect.rowLimited() is a PREFIX rewrite (SELECT -> SELECT TOP n). The plan offered
+    two options and said to find out which call sites need it before choosing. Measured: FOUR --
+    two existence probes in PostgresPersistenceCapabilityAdapter, two first-by-order reads in
+    JdbcEventStore -- and all four want "at most n rows", not a suffix. Suffix-vs-prefix is the
+    engine's business, which is precisely what a dialect is for; pushing the question out to the
+    call sites would have MOVED the engine switch rather than removed it, which SqlDialect's own
+    javadoc names as the thing this seam must never become. rowLimit() -- the SUFFIX primitive --
+    still throws, and that stays correct: there genuinely is no suffix form there. TOP is placed
+    after DISTINCT (T-SQL's grammar is SELECT [ALL|DISTINCT] [TOP n]) and a CTE is REFUSED rather
+    than mis-capped, since no string surgery can find its final select.
+
+  - ConversionHookEmitter now takes the DatabaseEngine, threaded from GeneratorFacade, which
+    already held the GeneratedDatabasePlan two lines above the call. The claim that this was a
+    signature change MySQL could not ship without was right; the claim that it was structurally
+    hard was not. It had been asking H2 unconditionally -- the narrower of the only two engines
+    that existed -- and that stops being safe with a third (MySQL has no native UUID), in code
+    that runs during a migration, on data.
 
 ### STOR-4 — MySQL and SqlServer were selectable, dialect-complete and conformance-green -- and no generated app could ever have connected to either, because the app template carried no JDBC driver for them
 

@@ -19,55 +19,57 @@ EXISTING `storageMode` axis — both `jdbc`, because that second string is the s
 will use, not a dialect name), `UserDatabaseDefinitionLoader` (driver, JDBC URL, default port,
 container naming), and `SqlDialects` (registry).
 
-**`MySQL` and `SqlServer` are selectable but NOT supported** — though far less unproven than this
-entry first claimed. `storage-dialect-conformance.yml` has now been dispatched and is green against
-REAL containers (run `31268402414`, commit `bec03b5`):
+**`MySQL` and `SqlServer` are SUPPORTED** as of 2026-08-09, run `31296993259` -- and this entry
+spent a long time saying the opposite, correctly, so the change is worth stating precisely.
 
-| engine | Tier B | |
+The bar was never "the dialect passes unit tests". It was: **a generated app boots, serves and
+persists on this engine, in CI.** That is now true for both, in the same run, in the same job as
+Postgres:
+
+| assertion | MySQL 8.4 | SQL Server 2022 |
 |---|---|---|
-| MySQL 8.4 (utf8mb4) | **13 / 13** | |
-| PostgreSQL 16 | **13 / 13** | the S1 dialect seam caused no regression |
-| SQL Server 2022 | **13 / 13** | |
+| boots -- schema realized by NPDev's own engine | pass | pass |
+| non-BMP unicode round-trips (`cafe (coffee) (rocket)`) | pass | pass |
+| filtered + ordered + paginated query | pass | pass |
+| rows survive a restart | pass | pass |
+| Tier C: nullable column added, rows preserved (E1) | pass | pass |
+| Tier C: `renamedFrom` MOVES data (E2) | pass | pass |
+| Tier C: nullability and unique/non-unique enforced (I2/I3) | pass | pass |
+| the five `_ops` operations, byte-identical to Postgres's | pass | pass |
 
-**39 vectors, three real engines, zero failures, zero skips** — including the twelve that print a
-skip reason on the local H2 backend (T2 DDL transactionality, Q2 case sensitivity, J2 charset
-fidelity among them).
+**Eight defects stood between "the dialect is complete" and this**, each invisible until the one
+before it was fixed, and every one of them found by building the artifact a user actually runs:
 
-The first dispatch (`31264977219`) found one real defect, and it was in the TEST: J2 stored `café ☕`
-and read back `café ?`, because the vector hand-wrote `VARCHAR(4000)` and SQL Server's `VARCHAR` is
-non-Unicode. `SqlServerDialect.portableColumnType` already answered `NVARCHAR(4000)` and was never
-asked. Fixed; the vector was right to fail.
-
-**Why this is still not "supported" — updated 2026-08-08, and the reasons have changed.**
-
-The process objections are gone. The conformance workflow now runs on every relevant **push** (run
-`31272122462`, no dispatch) against **digest-pinned** images (run `31269774692`), so a green run is a
-guarantee rather than a snapshot and a future red cannot be an upstream image change. Both recorded
-engine gaps are closed, not deferred: `SqlServerDialect.rowLimited()` is a prefix rewrite
-(`SELECT TOP n`), chosen after measuring that all four real call sites want "at most n rows" rather
-than a suffix; and `ConversionHookEmitter` now takes the `DatabaseEngine` that `GeneratorFacade`
-already held two lines above the call.
-
-What replaced them is a concrete finding, and it is worth more than the objections it displaced.
-**The first application-level probe showed that no generated app could ever have run on either
-engine**, for two independent reasons neither Tier A nor Tier B can reach — because neither builds
-the artifact a user runs:
-
-| finding | measured | state |
+| # | what | id |
 |---|---|---|
-| the app template declared no MySQL or SQL Server **JDBC driver** — `Cannot load driver class: com.mysql.cj.jdbc.Driver`, at DataSource creation | run `31272786548` | fixed — `STOR-4` |
-| NPDev's own `npdev_flow_instances` keys on a `TEXT` column, which **MySQL refuses to index** (error 1170) and SQL Server cannot index either | run `31273275129` | fixed — `SqlDialect.keyableTextColumnType()` |
-| `V1__npdev_schema_realization.sql` is written in Postgres/H2 **guarded-DDL idioms** (`CREATE TABLE/INDEX IF NOT EXISTS`) that MySQL supports only partly and T-SQL not at all | run `31279857141` | **OPEN — `STOR-5`** |
+| 1 | the app template declared no MySQL/SQL Server **JDBC driver** | STOR-4 |
+| 2 | NPDev's own internal tables key on `TEXT`, which neither engine can index | STOR-4 |
+| 3 | the realization script is written in Postgres/H2 **guarded-DDL idioms** | STOR-5 |
+| 4 | a text column has THREE roles and only two were ever asked about (`TEXT DEFAULT` is MySQL error 1101) | STOR-7 |
+| 5 | a row lock is a suffix on three engines and a **table hint** on SQL Server | STOR-9 |
+| 6 | five more two-engine assumptions between "it boots" and "it works" -- a Postgres-by-default dialect probe, UUID bound as a serialized Java object, timestamps read back unbindable, a schema differ comparing the catalog against a type the emitter never wrote, a two-way column rename | STOR-10 |
+| 7 | a Postgres-only SQLSTATE, so an app booted once and **never again** | STOR-12 |
+| 8 | on MySQL a create violating `unique: true` returned **200 and overwrote the row that held the value** | STOR-11 |
 
-So the honest status is narrower and better evidenced than before: the dialects are right, the
-configuration path is right, and NPDev's own schema script is not yet portable. That last item is
-what stands between these engines and "supported", and it is bounded — Flyway stops at the first
-statement it cannot run, so each construct is found in minutes by
-`.github/workflows/engine-support.yml` rather than by a user's first boot.
+**#8 is the one to read.** It was known and documented -- `MySqlUpsertStrategy`'s javadoc described
+the divergence exactly -- and then closed with "nothing in NPDev's generated schema puts a second
+unique index on a table it also upserts by id today". That sentence was false when written: any
+field declaring `unique: true` produces exactly that shape. A record correct about the ENGINE and
+wrong about NPDEV is the more dangerous half, because it turns a live hazard into a closed question.
 
-**PostgreSQL, by contrast, is proven at application level** in the same run: a generated app boots,
-round-trips `café ☕ 🚀` byte-for-byte, paginates a filtered and ordered query, and keeps its rows
-across a restart — plus all six `npdev doctor` database checks passing live.
+**What is still true and worth knowing** (these are differences, not defects, and each is declared
+at the point of choice by `npdev engines` and by the generated `.env.example`):
+
+- **MySQL commits implicitly on DDL.** A migration that fails partway CANNOT be rolled back --
+  earlier steps are already permanent. NPDev reports this truthfully (`PartialApplicationTruth`)
+  rather than claiming a rollback it did not perform.
+- **SQL Server has no suffix row cap** (`TOP` is a prefix), so `SqlDialect.rowLimit()` throws there
+  rather than returning a plausible wrong answer. Boundary **B29**; zero production call sites --
+  every real site asks `rowLimited()`, which every engine answers.
+- **Identifiers are not quoted** (`STOR-6`, open): a field named `value`, `order` or `rows` produces
+  DDL the engine rejects. This is engine-INDEPENDENT -- it bites H2 and Postgres too -- and is not a
+  MySQL/SQL Server limitation.
+
 
 `npdev engines` marks MySQL and SQL Server EXPERIMENTAL and says why **at the point of choice**, in
 the CLI, in the Manager's dropdown and in `docs/USING_MYSQL_AND_SQL_SERVER.md` — all from one
