@@ -33,8 +33,32 @@ section() { echo; hr; echo "== $*"; hr; }
 
 pass() { CHECKS_RUN=$((CHECKS_RUN+1)); c_grn "  PASS  $1"; }
 
+# Failures listed in accepted-failures.json are still COUNTED and still PRINTED -- they are just
+# recorded separately so the exit code can distinguish "a documented step is broken" from "a case
+# we examined, wrote down, and accepted". An allowlist beats deleting the check: a deleted check
+# takes its reasoning with it, and next year nobody can tell whether the case was considered or
+# never thought of. Anything NOT on the list still turns the run red.
+ACCEPTED_FILE="$(dirname "$0")/accepted-failures.json"
+ACCEPTED_FAILURES=0
+ACCEPTED_LIST=""
+
+is_accepted() {
+  [ -f "$ACCEPTED_FILE" ] || return 1
+  jq -e --arg id "$1" '.accepted[]? | select(.id == $id)' "$ACCEPTED_FILE" >/dev/null 2>&1
+}
+
 fail() {
-  CHECKS_RUN=$((CHECKS_RUN+1)); FAILURES=$((FAILURES+1))
+  CHECKS_RUN=$((CHECKS_RUN+1))
+  if is_accepted "$1"; then
+    ACCEPTED_FAILURES=$((ACCEPTED_FAILURES+1))
+    ACCEPTED_LIST="$ACCEPTED_LIST
+     $1"
+    c_yel "  FAIL(accepted)  $1"
+    [ $# -gt 1 ] && echo "        why: $2"
+    echo "        accepted: see scripts/quality/firstrun-harness/accepted-failures.json"
+    return 0
+  fi
+  FAILURES=$((FAILURES+1))
   c_red "  FAIL  $1"
   [ $# -gt 1 ] && echo "        why: $2"
   [ $# -gt 2 ] && echo "        fix: $3"
@@ -302,6 +326,14 @@ DID_BOOTJAR=0
 DID_SYNC=0
 printf '%s\n' "$CMDS" | grep -qE 'sync-runtimehost-libs|npdev setup' && DID_SYNC=1
 printf '%s\n' "$CMDS" | grep -q 'bootJar'               && DID_BOOTJAR=1
+# Does the documented flow actually RUN a prebuilt artifact? The generated Dockerfile still
+# `COPY build/libs/<jar> app.jar` (DockerDeploymentEmitter, verified) -- so W2 is a real hazard for
+# anyone told to `docker compose up` or `java -jar` without being told to build the jar first. It is
+# NOT a hazard for a flow that never goes there: `npdev dev` and `npdev run app` build the jar
+# themselves. Asking unconditionally for `bootJar` made this check fail on a README that had
+# correctly moved past needing it -- testing the remedy instead of the hazard.
+NEEDS_PREBUILT=0
+printf '%s\n' "$CMDS" | grep -qE 'docker compose up|docker run|java -jar' && NEEDS_PREBUILT=1
 
 # A real terminal keeps ONE persistent working directory across a whole session -- `cd` in one
 # line changes where the NEXT line runs. Each extracted command here runs in its own throwaway
@@ -321,11 +353,15 @@ else
        "add 'npdev setup' (or sync-runtimehost-libs.ps1 -BuildLocalJars) as the FIRST quickstart step"
 fi
 
-if [ "$DID_BOOTJAR" = "1" ]; then
+if [ "$NEEDS_PREBUILT" = "0" ]; then
+  # Stated rather than silently skipped: the reader should be able to tell "this hazard cannot
+  # arise here" from "this check did not run", which are very different claims.
+  pass "documents-bootJar-before-run (n/a -- the documented flow never runs a prebuilt jar)"
+elif [ "$DID_BOOTJAR" = "1" ]; then
   pass "documents-bootJar-before-run"
 else
   fail "documents-bootJar-before-run" \
-       "README goes straight to 'docker compose up', but the generated Dockerfile COPYs an ALREADY-BUILT jar -- its own first comment says to run ./gradlew bootJar first (W2)" \
+       "README documents running the container or the jar, but the generated Dockerfile COPYs an ALREADY-BUILT jar -- its own first comment says to run ./gradlew bootJar first (W2)" \
        "insert './gradlew bootJar' before any run instruction"
 fi
 
@@ -1086,9 +1122,19 @@ section "SUMMARY"
 
 echo "  checks run : $CHECKS_RUN"
 echo "  failures   : $FAILURES"
+if [ "$ACCEPTED_FAILURES" -gt 0 ]; then
+  echo "  accepted   : $ACCEPTED_FAILURES (declared in accepted-failures.json)"
+fi
 echo
 
 if [ "$FAILURES" -eq 0 ]; then
+  if [ "$ACCEPTED_FAILURES" -gt 0 ]; then
+    # Never a silent green. The accepted ones are named again here, at the bottom, where someone
+    # skimming for a verdict will actually see them.
+    c_yel "  GREEN with $ACCEPTED_FAILURES accepted failure(s):$ACCEPTED_LIST"
+    c_yel "  Each is justified in accepted-failures.json. Re-read that file when this list grows."
+    echo
+  fi
   c_grn "  GREEN -- a bare machine can follow README.md end to end."
   exit 0
 fi

@@ -1,0 +1,40 @@
+{
+  "_comment": [
+    "Failures the first-run harness may report and STILL exit 0 -- each with a written reason.",
+    "",
+    "WHY AN ALLOWLIST RATHER THAN DELETING THE CHECK. A deleted check takes its reasoning with it:",
+    "next year nobody can tell whether the case was considered and accepted, or never thought of.",
+    "This file makes acceptance a visible, reviewable claim -- the same shape as",
+    "corpus-parse-allowlist.json and dsl-coverage-allowlist.json elsewhere in this repo.",
+    "",
+    "RULES.",
+    "  - An entry is an admission, not a fix. Keep the list short and re-read it when it grows.",
+    "  - The harness still PRINTS every accepted failure, loudly, on every run. Accepted is not",
+    "    hidden.",
+    "  - A failure NOT in this list still turns the run red. That is the whole point: the exit code",
+    "    keeps meaning something.",
+    "  - `id` matches the check label the harness prints, exactly."
+  ],
+
+  "accepted": [
+    {
+      "id": "cmd: ./npdev doctor",
+      "why": [
+        "`npdev doctor` exits non-zero on a fresh clone because the runtimehost jars are not staged",
+        "yet -- which is TRUE, and is exactly what the next documented command (`./npdev setup`)",
+        "fixes. The command is a diagnostic: reporting an unmet precondition IS its job, and it",
+        "names the remedy in the same breath.",
+        "",
+        "The alternatives were both worse. Reordering README to run `setup` before `doctor` would",
+        "make a user with the wrong Java spend ~10 minutes building jars before being told. Making",
+        "`runtimehost-jars` a WARN would change the meaning of a check id that is frozen by",
+        "manager/helpers/checks-contract.json and that the Manager's Ready screen renders.",
+        "",
+        "So the harness's own rule -- every documented command must exit 0 -- is the thing that is",
+        "too strong here, for a documented check-then-fix sequence. Accepted rather than silently",
+        "special-cased in the script, so the judgement is reviewable."
+      ],
+      "revisitWhen": "doctor stops reporting unstaged jars as a failure, or README stops documenting `doctor` before `setup`."
+    }
+  ]
+}
