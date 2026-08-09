@@ -73,6 +73,11 @@ public final class H2Dialect implements SqlDialect {
     }
 
     @Override
+    public boolean isReservedIdentifier(String rawIdentifier) {
+        return SqlReservedWords.isReserved(name(), rawIdentifier);
+    }
+
+    @Override
     public boolean foldsUnquotedIdentifiersToLowerCase() {
         // In PostgreSQL compatibility mode with DATABASE_TO_LOWER, which is how NPDev runs H2.
         return true;

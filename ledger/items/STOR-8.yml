@@ -1,11 +1,12 @@
 id: STOR-8
 title: >-
-  db.definition.json's `h2FilePath` and `jdbcUrl` are parsed, validated and then ignored -- a user
-  who sets either gets no error and no effect
+  db.definition.json's `jdbcUrl`/`h2FilePath` could contradict the real connection silently -- a user
+  pointing one at an existing database got no error and a connection somewhere else
 type: BUG
-severity: LOW
-status: OPEN
+severity: MEDIUM
+status: DONE
 opened: 2026-08-08
+closed: 2026-08-09
 verification: VERIFIED_LIVE
 surface: generator/dbconfig/UserDatabaseDefinitionLoader
 source: >-
@@ -26,23 +27,45 @@ detail: >-
 
   Not the same defect as an unknown key. An unknown key would at least be visibly unrecognized; these
   two are in the schema, survive validation, and read as supported.
-resolution: >-
-  OPEN. Measured, not started.
 
-  Two defensible fixes and they point in opposite directions, which is why this is filed rather than
-  patched in passing: (a) honour them -- an explicit `jdbcUrl` wins outright, an `h2FilePath`
-  replaces the derived data root; or (b) remove them from the record and the schema, and reject a
-  definition that sets one. (a) is what a user reading the schema expects. (b) is smaller and matches
-  how the rest of the block behaves, since host/port/databaseName are already the supported way to
-  say where a database is.
+  CORRECTED ON CLOSING: the paragraph above is half wrong, and the correction is in `resolution`.
+  `jdbcUrl` IS consulted -- for H2Server, host and port are parsed out of it. `h2FilePath` is the one
+  that is genuinely read by nothing. Left in place rather than rewritten, because what this record
+  BELIEVED is the reason the first proposed fix would have broken twelve apps.
+resolution: |
+  DONE, and the fix is NOT the one this record proposed. Severity raised LOW -> MEDIUM on the way:
+  "parsed and ignored" undersells it. A user who points `jdbcUrl` at an existing production database
+  gets no error, no warning, and a connection to a DIFFERENT database -- and may then write to it.
 
-  What the workaround for it looked like is worth keeping: Tier C's E1/E2 probes each have a v1 and
-  a v2 that must share one database. On a server engine the database NAME is the whole address, so
-  they did. On file-backed H2 the address includes the app id, the two versions had different
-  manifest ids, and the probe reported "0 rows survived" while measuring two different files. Fixed
-  by giving the two versions the same manifest id -- which is also just true, since they are two
-  versions of one app -- but only because there was no supported way to state the path.
+  TWO THINGS THIS RECORD GOT WRONG, both found by measuring before implementing:
+
+  1. `jdbcUrl` is NOT ignored. For H2Server, `resolveHost` and `resolveHostPort` parse the host and
+     port out of it, and `validate` accepts it as the documented ALTERNATIVE to host/port
+     ("database.jdbcUrl or database.host/database.port is required for H2Server"). It is inert on
+     every other engine. `h2FilePath` is the genuinely inert one.
+
+  2. The proposed fix -- refuse both fields outright -- would have broken TWELVE app definitions,
+     four of them official samples (AuxScreen, Pigmentampa, WmsOffice, WordLab). Every one of the
+     twelve declares exactly what NPDev composes anyway. A blanket refusal would have broken all of
+     them to fix a hazard none of them has.
+
+  WHAT SHIPPED: `refuseDeclarationThatDisagrees`, called after the URL is composed so it can compare
+  the declaration against the real answer. A value that AGREES passes; one that CONTRADICTS fails at
+  generation time, quoting both. Options are ignored when comparing (`MODE=`, `DB_CLOSE_ON_EXIT=`) --
+  an app may legitimately spell those differently, and failing on that would be the noisy gate this
+  project refuses everywhere else.
+
+  PROVEN BOTH WAYS:
+    - `simple-consumer-h2server` -- a REAL app that sets jdbcUrl and no host/port -- still generates
+    - a contradicting h2FilePath is refused, naming declared AND actual
+    - three tests in UserDatabaseDefinitionDeclaredConnectionTest, including the agreeing case,
+      because that is the one a blanket refusal would have regressed
+
+  NOT DONE, deliberately: honouring an explicit URL. That is a feature, and it raises a real question
+  -- does it bypass the identity check that stops two apps sharing a database? -- which deserves its
+  own design rather than being smuggled into a cleanup. The refusal message says so, and invites the
+  request.
 files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java
-  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinition.java
-  - NPDevSamples/probes/p2-evolve/v1/Input/manifest.json
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionDeclaredConnectionTest.java
+  - BREAKING.md

@@ -6,16 +6,14 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**158 item(s) migrated: 4 open/partial, 154 done.**
+**158 item(s) migrated: 2 open/partial, 156 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
 | QUAL-1 | check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight | GAP | LOW | OPEN | 2026-08-09 |
-| STOR-5 | The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run | GAP | HIGH | OPEN | 2026-08-08 |
 | STOR-6 | The generator never quotes business identifiers, so a model field named after a reserved word (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the dialect layer and never exercised at application level | BUG | MEDIUM | OPEN | 2026-08-08 |
-| STOR-8 | db.definition.json's `h2FilePath` and `jdbcUrl` are parsed, validated and then ignored -- a user who sets either gets no error and no effect | BUG | LOW | OPEN | 2026-08-08 |
 
 ### Detail
 
@@ -47,49 +45,6 @@ The other two over-budget scripts have arguments that this one does not:
 
 913 against 400 is not 2%. It is a checker that has accumulated several jobs.
 
-### STOR-5 — The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run
-
-**Type:** GAP · **Severity:** HIGH · **Status:** OPEN
-**Verification:** VERIFIED_LIVE
-**Source:** storage/FULL_SUPPORT_PLAN.md gap A / exit criteria E3+E4. Uncovered one construct at a time by the application-level probe, once STOR-4's missing JDBC driver stopped hiding everything behind it.
-**Surface:** `generator/dbconfig/SchemaRealizationEmitter, kernel/storage-dialect`
-**Files:**
-- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
-- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java`
-- `scripts/quality/check-dialect-sites.py`
-- `.github/workflows/engine-support.yml`
-
-`SchemaRealizationEmitter` writes `V1__npdev_schema_realization.sql`, the Flyway script that creates NPDev's own internal tables and the app's business tables. It is written in the guarded-DDL dialect of Postgres and H2:
-
-    CREATE TABLE IF NOT EXISTS ...
-    CREATE INDEX IF NOT EXISTS ...
-    ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...
-
-MEASURED, one CI round each, against real containers:
-
-  run 31273275129  MySQL      error 1170 -- BLOB/TEXT column 'execution_id' used in key
-                              specification without a key length          [FIXED: STOR-4 / keyableTextColumnType]
-  run 31279857141  MySQL      error 1064 -- syntax error near 'IF NOT EXIST...'
-                              (MySQL has no CREATE INDEX IF NOT EXISTS)    [THIS ITEM]
-  run 31279857141  SQL Server "Incorrect syntax near 'probe_reserveds'"
-                              (T-SQL has no CREATE TABLE IF NOT EXISTS)    [THIS ITEM]
-
-WHY IT SURFACED ONLY NOW, AND WHY THAT IS THE POINT
-Every layer below this was green and stayed green: Tier A (78 assertions, four engines), Tier B (14/14 behavioural vectors per engine against REAL containers, zero skips), and the whole configuration path. None of them ever asks the engine to run NPDev's OWN generated DDL, because none of them generates an app. This is gap A restated concretely for a second time -- STOR-4 was the first -- and it is the reason the plan ranks "a generated app boots" above everything else.
-The failures are also strictly ordered: each fix reveals the next construct, because Flyway stops at the first statement it cannot run. That makes the remaining work bounded and visible rather than open-ended, but it does mean one CI round per construct until the seam is complete.
-WHAT THE FIX LOOKS LIKE
-This belongs in `SqlDialect`, beside `guardedConstraintDdl` which already exists for exactly this reason -- a Postgres `DO $$ ... $$` block that MySQL and SQL Server have no equivalent for. The same treatment is needed for the three idioms above:
-
-  Postgres / H2   native IF NOT EXISTS
-  MySQL           CREATE TABLE IF NOT EXISTS is supported; CREATE INDEX IF NOT EXISTS and
-                  ADD COLUMN IF NOT EXISTS are not -- they need an information_schema guard around
-                  a PREPARE/EXECUTE, or Flyway callbacks
-  SQL Server      none are supported -- each needs an IF OBJECT_ID(...) IS NULL / IF NOT EXISTS
-                  (SELECT ... FROM sys.*) wrapper
-
-`check-dialect-sites.py` should grow patterns for these three constructs at the same time, so the next one written inline fails the gate rather than a CI job.
-DO NOT let this be worked around in the workflow (for instance by pre-creating tables). The point of the probe is that a USER's first boot runs this script.
-
 ### STOR-6 — The generator never quotes business identifiers, so a model field named after a reserved word (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the dialect layer and never exercised at application level
 
 **Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
@@ -116,26 +71,7 @@ WHY IT SURVIVED THIS LONG
 The same shape as STOR-4 and STOR-5, a third time: the capability is correct at the layer that owns it and is never consulted by the layer that emits. Q1 passes on all four engines because it asks the DIALECT to quote a string. No corpus app happens to use a reserved word for a business field -- the canary uses title/priority/status -- so nothing downstream ever exercised the path.
 It is MEDIUM rather than HIGH only because it fails loudly at first boot, on every engine, rather than silently. A user hits it the moment they model a field called `value`, `order`, `group`, `user` or `key` -- which is not an exotic thing to do.
 
-### STOR-8 — db.definition.json's `h2FilePath` and `jdbcUrl` are parsed, validated and then ignored -- a user who sets either gets no error and no effect
-
-**Type:** BUG · **Severity:** LOW · **Status:** OPEN
-**Verification:** VERIFIED_LIVE
-**Source:** storage/OPEN_ITEMS_PLAN.md W10. Found while working out why Tier C's E1 measured nothing on h2local -- the obvious fix was "point both versions at the same file", and there is no way to.
-**Surface:** `generator/dbconfig/UserDatabaseDefinitionLoader`
-**Files:**
-- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java`
-- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinition.java`
-- `NPDevSamples/probes/p2-evolve/v1/Input/manifest.json`
-
-`UserDatabaseDefinitionLoader.load` reads both fields into `UserDatabaseDefinition`:
-
-    text(database, "jdbcUrl"),
-    text(database, "h2FilePath"),
-
-and nothing downstream reads either one. `jdbcUrl(definition, identity)` composes the URL for every engine from `identity`, whose data root is always `<workspace>/Build/databases/<appId>` -- appId being the `manifest.json` id, never anything the database block says. So a user who writes an explicit `jdbcUrl` to point at an existing database, or an `h2FilePath` to put the file somewhere else, gets silence: no error, no warning, and a connection to a different database than the one they named.
-Not the same defect as an unknown key. An unknown key would at least be visibly unrecognized; these two are in the schema, survive validation, and read as supported.
-
-## Done (154)
+## Done (156)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -294,7 +230,9 @@ Not the same defect as an unknown key. An unknown key would at least be visibly 
 | STOR-2 | A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-3 | MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images | GAP | MEDIUM | DONE | 2026-08-08 |
 | STOR-4 | MySQL and SqlServer were selectable, dialect-complete and conformance-green -- and no generated app could ever have connected to either, because the app template carried no JDBC driver for them | BUG | HIGH | DONE | 2026-08-08 |
+| STOR-5 | The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run | GAP | HIGH | DONE | 2026-08-08 |
 | STOR-7 | A text column plays three roles -- payload, key, defaulted -- and only two were ever asked about; MySQL rejected a TEXT DEFAULT and SQL Server could not index the runtime host's own bootstrap tables, so no generated app booted on either engine | BUG | HIGH | DONE | 2026-08-08 |
+| STOR-8 | db.definition.json's `jdbcUrl`/`h2FilePath` could contradict the real connection silently -- a user pointing one at an existing database got no error and a connection somewhere else | BUG | MEDIUM | DONE | 2026-08-08 |
 | STOR-9 | A row lock is a suffix on three engines and a table hint on SQL Server, and three sites spelled the suffix inline -- so every app's FIRST boot on SQL Server died taking the migration lock, after the schema had already realized correctly | BUG | HIGH | DONE | 2026-08-08 |
 
 ### Detail
@@ -7373,6 +7311,49 @@ So the platform could be, simultaneously and honestly:
 "The dialect works" and "an app works" were different claims, and only an application-level probe could tell them apart. That is exactly why FULL_SUPPORT_PLAN.md ranks "a generated app boots" as gap A rather than a formality, and the ranking turned out to be right for a more concrete reason than the plan itself predicted.
 A third person following the supported path -- `npdev init --engine mysql`, then run -- would have hit this on their first boot, with a Spring stack trace and no indication that the engine had never been usable.
 
+### STOR-5 — The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run
+
+**Type:** GAP · **Severity:** HIGH · **Status:** DONE (2026-08-09)
+**Verification:** VERIFIED_LIVE
+**Source:** storage/FULL_SUPPORT_PLAN.md gap A / exit criteria E3+E4. Uncovered one construct at a time by the application-level probe, once STOR-4's missing JDBC driver stopped hiding everything behind it.
+**Surface:** `generator/dbconfig/SchemaRealizationEmitter, kernel/storage-dialect`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java`
+- `scripts/quality/check-dialect-sites.py`
+- `.github/workflows/engine-support.yml`
+
+`SchemaRealizationEmitter` writes `V1__npdev_schema_realization.sql`, the Flyway script that creates NPDev's own internal tables and the app's business tables. It is written in the guarded-DDL dialect of Postgres and H2:
+
+    CREATE TABLE IF NOT EXISTS ...
+    CREATE INDEX IF NOT EXISTS ...
+    ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...
+
+MEASURED, one CI round each, against real containers:
+
+  run 31273275129  MySQL      error 1170 -- BLOB/TEXT column 'execution_id' used in key
+                              specification without a key length          [FIXED: STOR-4 / keyableTextColumnType]
+  run 31279857141  MySQL      error 1064 -- syntax error near 'IF NOT EXIST...'
+                              (MySQL has no CREATE INDEX IF NOT EXISTS)    [THIS ITEM]
+  run 31279857141  SQL Server "Incorrect syntax near 'probe_reserveds'"
+                              (T-SQL has no CREATE TABLE IF NOT EXISTS)    [THIS ITEM]
+
+WHY IT SURFACED ONLY NOW, AND WHY THAT IS THE POINT
+Every layer below this was green and stayed green: Tier A (78 assertions, four engines), Tier B (14/14 behavioural vectors per engine against REAL containers, zero skips), and the whole configuration path. None of them ever asks the engine to run NPDev's OWN generated DDL, because none of them generates an app. This is gap A restated concretely for a second time -- STOR-4 was the first -- and it is the reason the plan ranks "a generated app boots" above everything else.
+The failures are also strictly ordered: each fix reveals the next construct, because Flyway stops at the first statement it cannot run. That makes the remaining work bounded and visible rather than open-ended, but it does mean one CI round per construct until the seam is complete.
+WHAT THE FIX LOOKS LIKE
+This belongs in `SqlDialect`, beside `guardedConstraintDdl` which already exists for exactly this reason -- a Postgres `DO $$ ... $$` block that MySQL and SQL Server have no equivalent for. The same treatment is needed for the three idioms above:
+
+  Postgres / H2   native IF NOT EXISTS
+  MySQL           CREATE TABLE IF NOT EXISTS is supported; CREATE INDEX IF NOT EXISTS and
+                  ADD COLUMN IF NOT EXISTS are not -- they need an information_schema guard around
+                  a PREPARE/EXECUTE, or Flyway callbacks
+  SQL Server      none are supported -- each needs an IF OBJECT_ID(...) IS NULL / IF NOT EXISTS
+                  (SELECT ... FROM sys.*) wrapper
+
+`check-dialect-sites.py` should grow patterns for these three constructs at the same time, so the next one written inline fails the gate rather than a CI job.
+DO NOT let this be worked around in the workflow (for instance by pre-creating tables). The point of the probe is that a USER's first boot runs this script.
+
 ### STOR-7 — A text column plays three roles -- payload, key, defaulted -- and only two were ever asked about; MySQL rejected a TEXT DEFAULT and SQL Server could not index the runtime host's own bootstrap tables, so no generated app booted on either engine
 
 **Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-08)
@@ -7412,6 +7393,26 @@ B. SQL Server 2022, at `afterMigrate`:
 Six `CREATE TABLE` statements are issued by the runtime host ITSELF, inline, in Java, around the migration rather than by it -- npdev_schema_migration_claim, npdev_schema_migration_mark, npdev_schema_pending_ack, npdev_schema_history and npdev_schema_metadata (twice). Every one spelled `id TEXT PRIMARY KEY`. They are not in the `internalTables` catalog, so no amount of work on SchemaRealizationEmitter could ever have reached them; SQL Server renders TEXT as NVARCHAR(MAX), which it cannot index at all.
 WHY IT SURVIVED
 The same shape as STOR-4 and STOR-5 for the third and fourth time: the capability is right in the layer that owns it and is not consulted by the layer that emits. `keyableTextColumnType()` existed, was conformance-tested at Tier A on all four engines, and answered correctly -- for the one role anyone had thought to ask about. Tier B takes a raw JDBC connection and hand-writes its tables, so it never sees NPDev's own DDL. Only generating, building and BOOTING an app reaches this code, and until STOR-4 and STOR-5 were fixed nothing ever got this far.
+
+### STOR-8 — db.definition.json's `jdbcUrl`/`h2FilePath` could contradict the real connection silently -- a user pointing one at an existing database got no error and a connection somewhere else
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-09)
+**Verification:** VERIFIED_LIVE
+**Source:** storage/OPEN_ITEMS_PLAN.md W10. Found while working out why Tier C's E1 measured nothing on h2local -- the obvious fix was "point both versions at the same file", and there is no way to.
+**Surface:** `generator/dbconfig/UserDatabaseDefinitionLoader`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java`
+- `NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionDeclaredConnectionTest.java`
+- `BREAKING.md`
+
+`UserDatabaseDefinitionLoader.load` reads both fields into `UserDatabaseDefinition`:
+
+    text(database, "jdbcUrl"),
+    text(database, "h2FilePath"),
+
+and nothing downstream reads either one. `jdbcUrl(definition, identity)` composes the URL for every engine from `identity`, whose data root is always `<workspace>/Build/databases/<appId>` -- appId being the `manifest.json` id, never anything the database block says. So a user who writes an explicit `jdbcUrl` to point at an existing database, or an `h2FilePath` to put the file somewhere else, gets silence: no error, no warning, and a connection to a different database than the one they named.
+Not the same defect as an unknown key. An unknown key would at least be visibly unrecognized; these two are in the schema, survive validation, and read as supported.
+CORRECTED ON CLOSING: the paragraph above is half wrong, and the correction is in `resolution`. `jdbcUrl` IS consulted -- for H2Server, host and port are parsed out of it. `h2FilePath` is the one that is genuinely read by nothing. Left in place rather than rewritten, because what this record BELIEVED is the reason the first proposed fix would have broken twelve apps.
 
 ### STOR-9 — A row lock is a suffix on three engines and a table hint on SQL Server, and three sites spelled the suffix inline -- so every app's FIRST boot on SQL Server died taking the migration lock, after the schema had already realized correctly
 

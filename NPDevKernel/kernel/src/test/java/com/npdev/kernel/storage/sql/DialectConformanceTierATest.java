@@ -474,6 +474,53 @@ class DialectConformanceTierATest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("dialects")
+    @DisplayName("Q3: a reserved identifier is quoted, an ordinary one is left ALONE")
+    void reservedIdentifiersAreQuotedAndOthersAreNot(SqlDialect dialect) {
+        // STOR-6. quoteIdentifier has existed and been conformance-tested since S1, with a javadoc
+        // saying "a user will eventually name a field `order` or `group`" -- and the generator never
+        // called it once. A user who did exactly that got DDL the engine rejects at first boot.
+        //
+        // The half that matters as much as the quoting: an ORDINARY identifier must come back
+        // untouched. Quoting everything would change the emitted DDL for every existing app and, on
+        // Postgres, pin the case of identifiers that are physically lower-case today -- so a
+        // deployed database would stop matching. 34 of 36 corpus models must emit byte-identical SQL
+        // after this change, and that is only true if `identifier` is a no-op for them.
+        assertEquals("customer_name", dialect.identifier("customer_name"),
+                dialect.name() + ": an ordinary identifier must be returned UNCHANGED");
+        assertEquals("orders", dialect.identifier("orders"),
+                dialect.name() + ": `orders` is not reserved anywhere -- toSnakePlural is why table "
+                + "names rarely collide, and why a scan that ignores it over-reports");
+
+        // `select` is reserved on every SQL engine there is.
+        String quoted = dialect.identifier("select");
+        assertNotEquals("select", quoted, dialect.name() + ": `select` must be quoted");
+        assertEquals(dialect.quoteIdentifier("select"), quoted,
+                dialect.name() + ": identifier() must quote exactly as quoteIdentifier does");
+
+        // The engine-SPECIFIC half -- the reason this is a dialect fact and not a shared constant.
+        assertEquals("mysql".equals(dialect.name()), dialect.isReservedIdentifier("rank"),
+                dialect.name() + ": `rank` is reserved on MySQL and nowhere else in this set");
+        assertEquals("sqlserver".equals(dialect.name()), dialect.isReservedIdentifier("plan"),
+                dialect.name() + ": `plan` is reserved on SQL Server and nowhere else in this set");
+
+        // Case-insensitive: a field named `Order` collides exactly as `order` does.
+        assertNotEquals("Order", dialect.identifier("Order"),
+                dialect.name() + ": reserved-word matching must ignore case");
+        if (dialect.foldsUnquotedIdentifiersToLowerCase()) {
+            // Postgres folds, so a column created unquoted as `Order` is physically `order`.
+            // Quoting it as "Order" would name a column that does not exist.
+            assertEquals(dialect.quoteIdentifier("order"), dialect.identifier("Order"),
+                    dialect.name() + ": folds unquoted identifiers, so quote the FOLDED form");
+        }
+
+        // An empty set would pass every assertion above except this one, while protecting nothing.
+        assertTrue(SqlReservedWords.countFor(dialect.name()) > 50,
+                dialect.name() + ": reserved-word set looks empty or truncated -- got "
+                + SqlReservedWords.countFor(dialect.name()));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
     @DisplayName("C1: EVERY engine can cap a statement, whatever shape its cap takes")
     void everyDialectCanCapAStatement(SqlDialect dialect) {
         // storage/FULL_SUPPORT_PLAN.md W1.3. The gap was never "SQL Server cannot cap rows" -- it is
