@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -333,6 +334,37 @@ class DialectConformanceTierATest {
             // text column on it -- a schema diff for nothing, on the two engines that were working.
             assertEquals(dialect.portableColumnType("TEXT"), type,
                     dialect.name() + ": accepts a DEFAULT on unbounded text, so it must not narrow");
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("L1: EVERY engine can lock the rows it reads, whatever shape its lock takes")
+    void everyDialectCanLockTheRowsItReads(SqlDialect dialect) {
+        // STOR-9, and the same lesson as C1 one layer down: the gap was never "SQL Server cannot lock
+        // a row", it is that the lock is not a SUFFIX there. T-SQL has no FOR UPDATE outside a cursor
+        // and puts the lock in a table hint BEFORE the WHERE:
+        //
+        //     Line 1: FOR UPDATE clause allowed only for DECLARE CURSOR.   (CI run 31285509636)
+        //
+        // MigrationClaimStore spelled the suffix inline, so every app's FIRST boot on SQL Server died
+        // taking the migration lock -- after the schema had realized correctly, which is what made it
+        // look like a new bug rather than the same one.
+        String sql = dialect.selectForUpdate("instance_id", "npdev_schema_migration_claim",
+                "claim_key = ?");
+        String upper = sql.toUpperCase(java.util.Locale.ROOT);
+        assertTrue(upper.startsWith("SELECT INSTANCE_ID FROM NPDEV_SCHEMA_MIGRATION_CLAIM"), sql);
+        assertTrue(sql.contains("claim_key = ?"), sql);
+        if ("sqlserver".equals(dialect.name())) {
+            assertTrue(upper.contains("WITH (UPDLOCK, ROWLOCK)"), sql);
+            assertFalse(upper.contains("FOR UPDATE"),
+                    "T-SQL has no FOR UPDATE outside a cursor: " + sql);
+            // Position is the whole point -- a hint AFTER the WHERE is a syntax error, so asserting
+            // its mere presence would pass on a statement the engine still refuses.
+            assertTrue(upper.indexOf("UPDLOCK") < upper.indexOf("WHERE"),
+                    "the hint must precede the WHERE: " + sql);
+        } else {
+            assertTrue(upper.endsWith("FOR UPDATE"), sql);
         }
     }
 

@@ -360,6 +360,30 @@ def restart_assertion(app: App, results: list[dict], boot_timeout: int) -> None:
     log(f"{'PASS' if results[-1]['ok'] else 'FAIL'}  restart-preserves-rows: {results[-1]['detail']}")
 
 
+def print_boot_log_tail(boot_log: Path, lines: int = 120) -> None:
+    """On ANY failure, print the app's own log -- not only when the app failed to BOOT.
+
+    The harness used to surface the boot log only in the "it never became healthy" path. When the app
+    booted and a WRITE returned 500, all CI showed was:
+
+        create returned 500: {'status': 500, 'error': 'Internal Server Error',
+                              'path': '/api/concepts/probe_records'}
+
+    which names no cause at all -- the stack trace was in a file on a runner that then went away. That
+    cost a full ~12-minute round to learn nothing, on top of the round that produced it. The whole
+    point of this exercise is that a failure has to say why the first time.
+    """
+    try:
+        content = boot_log.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as error:
+        log(f"could not read the boot log at {boot_log}: {error}")
+        return
+    log(f"---- last {min(lines, len(content))} line(s) of {boot_log} ----")
+    for line in content[-lines:]:
+        print(line, flush=True)
+    log("---- end of boot log ----")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--engine", required=True)
@@ -415,6 +439,8 @@ def main(argv: list[str] | None = None) -> int:
             app.stop()
 
     ok = failure is None and all(result["ok"] for result in results)
+    if not ok:
+        print_boot_log_tail(boot_log)
     report = {
         "schemaVersion": "npdev-engine-app-proof.v1",
         "engine": args.engine,

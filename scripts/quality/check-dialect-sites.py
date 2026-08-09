@@ -168,6 +168,18 @@ CONSTRUCTS = {
         "DEFAULT",
     ),
 
+    # STOR-9. A row lock is a SUFFIX on three engines and a TABLE HINT (before the WHERE) on SQL
+    # Server, which has no FOR UPDATE outside a cursor at all:
+    #   Line 1: FOR UPDATE clause allowed only for DECLARE CURSOR.   (CI run 31285509636)
+    # Two sites spelled it inline -- the migration claim lock, which every app takes on its FIRST
+    # boot, and the JDBC circuit-breaker store, which is bound for every jdbc engine despite living
+    # in a module named circuit-postgres.
+    "row-lock": (
+        r"\bFOR\s+UPDATE\b|\bWITH\s*\(\s*UPDLOCK",
+        "dialect.selectForUpdate(columns, table, whereClause) -- T-SQL puts the lock in a table hint "
+        "before the WHERE, so it cannot be a suffix",
+    ),
+
     "pagination": (
 
         # `:` must be glued to an identifier (LIMIT :pageSize). Without that the class also matched
@@ -256,6 +268,12 @@ SQL_CONTEXT = re.compile(
 
 CONTEXT_REQUIRED = {"returning"}
 
+# `row-lock` needs a stricter context than SQL_CONTEXT provides: "Failed reading (for update)
+# concept X from JDBC store" satisfies SQL_CONTEXT because of the word FROM. A real row lock is
+# always part of a SELECT, so that is the keyword to require.
+SELECT_CONTEXT = re.compile(r"\bSELECT\b", re.IGNORECASE)
+SELECT_CONTEXT_REQUIRED = {"row-lock"}
+
 
 
 # A comment that MENTIONS SQL is not emitted SQL. Counting these is how a keyword grep overstates a
@@ -321,6 +339,10 @@ def scan(repo: Path) -> list[dict]:
                     continue
 
                 if construct in CONTEXT_REQUIRED and not SQL_CONTEXT.search(line):
+
+                    continue
+
+                if construct in SELECT_CONTEXT_REQUIRED and not SELECT_CONTEXT.search(line):
 
                     continue
 

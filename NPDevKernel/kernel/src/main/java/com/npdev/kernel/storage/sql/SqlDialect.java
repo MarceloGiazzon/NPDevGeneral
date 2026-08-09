@@ -249,6 +249,29 @@ public interface SqlDialect {
         return sql + rowLimit(rows) + "\n";
     }
 
+    /**
+     * A {@code SELECT} that takes a write lock on the rows it reads, so a check-then-act is atomic.
+     *
+     * <p><b>Built here rather than suffixed, because the lock is not always a suffix.</b> Three
+     * engines write {@code SELECT ... FROM t WHERE ... FOR UPDATE}; T-SQL has no {@code FOR UPDATE}
+     * outside a cursor and puts its lock in a TABLE HINT, before the {@code WHERE}:
+     *
+     * <pre>
+     *   SELECT instance_id FROM t WITH (UPDLOCK, ROWLOCK) WHERE claim_key = ?
+     * </pre>
+     *
+     * <p>Measured in CI run 31285509636 -- {@code MigrationClaimStore} spelled the suffix inline and
+     * SQL Server refused the app's very first boot with "Line 1: FOR UPDATE clause allowed only for
+     * DECLARE CURSOR". This is the same shape as {@link #rowLimited(String, long)}'s known gap: an
+     * idiom that is a suffix on three engines and a different POSITION on the fourth cannot be a
+     * suffix method, so the dialect assembles the whole statement.
+     *
+     * @param columns    the select list, already safe (e.g. {@code "instance_id"})
+     * @param table      the table name, already safe
+     * @param whereClause the predicate WITHOUT the {@code WHERE} keyword, e.g. {@code "claim_key = ?"}
+     */
+    String selectForUpdate(String columns, String table, String whereClause);
+
     /** Insert-or-update. See {@link UpsertStrategy} for why this is a strategy and not a template. */
     UpsertStrategy upsert();
 
