@@ -17,6 +17,11 @@
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:461",
       "why": "Generation-time emitter: builds DDL/UI text into an artifact and executes nothing. Its identifiers come from SqlIdentifierSupport, whose toSnake whitelist emits only [a-z0-9_]. Round 5 section 1."
     },
+    "0085a95b7804": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:245",
+      "why": "Pre-existing and unchanged in substance; the fingerprint moved because ConversionHookEmitter gained an `-- Engine:` header line (STOR-7 follow-up). `table` and the column names come from SqlIdentifierSupport.columnName/safeSqlIdentifier, which is the sanitiser this emitter has always run every identifier through, and portableSqlType() returns a dialect-chosen type from a closed set. Generation-time only -- this text is written to a file, never executed against a live connection with request data in scope. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "015998481669": {
       "rule": "F3",
       "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:50",
@@ -36,6 +41,16 @@
       "rule": "E1",
       "where": "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache:209 (authorizeCreateFlowWithConceptGateway, enforceWithConceptGateway under {{#kernelControlled}})",
       "why": "Move 15 Phase A item A1 (REG-120). Same E1/REG-44 class as the other 13 (now 14) {{#kernelControlled}}-with-no-opposite-arm sites in this file: crud.kernelControlled is a single app-level off-switch for ALL generated authz, defaults to true, and a model author disabling it is within the trust boundary -- UnenforceableAccessRuleCheck (REG-44's fix) already refuses generation outright if a concept declares access.read/access.write while kernelControlled resolves false, so the 'silently unenforced declared rule' gap this pattern warns about cannot occur. REG-120 only added a second call (authorizeCreateFlowWithConceptGateway, the validate-only form used when a create Flow is declared) alongside the pre-existing enforceWithConceptGateway inside the SAME already-accepted guard; it does not introduce a new occurrence of the class."
+    },
+    "04a0e709ed36": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:300",
+      "why": "Pre-existing and unchanged in substance; the fingerprint moved because ConversionHookEmitter gained an `-- Engine:` header line (STOR-7 follow-up). `table` and the column names come from SqlIdentifierSupport.columnName/safeSqlIdentifier, which is the sanitiser this emitter has always run every identifier through, and portableSqlType() returns a dialect-chosen type from a closed set. Generation-time only -- this text is written to a file, never executed against a live connection with request data in scope. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
+    "0599fbb10eb3": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/PendingSchemaAcknowledgmentStore.java:59",
+      "why": "Not model-author-reachable. The spliced values are InternalDdlTypes.keyText()/text(), which return a COLUMN TYPE chosen by the active SqlDialect (VARCHAR(191) / NVARCHAR(191) / text / NVARCHAR(MAX)) -- a closed set of constants defined in the dialect classes, with no path from any model, request or user input. The table names are private static final constants in the same file. This line used to read `TEXT PRIMARY KEY` inline, which is why its fingerprint is new: STOR-7 routed it through the dialect because MySQL cannot index unbounded text and SQL Server cannot index NVARCHAR(MAX) at all. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
     "05cd963c80ae": {
       "rule": "I1",
@@ -137,6 +152,11 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:1030",
       "why": "Not SQL. This is a System.out.println warning about a whole-schema recreation; the sweep matched it because SQL-shaped text sits beside it. Confirmed by reading it in REG-16-resid Round 5 (docs/REG16_POSTGRES_ADAPTER_SQL_ADVERSARIAL_REVIEW.md \u00a71)."
     },
+    "129c370584f3": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:195",
+      "why": "Pre-existing and unchanged in substance; the fingerprint moved because ConversionHookEmitter gained an `-- Engine:` header line (STOR-7 follow-up). `table` and the column names come from SqlIdentifierSupport.columnName/safeSqlIdentifier, which is the sanitiser this emitter has always run every identifier through, and portableSqlType() returns a dialect-chosen type from a closed set. Generation-time only -- this text is written to a file, never executed against a live connection with request data in scope. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "140c491489b6": {
       "rule": "F1",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:1908",
@@ -147,6 +167,11 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:2120",
       "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. All 27 sites were read individually. Every value is bound."
     },
+    "1419fe325231": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:403",
+      "why": "STOR-6 re-fingerprint: schema-lifecycle SQL. Identifiers pass SchemaLifecycleExecutor.safeIdentifier's [A-Za-z_][A-Za-z0-9_]* guard FIRST and are then conditionally quoted by quotedIdentifier -- quoting is applied to an already validated name, so it cannot smuggle a quote or a statement separator. Values bound."
+    },
     "14a1d1a98155": {
       "rule": "G1",
       "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4375",
@@ -156,6 +181,11 @@
       "rule": "H2",
       "where": "NPDevKernel/adapters/file-store-objectstore/src/main/java/com/npdev/adapters/filestore/objectstore/S3ObjectStoreFileStoreAdapter.java:201",
       "why": "Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision."
+    },
+    "168881e89c72": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationMarkStore.java:85",
+      "why": "Not model-author-reachable. The spliced values are InternalDdlTypes.keyText()/text(), which return a COLUMN TYPE chosen by the active SqlDialect (VARCHAR(191) / NVARCHAR(191) / text / NVARCHAR(MAX)) -- a closed set of constants defined in the dialect classes, with no path from any model, request or user input. The table names are private static final constants in the same file. This line used to read `TEXT PRIMARY KEY` inline, which is why its fingerprint is new: STOR-7 routed it through the dialect because MySQL cannot index unbounded text and SQL Server cannot index NVARCHAR(MAX) at all. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
     "16e1394277ee": {
       "rule": "F1",
@@ -176,6 +206,11 @@
       "rule": "H2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/provenance/BuildInfoEmitter.java:134",
       "why": "Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision."
+    },
+    "19538737e91f": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:359",
+      "why": "STOR-6 re-fingerprint: statement text composed inside the dialect package, whose only spliced parts are table/column identifiers the caller already validated and which now additionally pass SqlDialect.identifier(). Every value is bound. Same site and class as the entry this replaces; the text moved, the posture did not."
     },
     "1ab54d1ebdd5": {
       "rule": "F3",
@@ -217,10 +252,20 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaDropSnapshotWriter.java:226",
       "why": "Generation-time emitter: builds DDL/UI text into an artifact and executes nothing. Its identifiers come from SqlIdentifierSupport, whose toSnake whitelist emits only [a-z0-9_]. Round 5 section 1."
     },
+    "211d689dbd35": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:522",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
     "215560c299fb": {
       "rule": "I3",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/auth/IdentityProvisioning.java:37; NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java:216",
       "why": "Identity/admin writes whose values are already length-constrained by the identity pack's own VARCHAR column definitions, so an oversized value is rejected by the column rather than corrupting an index. None of these columns is index key material."
+    },
+    "216a85046b26": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:434",
+      "why": "Tenant-independent BY CONSTRUCTION: this is a DDL existence guard, not a data read. It asks the engine's own catalog (sys.indexes / INFORMATION_SCHEMA) whether a table, index or column already exists before creating it (STOR-5's guardedCreate*/guardedAddColumn). A catalog has no tenant column and could not have one -- schema objects are per-database, not per-tenant. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
     "238fe69c056c": {
       "rule": "H1/H2",
@@ -256,6 +301,11 @@
       "rule": "F1",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:1161",
       "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. All 27 sites were read individually. Every value is bound."
+    },
+    "26a53d030013": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:449",
+      "why": "STOR-6 re-fingerprint: schema-lifecycle SQL. Identifiers pass SchemaLifecycleExecutor.safeIdentifier's [A-Za-z_][A-Za-z0-9_]* guard FIRST and are then conditionally quoted by quotedIdentifier -- quoting is applied to an already validated name, so it cannot smuggle a quote or a statement separator. Values bound."
     },
     "26b5021c0ac0": {
       "rule": "G1",
@@ -372,6 +422,11 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:145,166",
       "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
     },
+    "321dd7bfb274": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationMarkStore.java:63",
+      "why": "Not model-author-reachable. The spliced values are InternalDdlTypes.keyText()/text(), which return a COLUMN TYPE chosen by the active SqlDialect (VARCHAR(191) / NVARCHAR(191) / text / NVARCHAR(MAX)) -- a closed set of constants defined in the dialect classes, with no path from any model, request or user input. The table names are private static final constants in the same file. This line used to read `TEXT PRIMARY KEY` inline, which is why its fingerprint is new: STOR-7 routed it through the dialect because MySQL cannot index unbounded text and SQL Server cannot index NVARCHAR(MAX) at all. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "33acae4e00c2": {
       "rule": "F2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/schemaevolution/PlanItem.java:79",
@@ -402,6 +457,11 @@
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/schemaevolution/PlanItem.java:51",
       "why": "Generation-time emitter: builds DDL/UI text into an artifact and executes nothing. Its identifiers come from SqlIdentifierSupport, whose toSnake whitelist emits only [a-z0-9_]. Round 5 section 1."
     },
+    "366a474071f4": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1094",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
     "370bc5b6077e": {
       "rule": "F3",
       "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:520",
@@ -412,20 +472,55 @@
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:377",
       "why": "Upsert statement builder in the dialect layer. The only spliced parts are the table name and column names, all supplied by the caller from the compiled model's own field list (the same whitelist the pre-extraction builders used -- this code MOVED here in storage/PLAN.md S1, it is not new). Every VALUE is a bound `?`, one per value column, asserted by DialectConformanceTierATest.upsertStatementShape. Column names cannot be parameterised: no engine accepts a bind variable as an identifier. storage/PLAN.md S1/S4b/S5, 2026-08-08."
     },
+    "37f4ead981c0": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:373",
+      "why": "Generation/statement-assembly inside the dialect itself, which is the one place in this codebase whose job IS to build SQL text. The spliced values are the caller's own already-safe identifiers plus this dialect's constant keywords; escapeLiteral() is applied to anything that lands inside a quoted literal in a T-SQL guard. Nothing here reaches a request parameter. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
+    "38610855a768": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:130",
+      "why": "STOR-6 re-fingerprint: statement text composed inside the dialect package, whose only spliced parts are table/column identifiers the caller already validated and which now additionally pass SqlDialect.identifier(). Every value is bound. Same site and class as the entry this replaces; the text moved, the posture did not."
+    },
+    "399bd24efbec": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:160",
+      "why": "Tenant-independent BY CONSTRUCTION, and the sweep is reading a template rather than a query. This is SqlDialect.selectForUpdate (STOR-9): the dialect is handed `columns`, `table` and the WHOLE `whereClause` by its caller and only decides WHERE the engine's row lock goes -- a suffix on H2/MySQL/Postgres, a WITH (UPDLOCK, ROWLOCK) table hint before the WHERE on SQL Server. It adds no predicate and removes none. Tenant scoping is the CALLER's, and both callers are tenant-independent on purpose: MigrationClaimStore locks the single canonical row of the instance-wide migration lock (there is one, for the whole database, by design), and JdbcBusinessConceptStore.findByIdForUpdate passes `id = ? AND tenant_id = ?` -- the tenant predicate IS there, in the caller, which is the only place that knows it. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "39e0330d52fd": {
       "rule": "I3",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/auth/IdentityProvisioning.java:65; NPDevRuntimeHost/src/main/java/com/finalexec/auth/PasswordResetController.java:218; NPDevRuntimeHost/src/main/java/com/finalexec/workspace/WorkspaceMenuSeeder.java:190",
       "why": "Identity/admin writes whose values are already length-constrained by the identity pack's own VARCHAR column definitions, so an oversized value is rejected by the column rather than corrupting an index. None of these columns is index key material."
+    },
+    "3a41069a7b2a": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:178",
+      "why": "STOR-6 re-fingerprint: statement text composed inside the dialect package, whose only spliced parts are table/column identifiers the caller already validated and which now additionally pass SqlDialect.identifier(). Every value is bound. Same site and class as the entry this replaces; the text moved, the posture did not."
     },
     "3aa30c0f7b51": {
       "rule": "I2",
       "where": "NPDevKernel/adapters/tracestore-postgres/src/main/java/com/npdev/adapters/tracestore/jdbc/JdbcTraceStore.java:72",
       "why": "REG-47: a caller-supplied correlationId reaches four INDEXED columns -- and the primary key of npdev_correlation_owner -- with only trim() applied. REG-36's failure mode on a different key. Tracked as ONE item, not 29 hits. Re-triage when REG-47 closes."
     },
+    "3bd0954d038c": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:609",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
+    "3cce05597d93": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:638",
+      "why": "STOR-6 re-fingerprint: runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model (SqlIdentifierSupport.toSnake, a whitelist, so quotes and semicolons cannot survive it) and which now additionally pass SqlDialect.identifier(). Every value is bound."
+    },
     "3cec15b63f38": {
       "rule": "I2",
       "where": "NPDevKernel/adapters/eventstore-postgres/src/main/java/com/npdev/adapters/eventstore/jdbc/JdbcEventStore.java:53",
       "why": "REG-47: a caller-supplied correlationId reaches four INDEXED columns -- and the primary key of npdev_correlation_owner -- with only trim() applied. REG-36's failure mode on a different key. Tracked as ONE item, not 29 hits. Re-triage when REG-47 closes."
+    },
+    "3d9a51b70302": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:461",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
     },
     "3e2fd16c94f6": {
       "rule": "H1",
@@ -517,10 +612,20 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:217",
       "why": "REG-61(a): the ADD COLUMN statement now carries a nullability suffix. safeTable/safeColumn/safeType are the same pre-existing, already-cleared identifiers this site has always used; the new `nullability` token is not caller data at all -- it is a compile-time-fixed literal this method itself picks (either the empty string or the literal \" NOT NULL\"), never derived from any external or model-author input."
     },
+    "4a5d5974f32f": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:483",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
     "4a8d5b2b4011": {
       "rule": "G1",
       "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:50",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at GeneratedCrudRuntimeSupport.java is now orphaned by the move, not removed."
+    },
+    "4b19297e432a": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1054",
+      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
     "4b6dc59788df": {
       "rule": "B2",
@@ -541,6 +646,11 @@
       "rule": "F1",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:1897",
       "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. All 27 sites were read individually. Every value is bound."
+    },
+    "4d34c77cbd66": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1102",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
     },
     "4d7974ce2800": {
       "rule": "F6",
@@ -566,6 +676,11 @@
       "rule": "A1",
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:277",
       "why": "NOT SQL ASSEMBLY. `sql.strip()` is appended to the TEXT OF A REFUSAL MESSAGE so the operator can see WHICH statement could not be capped -- the method throws immediately afterwards and never executes anything. Echoing the offending statement back is the point of the message; a refusal that does not name what it refused is a riddle. The value is a caller's own SQL, never a caller's DATA, and it reaches a log rather than a database. storage/FULL_SUPPORT_PLAN.md W1.3."
+    },
+    "506d52785828": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaDropSnapshotRestorer.java:204",
+      "why": "STOR-6 re-fingerprint: schema-lifecycle SQL. Identifiers pass SchemaLifecycleExecutor.safeIdentifier's [A-Za-z_][A-Za-z0-9_]* guard FIRST and are then conditionally quoted by quotedIdentifier -- quoting is applied to an already validated name, so it cannot smuggle a quote or a statement separator. Values bound."
     },
     "50769a3d7121": {
       "rule": "F1",
@@ -612,10 +727,20 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java:98",
       "why": "Round 5 section 5.1 (R5-F2), recorded INFO: all values are parameterised and only identity-pack IDENTIFIERS are spliced, arriving from application.properties written by the generator rather than from a request. A missing defence-in-depth layer, not a bypass -- cleared so it stops competing with un-triaged hits, tracked in the Round 5 document."
     },
+    "53dc958a8605": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:566",
+      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "544083bd22e6": {
       "rule": "F2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/schemaevolution/PlanItem.java:85",
       "why": "Generation-time emitter: builds DDL/UI text into an artifact and executes nothing. Its identifiers come from SqlIdentifierSupport, whose toSnake whitelist emits only [a-z0-9_]. Round 5 section 1."
+    },
+    "5643d90a89b6": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:486",
+      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
     "56df6a48bbd7": {
       "rule": "G5",
@@ -637,10 +762,25 @@
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:401",
       "why": "Not SQL: the matched text is an ERROR MESSAGE explaining what the engine cannot do (and naming the alternative) in the storage-dialect layer, and the sweep's regex fires on SQL keywords wherever they appear. Same shape as the already-cleared 7ad9d469c120 (\"(for update)\" inside a log message). storage/PLAN.md S4b/S5, 2026-08-08."
     },
+    "5baf6cdeba9c": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:222",
+      "why": "STOR-6 re-fingerprint: runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model (SqlIdentifierSupport.toSnake, a whitelist, so quotes and semicolons cannot survive it) and which now additionally pass SqlDialect.identifier(). Every value is bound."
+    },
+    "5d1312b3f0eb": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1066",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
     "5d54606198ae": {
       "rule": "I4",
       "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2499",
       "why": "Payload/attribute columns rather than index key material: an oversized value costs storage governed by the upstream request-size limit, and cannot break a btree entry the way REG-36's key did."
+    },
+    "5d943e97bb9b": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:403",
+      "why": "STOR-6 re-fingerprint: schema-lifecycle SQL. Identifiers pass SchemaLifecycleExecutor.safeIdentifier's [A-Za-z_][A-Za-z0-9_]* guard FIRST and are then conditionally quoted by quotedIdentifier -- quoting is applied to an already validated name, so it cannot smuggle a quote or a statement separator. Values bound."
     },
     "5f25a689b1bf": {
       "rule": "A1",
@@ -692,6 +832,11 @@
       "where": "NPDevKernel/adapters/idempotency-postgres/src/main/java/com/npdev/adapters/idempotency/jdbc/JdbcIdempotencyStore.java:174",
       "why": "REG-36: the idempotency key is bounded at the store's key chokepoints by IdempotencyKeys.bound. The remaining binds are tenant/capability/operation, which are author-declared identifiers rather than caller text."
     },
+    "6335815ac0d6": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:113",
+      "why": "STOR-6 re-fingerprint: runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model (SqlIdentifierSupport.toSnake, a whitelist, so quotes and semicolons cannot survive it) and which now additionally pass SqlDialect.identifier(). Every value is bound."
+    },
     "640be50f14bc": {
       "rule": "G3",
       "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:373",
@@ -706,6 +851,16 @@
       "rule": "D2",
       "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:459",
       "why": "Same three REG-46 methods. The only concatenated identifiers are the table name and resolveIdColumn(...)/resolveCriteriaColumn(...), which resolve against the live table's ACTUAL columns -- Round 5's 'identifiers are safe by construction via two whitelists' finding. Every VALUE is a bound parameter."
+    },
+    "652c27a885be": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:160",
+      "why": "Tenant-independent BY CONSTRUCTION, and the sweep is reading a template rather than a query. This is SqlDialect.selectForUpdate (STOR-9): the dialect is handed `columns`, `table` and the WHOLE `whereClause` by its caller and only decides WHERE the engine's row lock goes -- a suffix on H2/MySQL/Postgres, a WITH (UPDLOCK, ROWLOCK) table hint before the WHERE on SQL Server. It adds no predicate and removes none. Tenant scoping is the CALLER's, and both callers are tenant-independent on purpose: MigrationClaimStore locks the single canonical row of the instance-wide migration lock (there is one, for the whole database, by design), and JdbcBusinessConceptStore.findByIdForUpdate passes `id = ? AND tenant_id = ?` -- the tenant predicate IS there, in the caller, which is the only place that knows it. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
+    "6543c9efefb2": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:437",
+      "why": "Tenant-independent BY CONSTRUCTION: this is a DDL existence guard, not a data read. It asks the engine's own catalog (sys.indexes / INFORMATION_SCHEMA) whether a table, index or column already exists before creating it (STOR-5's guardedCreate*/guardedAddColumn). A catalog has no tenant column and could not have one -- schema objects are per-database, not per-tenant. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
     "6749f98d0229": {
       "rule": "F6",
@@ -777,6 +932,11 @@
       "where": "NPDevKernel/adapters/flowinstance-postgres/src/main/java/com/npdev/adapters/flowinstance/jdbc/JdbcFlowInstanceStore.java:429",
       "why": "REG-47: a caller-supplied correlationId reaches four INDEXED columns -- and the primary key of npdev_correlation_owner -- with only trim() applied. REG-36's failure mode on a different key. Tracked as ONE item, not 29 hits. Re-triage when REG-47 closes."
     },
+    "6f2a15925d07": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:568",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
     "6f582c0af417": {
       "rule": "F3",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:153",
@@ -796,6 +956,11 @@
       "rule": "A1/A5/H1",
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java:4198; NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryEngine.java:130; NPDevKernel/kernel/src/main/java/com/npdev/kernel/mvp/MvpKernelRunner.java:539; NPDevRuntimeHost/src/main/java/com/finalexec/api/ConceptQueryController.java:251; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackService.java:372; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java:395; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:136; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupport.java:161; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:62,83,104,128; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. || Value coercion, not an authorization verdict -- same reasoning as rule A1, one module over. ComputedExpression catches NumberFormatException around Double.parseDouble to answer 'is this text numeric?'; TypeChangeMatrix catches it while parsing a SQL type's (precision,scale) and returns null meaning 'unparseable type'. No security decision is being answered. Verified 2026-07-25. || Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint. || Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
+    },
+    "71c2527ac682": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:494",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
     },
     "71cf63d95978": {
       "rule": "F2",
@@ -832,6 +997,11 @@
       "where": "NPDevKernel/adapters/circuit-postgres/src/main/java/com/npdev/adapters/circuit/jdbc/JdbcCircuitBreakerStateStore.java:296",
       "why": "REG-36: the idempotency key is bounded at the store's key chokepoints by IdempotencyKeys.bound. The remaining binds are tenant/capability/operation, which are author-declared identifiers rather than caller text."
     },
+    "79d8218fef70": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:351",
+      "why": "STOR-6 re-fingerprint: schema-lifecycle SQL. Identifiers pass SchemaLifecycleExecutor.safeIdentifier's [A-Za-z_][A-Za-z0-9_]* guard FIRST and are then conditionally quoted by quotedIdentifier -- quoting is applied to an already validated name, so it cannot smuggle a quote or a statement separator. Values bound."
+    },
     "7a055c412fc7": {
       "rule": "F2",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/ImpactReport.java:170",
@@ -846,6 +1016,11 @@
       "rule": "false-positive",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:113",
       "why": "Not SQL at all: the matched text is the exception log message \"Failed reading (for update) concept conceptName from JDBC store\" -- the sweep's regex matched on \"(for update)\" appearing incidentally in prose. Re-added 2026-08-01 after an accidental git checkout."
+    },
+    "7b6dbe7a6bac": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:284",
+      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
     "7b927821bdd2": {
       "rule": "F2",
@@ -877,6 +1052,11 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/ProposedConversionSql.java:71",
       "why": "Generation-time emitter: builds DDL/UI text into an artifact and executes nothing. Its identifiers come from SqlIdentifierSupport, whose toSnake whitelist emits only [a-z0-9_]. Round 5 section 1."
     },
+    "7f5a11117610": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1118",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
     "814d307bb65e": {
       "rule": "F2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:175",
@@ -887,10 +1067,20 @@
       "where": "NPDevKernel/adapters/circuit-postgres/src/main/java/com/npdev/adapters/circuit/jdbc/JdbcCircuitBreakerStateStore.java:187",
       "why": "REG-36: the idempotency key is bounded at the store's key chokepoints by IdempotencyKeys.bound. The remaining binds are tenant/capability/operation, which are author-declared identifiers rather than caller text."
     },
+    "81d84486f069": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:128",
+      "why": "A false positive on POWERSHELL, not SQL. The line is the opening of the Create-Environment.ps1 text block; the sweep matches the SELECT-like shape further inside the emitted script, where the profile's ensureDatabase listExec asks the ENGINE'S OWN CATALOG whether the app's database exists (pg_database / sys.databases). A catalog has no tenant column and could not have one -- databases are per-instance, not per-tenant. No app data is read here at all. Triaged 2026-08-09, storage/parity/ENGINE_PARITY_PLAN.md P1 (E15)."
+    },
     "822c58aa3755": {
       "rule": "F2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:287",
       "why": "Generation-time emitter: builds DDL/UI text into an artifact and executes nothing. Its identifiers come from SqlIdentifierSupport, whose toSnake whitelist emits only [a-z0-9_]. Round 5 section 1."
+    },
+    "83a2d857d18a": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1061",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
     },
     "83d0b3b988f5": {
       "rule": "F2",
@@ -937,6 +1127,11 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:145,166",
       "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
     },
+    "87c2e0f04d31": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:120",
+      "why": "Tenant-independent BY CONSTRUCTION, and the sweep is reading a template rather than a query. This is SqlDialect.selectForUpdate (STOR-9): the dialect is handed `columns`, `table` and the WHOLE `whereClause` by its caller and only decides WHERE the engine's row lock goes -- a suffix on H2/MySQL/Postgres, a WITH (UPDLOCK, ROWLOCK) table hint before the WHERE on SQL Server. It adds no predicate and removes none. Tenant scoping is the CALLER's, and both callers are tenant-independent on purpose: MigrationClaimStore locks the single canonical row of the instance-wide migration lock (there is one, for the whole database, by design), and JdbcBusinessConceptStore.findByIdForUpdate passes `id = ? AND tenant_id = ?` -- the tenant predicate IS there, in the caller, which is the only place that knows it. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "88bf8dac4f64": {
       "rule": "I4",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:71",
@@ -967,6 +1162,16 @@
       "where": "NPDevKernel/adapters/circuit-postgres/src/main/java/com/npdev/adapters/circuit/jdbc/JdbcCircuitBreakerStateStore.java:128",
       "why": "REG-36: the idempotency key is bounded at the store's key chokepoints by IdempotencyKeys.bound. The remaining binds are tenant/capability/operation, which are author-declared identifiers rather than caller text."
     },
+    "8b6cbb0c6d49": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1049",
+      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
+    "8c5e56c1bd22": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DockerDeploymentEmitter.java:151",
+      "why": "A false positive on YAML. The line is `environment:` inside the generated docker-compose text block, and the sweep's statement-assembly pattern reads the surrounding %s placeholders as SQL being built from variables. What is actually interpolated is the engine's compose image, its container environment and its healthcheck, all from DockerEngineProfile -- a checked-in JSON resource, not user input. Nothing here reaches a database. Triaged 2026-08-09, storage/parity/ENGINE_PARITY_PLAN.md P1 (E15)."
+    },
     "8cf62f07a6f5": {
       "rule": "F2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1053",
@@ -987,6 +1192,11 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/DestructiveRecreationPass.java:227",
       "why": "Same F1 class, new code, same site as 5a22322fca96 (sweep matched the DROP CONSTRAINT clause and the full ALTER TABLE statement as two separate hits on one line): safeIndex is validated via safeIdentifier immediately above before splicing."
     },
+    "8d40b101b762": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:173",
+      "why": "Generation/statement-assembly inside the dialect itself, which is the one place in this codebase whose job IS to build SQL text. The spliced values are the caller's own already-safe identifiers plus this dialect's constant keywords; escapeLiteral() is applied to anything that lands inside a quoted literal in a T-SQL guard. Nothing here reaches a request parameter. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "8d49ce1be2fb": {
       "rule": "A3/F1",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/CrossEngineDataPromotion.java:147",
@@ -1001,6 +1211,11 @@
       "rule": "F1",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:1151",
       "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. All 27 sites were read individually. Every value is bound."
+    },
+    "8f949eedf351": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaHistoryStore.java:124",
+      "why": "Not model-author-reachable. The spliced values are InternalDdlTypes.keyText()/text(), which return a COLUMN TYPE chosen by the active SqlDialect (VARCHAR(191) / NVARCHAR(191) / text / NVARCHAR(MAX)) -- a closed set of constants defined in the dialect classes, with no path from any model, request or user input. The table names are private static final constants in the same file. This line used to read `TEXT PRIMARY KEY` inline, which is why its fingerprint is new: STOR-7 routed it through the dialect because MySQL cannot index unbounded text and SQL Server cannot index NVARCHAR(MAX) at all. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
     "9016987cfc61": {
       "rule": "F1",
@@ -1027,6 +1242,11 @@
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:274",
       "why": "S8 W1.2: the convert op's ADD COLUMN, same class as 6145981d8419 -- table/toCol resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist; toSqlType comes from portableSqlType(toField), SqlTypeSupport's closed switch over the DSL's own type enum, never free text."
     },
+    "92c503879432": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:207",
+      "why": "Pre-existing and unchanged in substance; the fingerprint moved because ConversionHookEmitter gained an `-- Engine:` header line (STOR-7 follow-up). `table` and the column names come from SqlIdentifierSupport.columnName/safeSqlIdentifier, which is the sanitiser this emitter has always run every identifier through, and portableSqlType() returns a dialect-chosen type from a closed set. Generation-time only -- this text is written to a file, never executed against a live connection with request data in scope. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "944fb4b005b6": {
       "rule": "I1",
       "where": "NPDevKernel/adapters/circuit-postgres/src/main/java/com/npdev/adapters/circuit/jdbc/JdbcCircuitBreakerStateStore.java:36",
@@ -1041,6 +1261,16 @@
       "rule": "D3",
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptGateway.java:92",
       "why": "Move 15 Phase A item A1 (REG-120), same class as 6ad785fdd420: the new authorizeCreate default method's fail-closed exception message (\"This ConceptGateway cannot authorize a create without performing it; denying \" + request.conceptName() + \" ...\"), mirroring the pre-existing authorizeWrite default method's identical-shape message one method above it (never itself flagged, since \"authorize a WRITE\" does not contain a SQL keyword) -- a plain Java exception string, never used in any SQL statement."
+    },
+    "95b78af0f1f6": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:454",
+      "why": "Not model-author-reachable. The spliced values are InternalDdlTypes.keyText()/text(), which return a COLUMN TYPE chosen by the active SqlDialect (VARCHAR(191) / NVARCHAR(191) / text / NVARCHAR(MAX)) -- a closed set of constants defined in the dialect classes, with no path from any model, request or user input. The table names are private static final constants in the same file. This line used to read `TEXT PRIMARY KEY` inline, which is why its fingerprint is new: STOR-7 routed it through the dialect because MySQL cannot index unbounded text and SQL Server cannot index NVARCHAR(MAX) at all. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
+    "95ea619c7299": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:120",
+      "why": "Tenant-independent BY CONSTRUCTION, and the sweep is reading a template rather than a query. This is SqlDialect.selectForUpdate (STOR-9): the dialect is handed `columns`, `table` and the WHOLE `whereClause` by its caller and only decides WHERE the engine's row lock goes -- a suffix on H2/MySQL/Postgres, a WITH (UPDLOCK, ROWLOCK) table hint before the WHERE on SQL Server. It adds no predicate and removes none. Tenant scoping is the CALLER's, and both callers are tenant-independent on purpose: MigrationClaimStore locks the single canonical row of the instance-wide migration lock (there is one, for the whole database, by design), and JdbcBusinessConceptStore.findByIdForUpdate passes `id = ? AND tenant_id = ?` -- the tenant predicate IS there, in the caller, which is the only place that knows it. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
     "96a328101b75": {
       "rule": "B2",
@@ -1092,10 +1322,20 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:622",
       "why": "Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision."
     },
+    "9dcd7bcd92a5": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:572",
+      "why": "STOR-6 re-fingerprint: statement text composed inside the dialect package, whose only spliced parts are table/column identifiers the caller already validated and which now additionally pass SqlDialect.identifier(). Every value is bound. Same site and class as the entry this replaces; the text moved, the posture did not."
+    },
     "9ef47b8b17d4": {
       "rule": "B4/G2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java:707; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java:1631; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java:1634; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/FieldWidgetDefaults.java:26",
       "why": "Generation-time emitter: this SQL-shaped text is emitted into a generated artifact, never executed by the generator. || Not a database read. The DSL module is the model COMPILER -- it has no DataSource and issues no SQL at all. Every hit here is the literal string \"select\" used as an HTML widget type (FieldWidgetDefaults.SELECT, the <select> dropdown) or a compiled panel's widget verdict. Verified 2026-07-25 when NPDevContract/dsl was added to SCAN_ROOTS."
+    },
+    "9ff7016d4ff6": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:125",
+      "why": "Generation/statement-assembly inside the dialect itself, which is the one place in this codebase whose job IS to build SQL text. The spliced values are the caller's own already-safe identifiers plus this dialect's constant keywords; escapeLiteral() is applied to anything that lands inside a quoted literal in a T-SQL guard. Nothing here reaches a request parameter. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
     "a019ea86d6b3": {
       "rule": "F1",
@@ -1127,6 +1367,11 @@
       "where": "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache:335",
       "why": "REG-44: every authorization call in service-base.mustache is gated on {{#kernelControlled}}. That is ONE root cause across 13 sites -- re-reporting it 13 times per run buries everything else. Re-triage when REG-44 closes."
     },
+    "a40d91e137b1": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:256",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
     "a41be03c2f19": {
       "rule": "H2",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/PublicationStateStore.java:144",
@@ -1141,6 +1386,11 @@
       "rule": "F3",
       "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:391",
       "why": "PostgresPersistenceCapabilityAdapter's two existence probes. The SAME statements that were already cleared at these sites -- storage/PLAN.md S1 moved their 'limit 1' tail into dialect.rowLimited(), which changed the assembled text and therefore the fingerprint. The injection surface is unchanged: `table` and `column` are resolved through resolveTableColumns / resolveCriteriaColumn against the compiled model, and the compared VALUE is bound. 2026-08-08."
+    },
+    "a5fee6f2b387": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:551",
+      "why": "Statement assembly inside the DIALECT, which is the one place in this codebase whose job is to build SQL text. This is MySqlUpsertStrategy.planFor -- the UPDATE-then-INSERT pair that stops a create from silently overwriting the row holding a `unique: true` value (STOR-11). The spliced values are the table name and column names the caller already resolved through SqlIdentifierSupport, plus this dialect's own constant keywords; every user-supplied VALUE is a bound `?` placeholder, which is exactly what UpsertPlan.Step.bindColumns() exists to carry. Triaged 2026-08-09, storage/parity/ENGINE_PARITY_PLAN.md P0."
     },
     "a60c85cecc4e": {
       "rule": "F2",
@@ -1302,10 +1552,20 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java:214",
       "why": "Round 5 section 5.1 (R5-F2), recorded INFO: all values are parameterised and only identity-pack IDENTIFIERS are spliced, arriving from application.properties written by the generator rather than from a request. A missing defence-in-depth layer, not a bypass -- cleared so it stops competing with un-triaged hits, tracked in the Round 5 document."
     },
+    "bb92fea8d26d": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:265",
+      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "bd45cf83acfc": {
       "rule": "D1",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:1031",
       "why": "Not SQL. This is a System.out.println warning about a whole-schema recreation; the sweep matched it because SQL-shaped text sits beside it. Confirmed by reading it in REG-16-resid Round 5 (docs/REG16_POSTGRES_ADAPTER_SQL_ADVERSARIAL_REVIEW.md \u00a71)."
+    },
+    "bd936592a31b": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:603",
+      "why": "STOR-6 re-fingerprint: statement text composed inside the dialect package, whose only spliced parts are table/column identifiers the caller already validated and which now additionally pass SqlDialect.identifier(). Every value is bound. Same site and class as the entry this replaces; the text moved, the posture did not."
     },
     "be9eaaa3176a": {
       "rule": "I2",
@@ -1321,6 +1581,16 @@
       "rule": "H6",
       "where": "NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/defaultpolicy/IdentityPermissionOverrideLookup.java:80",
       "why": "Move 14 Phase C item C2 (RC-B3). The checker's regex only recognizes .error(/.warn( as 'logged' -- this catch DOES log, at LOG.severe(...), on a schema mismatch (isSchemaMismatch(exception), the same SQLState-42-prefix check and .severe(...) style IdentityRoleLookup.tokenVersion already established), the checker just cannot see it syntactically. The fail-open direction (empty map -> 'no override configured' -> the role's full declared ceiling applies) is deliberately the SAME as H4's reasoning one module over (IdentityRoleLookup.rolesFor, fingerprint ddbcb35ee7ee): the worst case of a lookup fault is identical to 'this admin never configured a runtime restriction here', which is exactly today's pre-C2 behavior for every app that hasn't adopted the feature -- never a widened grant, only a narrowing that fails to apply. RolePermissions' own ceiling intersection (a separate, independently-tested control) is what actually enforces 'never beyond the ceiling'; this lookup only ever supplies an optional narrowing on top of it."
+    },
+    "bf5f88059de8": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:659",
+      "why": "STOR-6 re-fingerprint: runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model (SqlIdentifierSupport.toSnake, a whitelist, so quotes and semicolons cannot survive it) and which now additionally pass SqlDialect.identifier(). Every value is bound."
+    },
+    "bfb0086dc43f": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:437",
+      "why": "Generation/statement-assembly inside the dialect itself, which is the one place in this codebase whose job IS to build SQL text. The spliced values are the caller's own already-safe identifiers plus this dialect's constant keywords; escapeLiteral() is applied to anything that lands inside a quoted literal in a T-SQL guard. Nothing here reaches a request parameter. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
     "c0798a725af0": {
       "rule": "F3",
@@ -1367,6 +1637,11 @@
       "where": "NPDevKernel/adapters/bulkhead-postgres/src/main/java/com/npdev/adapters/bulkhead/postgres/PostgresAdvisoryBulkheadStore.java:84",
       "why": "Connectivity/liveness probe or an advisory-lock call -- it reads no tenant rows at all, so there is no tenant scope to apply."
     },
+    "c55a7288d975": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1041",
+      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "c5aee07ab130": {
       "rule": "F2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/schemaevolution/PlanItem.java:71",
@@ -1397,6 +1672,11 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:294",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
+    "c94ffbb7c3d1": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/UpsertPlan.java:81",
+      "why": "NOT SQL at all -- a false positive on a REFUSAL MESSAGE. UpsertPlan's compact constructor rejects a plan with more than two steps, and the message it throws contains the words 'UPDATE-then-INSERT', which the sweep's statement-assembly pattern reads as SQL being built from a variable. The only interpolated value is steps.size(), an int. Nothing here reaches a database. Triaged 2026-08-09, storage/parity/ENGINE_PARITY_PLAN.md P0 (STOR-11)."
+    },
     "c9897a622262": {
       "rule": "F3",
       "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:654",
@@ -1406,6 +1686,11 @@
       "rule": "G5",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PromotionStateService.java:114",
       "why": "Round 5 section 4: what these guard is the PHYSICAL SCHEMA / deployment state, which belongs to the database rather than to a tenant -- all tenants share one set of tables. A tenant predicate would be meaningless, and a per-tenant migration claim would let two tenants migrate the same schema at once."
+    },
+    "ca385ab2d243": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:396",
+      "why": "STOR-6 re-fingerprint: schema-lifecycle SQL. Identifiers pass SchemaLifecycleExecutor.safeIdentifier's [A-Za-z_][A-Za-z0-9_]* guard FIRST and are then conditionally quoted by quotedIdentifier -- quoting is applied to an already validated name, so it cannot smuggle a quote or a statement separator. Values bound."
     },
     "ca53641b9ef8": {
       "rule": "F6",
@@ -1462,6 +1747,11 @@
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/schemaevolution/PlanItem.java:107",
       "why": "Generation-time emitter: builds DDL/UI text into an artifact and executes nothing. Its identifiers come from SqlIdentifierSupport, whose toSnake whitelist emits only [a-z0-9_]. Round 5 section 1."
     },
+    "d078beba5386": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:373",
+      "why": "Tenant-independent BY CONSTRUCTION: this is a DDL existence guard, not a data read. It asks the engine's own catalog (sys.indexes / INFORMATION_SCHEMA) whether a table, index or column already exists before creating it (STOR-5's guardedCreate*/guardedAddColumn). A catalog has no tenant column and could not have one -- schema objects are per-database, not per-tenant. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "d08b5b5ff987": {
       "rule": "I1",
       "where": "NPDevKernel/adapters/idempotency-postgres/src/main/java/com/npdev/adapters/idempotency/jdbc/JdbcIdempotencyStore.java:203",
@@ -1472,10 +1762,25 @@
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:423",
       "why": "Generation-time emitter: builds DDL/UI text into an artifact and executes nothing. Its identifiers come from SqlIdentifierSupport, whose toSnake whitelist emits only [a-z0-9_]. Round 5 section 1."
     },
+    "d1a5bfe05823": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:453",
+      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "d23d9bb38f94": {
       "rule": "F1",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/ColumnRenamePass.java:136",
       "why": "Round 5 section 1: every identifier here routes through safeIdentifier/safeSqlType, which THROW on anything outside ^[A-Za-z_][A-Za-z0-9_]*$ rather than coercing. Every value is bound. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
+    },
+    "d519fa0aa031": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:676",
+      "why": "STOR-6 re-fingerprint: runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model (SqlIdentifierSupport.toSnake, a whitelist, so quotes and semicolons cannot survive it) and which now additionally pass SqlDialect.identifier(). Every value is bound."
+    },
+    "d6d411548cb7": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:565",
+      "why": "STOR-6 re-fingerprint: statement text composed inside the dialect package, whose only spliced parts are table/column identifiers the caller already validated and which now additionally pass SqlDialect.identifier(). Every value is bound. Same site and class as the entry this replaces; the text moved, the posture did not."
     },
     "d9293cb79878": {
       "rule": "B2",
@@ -1542,10 +1847,20 @@
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:235",
       "why": "existsProbe/selectTop -- SQL Server's replacement for the suffix row cap it does not have (SELECT TOP is a PREFIX). Splicing is the POINT: the caller hands in a table and an already-built predicate whose own values are bound `?`, exactly as the two PostgresPersistenceCapabilityAdapter probe sites do today. Both are unreachable until those sites are moved onto them (ledger STOR-3, step 4), and that move must keep the predicate's values bound. 2026-08-08."
     },
+    "e2a73520fd5c": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:265",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
     "e33115c229fd": {
       "rule": "F3",
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:284",
       "why": "tableExistsInCurrentSchemaSql. Its ONLY caller passes the compile-time constant 'flyway_schema_history' (StartupValidator), and the argument is escaped and lower-cased before embedding. Deliberately NOT parameterised, unlike the three list*Sql statements next to it: this statement's text is proven byte-identical to the pre-extraction original by PostgresDialectGoldenSqlTest, and binding a constant would trade a real proof for no real safety. storage/PLAN.md S1, 2026-08-08."
+    },
+    "e3982b704e62": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:284",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
     },
     "e3e50fb9ed40": {
       "rule": "B1",
@@ -1576,6 +1891,11 @@
       "rule": "F2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/schemaevolution/PlanItem.java:100",
       "why": "Generation-time emitter: builds DDL/UI text into an artifact and executes nothing. Its identifiers come from SqlIdentifierSupport, whose toSnake whitelist emits only [a-z0-9_]. Round 5 section 1."
+    },
+    "e71fb28ca243": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:611",
+      "why": "STOR-6 re-fingerprint: statement text composed inside the dialect package, whose only spliced parts are table/column identifiers the caller already validated and which now additionally pass SqlDialect.identifier(). Every value is bound. Same site and class as the entry this replaces; the text moved, the posture did not."
     },
     "e75395373e26": {
       "rule": "H2",
@@ -1632,6 +1952,11 @@
       "where": "NPDevKernel/adapters/tracestore-postgres/src/main/java/com/npdev/adapters/tracestore/jdbc/JdbcTraceStore.java:91; NPDevRuntimeHost/src/main/java/com/finalexec/auth/IdentityProvisioning.java:130",
       "why": "REG-47: a caller-supplied correlationId reaches four INDEXED columns -- and the primary key of npdev_correlation_owner -- with only trim() applied. REG-36's failure mode on a different key. Tracked as ONE item, not 29 hits. Re-triage when REG-47 closes. || Identity/admin writes whose values are already length-constrained by the identity pack's own VARCHAR column definitions, so an oversized value is rejected by the column rather than corrupting an index. None of these columns is index key material."
     },
+    "eadd6ab2a6c8": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:125",
+      "why": "Generation/statement-assembly inside the dialect itself, which is the one place in this codebase whose job IS to build SQL text. The spliced values are the caller's own already-safe identifiers plus this dialect's constant keywords; escapeLiteral() is applied to anything that lands inside a quoted literal in a T-SQL guard. Nothing here reaches a request parameter. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "ec08f1b2eee6": {
       "rule": "H2",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/ImpactReportWriter.java:64; NPDevRuntimeHost/src/main/java/com/finalexec/db/ShadowParityProbe.java:49",
@@ -1642,15 +1967,45 @@
       "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:692",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
+    "ed357d6ffbf3": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:130",
+      "why": "STOR-6 re-fingerprint: statement text composed inside the dialect package, whose only spliced parts are table/column identifiers the caller already validated and which now additionally pass SqlDialect.identifier(). Every value is bound. Same site and class as the entry this replaces; the text moved, the posture did not."
+    },
     "ed724a8ec820": {
       "rule": "false-positive",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/authoring/AuthoringMergeGate.java:100",
       "why": "Not SQL at all: the matched text is a violation MESSAGE string -- \"... disjoint-element merge cannot be attempted (H1: never guess). Reasons: \" + String.join(\"; \", reasons) -- the sweep's regex matched the English word \"merge\" (from the class name AuthoringMergeGate / the message prose) near a string-join, the same shape as 7ad9d469c120's \"(for update)\" false positive. S5 (element-granularity authoring merge, __OutsideRepo\\s5\\S5_SPEC.md), 2026-08-03."
     },
+    "ee1042b7ae51": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1050",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
+    "ef2a7efc3b3b": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:256",
+      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
+    "ef42561423b6": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:249",
+      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
+    "ef500b6fb2e1": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:349",
+      "why": "STOR-6 re-fingerprint: schema-lifecycle SQL. Identifiers pass SchemaLifecycleExecutor.safeIdentifier's [A-Za-z_][A-Za-z0-9_]* guard FIRST and are then conditionally quoted by quotedIdentifier -- quoting is applied to an already validated name, so it cannot smuggle a quote or a statement separator. Values bound."
+    },
     "f0ac82c5ce57": {
       "rule": "D3",
       "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ValidationDiagnosticNormalizer.java:318; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java:519",
       "why": "SQL-shaped English or a URL, not SQL -- same class as rule D1. AutoPanelExpander builds the ROUTE \"/select/\" + selector.name(); ValidationDiagnosticNormalizer builds the sentence \"Update the model so it satisfies ...\". The DSL module issues no SQL. Verified 2026-07-25."
+    },
+    "f16aca4d73c8": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:575",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
     },
     "f1deaeca3d08": {
       "rule": "false-positive",
@@ -1671,6 +2026,11 @@
       "rule": "F2/F6",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaDropSnapshotWriter.java:106; NPDevRuntimeHost/src/main/java/com/finalexec/api/StorageSummaryController.java:105",
       "why": "Generation-time emitter: builds DDL/UI text into an artifact and executes nothing. Its identifiers come from SqlIdentifierSupport, whose toSnake whitelist emits only [a-z0-9_]. Round 5 section 1. || Admin/diagnostic surface splicing an internal CONSTANT table name; no request data reaches the statement text and every value is bound."
+    },
+    "f2f892ade220": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationClaimStore.java:105",
+      "why": "Not model-author-reachable. The spliced values are InternalDdlTypes.keyText()/text(), which return a COLUMN TYPE chosen by the active SqlDialect (VARCHAR(191) / NVARCHAR(191) / text / NVARCHAR(MAX)) -- a closed set of constants defined in the dialect classes, with no path from any model, request or user input. The table names are private static final constants in the same file. This line used to read `TEXT PRIMARY KEY` inline, which is why its fingerprint is new: STOR-7 routed it through the dialect because MySQL cannot index unbounded text and SQL Server cannot index NVARCHAR(MAX) at all. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
     "f3009c997bc0": {
       "rule": "I3",
@@ -1707,6 +2067,16 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:521",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
+    "f814e30d562c": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:307",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
+    "f8493e2d68b8": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:600",
+      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
     "f967654ff7d0": {
       "rule": "F2",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/ProposedConversionSql.java:73",
@@ -1732,6 +2102,11 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:522",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
+    "fb42c08db827": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:391",
+      "why": "STOR-6 re-fingerprint: schema-lifecycle SQL. Identifiers pass SchemaLifecycleExecutor.safeIdentifier's [A-Za-z_][A-Za-z0-9_]* guard FIRST and are then conditionally quoted by quotedIdentifier -- quoting is applied to an already validated name, so it cannot smuggle a quote or a statement separator. Values bound."
+    },
     "fb4d85602e83": {
       "rule": "F3",
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:369",
@@ -1752,6 +2127,11 @@
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:276",
       "why": "NOT SQL. This is the TEXT OF A REFUSAL MESSAGE inside SqlServerDialect.rowLimited -- the UnsupportedOperationException thrown when a statement does not begin with SELECT and therefore has nowhere to put SQL Server's PREFIX row cap. The sweep is matching the words 'SELECT TOP n' and 'select' inside a human explanation, not a query. Nothing here reads any row, so there is no row set to scope to a tenant. Verified by reading the method: its only effect is to build a String and throw. storage/FULL_SUPPORT_PLAN.md W1.3."
     },
+    "fca0d0c11555": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:659",
+      "why": "STOR-6 re-fingerprint: runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model (SqlIdentifierSupport.toSnake, a whitelist, so quotes and semicolons cannot survive it) and which now additionally pass SqlDialect.identifier(). Every value is bound."
+    },
     "fccb16289042": {
       "rule": "A1",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/RuntimePluginArtifactRealizationProvider.java:61",
@@ -1767,6 +2147,11 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:332",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
+    "fe8d0d4bddfb": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:249",
+      "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
     "ff2ab500b0e8": {
       "rule": "B2",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/PendingSchemaAcknowledgmentStore.java:107",
@@ -1776,191 +2161,6 @@
       "rule": "F2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:222",
       "why": "Same as c3ec577da23c -- the correlated subquery's own identifiers (matchIdCol/matchTable/onCol/table/equalsCol) resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist."
-    },
-    "95ea619c7299": {
-      "rule": "read-without-tenant-predicate",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:120",
-      "why": "Tenant-independent BY CONSTRUCTION, and the sweep is reading a template rather than a query. This is SqlDialect.selectForUpdate (STOR-9): the dialect is handed `columns`, `table` and the WHOLE `whereClause` by its caller and only decides WHERE the engine's row lock goes -- a suffix on H2/MySQL/Postgres, a WITH (UPDLOCK, ROWLOCK) table hint before the WHERE on SQL Server. It adds no predicate and removes none. Tenant scoping is the CALLER's, and both callers are tenant-independent on purpose: MigrationClaimStore locks the single canonical row of the instance-wide migration lock (there is one, for the whole database, by design), and JdbcBusinessConceptStore.findByIdForUpdate passes `id = ? AND tenant_id = ?` -- the tenant predicate IS there, in the caller, which is the only place that knows it. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "d078beba5386": {
-      "rule": "read-without-tenant-predicate",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:373",
-      "why": "Tenant-independent BY CONSTRUCTION: this is a DDL existence guard, not a data read. It asks the engine's own catalog (sys.indexes / INFORMATION_SCHEMA) whether a table, index or column already exists before creating it (STOR-5's guardedCreate*/guardedAddColumn). A catalog has no tenant column and could not have one -- schema objects are per-database, not per-tenant. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "399bd24efbec": {
-      "rule": "read-without-tenant-predicate",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:160",
-      "why": "Tenant-independent BY CONSTRUCTION, and the sweep is reading a template rather than a query. This is SqlDialect.selectForUpdate (STOR-9): the dialect is handed `columns`, `table` and the WHOLE `whereClause` by its caller and only decides WHERE the engine's row lock goes -- a suffix on H2/MySQL/Postgres, a WITH (UPDLOCK, ROWLOCK) table hint before the WHERE on SQL Server. It adds no predicate and removes none. Tenant scoping is the CALLER's, and both callers are tenant-independent on purpose: MigrationClaimStore locks the single canonical row of the instance-wide migration lock (there is one, for the whole database, by design), and JdbcBusinessConceptStore.findByIdForUpdate passes `id = ? AND tenant_id = ?` -- the tenant predicate IS there, in the caller, which is the only place that knows it. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "216a85046b26": {
-      "rule": "read-without-tenant-predicate",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:434",
-      "why": "Tenant-independent BY CONSTRUCTION: this is a DDL existence guard, not a data read. It asks the engine's own catalog (sys.indexes / INFORMATION_SCHEMA) whether a table, index or column already exists before creating it (STOR-5's guardedCreate*/guardedAddColumn). A catalog has no tenant column and could not have one -- schema objects are per-database, not per-tenant. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "6543c9efefb2": {
-      "rule": "read-without-tenant-predicate",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:437",
-      "why": "Tenant-independent BY CONSTRUCTION: this is a DDL existence guard, not a data read. It asks the engine's own catalog (sys.indexes / INFORMATION_SCHEMA) whether a table, index or column already exists before creating it (STOR-5's guardedCreate*/guardedAddColumn). A catalog has no tenant column and could not have one -- schema objects are per-database, not per-tenant. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "129c370584f3": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:195",
-      "why": "Pre-existing and unchanged in substance; the fingerprint moved because ConversionHookEmitter gained an `-- Engine:` header line (STOR-7 follow-up). `table` and the column names come from SqlIdentifierSupport.columnName/safeSqlIdentifier, which is the sanitiser this emitter has always run every identifier through, and portableSqlType() returns a dialect-chosen type from a closed set. Generation-time only -- this text is written to a file, never executed against a live connection with request data in scope. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "92c503879432": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:207",
-      "why": "Pre-existing and unchanged in substance; the fingerprint moved because ConversionHookEmitter gained an `-- Engine:` header line (STOR-7 follow-up). `table` and the column names come from SqlIdentifierSupport.columnName/safeSqlIdentifier, which is the sanitiser this emitter has always run every identifier through, and portableSqlType() returns a dialect-chosen type from a closed set. Generation-time only -- this text is written to a file, never executed against a live connection with request data in scope. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "0085a95b7804": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:245",
-      "why": "Pre-existing and unchanged in substance; the fingerprint moved because ConversionHookEmitter gained an `-- Engine:` header line (STOR-7 follow-up). `table` and the column names come from SqlIdentifierSupport.columnName/safeSqlIdentifier, which is the sanitiser this emitter has always run every identifier through, and portableSqlType() returns a dialect-chosen type from a closed set. Generation-time only -- this text is written to a file, never executed against a live connection with request data in scope. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "04a0e709ed36": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:300",
-      "why": "Pre-existing and unchanged in substance; the fingerprint moved because ConversionHookEmitter gained an `-- Engine:` header line (STOR-7 follow-up). `table` and the column names come from SqlIdentifierSupport.columnName/safeSqlIdentifier, which is the sanitiser this emitter has always run every identifier through, and portableSqlType() returns a dialect-chosen type from a closed set. Generation-time only -- this text is written to a file, never executed against a live connection with request data in scope. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "ef42561423b6": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:249",
-      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "ef2a7efc3b3b": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:256",
-      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "bb92fea8d26d": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:265",
-      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "7b6dbe7a6bac": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:284",
-      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "d1a5bfe05823": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:453",
-      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "5643d90a89b6": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:486",
-      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "53dc958a8605": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:566",
-      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "f8493e2d68b8": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:600",
-      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "c55a7288d975": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1041",
-      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "8b6cbb0c6d49": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1049",
-      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "4b19297e432a": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1054",
-      "why": "Generation-time DDL assembly in SchemaRealizationEmitter, written to a .sql FILE and never executed against a live connection with request data in scope. Every identifier spliced here goes through SqlIdentifierSupport.safeSqlIdentifier/columnName first -- the sanitiser this emitter has always applied -- and every TYPE now comes from the active SqlDialect (renderInternalType/renderType -> keyableTextColumnType/defaultableTextColumnType/portableColumnType), a closed set of constants. The fingerprints moved in this commit precisely BECAUSE the types stopped being inline literals and started being dialect calls (STOR-7); the surrounding statement text is unchanged. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "87c2e0f04d31": {
-      "rule": "sql-string-building",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:120",
-      "why": "Tenant-independent BY CONSTRUCTION, and the sweep is reading a template rather than a query. This is SqlDialect.selectForUpdate (STOR-9): the dialect is handed `columns`, `table` and the WHOLE `whereClause` by its caller and only decides WHERE the engine's row lock goes -- a suffix on H2/MySQL/Postgres, a WITH (UPDLOCK, ROWLOCK) table hint before the WHERE on SQL Server. It adds no predicate and removes none. Tenant scoping is the CALLER's, and both callers are tenant-independent on purpose: MigrationClaimStore locks the single canonical row of the instance-wide migration lock (there is one, for the whole database, by design), and JdbcBusinessConceptStore.findByIdForUpdate passes `id = ? AND tenant_id = ?` -- the tenant predicate IS there, in the caller, which is the only place that knows it. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "37f4ead981c0": {
-      "rule": "sql-string-building",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:373",
-      "why": "Generation/statement-assembly inside the dialect itself, which is the one place in this codebase whose job IS to build SQL text. The spliced values are the caller's own already-safe identifiers plus this dialect's constant keywords; escapeLiteral() is applied to anything that lands inside a quoted literal in a T-SQL guard. Nothing here reaches a request parameter. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "652c27a885be": {
-      "rule": "sql-string-building",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:160",
-      "why": "Tenant-independent BY CONSTRUCTION, and the sweep is reading a template rather than a query. This is SqlDialect.selectForUpdate (STOR-9): the dialect is handed `columns`, `table` and the WHOLE `whereClause` by its caller and only decides WHERE the engine's row lock goes -- a suffix on H2/MySQL/Postgres, a WITH (UPDLOCK, ROWLOCK) table hint before the WHERE on SQL Server. It adds no predicate and removes none. Tenant scoping is the CALLER's, and both callers are tenant-independent on purpose: MigrationClaimStore locks the single canonical row of the instance-wide migration lock (there is one, for the whole database, by design), and JdbcBusinessConceptStore.findByIdForUpdate passes `id = ? AND tenant_id = ?` -- the tenant predicate IS there, in the caller, which is the only place that knows it. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "bfb0086dc43f": {
-      "rule": "sql-string-building",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:437",
-      "why": "Generation/statement-assembly inside the dialect itself, which is the one place in this codebase whose job IS to build SQL text. The spliced values are the caller's own already-safe identifiers plus this dialect's constant keywords; escapeLiteral() is applied to anything that lands inside a quoted literal in a T-SQL guard. Nothing here reaches a request parameter. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "f2f892ade220": {
-      "rule": "sql-string-building",
-      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationClaimStore.java:105",
-      "why": "Not model-author-reachable. The spliced values are InternalDdlTypes.keyText()/text(), which return a COLUMN TYPE chosen by the active SqlDialect (VARCHAR(191) / NVARCHAR(191) / text / NVARCHAR(MAX)) -- a closed set of constants defined in the dialect classes, with no path from any model, request or user input. The table names are private static final constants in the same file. This line used to read `TEXT PRIMARY KEY` inline, which is why its fingerprint is new: STOR-7 routed it through the dialect because MySQL cannot index unbounded text and SQL Server cannot index NVARCHAR(MAX) at all. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "321dd7bfb274": {
-      "rule": "sql-string-building",
-      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationMarkStore.java:63",
-      "why": "Not model-author-reachable. The spliced values are InternalDdlTypes.keyText()/text(), which return a COLUMN TYPE chosen by the active SqlDialect (VARCHAR(191) / NVARCHAR(191) / text / NVARCHAR(MAX)) -- a closed set of constants defined in the dialect classes, with no path from any model, request or user input. The table names are private static final constants in the same file. This line used to read `TEXT PRIMARY KEY` inline, which is why its fingerprint is new: STOR-7 routed it through the dialect because MySQL cannot index unbounded text and SQL Server cannot index NVARCHAR(MAX) at all. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "168881e89c72": {
-      "rule": "sql-string-building",
-      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationMarkStore.java:85",
-      "why": "Not model-author-reachable. The spliced values are InternalDdlTypes.keyText()/text(), which return a COLUMN TYPE chosen by the active SqlDialect (VARCHAR(191) / NVARCHAR(191) / text / NVARCHAR(MAX)) -- a closed set of constants defined in the dialect classes, with no path from any model, request or user input. The table names are private static final constants in the same file. This line used to read `TEXT PRIMARY KEY` inline, which is why its fingerprint is new: STOR-7 routed it through the dialect because MySQL cannot index unbounded text and SQL Server cannot index NVARCHAR(MAX) at all. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "0599fbb10eb3": {
-      "rule": "sql-string-building",
-      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/PendingSchemaAcknowledgmentStore.java:59",
-      "why": "Not model-author-reachable. The spliced values are InternalDdlTypes.keyText()/text(), which return a COLUMN TYPE chosen by the active SqlDialect (VARCHAR(191) / NVARCHAR(191) / text / NVARCHAR(MAX)) -- a closed set of constants defined in the dialect classes, with no path from any model, request or user input. The table names are private static final constants in the same file. This line used to read `TEXT PRIMARY KEY` inline, which is why its fingerprint is new: STOR-7 routed it through the dialect because MySQL cannot index unbounded text and SQL Server cannot index NVARCHAR(MAX) at all. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "8f949eedf351": {
-      "rule": "sql-string-building",
-      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaHistoryStore.java:124",
-      "why": "Not model-author-reachable. The spliced values are InternalDdlTypes.keyText()/text(), which return a COLUMN TYPE chosen by the active SqlDialect (VARCHAR(191) / NVARCHAR(191) / text / NVARCHAR(MAX)) -- a closed set of constants defined in the dialect classes, with no path from any model, request or user input. The table names are private static final constants in the same file. This line used to read `TEXT PRIMARY KEY` inline, which is why its fingerprint is new: STOR-7 routed it through the dialect because MySQL cannot index unbounded text and SQL Server cannot index NVARCHAR(MAX) at all. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "95b78af0f1f6": {
-      "rule": "sql-string-building",
-      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:454",
-      "why": "Not model-author-reachable. The spliced values are InternalDdlTypes.keyText()/text(), which return a COLUMN TYPE chosen by the active SqlDialect (VARCHAR(191) / NVARCHAR(191) / text / NVARCHAR(MAX)) -- a closed set of constants defined in the dialect classes, with no path from any model, request or user input. The table names are private static final constants in the same file. This line used to read `TEXT PRIMARY KEY` inline, which is why its fingerprint is new: STOR-7 routed it through the dialect because MySQL cannot index unbounded text and SQL Server cannot index NVARCHAR(MAX) at all. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "eadd6ab2a6c8": {
-      "rule": "sql-string-building",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:125",
-      "why": "Generation/statement-assembly inside the dialect itself, which is the one place in this codebase whose job IS to build SQL text. The spliced values are the caller's own already-safe identifiers plus this dialect's constant keywords; escapeLiteral() is applied to anything that lands inside a quoted literal in a T-SQL guard. Nothing here reaches a request parameter. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "9ff7016d4ff6": {
-      "rule": "sql-string-building",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:125",
-      "why": "Generation/statement-assembly inside the dialect itself, which is the one place in this codebase whose job IS to build SQL text. The spliced values are the caller's own already-safe identifiers plus this dialect's constant keywords; escapeLiteral() is applied to anything that lands inside a quoted literal in a T-SQL guard. Nothing here reaches a request parameter. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "8d40b101b762": {
-      "rule": "sql-string-building",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:173",
-      "why": "Generation/statement-assembly inside the dialect itself, which is the one place in this codebase whose job IS to build SQL text. The spliced values are the caller's own already-safe identifiers plus this dialect's constant keywords; escapeLiteral() is applied to anything that lands inside a quoted literal in a T-SQL guard. Nothing here reaches a request parameter. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
-    },
-    "a5fee6f2b387": {
-      "rule": "sql-string-building",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:551",
-      "why": "Statement assembly inside the DIALECT, which is the one place in this codebase whose job is to build SQL text. This is MySqlUpsertStrategy.planFor -- the UPDATE-then-INSERT pair that stops a create from silently overwriting the row holding a `unique: true` value (STOR-11). The spliced values are the table name and column names the caller already resolved through SqlIdentifierSupport, plus this dialect's own constant keywords; every user-supplied VALUE is a bound `?` placeholder, which is exactly what UpsertPlan.Step.bindColumns() exists to carry. Triaged 2026-08-09, storage/parity/ENGINE_PARITY_PLAN.md P0."
-    },
-    "c94ffbb7c3d1": {
-      "rule": "sql-string-building",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/UpsertPlan.java:81",
-      "why": "NOT SQL at all -- a false positive on a REFUSAL MESSAGE. UpsertPlan's compact constructor rejects a plan with more than two steps, and the message it throws contains the words 'UPDATE-then-INSERT', which the sweep's statement-assembly pattern reads as SQL being built from a variable. The only interpolated value is steps.size(), an int. Nothing here reaches a database. Triaged 2026-08-09, storage/parity/ENGINE_PARITY_PLAN.md P0 (STOR-11)."
-    },
-    "81d84486f069": {
-      "rule": "read-without-tenant-predicate",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:128",
-      "why": "A false positive on POWERSHELL, not SQL. The line is the opening of the Create-Environment.ps1 text block; the sweep matches the SELECT-like shape further inside the emitted script, where the profile's ensureDatabase listExec asks the ENGINE'S OWN CATALOG whether the app's database exists (pg_database / sys.databases). A catalog has no tenant column and could not have one -- databases are per-instance, not per-tenant. No app data is read here at all. Triaged 2026-08-09, storage/parity/ENGINE_PARITY_PLAN.md P1 (E15)."
-    },
-    "8c5e56c1bd22": {
-      "rule": "sql-string-building",
-      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DockerDeploymentEmitter.java:151",
-      "why": "A false positive on YAML. The line is `environment:` inside the generated docker-compose text block, and the sweep's statement-assembly pattern reads the surrounding %s placeholders as SQL being built from variables. What is actually interpolated is the engine's compose image, its container environment and its healthcheck, all from DockerEngineProfile -- a checked-in JSON resource, not user input. Nothing here reaches a database. Triaged 2026-08-09, storage/parity/ENGINE_PARITY_PLAN.md P1 (E15)."
     }
   }
 }
