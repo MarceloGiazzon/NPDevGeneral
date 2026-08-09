@@ -70,7 +70,8 @@ ENGINES: dict[str, dict] = {
         "provider": "mysql",
         "port": 3306,
         "server": True,
-        "status": "experimental",
+        "status": "supported",
+        "supportedSince": "2026-08-09, CI run 31296993259 -- app proof 4/4 and Tier C 4/4",
         "summary": "MySQL 8.4+. Requires utf8mb4 -- the legacy three-byte 'utf8' silently mangles "
                    "anything outside the BMP.",
         "caveat": "MySQL COMMITS IMPLICITLY ON DDL, so a migration that fails partway CANNOT be "
@@ -83,7 +84,8 @@ ENGINES: dict[str, dict] = {
         "provider": "sqlserver",
         "port": 1433,
         "server": True,
-        "status": "experimental",
+        "status": "supported",
+        "supportedSince": "2026-08-09, CI run 31296993259 -- app proof 4/4 and Tier C 4/4",
         "summary": "Microsoft SQL Server 2022+.",
         "caveat": "SQL Server has no suffix row cap (TOP is a prefix), so a few internal existence "
                   "probes take a different path. Text columns are mapped to NVARCHAR so unicode "

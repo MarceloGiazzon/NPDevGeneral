@@ -227,14 +227,26 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
   correct on three engines and silently returns the wrong page on the fourth. **A paginated query
   must declare `ORDER BY`** — enforced on every engine (conformance P3), and free today because
   every existing one already does.
-- **`MySQL` and `SqlServer` are selectable engines but NOT supported** (STOR-3). The dialects exist,
-  are registered, and pass every conformance vector that can run locally — and no vector has ever
-  run against a real MySQL or SQL Server, because
-  `.github/workflows/storage-dialect-conformance.yml` is `workflow_dispatch`-only and has never been
-  executed. Do not describe either as supported until it has. **H2 and MySQL COMMIT IMPLICITLY ON
-  DDL**, so `DDL_IN_TRANSACTION` is absent from their capabilities and a "nothing persisted" claim is
-  false there (STOR-2) — ask `SqlDialects.active().supports(...)` rather than assuming a rollback.
+- **`MySQL` and `SqlServer` ARE supported** as of 2026-08-09 (STOR-3 DONE, CI run `31296993259`):
+  a generated app boots, serves non-BMP unicode, paginates, survives a restart, and passes Tier C's
+  four schema-evolution vectors on each — the same bar Postgres meets, in the same run. This line
+  said "NOT supported" for a long time and was right to: **eight** defects stood between a complete
+  dialect and a working app (STOR-4/5/7/9/10/11/12), every one found only by building the artifact a
+  user runs. If you are tempted to widen a claim about an engine, that history is the argument for
+  measuring first.
+  **Supported does not mean identical**, and the differences are declared at the point of choice by
+  `npdev engines`: **H2 and MySQL COMMIT IMPLICITLY ON DDL**, so `DDL_IN_TRANSACTION` is absent from
+  their capabilities and a "nothing persisted" claim is false there (STOR-2) — ask
+  `SqlDialects.active().supports(...)` rather than assuming a rollback. SQL Server has no suffix row
+  cap, so `rowLimit()` throws (boundary B29); call `rowLimited()`, which every engine answers.
   `npdev capabilities` prints the matrix, generated from the dialects so it cannot drift.
+- **The environment toolbox is one script per operation, not one per engine** (E15). The five `_ops`
+  operations are emitted BYTE-IDENTICAL for Postgres, MySQL and SQL Server — they branch on
+  `profile.kind`, and every engine-specific fact (image, env, ready probe, database creation, quirks)
+  comes from `DockerEngineProfile` / `npdev/engine-profiles.json`. Adding an engine is a row in that
+  JSON, never a sixth branch. `check-engine-parity.py` (AI-knowledge gate [33/35]) fails the moment
+  an engine is special-cased without its siblings; `run-engine-toolbox-parity.py` generates all three
+  and diffs the result.
 
 ## Key docs
 
