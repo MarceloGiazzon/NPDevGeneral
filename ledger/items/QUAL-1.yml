@@ -1,0 +1,46 @@
+id: QUAL-1
+title: >-
+  check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that
+  keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an
+  oversight
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-09
+verification: VERIFIED_LIVE
+surface: scripts/quality
+source: >-
+  storage/parity/ENGINE_PARITY_PLAN.md P7. Found by storage/helpers/check-script-budget.py while
+  clearing the parity round's housekeeping.
+detail: |
+  `scripts/quality/check-dsl-coverage.py` is 913 lines. The budget for a `check-*.py` is a 250-line
+  target and a 400-line hard stop, and the baseline had frozen it at 894 -- so it has also GROWN past
+  its own frozen ceiling, which the budget tool treats as blocking on purpose: "the baseline records
+  a ceiling, not a licence."
+
+  It did not grow during this workstream. It is recorded here because the alternative was to raise
+  its ceiling silently, and a limit quietly moved is indistinguishable from a limit that was never
+  enforced.
+
+  The other two over-budget scripts have arguments that this one does not:
+
+    run-ai-knowledge-gate.ps1 (577)   a HOST for 35 checks; a 500-line stop was sized for a script
+                                     that does one thing, and splitting the host would scatter the
+                                     ordering guarantee that makes "all gates green" mean something
+    check-emitted-sql-portability.py  2% over, and the overage is the CONSTRUCTS table where each
+                                     (409)  entry records a measured engine failure
+
+  913 against 400 is not 2%. It is a checker that has accumulated several jobs.
+resolution: >-
+  OPEN. Deliberately not attempted inside the engine-parity round: a 913-line checker is a real
+  decomposition, and doing it in a commit about database engines would bury both.
+
+  The likely seam, from a read rather than a measurement: the file both DISCOVERS which DSL features
+  exist and ASSERTS that each has corpus coverage. Those are separable -- a feature inventory the
+  other checks could also consume, and a much smaller gate over it. Worth confirming that reading
+  before committing to it.
+
+  Its ceiling is frozen at 913 in storage/helpers/script-budget-baseline.json WITH a written
+  justification, so it no longer blocks unrelated work while remaining visible.
+files:
+  - scripts/quality/check-dsl-coverage.py
