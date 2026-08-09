@@ -445,11 +445,33 @@ public class PermissionAwareUiMetadataService {
         return items;
     }
 
+    /**
+     * The UI metadata policy, or the empty policy when no app has supplied one.
+     *
+     * <p><b>Absence is not an error, and it used to be.</b> The runtime-host template shipped its own
+     * copy of this resource at the same classpath path the generator writes the app's real one to,
+     * and the generated app's build lists {@code src/main/resources} before
+     * {@code npdev-generated/src/main/resources} under {@code DuplicatesStrategy.EXCLUDE} -- so the
+     * TEMPLATE's copy won, in every generated app, and the app's own policy was discarded. The two
+     * files did not even have the same shape ({@code items} vs {@code fieldPolicies}/
+     * {@code actionPolicies}), so the app's policy was not merely overridden, it was unreadable.
+     * Harmless only for as long as both were empty (REG-142, second instance).
+     *
+     * <p>The template's copy is gone. This method no longer throws on absence, because a boot-time
+     * failure was the only thing keeping it there: an app that declares no policy restricts nothing,
+     * which is exactly what an empty policy means and exactly what every app got anyway.
+     */
     private UiMetadataPolicy policy() {
-        try (InputStream inputStream = new ClassPathResource(POLICY_CLASSPATH).getInputStream()) {
+        ClassPathResource resource = new ClassPathResource(POLICY_CLASSPATH);
+        if (!resource.exists()) {
+            return UiMetadataPolicy.empty();
+        }
+        try (InputStream inputStream = resource.getInputStream()) {
             UiMetadataPolicy loaded = objectMapper.readValue(inputStream, new TypeReference<UiMetadataPolicy>() { });
             return loaded == null ? UiMetadataPolicy.empty() : loaded.normalized();
         } catch (Exception exception) {
+            // A malformed policy is still an error: it means an app TRIED to say something and this
+            // service could not read it. Only absence is benign.
             throw new IllegalStateException("Failed to load UI metadata policy resource: " + POLICY_CLASSPATH, exception);
         }
     }

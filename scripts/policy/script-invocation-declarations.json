@@ -190,6 +190,9 @@
     "scripts/quality/check-schema-mirror-consistency.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-template-resource-shadowing.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-step-type-test-coverage.py": {
       "invocation": "ci-gate"
     },

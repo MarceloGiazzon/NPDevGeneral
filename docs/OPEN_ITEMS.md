@@ -6,82 +6,18 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**153 item(s) migrated: 5 open/partial, 148 done.**
+**153 item(s) migrated: 4 open/partial, 149 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
-| REG-142 | /api/admin/model/export and /api/admin/model/ui (ui-model) still read classpath resource npdev/model.json directly, which can be RuntimeHost's own unreplaced template placeholder rather than the app's real model, depending on how generation resolved the model source | GAP | LOW | OPEN | 2026-08-07 |
 | STOR-3 | MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images | GAP | MEDIUM | PARTIAL | 2026-08-08 |
 | STOR-5 | The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run | GAP | HIGH | OPEN | 2026-08-08 |
 | STOR-6 | The generator never quotes business identifiers, so a model field named after a reserved word (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the dialect layer and never exercised at application level | BUG | MEDIUM | OPEN | 2026-08-08 |
 | STOR-8 | db.definition.json's `h2FilePath` and `jdbcUrl` are parsed, validated and then ignored -- a user who sets either gets no error and no effect | BUG | LOW | OPEN | 2026-08-08 |
 
 ### Detail
-
-### REG-142 — /api/admin/model/export and /api/admin/model/ui (ui-model) still read classpath resource npdev/model.json directly, which can be RuntimeHost's own unreplaced template placeholder rather than the app's real model, depending on how generation resolved the model source
-
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
-**Verification:** VERIFIED_LIVE
-**Source:** Found while implementing REG-139's layer 1 fix (editor/REG139_PLAN.md), not chased there to stay
-scoped. REG-139 itself already observed the underlying risk against `readDraftOrModel()`'s old
-fallback ("do NOT match canonical-demo's own model identity ... not chased further in this
-pass") but didn't identify the concrete root cause; this item does.
-
-`NPDevRuntimeHost/src/main/resources/npdev/model.json` is a literal, static placeholder file
-baked into the RuntimeHost template:
-
-    {"$schema":"model.schema.json","schemaVersion":"1.0.0","namespace":"npdev.template",
-     "name":"runtime-host-template-model","concepts":[],"procedures":[],"panels":[]}
-
-`RuntimeApiEmitter` (generator side) DOES overwrite this path with the app's real model source at
-generation time, but only conditionally: `if (resolvedModelSource != null) { ...write real
-model... } else if (modelSourcePath != null && Files.exists(modelSourcePath)) { ...write real
-model... }` -- there is no `else` branch, so if neither condition holds for a given generation
-path (confirmed to happen at least once: REG-139's own canonical-demo generation via a specific
-CLI path), the RuntimeHost template's placeholder survives untouched into the assembled app,
-served as if it were that app's real model.
-
-`AdminController.readDraftOrModel()` (the endpoint REG-139 fixed) no longer touches this resource
-at all -- it now reads `NPDevModelProvider.compiledModel()` instead, which is written
-UNCONDITIONALLY at generation time (`writer.writeRelative("src/main/resources/npdev/compiled-
-model.json", CompiledModelCanonicalJson.toJson(model))`, no `if` gate) and is therefore reliable
-regardless of this gap. Two OTHER endpoints in the same controller still read the raw,
-conditionally-written resource directly:
-
-    GET /api/admin/model/export   (exportModel)
-    GET /api/admin/model/ui, /ui-model   (exportUiModel)
-
-Neither is known to crash a client today (both are raw JSON exports / admin tooling, not typed
-client state the way ModelEditorDraft was), so this is filed as a data-correctness gap (an admin
-endpoint can silently return the WRONG app's model, or a placeholder, with no error), not a
-reproduced crash.
-
-**Surface:** `runtimehost/admin-controller`
-**Files:**
-- `NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-admin-controller.mustache`
-- `NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java`
-- `NPDevRuntimeHost/src/main/resources/npdev/model.json`
-
-Not fixed here -- found during REG-139's layer 1 work and filed rather than chased, to stay
-scoped (REG-139's own fix sidesteps this entirely by switching to the always-reliable
-`NPDevModelProvider.compiledModel()`; these two endpoints were not part of that item's crash).
-
-Two independent fix shapes, not mutually exclusive:
-
-(1) Root cause in the generator: `RuntimeApiEmitter`'s `if (resolvedModelSource != null) { ... }
-    else if (modelSourcePath != null && Files.exists(modelSourcePath)) { ... }` should have a
-    third branch (or fail generation loudly) when neither holds, instead of silently leaving the
-    RuntimeHost template's placeholder in place. First needs reproducing exactly which generation
-    path leaves both conditions false (REG-139 hit it via `npdev run app` against
-    `NPDevContract/dsl/resources/Models/canonical-demo/model.json` at least once, but this was not
-    isolated to a minimal repro).
-(2) The two endpoints themselves: switch `exportModel`/`exportUiModel` to source from
-    `NPDevModelProvider.compiledModel()` (or the always-written `compiled-model.json` classpath
-    resource) the same way REG-139's fixed `readDraftOrModel` now does, rather than the
-    conditionally-written raw resource -- sidesteps the generator-side root cause the same way,
-    without needing to isolate it first.
 
 ### STOR-3 — MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images
 
@@ -252,7 +188,7 @@ It is MEDIUM rather than HIGH only because it fails loudly at first boot, on eve
 and nothing downstream reads either one. `jdbcUrl(definition, identity)` composes the URL for every engine from `identity`, whose data root is always `<workspace>/Build/databases/<appId>` -- appId being the `manifest.json` id, never anything the database block says. So a user who writes an explicit `jdbcUrl` to point at an existing database, or an `h2FilePath` to put the file somewhere else, gets silence: no error, no warning, and a connection to a different database than the one they named.
 Not the same defect as an unknown key. An unknown key would at least be visibly unrecognized; these two are in the schema, survive validation, and read as supported.
 
-## Done (148)
+## Done (149)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -307,6 +243,7 @@ Not the same defect as an unknown key. An unknown key would at least be visibly 
 | REG-14 | LNCH-22: newcomer documentation test run for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-140 | Every generated app was hard-pinned to Java 17 (build.gradle.template's toolchain literal), with no per-app way to request a newer JDK -- deps-and-java/PLAN.md P2 | GAP | MEDIUM | DONE | 2026-08-07 |
 | REG-141 | A custom capability (plugin:java-source) had no supported way to declare a third-party Maven dependency or a local jar -- deps-and-java/PLAN.md P3 | GAP | MEDIUM | DONE | 2026-08-07 |
+| REG-142 | Runtime-host template resources SHADOW the generated app's own at the same classpath path, so every generated app served another app's model identity from /api/admin/model/export and threw away its own UI permission policy | BUG | MEDIUM | DONE | 2026-08-07 |
 | REG-143 | build.javaVersion's upper enum [17, 21] removed -- floor-only (>=17), future-proofed against every Java version to come, not just 21 -- ROUND2_PLAN.md R1c | GAP | LOW | DONE | 2026-08-07 |
 | REG-144 | Every external-build-root resolver found the repo root by its NAME ('NPDev_General'), so a clone named anything else resolved THREE different build roots and Linux CI stayed red for twelve days | BUG | HIGH | DONE | 2026-08-08 |
 | REG-15 | LNCH-23: trademark clearance N/A, release tag cut | PROCESS | LOW | DONE | 2026-07-21 |
@@ -3271,6 +3208,65 @@ declared dependencies are completely unaffected. A generation-time collision che
 `capability.plugin.json` itself needs NO schema change -- a `plugin:java-source` capability already
 compiles into the app's main source set, so it sees `npdev-dependencies.gradle`'s additions for
 free once the toolchain resolves them.
+
+### REG-142 — Runtime-host template resources SHADOW the generated app's own at the same classpath path, so every generated app served another app's model identity from /api/admin/model/export and threw away its own UI permission policy
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-08)
+**Verification:** VERIFIED_LIVE
+**Source:** Filed 2026-08-07 while implementing REG-139's layer 1 fix (editor/REG139_PLAN.md), not chased
+there to stay scoped. Root cause corrected 2026-08-08 under storage/OPEN_ITEMS_PLAN.md section 7:
+the original filing named the wrong cause and understated the blast radius.
+
+**Surface:** `runtimehost/admin-controller, runtimehost/ui-metadata, generator/runtime-api-emitter`
+**Files:**
+- `NPDevRuntimeHost/src/main/resources/npdev/model.json`
+- `NPDevRuntimeHost/src/main/resources/npdev/security/dev.ui-metadata-policy.json`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PermissionAwareUiMetadataService.java`
+- `scripts/quality/check-template-resource-shadowing.py`
+- `scripts/quality/run-ai-knowledge-gate.ps1`
+
+WHAT THE ORIGINAL FILING SAID (and got wrong)
+
+It attributed the bug to a missing `else` in `RuntimeApiEmitter`: `npdev/model.json` is written
+only `if (resolvedModelSource != null)` or `else if (modelSourcePath exists)`, with no fallback,
+so a generation path satisfying neither would leave the RuntimeHost template's placeholder
+untouched. Plausible, and not what happens.
+
+WHAT ACTUALLY HAPPENS, MEASURED IN A BUILT APP
+
+The emitter DOES write the real model, every time, to
+`npdev-generated/src/main/resources/npdev/model.json`. A generated app's build.gradle then mounts
+both resource roots:
+
+    resources {
+        srcDir 'src/main/resources'                    <- the runtime-host TEMPLATE's copy
+        srcDir 'npdev-generated/src/main/resources'    <- the app's REAL one
+    }
+    ...
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+EXCLUDE keeps the FIRST file it sees and the template is listed first, so the template's copy wins
+and the generated one is dropped -- no Gradle warning, no boot error, nothing in the app to show
+it happened. Confirmed by reading `App/build/resources/main/npdev/model.json` in a freshly built
+app: it contains `{"namespace":"npdev.template","name":"runtime-host-template-model",
+"concepts":[]}`.
+
+So it is not conditional and not rare. It was EVERY generated app, always.
+
+BLAST RADIUS -- three readers, not the two originally listed:
+
+  GET /api/admin/model/export        (AdminController.exportModel)
+  GET /api/admin/model/ui, /ui-model (AdminController.exportUiModel)
+  CapabilityIntegrationPanelService  (npdev/model.json, same path, same shadowing)
+
+SECOND INSTANCE, found by generalizing the question
+
+Asking "what else does the template ship at a path the generator writes?" produced one more:
+`npdev/security/dev.ui-metadata-policy.json`, shipped in the template since 2026-04-23. The two
+files do not even share a shape -- the template's has `items`, the generated one has
+`fieldPolicies`/`actionPolicies` -- so an app's UI permission policy was not merely overridden, it
+was unreadable. Harmless only for as long as both were empty, which is a property of today's
+corpus rather than of the design.
 
 ### REG-143 — build.javaVersion's upper enum [17, 21] removed -- floor-only (>=17), future-proofed against every Java version to come, not just 21 -- ROUND2_PLAN.md R1c
 
