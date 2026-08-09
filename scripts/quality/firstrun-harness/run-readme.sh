@@ -90,13 +90,24 @@ run_cmd_list() {
     # </dev/null is load-bearing -- see the note at the original call site: a command that
     # reads or even just probes stdin (pwsh does, at startup) silently consumes the rest of
     # the caller's here-string, ending the whole loop early with no error at all.
+    # Remember where THIS command's output starts. `tail -12 "$LOG"` alone tails the shared,
+    # cumulative log, so a command that fails with little or no output of its own displays the
+    # PREVIOUS command's tail instead -- which is worse than printing nothing, because it looks
+    # like a diagnosis. Measured: `./npdev init my-app` failed and the harness printed `npdev setup:
+    # [3/3] done`, sending the reader to a step that had succeeded.
+    local log_start
+    log_start=$(wc -l < "$LOG" 2>/dev/null || echo 0)
     if bash -c "cd '$CURRENT_DIR' && $cmd" >>"$LOG" 2>&1 </dev/null; then
       pass "$label_prefix: $(echo "$cmd" | cut -c1-58)"
     else
       fail "$label_prefix: $(echo "$cmd" | cut -c1-58)" \
-           "exited non-zero; tail of output below" \
+           "exited non-zero; output of THIS command below" \
            "see $LOG"
-      tail -12 "$LOG" | sed 's/^/          | /'
+      if [ "$(wc -l < "$LOG")" -gt "$log_start" ]; then
+        tail -n +$((log_start + 1)) "$LOG" | tail -12 | sed 's/^/          | /'
+      else
+        echo "          | (this command produced no output at all before exiting non-zero)"
+      fi
     fi
   done
 }
