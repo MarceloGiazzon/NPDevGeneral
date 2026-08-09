@@ -1,0 +1,20 @@
+id: B29
+title: "SQL Server has no SUFFIX row cap -- SqlDialect.rowLimit() throws there; callers ask rowLimited() instead"
+kind: POSTURAL
+userFacingText: ""  # nothing user-reachable: no model, no request and no CLI input reaches this
+workaround: "Call dialect.rowLimited(sql, n) -- 'at most n rows', which every engine can answer -- rather than dialect.rowLimit(n), which asks for a SUFFIX specifically. For an existence probe, dialect.existsProbe(table, column) builds the whole statement."
+enforcingDiagnosticCodes: []
+codeLinked: true
+codeLinkedNote: >-
+  Enforced by SqlServerDialect.rowLimit() itself, which throws UnsupportedOperationException naming
+  both alternatives. Deliberately NOT a ValidationDiagnostic and NOT a StorageCapability token:
+  storage/OPEN_ITEMS_PLAN.md 6 warns that "a thrown exception with no declared capability behind it
+  is a sharp edge, not a boundary", and the measurement is what makes this one a boundary anyway --
+  ZERO production sites call rowLimit() directly. All four real sites (two existence probes in
+  PostgresPersistenceCapabilityAdapter, two first-by-order reads in JdbcEventStore) want "at most n
+  rows", which rowLimited() answers on every engine; suffix-vs-prefix is the engine's business,
+  which is what a dialect is for. Adding a capability token no caller consults would be dead code
+  wearing a safety label. The day a real site needs a bare suffix here, the fix is a dialect method
+  that builds the whole statement (existsProbe is the precedent) -- not a token, and not a plausible
+  wrong answer, which is the failure mode every one of STOR-4/5/7/9/10/12 turned out to be.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B29 -- storage/OPEN_ITEMS_PLAN.md 6, storage/FULL_SUPPORT_PLAN.md W1.3"

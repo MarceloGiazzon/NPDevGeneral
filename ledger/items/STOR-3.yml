@@ -141,18 +141,46 @@ resolution: >-
        measured NOTHING on MySQL -- the plan's proposed failing statement (a NOT NULL column with no
        default, on a table with rows) SUCCEEDS there -- and only the vector's own guard caught it.
 
-  STILL OPEN, and it is no longer a process objection:
-    3. Tier C (E1, E2, I2, I3) has a driver and a CI job but has not passed: its seeding endpoint
-       returns 404 for the p2 probe, which is a probe-shape question rather than an engine one.
-    6. NEW, and the real blocker: STOR-5. The application-level probe -- the thing that had never
-       run -- showed that no generated app could execute NPDev's own V1 schema-realization script on
-       MySQL or SQL Server. Two causes are already fixed (STOR-4's missing JDBC drivers,
-       keyableTextColumnType for indexed TEXT columns); the third, the Postgres/H2 guarded-DDL
-       idioms in that script, is STOR-5 and is what now gates calling either engine supported.
+  UPDATE 2026-08-09 -- item 3 and item 6 are both CLOSED, and the blocker moved.
+
+    3. Tier C now passes. It had never run at all, and the 404 was two of its own defects, not a
+       harness inconvenience: the p2 probe declared a field called `value` (reserved in H2) and
+       realized a table called `rows` (reserved in MySQL 8), and the generator never quotes business
+       identifiers -- STOR-6, one bug, two engines, two different words. Its two versions also
+       carried different manifest ids, so on file-backed H2 they resolved to two different database
+       files and "0 rows survived" was measuring nothing (STOR-8).
+
+    6. STOR-5 is DONE, and four more blockers stood behind it, each invisible until the one before
+       it was cleared: STOR-7 (a text column has THREE roles and only two were ever asked about),
+       STOR-9 (a row lock is a suffix on three engines and a table hint on the fourth), STOR-10
+       (five two-engine assumptions between "it boots" and "it works"), STOR-12 (a Postgres-only
+       SQLSTATE, so an app booted once and never again).
+
+  WHAT NOW GATES "SUPPORTED", and it is not a process objection either:
+
+    STOR-11. On MySQL a create that violates a `unique: true` constraint returns 200 and OVERWRITES
+    the row that held the value, because ON DUPLICATE KEY UPDATE reacts to every unique index rather
+    than the one the caller keyed on. Measured on a real MySQL 8.4 via Tier C's I3 vector. Four
+    green application-level assertions do not make an engine supported while a create can silently
+    destroy another user's row and report success -- so E14 stays unwritten, deliberately.
+
+  THE TWO ENGINE GAPS THIS ITEM CARRIED ARE BOTH SETTLED:
+    - `SqlServerDialect.rowLimit()` still throws, and that is the right answer: measured ZERO
+      production call sites. All four real sites want "at most n rows", which `rowLimited()` gives
+      them, and suffix-vs-prefix is the engine's business. Recorded as boundary B29 rather than
+      papered over with a plausible wrong answer.
+    - `ConversionHookEmitter` has its `DatabaseEngine` threaded in from `GeneratorFacade` (W1.3),
+      and now writes an `-- Engine:` header so its emitted script says which engine it is for.
 
   PostgreSQL IS proven at application level in the same run (31279857141): boots, non-BMP unicode
   round trip, filtered+ordered+paginated query, rows surviving a restart, and all six npdev doctor
   database checks green against a real engine.
+
+  MySQL and SQL Server are now proven at that same application level too -- 4/4 assertions each,
+  against real containers on the pinned digests, and re-run a SECOND time against a database that
+  already held NPDev's tables (the shape every deployment has after its first release). SQL Server
+  went fully green in CI including Tier C (run 31290527897). What remains is STOR-11, which is a
+  correctness question about writes rather than a question about whether the engine runs.
 files:
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java
