@@ -225,18 +225,35 @@ section "2. Run README's Quickstart commands, verbatim and in order"
 # Extract fenced code blocks that appear under the Quickstart heading, up to the
 # next '## ' heading. We run only lines that look like commands (skip comments
 # and blank lines), substituting the placeholder output path.
+# The heading this keys off is a CONTRACT with README.md, and it has already been broken once
+# silently: README was rewritten (188add8, "lead with what NPDev lets you build") and `## Quickstart`
+# became `## See it run`. This awk then matched nothing, so the command list was EMPTY, so
+# `npdev setup` never ran, so runtimehost-libs were never staged -- and every downstream gradlew
+# bootJar / run app / dev check failed. The harness reported 14 failures as if the product were
+# broken. It was reporting its own missing anchor, thirteen times, in someone else's name.
+#
+# Two changes, because the rename was only half the problem:
+#   1. Accept the headings README has actually used. A rename is a normal editorial act; silently
+#      disarming the harness must not be its consequence.
+#   2. Treat "no section found" as EXIT 2 -- "the harness itself could not run", which its own exit
+#      contract already defines -- and stop. Continuing produced thirteen cascading failures that
+#      pointed at the product instead of at this line, which is the most expensive kind of red:
+#      one that sends the reader to the wrong place.
 QUICKSTART=$(awk '
-  /^##[[:space:]]+Quickstart/ { inq=1; next }
-  inq && /^##[[:space:]]/     { inq=0 }
-  inq                          { print }
+  /^##[[:space:]]+(Quickstart|See it run)/ { inq=1; next }
+  inq && /^##[[:space:]]/                  { inq=0 }
+  inq                                       { print }
 ' README.md)
 
 if [ -z "$QUICKSTART" ]; then
-  fail "quickstart-section" "no '## Quickstart' section found in README.md" \
-       "the harness keys off that heading"
-else
-  pass "quickstart-section"
+  c_red "  HARNESS CANNOT RUN: no runnable section found in README.md."
+  echo  "    Looked for a '## Quickstart' or '## See it run' heading and found neither."
+  echo  "    This is NOT a product failure -- it means the harness has no commands to follow, and"
+  echo  "    every check after this one would fail for that reason alone. Fix the heading list in"
+  echo  "    this script, or restore the section in README.md."
+  exit 2
 fi
+pass "quickstart-section"
 
 # Collect commands from fenced blocks, joining backslash continuations. LOCAL_SRC mode (see
 # harness/README.md's own documented "pre-merge" use case) mounts whatever line endings the
@@ -246,8 +263,19 @@ fi
 # file path, most often), producing a baffling "not found" for a path that is visibly correct in
 # the log. Strip it here rather than depending on every host's checkout matching git's own
 # normalization, since LOCAL_SRC exists specifically to test an UNCOMMITTED tree.
+# Only ```sh/```bash fences are COMMANDS. Toggling on any fence (`infence = !infence`) was safe
+# while the section held exactly one block; the current section also shows an illustrative dev-loop
+# LOG, and running that as shell produced failures like
+#     FAIL  cmd: 14:09:47  ready in 45.2s   http://localhost:8080
+# -- the harness executing example output and reporting the product broken when it could not.
+# A latent bug, not a new one: it needed a second fenced block to become visible.
 CMDS=$(printf '%s\n' "$QUICKSTART" | tr -d '\r' | awk '
-  /^```/ { infence = !infence; next }
+  /^```/ {
+    if (infence) { infence = 0 }
+    else { lang = substr($0, 4); gsub(/[[:space:]]/, "", lang);
+           infence = (lang == "sh" || lang == "bash" || lang == "shell") }
+    next
+  }
   infence { print }
 ' | sed 's/[[:space:]]*#.*$//' | grep -v '^[[:space:]]*$' \
   | sed ':a;/\\$/{N;s/\\\n[[:space:]]*/ /;ba}' \
