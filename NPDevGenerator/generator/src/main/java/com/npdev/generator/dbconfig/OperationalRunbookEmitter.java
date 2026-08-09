@@ -24,7 +24,21 @@ public final class OperationalRunbookEmitter {
         }
 
         Path normalizedFinalAppRoot = finalAppRoot.toAbsolutePath().normalize();
-        Path opsRoot = normalizedFinalAppRoot.getParent().resolve("_ops").toAbsolutePath().normalize();
+        // QUAL-3: INSIDE the FinalApp, not beside it.
+        //
+        // This used to be `getParent().resolve("_ops")`, which makes the toolbox a property of the
+        // PARENT DIRECTORY rather than of the app. `npdev init D:\Apps\my-app` generates into
+        // `D:\Apps\my-app-app`, so the toolbox landed at `D:\Apps\_ops`; a second app in the same
+        // folder generated into `D:\Apps\other-app` and wrote THE SAME `D:\Apps\_ops`, silently
+        // replacing the first app's `resolved-db-plan.json` -- the file all five scripts read.
+        // Reset "for" the first app then removed the second app's container and deleted the second
+        // app's data root, and reported success. Measured RED before this change: after generating
+        // two apps into one folder, `npdev db status --app <a>` answered about <b>.
+        //
+        // An app's operational toolbox belongs to the app. Putting it inside the FinalApp removes
+        // the shared directory entirely rather than making sharing safe -- two apps can no longer
+        // collide because neither has anywhere to collide.
+        Path opsRoot = normalizedFinalAppRoot.resolve("_ops").toAbsolutePath().normalize();
         Files.createDirectories(opsRoot);
 
         int serverPort = readInt(config, 8080, "runtime", "serverPort");

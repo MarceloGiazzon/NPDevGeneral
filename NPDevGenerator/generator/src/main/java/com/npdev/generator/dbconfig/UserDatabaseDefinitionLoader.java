@@ -375,6 +375,21 @@ public final class UserDatabaseDefinitionLoader {
             } catch (Exception ignored) {
             }
         }
+        // QUAL-3, second half -- solved by the manifest branch ABOVE, deliberately, not by changing
+        // this fallback.
+        //
+        // The fallback walks two directory levels up, which is right for `<App>/definition/...` and
+        // `<App>/Input/...` and wrong for `npdev init`'s layout, where the definition sits directly
+        // in the app directory so two levels up is the PARENT FOLDER shared by every app in it.
+        // That is what made two apps resolve to one appId, one containerName and one data root.
+        //
+        // Keying on the directory NAME instead was tried and MEASURED to be worse: 25 corpus
+        // definitions live in a directory called `Input` with no manifest, and treating "not named
+        // `definition`" as "this directory is the app" would have collapsed all 25 onto
+        // `appId=Input` -- a wider collision than the one being fixed, in the corpus rather than in
+        // a user's folder. Path shape cannot tell an app directory from a wrapper directory, so it
+        // is not asked to: `npdev init` now WRITES a manifest.json naming the app, and the branch
+        // above reads it. Identity is declared, not inferred.
         if (appDir != null && appDir.getFileName() != null) {
             return slug(appDir.getFileName().toString());
         }

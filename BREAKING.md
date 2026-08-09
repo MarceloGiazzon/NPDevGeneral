@@ -5,6 +5,44 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-09 — an app's `_ops` toolbox and its database identity are now per-APP, not per-FOLDER (QUAL-3)
+
+**What changes.** Two things move, and they are one defect:
+
+1. `_ops` is emitted INSIDE the FinalApp (`<FinalApp>/_ops`), not beside it (`<FinalApp>/../_ops`).
+2. `npdev init` now writes a `manifest.json` declaring the app's id. The generator already prefers
+   that manifest over inferring an id from the directory layout, so `npdev init D:\Apps\my-app` now
+   yields `my-app` where it previously yielded `Apps`, the parent folder. `containerName`, the
+   database name and the data root all derive from it.
+
+**Why.** Both encoded "the toolbox/identity belongs to the parent directory". Measured with two real
+apps generated into one folder: both resolved to `appId=qual3`, `containerName=npdev-qual3` and data
+root `Build/databases/qual3`, and both shared one `_ops/resolved-db-plan.json`. `npdev db status
+--app <app-a>` answered about `app-b`. They were not two apps sharing a toolbox — they were one
+database with two front doors, and `npdev db reset` for either destroyed the other's data while
+reporting success. The acknowledgement token does not protect against this: the user types it
+correctly, for the app they intend, and different data is deleted.
+
+**Identity is DECLARED, not inferred better.** The obvious fix — "if the definition's directory is
+not called `definition/`, that directory is the app" — was implemented, measured, and reverted: 25
+corpus definitions live in a directory called `Input` with no manifest, and that rule collapsed all
+25 onto `appId=Input`, a wider collision than the one being fixed and inside the corpus rather than
+a user's folder. It also broke `UserDatabaseDefinitionDeclaredConnectionTest`. Path shape cannot
+tell an app directory from a wrapper directory, so it is no longer asked to.
+
+**Codemod: none, and none is possible.** No model content changes. Instead the READER carries the
+compatibility: `_find_ops_root` prefers the app-local toolbox and only falls back to the legacy
+shared location when no app-local one exists, printing `using the legacy SHARED toolbox at <path> --
+it may describe a different app than the one you named`. Regenerating an app moves it to the new
+layout. An existing app can also be fixed by hand by adding a `manifest.json` with an `id`.
+
+**What breaks, and for whom.** An app generated before this change keeps working via that fallback,
+with the warning. Once it gains a manifest its database identity changes (`npdev-Apps` →
+`npdev-my-app`), so it connects to a NEW, empty database; the old one still exists under its old
+name and can be dumped and restored if it held anything. Every corpus layout
+(`<App>/definition/...`, `<App>/Input/...`) is unaffected — those already carry a manifest or
+resolve correctly through the unchanged fallback, pinned by `AppIdentityIsolationTest`.
+
 ## 2026-08-09 — SQL identifiers are now QUOTED when the target engine reserves them (STOR-6)
 
 **What changes.** A model field named `order`, or a concept whose table realizes to `rows`, now

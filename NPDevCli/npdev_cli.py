@@ -1000,6 +1000,26 @@ def run_init(args: argparse.Namespace) -> int:
         )
         (target / "db.definition.json").write_text(json.dumps(db_def, indent=2) + "\n", encoding="utf-8")
 
+    # QUAL-3: DECLARE this app's identity instead of letting the generator infer it from where the
+    # file happens to sit.
+    #
+    # `UserDatabaseDefinitionLoader.resolveAppId` reads this manifest first and only falls back to
+    # walking two directories up from db.definition.json. That fallback is correct for the corpus
+    # layouts (`<App>/definition/...`, `<App>/Input/...`) and wrong here, because `npdev init`
+    # writes the definition directly into the app directory -- so two levels up is the PARENT
+    # FOLDER. Measured: two apps scaffolded into `D:\Apps` both resolved to appId `Apps`, hence the
+    # same container name and the same data root, and `npdev db reset` for either destroyed the
+    # other's data while reporting success.
+    #
+    # Fixing this by guessing from the directory NAME was tried and measured to be worse -- 25
+    # corpus definitions live in a directory called `Input` and would have collapsed onto one
+    # identity. Path shape cannot distinguish an app directory from a wrapper directory. This can:
+    # the app says who it is.
+    manifest_path = target / "manifest.json"
+    if not manifest_path.exists():
+        manifest_path.write_text(
+            json.dumps({"id": target.name, "title": target.name}, indent=2) + "\n", encoding="utf-8")
+
     # The scenario config's own database block must agree with the engine just chosen. It was
     # previously copied verbatim from the seed, which declares `docker-postgres` -- so every app
     # `npdev init` has ever scaffolded carried a provisioning block describing an engine it does not
@@ -2683,19 +2703,35 @@ _DB_OPERATIONS = {
 _DB_RESET_CONFIRMATION = "I_UNDERSTAND_DB_DATA_WILL_BE_DELETED"
 
 
-def _find_ops_root(app_path: str | None) -> Path | None:
-    """The `_ops` toolbox for an app, or None.
+def _find_ops_root(app_path: str | None) -> tuple[Path, bool] | None:
+    """The `_ops` toolbox for an app, and whether it is the pre-QUAL-3 SHARED one.
 
-    The generator writes it as a SIBLING of the generated FinalApp root
-    (`OperationalRunbookEmitter`: `finalAppRoot.getParent().resolve("_ops")`), and `npdev init`'s
-    layout puts the model directory alongside that same parent -- so `<app>/../_ops` is the toolbox
-    for `<app>`. Resolved HERE, once, rather than in the Manager: a second derivation in Rust would
-    be a twelfth copy of "where does the build output live", and REG-144 is what eleven copies of
-    that question already cost.
+    Resolved HERE, once, rather than in the Manager: a second derivation in Rust would be a twelfth
+    copy of "where does the build output live", and REG-144 is what eleven copies of that question
+    already cost.
+
+    Since QUAL-3 the generator writes the toolbox INSIDE the FinalApp
+    (`OperationalRunbookEmitter`: `finalAppRoot.resolve("_ops")`), so an app can never share one.
+    Two app-local shapes are accepted, because `--app` may reasonably name either directory:
+
+        <app>/_ops           the FinalApp itself was given
+        <app>-app/_ops       the model directory was given (`npdev init`'s own layout: `npdev init
+                             D:\\Apps\\my-app` generates into `D:\\Apps\\my-app-app`)
+
+    The legacy shared location is tried LAST and reported, never preferred. That ordering is the
+    whole trap in this fix: an app generated before the change and one generated after can both be
+    present, and a fallback consulted first would hand the NEW app the OLD shared toolbox -- which
+    is the bug, reintroduced inside its own fix. Silence would be just as bad, so the caller
+    announces it.
     """
     base = Path(app_path).expanduser().resolve() if app_path else Path.cwd()
-    candidate = base.parent / "_ops"
-    return candidate if candidate.is_dir() else None
+    for candidate in (base / "_ops", base.parent / (base.name + "-app") / "_ops"):
+        if candidate.is_dir():
+            return candidate, False
+    legacy = base.parent / "_ops"
+    if legacy.is_dir():
+        return legacy, True
+    return None
 
 
 def _find_powershell() -> str | None:
@@ -2731,11 +2767,12 @@ def run_db_operation(args: argparse.Namespace) -> int:
         raise CliError(
             f"Reset refused: it DELETES this app's data. Re-run with --confirm {_DB_RESET_CONFIRMATION}")
 
-    ops_root = _find_ops_root(getattr(args, "app", None))
-    if ops_root is None:
+    located = _find_ops_root(getattr(args, "app", None))
+    if located is None:
         raise CliError(
             "no _ops toolbox found for this app. It is written when the app is generated -- run "
             "`npdev run app` (or `npdev dev`) once, then try again.")
+    ops_root, is_legacy = located
     script = ops_root / script_name
     if not script.is_file():
         raise CliError(f"{script} does not exist. Regenerate the app to refresh its _ops toolbox.")
@@ -2756,6 +2793,14 @@ def run_db_operation(args: argparse.Namespace) -> int:
     # ambiguity. So it is made VISIBLE instead: every operation reports the appId and FinalApp path
     # it is about, which turns "Reset silently deleted the other app's data" into something the
     # operator can see before pressing the button a second time.
+    if is_legacy:
+        # Never silent. This toolbox is SHARED with every other app generated into the same folder
+        # (QUAL-3), so it may describe a different app than the one asked about -- which is exactly
+        # how Reset destroyed the wrong data. Say so before doing anything, on stderr so `--json`
+        # stdout stays parseable.
+        print(f"npdev: using the legacy SHARED toolbox at {ops_root} -- it may describe a different "
+              f"app than the one you named. Regenerate this app to give it its own.", file=sys.stderr)
+
     target = {}
     plan_path = ops_root / "resolved-db-plan.json"
     if plan_path.is_file():
