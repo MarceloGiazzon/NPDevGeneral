@@ -214,7 +214,7 @@ final class SchemaDeltaReport {
 
     private static long bestEffortRowCount(Connection connection, String table) {
         try {
-            String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
+            String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
             try (PreparedStatement statement = connection.prepareStatement("SELECT COUNT(*) FROM " + safeTable);
                  ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? resultSet.getLong(1) : -1L;

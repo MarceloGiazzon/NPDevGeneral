@@ -1,0 +1,54 @@
+id: STOR-13
+title: >-
+  Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is
+  the exact state STOR-4, STOR-5 and STOR-6 were each found in
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-09
+verification: NOT_VERIFIED
+surface: kernel/storage-dialect
+source: >-
+  storage/closeout/CLOSEOUT_PLAN.md section 7 ("what test would have caught all three?"). Found by
+  the check that section asked for -- scripts/quality/check-dialect-methods-are-asked.py -- on its
+  first run, against the tree at the moment STOR-6 closed.
+detail: >-
+  The plan's closing question was: STOR-4 (drivers), STOR-5 (guarded DDL) and STOR-6
+  (`quoteIdentifier`, zero calls in the generator) are the same defect three times, so what check
+  catches the family rather than the instances? The answer -- a check that the thing a user runs
+  ASKS the dialect, not merely that the dialect answers correctly -- was built, and it immediately
+  found nine more.
+
+  Each of these is declared on `SqlDialect`, implemented by all four dialects, and called from
+  nowhere in `NPDevKernel/*/src/main`, `NPDevGenerator/generator/src/main`,
+  `NPDevRuntimeHost/src/main` or `NPDevContract/dsl/src/main`. The test-caller counts below are
+  dialect-receiver calls found under `src/test` -- proven correct, wired to nothing:
+
+      supports                       12 test callers, 0 production
+      autoIncrementColumn             9 test callers, 0 production
+      rowLimit                        7 test callers, 0 production
+      returning                       5 test callers, 0 production
+      listColumnsSql                  4 test callers, 0 production
+      limitOnly                       4 test callers, 0 production
+      listTablesSql                   3 test callers, 0 production
+      listIndexesSql                  3 test callers, 0 production
+      cast                            0 test callers, 0 production
+      timestampColumnType             0 test callers, 0 production
+      requiresOrderByForPagination    0 test callers, 0 production
+
+  `supports` is the one worth reading twice. CLAUDE.md instructs the reader to
+  "ask `SqlDialects.active().supports(...)` rather than assuming a rollback" -- STOR-2's whole
+  remedy -- and no production code does. The capability set is consulted through
+  `capabilities()` by `StorageCapabilityGate` at GENERATION time; nothing asks at RUNTIME, which is
+  where the DDL-in-transaction question actually gets decided.
+
+  Not necessarily nine bugs. Some of these may be genuinely premature -- an answer prepared before
+  its consumer exists is not wrong, it is early. What was wrong is that nothing distinguished
+  "prepared early" from "wired and forgotten", and that is the distinction the three closed items
+  each turned out to need. They are now enumerated in that checker's INTERNAL_ONLY allowlist with
+  this item's id, so the list is a visible backlog rather than an invisible one, and any NEW dialect
+  method must be wired or explicitly recorded here.
+remediation: >-
+  Per method, decide and record: wire the production caller, or delete the method, or state in the
+  allowlist why the answer exists before its consumer. `supports` should be first -- STOR-2's
+  documented remedy currently has no runtime implementation.

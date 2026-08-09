@@ -169,14 +169,14 @@ final class UniqueConstraintPass {
      */
     private static List<String> findDuplicateKeys(Connection connection, String table,
             SchemaLifecycleExecutor.UniqueConstraintDecl decl) throws SQLException {
-        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
+        String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
         List<String> groupColumns = new ArrayList<>();
         if (decl.tenantScoped()) {
             groupColumns.add("tenant_id");
         }
         List<String> notNullColumns = new ArrayList<>();
         for (String column : decl.columns()) {
-            String safeColumn = SchemaLifecycleExecutor.safeIdentifier(column);
+            String safeColumn = SchemaLifecycleExecutor.quotedIdentifier(column);
             groupColumns.add(safeColumn);
             notNullColumns.add(safeColumn);
         }
@@ -208,14 +208,14 @@ final class UniqueConstraintPass {
 
     private static void executeAddUniqueConstraint(Connection connection, String table,
             SchemaLifecycleExecutor.UniqueConstraintDecl decl) throws SQLException {
-        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
-        String safeConstraint = SchemaLifecycleExecutor.safeIdentifier(decl.name());
+        String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
+        String safeConstraint = SchemaLifecycleExecutor.quotedIdentifier(decl.name());
         List<String> columns = new ArrayList<>();
         if (decl.tenantScoped()) {
             columns.add("tenant_id");
         }
         for (String column : decl.columns()) {
-            columns.add(SchemaLifecycleExecutor.safeIdentifier(column));
+            columns.add(SchemaLifecycleExecutor.quotedIdentifier(column));
         }
         String sql = "ALTER TABLE " + safeTable + " ADD CONSTRAINT " + safeConstraint
                 + " UNIQUE (" + String.join(", ", columns) + ")";

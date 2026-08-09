@@ -175,7 +175,8 @@ public final class MySqlDialect implements SqlDialect {
     public String renameColumn(String table, String from_, String to) {
         // MySQL 8.0 added RENAME COLUMN; it shares Postgres's spelling, NOT H2's. It used to
         // get H2's by falling through a `"Postgres".equals(engine) ? ... : ...` (STOR-10).
-        return "ALTER TABLE " + table + " RENAME COLUMN " + from_ + " TO " + to;
+        return "ALTER TABLE " + identifier(table) + " RENAME COLUMN " + identifier(from_)
+                + " TO " + identifier(to);
     }
 
     @Override
@@ -505,6 +506,14 @@ public final class MySqlDialect implements SqlDialect {
      */
     static final class MySqlUpsertStrategy implements UpsertStrategy {
 
+        private static String quoted(String rawIdentifier) {
+            return MySqlDialect.INSTANCE.identifier(rawIdentifier);
+        }
+
+        private static List<String> quotedAll(List<String> rawIdentifiers) {
+            return MySqlDialect.INSTANCE.identifiers(rawIdentifiers);
+        }
+
         /**
          * UPDATE by key, then INSERT only if that matched nothing -- because MySQL's native upsert
          * cannot be told WHICH key to react to (STOR-11).
@@ -545,22 +554,22 @@ public final class MySqlDialect implements SqlDialect {
                 // INSERT carries the whole meaning, and a clash is then correctly a unique violation.
                 return UpsertPlan.single(insertStatement(table, valueColumns), valueColumns);
             }
-            String setClause = String.join(", ", assignable.stream().map(c -> c + " = ?").toList());
-            String whereClause = String.join(" AND ", keyColumns.stream().map(c -> c + " = ?").toList());
+            String setClause = String.join(", ", assignable.stream().map(c -> quoted(c) + " = ?").toList());
+            String whereClause = String.join(" AND ", keyColumns.stream().map(c -> quoted(c) + " = ?").toList());
             // Bind order is the whole reason UpsertPlan carries it: UPDATE binds the assignable
             // columns and THEN the keys, while INSERT binds every column in declaration order. A
             // caller assuming one order for both would write the key into a value column.
             List<String> updateBindings = new java.util.ArrayList<>(assignable);
             updateBindings.addAll(keyColumns);
             return UpsertPlan.updateThenInsert(
-                    new UpsertPlan.Step("UPDATE " + table + " SET " + setClause + " WHERE " + whereClause,
+                    new UpsertPlan.Step("UPDATE " + quoted(table) + " SET " + setClause + " WHERE " + whereClause,
                             updateBindings),
                     new UpsertPlan.Step(insertStatement(table, valueColumns), valueColumns));
         }
 
         private static String insertStatement(String table, List<String> valueColumns) {
             String placeholders = String.join(", ", java.util.Collections.nCopies(valueColumns.size(), "?"));
-            return "INSERT INTO " + table + " (" + String.join(", ", valueColumns) + ")"
+            return "INSERT INTO " + quoted(table) + " (" + String.join(", ", quotedAll(valueColumns)) + ")"
                     + " VALUES (" + placeholders + ")";
         }
 
@@ -572,7 +581,10 @@ public final class MySqlDialect implements SqlDialect {
         }
 
         @Override
-        public String statementFor(String table, List<String> keyColumns, List<String> valueColumns) {
+        public String statementFor(String rawTable, List<String> keyColumns, List<String> valueColumns) {
+            // STOR-6: quote HERE, as the text is composed. The caller keeps raw names for
+            // its map lookups, and bindColumns() must echo those back unquoted.
+            String table = MySqlDialect.INSTANCE.identifier(rawTable);
             if (keyColumns == null || keyColumns.isEmpty()) {
                 throw new IllegalArgumentException("engine 'mysql': upsert needs at least one key column");
             }
@@ -585,18 +597,18 @@ public final class MySqlDialect implements SqlDialect {
             }
             List<String> updates = valueColumns.stream()
                     .filter(column -> !keys.contains(column.toLowerCase(Locale.ROOT)))
-                    .map(column -> column + " = VALUES(" + column + ")")
+                    .map(column -> quoted(column) + " = VALUES(" + quoted(column) + ")")
                     .toList();
             String placeholders = String.join(", ", java.util.Collections.nCopies(valueColumns.size(), "?"));
             String head = "INSERT INTO " + table
-                    + " (" + String.join(", ", valueColumns) + ")"
+                    + " (" + String.join(", ", quotedAll(valueColumns)) + ")"
                     + " VALUES (" + placeholders + ")";
             if (updates.isEmpty()) {
                 // Every column is a key column. MySQL has no DO NOTHING; the idiom is to assign a key
                 // column to itself, which is a no-op the parser accepts. INSERT IGNORE would also
                 // work and is deliberately not used -- it swallows unrelated errors too.
                 String key = keyColumns.get(0);
-                return head + " ON DUPLICATE KEY UPDATE " + key + " = " + key;
+                return head + " ON DUPLICATE KEY UPDATE " + quoted(key) + " = " + quoted(key);
             }
             return head + " ON DUPLICATE KEY UPDATE " + String.join(", ", updates);
         }

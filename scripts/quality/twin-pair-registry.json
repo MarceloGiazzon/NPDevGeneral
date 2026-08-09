@@ -207,6 +207,21 @@
         "NPDevMcp/server.py",
         "scripts/ai/npdev_ai_common.py"
       ]
+    },
+    {
+      "id": "sql-identifier-quoting-three-seams",
+      "citedBy": "STOR-6",
+      "description": "THREE independent places turn a model name into SQL identifier text, and all three must ask SqlDialect.identifier() -- the conditional quoting that lets a field be named `order`. SchemaRealizationEmitter EMITS the DDL; JdbcBusinessConceptStore READS AND WRITES rows against it; SchemaLifecycleExecutor.quotedIdentifier serves the 40 schema-lifecycle sites (impact probe, backfill, rename, widen, unique) that only run when something CHANGES on an existing database. Quoting one alone is worse than quoting none: the app builds, boots, and cannot find its own table. The third seam was NOT in STOR-6's plan -- the plan named two, and the third surfaced only when a live H2 run hit `SELECT COUNT(*) FROM probe_reserveds WHERE order IS NOT NULL` during an impact probe, which no fresh-database test can ever reach. Each carries the 'npdev-sql-identifier-quoting' token so dropping one is a gate failure. Cover is NPDevSamples/probes/engine-probe, whose ProbeRecord has columns `order` and `value` and whose Row concept realizes to the table `rows`; run-engine-app-proof.py asserts they round-trip on every engine.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev-sql-identifier-quoting"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java",
+        "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java",
+        "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java"
+      ]
     }
   ]
 }

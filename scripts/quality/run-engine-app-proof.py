@@ -8,7 +8,7 @@ schema through NPDev's own engine, never booted Spring, never served a request. 
 a user actually uses, and until this script ran, **no generated application had ever booted on MySQL
 or SQL Server.** A third person picking MySQL would have been the first.
 
-Four assertions, in the order they can fail:
+Five assertions, in the order they can fail:
 
   1. **It boots.** Schema realization ran against the real engine. That alone is new information.
   2. **Non-BMP unicode survives a round trip.** POST a record whose label is `café ☕ 🚀`, GET it
@@ -16,6 +16,11 @@ Four assertions, in the order they can fail:
      SQL Server failed at Tier B, because the vector hand-wrote `VARCHAR(4000)` instead of asking the
      dialect. SqlServerDialect.portableColumnType already returned NVARCHAR and was never asked. If
      the EMITTER makes the same mistake, this is where it shows, and nowhere earlier.
+  2b. **SQL-reserved identifiers round-trip** (STOR-6). The probe carries a column named `order` and
+     one named `value`, and a concept whose table is `rows`. Booting proves the GENERATOR quoted them
+     -- an unquoted `order` is a syntax error in CREATE TABLE on every engine. Reading the row back
+     proves the RUNTIME quoted them too, and that is the half that fails silently: the app builds,
+     boots, and then cannot find its own table. Both seams are a registered twin pair.
   3. **The query path returns the right rows.** Filtered and ordered, so pagination goes through the
      dialect -- 23 of the original 41 sites, and the one where SQL Server binds (offset, limit) in
      the REVERSED order. A wrong page here is silent on three engines and wrong on the fourth.
@@ -278,7 +283,7 @@ class App:
 
 
 def assertions(app: App, results: list[dict]) -> None:
-    """The four things this proof exists to establish. Each records its own verdict."""
+    """The things this proof exists to establish. Each records its own verdict."""
     base = app.base()
     concept = "/api/concepts/probe_records"
 
@@ -291,6 +296,12 @@ def assertions(app: App, results: list[dict]) -> None:
     record("boots", True, "schema realization ran against the real engine and /actuator/health is UP")
 
     # 2. Non-BMP unicode, application level (conformance J2 promoted).
+    #
+    # `order` and `value` ride along on the SAME payload rather than getting their own record: they
+    # are SQL-reserved (STOR-6), so this one write and read passes through the runtime's quoting on
+    # the INSERT column list, the SELECT column list and the WHERE clause. Carrying them here means
+    # every assertion below exercises them too -- a reserved column on a concept nothing queries
+    # proves the emitted DDL and nothing whatsoever about the runtime that has to read it back.
     payload = {
         "code": "UNI-1",
         "label": UNICODE_LABEL,
@@ -298,6 +309,8 @@ def assertions(app: App, results: list[dict]) -> None:
         "total": 700,
         "active": True,
         "recordedAt": "2026-08-08T12:00:00Z",
+        "order": 42,
+        "value": "reserved-on-h2",
     }
     status, created = http("POST", base + concept, payload)
     if status not in (200, 201):
@@ -312,6 +325,20 @@ def assertions(app: App, results: list[dict]) -> None:
                   " -- the engine or the emitted column type is losing characters SILENTLY; on MySQL "
                   "check utf8mb4, on SQL Server check that the emitter asks "
                   "SqlServerDialect.portableColumnType (NVARCHAR) rather than writing VARCHAR"))
+
+        # 2b. STOR-6, the RUNTIME half. The generator seam is already proven by the fact that the
+        # app booted at all -- an unquoted `order` column is a syntax error in CREATE TABLE on all
+        # four engines. This is the OTHER seam: the app builds, boots, and then cannot read its own
+        # table. Both halves have to agree, which is why they are a registered twin pair.
+        reserved_order = rows[0].get("order") if rows else None
+        reserved_value = rows[0].get("value") if rows else None
+        ok = reserved_order == 42 and reserved_value == "reserved-on-h2"
+        record("reserved-identifier-round-trip", ok,
+               f"order={reserved_order!r}, value={reserved_value!r} (expected 42 / 'reserved-on-h2')"
+               + ("" if ok else
+                  " -- the DDL quoted these and the runtime did not, or the reverse. Check that "
+                  "SchemaRealizationEmitter.sqlId and JdbcBusinessConceptStore.sqlId are BOTH "
+                  "asking SqlDialect.identifier()"))
 
     # 3. Query path: filtered and ordered, so pagination is built by the dialect.
     for index in range(3):

@@ -4,7 +4,7 @@
   "dslVersion": "1.0.0",
   "version": "1.0",
   "metadata": {
-    "purpose": "Engine probe (storage/FULL_SUPPORT_PLAN.md W2, exit criteria E3/E4/E5): the SAME model is generated, built, booted and exercised against EVERY engine, so any difference in outcome is the dialect and nothing else. Every field forces one engine-specific column type or behaviour through the FULL generated stack -- schema realization, CRUD, query, panel -- which Tier B's raw-JDBC vectors never touch. One model, not one per engine: two models could differ, and then a difference in outcome would prove nothing."
+    "purpose": "Engine probe (storage/FULL_SUPPORT_PLAN.md W2, exit criteria E3/E4/E5): the SAME model is generated, built, booted and exercised against EVERY engine, so any difference in outcome is the dialect and nothing else. Every field forces one engine-specific column type or behaviour through the FULL generated stack -- schema realization, CRUD, query, panel -- which Tier B's raw-JDBC vectors never touch. One model, not one per engine: two models could differ, and then a difference in outcome would prove nothing. ProbeReserved and the Row concept carry SQL-RESERVED identifiers (`order`, `value`, and the table name `rows`) so this same all-engine run also proves STOR-6 conditional quoting at both naming seams -- the generator emits the DDL and the runtime queries it, and quoting only one leaves an app that builds, boots, and cannot find its own table."
   },
   "concepts": [
     {
@@ -66,6 +66,22 @@
           "ui": {
             "label": "Recorded at"
           }
+        },
+        {
+          "name": "order",
+          "type": "integer",
+          "required": false,
+          "ui": {
+            "label": "Order"
+          }
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "ui": {
+            "label": "Value"
+          }
         }
       ],
       "invariants": [
@@ -112,6 +128,28 @@
         {
           "name": "ProbeReservedNameRequired",
           "expr": "name != null && name != ''"
+        }
+      ]
+    },
+    {
+      "name": "Row",
+      "ui": {
+        "label": "Row"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Name"
+          }
         }
       ]
     }

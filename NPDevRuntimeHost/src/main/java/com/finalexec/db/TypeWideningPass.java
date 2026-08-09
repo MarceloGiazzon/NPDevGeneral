@@ -75,8 +75,8 @@ final class TypeWideningPass {
      */
     static void executeWidenColumnType(Connection connection, String engine, String table, String column, String newType)
             throws SQLException {
-        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
-        String safeColumn = SchemaLifecycleExecutor.safeIdentifier(column);
+        String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
+        String safeColumn = SchemaLifecycleExecutor.quotedIdentifier(column);
         String safeType = safeSqlType(newType);
         String sql = "Postgres".equals(engine)
                 ? "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " TYPE " + safeType

@@ -148,6 +148,9 @@
     "scripts/quality/check-container-images-pinned.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-dialect-methods-are-asked.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-dialect-sites.py": {
       "invocation": "ci-gate"
     },

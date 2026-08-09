@@ -598,8 +598,19 @@ public final class SqlServerDialect implements SqlDialect {
      * the kind of defect that only appears in production under load -- never in a unit test.
      */
     static final class SqlServerUpsertStrategy implements UpsertStrategy {
+
+        private static String quoted(String rawIdentifier) {
+            return SqlServerDialect.INSTANCE.identifier(rawIdentifier);
+        }
+
+        private static List<String> quotedAll(List<String> rawIdentifiers) {
+            return SqlServerDialect.INSTANCE.identifiers(rawIdentifiers);
+        }
         @Override
-        public String statementFor(String table, List<String> keyColumns, List<String> valueColumns) {
+        public String statementFor(String rawTable, List<String> keyColumns, List<String> valueColumns) {
+            // STOR-6: quote HERE, as the text is composed. The caller keeps raw names for
+            // its map lookups, and bindColumns() must echo those back unquoted.
+            String table = SqlServerDialect.INSTANCE.identifier(rawTable);
             if (keyColumns == null || keyColumns.isEmpty()) {
                 throw new IllegalArgumentException("engine 'sqlserver': upsert needs at least one key column");
             }
@@ -611,18 +622,18 @@ public final class SqlServerDialect implements SqlDialect {
                 keys.add(key.toLowerCase(Locale.ROOT));
             }
             String placeholders = String.join(", ", java.util.Collections.nCopies(valueColumns.size(), "?"));
-            String sourceColumns = String.join(", ", valueColumns);
+            String sourceColumns = String.join(", ", quotedAll(valueColumns));
             String onClause = keyColumns.stream()
-                    .map(key -> "target." + key + " = source." + key)
+                    .map(key -> "target." + quoted(key) + " = source." + quoted(key))
                     .reduce((a, b) -> a + " AND " + b)
                     .orElseThrow();
             List<String> updates = valueColumns.stream()
                     .filter(column -> !keys.contains(column.toLowerCase(Locale.ROOT)))
-                    .map(column -> "target." + column + " = source." + column)
+                    .map(column -> "target." + quoted(column) + " = source." + quoted(column))
                     .toList();
-            String insertColumns = String.join(", ", valueColumns);
+            String insertColumns = String.join(", ", quotedAll(valueColumns));
             String insertValues = valueColumns.stream()
-                    .map(column -> "source." + column)
+                    .map(column -> "source." + quoted(column))
                     .reduce((a, b) -> a + ", " + b)
                     .orElseThrow();
 

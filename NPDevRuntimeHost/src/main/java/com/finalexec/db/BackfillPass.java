@@ -342,12 +342,13 @@ final class BackfillPass {
      * whether THIS constraint is tenant-scoped and then take a per-tenant max, which is unnecessary
      * complexity beyond what the register's filed scope asks for. */
     private static long countAffectedRows(Connection connection, String table, String column) throws SQLException {
-        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
+        String quotedTable = SchemaLifecycleExecutor.quotedIdentifier(table);
         boolean columnExistsLive = SchemaLifecycleExecutor.readActualColumns(connection.getMetaData(), table).stream()
                 .anyMatch(column::equalsIgnoreCase);
         String sql = columnExistsLive
-                ? "SELECT COUNT(*) FROM " + safeTable + " WHERE " + SchemaLifecycleExecutor.safeIdentifier(column) + " IS NULL"
-                : "SELECT COUNT(*) FROM " + safeTable;
+                ? "SELECT COUNT(*) FROM " + quotedTable + " WHERE "
+                        + SchemaLifecycleExecutor.quotedIdentifier(column) + " IS NULL"
+                : "SELECT COUNT(*) FROM " + quotedTable;
         try (PreparedStatement statement = connection.prepareStatement(sql);
                 ResultSet resultSet = statement.executeQuery()) {
             return resultSet.next() ? resultSet.getLong(1) : 0L;
@@ -376,24 +377,30 @@ final class BackfillPass {
      */
     private static void addBackfillAndTightenColumn(Connection connection, String table, String column,
             String sqlType, String literalDefaultJson) throws SQLException {
+        // `safeTable`/`safeColumn` stay RAW: guardedAddColumn puts them into an
+        // information_schema string LITERAL, where a quoted name would never match. The
+        // quoted pair is for the statement TEXT (STOR-6).
         String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
         String safeColumn = SchemaLifecycleExecutor.safeIdentifier(column);
+        String quotedTable = SchemaLifecycleExecutor.quotedIdentifier(table);
+        String quotedColumn = SchemaLifecycleExecutor.quotedIdentifier(column);
         String safeType = TypeWideningPass.safeSqlType(sqlType);
         try (PreparedStatement add = connection.prepareStatement(
                 com.npdev.kernel.storage.sql.SqlDialects.active().guardedAddColumn(
                         safeTable, safeColumn,
-                        "ALTER TABLE " + safeTable + " ADD COLUMN " + safeColumn + " " + safeType))) {
+                        "ALTER TABLE " + quotedTable + " ADD COLUMN " + quotedColumn + " " + safeType))) {
             add.executeUpdate();
         }
         Object literalValue = decodeLiteralDefault(literalDefaultJson);
         try (PreparedStatement update = connection.prepareStatement(
-                "UPDATE " + safeTable + " SET " + safeColumn + " = ? WHERE " + safeColumn + " IS NULL")) {
+                "UPDATE " + quotedTable + " SET " + quotedColumn + " = ? WHERE "
+                        + quotedColumn + " IS NULL")) {
             update.setObject(1, literalValue);
             update.executeUpdate();
         }
         if (!SchemaLifecycleExecutor.isColumnNotNull(connection, table, column)) {
             try (PreparedStatement notNull = connection.prepareStatement(
-                    "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " SET NOT NULL")) {
+                    "ALTER TABLE " + quotedTable + " ALTER COLUMN " + quotedColumn + " SET NOT NULL")) {
                 notNull.executeUpdate();
             }
         }
@@ -413,15 +420,20 @@ final class BackfillPass {
     ) throws SQLException {
         String table = item.table();
         String column = item.column();
+        // `safeTable`/`safeColumn` stay RAW: guardedAddColumn puts them into an
+        // information_schema string LITERAL, where a quoted name would never match. The
+        // quoted pair is for the statement TEXT (STOR-6).
         String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
         String safeColumn = SchemaLifecycleExecutor.safeIdentifier(column);
-        String safeIdColumn = SchemaLifecycleExecutor.safeIdentifier("id");
+        String quotedTable = SchemaLifecycleExecutor.quotedIdentifier(table);
+        String quotedColumn = SchemaLifecycleExecutor.quotedIdentifier(column);
+        String quotedIdColumn = SchemaLifecycleExecutor.quotedIdentifier("id");
         String sqlType = manifest.businessTableColumnTypes().getOrDefault(table, Map.of()).get(column);
         String safeType = TypeWideningPass.safeSqlType(sqlType);
         try (PreparedStatement add = connection.prepareStatement(
                 com.npdev.kernel.storage.sql.SqlDialects.active().guardedAddColumn(
                         safeTable, safeColumn,
-                        "ALTER TABLE " + safeTable + " ADD COLUMN " + safeColumn + " " + safeType))) {
+                        "ALTER TABLE " + quotedTable + " ADD COLUMN " + quotedColumn + " " + safeType))) {
             add.executeUpdate();
         }
         List<ExpressionBackfillPreview.RowValue> rows =
@@ -434,7 +446,8 @@ final class BackfillPass {
                         + "re-acknowledge before retrying.");
             }
             try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE " + safeTable + " SET " + safeColumn + " = ? WHERE " + safeIdColumn + " = ?")) {
+                    "UPDATE " + quotedTable + " SET " + quotedColumn + " = ? WHERE "
+                            + quotedIdColumn + " = ?")) {
                 update.setObject(1, row.value());
                 update.setObject(2, row.rawId());
                 update.executeUpdate();
@@ -442,7 +455,7 @@ final class BackfillPass {
         }
         if (!SchemaLifecycleExecutor.isColumnNotNull(connection, table, column)) {
             try (PreparedStatement notNull = connection.prepareStatement(
-                    "ALTER TABLE " + safeTable + " ALTER COLUMN " + safeColumn + " SET NOT NULL")) {
+                    "ALTER TABLE " + quotedTable + " ALTER COLUMN " + quotedColumn + " SET NOT NULL")) {
                 notNull.executeUpdate();
             }
         }
