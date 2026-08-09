@@ -6,17 +6,46 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**157 item(s) migrated: 3 open/partial, 154 done.**
+**158 item(s) migrated: 4 open/partial, 154 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
+| QUAL-1 | check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight | GAP | LOW | OPEN | 2026-08-09 |
 | STOR-5 | The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run | GAP | HIGH | OPEN | 2026-08-08 |
 | STOR-6 | The generator never quotes business identifiers, so a model field named after a reserved word (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the dialect layer and never exercised at application level | BUG | MEDIUM | OPEN | 2026-08-08 |
 | STOR-8 | db.definition.json's `h2FilePath` and `jdbcUrl` are parsed, validated and then ignored -- a user who sets either gets no error and no effect | BUG | LOW | OPEN | 2026-08-08 |
 
 ### Detail
+
+### QUAL-1 — check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight
+
+**Type:** GAP · **Severity:** LOW · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** storage/parity/ENGINE_PARITY_PLAN.md P7. Found by storage/helpers/check-script-budget.py while clearing the parity round's housekeeping.
+**Surface:** `scripts/quality`
+**Files:**
+- `scripts/quality/check-dsl-coverage.py`
+
+`scripts/quality/check-dsl-coverage.py` is 913 lines. The budget for a `check-*.py` is a 250-line
+target and a 400-line hard stop, and the baseline had frozen it at 894 -- so it has also GROWN past
+its own frozen ceiling, which the budget tool treats as blocking on purpose: "the baseline records
+a ceiling, not a licence."
+
+It did not grow during this workstream. It is recorded here because the alternative was to raise
+its ceiling silently, and a limit quietly moved is indistinguishable from a limit that was never
+enforced.
+
+The other two over-budget scripts have arguments that this one does not:
+
+  run-ai-knowledge-gate.ps1 (577)   a HOST for 35 checks; a 500-line stop was sized for a script
+                                   that does one thing, and splitting the host would scatter the
+                                   ordering guarantee that makes "all gates green" mean something
+  check-emitted-sql-portability.py  2% over, and the overage is the CONSTRUCTS table where each
+                                   (409)  entry records a measured engine failure
+
+913 against 400 is not 2%. It is a checker that has accumulated several jobs.
 
 ### STOR-5 — The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run
 
