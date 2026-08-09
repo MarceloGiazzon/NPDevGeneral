@@ -106,6 +106,12 @@ public final class PostgresDialect implements SqlDialect {
     }
 
     @Override
+    public String defaultableTextColumnType() {
+        // Postgres has no width restriction on a defaulted `text` column.
+        return portableColumnType("TEXT");
+    }
+
+    @Override
     public String timestampColumnType() {
         return "TIMESTAMP WITH TIME ZONE";
     }

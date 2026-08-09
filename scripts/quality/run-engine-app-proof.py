@@ -149,7 +149,7 @@ def write_db_definition(app_input: Path, args) -> dict:
     return definition
 
 
-def generate(root: Path, app_input: Path, output: Path) -> None:
+def generate(root: Path, app_input: Path, output: Path, engine: str | None = None) -> None:
     log(f"generating into {output}")
     completed = subprocess.run(
         [sys.executable, str(root / "NPDevCli" / "npdev_cli.py"), "generate", "app",
@@ -160,6 +160,44 @@ def generate(root: Path, app_input: Path, output: Path) -> None:
         cwd=str(root), check=False)
     if completed.returncode != 0:
         raise SystemExit(f"generation failed (exit {completed.returncode})")
+    lint_emitted_sql(root, output, engine)
+
+
+def lint_emitted_sql(root: Path, output: Path, engine: str | None) -> None:
+    """Scan the schema script we just emitted BEFORE trying to boot on it.
+
+    <p>Flyway stops at the first statement it cannot execute, so a script with three unportable
+    constructs costs three ~12-minute CI rounds to discover -- which is exactly how STOR-5 and STOR-7
+    were found, one error message at a time. The linter reports every construct in one pass, here,
+    seconds after generation and before a single container starts.
+
+    Silent when the engine has no SQL dialect (InMemory) or is unknown to the linter; a missing
+    engine name must not turn into a skipped check that nobody notices, so the name is resolved
+    through the same registry the rest of the harness uses.
+    """
+    dialect = _PORTABILITY_DIALECTS.get((engine or "").strip().lower())
+    if dialect is None:
+        return
+    completed = subprocess.run(
+        [sys.executable, str(root / "scripts" / "quality" / "check-emitted-sql-portability.py"),
+         "--search-root", str(output), "--generated-for", dialect, "--allow-empty"],
+        cwd=str(root), check=False)
+    if completed.returncode != 0:
+        raise SystemExit(
+            f"the emitted schema script contains SQL {dialect} cannot run (see the scan above). "
+            f"Booting would fail inside Flyway at the FIRST of them; this reports all of them.")
+
+
+# Engine key -> the dialect the linter knows it by. InMemory maps to None on purpose: it stores
+# nothing in SQL, so there is no script and nothing to check.
+_PORTABILITY_DIALECTS = {
+    "postgres": "postgres",
+    "h2local": "h2",
+    "h2server": "h2",
+    "mysql": "mysql",
+    "sqlserver": "sqlserver",
+    "inmemory": None,
+}
 
 
 def build(app_root: Path) -> Path:
@@ -363,7 +401,7 @@ def main(argv: list[str] | None = None) -> int:
     app: App | None = None
     failure: str | None = None
     try:
-        generate(root, staged_input, output)
+        generate(root, staged_input, output, args.engine)
         jar = build(output)
         app = App(jar, output, args.port, boot_log)
         app.start(args.boot_timeout)

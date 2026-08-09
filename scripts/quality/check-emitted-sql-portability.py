@@ -130,6 +130,34 @@ CONSTRUCTS = {
         'dialect.portableColumnType("TEXT") -- NVARCHAR(MAX) on SQL Server, where TEXT is deprecated',
         False,
     ),
+    # --------------------------------------------------------------------------------------------
+    # STOR-7. The two that got past every check above, because both are about what a text column is
+    # FOR rather than how it is spelled. Found at Flyway time on first boot, CI run 31284450437.
+    #
+    #   MySQL 8.4     BLOB, TEXT, GEOMETRY or JSON column 'state' can't have a default value  (1101)
+    #   SQL Server    Column 'metadata_key' ... is of a type that is invalid for use as a key
+    #                 column in an index.
+    #
+    # Both are `emittedUnconditionally=False` because after the fix the emitter asks the dialect, so
+    # the type in a script IS engine-specific -- `text PRIMARY KEY` in a Postgres script is correct
+    # and flagging it would be noise. They fire under --generated-for, which is the run that knows.
+    # --------------------------------------------------------------------------------------------
+    "text-key-column": (
+        re.compile(r"(?:(?<![\w(])TEXT|N?VARCHAR\s*\(\s*MAX\s*\))\s+(?:NOT\s+NULL\s+)?"
+                   r"(?:PRIMARY\s+KEY|UNIQUE)\b", re.IGNORECASE),
+        "unbounded text in a PRIMARY KEY / UNIQUE",
+        {"postgres": True, "h2": True, "mysql": False, "sqlserver": False},
+        "dialect.keyableTextColumnType() -- MySQL error 1170 wants a key length; SQL Server cannot "
+        "index NVARCHAR(MAX) at all",
+        False,
+    ),
+    "text-default-column": (
+        re.compile(r"(?<![\w(])TEXT(?![\w)(])\s+(?:NOT\s+NULL\s+)?DEFAULT\b", re.IGNORECASE),
+        "unbounded text carrying a DEFAULT",
+        {"postgres": True, "h2": True, "mysql": False, "sqlserver": True},
+        "dialect.defaultableTextColumnType() -- MySQL error 1101; a TEXT column cannot have one",
+        False,
+    ),
     "jsonb": (
         re.compile(r"\bJSONB\b", re.IGNORECASE),
         "jsonb",

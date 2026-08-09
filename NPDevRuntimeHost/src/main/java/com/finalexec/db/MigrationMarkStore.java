@@ -61,8 +61,12 @@ public final class MigrationMarkStore {
         try (PreparedStatement statement = connection.prepareStatement(
                 SqlDialects.active().guardedCreateTable(TABLE,
                         "CREATE TABLE " + TABLE
-                        + " (id TEXT PRIMARY KEY, marked_fingerprint TEXT NOT NULL, marked_at_utc BIGINT NOT NULL, "
-                        + "marked_by TEXT, note TEXT, from_fingerprint TEXT)")
+                        + " (id " + InternalDdlTypes.keyText() + " PRIMARY KEY, "
+                        + "marked_fingerprint " + InternalDdlTypes.text() + " NOT NULL, "
+                        + "marked_at_utc BIGINT NOT NULL, "
+                        + "marked_by " + InternalDdlTypes.text() + ", "
+                        + "note " + InternalDdlTypes.text() + ", "
+                        + "from_fingerprint " + InternalDdlTypes.text() + ")")
         )) {
             statement.executeUpdate();
         }
@@ -78,7 +82,8 @@ public final class MigrationMarkStore {
         if (!hasFromFingerprintColumn(connection)) {
             try (PreparedStatement statement = connection.prepareStatement(
                     SqlDialects.active().guardedAddColumn(TABLE, "from_fingerprint",
-                            "ALTER TABLE " + TABLE + " ADD COLUMN from_fingerprint TEXT")
+                            "ALTER TABLE " + TABLE + " ADD COLUMN from_fingerprint "
+                            + InternalDdlTypes.text())
             )) {
                 statement.executeUpdate();
             }

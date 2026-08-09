@@ -309,6 +309,35 @@ class DialectConformanceTierATest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("dialects")
+    @DisplayName("I4: a text column that carries a DEFAULT is a type this engine will accept one on")
+    void defaultableTextTypeAcceptsADefault(SqlDialect dialect) {
+        // STOR-7, the THIRD role a text column plays. The keyable question (I3 above) was asked and
+        // answered; this one was not, and npdev_circuit_breakers.state is declared
+        // `TEXT DEFAULT 'CLOSED'`:
+        //
+        //     Error Code : 1101
+        //     BLOB, TEXT, GEOMETRY or JSON column 'state' can't have a default value   (MySQL 8.4)
+        //
+        // Measured at Flyway line 417 on first boot, CI run 31284450437. The column is in no key, so
+        // fixing I3 did nothing for it -- which is exactly why it is a separate method and a separate
+        // vector rather than a widened meaning of the keyable one.
+        String type = dialect.defaultableTextColumnType();
+        assertTrue(type != null && !type.isBlank(), dialect.name() + ": must answer something");
+        if ("mysql".equals(dialect.name())) {
+            assertTrue(type.matches("(?i)N?VARCHAR\\(\\d+\\)"),
+                    "MySQL cannot put a DEFAULT on unbounded text at all, so the answer must be a "
+                    + "BOUNDED type. Got: " + type);
+        } else {
+            // Everyone else keeps the payload answer. Asserted rather than assumed, because
+            // narrowing an engine that never had the problem would silently retype every internal
+            // text column on it -- a schema diff for nothing, on the two engines that were working.
+            assertEquals(dialect.portableColumnType("TEXT"), type,
+                    dialect.name() + ": accepts a DEFAULT on unbounded text, so it must not narrow");
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
     @DisplayName("C1: EVERY engine can cap a statement, whatever shape its cap takes")
     void everyDialectCanCapAStatement(SqlDialect dialect) {
         // storage/FULL_SUPPORT_PLAN.md W1.3. The gap was never "SQL Server cannot cap rows" -- it is

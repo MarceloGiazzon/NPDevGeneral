@@ -4,7 +4,9 @@
   "dslVersion": "1.0.0",
   "version": "1.0",
   "metadata": {
-    "purpose": "Storage probe E1 (v1): adding a NULLABLE column must preserve existing rows. Uses KeepExistingIfCompatible and forbids destructive recreate -- a probe that recreates cannot test preservation, which is the entire point of this one."
+    "purpose": "Storage probe E1 (v1): adding a NULLABLE column must preserve existing rows. Uses KeepExistingIfCompatible and forbids destructive recreate -- a probe that recreates cannot test preservation, which is the entire point of this one.",
+    "seedPath": "Rows are seeded through the generated app's own CRUD endpoint, which is why this concept carries a ui label: without one the app emits no such endpoint and Tier C's seed 404s. Inserting over JDBC instead would prove the rows survive, but not that the platform wrote them (storage/OPEN_ITEMS_PLAN.md 5.1).",
+    "reservedWordWorkaround": "The field is `label`, not `value`, ONLY because `value` is a reserved word in H2 and the generator does not quote business identifiers (ledger STOR-6) -- so this probe could never boot. That is a workaround for the PROBE, not for the platform. Said out loud here because a fixture quietly shaped around a bug is how the bug stops being visible."
   },
   "concepts": [
     {
@@ -17,11 +19,14 @@
           "required": true
         },
         {
-          "name": "value",
+          "name": "label",
           "type": "string",
           "required": true
         }
-      ]
+      ],
+      "ui": {
+        "label": "Row"
+      }
     }
   ],
   "capabilities": [

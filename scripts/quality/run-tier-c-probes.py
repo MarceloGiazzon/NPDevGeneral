@@ -75,10 +75,11 @@ def _prepare(root: Path, probe_input: Path, args, database_name: str, work: Path
     return staged
 
 
-def _boot(root: Path, probe_input: Path, work: Path, port: int, boot_timeout: int):
+def _boot(root: Path, probe_input: Path, work: Path, port: int, boot_timeout: int,
+          engine: str | None = None):
     output = work / "App"
     boot_log = work / "boot.log"
-    _engine_proof.generate(root, probe_input, output)
+    _engine_proof.generate(root, probe_input, output, engine)
     jar = _engine_proof.build(output)
     app = _engine_proof.App(jar, output, port, boot_log)
     app.start(boot_timeout)
@@ -92,9 +93,9 @@ def vector_e1(root: Path, args, work: Path, results: list[dict]) -> None:
     marker = f"e1-{uuid.uuid4().hex[:8]}"
 
     staged_v1 = _prepare(root, probe / "v1" / "Input", args, database, work / "p2-v1")
-    app = _boot(root, staged_v1, work / "p2-v1", args.port, args.boot_timeout)
+    app = _boot(root, staged_v1, work / "p2-v1", args.port, args.boot_timeout, args.engine)
     try:
-        status, _ = http("POST", f"{app.base()}/api/concepts/rows", {"value": marker})
+        status, _ = http("POST", f"{app.base()}/api/concepts/rows", {"label": marker})
         if status not in (200, 201):
             raise RuntimeError(f"v1 seed failed with {status}")
     finally:
@@ -103,9 +104,9 @@ def vector_e1(root: Path, args, work: Path, results: list[dict]) -> None:
     # v2 adds a nullable `note`. The SAME database, a DIFFERENT model -- which is the whole vector:
     # boot-time schema realization must ALTER, not recreate.
     staged_v2 = _prepare(root, probe / "v2" / "Input", args, database, work / "p2-v2")
-    app = _boot(root, staged_v2, work / "p2-v2", args.port, args.boot_timeout)
+    app = _boot(root, staged_v2, work / "p2-v2", args.port, args.boot_timeout, args.engine)
     try:
-        status, listed = http("GET", f"{app.base()}/api/concepts/rows?where=value:eq:{marker}")
+        status, listed = http("GET", f"{app.base()}/api/concepts/rows?where=label:eq:{marker}")
         rows = (listed or {}).get("content") or []
         survived = len(rows) == 1
         has_note = survived and "note" in rows[0]
@@ -128,7 +129,7 @@ def vector_e2(root: Path, args, work: Path, results: list[dict]) -> None:
     marker = f"978-{uuid.uuid4().hex[:9]}"
 
     staged_v1 = _prepare(root, probe / "v1" / "Input", args, database, work / "p3-v1")
-    app = _boot(root, staged_v1, work / "p3-v1", args.port, args.boot_timeout)
+    app = _boot(root, staged_v1, work / "p3-v1", args.port, args.boot_timeout, args.engine)
     try:
         status, _ = http("POST", f"{app.base()}/api/concepts/books", {"isbn": marker})
         if status not in (200, 201):
@@ -139,7 +140,7 @@ def vector_e2(root: Path, args, work: Path, results: list[dict]) -> None:
         app.stop()
 
     staged_v2 = _prepare(root, probe / "v2" / "Input", args, database, work / "p3-v2")
-    app = _boot(root, staged_v2, work / "p3-v2", args.port, args.boot_timeout)
+    app = _boot(root, staged_v2, work / "p3-v2", args.port, args.boot_timeout, args.engine)
     try:
         status, listed = http("GET", f"{app.base()}/api/concepts/books?where=isbn13:eq:{marker}")
         rows = (listed or {}).get("content") or []
@@ -159,7 +160,7 @@ def vectors_i2_i3(root: Path, args, work: Path, results: list[dict]) -> None:
     """I2 (nullability) and I3 (unique vs plain index), asserted through behaviour."""
     probe = root / "NPDevSamples" / "probes" / "p4-constraints"
     staged = _prepare(root, probe / "Input", args, f"npdev_p4_{args.engine}", work / "p4")
-    app = _boot(root, staged, work / "p4", args.port, args.boot_timeout)
+    app = _boot(root, staged, work / "p4", args.port, args.boot_timeout, args.engine)
     try:
         base = app.base()
         email = f"probe-{uuid.uuid4().hex[:8]}@example.test"

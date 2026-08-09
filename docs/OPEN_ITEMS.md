@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**150 item(s) migrated: 3 open/partial, 147 done.**
+**153 item(s) migrated: 5 open/partial, 148 done.**
 
 ## Open / partial
 
@@ -15,6 +15,8 @@
 | REG-142 | /api/admin/model/export and /api/admin/model/ui (ui-model) still read classpath resource npdev/model.json directly, which can be RuntimeHost's own unreplaced template placeholder rather than the app's real model, depending on how generation resolved the model source | GAP | LOW | OPEN | 2026-08-07 |
 | STOR-3 | MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images | GAP | MEDIUM | PARTIAL | 2026-08-08 |
 | STOR-5 | The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run | GAP | HIGH | OPEN | 2026-08-08 |
+| STOR-6 | The generator never quotes business identifiers, so a model field named after a reserved word (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the dialect layer and never exercised at application level | BUG | MEDIUM | OPEN | 2026-08-08 |
+| STOR-8 | db.definition.json's `h2FilePath` and `jdbcUrl` are parsed, validated and then ignored -- a user who sets either gets no error and no effect | BUG | LOW | OPEN | 2026-08-08 |
 
 ### Detail
 
@@ -205,7 +207,52 @@ This belongs in `SqlDialect`, beside `guardedConstraintDdl` which already exists
 `check-dialect-sites.py` should grow patterns for these three constructs at the same time, so the next one written inline fails the gate rather than a CI job.
 DO NOT let this be worked around in the workflow (for instance by pre-creating tables). The point of the probe is that a USER's first boot runs this script.
 
-## Done (147)
+### STOR-6 — The generator never quotes business identifiers, so a model field named after a reserved word (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the dialect layer and never exercised at application level
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** storage/OPEN_ITEMS_PLAN.md W10. Found while unblocking Tier C: the p2-evolve probe declares a field called `value`, and the app it generates has never been able to boot.
+**Surface:** `generator/dbconfig/SchemaRealizationEmitter, kernel/storage-dialect`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java`
+- `NPDevSamples/probes/p2-evolve/v1/Input/model.json`
+
+`SqlDialect.quoteIdentifier` exists, is implemented by all four dialects, and is asserted by conformance vector Q1 (Tier A) with this exact justification in its own javadoc:
+
+    "A user will eventually name a field `order` or `group`."
+
+`SchemaRealizationEmitter` never calls it. Measured: zero occurrences of `quoteIdentifier` anywhere under `NPDevGenerator/generator/src/main`. Business column names go into the emitted DDL raw, so a model whose field is a reserved word produces a script the engine rejects:
+
+    Syntax error in SQL statement "CREATE TABLE IF NOT EXISTS rows (
+      id UUID NOT NULL,
+      [*]value VARCHAR(255) NOT NULL, ..."; expected "identifier"   [H2 42001]
+
+The probe that found it -- `NPDevSamples/probes/p2-evolve`, which serves Tier C's E1 -- has therefore NEVER booted since it was written. That is why E7 has never been green, and the reason looked like a harness problem until the boot log was read.
+WHY IT SURVIVED THIS LONG
+The same shape as STOR-4 and STOR-5, a third time: the capability is correct at the layer that owns it and is never consulted by the layer that emits. Q1 passes on all four engines because it asks the DIALECT to quote a string. No corpus app happens to use a reserved word for a business field -- the canary uses title/priority/status -- so nothing downstream ever exercised the path.
+It is MEDIUM rather than HIGH only because it fails loudly at first boot, on every engine, rather than silently. A user hits it the moment they model a field called `value`, `order`, `group`, `user` or `key` -- which is not an exotic thing to do.
+
+### STOR-8 — db.definition.json's `h2FilePath` and `jdbcUrl` are parsed, validated and then ignored -- a user who sets either gets no error and no effect
+
+**Type:** BUG · **Severity:** LOW · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** storage/OPEN_ITEMS_PLAN.md W10. Found while working out why Tier C's E1 measured nothing on h2local -- the obvious fix was "point both versions at the same file", and there is no way to.
+**Surface:** `generator/dbconfig/UserDatabaseDefinitionLoader`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinition.java`
+- `NPDevSamples/probes/p2-evolve/v1/Input/manifest.json`
+
+`UserDatabaseDefinitionLoader.load` reads both fields into `UserDatabaseDefinition`:
+
+    text(database, "jdbcUrl"),
+    text(database, "h2FilePath"),
+
+and nothing downstream reads either one. `jdbcUrl(definition, identity)` composes the URL for every engine from `identity`, whose data root is always `<workspace>/Build/databases/<appId>` -- appId being the `manifest.json` id, never anything the database block says. So a user who writes an explicit `jdbcUrl` to point at an existing database, or an `h2FilePath` to put the file somewhere else, gets silence: no error, no warning, and a connection to a different database than the one they named.
+Not the same defect as an unknown key. An unknown key would at least be visibly unrecognized; these two are in the schema, survive validation, and read as supported.
+
+## Done (148)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -359,6 +406,7 @@ DO NOT let this be worked around in the workflow (for instance by pre-creating t
 | STOR-1 | 41 dialect-bound SQL sites were inlined across 19 files, so a second database engine was a rewrite rather than a dialect -- and two files had already grown a hand-rolled H2-vs-Postgres fork | GAP | MEDIUM | DONE | 2026-08-08 |
 | STOR-2 | A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-4 | MySQL and SqlServer were selectable, dialect-complete and conformance-green -- and no generated app could ever have connected to either, because the app template carried no JDBC driver for them | BUG | HIGH | DONE | 2026-08-08 |
+| STOR-7 | A text column plays three roles -- payload, key, defaulted -- and only two were ever asked about; MySQL rejected a TEXT DEFAULT and SQL Server could not index the runtime host's own bootstrap tables, so no generated app booted on either engine | BUG | HIGH | DONE | 2026-08-08 |
 
 ### Detail
 
@@ -7118,6 +7166,46 @@ So the platform could be, simultaneously and honestly:
 
 "The dialect works" and "an app works" were different claims, and only an application-level probe could tell them apart. That is exactly why FULL_SUPPORT_PLAN.md ranks "a generated app boots" as gap A rather than a formality, and the ranking turned out to be right for a more concrete reason than the plan itself predicted.
 A third person following the supported path -- `npdev init --engine mysql`, then run -- would have hit this on their first boot, with a Spring stack trace and no indication that the engine had never been usable.
+
+### STOR-7 — A text column plays three roles -- payload, key, defaulted -- and only two were ever asked about; MySQL rejected a TEXT DEFAULT and SQL Server could not index the runtime host's own bootstrap tables, so no generated app booted on either engine
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-08)
+**Verification:** VERIFIED_LIVE
+**Source:** storage/OPEN_ITEMS_PLAN.md. Found by CI run 31284450437 -- the first engine-support run in which the guarded-DDL fix (STOR-5) let a schema script get far enough into Flyway to fail on something else.
+**Surface:** `kernel/storage-dialect, runtimehost/db, generator/dbconfig`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/InternalDdlTypes.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaHistoryStore.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationClaimStore.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationMarkStore.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/PendingSchemaAcknowledgmentStore.java`
+- `scripts/quality/check-dialect-sites.py`
+- `scripts/quality/check-emitted-sql-portability.py`
+- `scripts/quality/run-engine-app-proof.py`
+
+Two independent failures, both at Flyway time on first boot, both invisible to every layer below.
+A. MySQL 8.4, V1__npdev_schema_realization.sql line 417:
+
+    Error Code : 1101
+    BLOB, TEXT, GEOMETRY or JSON column 'state' can't have a default value
+
+`npdev_circuit_breakers.state` is declared `TEXT DEFAULT 'CLOSED'` (and `npdev_tenants .persistence_mode` the same way). MySQL will not put a DEFAULT on unbounded text at all. Neither column is in a key, so STOR-4's `keyableTextColumnType()` fix -- which had already narrowed every KEYED text column to VARCHAR(191) -- never touched them.
+B. SQL Server 2022, at `afterMigrate`:
+
+    Column 'metadata_key' in table 'npdev_schema_metadata' is of a type that is invalid for use
+    as a key column in an index.
+
+Six `CREATE TABLE` statements are issued by the runtime host ITSELF, inline, in Java, around the migration rather than by it -- npdev_schema_migration_claim, npdev_schema_migration_mark, npdev_schema_pending_ack, npdev_schema_history and npdev_schema_metadata (twice). Every one spelled `id TEXT PRIMARY KEY`. They are not in the `internalTables` catalog, so no amount of work on SchemaRealizationEmitter could ever have reached them; SQL Server renders TEXT as NVARCHAR(MAX), which it cannot index at all.
+WHY IT SURVIVED
+The same shape as STOR-4 and STOR-5 for the third and fourth time: the capability is right in the layer that owns it and is not consulted by the layer that emits. `keyableTextColumnType()` existed, was conformance-tested at Tier A on all four engines, and answered correctly -- for the one role anyone had thought to ask about. Tier B takes a raw JDBC connection and hand-writes its tables, so it never sees NPDev's own DDL. Only generating, building and BOOTING an app reaches this code, and until STOR-4 and STOR-5 were fixed nothing ever got this far.
 
 </details>
 

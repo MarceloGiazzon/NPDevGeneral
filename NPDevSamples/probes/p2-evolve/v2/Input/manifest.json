@@ -1,12 +1,13 @@
 {
-  "id": "p2-evolve-v2",
+  "id": "p2-evolve",
   "title": "p2-evolve-v2",
   "complexity": "storage-probe",
   "purpose": "Storage probe E1 (v2): adding a NULLABLE column must preserve existing rows. Uses KeepExistingIfCompatible and forbids destructive recreate -- a probe that recreates cannot test preservation, which is the entire point of this one.",
   "inputFiles": [],
   "walkthrough": [
     "A FIXTURE, not a demo -- it serves conformance vector E1 and nothing else.",
-    "Built by the storage conformance Tier C tests; not intended to be run by hand."
+    "Built by the storage conformance Tier C tests; not intended to be run by hand.",
+    "The manifest id is deliberately SHARED with the sibling version: v1 and v2 are two versions of ONE app, and NPDev keys an app's identity -- including the directory a file-backed H2 database lives in -- on this id. Two different ids made the two versions resolve to two different H2 files, so the probe reported \"0 rows survived\" on h2local while measuring nothing at all. Server engines never showed it, because there the database name is the whole address."
   ],
   "expectedOutcomes": [
     "Rows inserted against v1 are still present after evolving to v2.",

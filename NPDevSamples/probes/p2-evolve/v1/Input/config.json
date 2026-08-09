@@ -12,7 +12,7 @@
     "cleanOutputBeforeGenerate": true,
     "emitPluginAssets": false,
     "emitRuntimeAssets": true,
-    "emitUiAssets": false
+    "emitUiAssets": true
   },
   "bootstrap": {
     "root": "..\\\\..\\\\..\\\\..\\\\NPDevRuntimeHost",

@@ -4,7 +4,8 @@
   "dslVersion": "1.0.0",
   "version": "1.0",
   "metadata": {
-    "purpose": "Storage probe I2/I3: introspection must report a column's type, nullability and default, and must distinguish a UNIQUE index from a plain one. REG-129 was exactly that bug on one engine; a hand-written CREATE TABLE would test the test's SQL rather than NPDev's realized schema."
+    "purpose": "Storage probe I2/I3: introspection must report a column's type, nullability and default, and must distinguish a UNIQUE index from a plain one. REG-129 was exactly that bug on one engine; a hand-written CREATE TABLE would test the test's SQL rather than NPDev's realized schema.",
+    "seedPath": "Rows are seeded through the generated app's own CRUD endpoint, which is why this concept carries a ui label: without one the app emits no such endpoint and Tier C's seed 404s. Inserting over JDBC instead would prove the rows survive, but not that the platform wrote them (storage/OPEN_ITEMS_PLAN.md 5.1)."
   },
   "concepts": [
     {
@@ -41,7 +42,10 @@
           ],
           "unique": false
         }
-      ]
+      ],
+      "ui": {
+        "label": "Account"
+      }
     }
   ],
   "capabilities": [

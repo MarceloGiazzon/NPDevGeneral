@@ -1,0 +1,48 @@
+id: STOR-8
+title: >-
+  db.definition.json's `h2FilePath` and `jdbcUrl` are parsed, validated and then ignored -- a user
+  who sets either gets no error and no effect
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-08
+verification: VERIFIED_LIVE
+surface: generator/dbconfig/UserDatabaseDefinitionLoader
+source: >-
+  storage/OPEN_ITEMS_PLAN.md W10. Found while working out why Tier C's E1 measured nothing on
+  h2local -- the obvious fix was "point both versions at the same file", and there is no way to.
+detail: >-
+  `UserDatabaseDefinitionLoader.load` reads both fields into `UserDatabaseDefinition`:
+
+      text(database, "jdbcUrl"),
+      text(database, "h2FilePath"),
+
+  and nothing downstream reads either one. `jdbcUrl(definition, identity)` composes the URL for every
+  engine from `identity`, whose data root is always
+  `<workspace>/Build/databases/<appId>` -- appId being the `manifest.json` id, never anything the
+  database block says. So a user who writes an explicit `jdbcUrl` to point at an existing database,
+  or an `h2FilePath` to put the file somewhere else, gets silence: no error, no warning, and a
+  connection to a different database than the one they named.
+
+  Not the same defect as an unknown key. An unknown key would at least be visibly unrecognized; these
+  two are in the schema, survive validation, and read as supported.
+resolution: >-
+  OPEN. Measured, not started.
+
+  Two defensible fixes and they point in opposite directions, which is why this is filed rather than
+  patched in passing: (a) honour them -- an explicit `jdbcUrl` wins outright, an `h2FilePath`
+  replaces the derived data root; or (b) remove them from the record and the schema, and reject a
+  definition that sets one. (a) is what a user reading the schema expects. (b) is smaller and matches
+  how the rest of the block behaves, since host/port/databaseName are already the supported way to
+  say where a database is.
+
+  What the workaround for it looked like is worth keeping: Tier C's E1/E2 probes each have a v1 and
+  a v2 that must share one database. On a server engine the database NAME is the whole address, so
+  they did. On file-backed H2 the address includes the app id, the two versions had different
+  manifest ids, and the probe reported "0 rows survived" while measuring two different files. Fixed
+  by giving the two versions the same manifest id -- which is also just true, since they are two
+  versions of one app -- but only because there was no supported way to state the path.
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinition.java
+  - NPDevSamples/probes/p2-evolve/v1/Input/manifest.json

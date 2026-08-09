@@ -153,6 +153,15 @@ public final class MySqlDialect implements SqlDialect {
     }
 
     @Override
+    public String defaultableTextColumnType() {
+        // The one engine that refuses: MySQL error 1101, "BLOB, TEXT, GEOMETRY or JSON column
+        // can't have a default value". A bounded VARCHAR can carry one, so this is the same
+        // width the keyable answer uses -- one width for every narrowed text column keeps the
+        // same column the same type wherever it appears.
+        return keyableTextColumnType();
+    }
+
+    @Override
     public String timestampColumnType() {
         // DATETIME, not TIMESTAMP: MySQL's TIMESTAMP is a 32-bit epoch that ends in 2038 and silently
         // converts to and from the session time zone. DATETIME(6) stores what it was given, at

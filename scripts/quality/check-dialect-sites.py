@@ -150,6 +150,24 @@ CONSTRUCTS = {
 
     ),
 
+    # -----------------------------------------------------------------------------------------
+    # STOR-7. A text column plays three roles -- payload, key, defaulted -- and MySQL and SQL
+    # Server answer each differently. Six inline `TEXT PRIMARY KEY` statements in the runtime
+    # host's own bootstrap DDL were unkeyable on both, and `TEXT DEFAULT 'CLOSED'` is MySQL
+    # error 1101. Both were found at Flyway time on first boot, in CI run 31284450437 -- the
+    # layer no unit test reaches, one ~12-minute round each.
+    # -----------------------------------------------------------------------------------------
+    "text-key-column": (
+        r"\bTEXT\s+PRIMARY\s+KEY\b|\bTEXT\s+UNIQUE\b|\bTEXT\s+NOT\s+NULL\s+PRIMARY\s+KEY\b",
+        "dialect.keyableTextColumnType() -- MySQL error 1170 (no key length), and SQL Server "
+        "cannot index NVARCHAR(MAX) at all",
+    ),
+    "text-default-column": (
+        r"\bTEXT\s+(?:NOT\s+NULL\s+)?DEFAULT\b",
+        "dialect.defaultableTextColumnType() -- MySQL error 1101, TEXT columns cannot carry a "
+        "DEFAULT",
+    ),
+
     "pagination": (
 
         # `:` must be glued to an identifier (LIMIT :pageSize). Without that the class also matched
