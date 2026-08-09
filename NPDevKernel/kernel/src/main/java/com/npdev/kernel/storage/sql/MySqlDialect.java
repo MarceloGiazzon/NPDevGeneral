@@ -174,6 +174,25 @@ public final class MySqlDialect implements SqlDialect {
     }
 
     @Override
+    public boolean isUniqueViolation(java.sql.SQLException failure) {
+        if (failure == null) {
+            return false;
+        }
+        // SQLSTATE 23000 is MySQL's ENTIRE integrity class -- duplicate key, foreign key,
+        // NOT NULL, CHECK. Only the vendor error number distinguishes them, so this asks for
+        // 1062 (ER_DUP_ENTRY) and 1586 (ER_DUP_ENTRY_WITH_KEY_NAME) and nothing else. Testing
+        // 23000 alone would call a foreign-key failure a duplicate and swallow it.
+        for (java.sql.SQLException current = failure; current != null;
+                current = current.getNextException()) {
+            int code = current.getErrorCode();
+            if (code == 1062 || code == 1586) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
     public Object readValue(Object value) {
         // DATETIME(6) carries no offset, so mysql-connector hands back a LocalDateTime and the
         // platform's `datetime` type (OffsetDateTime) cannot bind it. serverTimezone=UTC in the

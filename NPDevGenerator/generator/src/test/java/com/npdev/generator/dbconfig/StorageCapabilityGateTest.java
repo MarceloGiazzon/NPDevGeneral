@@ -68,6 +68,9 @@ class StorageCapabilityGateTest {
             @Override public String renameColumn(String table, String from, String to) {
                 throw new UnsupportedOperationException();
             }
+            @Override public boolean isUniqueViolation(java.sql.SQLException failure) {
+                throw new UnsupportedOperationException();
+            }
             @Override public String guardedCreateTable(String table, String statement) {
                 throw new UnsupportedOperationException();
             }

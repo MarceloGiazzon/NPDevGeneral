@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**156 item(s) migrated: 5 open/partial, 151 done.**
+**157 item(s) migrated: 5 open/partial, 152 done.**
 
 ## Open / partial
 
@@ -232,7 +232,7 @@ It is MEDIUM rather than HIGH only because it fails loudly at first boot, on eve
 and nothing downstream reads either one. `jdbcUrl(definition, identity)` composes the URL for every engine from `identity`, whose data root is always `<workspace>/Build/databases/<appId>` -- appId being the `manifest.json` id, never anything the database block says. So a user who writes an explicit `jdbcUrl` to point at an existing database, or an `h2FilePath` to put the file somewhere else, gets silence: no error, no warning, and a connection to a different database than the one they named.
 Not the same defect as an unknown key. An unknown key would at least be visibly unrecognized; these two are in the schema, survive validation, and read as supported.
 
-## Done (151)
+## Done (152)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -386,6 +386,7 @@ Not the same defect as an unknown key. An unknown key would at least be visibly 
 | REG-99 | A band's transaction.visibleWhen was unreachable in EVERY spelling -- the validator accepts only the derived address 'collection.band', the expander read only the bare band name, so the predicate validated and was silently dropped | BUG | MEDIUM | DONE | 2026-07-31 |
 | STOR-1 | 41 dialect-bound SQL sites were inlined across 19 files, so a second database engine was a rewrite rather than a dialect -- and two files had already grown a hand-rolled H2-vs-Postgres fork | GAP | MEDIUM | DONE | 2026-08-08 |
 | STOR-10 | Five more two-engine assumptions between "the app boots" and "the app works" -- a Postgres-by- default dialect probe, UUID and timestamp values bound and read in shapes only two engines accept, a schema differ comparing the catalog against a type it never emitted, and a two-way column rename | BUG | HIGH | DONE | 2026-08-08 |
+| STOR-12 | A MySQL or SQL Server app boots once and never again -- the migration-claim store tested for Postgres's SQLSTATE 23505, so the ordinary "the canonical row already exists" case was reported as a hard failure, with a message asserting the exact opposite of the truth | BUG | HIGH | DONE | 2026-08-09 |
 | STOR-2 | A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-4 | MySQL and SqlServer were selectable, dialect-complete and conformance-green -- and no generated app could ever have connected to either, because the app template carried no JDBC driver for them | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-7 | A text column plays three roles -- payload, key, defaulted -- and only two were ever asked about; MySQL rejected a TEXT DEFAULT and SQL Server could not index the runtime host's own bootstrap tables, so no generated app booted on either engine | BUG | HIGH | DONE | 2026-08-08 |
@@ -7236,6 +7237,55 @@ it had two.
        Engine 'mysql' COMMITS IMPLICITLY ON DDL, so this pass is HALF APPLIED
 
    A rename is the one migration where getting it wrong loses data rather than time.
+
+### STOR-12 — A MySQL or SQL Server app boots once and never again -- the migration-claim store tested for Postgres's SQLSTATE 23505, so the ordinary "the canonical row already exists" case was reported as a hard failure, with a message asserting the exact opposite of the truth
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-09)
+**Verification:** VERIFIED_LIVE
+**Source:** storage/OPEN_ITEMS_PLAN.md. Found by CI run 31289401926 -- in which E3 and E4 went GREEN on the first app-proof step and the job then went red on a SECOND, accidentally duplicated copy of the same steps. The duplication was a workflow defect; what it exposed was not.
+**Surface:** `kernel/storage-dialect, runtimehost/db, adapters/circuit-postgres`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java`
+- `NPDevKernel/adapters/circuit-postgres/src/main/java/com/npdev/adapters/circuit/jdbc/JdbcCircuitBreakerStateStore.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationClaimStore.java`
+- `.github/workflows/engine-support.yml`
+
+MySQL 8.4 and SQL Server 2022, on the second boot against a database that already holds NPDev's
+tables:
+
+    Caused by: java.sql.SQLException: NPDev schema lifecycle: could not seed the canonical
+    migration-claim row in npdev_schema_migration_claim. This is NOT a duplicate-row race
+    (SQLState 23000, error code 1062), so the row is genuinely absent and the boot cannot proceed.
+    Caused by: Duplicate entry 'schema-migration' for key 'npdev_schema_migration_claim.PRIMARY'
+
+The row was not absent. It was right there, and the driver said so in the very next line.
+
+    Postgres, H2   SQLSTATE 23505                      (a dedicated unique-violation code)
+    MySQL          SQLSTATE 23000, error 1062          (23000 is ALSO FK, NOT NULL, CHECK)
+    SQL Server     SQLSTATE 23000, error 2627 / 2601   (likewise)
+
+`MigrationClaimStore.isUniqueViolation` tested `"23505".equals(state)`, so on both engines the
+benign case its own comment describes -- "expected under a concurrent bootstrap race, or on every
+non-first boot" -- became a boot refusal. `JdbcCircuitBreakerStateStore.isDuplicateKey` had the
+same test plus a substring search for the word "unique" in the driver's message, which is the kind
+of check that works until someone runs a non-English server.
+
+WHY THE FIRST BOOT PASSED, AND WHY THAT MADE IT INVISIBLE
+
+`claim()` returns early when the database is FRESH (`if (freshDatabase) return null`), so the
+claim path -- and this test -- never runs on boot one. Every local run in this plan dropped and
+recreated the database first, so every one of them took the fresh path. The app-proof's own
+restart assertion did not reach it either, because an unchanged fingerprint skips the migration
+entirely.
+
+So the bug needed: a real MySQL/SQL Server, a database that already has NPDev's tables, AND a
+model change. That is not an exotic combination -- it is what every deployment does after its
+first release. It just is not what a fresh test harness does.
 
 ### STOR-2 — A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced
 

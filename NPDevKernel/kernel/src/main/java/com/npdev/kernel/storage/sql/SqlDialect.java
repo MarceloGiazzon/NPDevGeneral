@@ -360,6 +360,32 @@ public interface SqlDialect {
      */
     String renameColumn(String table, String from, String to);
 
+    /**
+     * Whether this failure is a UNIQUE/primary-key violation, as opposed to any other integrity
+     * violation.
+     *
+     * <p><b>SQLSTATE alone cannot answer this, and that is the whole point.</b> Postgres and H2 have
+     * a dedicated code; MySQL and SQL Server report the generic ANSI class and distinguish the cause
+     * only by their own error number:
+     *
+     * <pre>
+     *   Postgres, H2   SQLSTATE 23505
+     *   MySQL          SQLSTATE 23000, error 1062 / 1586   (23000 is also FK, NOT NULL, CHECK)
+     *   SQL Server     SQLSTATE 23000, error 2627 / 2601   (likewise)
+     * </pre>
+     *
+     * <p>{@code MigrationClaimStore} tested {@code "23505".equals(state)}, so on MySQL and SQL Server
+     * the ordinary "the canonical row is already there" case was reported as a hard failure and the
+     * app refused to boot (STOR-12) -- with a message that confidently said the opposite of the
+     * truth: <i>"This is NOT a duplicate-row race, so the row is genuinely absent"</i>.
+     *
+     * <p><b>Narrow on purpose, on every engine.</b> Widening to the whole {@code 23} class would be
+     * the easy fix and the wrong one: {@code 23502} (NOT NULL) and {@code 23503} (foreign key) are
+     * real failures that leave the table WITHOUT the row the caller was ensuring, which is exactly
+     * the state REG-91 wedged on. So each dialect names the codes that mean UNIQUE and no others.
+     */
+    boolean isUniqueViolation(java.sql.SQLException failure);
+
     /** Insert-or-update. See {@link UpsertStrategy} for why this is a strategy and not a template. */
     UpsertStrategy upsert();
 

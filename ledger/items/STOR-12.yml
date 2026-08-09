@@ -1,0 +1,80 @@
+id: STOR-12
+title: >-
+  A MySQL or SQL Server app boots once and never again -- the migration-claim store tested for
+  Postgres's SQLSTATE 23505, so the ordinary "the canonical row already exists" case was reported as
+  a hard failure, with a message asserting the exact opposite of the truth
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-09
+closed: 2026-08-09
+verification: VERIFIED_LIVE
+surface: kernel/storage-dialect, runtimehost/db, adapters/circuit-postgres
+source: >-
+  storage/OPEN_ITEMS_PLAN.md. Found by CI run 31289401926 -- in which E3 and E4 went GREEN on the
+  first app-proof step and the job then went red on a SECOND, accidentally duplicated copy of the
+  same steps. The duplication was a workflow defect; what it exposed was not.
+detail: |
+  MySQL 8.4 and SQL Server 2022, on the second boot against a database that already holds NPDev's
+  tables:
+
+      Caused by: java.sql.SQLException: NPDev schema lifecycle: could not seed the canonical
+      migration-claim row in npdev_schema_migration_claim. This is NOT a duplicate-row race
+      (SQLState 23000, error code 1062), so the row is genuinely absent and the boot cannot proceed.
+      Caused by: Duplicate entry 'schema-migration' for key 'npdev_schema_migration_claim.PRIMARY'
+
+  The row was not absent. It was right there, and the driver said so in the very next line.
+
+      Postgres, H2   SQLSTATE 23505                      (a dedicated unique-violation code)
+      MySQL          SQLSTATE 23000, error 1062          (23000 is ALSO FK, NOT NULL, CHECK)
+      SQL Server     SQLSTATE 23000, error 2627 / 2601   (likewise)
+
+  `MigrationClaimStore.isUniqueViolation` tested `"23505".equals(state)`, so on both engines the
+  benign case its own comment describes -- "expected under a concurrent bootstrap race, or on every
+  non-first boot" -- became a boot refusal. `JdbcCircuitBreakerStateStore.isDuplicateKey` had the
+  same test plus a substring search for the word "unique" in the driver's message, which is the kind
+  of check that works until someone runs a non-English server.
+
+  WHY THE FIRST BOOT PASSED, AND WHY THAT MADE IT INVISIBLE
+
+  `claim()` returns early when the database is FRESH (`if (freshDatabase) return null`), so the
+  claim path -- and this test -- never runs on boot one. Every local run in this plan dropped and
+  recreated the database first, so every one of them took the fresh path. The app-proof's own
+  restart assertion did not reach it either, because an unchanged fingerprint skips the migration
+  entirely.
+
+  So the bug needed: a real MySQL/SQL Server, a database that already has NPDev's tables, AND a
+  model change. That is not an exotic combination -- it is what every deployment does after its
+  first release. It just is not what a fresh test harness does.
+resolution: |
+  DONE. New `SqlDialect.isUniqueViolation(SQLException)`, implemented per engine, and both call
+  sites routed through it. Conformance vector U1 (Tier A) asserts BOTH directions on every engine:
+  a duplicate is recognised, and a foreign-key / NOT NULL failure is NOT.
+
+  The second half is the point. Widening to the whole SQLSTATE `23` class would have been the
+  one-character fix and the wrong one: `23502` (NOT NULL) and `23503`/1452/547 (foreign key) really
+  do leave the table without the row the caller was ensuring, and swallowing them is precisely the
+  state REG-91 wedged on. So each dialect names the codes that mean UNIQUE and no others --
+  1062/1586 on MySQL, 2627/2601 on SQL Server, 23505 (plus 23001) on Postgres and H2.
+
+  PROVEN LOCALLY in the exact shape CI hit -- the app proof run TWICE against the same database
+  without dropping it in between:
+
+      mysql      run 1 (fresh) 4/4   run 2 (not fresh) 4/4
+      sqlserver  run 1 (fresh) 4/4   run 2 (not fresh) 4/4
+
+  ALSO FIXED: `.github/workflows/engine-support.yml` carried a duplicated 111-line block -- "Create
+  the Tier C databases", the app proof, and the doctor checks all appeared twice in `app-on-engine`.
+  The accident is what surfaced this bug, so it earned its keep, but a workflow that silently runs
+  its expensive steps twice is a defect of its own: it doubled the job's runtime and made a red job
+  out of a green result.
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java
+  - NPDevKernel/adapters/circuit-postgres/src/main/java/com/npdev/adapters/circuit/jdbc/JdbcCircuitBreakerStateStore.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationClaimStore.java
+  - .github/workflows/engine-support.yml
