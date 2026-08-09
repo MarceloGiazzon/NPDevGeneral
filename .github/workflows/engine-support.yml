@@ -539,3 +539,48 @@ jobs:
             Build/engine-proof/${{ matrix.engine }}/boot.log
             Build/tier-c/${{ matrix.engine }}/**/boot.log
           if-no-files-found: warn
+
+  # -------------------------------------------------------------------------------------------
+  # E15 -- storage/parity/ENGINE_PARITY_PLAN.md P3. The RUNTIME half is the per-engine app-proof
+  # below; this is the GENERATION half, and it is the stronger claim: the five user-facing
+  # operations are BYTE-IDENTICAL across engines, so a user doing the same thing with a different
+  # engine reads the same script. One script, one data file per engine.
+  #
+  # No Docker, no database -- generation needs neither -- so this is seconds, deterministic, and
+  # catches a divergence before any container starts.
+  # -------------------------------------------------------------------------------------------
+  toolbox-parity:
+    name: E15 -- the environment toolbox is identical on every engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: true
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Stage runtimehost jars
+        run: python NPDevCli/npdev_cli.py setup --build-local
+
+      - name: Generate for every server engine and diff the toolbox
+        run: |
+          python scripts/quality/run-engine-toolbox-parity.py             --report Build/reports/toolbox-parity.json
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolbox-parity
+          path: Build/reports/toolbox-parity.json
+          if-no-files-found: warn

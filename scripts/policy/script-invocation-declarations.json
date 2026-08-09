@@ -309,6 +309,9 @@
     "scripts/quality/run-engine-app-proof.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/run-engine-toolbox-parity.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/run-expanded-beta0-evidence.ps1": {
       "invocation": "manual-runbook"
     },
