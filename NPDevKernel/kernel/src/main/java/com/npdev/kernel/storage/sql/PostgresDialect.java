@@ -72,6 +72,11 @@ public final class PostgresDialect implements SqlDialect {
     }
 
     @Override
+    public boolean isReservedIdentifier(String rawIdentifier) {
+        return SqlReservedWords.isReserved(name(), rawIdentifier);
+    }
+
+    @Override
     public boolean foldsUnquotedIdentifiersToLowerCase() {
         return true;
     }

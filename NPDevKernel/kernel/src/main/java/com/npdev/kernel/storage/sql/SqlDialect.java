@@ -52,6 +52,59 @@ public interface SqlDialect {
     String quoteIdentifier(String rawIdentifier);
 
     /**
+     * Does THIS engine reserve {@code rawIdentifier}, so that using it unquoted is a syntax error?
+     *
+     * <p><b>The question `quoteIdentifier` could not answer.</b> That method has existed and been
+     * conformance-tested since S1, with a javadoc saying "a user will eventually name a field
+     * {@code order} or {@code group}" -- and the generator never called it once. A user who did
+     * exactly that got DDL the engine rejects at first boot (STOR-6):
+     *
+     * <pre>
+     *   Syntax error in SQL statement "CREATE TABLE rows (id UUID, [*]value VARCHAR(255) ...)"  H2
+     *   You have an error in your SQL syntax ... near 'rows ('                                 MySQL 8
+     * </pre>
+     *
+     * <p>Two engines, two different words, one bug -- which is why the reserved set is a DIALECT
+     * fact rather than a generator constant: the words genuinely differ. {@code rank} is reserved on
+     * MySQL and not on Postgres; {@code plan} is reserved on SQL Server and nowhere else.
+     *
+     * <p><b>Why this exists instead of quoting everything.</b> Universal quoting would change the
+     * emitted DDL for every existing app, and on Postgres it would PIN the case of identifiers that
+     * are physically lower-case today -- so an already-deployed database would stop matching. Asking
+     * per identifier keeps the emitted SQL byte-identical for every model that does not use a
+     * reserved word, which measured as 34 of 36 in the corpus. The two that change were already
+     * broken on the engine that reserves their word, so nothing can regress.
+     *
+     * <p>Callers should not test this themselves -- use {@link #identifier(String)}, which asks and
+     * quotes in one step, so the two can never disagree.
+     */
+    boolean isReservedIdentifier(String rawIdentifier);
+
+    /**
+     * An identifier ready to embed in SQL for this engine: quoted only if it has to be.
+     *
+     * <p>The one call every emitter and every store should make. Testing
+     * {@link #isReservedIdentifier} at the call site and quoting separately is the shape that lets
+     * the DDL side and the query side drift apart -- and that drift is worse than the bug it fixes,
+     * because the app builds, boots, and cannot find its own tables.
+     *
+     * <p><b>Lower-cased before quoting when the engine folds unquoted identifiers.</b> On Postgres a
+     * column created unquoted as {@code Order} is physically {@code order}, so quoting it as
+     * {@code "Order"} would name a column that does not exist. {@link #foldsUnquotedIdentifiersToLowerCase()}
+     * is exactly the question that makes this safe, and it has been on this interface, unused, the
+     * whole time.
+     */
+    default String identifier(String rawIdentifier) {
+        if (rawIdentifier == null || rawIdentifier.isEmpty() || !isReservedIdentifier(rawIdentifier)) {
+            return rawIdentifier;
+        }
+        String toQuote = foldsUnquotedIdentifiersToLowerCase()
+                ? rawIdentifier.toLowerCase(java.util.Locale.ROOT)
+                : rawIdentifier;
+        return quoteIdentifier(toQuote);
+    }
+
+    /**
      * Whether an unquoted identifier is folded to lower case by this engine.
      *
      * <p>Q2's pinned decision, exposed rather than assumed: NPDev generates lower-case identifiers

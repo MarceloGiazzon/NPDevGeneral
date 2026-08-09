@@ -93,6 +93,11 @@ public final class SqlServerDialect implements SqlDialect {
     }
 
     @Override
+    public boolean isReservedIdentifier(String rawIdentifier) {
+        return SqlReservedWords.isReserved(name(), rawIdentifier);
+    }
+
+    @Override
     public boolean foldsUnquotedIdentifiersToLowerCase() {
         // No folding: SQL Server preserves the case it was given and compares by COLLATION, which is
         // usually case-insensitive but is a per-database (and per-column) setting. As with MySQL,

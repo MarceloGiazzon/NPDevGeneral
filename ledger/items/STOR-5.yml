@@ -4,8 +4,9 @@ title: >-
   MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-08
+closed: 2026-08-09
 verification: VERIFIED_LIVE
 surface: generator/dbconfig/SchemaRealizationEmitter, kernel/storage-dialect
 source: >-
@@ -59,16 +60,40 @@ detail: >-
 
   DO NOT let this be worked around in the workflow (for instance by pre-creating tables). The point
   of the probe is that a USER's first boot runs this script.
-resolution: >-
-  OPEN. Not started; scoped and measured only.
+resolution: |
+  DONE -- and this record was STALE, which is the part worth recording. It sat OPEN at HIGH,
+  asserting that MySQL and SqlServer "remain EXPERIMENTAL", while the code had shipped and the CLI
+  had already moved both to `supported`. A top-severity item arguing against your own release claim
+  is how people stop trusting all the records.
 
-  What is already done and should not be re-litigated: the JDBC drivers and Flyway per-database
-  modules (STOR-4), the keyable text type for indexed columns (SqlDialect.keyableTextColumnType),
-  and the CI job that surfaces each of these in minutes rather than in a user's first boot.
+  WHAT SHIPPED
 
-  Until this is closed, `MySQL` and `SqlServer` remain EXPERIMENTAL in `npdev engines`, which is what
-  the CLI, the Manager's picker and docs/USING_MYSQL_AND_SQL_SERVER.md all already say -- from one
-  registry, so none of them can drift into claiming otherwise.
+  Three guarded-DDL idioms became dialect methods -- guardedCreateTable, guardedCreateIndex,
+  guardedAddColumn -- joining the guardedConstraintDdl that already existed. Postgres and H2 keep
+  their native keyword insertion and are byte-identical to before; MySQL uses an INFORMATION_SCHEMA
+  probe with PREPARE/EXECUTE, and SQL Server IF OBJECT_ID / sys.indexes / IF COL_LENGTH blocks. Every
+  one is idempotent, which is mandatory: R__npdev_schema_additive_columns.sql is a REPEATABLE
+  migration (REG-38).
+
+  VERIFIED, re-checked at ce57541 rather than taken on trust:
+
+    - all four guarded idioms route through engine.dialect() in SchemaRealizationEmitter
+      (lines 1128, 1597, 1604, 1611)
+    - the only remaining `IF NOT EXISTS` outside a comment is PROSE inside a string the emitter
+      writes as a comment INTO the generated script -- not an emitted construct
+    - run-engine-app-proof.py lints every generated script with --generated-for immediately after
+      generation, and CI run 31296993259 is green on postgres, mysql AND sqlserver
+
+  THE TRAP, since the next person will re-run the linter: scoped to the whole repo it reports ~41,340
+  occurrences across 316 scripts. Those are historical Build-root artifacts -- apps generated months
+  ago for H2, which legitimately contain TEXT and TIMESTAMP and will never run on SQL Server. Always
+  pass --generated-for <engine> and scope to a script generated FOR that engine, or the tool
+  manufactures an emergency.
+
+  FOUR MORE DEFECTS STOOD BEHIND THIS ONE, each invisible until it was cleared: STOR-7 (a text column
+  has three roles), STOR-9 (a row lock is a table hint on SQL Server), STOR-10 (five two-engine
+  assumptions), STOR-12 (a Postgres-only SQLSTATE). That is the shape worth remembering -- fixing the
+  first blocker does not reveal the last one, it reveals the second.
 files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java

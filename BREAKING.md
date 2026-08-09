@@ -5,6 +5,34 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-09 — `db.definition.json`: a `jdbcUrl` / `h2FilePath` that CONTRADICTS the real connection is now refused (STOR-8)
+
+**What changes.** `database.jdbcUrl` and `database.h2FilePath` are still accepted. A value that
+DISAGREES with the connection NPDev will actually make now fails at generation time, naming both the
+declared value and the real one.
+
+**Codemod: delete the key, or fix it.** There is nothing to migrate mechanically — a contradicting
+value was already not being honoured, so removing it changes no behaviour. `npdev migrate` needs no
+rule here, and the refusal message tells you which of the two you meant.
+
+**Why this is a fix and not a restriction.** Both fields read as authoritative. `h2FilePath` is
+consulted by nothing at all; `jdbcUrl` is consulted only for H2Server, where `resolveHost`/
+`resolveHostPort` parse the host and port out of it and everything else is ignored. So a user who
+pointed `jdbcUrl` at an existing production database got **no error, no warning, and a connection to
+a different database** — and could then write to it. That is the X0 silent-answer rule broken in the
+storage layer, where it is least visible and most expensive.
+
+**The blanket refusal was measured and rejected.** The obvious change was to refuse both fields
+outright. **Twelve app definitions set one of them — four of them official samples** (AuxScreen,
+Pigmentampa, WmsOffice, WordLab) — and every one declares exactly what NPDev composes anyway.
+Refusing the field would have broken all twelve to fix a hazard none of them has. So the guard is on
+DISAGREEMENT, and options are ignored when comparing (`MODE=`, `DB_CLOSE_ON_EXIT=`) because failing
+on those would be the noisy gate this project refuses everywhere else.
+
+**Honouring an explicit URL remains unbuilt, deliberately.** It is a feature, and it raises a real
+question — does an explicit URL bypass the identity check that stops two apps sharing a database? —
+which deserves its own design rather than being smuggled into a cleanup.
+
 ## 2026-08-08 — `database.engine` gains `MySQL` and `SqlServer` (storage/PLAN.md S4b/S5)
 
 **Not a breaking change — widened, not narrowed. No codemod needed, and that is a claim, not an

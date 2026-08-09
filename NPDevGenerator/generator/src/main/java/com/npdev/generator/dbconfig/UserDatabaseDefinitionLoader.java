@@ -30,6 +30,10 @@ public final class UserDatabaseDefinitionLoader {
     private static final DateTimeFormatter INSTANCE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
     private static final SecureRandom RANDOM = new SecureRandom();
 
+    /** A backslash, from its char code -- a literal one has been mangled by every layer this file
+     *  has been edited through, and this comparison must not be the thing that breaks the build. */
+    private static final char BACKSLASH = (char) 92;
+
     public GeneratedDatabasePlan load(Path definitionPath, CompiledModel model) throws Exception {
         if (definitionPath == null) {
             throw new IllegalArgumentException("--dbDefinitionPath is required");
@@ -72,6 +76,7 @@ public final class UserDatabaseDefinitionLoader {
         Path appDatabaseRoot = workspaceRoot.resolve("Build").resolve("databases").resolve(appId);
         DatabaseIdentity identity = resolveIdentity(definition, appId, appDatabaseRoot);
         String jdbcUrl = jdbcUrl(definition, identity);
+        refuseDeclarationThatDisagrees(definition, identity, jdbcUrl);
         String driver = switch (engine) {
             case POSTGRES -> "org.postgresql.Driver";
             case H2_LOCAL, H2_SERVER -> "org.h2.Driver";
@@ -112,6 +117,89 @@ public final class UserDatabaseDefinitionLoader {
                 normalizedPath,
                 fingerprintInputs
         );
+    }
+
+    /**
+     * STOR-8: refuse a declared {@code jdbcUrl} or {@code h2FilePath} that DISAGREES with the
+     * connection NPDev will actually make.
+     *
+     * <h2>Why disagreement and not the field itself</h2>
+     *
+     * <p>The obvious fix was to refuse both fields outright -- they read as authoritative and one of
+     * them is never consulted at all. <b>Measured first: TWELVE app definitions set one of them,
+     * including four official samples</b> (AuxScreen, Pigmentampa, WmsOffice, WordLab). Refusing the
+     * field would have broken every one of them, and none of them is wrong -- all twelve declare
+     * exactly what NPDev composes anyway.
+     *
+     * <p>So the hazard is narrower than "the field is ignored", and sharper: a value that CONTRADICTS
+     * the real connection. Today that is silent. A user who points {@code jdbcUrl} at an existing
+     * production database gets no error, no warning, and a connection to a different database -- and
+     * may then write to it. That is the X0 silent-answer rule broken in the storage layer, where it
+     * is least visible and most expensive.
+     *
+     * <p><b>What each field really does, measured rather than assumed</b> -- the filed record said
+     * both were parsed and ignored, and that was only half right:
+     *
+     * <ul>
+     *   <li>{@code h2FilePath} is read into the record and consulted by nothing. Genuinely inert.</li>
+     *   <li>{@code jdbcUrl} IS consulted, for H2Server only: {@code resolveHost} and
+     *       {@code resolveHostPort} parse the host and port out of it, and {@code validate} accepts
+     *       it as the documented ALTERNATIVE to host/port. On every other engine it is inert.</li>
+     * </ul>
+     *
+     * <p>Refusing rather than honouring is deliberate. Honouring an explicit URL is a FEATURE, and it
+     * raises a real question -- does it bypass the identity check that stops two apps sharing a
+     * database? -- which deserves its own design rather than being smuggled into a cleanup.
+     */
+    private static void refuseDeclarationThatDisagrees(
+            UserDatabaseDefinition definition, DatabaseIdentity identity, String composedJdbcUrl) {
+        String declaredUrl = definition.jdbcUrl();
+        if (!declaredUrl.isBlank() && !sameConnection(declaredUrl, composedJdbcUrl)) {
+            throw new IllegalArgumentException(
+                    "database.jdbcUrl declares a connection NPDev will not make -- declared '"
+                    + declaredUrl + "', actual '" + composedJdbcUrl + "'. NPDev composes the URL "
+                    + "from engine/host/port/databaseName; an explicit jdbcUrl is not honoured, so "
+                    + "leaving this in place would connect you to a DIFFERENT database than you "
+                    + "asked for, silently. Either remove database.jdbcUrl, or set "
+                    + "host/port/databaseName to the database you mean. (STOR-8 -- if you need an "
+                    + "explicit URL, say so and it will be prioritised rather than guessed at.)");
+        }
+        String declaredFile = definition.h2FilePath();
+        if (!declaredFile.isBlank()) {
+            String expected = identity.resolvedDataRoot() + "/" + identity.resolvedDatabaseName();
+            if (!samePath(declaredFile, expected)) {
+                throw new IllegalArgumentException(
+                        "database.h2FilePath declares a file NPDev will not use -- declared '"
+                        + declaredFile + "', actual '" + expected + "'. NPDev derives the H2 file "
+                        + "from the app's identity; h2FilePath is read and then consulted by "
+                        + "nothing, so this value would be silently ignored. Remove it, or set "
+                        + "databaseName so the derived path is the one you want. (STOR-8)");
+            }
+        }
+    }
+
+    /** Two JDBC URLs naming the same server and database, ignoring options and case. */
+    private static boolean sameConnection(String declared, String composed) {
+        return normalizeUrl(declared).equals(normalizeUrl(composed));
+    }
+
+    private static String normalizeUrl(String url) {
+        // Compare the ADDRESS, not the options: an app may legitimately declare the same database
+        // with a different MODE= or DB_CLOSE_ON_EXIT= than the generator emits, and failing on
+        // that would be the noisy-gate failure this project refuses everywhere else.
+        return url.split(";", 2)[0].trim().replace(BACKSLASH, '/').toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean samePath(String declared, String expected) {
+        return normalizePath(declared).equals(normalizePath(expected));
+    }
+
+    private static String normalizePath(String path) {
+        String slashed = path.trim().replace(BACKSLASH, '/').toLowerCase(Locale.ROOT);
+        while (slashed.endsWith("/")) {
+            slashed = slashed.substring(0, slashed.length() - 1);
+        }
+        return slashed;
     }
 
     private static void validate(UserDatabaseDefinition definition) {

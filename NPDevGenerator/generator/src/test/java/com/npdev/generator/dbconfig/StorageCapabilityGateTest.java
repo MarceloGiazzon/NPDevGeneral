@@ -71,6 +71,9 @@ class StorageCapabilityGateTest {
             @Override public boolean isUniqueViolation(java.sql.SQLException failure) {
                 throw new UnsupportedOperationException();
             }
+            @Override public boolean isReservedIdentifier(String rawIdentifier) {
+                throw new UnsupportedOperationException();
+            }
             @Override public String guardedCreateTable(String table, String statement) {
                 throw new UnsupportedOperationException();
             }

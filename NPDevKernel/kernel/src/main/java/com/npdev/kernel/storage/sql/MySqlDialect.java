@@ -103,6 +103,11 @@ public final class MySqlDialect implements SqlDialect {
     }
 
     @Override
+    public boolean isReservedIdentifier(String rawIdentifier) {
+        return SqlReservedWords.isReserved(name(), rawIdentifier);
+    }
+
+    @Override
     public boolean foldsUnquotedIdentifiersToLowerCase() {
         // Conformance Q2's pinned answer, and the reason it is pinned rather than probed: MySQL's
         // real behaviour depends on lower_case_table_names AND the host filesystem -- the same
