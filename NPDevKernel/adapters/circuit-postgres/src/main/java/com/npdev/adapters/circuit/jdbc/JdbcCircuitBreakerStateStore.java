@@ -362,9 +362,17 @@ public class JdbcCircuitBreakerStateStore implements CircuitBreakerStateStore {
         }
     }
 
+    /**
+     * A duplicate-key failure, per the connection's own engine.
+     *
+     * <p>Was {@code "23505".equals(state)} plus a substring search for "unique" in the driver's
+     * message. Postgres and H2 only -- MySQL and SQL Server report SQLSTATE 23000 for every integrity
+     * violation and distinguish a duplicate by their own error number (STOR-12). The message fallback
+     * is kept as a last resort, but it is exactly the kind of check that passes on an English locale
+     * and fails elsewhere, so the dialect answers first.
+     */
     private static boolean isDuplicateKey(SQLException exception) {
-        String state = exception.getSQLState();
-        if ("23505".equals(state)) {
+        if (com.npdev.kernel.storage.sql.SqlDialects.active().isUniqueViolation(exception)) {
             return true;
         }
         String message = exception.getMessage();

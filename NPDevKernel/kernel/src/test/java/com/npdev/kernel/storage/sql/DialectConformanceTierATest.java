@@ -398,6 +398,42 @@ class DialectConformanceTierATest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("dialects")
+    @DisplayName("U1: a duplicate is recognised as one, and a NOT NULL / FK failure is NOT")
+    void everyDialectRecognisesItsOwnUniqueViolation(SqlDialect dialect) {
+        // STOR-12. MigrationClaimStore tested `"23505".equals(sqlState)` -- Postgres and H2's code.
+        // MySQL and SQL Server report SQLSTATE 23000 for the WHOLE integrity class and distinguish a
+        // duplicate only by their own error number, so the ordinary "the canonical row is already
+        // there" case was read as a hard failure and the app refused to boot on both engines:
+        //
+        //   Duplicate entry 'schema-migration' ... (SQLState 23000, error code 1062)   MySQL
+        //   Violation of PRIMARY KEY constraint ... (SQLState 23000, error code 2627)  SQL Server
+        //
+        // and the refusal said "This is NOT a duplicate-row race, so the row is genuinely absent",
+        // which was the exact opposite of the truth.
+        java.sql.SQLException duplicate = switch (dialect.name()) {
+            case "mysql" -> new java.sql.SQLException("Duplicate entry", "23000", 1062);
+            case "sqlserver" -> new java.sql.SQLException("Violation of PRIMARY KEY", "23000", 2627);
+            default -> new java.sql.SQLException("duplicate key value", "23505", 0);
+        };
+        assertTrue(dialect.isUniqueViolation(duplicate),
+                dialect.name() + " must recognise its own duplicate-key failure: " + duplicate);
+
+        // The other half, and the one a widen-to-the-whole-23-class fix would break: a NOT NULL or
+        // foreign-key failure really does leave the row absent, so swallowing it is how REG-91
+        // turned one bad column into an unbootable app reporting an error from a different line.
+        java.sql.SQLException notADuplicate = switch (dialect.name()) {
+            case "mysql" -> new java.sql.SQLException("Cannot add or update a child row", "23000", 1452);
+            case "sqlserver" -> new java.sql.SQLException("FOREIGN KEY constraint", "23000", 547);
+            default -> new java.sql.SQLException("null value violates not-null", "23502", 0);
+        };
+        assertFalse(dialect.isUniqueViolation(notADuplicate),
+                dialect.name() + " must NOT treat a non-unique integrity failure as a duplicate: "
+                + notADuplicate);
+        assertFalse(dialect.isUniqueViolation(null), dialect.name() + ": null is not a violation");
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
     @DisplayName("C1: EVERY engine can cap a statement, whatever shape its cap takes")
     void everyDialectCanCapAStatement(SqlDialect dialect) {
         // storage/FULL_SUPPORT_PLAN.md W1.3. The gap was never "SQL Server cannot cap rows" -- it is

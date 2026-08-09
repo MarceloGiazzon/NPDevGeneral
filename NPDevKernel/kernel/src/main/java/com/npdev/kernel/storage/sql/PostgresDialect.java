@@ -122,6 +122,22 @@ public final class PostgresDialect implements SqlDialect {
     }
 
     @Override
+    public boolean isUniqueViolation(java.sql.SQLException failure) {
+        if (failure == null) {
+            return false;
+        }
+        // 23505 = unique_violation. NOT the whole 23 class: 23502 (NOT NULL) and 23503
+        // (foreign key) leave the row genuinely absent, which is a real failure.
+        for (java.sql.SQLException current = failure; current != null;
+                current = current.getNextException()) {
+            if ("23505".equals(current.getSQLState())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
     public String timestampColumnType() {
         return "TIMESTAMP WITH TIME ZONE";
     }

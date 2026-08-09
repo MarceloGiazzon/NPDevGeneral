@@ -169,6 +169,25 @@ public final class SqlServerDialect implements SqlDialect {
                 + escapeLiteral(to) + "', 'COLUMN'";
     }
 
+    @Override
+    public boolean isUniqueViolation(java.sql.SQLException failure) {
+        if (failure == null) {
+            return false;
+        }
+        // Same shape as MySQL: 23000 covers every integrity violation, so the error number
+        // is the discriminator. 2627 is a PRIMARY KEY/UNIQUE CONSTRAINT violation, 2601 a
+        // unique INDEX violation -- SQL Server reports the two differently and both mean
+        // 'that value is already there'. 547 (FOREIGN KEY/CHECK) deliberately does not.
+        for (java.sql.SQLException current = failure; current != null;
+                current = current.getNextException()) {
+            int code = current.getErrorCode();
+            if (code == 2627 || code == 2601) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * SQL Server's timestamp comes back as a DRIVER type, not a JDK one.
      *

@@ -69,15 +69,6 @@ public final class MigrationClaimStore {
     private static final long UNHELD_CLAIMED_AT_UTC = 0L;
 
     /**
-     * SQLState for a unique/primary-key violation -- {@code 23505} on both H2 and Postgres. This is
-     * the ONLY insert failure {@link #ensureCanonicalRow} may treat as "the row is already there".
-     * Deliberately narrower than the whole {@code 23xxx} integrity class: {@code 23502} (NULL not
-     * allowed) and {@code 23506} (referential integrity) are real failures that leave the table
-     * WITHOUT the canonical row, which is precisely the state REG-91 wedged on.
-     */
-    private static final String SQLSTATE_UNIQUE_VIOLATION = "23505";
-
-    /**
      * Arbitrary, fixed advisory-lock key for NPDev's single migration slot. {@link String#hashCode()}
      * is specified stable across JVMs/versions (Java Language Spec), so this is deterministic --
      * never reuse this key for any other {@code pg_advisory_lock} caller.
@@ -118,7 +109,8 @@ public final class MigrationClaimStore {
      * either way the row now exists for the {@code SELECT ... FOR UPDATE} step in {@link #claimH2}
      * to lock.
      *
-     * <p>REG-91: the swallow is limited to {@link #SQLSTATE_UNIQUE_VIOLATION}. Anything else is
+     * <p>REG-91: the swallow is limited to a UNIQUE violation, as {@link #isUniqueViolation} defines
+     * it for the ACTIVE ENGINE (STOR-12 -- it was Postgres's 23505 for everyone). Anything else is
      * rethrown with the statement and the driver's own message attached, because every other insert
      * failure leaves the table without the row this method exists to guarantee -- and silently
      * "succeeding" there is what turned one bad {@code NOT NULL} column into an unbootable app
@@ -155,14 +147,22 @@ public final class MigrationClaimStore {
      * code, never on the message text (REG-91) -- message text is localised and driver-specific,
      * and getting this predicate wrong in the permissive direction is the whole bug.
      */
+    /**
+     * Delegates to the active dialect -- {@code 23505} is Postgres and H2's spelling, not everyone's.
+     *
+     * <p>MySQL and SQL Server both report SQLSTATE {@code 23000} for the WHOLE integrity class and
+     * distinguish a duplicate only by their own error number (1062 / 2627). So this test used to say
+     * "not a duplicate" for the ordinary case of the canonical row already existing, and the app
+     * refused to boot on both engines (STOR-12) -- with a message asserting the opposite of the
+     * truth: <i>"This is NOT a duplicate-row race, so the row is genuinely absent"</i>.
+     *
+     * <p>The narrowness the old constant's javadoc argued for is preserved and is now per-engine:
+     * see {@link SqlDialect#isUniqueViolation}, which names only the codes that mean UNIQUE. Widening
+     * to the whole {@code 23} class would swallow a NOT NULL or foreign-key failure, which really
+     * does leave the table without the row -- the state REG-91 wedged on.
+     */
     private static boolean isUniqueViolation(SQLException failure) {
-        for (SQLException current = failure; current != null; current = current.getNextException()) {
-            if (SQLSTATE_UNIQUE_VIOLATION.equals(current.getSQLState())
-                    || current.getErrorCode() == Integer.parseInt(SQLSTATE_UNIQUE_VIOLATION)) {
-                return true;
-            }
-        }
-        return false;
+        return SqlDialects.active().isUniqueViolation(failure);
     }
 
     private static boolean isPostgres(Connection connection) throws SQLException {

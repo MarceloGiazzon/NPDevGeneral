@@ -126,6 +126,22 @@ public final class H2Dialect implements SqlDialect {
     }
 
     @Override
+    public boolean isUniqueViolation(java.sql.SQLException failure) {
+        if (failure == null) {
+            return false;
+        }
+        // H2 reports 23505 like Postgres (and 23001 for a unique INDEX in some versions).
+        for (java.sql.SQLException current = failure; current != null;
+                current = current.getNextException()) {
+            String state = current.getSQLState();
+            if ("23505".equals(state) || "23001".equals(state)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
     public String timestampColumnType() {
         return "TIMESTAMP WITH TIME ZONE";
     }
