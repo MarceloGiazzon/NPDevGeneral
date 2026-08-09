@@ -1,0 +1,50 @@
+id: QUAL-3
+title: >-
+  Two apps scaffolded into the same folder share ONE `_ops` toolbox -- the second generation
+  overwrites the first's resolved-db-plan.json, container name included
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-09
+verification: NOT_VERIFIED
+surface: generator/dbconfig
+source: >-
+  storage/stabilize/STABILIZE_PLAN.md M14. Found while wiring the Manager's five database buttons:
+  to drive an app's `_ops` scripts the CLI first has to LOCATE them, and locating them exposed that
+  the location is not per-app.
+detail: >-
+  `OperationalRunbookEmitter.emit` resolves the toolbox as
+  `finalAppRoot.getParent().resolve("_ops")` -- the PARENT of the generated FinalApp, not the app
+  itself. With `npdev init`'s own layout (`npdev init D:\Apps\my-app` generates into
+  `D:\Apps\my-app-app`), the toolbox lands at `D:\Apps\_ops`. A second app created the same way,
+  `D:\Apps\other`, generates into `D:\Apps\other-app` and writes its toolbox to `D:\Apps\_ops` --
+  the same directory.
+
+  `resolved-db-plan.json` is what every one of the five scripts reads, and it carries `appId`,
+  `containerName`, `resolvedDatabaseName`, `resolvedDataRoot` and the credentials. So after the
+  second generation, all five scripts in that folder describe the second app. Running
+  `Reset-Environment.ps1` "for" the first app then removes the SECOND app's container and deletes
+  the SECOND app's data root, reporting success.
+
+  Confirmed by reading a real generated plan rather than by inference:
+
+      appId       : engine-probe
+      finalAppPath: D:/WorkSpace/NPDev/Build/engine-proof/mysql/App
+      opsRoot     : D:/WorkSpace/NPDev/Build/engine-proof/mysql/_ops
+
+  The corpus hides this because essentially every generated app in it lives under its own
+  parent directory (`engine-proof/mysql/`, `engine-proof/postgres/`, ...), so the parents differ and
+  the toolboxes never collide. A user putting two apps in one `D:\Apps` folder -- the obvious thing
+  to do, and what the Manager's "Folder" field invites -- hits it immediately.
+
+  MITIGATED, NOT FIXED, in this pass: `npdev db <operation>` now prints the `appId`, engine and
+  FinalApp path the toolbox actually describes, on every operation and in its `--json` `target`
+  field, so acting on the wrong app is visible rather than silent. A heuristic that REFUSED on a
+  suspected mismatch was considered and rejected: the app-directory-to-FinalApp-path relationship
+  varies between the CLI convention (`<name>-app`) and the sample-script convention (`App`), and a
+  guard that wrongly refuses a legitimate app is worse than the ambiguity it removes.
+remediation: >-
+  Emit the toolbox per app -- `<finalAppRoot>/_ops`, or `<parent>/_ops/<appId>/` -- and have
+  `_find_ops_root` (NPDevCli/npdev_cli.py) prefer the per-app location, falling back to the shared
+  one so existing generated apps keep working. Ships with its `npdev migrate` codemod per the
+  standing convention, since it moves a generated-layout path.
