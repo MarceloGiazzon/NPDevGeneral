@@ -1727,13 +1727,46 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
 
     /** Package-private (not private): reused verbatim by {@link SchemaDeltaReport} (LNCH-1 Phase 4)
      * for its best-effort row-count queries -- guardrail 11's identifier-safety discipline applies
-     * there exactly as it does everywhere else in this class. */
+     * there exactly as it does everywhere else in this class.
+     *
+     * <p><b>Returns the name RAW</b> (validated and lowercased, never quoted). Use it where the name
+     * goes into a string LITERAL rather than into SQL syntax: the {@code information_schema} lookups
+     * inside {@code guardedAddColumn}/{@code guardedCreateTable}, and SQL Server's
+     * {@code sp_rename 'table.column'}. Quoting there would search for a column whose name literally
+     * contains backticks, which silently never matches.
+     *
+     * <p>For a name that is embedded in SQL TEXT, use {@link #quotedIdentifier} instead. */
     static String safeIdentifier(String identifier) {
         String value = identifier == null ? "" : identifier.trim();
         if (!value.matches("[A-Za-z_][A-Za-z0-9_]*")) {
             throw new IllegalStateException("Unsafe table identifier in schema realization manifest: " + identifier);
         }
         return value.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * npdev-sql-identifier-quoting: one of THREE seams that turn a model name into SQL identifier
+     * text (STOR-6). All three must ask SqlDialect.identifier(); quoting one alone leaves an app
+     * that builds, boots, and cannot find its own table. Twin-pair rule:
+     * sql-identifier-quoting-three-seams.
+     *
+     * <p>{@link #safeIdentifier} plus conditional quoting: the form to embed in SQL TEXT.
+     *
+     * <p>This is the schema-lifecycle naming seam, and it is a THIRD one -- neither
+     * {@code SchemaRealizationEmitter} (which emits the DDL) nor {@link JdbcBusinessConceptStore}
+     * (which reads and writes rows) covers it, because both of those run on a fresh database and
+     * this only runs when something is CHANGING on an existing one. A column named {@code order}
+     * reaches here through the impact probe ({@code SELECT COUNT(*) FROM t WHERE order IS NOT NULL})
+     * and through every rename/backfill/widen/unique pass.
+     *
+     * <p>Validation runs FIRST and is unchanged, so quoting is only ever applied to a name already
+     * proven to match {@code [A-Za-z_][A-Za-z0-9_]*} -- it cannot smuggle a quote or a statement
+     * separator through. The lowercasing matters too: on the engines that fold unquoted identifiers
+     * the physical column really is lowercase, so quoting the original casing would stop matching
+     * what is deployed.
+     */
+    static String quotedIdentifier(String identifier) {
+        return com.npdev.kernel.storage.sql.SqlDialects.active().identifier(safeIdentifier(identifier));
     }
 
     /** Package-private (not private) so it is directly unit-testable against a real H2

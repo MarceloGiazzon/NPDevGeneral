@@ -144,7 +144,7 @@ public final class CrossEngineDataPromotion {
                     .filter(column -> containsIgnoreCase(sourceColumns, column) && containsIgnoreCase(targetColumns, column))
                     .toList();
 
-            String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
+            String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
             String columnList = columns.stream().map(SchemaLifecycleExecutor::safeIdentifier).collect(Collectors.joining(", "));
             String placeholders = columns.stream().map(ignored -> "?").collect(Collectors.joining(", "));
             String selectSql = "SELECT " + columnList + " FROM " + safeTable;
@@ -237,7 +237,7 @@ public final class CrossEngineDataPromotion {
     }
 
     private static long countRows(Connection connection, String table) throws SQLException {
-        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
+        String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
         try (Statement statement = connection.createStatement();
                 ResultSet resultSet = statement.executeQuery("SELECT COUNT(*) FROM " + safeTable)) {
             return resultSet.next() ? resultSet.getLong(1) : 0L;

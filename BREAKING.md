@@ -5,6 +5,31 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-09 — SQL identifiers are now QUOTED when the target engine reserves them (STOR-6)
+
+**What changes.** A model field named `order`, or a concept whose table realizes to `rows`, now
+emits `` `order` ``/`[order]`/`"order"` in the engine's own quoting syntax, and the runtime queries
+it the same way. Nothing else moves: quoting is CONDITIONAL, so an identifier no engine reserves is
+emitted exactly as before.
+
+**Codemod: none, and none is possible.** A model that hits this could not generate a runnable schema
+before, so there is no existing behaviour to migrate. Measured over the corpus, 4 models x 3
+engines: 10 of 12 emit byte-identical DDL, and the 2 that move (`rank` on MySQL, `plan` on SQL
+Server) move from broken to working.
+
+**What breaks, and for whom.** `SqlDialect` gained abstract `isReservedIdentifier(String)`. Any
+implementation outside this repo must add it. There is no default: a dialect that silently answered
+"nothing is reserved" would restore this defect for its engine while every test stayed green, which
+is the X0 rule this interface exists to enforce.
+
+**Three seams, not two.** The generator emits the DDL, `JdbcBusinessConceptStore` reads and writes
+rows, and `SchemaLifecycleExecutor.quotedIdentifier` serves the 40 schema-lifecycle sites that only
+run when a column CHANGES on an existing database — the third was found by a live run, not by the
+plan. They are pinned together by the twin-pair rule `sql-identifier-quoting-three-seams`, because
+quoting one alone is worse than quoting none: the app builds, boots, and cannot find its own table.
+`SchemaLifecycleExecutor.safeIdentifier` deliberately stays UNQUOTED for the places a name goes into
+a string literal (`information_schema` guards, SQL Server's `sp_rename`).
+
 ## 2026-08-09 — `db.definition.json`: a `jdbcUrl` / `h2FilePath` that CONTRADICTS the real connection is now refused (STOR-8)
 
 **What changes.** `database.jdbcUrl` and `database.h2FilePath` are still accepted. A value that

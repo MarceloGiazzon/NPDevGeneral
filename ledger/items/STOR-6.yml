@@ -5,9 +5,10 @@ title: >-
   dialect layer and never exercised at application level
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-08
 verification: VERIFIED_LIVE
+closed: 2026-08-09
 surface: generator/dbconfig/SchemaRealizationEmitter, kernel/storage-dialect
 source: >-
   storage/OPEN_ITEMS_PLAN.md W10. Found while unblocking Tier C: the p2-evolve probe declares a
@@ -62,3 +63,37 @@ files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
   - NPDevSamples/probes/p2-evolve/v1/Input/model.json
+
+closure: >-
+  Conditional quoting shipped at THREE naming seams, not the two the plan named. `SqlDialect` gained
+  `isReservedIdentifier(String)` (backed by `SqlReservedWords`, a per-engine word list read from
+  `npdev/sql-reserved-words.properties`) and `identifier(String)`, which quotes ONLY when this engine
+  reserves the name -- lowercasing first where the engine folds unquoted identifiers, so a column
+  already deployed as `order` keeps matching.
+
+  The seams:
+    1. SchemaRealizationEmitter        -- emits the DDL (44 sqlId sites)
+    2. JdbcBusinessConceptStore        -- reads and writes rows, plus the upsert text composed
+                                          inside each dialect's UpsertStrategy
+    3. SchemaLifecycleExecutor.quotedIdentifier -- the 40 schema-lifecycle sites across 13 classes
+
+  The third was NOT in the plan, and no fresh-database test could have found it: the impact probe
+  (`SELECT COUNT(*) FROM t WHERE order IS NOT NULL`) only runs when a column CHANGES on an existing
+  database. A live H2 run against a pre-existing schema produced the syntax error; after the fix the
+  same probe returns 0. `safeIdentifier` deliberately stays RAW and is still used where the name goes
+  into a string LITERAL -- `information_schema` guards and SQL Server's `sp_rename` -- because a
+  quoted name there searches for a column whose name contains backticks and silently never matches.
+
+  Evidence:
+    - Emitted-DDL diff over 4 models x 3 engines: 10 of 12 byte-identical; the 2 that moved are
+      `rank` on MySQL (backticks) and `plan` on SQL Server (brackets) -- exactly the two collisions
+      the corpus scan predicted, each moving from broken to working.
+    - run-engine-app-proof.py: 5/5 assertions on postgres, mysql, sqlserver AND h2local, against
+      real containers, including a new `reserved-identifier-round-trip` assertion. Booting proves
+      the generator quoted; reading the row back proves the runtime did.
+    - engine-probe now carries `order`, `value` and a concept realizing to the table `rows`, so the
+      existing all-engine CI matrix covers this permanently at no extra cost.
+    - Tier C on MySQL: 4/4 with p2-evolve restored to its original `Row`/`value` names -- the probe
+      whose own model recorded that it "could never boot on either engine".
+    - Twin-pair rule `sql-identifier-quoting-three-seams` pins all three, RED-proven by removing the
+      token from one seam.

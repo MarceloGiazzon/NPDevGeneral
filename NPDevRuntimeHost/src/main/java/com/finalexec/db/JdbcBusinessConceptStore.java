@@ -62,6 +62,28 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     }
 
     /**
+     * npdev-sql-identifier-quoting: one of THREE seams that turn a model name into SQL identifier
+     * text (STOR-6). All three must ask SqlDialect.identifier(); quoting one alone leaves an app
+     * that builds, boots, and cannot find its own table. Twin-pair rule:
+     * sql-identifier-quoting-three-seams.
+     *
+     * <p>A business identifier ready to embed in SQL, quoted only if this engine reserves it.
+     *
+     * <p><b>This must apply the IDENTICAL rule to {@code SchemaRealizationEmitter.sqlId}.</b> The
+     * emitter creates the table; this queries it. A quoted table queried unquoted -- or the reverse
+     * -- is the twin-pair break in its worst form: the app builds, boots, and cannot find its own
+     * tables. {@code SqlNamingSupport} states the constraint plainly ("the runtime side must query
+     * the exact same table/column names Flyway/the generator emit"), and
+     * {@code twin-pair-registry.json} pins the two so an edit to one fails the gate.
+     *
+     * <p>Raw everywhere else. These names are also map keys and catalog lookups, where the UNQUOTED
+     * form is what the database stores and what {@code TableColumns} compares against.
+     */
+    private String sqlId(String rawIdentifier) {
+        return dialect.identifier(rawIdentifier);
+    }
+
+    /**
      * LNCH-17: {@code dataSource.getConnection()} would hand back a brand-new physical
      * connection, entirely independent of whatever Spring-managed transaction the calling
      * generated-service method is running under (e.g. {@code @Transactional public ... create(...)}
@@ -88,7 +110,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public Optional<ConceptRecord> findById(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
-        String sql = "SELECT * FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ?";
+        String sql = "SELECT * FROM " + sqlId(shape.tableName()) + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?";
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, bindable(statement, coerceId(id)));
@@ -120,7 +142,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     public Optional<ConceptRecord> findByIdForUpdate(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
         String sql = com.npdev.kernel.storage.sql.SqlDialects.active().selectForUpdate(
-                "*", shape.tableName(), shape.idColumn() + " = ? AND tenant_id = ?");
+                "*", sqlId(shape.tableName()), sqlId(shape.idColumn()) + " = ? AND tenant_id = ?");
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, bindable(statement, coerceId(id)));
@@ -141,7 +163,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public List<ConceptRecord> findAll(String tenantId, String conceptName) {
         ConceptShape shape = shape(conceptName);
-        String sql = "SELECT * FROM " + shape.tableName() + " WHERE tenant_id = ? ORDER BY " + shape.idColumn();
+        String sql = "SELECT * FROM " + sqlId(shape.tableName()) + " WHERE tenant_id = ? ORDER BY " + sqlId(shape.idColumn());
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, bindable(statement, tenantId));
@@ -182,7 +204,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                 // CAST to VARCHAR first: Postgres's LOWER() rejects non-text input outright (unlike
                 // H2, which silently coerces), so a "contains" filter against a numeric/UUID column
                 // would otherwise work under H2 in dev and fail under Postgres in production.
-                whereClauses.add("LOWER(CAST(" + column + " AS VARCHAR)) LIKE ? ESCAPE '\\'");
+                whereClauses.add("LOWER(CAST(" + sqlId(column) + " AS VARCHAR)) LIKE ? ESCAPE '\\'");
                 params.add("%" + likeEscape(String.valueOf(filter.value()).toLowerCase(Locale.ROOT)) + "%");
                 continue;
             }
@@ -197,7 +219,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         try {
             long total;
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT COUNT(*) FROM " + shape.tableName() + " WHERE " + whereSql)) {
+                    "SELECT COUNT(*) FROM " + sqlId(shape.tableName()) + " WHERE " + whereSql)) {
                 bindParams(statement, params, 1);
                 try (ResultSet resultSet = statement.executeQuery()) {
                     resultSet.next();
@@ -206,7 +228,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             }
 
             List<ConceptRecord> items = new ArrayList<>();
-            String pageSql = dialect.paginated("SELECT * FROM " + shape.tableName() + " WHERE " + whereSql
+            String pageSql = dialect.paginated("SELECT * FROM " + sqlId(shape.tableName()) + " WHERE " + whereSql
                     + orderSql + " ").stripTrailing();
             LOG.debug("npdev.query.sql concept={} sql={} limit={} offset={}",
                     conceptName, pageSql, effective.limit(), effective.offset());
@@ -291,7 +313,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             String rawColumn = requireColumn(shape, filter.field());
             String column = baseAlias + "." + rawColumn;
             if (filter.operator() == ConceptQuery.Operator.CONTAINS) {
-                whereClauses.add("LOWER(CAST(" + column + " AS VARCHAR)) LIKE ? ESCAPE '\\'");
+                whereClauses.add("LOWER(CAST(" + sqlId(column) + " AS VARCHAR)) LIKE ? ESCAPE '\\'");
                 whereParams.add("%" + likeEscape(String.valueOf(filter.value()).toLowerCase(Locale.ROOT)) + "%");
                 continue;
             }
@@ -349,7 +371,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         }
         StringBuilder sql = new StringBuilder("SELECT ")
                 .append(String.join(", ", selectItems))
-                .append(" FROM ").append(shape.tableName()).append(" AS ").append(baseAlias);
+                .append(" FROM ").append(sqlId(shape.tableName())).append(" AS ").append(baseAlias);
         for (String joinClause : joinClauses) {
             sql.append(joinClause);
         }
@@ -495,7 +517,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     private String orderByClause(ConceptShape shape, List<ConceptQuery.Sort> sorts) {
         if (sorts.isEmpty()) {
             // OFFSET paging is only deterministic under a stable order; default to the primary key.
-            return " ORDER BY " + shape.idColumn();
+            return " ORDER BY " + sqlId(shape.idColumn());
         }
         List<String> terms = new ArrayList<>();
         for (ConceptQuery.Sort sort : sorts) {
@@ -563,6 +585,10 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         List<String> columnNames = new ArrayList<>(dbRecord.keySet());
         columnNames.remove(shape.idColumn());
         columnNames.add(0, shape.idColumn());
+        // RAW names go in, and bindColumns() comes back raw -- executeUpsert reads dbRecord and
+        // dslTypeByColumn with them, which are keyed on the unquoted name. The QUOTING happens
+        // inside the dialect as it composes the statement text (STOR-6), because that is the only
+        // place that both knows how to quote and can keep the bind list unquoted.
         UpsertPlan plan = upsertPlan(connection, shape.tableName(), shape.idColumn(), columnNames);
         // UpsertPlan's execution rule: run the steps in order, STOP after the first that affects a
         // row. One step on the engines whose native upsert names its conflict target; two on MySQL,
@@ -606,11 +632,11 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         columnNames.remove("row_version");
         List<String> setTerms = new ArrayList<>();
         for (String column : columnNames) {
-            setTerms.add(column + " = ?");
+            setTerms.add(sqlId(column) + " = ?");
         }
         setTerms.add("row_version = ?");
-        String sql = "UPDATE " + shape.tableName() + " SET " + String.join(", ", setTerms)
-                + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ? AND row_version = ?";
+        String sql = "UPDATE " + sqlId(shape.tableName()) + " SET " + String.join(", ", setTerms)
+                + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ? AND row_version = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             int index = 1;
             for (String column : columnNames) {
@@ -630,7 +656,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     }
 
     private Optional<Long> currentRowVersion(Connection connection, ConceptShape shape, ConceptRecord record) throws SQLException {
-        String sql = "SELECT row_version FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ?";
+        String sql = "SELECT row_version FROM " + sqlId(shape.tableName()) + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, bindable(statement, coerceId(record.id())));
             statement.setObject(2, bindable(statement, record.tenantId()));
@@ -647,7 +673,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public void deleteById(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
-        String sql = "DELETE FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ?";
+        String sql = "DELETE FROM " + sqlId(shape.tableName()) + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?";
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, bindable(statement, coerceId(id)));

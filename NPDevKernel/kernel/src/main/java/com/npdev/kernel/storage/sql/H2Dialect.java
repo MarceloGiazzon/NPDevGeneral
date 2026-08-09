@@ -127,7 +127,8 @@ public final class H2Dialect implements SqlDialect {
 
     @Override
     public String renameColumn(String table, String from_, String to) {
-        return "ALTER TABLE " + table + " ALTER COLUMN " + from_ + " RENAME TO " + to;
+        return "ALTER TABLE " + identifier(table) + " ALTER COLUMN " + identifier(from_)
+                + " RENAME TO " + identifier(to);
     }
 
     @Override
@@ -335,8 +336,19 @@ public final class H2Dialect implements SqlDialect {
      * That is the shape both pre-extraction sites emitted.
      */
     static final class H2UpsertStrategy implements UpsertStrategy {
+
+        private static String quoted(String rawIdentifier) {
+            return H2Dialect.INSTANCE.identifier(rawIdentifier);
+        }
+
+        private static List<String> quotedAll(List<String> rawIdentifiers) {
+            return H2Dialect.INSTANCE.identifiers(rawIdentifiers);
+        }
         @Override
-        public String statementFor(String table, List<String> keyColumns, List<String> valueColumns) {
+        public String statementFor(String rawTable, List<String> keyColumns, List<String> valueColumns) {
+            // STOR-6: quote HERE, as the text is composed. The caller keeps raw names for
+            // its map lookups, and bindColumns() must echo those back unquoted.
+            String table = H2Dialect.INSTANCE.identifier(rawTable);
             if (keyColumns == null || keyColumns.isEmpty()) {
                 throw new IllegalArgumentException("engine 'h2': upsert needs at least one key column");
             }
@@ -345,8 +357,8 @@ public final class H2Dialect implements SqlDialect {
             }
             String placeholders = String.join(", ", java.util.Collections.nCopies(valueColumns.size(), "?"));
             return "MERGE INTO " + table
-                    + " (" + String.join(", ", valueColumns) + ")"
-                    + " KEY(" + String.join(", ", keyColumns) + ")"
+                    + " (" + String.join(", ", quotedAll(valueColumns)) + ")"
+                    + " KEY(" + String.join(", ", quotedAll(keyColumns)) + ")"
                     + " VALUES (" + placeholders + ")";
         }
     }

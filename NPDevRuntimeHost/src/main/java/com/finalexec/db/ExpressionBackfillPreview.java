@@ -82,11 +82,11 @@ public final class ExpressionBackfillPreview {
      * {@link #preview} (dry-run summary) and {@code BackfillPass}'s apply step (fresh re-evaluation
      * right before writing, never trusting a stale preview) share. */
     static List<RowValue> evaluateRows(Connection connection, String table, String column, String expression) throws SQLException {
-        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
+        String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
         boolean columnExistsLive = SchemaLifecycleExecutor.readActualColumns(connection.getMetaData(), table).stream()
                 .anyMatch(column::equalsIgnoreCase);
         String sql = "SELECT * FROM " + safeTable
-                + (columnExistsLive ? " WHERE " + SchemaLifecycleExecutor.safeIdentifier(column) + " IS NULL" : "");
+                + (columnExistsLive ? " WHERE " + SchemaLifecycleExecutor.quotedIdentifier(column) + " IS NULL" : "");
         List<RowValue> results = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement(sql);
                 ResultSet resultSet = statement.executeQuery()) {

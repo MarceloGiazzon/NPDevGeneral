@@ -199,8 +199,8 @@ public final class SchemaRealizationEmitter {
     private static void appendInternalTableAdditiveColumns(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
         Set<String> keyed = keyedColumnsOf(table);
         for (InternalColumnDefinition column : table.columns()) {
-            StringBuilder alter = new StringBuilder("ALTER TABLE ").append(table.name())
-                    .append(" ADD COLUMN ").append(column.name()).append(" ")
+            StringBuilder alter = new StringBuilder("ALTER TABLE ").append(sqlId(engine, table.name()))
+                    .append(" ADD COLUMN ").append(sqlId(engine, column.name())).append(" ")
                     .append(renderInternalType(column.type(), engine, keyed.contains(column.name()),
                             !column.defaultExpression().isBlank()));
             if (!column.defaultExpression().isBlank()) {
@@ -246,14 +246,14 @@ public final class SchemaRealizationEmitter {
         // unreachable. The DB-level DEFAULT also guards the kernel-injected-synthetic-column class of
         // bug, mirroring how 'version BIGINT NOT NULL DEFAULT 0' is handled.
         appendGuardedAddColumn(sql, engine, table, "tenant_id",
-                "ALTER TABLE " + table + " ADD COLUMN tenant_id "
+                "ALTER TABLE " + sqlId(engine, table) + " ADD COLUMN tenant_id "
                         + renderType("VARCHAR(120)", engine) + " DEFAULT 'default';");
         // LNCH-16: same in-place-upgrade reasoning as tenant_id above -- DEFAULT 0 backfills
         // pre-existing rows so JdbcBusinessConceptStore's row_version-aware save path (gated on
         // TableColumns#has("row_version")) works the moment this column lands, no separate
         // migration step needed.
         appendGuardedAddColumn(sql, engine, table, "row_version",
-                "ALTER TABLE " + table + " ADD COLUMN row_version "
+                "ALTER TABLE " + sqlId(engine, table) + " ADD COLUMN row_version "
                         + renderType("BIGINT", engine) + " DEFAULT 0;");
         // LNCH-1 T2 (finding T-B2): 'version' is added here for exactly the same reason, and with
         // exactly the same type and default, as row_version above. Before this it was the one column
@@ -262,7 +262,7 @@ public final class SchemaRealizationEmitter {
         // and since closeout C1 an UNKNOWN REFUSES the boot unless an itemized token authorizing a
         // whole-schema wipe is supplied. A missing platform column now self-heals instead.
         appendGuardedAddColumn(sql, engine, table, "version",
-                "ALTER TABLE " + table + " ADD COLUMN version "
+                "ALTER TABLE " + sqlId(engine, table) + " ADD COLUMN version "
                         + renderType("BIGINT", engine) + " DEFAULT 0;");
         // DELIBERATE ASYMMETRY (LNCH-1 T2, do not "fix" by adding NOT NULL here): the three platform
         // columns above are emitted with a DEFAULT but WITHOUT NOT NULL, while appendBusinessTable's
@@ -281,7 +281,7 @@ public final class SchemaRealizationEmitter {
             // fresh-CREATE handling), not the reference default (UUID).
             String sqlType = bond.isPresent() ? bond.get().effectiveSqlType() : SqlTypeSupport.sqlType(field);
             appendGuardedAddColumn(sql, engine, table, column,
-                    "ALTER TABLE " + table + " ADD COLUMN " + column + " "
+                    "ALTER TABLE " + sqlId(engine, table) + " ADD COLUMN " + sqlId(engine, column) + " "
                             + renderType(sqlType, engine) + ";");
             if (field.isRequired()) {
                 CompiledSchema schema = field.getSchema();
@@ -304,10 +304,11 @@ public final class SchemaRealizationEmitter {
                 // with no referential integrity.
                 Bond resolvedBond = bond.get();
                 String constraint = truncate("fk_" + table + "_" + column);
-                String constraintSql = "ALTER TABLE " + table
+                String constraintSql = "ALTER TABLE " + sqlId(engine, table)
                         + " ADD CONSTRAINT " + constraint
-                        + " FOREIGN KEY (" + column + ")"
-                        + " REFERENCES " + resolvedBond.targetTable() + " (" + resolvedBond.anchorColumn() + ")"
+                        + " FOREIGN KEY (" + sqlId(engine, column) + ")"
+                        + " REFERENCES " + sqlId(engine, resolvedBond.targetTable())
+                        + " (" + sqlId(engine, resolvedBond.anchorColumn()) + ")"
                         + resolvedBond.onUpdateSqlClause()
                         + " ON DELETE " + resolvedBond.onDeleteSql();
                 sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
@@ -341,12 +342,17 @@ public final class SchemaRealizationEmitter {
     }
 
     private static void appendTable(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
-        StringBuilder create = new StringBuilder("CREATE TABLE ").append(table.name()).append(" (\n");
+        // Platform tables carry platform-chosen names, so nothing here is reserved today and this
+        // emits byte-identically. It goes through sqlId anyway so the rule is uniform -- EVERY
+        // identifier that reaches emitted SQL asks the dialect -- rather than a rule with an
+        // exemption someone later has to remember.
+        StringBuilder create = new StringBuilder("CREATE TABLE ")
+                .append(sqlId(engine, table.name())).append(" (\n");
         Set<String> keyed = keyedColumnsOf(table);
         List<String> lines = new ArrayList<>();
         for (InternalColumnDefinition column : table.columns()) {
             StringBuilder line = new StringBuilder("  ")
-                    .append(column.name())
+                    .append(sqlId(engine, column.name()))
                     .append(" ")
                     .append(renderInternalType(column.type(), engine, keyed.contains(column.name()),
                             !column.defaultExpression().isBlank()));
@@ -425,7 +431,7 @@ public final class SchemaRealizationEmitter {
                     ? bond.get().effectiveSqlType()
                     : SqlTypeSupport.sqlType(field);
             StringBuilder line = new StringBuilder("  ")
-                    .append(column)
+                    .append(sqlId(engine, column))
                     .append(" ")
                     .append(renderType(sqlType, engine));
             if (field.isRequired() || field.isId()) {
@@ -448,9 +454,11 @@ public final class SchemaRealizationEmitter {
         // existing mechanism.
         lines.add("  row_version BIGINT NOT NULL DEFAULT 0");
         lines.add("  tenant_id " + renderType("VARCHAR(120)", engine) + " NOT NULL DEFAULT 'default'");
-        lines.add("  PRIMARY KEY (" + idColumn + ")");
+        lines.add("  PRIMARY KEY (" + sqlId(engine, idColumn) + ")");
+        // The `table` argument stays RAW on purpose: SQL Server's guard puts it inside
+        // OBJECT_ID(N'...'), a string literal, where a quote would become part of the name.
         appendGuardedCreateTable(sql, engine, table,
-                "CREATE TABLE " + table + " (\n" + String.join(",\n", lines) + "\n);");
+                "CREATE TABLE " + sqlId(engine, table) + " (\n" + String.join(",\n", lines) + "\n);");
     }
 
     /**
@@ -472,9 +480,9 @@ public final class SchemaRealizationEmitter {
                 // only unique as part of a composite (tenant_id, col) key. So anchors are the one
                 // unique kind that is deliberately not tenant-scoped.
                 String constraint = truncate("uq_" + table + "_" + column);
-                String constraintSql = "ALTER TABLE " + table
+                String constraintSql = "ALTER TABLE " + sqlId(engine, table)
                         + " ADD CONSTRAINT " + constraint
-                        + " UNIQUE (" + column + ")";
+                        + " UNIQUE (" + sqlId(engine, column) + ")";
                 sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
             } else {
                 // Ordinary unique fields are unique WITHIN a tenant, not across the whole database:
@@ -483,8 +491,8 @@ public final class SchemaRealizationEmitter {
                 // This also aligns the DB constraint with the per-tenant existsUnique pre-check.
                 String uniqueIndex = truncate("ux_" + table + "_" + column);
                 appendGuardedCreateIndex(sql, engine, uniqueIndex, table,
-                        "CREATE UNIQUE INDEX " + uniqueIndex + " ON " + table
-                                + " (tenant_id, " + column + ");");
+                        "CREATE UNIQUE INDEX " + uniqueIndex + " ON " + sqlId(engine, table)
+                                + " (tenant_id, " + sqlId(engine, column) + ");");
             }
         }
 
@@ -510,9 +518,10 @@ public final class SchemaRealizationEmitter {
                 continue;
             }
             String constraint = truncate("uq_" + table + "_" + String.join("_", columns));
-            String constraintSql = "ALTER TABLE " + table
+            List<String> quotedColumns = columns.stream().map(c -> sqlId(engine, c)).toList();
+            String constraintSql = "ALTER TABLE " + sqlId(engine, table)
                     + " ADD CONSTRAINT " + constraint
-                    + " UNIQUE (tenant_id, " + String.join(", ", columns) + ")";
+                    + " UNIQUE (tenant_id, " + String.join(", ", quotedColumns) + ")";
             sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
         }
 
@@ -556,15 +565,15 @@ public final class SchemaRealizationEmitter {
                     : String.join("_", columns);
             if (index.isUnique()) {
                 String constraint = truncate("uqx_" + table + "_" + baseName);
-                String constraintSql = "ALTER TABLE " + table
+                String constraintSql = "ALTER TABLE " + sqlId(engine, table)
                         + " ADD CONSTRAINT " + constraint
-                        + " UNIQUE (tenant_id, " + String.join(", ", columns) + ")";
+                        + " UNIQUE (tenant_id, " + String.join(", ", sqlIds(engine, columns)) + ")";
                 sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
             } else {
                 String compositeIndex = truncate("idxx_" + table + "_" + baseName);
                 appendGuardedCreateIndex(sql, engine, compositeIndex, table,
-                        "CREATE INDEX " + compositeIndex + " ON " + table + " (tenant_id, "
-                                + String.join(", ", columns) + ");");
+                        "CREATE INDEX " + compositeIndex + " ON " + sqlId(engine, table) + " (tenant_id, "
+                                + String.join(", ", sqlIds(engine, columns)) + ");");
             }
         }
     }
@@ -597,8 +606,8 @@ public final class SchemaRealizationEmitter {
             }
             String columnIndex = truncate("idx_" + table + "_" + column);
             appendGuardedCreateIndex(sql, engine, columnIndex, table,
-                    "CREATE INDEX " + columnIndex + " ON " + table + " (tenant_id, "
-                            + column + ");");
+                    "CREATE INDEX " + columnIndex + " ON " + sqlId(engine, table) + " (tenant_id, "
+                            + sqlId(engine, column) + ");");
         }
     }
 
@@ -1038,21 +1047,24 @@ public final class SchemaRealizationEmitter {
             String sourceColumn = SqlIdentifierSupport.sourceJunctionColumn(sourceId);
             String targetColumn = SqlIdentifierSupport.targetJunctionColumn(bond.anchorField());
             appendGuardedCreateTable(sql, engine, junctionTable,
-                    "CREATE TABLE " + junctionTable + " (\n"
-                            + "  " + sourceColumn + " " + renderType(SqlTypeSupport.sqlType(sourceId), engine) + " NOT NULL,\n"
-                            + "  " + targetColumn + " " + renderType(bond.effectiveSqlType(), engine) + " NOT NULL,\n"
-                            + "  PRIMARY KEY (" + sourceColumn + ", " + targetColumn + ")\n"
+                    "CREATE TABLE " + sqlId(engine, junctionTable) + " (\n"
+                            + "  " + sqlId(engine, sourceColumn) + " "
+                            + renderType(SqlTypeSupport.sqlType(sourceId), engine) + " NOT NULL,\n"
+                            + "  " + sqlId(engine, targetColumn) + " "
+                            + renderType(bond.effectiveSqlType(), engine) + " NOT NULL,\n"
+                            + "  PRIMARY KEY (" + sqlId(engine, sourceColumn) + ", "
+                            + sqlId(engine, targetColumn) + ")\n"
                             + ");");
             String sourceIndex = SqlIdentifierSupport.safeSqlIdentifier(
                     "idx_" + junctionTable + "_" + sourceColumn);
             appendGuardedCreateIndex(sql, engine, sourceIndex, junctionTable,
-                    "CREATE INDEX " + sourceIndex + " ON " + junctionTable
-                            + " (" + sourceColumn + ");");
+                    "CREATE INDEX " + sourceIndex + " ON " + sqlId(engine, junctionTable)
+                            + " (" + sqlId(engine, sourceColumn) + ");");
             String targetIndex = SqlIdentifierSupport.safeSqlIdentifier(
                     "idx_" + junctionTable + "_" + targetColumn);
             appendGuardedCreateIndex(sql, engine, targetIndex, junctionTable,
-                    "CREATE INDEX " + targetIndex + " ON " + junctionTable
-                            + " (" + targetColumn + ");");
+                    "CREATE INDEX " + targetIndex + " ON " + sqlId(engine, junctionTable)
+                            + " (" + sqlId(engine, targetColumn) + ");");
         }
     }
 
@@ -1079,17 +1091,19 @@ public final class SchemaRealizationEmitter {
             String targetColumn = SqlIdentifierSupport.targetJunctionColumn(bond.anchorField());
             // Source-side FK is always CASCADE: a junction row is membership owned by its source.
             String sourceConstraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + sourceColumn);
-            String sourceConstraintSql = "ALTER TABLE " + junctionTable
+            String sourceConstraintSql = "ALTER TABLE " + sqlId(engine, junctionTable)
                     + " ADD CONSTRAINT " + sourceConstraint
-                    + " FOREIGN KEY (" + sourceColumn + ")"
-                    + " REFERENCES " + bond.sourceTable() + " (" + SqlIdentifierSupport.columnName(sourceId) + ")"
+                    + " FOREIGN KEY (" + sqlId(engine, sourceColumn) + ")"
+                    + " REFERENCES " + sqlId(engine, bond.sourceTable())
+                    + " (" + sqlId(engine, SqlIdentifierSupport.columnName(sourceId)) + ")"
                     + " ON DELETE CASCADE";
             sql.append(addConstraintIfMissing(engine, junctionTable, sourceConstraint, sourceConstraintSql));
             String targetConstraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + junctionTable + "_" + targetColumn);
-            String targetConstraintSql = "ALTER TABLE " + junctionTable
+            String targetConstraintSql = "ALTER TABLE " + sqlId(engine, junctionTable)
                     + " ADD CONSTRAINT " + targetConstraint
-                    + " FOREIGN KEY (" + targetColumn + ")"
-                    + " REFERENCES " + bond.targetTable() + " (" + bond.anchorColumn() + ")"
+                    + " FOREIGN KEY (" + sqlId(engine, targetColumn) + ")"
+                    + " REFERENCES " + sqlId(engine, bond.targetTable())
+                    + " (" + sqlId(engine, bond.anchorColumn()) + ")"
                     + bond.onUpdateSqlClause()
                     + " ON DELETE " + bond.onDeleteSql();
             sql.append(addConstraintIfMissing(engine, junctionTable, targetConstraint, targetConstraintSql)).append("\n");
@@ -1101,10 +1115,11 @@ public final class SchemaRealizationEmitter {
                 continue;
             }
             String constraint = SqlIdentifierSupport.safeSqlIdentifier("fk_" + bond.sourceTable() + "_" + bond.sourceColumn());
-            String constraintSql = "ALTER TABLE " + bond.sourceTable()
+            String constraintSql = "ALTER TABLE " + sqlId(engine, bond.sourceTable())
                     + " ADD CONSTRAINT " + constraint
-                    + " FOREIGN KEY (" + bond.sourceColumn() + ")"
-                    + " REFERENCES " + bond.targetTable() + " (" + bond.anchorColumn() + ")"
+                    + " FOREIGN KEY (" + sqlId(engine, bond.sourceColumn()) + ")"
+                    + " REFERENCES " + sqlId(engine, bond.targetTable())
+                    + " (" + sqlId(engine, bond.anchorColumn()) + ")"
                     + bond.onUpdateSqlClause()
                     + " ON DELETE " + bond.onDeleteSql();
             sql.append(addConstraintIfMissing(engine, bond.sourceTable(), constraint, constraintSql));
@@ -1628,6 +1643,42 @@ public final class SchemaRealizationEmitter {
                     : ask.apply(com.npdev.kernel.storage.sql.H2Dialect.INSTANCE);
         }
         return ask.apply(engine.dialect());
+    }
+
+    /**
+     * npdev-sql-identifier-quoting: one of THREE seams that turn a model name into SQL identifier text (STOR-6). All three
+     * must ask SqlDialect.identifier(); quoting one alone leaves an app that builds, boots, and
+     * cannot find its own table. Twin-pair rule: sql-identifier-quoting-three-seams.
+     *
+     * <p>A business identifier ready to embed in SQL: quoted only if THIS engine reserves it (STOR-6).
+     *
+     * <p><b>Why a helper and not a wrap at every call site.</b> The same {@code column} string is used
+     * for two different purposes a few lines apart -- it goes INTO the SQL, and it goes into the
+     * NAME of the index or constraint being created ({@code "ux_" + table + "_" + column}). Quoting
+     * both would emit a constraint called {@code ux_items_"rank"}. So the raw name stays the name,
+     * and this is called only where the identifier becomes SQL text.
+     *
+     * <p>Conditional, never universal: quoting everything would change the emitted DDL for every
+     * existing app and, on Postgres, PIN the case of identifiers that are physically lower-case
+     * today -- so an already-deployed database would stop matching. Measured on the corpus: 2 of 36
+     * models contain a reserved identifier, and both were already broken on the engine that reserves
+     * it, so nothing can regress.
+     *
+     * <p>The runtime side must apply the IDENTICAL rule -- {@code JdbcBusinessConceptStore} calls
+     * {@code SqlDialect.identifier} for the same reason. A quoted table the runtime queries unquoted
+     * is the twin-pair break in its worst form: the app builds, boots, and cannot find its own
+     * tables. {@code twin-pair-registry.json} pins the two together.
+     */
+    /** {@link #sqlId} over a column list, for the sites that embed a whole list at once. */
+    private static List<String> sqlIds(DatabaseEngine engine, List<String> rawIdentifiers) {
+        return rawIdentifiers.stream().map(raw -> sqlId(engine, raw)).toList();
+    }
+
+    private static String sqlId(DatabaseEngine engine, String rawIdentifier) {
+        if (engine == null || !engine.jdbc()) {
+            return rawIdentifier;
+        }
+        return engine.dialect().identifier(rawIdentifier);
     }
 
     private static String renderType(String sqlType, DatabaseEngine engine) {

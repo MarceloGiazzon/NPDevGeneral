@@ -113,8 +113,8 @@ final class PlatformColumnPass {
      */
     private static void executeBackfillAndSetNotNull(Connection connection, String table, String column,
             Object platformDefault) throws SQLException {
-        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
-        String safeColumn = SchemaLifecycleExecutor.safeIdentifier(column);
+        String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
+        String safeColumn = SchemaLifecycleExecutor.quotedIdentifier(column);
         try (PreparedStatement update = connection.prepareStatement(
                 "UPDATE " + safeTable + " SET " + safeColumn + " = ? WHERE " + safeColumn + " IS NULL")) {
             update.setObject(1, platformDefault);

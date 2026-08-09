@@ -50,8 +50,8 @@ final class TableRenamePass {
      * integration test {@code SchemaLifecycleExecutorTableRenameTest} before being trusted here.
      */
     static void executeRenameTable(Connection connection, String oldTable, String newTable) throws SQLException {
-        String safeOld = SchemaLifecycleExecutor.safeIdentifier(oldTable);
-        String safeNew = SchemaLifecycleExecutor.safeIdentifier(newTable);
+        String safeOld = SchemaLifecycleExecutor.quotedIdentifier(oldTable);
+        String safeNew = SchemaLifecycleExecutor.quotedIdentifier(newTable);
         String sql = "ALTER TABLE " + safeOld + " RENAME TO " + safeNew;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.executeUpdate();

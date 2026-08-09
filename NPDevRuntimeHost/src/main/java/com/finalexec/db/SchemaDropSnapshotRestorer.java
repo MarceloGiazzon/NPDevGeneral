@@ -199,9 +199,9 @@ public final class SchemaDropSnapshotRestorer {
         if (id == null || !tableExistsLive(connection, table)) {
             return Optional.empty();
         }
-        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
+        String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT * FROM " + safeTable + " WHERE " + SchemaLifecycleExecutor.safeIdentifier("id") + " = ?")) {
+                "SELECT * FROM " + safeTable + " WHERE " + SchemaLifecycleExecutor.quotedIdentifier("id") + " = ?")) {
             statement.setObject(1, id);
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
@@ -274,7 +274,7 @@ public final class SchemaDropSnapshotRestorer {
         if (columns.isEmpty()) {
             return;
         }
-        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
+        String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
         String columnList = columns.stream().map(SchemaLifecycleExecutor::safeIdentifier).collect(Collectors.joining(", "));
         String placeholders = columns.stream().map(ignored -> "?").collect(Collectors.joining(", "));
         try (PreparedStatement statement = connection.prepareStatement(

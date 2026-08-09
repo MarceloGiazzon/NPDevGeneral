@@ -147,8 +147,8 @@ final class DestructiveRecreationPass {
     }
 
     private static void executeDropColumn(Connection connection, String table, String column) throws SQLException {
-        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
-        String safeColumn = SchemaLifecycleExecutor.safeIdentifier(column);
+        String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
+        String safeColumn = SchemaLifecycleExecutor.quotedIdentifier(column);
         try (PreparedStatement statement = connection.prepareStatement(
                 "ALTER TABLE " + safeTable + " DROP COLUMN " + safeColumn)) {
             statement.executeUpdate();
@@ -156,7 +156,7 @@ final class DestructiveRecreationPass {
     }
 
     private static void executeDropTableCascade(Connection connection, String table) throws SQLException {
-        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
+        String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
         // Same CASCADE rationale as the whole-schema path (see executeWholeSchemaWipe): drops any
         // dependent FK constraint along with the table; it does not touch a referencing table's rows.
         try (PreparedStatement statement = connection.prepareStatement(
@@ -184,8 +184,8 @@ final class DestructiveRecreationPass {
     // precedent, so it is directly unit-testable against a real H2 DataSource.
     static void executeNarrowTypeDropAndRecreate(Connection connection, String table, String column, String newType, boolean requiredByModel)
             throws SQLException {
-        String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
-        String safeColumn = SchemaLifecycleExecutor.safeIdentifier(column);
+        String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
+        String safeColumn = SchemaLifecycleExecutor.quotedIdentifier(column);
         String safeType = TypeWideningPass.safeSqlType(newType);
         // REG-58: a plain DROP COLUMN fails when a unique index/constraint still references this
         // column (H2: "Column may be referenced by ..."; Postgres would refuse similarly). Every
@@ -219,7 +219,7 @@ final class DestructiveRecreationPass {
         }
     }
 
-    /** {@code safeTable} is already {@link SchemaLifecycleExecutor#safeIdentifier}-validated by every
+    /** {@code safeTable} is already {@link SchemaLifecycleExecutor#quotedIdentifier}-validated by every
      * caller before it reaches here -- never build this query from a raw, unvalidated identifier. */
     private static boolean isTableEmpty(Connection connection, String safeTable) throws SQLException {
         try (PreparedStatement count = connection.prepareStatement("SELECT COUNT(*) FROM " + safeTable);
@@ -254,7 +254,7 @@ final class DestructiveRecreationPass {
             }
         }
         for (String indexName : indexNames) {
-            String safeIndex = SchemaLifecycleExecutor.safeIdentifier(indexName);
+            String safeIndex = SchemaLifecycleExecutor.quotedIdentifier(indexName);
             try (PreparedStatement dropIndex = connection.prepareStatement("DROP INDEX IF EXISTS " + safeIndex)) {
                 dropIndex.executeUpdate();
             } catch (SQLException indexDropFailed) {
@@ -309,7 +309,7 @@ final class DestructiveRecreationPass {
                 if (table == null || table.isBlank()) {
                     continue;
                 }
-                String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
+                String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
                 // CASCADE, not a precise FK-aware drop order: the manifest lists tables in
                 // declaration order, which does not generally match the dependency order a
                 // referencing table (e.g. notes.project_ref -> projects) requires -- dropping the
@@ -319,7 +319,9 @@ final class DestructiveRecreationPass {
                 // in this same drop list during a full destructive recreate).
                 try (PreparedStatement statement = connection.prepareStatement("DROP TABLE IF EXISTS " + safeTable + " CASCADE")) {
                     statement.executeUpdate();
-                    dropped.add(safeTable);
+                    // The REPORT gets the raw name: quoting is a SQL detail, and `dropped` is read
+                    // by a human in the boot log.
+                    dropped.add(SchemaLifecycleExecutor.safeIdentifier(table));
                 }
             }
             System.out.println("NPDev destructive schema recreation dropped manifest-listed NPDev-owned tables: " + dropped);

@@ -138,6 +138,9 @@ final class ColumnRenamePass {
      */
     static void executeRenameColumn(Connection connection, String engine, String table, String oldName, String newName)
             throws SQLException {
+        // RAW on purpose. renameColumn quotes inside the dialect (STOR-6), because SQL Server's
+        // sp_rename takes both names in a string LITERAL while the other three compose real syntax --
+        // a decision only the dialect can make.
         String safeTable = SchemaLifecycleExecutor.safeIdentifier(table);
         String safeOld = SchemaLifecycleExecutor.safeIdentifier(oldName);
         String safeNew = SchemaLifecycleExecutor.safeIdentifier(newName);

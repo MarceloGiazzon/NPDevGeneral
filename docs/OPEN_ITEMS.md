@@ -6,14 +6,14 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**158 item(s) migrated: 2 open/partial, 156 done.**
+**159 item(s) migrated: 2 open/partial, 157 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
 | QUAL-1 | check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight | GAP | LOW | OPEN | 2026-08-09 |
-| STOR-6 | The generator never quotes business identifiers, so a model field named after a reserved word (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the dialect layer and never exercised at application level | BUG | MEDIUM | OPEN | 2026-08-08 |
+| STOR-13 | Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in | BUG | MEDIUM | OPEN | 2026-08-09 |
 
 ### Detail
 
@@ -45,33 +45,32 @@ The other two over-budget scripts have arguments that this one does not:
 
 913 against 400 is not 2%. It is a checker that has accumulated several jobs.
 
-### STOR-6 — The generator never quotes business identifiers, so a model field named after a reserved word (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the dialect layer and never exercised at application level
+### STOR-13 — Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in
 
 **Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
-**Verification:** VERIFIED_LIVE
-**Source:** storage/OPEN_ITEMS_PLAN.md W10. Found while unblocking Tier C: the p2-evolve probe declares a field called `value`, and the app it generates has never been able to boot.
-**Surface:** `generator/dbconfig/SchemaRealizationEmitter, kernel/storage-dialect`
-**Files:**
-- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
-- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java`
-- `NPDevSamples/probes/p2-evolve/v1/Input/model.json`
+**Verification:** NOT_VERIFIED
+**Source:** storage/closeout/CLOSEOUT_PLAN.md section 7 ("what test would have caught all three?"). Found by the check that section asked for -- scripts/quality/check-dialect-methods-are-asked.py -- on its first run, against the tree at the moment STOR-6 closed.
+**Surface:** `kernel/storage-dialect`
 
-`SqlDialect.quoteIdentifier` exists, is implemented by all four dialects, and is asserted by conformance vector Q1 (Tier A) with this exact justification in its own javadoc:
+The plan's closing question was: STOR-4 (drivers), STOR-5 (guarded DDL) and STOR-6 (`quoteIdentifier`, zero calls in the generator) are the same defect three times, so what check catches the family rather than the instances? The answer -- a check that the thing a user runs ASKS the dialect, not merely that the dialect answers correctly -- was built, and it immediately found nine more.
+Each of these is declared on `SqlDialect`, implemented by all four dialects, and called from nowhere in `NPDevKernel/*/src/main`, `NPDevGenerator/generator/src/main`, `NPDevRuntimeHost/src/main` or `NPDevContract/dsl/src/main`. The test-caller counts below are dialect-receiver calls found under `src/test` -- proven correct, wired to nothing:
 
-    "A user will eventually name a field `order` or `group`."
+    supports                       12 test callers, 0 production
+    autoIncrementColumn             9 test callers, 0 production
+    rowLimit                        7 test callers, 0 production
+    returning                       5 test callers, 0 production
+    listColumnsSql                  4 test callers, 0 production
+    limitOnly                       4 test callers, 0 production
+    listTablesSql                   3 test callers, 0 production
+    listIndexesSql                  3 test callers, 0 production
+    cast                            0 test callers, 0 production
+    timestampColumnType             0 test callers, 0 production
+    requiresOrderByForPagination    0 test callers, 0 production
 
-`SchemaRealizationEmitter` never calls it. Measured: zero occurrences of `quoteIdentifier` anywhere under `NPDevGenerator/generator/src/main`. Business column names go into the emitted DDL raw, so a model whose field is a reserved word produces a script the engine rejects:
+`supports` is the one worth reading twice. CLAUDE.md instructs the reader to "ask `SqlDialects.active().supports(...)` rather than assuming a rollback" -- STOR-2's whole remedy -- and no production code does. The capability set is consulted through `capabilities()` by `StorageCapabilityGate` at GENERATION time; nothing asks at RUNTIME, which is where the DDL-in-transaction question actually gets decided.
+Not necessarily nine bugs. Some of these may be genuinely premature -- an answer prepared before its consumer exists is not wrong, it is early. What was wrong is that nothing distinguished "prepared early" from "wired and forgotten", and that is the distinction the three closed items each turned out to need. They are now enumerated in that checker's INTERNAL_ONLY allowlist with this item's id, so the list is a visible backlog rather than an invisible one, and any NEW dialect method must be wired or explicitly recorded here.
 
-    Syntax error in SQL statement "CREATE TABLE IF NOT EXISTS rows (
-      id UUID NOT NULL,
-      [*]value VARCHAR(255) NOT NULL, ..."; expected "identifier"   [H2 42001]
-
-The probe that found it -- `NPDevSamples/probes/p2-evolve`, which serves Tier C's E1 -- has therefore NEVER booted since it was written. That is why E7 has never been green, and the reason looked like a harness problem until the boot log was read.
-WHY IT SURVIVED THIS LONG
-The same shape as STOR-4 and STOR-5, a third time: the capability is correct at the layer that owns it and is never consulted by the layer that emits. Q1 passes on all four engines because it asks the DIALECT to quote a string. No corpus app happens to use a reserved word for a business field -- the canary uses title/priority/status -- so nothing downstream ever exercised the path.
-It is MEDIUM rather than HIGH only because it fails loudly at first boot, on every engine, rather than silently. A user hits it the moment they model a field called `value`, `order`, `group`, `user` or `key` -- which is not an exotic thing to do.
-
-## Done (156)
+## Done (157)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -231,6 +230,7 @@ It is MEDIUM rather than HIGH only because it fails loudly at first boot, on eve
 | STOR-3 | MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images | GAP | MEDIUM | DONE | 2026-08-08 |
 | STOR-4 | MySQL and SqlServer were selectable, dialect-complete and conformance-green -- and no generated app could ever have connected to either, because the app template carried no JDBC driver for them | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-5 | The schema-realization script is written in Postgres/H2 guarded-DDL idioms (IF NOT EXISTS), which MySQL supports only partly and SQL Server not at all -- so NPDev's own V1 migration cannot run | GAP | HIGH | DONE | 2026-08-08 |
+| STOR-6 | The generator never quotes business identifiers, so a model field named after a reserved word (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the dialect layer and never exercised at application level | BUG | MEDIUM | DONE | 2026-08-08 |
 | STOR-7 | A text column plays three roles -- payload, key, defaulted -- and only two were ever asked about; MySQL rejected a TEXT DEFAULT and SQL Server could not index the runtime host's own bootstrap tables, so no generated app booted on either engine | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-8 | db.definition.json's `jdbcUrl`/`h2FilePath` could contradict the real connection silently -- a user pointing one at an existing database got no error and a connection somewhere else | BUG | MEDIUM | DONE | 2026-08-08 |
 | STOR-9 | A row lock is a suffix on three engines and a table hint on SQL Server, and three sites spelled the suffix inline -- so every app's FIRST boot on SQL Server died taking the migration lock, after the schema had already realized correctly | BUG | HIGH | DONE | 2026-08-08 |
@@ -7353,6 +7353,32 @@ This belongs in `SqlDialect`, beside `guardedConstraintDdl` which already exists
 
 `check-dialect-sites.py` should grow patterns for these three constructs at the same time, so the next one written inline fails the gate rather than a CI job.
 DO NOT let this be worked around in the workflow (for instance by pre-creating tables). The point of the probe is that a USER's first boot runs this script.
+
+### STOR-6 — The generator never quotes business identifiers, so a model field named after a reserved word (value, order, group) produces a schema script no engine will run -- conformance Q1, proven at the dialect layer and never exercised at application level
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-09)
+**Verification:** VERIFIED_LIVE
+**Source:** storage/OPEN_ITEMS_PLAN.md W10. Found while unblocking Tier C: the p2-evolve probe declares a field called `value`, and the app it generates has never been able to boot.
+**Surface:** `generator/dbconfig/SchemaRealizationEmitter, kernel/storage-dialect`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java`
+- `NPDevSamples/probes/p2-evolve/v1/Input/model.json`
+
+`SqlDialect.quoteIdentifier` exists, is implemented by all four dialects, and is asserted by conformance vector Q1 (Tier A) with this exact justification in its own javadoc:
+
+    "A user will eventually name a field `order` or `group`."
+
+`SchemaRealizationEmitter` never calls it. Measured: zero occurrences of `quoteIdentifier` anywhere under `NPDevGenerator/generator/src/main`. Business column names go into the emitted DDL raw, so a model whose field is a reserved word produces a script the engine rejects:
+
+    Syntax error in SQL statement "CREATE TABLE IF NOT EXISTS rows (
+      id UUID NOT NULL,
+      [*]value VARCHAR(255) NOT NULL, ..."; expected "identifier"   [H2 42001]
+
+The probe that found it -- `NPDevSamples/probes/p2-evolve`, which serves Tier C's E1 -- has therefore NEVER booted since it was written. That is why E7 has never been green, and the reason looked like a harness problem until the boot log was read.
+WHY IT SURVIVED THIS LONG
+The same shape as STOR-4 and STOR-5, a third time: the capability is correct at the layer that owns it and is never consulted by the layer that emits. Q1 passes on all four engines because it asks the DIALECT to quote a string. No corpus app happens to use a reserved word for a business field -- the canary uses title/priority/status -- so nothing downstream ever exercised the path.
+It is MEDIUM rather than HIGH only because it fails loudly at first boot, on every engine, rather than silently. A user hits it the moment they model a field called `value`, `order`, `group`, `user` or `key` -- which is not an exotic thing to do.
 
 ### STOR-7 — A text column plays three roles -- payload, key, defaulted -- and only two were ever asked about; MySQL rejected a TEXT DEFAULT and SQL Server could not index the runtime host's own bootstrap tables, so no generated app booted on either engine
 

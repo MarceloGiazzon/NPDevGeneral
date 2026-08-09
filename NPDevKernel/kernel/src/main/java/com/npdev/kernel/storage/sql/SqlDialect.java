@@ -94,6 +94,17 @@ public interface SqlDialect {
      * is exactly the question that makes this safe, and it has been on this interface, unused, the
      * whole time.
      */
+    /**
+     * {@link #identifier(String)} over a list, for the composition sites that embed a whole column
+     * list at once.
+     *
+     * <p>Returned for TEXT only. A bind-order list keeps the raw names, because the caller looks its
+     * values up by them -- {@code UpsertPlan.bindColumns()} is read as map keys, not printed.
+     */
+    default java.util.List<String> identifiers(java.util.List<String> rawIdentifiers) {
+        return rawIdentifiers.stream().map(this::identifier).toList();
+    }
+
     default String identifier(String rawIdentifier) {
         if (rawIdentifier == null || rawIdentifier.isEmpty() || !isReservedIdentifier(rawIdentifier)) {
             return rawIdentifier;

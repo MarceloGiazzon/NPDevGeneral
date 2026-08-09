@@ -123,7 +123,10 @@ public final class PostgresDialect implements SqlDialect {
 
     @Override
     public String renameColumn(String table, String from_, String to) {
-        return "ALTER TABLE " + table + " RENAME COLUMN " + from_ + " TO " + to;
+        // STOR-6: quoted here, as the syntax is composed. SqlServerDialect deliberately does NOT
+        // do this -- its sp_rename takes both names inside a string LITERAL.
+        return "ALTER TABLE " + identifier(table) + " RENAME COLUMN " + identifier(from_)
+                + " TO " + identifier(to);
     }
 
     @Override
@@ -330,8 +333,19 @@ public final class PostgresDialect implements SqlDialect {
      * {@code storage/evidence/S1_TEXTUAL_DELTAS.md} rather than left for a reader to discover.
      */
     static final class PostgresUpsertStrategy implements UpsertStrategy {
+
+        private static String quoted(String rawIdentifier) {
+            return PostgresDialect.INSTANCE.identifier(rawIdentifier);
+        }
+
+        private static List<String> quotedAll(List<String> rawIdentifiers) {
+            return PostgresDialect.INSTANCE.identifiers(rawIdentifiers);
+        }
         @Override
-        public String statementFor(String table, List<String> keyColumns, List<String> valueColumns) {
+        public String statementFor(String rawTable, List<String> keyColumns, List<String> valueColumns) {
+            // STOR-6: quote HERE, as the text is composed. The caller keeps raw names for
+            // its map lookups, and bindColumns() must echo those back unquoted.
+            String table = PostgresDialect.INSTANCE.identifier(rawTable);
             if (keyColumns == null || keyColumns.isEmpty()) {
                 throw new IllegalArgumentException("engine 'postgres': upsert needs at least one key column");
             }
@@ -345,15 +359,15 @@ public final class PostgresDialect implements SqlDialect {
             List<String> updates = new ArrayList<>();
             for (String column : valueColumns) {
                 if (!keys.contains(column.toLowerCase(Locale.ROOT))) {
-                    updates.add(column + " = EXCLUDED." + column);
+                    updates.add(quoted(column) + " = EXCLUDED." + quoted(column));
                 }
             }
             String placeholders = String.join(", ", java.util.Collections.nCopies(valueColumns.size(), "?"));
             StringBuilder sql = new StringBuilder()
                     .append("INSERT INTO ").append(table)
-                    .append(" (").append(String.join(", ", valueColumns)).append(")")
+                    .append(" (").append(String.join(", ", quotedAll(valueColumns))).append(")")
                     .append(" VALUES (").append(placeholders).append(")")
-                    .append(" ON CONFLICT (").append(String.join(", ", keyColumns)).append(")");
+                    .append(" ON CONFLICT (").append(String.join(", ", quotedAll(keyColumns))).append(")");
             if (updates.isEmpty()) {
                 // Every column is a key column: there is nothing to update, and DO UPDATE SET with an
                 // empty list is a syntax error. DO NOTHING is the honest statement, not a silent skip.

@@ -211,7 +211,9 @@ public final class ImpactReport {
         }
     }
 
+    /** Every use below embeds the result in SQL text, so this is the QUOTED form (STOR-6): the
+     * impact probe is where a column named `order` first reaches a real database. */
     private static String safe(String identifier) {
-        return SchemaLifecycleExecutor.safeIdentifier(identifier);
+        return SchemaLifecycleExecutor.quotedIdentifier(identifier);
     }
 }
