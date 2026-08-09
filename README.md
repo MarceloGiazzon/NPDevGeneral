@@ -23,13 +23,14 @@ troubleshooting → [`docs/MANAGER.md`](docs/MANAGER.md)
 ## See it run
 
 **Requires Java 17+ and Python 3** — Docker is optional, only needed for the Docker run path.
-`npdev doctor` checks all of it and tells you exactly what is missing.
+`./npdev doctor` checks all of it and tells you exactly what is missing. (It runs from the clone —
+there is nothing to install on your PATH first.)
 
 ```sh
-npdev doctor                       # is this machine ready? (Java 17+, Python, disk)
-npdev setup                        # one-time: build NPDev's own jars locally
-npdev init my-app && cd my-app     # a small, runnable app to start from
-npdev dev                          # build it, run it, and watch it
+./npdev doctor                     # is this machine ready? (Java 17+, Python, disk)
+./npdev setup                      # one-time: build NPDev's own jars locally
+./npdev init my-app                # a small, runnable app to start from
+cd my-app && ../npdev dev          # build it, run it, and watch it
 ```
 
 **→ open http://localhost:8080**
