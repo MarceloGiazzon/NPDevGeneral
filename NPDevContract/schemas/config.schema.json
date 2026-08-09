@@ -127,7 +127,7 @@
           "if": {
             "properties": {
               "provider": {
-                "enum": ["docker-postgres", "postgres", "mysql", "sqlserver", "h2-server"]
+                "enum": ["docker-postgres", "docker-mysql", "docker-sqlserver", "postgres", "mysql", "sqlserver", "h2-server"]
               }
             },
             "required": ["provider"]
@@ -143,6 +143,8 @@
           "description": "The engine this scenario provisions. Kept in step with DatabaseEngine (NPDevGenerator/.../dbconfig/DatabaseEngine.java) -- an engine selectable there but absent here would be a configuration the platform supports and its own schema rejects, which is what `h2-local` was for as long as this enum said Postgres or nothing.",
           "enum": [
             "docker-postgres",
+            "docker-mysql",
+            "docker-sqlserver",
             "postgres",
             "mysql",
             "sqlserver",
@@ -298,6 +300,8 @@
           "enum": [
             "step0-h2",
             "docker-postgres",
+            "docker-mysql",
+            "docker-sqlserver",
             "postgres",
             "mysql",
             "sqlserver",

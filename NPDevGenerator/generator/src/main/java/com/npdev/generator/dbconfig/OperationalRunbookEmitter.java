@@ -86,6 +86,12 @@ public final class OperationalRunbookEmitter {
         out.put("serverPort", serverPort);
         out.put("apiKey", apiKey);
         out.put("schemaFingerprint", plan.schemaFingerprint());
+        // E15/P1: the engine's PROVISIONING facts travel with the plan, so the five _ops scripts can
+        // branch on `profile.kind` instead of the engine's NAME. That is the whole parity move --
+        // one `if ($plan.profile.kind -eq 'server')` covers Postgres, MySQL and SQL Server
+        // identically, where five `-eq 'Postgres'` blocks covered one engine and threw at the rest.
+        // validate() has already refused an incomplete SERVER profile at generation time.
+        out.put("profile", DockerEngineProfiles.of(plan.engine()).toPlanJson());
         // Insertion-ordered, not Map.of(...): java.util.Map.of with 2+ entries produces an
         // ImmutableCollections.MapN whose iteration order is randomized per-JVM by
         // ImmutableCollections.SALT, which Jackson would otherwise serialize in that varying order
@@ -109,78 +115,130 @@ public final class OperationalRunbookEmitter {
         return out;
     }
 
+    /**
+     * Create the environment -- ONE form for every engine.
+     *
+     * <p>E15/P1. This method used to hold an {@code if ($plan.engine -eq 'Postgres')} block and
+     * throw for MySQL and SQL Server. It now branches on {@code $plan.profile.kind}, and every
+     * engine-specific fact -- image, environment, extra run args, readiness probe, database
+     * creation -- comes from the profile the generator wrote into {@code resolved-db-plan.json}.
+     * Adding a fourth server engine is a row in {@code engine-profiles.json}, not a sixth branch.
+     */
     private static String createEnvironmentScript() {
         return """
 $ErrorActionPreference = 'Stop'
 $planPath = Join-Path $PSScriptRoot 'resolved-db-plan.json'
 $plan = Get-Content -Raw -LiteralPath $planPath | ConvertFrom-Json
 
-function Wait-PostgresReady {
-  param([object]$Plan)
-  for ($i = 0; $i -lt 45; $i++) {
-    docker exec $Plan.containerName pg_isready -U $Plan.username | Out-Null
-    if ($LASTEXITCODE -eq 0) { return }
-    Start-Sleep -Seconds 2
-  }
-  throw "Postgres container '$($Plan.containerName)' did not become ready."
+# Substitute the placeholders a profile uses. Kept in one function so every operation resolves
+# them identically -- a per-site copy is how {password} ends up literal in one script and expanded
+# in another.
+function Expand-ProfileToken {
+  param([string]$Value, [object]$Plan)
+  if ($null -eq $Value) { return $Value }
+  $out = $Value
+  $out = $out.Replace('{database}', [string]$Plan.resolvedDatabaseName)
+  $out = $out.Replace('{username}', [string]$Plan.username)
+  $out = $out.Replace('{password}', [string]$Plan.password)
+  $out = $out.Replace('{host}', [string]$Plan.host)
+  $out = $out.Replace('{port}', [string]$Plan.hostPort)
+  return $out
 }
 
-function Ensure-PostgresDatabase {
+function Expand-ProfileList {
+  param([object[]]$Values, [object]$Plan)
+  if ($null -eq $Values) { return @() }
+  return @($Values | ForEach-Object { Expand-ProfileToken -Value ([string]$_) -Plan $Plan })
+}
+
+# Wait until the engine can SERVE, not until the container is running -- those are different
+# moments, and the gap is where "connection refused" comes from. timeoutSeconds is per-engine
+# because SQL Server routinely needs 30-60s; giving it Postgres's budget reports a healthy engine
+# as broken.
+function Wait-EngineReady {
   param([object]$Plan)
-  for ($i = 0; $i -lt 45; $i++) {
-    $running = docker inspect -f "{{.State.Running}}" $Plan.containerName 2>$null
-    if ($running -ne 'true') {
-      Start-Sleep -Seconds 2
-      continue
+  $probe = $Plan.profile.readyProbe
+  if ($null -eq $probe -or $null -eq $probe.exec -or $probe.exec.Count -eq 0) {
+    throw "Engine '$($Plan.engine)' has no readiness probe in its profile. Refusing to report an environment ready when nothing checked it."
+  }
+  $probeArgs = Expand-ProfileList -Values $probe.exec -Plan $Plan
+  $deadline = (Get-Date).AddSeconds([int]$probe.timeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    & docker exec $Plan.containerName @probeArgs *> $null
+    if ($LASTEXITCODE -eq [int]$probe.expectExitCode) { return }
+    Start-Sleep -Seconds 2
+  }
+  throw "Engine '$($Plan.engine)' container '$($Plan.containerName)' did not become ready within $($probe.timeoutSeconds)s."
+}
+
+# SQL Server has no MSSQL_DATABASE variable (createsDatabaseFromEnv = false), so for it this
+# CREATES the database; for Postgres and MySQL, which create theirs from the environment, it
+# verifies. Skipping it leaves the app connecting to a database that does not exist -- which this
+# project has already watched doctor misreport as a credentials failure.
+function Ensure-EngineDatabase {
+  param([object]$Plan)
+  $ensure = $Plan.profile.ensureDatabase
+  if ($null -eq $ensure -or $null -eq $ensure.createExec -or $ensure.createExec.Count -eq 0) {
+    throw "Engine '$($Plan.engine)' has no ensureDatabase step in its profile."
+  }
+  $envArgs = @()
+  if ($null -ne $ensure.execEnv) {
+    foreach ($name in $ensure.execEnv.PSObject.Properties.Name) {
+      $value = Expand-ProfileToken -Value ([string]$ensure.execEnv.$name) -Plan $Plan
+      $envArgs += @('-e', "$name=$value")
     }
-    docker exec $Plan.containerName pg_isready -U $Plan.username | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-      Start-Sleep -Seconds 2
-      continue
-    }
-    $databases = docker exec -e PGPASSWORD=$($Plan.password) $Plan.containerName psql -U $Plan.username -d postgres -t -A -c "select datname from pg_database order by datname;" 2>$null
-    if ($LASTEXITCODE -ne 0) {
-      Start-Sleep -Seconds 2
-      continue
-    }
-    if ($databases -contains $Plan.resolvedDatabaseName) {
-      Write-Host "Verified Postgres database: $($Plan.resolvedDatabaseName)"
+  }
+  $createArgs = Expand-ProfileList -Values $ensure.createExec -Plan $Plan
+  & docker exec @envArgs $Plan.containerName @createArgs *> $null
+  if ($LASTEXITCODE -eq 0) {
+    Write-Host "Database ready: $($Plan.resolvedDatabaseName)"
+    return
+  }
+  # A create that fails because the database is already there is success. Ask, rather than parsing
+  # an error message -- every engine phrases that differently, which is exactly how a status code
+  # ended up depending on English phrasing elsewhere in this codebase.
+  if ($null -ne $ensure.listExec -and $ensure.listExec.Count -gt 0) {
+    $listArgs = Expand-ProfileList -Values $ensure.listExec -Plan $Plan
+    $existing = & docker exec @envArgs $Plan.containerName @listArgs 2>$null
+    if ($LASTEXITCODE -eq 0 -and ($existing -join "`n") -match [regex]::Escape($Plan.resolvedDatabaseName)) {
+      Write-Host "Verified database: $($Plan.resolvedDatabaseName)"
       return
     }
-    docker exec -e PGPASSWORD=$($Plan.password) $Plan.containerName createdb -U $Plan.username $Plan.resolvedDatabaseName 2>$null
-    if ($LASTEXITCODE -eq 0) {
-      Start-Sleep -Seconds 1
-      continue
-    }
-    Start-Sleep -Seconds 2
   }
-  throw "Expected Postgres database '$($Plan.resolvedDatabaseName)' could not be created or verified in '$($Plan.containerName)'."
+  throw "Database '$($Plan.resolvedDatabaseName)' could not be created or verified in '$($Plan.containerName)'."
 }
 
-if ($plan.engine -eq 'InMemory') {
+if ($plan.profile.kind -eq 'embedded' -and $plan.engine -eq 'InMemory') {
   Write-Host 'No physical database to create for InMemory.'
   exit 0
 }
 
 New-Item -ItemType Directory -Force -Path $plan.resolvedDataRoot | Out-Null
 
-if ($plan.engine -eq 'Postgres') {
+if ($plan.profile.kind -eq 'server') {
   docker version | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw 'Docker is required for generated Postgres environment creation.' }
+  if ($LASTEXITCODE -ne 0) { throw "Docker is required to create a $($plan.profile.guiLabel) environment." }
   $existing = docker ps -a --filter "name=^/$($plan.containerName)$" --format "{{.Names}}"
   if ($existing -eq $plan.containerName) {
     docker start $plan.containerName | Out-Null
   } else {
-    docker run -d --name $plan.containerName `
-      -e POSTGRES_DB=$($plan.resolvedDatabaseName) `
-      -e POSTGRES_USER=$($plan.username) `
-      -e POSTGRES_PASSWORD=$($plan.password) `
-      -p "$($plan.hostPort):$($plan.containerPort)" `
-      -v "$($plan.resolvedDataRoot):/var/lib/postgresql/data" `
-      postgres:16-alpine | Out-Null
+    $runArgs = @('run', '-d', '--name', $plan.containerName)
+    foreach ($name in $plan.profile.containerEnv.PSObject.Properties.Name) {
+      $value = Expand-ProfileToken -Value ([string]$plan.profile.containerEnv.$name) -Plan $plan
+      $runArgs += @('-e', "$name=$value")
+    }
+    $runArgs += @('-p', "$($plan.hostPort):$($plan.containerPort)")
+    $runArgs += @($plan.profile.image)
+    # AFTER the image, because these are the engine's own arguments, not docker's. MySQL's
+    # --character-set-server=utf8mb4 lives here and is NOT optional: the legacy three-byte utf8
+    # silently mangles anything outside the BMP, and the insert succeeds.
+    $runArgs += Expand-ProfileList -Values $plan.profile.extraRunArgs -Plan $plan
+    & docker @runArgs | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Failed to start the $($plan.profile.guiLabel) container '$($plan.containerName)'." }
   }
-  Wait-PostgresReady -Plan $plan
-  Ensure-PostgresDatabase -Plan $plan
+  Wait-EngineReady -Plan $plan
+  Ensure-EngineDatabase -Plan $plan
+  Write-Host "$($plan.profile.guiLabel) environment ready: $($plan.containerName)"
   exit 0
 }
 
@@ -189,11 +247,22 @@ if ($plan.engine -eq 'H2Local') {
   exit 0
 }
 
-if ($plan.engine -eq 'H2Server') {
-  $jar = Get-ChildItem -Path 'D:\\WorkSpace\\NPDev\\Build' -Recurse -Filter 'h2-*.jar' -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
-  if ($null -eq $jar) { throw 'Could not find an H2 jar under D:\\WorkSpace\\NPDev\\Build. Build a generated app once or restore runtimehost-libs.' }
+if ($plan.profile.kind -eq 'embedded-server') {
+  # E17: search the libs directory THIS app was generated against, never a path from the machine
+  # that generated it. This used to read 'D:\\WorkSpace\\NPDev\\Build' -- the author's drive letter,
+  # shipped to the user, and named again in the error message telling them where to look.
+  $searchRoots = @($plan.runtimeHostLibsDir, (Join-Path $plan.finalAppPath 'build'), $plan.resolvedDataRoot) |
+    Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+  $jar = $null
+  foreach ($root in $searchRoots) {
+    $jar = Get-ChildItem -Path $root -Recurse -Filter 'h2-*.jar' -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending |
+      Select-Object -First 1
+    if ($null -ne $jar) { break }
+  }
+  if ($null -eq $jar) {
+    throw "Could not find an H2 jar under: $($searchRoots -join ', '). Build this app once, or restore its runtimehost-libs."
+  }
   $pidFile = Join-Path $PSScriptRoot 'h2server.pid'
   $stdoutLogFile = Join-Path $PSScriptRoot 'h2server.stdout.log'
   $stderrLogFile = Join-Path $PSScriptRoot 'h2server.stderr.log'
@@ -205,8 +274,8 @@ if ($plan.engine -eq 'H2Server') {
       exit 0
     }
   }
-  $args = @('-cp', $jar.FullName, 'org.h2.tools.Server', '-tcp', '-tcpPort', [string]$plan.hostPort, '-ifNotExists')
-  $process = Start-Process -FilePath 'java' -ArgumentList $args -WorkingDirectory $plan.resolvedDataRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutLogFile -RedirectStandardError $stderrLogFile
+  $serverArgs = @('-cp', $jar.FullName, 'org.h2.tools.Server', '-tcp', '-tcpPort', [string]$plan.hostPort, '-ifNotExists')
+  $process = Start-Process -FilePath 'java' -ArgumentList $serverArgs -WorkingDirectory $plan.resolvedDataRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutLogFile -RedirectStandardError $stderrLogFile
   Set-Content -LiteralPath $pidFile -Value $process.Id
   Start-Sleep -Seconds 2
   Write-Host "H2Server started on port $($plan.hostPort), PID $($process.Id)"
@@ -228,13 +297,13 @@ $ErrorActionPreference = 'Stop'
         return """
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
-if ($plan.engine -eq 'Postgres') {
+if ($plan.profile.kind -eq 'server') {
   $running = docker ps --filter "name=^/$($plan.containerName)$" --format "{{.Names}}" 2>$null
   if ($running -eq $plan.containerName) { docker stop $plan.containerName | Out-Null }
-  Write-Host "Postgres environment stopped: $($plan.containerName)"
+  Write-Host "$($plan.profile.guiLabel) environment stopped: $($plan.containerName)"
   exit 0
 }
-if ($plan.engine -eq 'H2Server') {
+if ($plan.profile.kind -eq 'embedded-server') {
   $pidFile = Join-Path $PSScriptRoot 'h2server.pid'
   if (Test-Path -LiteralPath $pidFile) {
     $pidValue = [int](Get-Content -Raw -LiteralPath $pidFile)
@@ -257,11 +326,11 @@ Write-Host "Engine: $($plan.engine)"
 Write-Host "Physical database: $($plan.physicalDatabase)"
 Write-Host "Resolved database: $($plan.resolvedDatabaseName)"
 Write-Host "Data root: $($plan.resolvedDataRoot)"
-if ($plan.engine -eq 'Postgres') {
+if ($plan.profile.kind -eq 'server') {
   docker ps -a --filter "name=^/$($plan.containerName)$"
   exit 0
 }
-if ($plan.engine -eq 'H2Server') {
+if ($plan.profile.kind -eq 'embedded-server') {
   $pidFile = Join-Path $PSScriptRoot 'h2server.pid'
   if (Test-Path -LiteralPath $pidFile) {
     $pidValue = [int](Get-Content -Raw -LiteralPath $pidFile)
@@ -350,42 +419,57 @@ exit 0
     private static String printDbConnectionInfoScript() {
         return """
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+
+# The quirks are printed HERE because this is the screen a user already has open when they need
+# them -- that MySQL's utf8mb4 is not optional, that SQL Server's 'sa' is not their app's username.
+# A limitation an engine has must be declared at the point of choice, not discovered later.
+function Show-EngineQuirks {
+  param([object]$Plan)
+  if ($null -eq $Plan.profile.quirks -or $Plan.profile.quirks.Count -eq 0) { return }
+  Write-Host ''
+  Write-Host "Notes for $($Plan.profile.guiLabel):"
+  foreach ($quirk in $Plan.profile.quirks) { Write-Host "  - $quirk" }
+}
 if ($plan.engine -eq 'InMemory') {
   Write-Host 'No physical database. Use /api/admin/storage/summary.'
   exit 0
 }
-if ($plan.engine -eq 'Postgres') {
+if ($plan.profile.kind -eq 'server') {
   Write-Host 'DBeaver connection'
   Write-Host ''
-  Write-Host 'Database type: PostgreSQL'
+  Write-Host "Database type: $($plan.profile.guiLabel)"
   Write-Host "Host: $($plan.dbeaver.host)"
   Write-Host "Port: $($plan.dbeaver.port)"
   Write-Host "Database: $($plan.dbeaver.database)"
   Write-Host "Username: $($plan.dbeaver.username)"
   Write-Host "Password: $($plan.password)"
   Write-Host "SSL: $($plan.dbeaver.ssl)"
+  Write-Host "JDBC URL: $($plan.jdbcUrl)"
+  Show-EngineQuirks -Plan $plan
   exit 0
 }
 if ($plan.engine -eq 'H2Local') {
   Write-Host 'DBeaver connection'
   Write-Host ''
-  Write-Host 'Database type: H2 Embedded'
+  Write-Host "Database type: $($plan.profile.guiLabel)"
   Write-Host "JDBC URL: $($plan.jdbcUrl)"
   Write-Host "Database: $($plan.dbeaver.database)"
   Write-Host "Username: $($plan.username)"
   Write-Host "Password: $($plan.password)"
+  Show-EngineQuirks -Plan $plan
   exit 0
 }
 if ($plan.engine -eq 'H2Server') {
   Write-Host 'DBeaver connection'
   Write-Host ''
-  Write-Host 'Database type: H2 Server'
+  Write-Host "Database type: $($plan.profile.guiLabel)"
   Write-Host "Host: $($plan.dbeaver.host)"
   Write-Host "Port: $($plan.dbeaver.port)"
   Write-Host "JDBC URL: $($plan.jdbcUrl)"
   Write-Host "Database: $($plan.dbeaver.database)"
   Write-Host "Username: $($plan.username)"
   Write-Host "Password: $($plan.password)"
+  Show-EngineQuirks -Plan $plan
   exit 0
 }
 throw "Unsupported engine '$($plan.engine)' in resolved-db-plan.json."
@@ -401,7 +485,7 @@ if ($Confirm -ne 'I_UNDERSTAND_DB_DATA_WILL_BE_DELETED') {
 }
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
 & (Join-Path $PSScriptRoot 'Stop-Environment.ps1')
-if ($plan.engine -eq 'Postgres') {
+if ($plan.profile.kind -eq 'server') {
   $existing = docker ps -a --filter "name=^/$($plan.containerName)$" --format "{{.Names}}" 2>$null
   if ($existing -eq $plan.containerName) { docker rm -f $plan.containerName | Out-Null }
 }
@@ -497,7 +581,14 @@ pwsh.exe -NoProfile -ExecutionPolicy Bypass -File '%s' -Confirm I_UNDERSTAND_DB_
             }
             current = current.getParent();
         }
-        return Path.of("D:/WorkSpace/NPDev/Build").toAbsolutePath().normalize();
+        // REG-144's family: NEVER a hardcoded author path. This used to answer
+        // Path.of("D:/WorkSpace/NPDev/Build"), so an app generated anywhere that is not under a
+        // directory called Build carried THIS MACHINE's drive letter to the user -- in the most
+        // user-visible file NPDev produces, and in the error message telling them where to look.
+        // The app's own parent is the honest answer: the toolbox lives beside the app it operates.
+        return finalAppRoot.getParent() == null
+                ? finalAppRoot.toAbsolutePath().normalize()
+                : finalAppRoot.getParent().resolve("Build").toAbsolutePath().normalize();
     }
 
     private static int readInt(JsonNode root, int fallback, String... path) {
