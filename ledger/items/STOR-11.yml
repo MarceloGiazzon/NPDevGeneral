@@ -5,8 +5,9 @@ title: >-
   javadoc said no NPDev schema could produce this shape, and any `unique: true` field does
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-08
+closed: 2026-08-09
 verification: VERIFIED_LIVE
 surface: kernel/storage-dialect (MySqlUpsertStrategy)
 source: >-
@@ -44,31 +45,60 @@ detail: |
   run on MySQL at all.
 
   The javadoc has been corrected in the same commit that filed this. The behaviour has not.
-resolution: >-
-  OPEN. Measured and scoped; deliberately NOT patched inside the STOR-10 commit that found it,
-  because every candidate fix changes the semantics of every write on the engine and that should not
-  ride along with a fix for something else.
+resolution: |
+  DONE. **UPDATE-then-INSERT**, per storage/parity/ENGINE_PARITY_PLAN.md P0's decision, and the
+  alternatives were weighed rather than skipped: refusing `unique: true` on MySQL was REJECTED (an
+  ordinary declaration an engine cannot honour makes that engine second-class, which is the thing
+  the parity workstream exists to prevent), and INSERT-first-then-UPDATE-on-1062 was DEFERRED, not
+  rejected -- it saves a round trip on the create path but puts vendor error-code branching in the
+  write path to save a cost nobody has measured.
 
-  The options, in the order they should be weighed:
+  The operation is now a PLAN rather than a statement: new `UpsertPlan` carries the steps AND the
+  columns each one binds, with one execution rule stated once -- run in order, STOP after the first
+  step that affects a row. Engines whose native upsert can name its conflict target keep their
+  single ATOMIC statement and are byte-identical to before; only MySQL gets two steps. Bind order
+  travels with each statement for the same reason `PaginationClause` exists: UPDATE binds values
+  then key, INSERT binds every column in declaration order, and a caller assuming one order for both
+  would write the id into a value column -- silently, since both are strings.
 
-  (a) UPDATE-then-INSERT: `UPDATE t SET ... WHERE id = ?`, and if zero rows were affected, INSERT.
-      Two statements, correct on all four engines, and it makes the "which key am I upserting on"
-      question explicit rather than delegating it to the engine. Costs a round trip on every save
-      and needs care under concurrency (the INSERT can still lose a race, which is then a genuine
-      unique violation and should surface as one).
+  THE SECOND HALF, which the measurement forced and the plan demanded: "identical status code and
+  response body", not merely "an error on both". Fixing the overwrite made MySQL return 500 while
+  Postgres returned 409. The cause was NOT the engine -- `GeneratedCrudRuntimeSupport.isUniqueViolation`
+  decided by substring-matching the driver's message:
 
-  (b) Keep ON DUPLICATE KEY UPDATE but constrain the emitted schema so a table that is upserted by
-      id carries no other unique index -- i.e. enforce the assumption the old javadoc asserted.
-      That means refusing `unique: true` on MySQL, which is a real capability regression stated
-      honestly rather than a silent one.
+      contains("duplicate key") || contains("unique constraint")
+          || contains("already exists") || contains("violates unique")
 
-  (c) Declare it an accepted boundary. Not defensible while it is silent: the failure mode is a user
-      overwriting another user's row and being told the write succeeded.
+  Those are Postgres's four phrases. Measured, same request per engine:
 
-  UNTIL THEN: MySQL must not be described as supported for any model declaring `unique: true` on a
-  non-id field. This is the specific reason E14 cannot be written yet even though the four
-  application-level assertions pass on MySQL.
+      Postgres     duplicate key value violates unique constraint "..."   match    -> 409
+      SQL Server   Cannot insert duplicate key row ... unique index       match    -> 409
+      MySQL        Duplicate entry 'x' for key 'accounts.ux_...'          NO match -> 500
+      H2           Unique index or primary key violation                  NO match -> 500
+
+  **Half the engines were wrong, including H2 -- the DEFAULT.** Two matched by luck of phrasing. It
+  now asks `SqlDialect.isUniqueViolation` (SQLSTATE + vendor code, STOR-12) first and keeps the
+  message test only as a fallback for callers that wrap a non-SQL failure. `isForeignKeyViolation`
+  had the same shape and was widened to MySQL's 1451/1452 and SQL Server's 547.
+
+  MEASURED, against real containers on the pinned digests:
+
+      MySQL       Tier C 4/4 AND app proof 4/4; I3 duplicate -> 409, body
+                  {code=unique_integrity_failed, invariant=database_unique_constraint} -- the
+                  SAME body Postgres writes
+      SQL Server  Tier C 4/4 (report artifact), no regression
+      Postgres    I3 -> 409, unchanged
+      H2          I3 -> 409, up from 500 -- a second parity gap closed on the default engine
+
+  Tier A vector U3 asserts the plan shape per engine, including that the three atomic engines are
+  NOT split (a race they never had) and that the two bind orders are exactly right.
 files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/UpsertPlan.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/UpsertStrategy.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java
+  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
+  - NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
   - NPDevSamples/probes/p4-constraints/Input/model.json
   - scripts/quality/run-tier-c-probes.py

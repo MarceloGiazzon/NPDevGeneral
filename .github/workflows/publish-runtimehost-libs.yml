@@ -202,3 +202,126 @@ jobs:
             gh release create "$TAG" "$SETUP" manager-installer-SHA256SUMS \
               --repo "${{ github.repository }}" --title "$TAG" --generate-notes
           fi
+
+  # -------------------------------------------------------------------------------------------
+  # E16 -- the Linux installer. storage/parity/ENGINE_PARITY_PLAN.md P5b.
+  #
+  # beta1.10 shipped NPDev.Manager_0.1.0_x64-setup.exe and no Linux artifact, so half the possible
+  # audience had no installer at all. `tauri.conf.json` has declared `bundle.targets:
+  # ['nsis','appimage']` the whole time -- the target existed and CI had simply never built it.
+  #
+  # Sibling of publish-manager-installer, deliberately: same `continue-on-error`, same "ask cargo
+  # where the bundle is", same tag resolution. A Linux build failing must not stop the libs zip,
+  # which is the artifact every fresh install actually needs.
+  #
+  # ubuntu-22.04, NOT ubuntu-latest, and that is the point rather than caution: an AppImage links
+  # against the glibc of the machine that built it, so building on 24.04 (glibc 2.39) produces a
+  # bundle that refuses to start on any older distro -- and the failure looks like a corrupt
+  # download, not an incompatibility. 22.04 (glibc 2.35) reaches back considerably further.
+  # -------------------------------------------------------------------------------------------
+  publish-manager-appimage:
+    name: E16 -- build + publish the Manager AppImage (Linux)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="${{ github.ref_name }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Build/manager-target
+          key: manager-cargo-${{ runner.os }}-${{ hashFiles('NPDevManager/Cargo.lock') }}
+
+      # Tauri 2 needs webkit2gtk 4.1 specifically (v1 used 4.0). libayatana-appindicator3 is the
+      # tray dependency; patchelf and libfuse2 are what the AppImage tooling itself needs -- without
+      # libfuse2 the bundler produces an image that cannot mount itself on the user's machine.
+      - name: Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libfuse2 \
+            file
+
+      - name: Install the Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Build the AppImage
+        working-directory: NPDevManager
+        run: cargo tauri build --bundles appimage
+
+      - name: Publish to the Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          # ASK CARGO where the bundle is; never assume NPDevManager/target. The Windows job learned
+          # this the expensive way in run 31279876726 -- it built successfully and then failed to
+          # publish, because .cargo/config.toml redirects target-dir out of the source tree (this
+          # repo's own policy) and the step looked in the directory that policy guarantees is empty.
+          TARGET_DIR="$(cd NPDevManager && cargo metadata --format-version 1 --no-deps \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+          echo "cargo target directory: $TARGET_DIR"
+          APPIMAGE="$(find "$TARGET_DIR/release/bundle/appimage" -name '*.AppImage' 2>/dev/null | head -1)"
+          if [ -z "$APPIMAGE" ]; then
+            echo "::error::no AppImage found under $TARGET_DIR/release/bundle/appimage"
+            find "$TARGET_DIR" -name '*.AppImage' -o -name '*.deb' 2>/dev/null | head -20
+            exit 1
+          fi
+          echo "appimage: $APPIMAGE"
+          chmod +x "$APPIMAGE"
+          sha256sum "$APPIMAGE" | tee manager-appimage-SHA256SUMS
+
+          # What this run can and cannot claim, recorded in the run itself so the release notes are
+          # not the only place anyone looks. `--appimage-extract` mounts nothing and needs no FUSE,
+          # so it works on a runner; it proves the bundle is well-formed, NOT that it launches.
+          "$APPIMAGE" --appimage-extract >/dev/null 2>&1 \
+            && echo "AppImage self-extracts: OK (the bundle is well-formed)" \
+            || echo "::warning::AppImage did not self-extract -- the bundle may be malformed"
+          {
+            echo "### E16 -- Manager AppImage"
+            echo
+            echo "| property | state |"
+            echo "|---|---|"
+            echo "| built | yes, on ubuntu-22.04 (glibc 2.35) |"
+            echo "| well-formed | \`--appimage-extract\` succeeded |"
+            echo "| **launches on a clean desktop** | **NOT VERIFIED** -- no GUI on a CI runner |"
+            echo "| **runs without webkit2gtk installed by hand** | **NOT VERIFIED** -- manager/CLOSEOUT_PLAN.md's open question |"
+            echo
+            echo "The last two are the difference between an installer and a download, and neither"
+            echo "can be answered by a headless runner. They need a clean-desktop trial."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APPIMAGE" manager-appimage-SHA256SUMS \
+              --repo "${{ github.repository }}" --clobber
+          else
+            gh release create "$TAG" "$APPIMAGE" manager-appimage-SHA256SUMS \
+              --repo "${{ github.repository }}" --title "$TAG" --generate-notes
+          fi

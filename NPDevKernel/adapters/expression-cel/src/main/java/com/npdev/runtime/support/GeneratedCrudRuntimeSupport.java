@@ -2023,9 +2023,45 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
+    /**
+     * Is this failure a unique violation? <b>Ask the dialect first; the message is the last resort.</b>
+     *
+     * <p>This method used to decide entirely by substring-matching the driver's message:
+     *
+     * <pre>
+     *   contains("duplicate key") || contains("unique constraint")
+     *       || contains("already exists") || contains("violates unique")
+     * </pre>
+     *
+     * <p>Those four phrases are Postgres's wording. Measured, same request and same model on each
+     * engine (STOR-11's parity half):
+     *
+     * <pre>
+     *   Postgres     duplicate key value violates unique constraint "ux_accounts_email"   -> match -> 409
+     *   SQL Server   Cannot insert duplicate key row ... with unique index                -> match -> 409
+     *   MySQL        Duplicate entry 'x' for key 'accounts.ux_accounts_email'             -> NO match -> 500
+     * </pre>
+     *
+     * <p>So the engine that returned 500 was not behaving differently -- it was PHRASING differently,
+     * and two engines matched by luck. A user picking MySQL got a different status code and a
+     * different response body for the identical mistake, which is the parity rule broken at the
+     * layer that decides what the user sees.
+     *
+     * <p>{@link SqlDialect#isUniqueViolation} answers it per engine from SQLSTATE plus the vendor
+     * error number, which is the only reliable discriminator (MySQL and SQL Server both report the
+     * generic class 23000 for every integrity failure). The message test is kept BELOW it, not
+     * removed: some callers wrap a non-SQL failure -- the in-memory store raises its own -- and
+     * those have no SQLSTATE to inspect.
+     */
     private static boolean isUniqueViolation(Exception exception) {
         if (exception == null) {
             return false;
+        }
+        for (Throwable current = exception; current != null; current = current.getCause()) {
+            if (current instanceof SQLException sqlException
+                    && SqlDialects.active().isUniqueViolation(sqlException)) {
+                return true;
+            }
         }
         String message = exception.getMessage();
         if (message != null) {
@@ -2033,7 +2069,10 @@ public final class GeneratedCrudRuntimeSupport {
             if (normalized.contains("duplicate key")
                     || normalized.contains("unique constraint")
                     || normalized.contains("already exists")
-                    || normalized.contains("violates unique")) {
+                    || normalized.contains("violates unique")
+                    // MySQL's own phrasing, so the fallback is not Postgres-only even when there is
+                    // no SQLException to ask the dialect about.
+                    || normalized.contains("duplicate entry")) {
                 return true;
             }
         }
@@ -2190,7 +2229,13 @@ public final class GeneratedCrudRuntimeSupport {
         }
         if (exception instanceof SQLException sqlException) {
             String sqlState = sqlException.getSQLState();
-            if ("23503".equals(sqlState)) {
+            // 23503 is Postgres/H2's dedicated foreign-key code. MySQL (1452/1451) and SQL Server
+            // (547) report the generic class 23000, so the state test alone answers for two engines
+            // only -- the same asymmetry that made a unique violation a 500 on MySQL (STOR-11). The
+            // message test below still carries those two, and `isUniqueViolation` is asked FIRST by
+            // the caller, so a duplicate is never misreported as a reference failure.
+            if ("23503".equals(sqlState) || sqlException.getErrorCode() == 1452
+                    || sqlException.getErrorCode() == 1451 || sqlException.getErrorCode() == 547) {
                 return true;
             }
         }

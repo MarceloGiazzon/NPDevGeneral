@@ -11,6 +11,7 @@ import com.npdev.kernel.storage.sql.H2Dialect;
 import com.npdev.kernel.storage.sql.PostgresDialect;
 import com.npdev.kernel.storage.sql.SqlDialect;
 import com.npdev.kernel.storage.sql.SqlDialects;
+import com.npdev.kernel.storage.sql.UpsertPlan;
 import com.npdev.kernel.ports.TenantScope;
 import com.npdev.kernel.ports.TenantScopedPersistenceCapabilityContract;
 
@@ -110,18 +111,26 @@ public final class PostgresPersistenceCapabilityAdapter
             List<String> columns = new ArrayList<>(sqlRecord.keySet());
             ensureColumnFirst(columns, idColumn);
 
-            String sql = buildUpsertSql(connection, table, columns, idColumn);
+            UpsertPlan plan = buildUpsertPlan(connection, table, columns, idColumn);
             Map<String, String> dslTypeByColumn = dslTypeByColumn(concept, table, tableColumns);
-            try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                int idx = 1;
-                for (String column : columns) {
-                    Object value = sqlRecord.get(column);
-                    value = coerceValueForColumn(column, value, dslTypeByColumn.get(column));
-                    ps.setObject(idx++, bindable(ps, value));
+            // UpsertPlan's execution rule, in one place: run the steps in order and STOP after the
+            // first that affects a row. One step is "just run it" (the engines whose native upsert
+            // can name its conflict target); two steps are UPDATE-then-INSERT, where the INSERT runs
+            // only when the UPDATE matched nothing -- i.e. the row is not there yet (STOR-11).
+            for (UpsertPlan.Step step : plan.steps()) {
+                try (PreparedStatement ps = connection.prepareStatement(step.sql())) {
+                    int idx = 1;
+                    for (String column : step.bindColumns()) {
+                        Object value = sqlRecord.get(column);
+                        value = coerceValueForColumn(column, value, dslTypeByColumn.get(column));
+                        ps.setObject(idx++, bindable(ps, value));
+                    }
+                    if (ps.executeUpdate() > 0) {
+                        break;
+                    }
                 }
-                ps.executeUpdate();
-                return immutableRecord(runtimeRecord);
             }
+            return immutableRecord(runtimeRecord);
 
         } catch (SQLException e) {
             if (isIntegrityConstraintViolation(e)) {
@@ -918,9 +927,9 @@ public final class PostgresPersistenceCapabilityAdapter
      * {@link SqlDialects#forConnection}, which knows all four engines and REFUSES an unrecognised
      * one instead of defaulting.
      */
-    private static String buildUpsertSql(Connection connection, String table, List<String> columns, String idColumn) {
+    private static UpsertPlan buildUpsertPlan(Connection connection, String table, List<String> columns, String idColumn) {
         SqlDialect connectionDialect = SqlDialects.forConnection(connection);
-        return connectionDialect.upsert().statementFor(table, List.of(idColumn), columns);
+        return connectionDialect.upsert().planFor(table, List.of(idColumn), columns);
     }
 
     private static boolean isH2Connection(Connection connection) {

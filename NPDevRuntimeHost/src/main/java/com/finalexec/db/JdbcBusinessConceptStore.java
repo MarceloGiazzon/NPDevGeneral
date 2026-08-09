@@ -17,6 +17,7 @@ import com.npdev.kernel.storage.sql.H2Dialect;
 import com.npdev.kernel.storage.sql.PostgresDialect;
 import com.npdev.kernel.storage.sql.SqlDialect;
 import com.npdev.kernel.storage.sql.SqlDialects;
+import com.npdev.kernel.storage.sql.UpsertPlan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.datasource.DataSourceUtils;
@@ -562,13 +563,22 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         List<String> columnNames = new ArrayList<>(dbRecord.keySet());
         columnNames.remove(shape.idColumn());
         columnNames.add(0, shape.idColumn());
-        String sql = upsertSql(connection, shape.tableName(), shape.idColumn(), columnNames);
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            int index = 1;
-            for (String column : columnNames) {
-                statement.setObject(index++, bindable(statement, coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column))));
+        UpsertPlan plan = upsertPlan(connection, shape.tableName(), shape.idColumn(), columnNames);
+        // UpsertPlan's execution rule: run the steps in order, STOP after the first that affects a
+        // row. One step on the engines whose native upsert names its conflict target; two on MySQL,
+        // where the INSERT runs only if the UPDATE matched nothing, so a clash with a `unique: true`
+        // column raises instead of overwriting the row that held the value (STOR-11).
+        for (UpsertPlan.Step step : plan.steps()) {
+            try (PreparedStatement statement = connection.prepareStatement(step.sql())) {
+                int index = 1;
+                for (String column : step.bindColumns()) {
+                    statement.setObject(index++, bindable(statement,
+                            coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column))));
+                }
+                if (statement.executeUpdate() > 0) {
+                    break;
+                }
             }
-            statement.executeUpdate();
         }
     }
 
@@ -829,17 +839,6 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     }
 
     /**
-     * PRE-EXTRACTION this method WAS the dialect layer, spelling H2's MERGE and Postgres's ON
-     * CONFLICT by hand behind a product-name probe. Kept connection-driven (rather than reading the
-     * app's configured engine) because the probe is what it always was; only the statements moved.
-     *
-     * <p>The probe stayed a TWO-WAY choice until STOR-10 -- H2 or else Postgres -- so on MySQL and
-     * SQL Server this returned a Postgres upsert that neither engine can parse. Sibling of the
-     * identical bug in PostgresPersistenceCapabilityAdapter; both now ask
-     * {@link SqlDialects#forConnection}, which refuses an engine it does not know rather than
-     * assuming one.
-     */
-    /**
      * The last step before {@code setObject}: let the connection's dialect shape the value.
      *
      * <p>Every bind in this class goes through here. Before STOR-10 they went straight to
@@ -857,9 +856,20 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         return SqlDialects.forConnection(statement.getConnection()).bindableValue(value);
     }
 
-    private static String upsertSql(Connection connection, String table, String idColumn, List<String> columns) throws SQLException {
+    /**
+     * PRE-EXTRACTION this method WAS the dialect layer, spelling H2's MERGE and Postgres's ON
+     * CONFLICT by hand behind a product-name probe. Kept connection-driven (rather than reading the
+     * app's configured engine) because the probe is what it always was; only the statements moved.
+     *
+     * <p>The probe stayed a TWO-WAY choice until STOR-10 -- H2 or else Postgres -- so on MySQL and
+     * SQL Server this returned a Postgres upsert that neither engine can parse. Sibling of the
+     * identical bug in PostgresPersistenceCapabilityAdapter; both now ask
+     * {@link SqlDialects#forConnection}, which refuses an engine it does not know rather than
+     * assuming one.
+     */
+    private static UpsertPlan upsertPlan(Connection connection, String table, String idColumn, List<String> columns) throws SQLException {
         SqlDialect connectionDialect = SqlDialects.forConnection(connection);
-        return connectionDialect.upsert().statementFor(table, List.of(idColumn), columns);
+        return connectionDialect.upsert().planFor(table, List.of(idColumn), columns);
     }
 
     private static final ObjectMapper JSON_COLUMN_MAPPER = new ObjectMapper();
