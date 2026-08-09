@@ -1951,6 +1951,16 @@
       "rule": "sql-string-building",
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/UpsertPlan.java:81",
       "why": "NOT SQL at all -- a false positive on a REFUSAL MESSAGE. UpsertPlan's compact constructor rejects a plan with more than two steps, and the message it throws contains the words 'UPDATE-then-INSERT', which the sweep's statement-assembly pattern reads as SQL being built from a variable. The only interpolated value is steps.size(), an int. Nothing here reaches a database. Triaged 2026-08-09, storage/parity/ENGINE_PARITY_PLAN.md P0 (STOR-11)."
+    },
+    "81d84486f069": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:128",
+      "why": "A false positive on POWERSHELL, not SQL. The line is the opening of the Create-Environment.ps1 text block; the sweep matches the SELECT-like shape further inside the emitted script, where the profile's ensureDatabase listExec asks the ENGINE'S OWN CATALOG whether the app's database exists (pg_database / sys.databases). A catalog has no tenant column and could not have one -- databases are per-instance, not per-tenant. No app data is read here at all. Triaged 2026-08-09, storage/parity/ENGINE_PARITY_PLAN.md P1 (E15)."
+    },
+    "8c5e56c1bd22": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DockerDeploymentEmitter.java:151",
+      "why": "A false positive on YAML. The line is `environment:` inside the generated docker-compose text block, and the sweep's statement-assembly pattern reads the surrounding %s placeholders as SQL being built from variables. What is actually interpolated is the engine's compose image, its container environment and its healthcheck, all from DockerEngineProfile -- a checked-in JSON resource, not user input. Nothing here reaches a database. Triaged 2026-08-09, storage/parity/ENGINE_PARITY_PLAN.md P1 (E15)."
     }
   }
 }

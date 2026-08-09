@@ -1,0 +1,249 @@
+{
+  "$comment": [
+    "Per-engine provisioning facts, so ONE parameterised script can do what five hand-written",
+    "Postgres branches do today. This is the data behind DockerEngineProfile.java.draft and",
+    "Create-Environment.ps1.template.draft.",
+    "",
+    "WHY A DESCRIPTOR AND NOT THREE MORE BRANCHES: OperationalRunbookEmitter already carries five",
+    "`if ($plan.engine -eq 'Postgres')` blocks. Copying them per engine means 15 blocks across five",
+    "user-facing scripts, drifting apart -- the same trap the *-postgres adapters set for the",
+    "dialect work, and the reason SqlDialect parameterises twelve methods instead of duplicating",
+    "eight modules.",
+    "",
+    "Every 'quirk' below is a MEASURED failure from this project's own CI, not folklore."
+  ],
+  "schemaVersion": "npdev-engine-profile.v1",
+  "engines": {
+    "Postgres": {
+      "kind": "server",
+      "provider": "docker-postgres",
+      "defaultPort": 5432,
+      "image": "postgres:16",
+      "imageDigestPinned": "REQUIRED -- see STOR-3 item 1; a moving tag makes a gate unreadable",
+      "driverClass": "org.postgresql.Driver",
+      "jdbcUrlTemplate": "jdbc:postgresql://{host}:{port}/{database}",
+      "containerEnv": {
+        "POSTGRES_DB": "{database}",
+        "POSTGRES_USER": "{username}",
+        "POSTGRES_PASSWORD": "{password}"
+      },
+      "extraRunArgs": [],
+      "createsDatabaseFromEnv": true,
+      "readyProbe": {
+        "exec": [
+          "pg_isready",
+          "-U",
+          "{username}"
+        ],
+        "expectExitCode": 0,
+        "timeoutSeconds": 60
+      },
+      "ensureDatabase": {
+        "listExec": [
+          "psql",
+          "-U",
+          "{username}",
+          "-d",
+          "postgres",
+          "-t",
+          "-A",
+          "-c",
+          "select datname from pg_database order by datname;"
+        ],
+        "createExec": [
+          "createdb",
+          "-U",
+          "{username}",
+          "{database}"
+        ],
+        "execEnv": {
+          "PGPASSWORD": "{password}"
+        }
+      },
+      "adminUser": "{username}",
+      "guiLabel": "PostgreSQL",
+      "quirks": [],
+      "dataVolumePath": "/var/lib/postgresql/data",
+      "composeImage": "postgres:16-alpine",
+      "backupCommand": "pg_dump -U \"$DB_USER\" \"$DB_NAME\""
+    },
+    "MySQL": {
+      "kind": "server",
+      "provider": "docker-mysql",
+      "defaultPort": 3306,
+      "image": "mysql:8.4",
+      "imageDigestPinned": "REQUIRED",
+      "driverClass": "com.mysql.cj.jdbc.Driver",
+      "jdbcUrlTemplate": "jdbc:mysql://{host}:{port}/{database}",
+      "containerEnv": {
+        "MYSQL_DATABASE": "{database}",
+        "MYSQL_USER": "{username}",
+        "MYSQL_PASSWORD": "{password}",
+        "MYSQL_ROOT_PASSWORD": "{password}-root"
+      },
+      "extraRunArgs": [
+        "--character-set-server=utf8mb4",
+        "--collation-server=utf8mb4_unicode_ci"
+      ],
+      "createsDatabaseFromEnv": true,
+      "readyProbe": {
+        "exec": [
+          "mysqladmin",
+          "ping",
+          "-h",
+          "127.0.0.1",
+          "-u{username}",
+          "-p{password}"
+        ],
+        "expectExitCode": 0,
+        "timeoutSeconds": 90
+      },
+      "ensureDatabase": {
+        "listExec": [
+          "mysql",
+          "-u{username}",
+          "-p{password}",
+          "-N",
+          "-B",
+          "-e",
+          "SHOW DATABASES;"
+        ],
+        "createExec": [
+          "mysql",
+          "-u{username}",
+          "-p{password}",
+          "-e",
+          "CREATE DATABASE IF NOT EXISTS `{database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+        ],
+        "execEnv": {}
+      },
+      "adminUser": "root",
+      "guiLabel": "MySQL",
+      "quirks": [
+        "extraRunArgs is NOT optional. MySQL's legacy three-byte 'utf8' cannot represent anything outside the BMP and truncates or replaces it SILENTLY -- the insert succeeds and the data is already wrong. Conformance J2 exists for exactly this.",
+        "DDL commits implicitly: a failed multi-step migration leaves earlier steps applied. See STOR-2 and the E6 vector.",
+        "A TEXT column cannot be indexed without a key length (error 1170). NPDev's own npdev_flow_instances hit this -- see STOR-4.",
+        "CREATE INDEX IF NOT EXISTS and ADD COLUMN IF NOT EXISTS are NOT supported (error 1064). CREATE TABLE IF NOT EXISTS is. See STOR-5."
+      ],
+      "dataVolumePath": "/var/lib/mysql",
+      "composeImage": "mysql:8.4",
+      "backupCommand": "mysqldump -u\"$DB_USER\" -p\"$DB_PASSWORD\" \"$DB_NAME\""
+    },
+    "SqlServer": {
+      "kind": "server",
+      "provider": "docker-sqlserver",
+      "defaultPort": 1433,
+      "image": "mcr.microsoft.com/mssql/server:2022-latest",
+      "imageDigestPinned": "REQUIRED -- and beware: MCR once served a schema-1 prettyjws manifest whose digest was real, stable, and refused by modern Docker. Pin a digest you have actually pulled.",
+      "driverClass": "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+      "jdbcUrlTemplate": "jdbc:sqlserver://{host}:{port};databaseName={database};encrypt=false;trustServerCertificate=true",
+      "containerEnv": {
+        "ACCEPT_EULA": "Y",
+        "MSSQL_SA_PASSWORD": "{password}",
+        "MSSQL_PID": "Developer"
+      },
+      "extraRunArgs": [],
+      "createsDatabaseFromEnv": false,
+      "readyProbe": {
+        "exec": [
+          "/opt/mssql-tools18/bin/sqlcmd",
+          "-S",
+          "localhost",
+          "-U",
+          "sa",
+          "-P",
+          "{password}",
+          "-C",
+          "-Q",
+          "SELECT 1"
+        ],
+        "expectExitCode": 0,
+        "timeoutSeconds": 180
+      },
+      "ensureDatabase": {
+        "listExec": [
+          "/opt/mssql-tools18/bin/sqlcmd",
+          "-S",
+          "localhost",
+          "-U",
+          "sa",
+          "-P",
+          "{password}",
+          "-C",
+          "-h",
+          "-1",
+          "-W",
+          "-Q",
+          "SET NOCOUNT ON; SELECT name FROM sys.databases"
+        ],
+        "createExec": [
+          "/opt/mssql-tools18/bin/sqlcmd",
+          "-S",
+          "localhost",
+          "-U",
+          "sa",
+          "-P",
+          "{password}",
+          "-C",
+          "-Q",
+          "IF DB_ID('{database}') IS NULL CREATE DATABASE [{database}]"
+        ],
+        "execEnv": {}
+      },
+      "adminUser": "sa",
+      "guiLabel": "SQL Server",
+      "quirks": [
+        "createsDatabaseFromEnv is FALSE. There is no MSSQL_DATABASE variable -- the database must be created after the container is healthy, or the app connects to a database that does not exist.",
+        "The SA password must satisfy the strong-password policy. A weak one makes the container EXIT during startup, which surfaces downstream as 'connection refused' and reads like a networking fault.",
+        "Startup is slow -- 30-60s is normal. A readiness probe with a Postgres-sized timeout will report a healthy engine as broken.",
+        "The username is always 'sa' for the container; a per-app username is a database user created afterwards, not a container env var.",
+        "VARCHAR is single-byte and mangles non-ASCII; NVARCHAR is required. portableColumnType() already maps this -- see the J1/J2 vectors.",
+        "No guarded-DDL idiom is supported: CREATE TABLE/INDEX IF NOT EXISTS and ADD COLUMN IF NOT EXISTS all need IF OBJECT_ID(...)/IF NOT EXISTS (SELECT ... FROM sys.*) wrappers. See STOR-5.",
+        "rowLimit() throws today: SQL Server has no suffix row cap, TOP is a prefix."
+      ],
+      "dataVolumePath": "/var/opt/mssql",
+      "composeImage": "mcr.microsoft.com/mssql/server:2022-latest",
+      "backupCommand": ""
+    },
+    "H2Local": {
+      "kind": "embedded",
+      "provider": "h2-local",
+      "defaultPort": null,
+      "driverClass": "org.h2.Driver",
+      "jdbcUrlTemplate": "jdbc:h2:file:{dataRoot}/{database}",
+      "quirks": [
+        "No container. Create-Environment only has to ensure the data directory exists.",
+        "This is why the parity gate exempts embedded engines from the container operations -- an embedded engine legitimately differs, and pretending otherwise would be its own dishonesty."
+      ]
+    },
+    "H2Server": {
+      "kind": "embedded-server",
+      "provider": "h2-server",
+      "defaultPort": 9092,
+      "driverClass": "org.h2.Driver",
+      "jdbcUrlTemplate": "jdbc:h2:tcp://{host}:{port}/{database}",
+      "quirks": [
+        "Started as a java process, not a container: org.h2.tools.Server -tcp.",
+        "TODAY THIS IS BROKEN FOR EVERY USER BUT THE AUTHOR: the emitted Create-Environment.ps1 searches 'D:\\WorkSpace\\NPDev\\Build' for the H2 jar (OperationalRunbookEmitter line 193, and the same path in its error message at 196). REG-144's family, shipped inside the user's own app. Resolve the jar relative to the app, or from the runtimehost-libs directory the app already knows."
+      ]
+    },
+    "InMemory": {
+      "kind": "embedded",
+      "provider": "in-memory",
+      "defaultPort": null,
+      "driverClass": null,
+      "jdbcUrlTemplate": null,
+      "quirks": [
+        "No physical database at all. Every environment operation is a no-op that must SAY it is a no-op rather than printing nothing."
+      ]
+    }
+  },
+  "userFacingOperations": {
+    "$comment": "The five things a user does. Parity means all five behave the same way for every server engine -- see PARITY_MATRIX.md.",
+    "create": "Create-Environment.ps1  -- start the engine, wait for ready, ensure the database exists",
+    "stop": "Stop-Environment.ps1    -- stop the engine, leave the data",
+    "status": "Show-Environment.ps1  -- is it running, on what port, with what data",
+    "connect": "Show-DbConnection.ps1 -- the details to paste into a DB GUI",
+    "reset": "Reset-Environment.ps1  -- stop, remove, delete the data"
+  }
+}
