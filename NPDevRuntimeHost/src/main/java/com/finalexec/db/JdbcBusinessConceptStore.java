@@ -90,8 +90,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         String sql = "SELECT * FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ?";
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, coerceId(id));
-            statement.setObject(2, tenantId);
+            statement.setObject(1, bindable(statement, coerceId(id)));
+            statement.setObject(2, bindable(statement, tenantId));
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();
@@ -122,8 +122,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                 "*", shape.tableName(), shape.idColumn() + " = ? AND tenant_id = ?");
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, coerceId(id));
-            statement.setObject(2, tenantId);
+            statement.setObject(1, bindable(statement, coerceId(id)));
+            statement.setObject(2, bindable(statement, tenantId));
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();
@@ -143,7 +143,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         String sql = "SELECT * FROM " + shape.tableName() + " WHERE tenant_id = ? ORDER BY " + shape.idColumn();
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, tenantId);
+            statement.setObject(1, bindable(statement, tenantId));
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<ConceptRecord> out = new ArrayList<>();
                 while (resultSet.next()) {
@@ -524,7 +524,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     private int bindParams(PreparedStatement statement, List<Object> params, int startIndex) throws SQLException {
         int index = startIndex;
         for (Object param : params) {
-            statement.setObject(index++, param);
+            statement.setObject(index++, bindable(statement, param));
         }
         return index;
     }
@@ -566,7 +566,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             int index = 1;
             for (String column : columnNames) {
-                statement.setObject(index++, coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column)));
+                statement.setObject(index++, bindable(statement, coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column))));
             }
             statement.executeUpdate();
         }
@@ -604,12 +604,12 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             int index = 1;
             for (String column : columnNames) {
-                statement.setObject(index++, coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column)));
+                statement.setObject(index++, bindable(statement, coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column))));
             }
-            statement.setObject(index++, newVersion);
-            statement.setObject(index++, coerceId(record.id()));
-            statement.setObject(index++, record.tenantId());
-            statement.setObject(index, record.rowVersion());
+            statement.setObject(index++, bindable(statement, newVersion));
+            statement.setObject(index++, bindable(statement, coerceId(record.id())));
+            statement.setObject(index++, bindable(statement, record.tenantId()));
+            statement.setObject(index, bindable(statement, record.rowVersion()));
             int affected = statement.executeUpdate();
             if (affected == 0) {
                 Optional<ConceptRecord> current = findById(record.tenantId(), record.conceptName(), record.id());
@@ -622,8 +622,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     private Optional<Long> currentRowVersion(Connection connection, ConceptShape shape, ConceptRecord record) throws SQLException {
         String sql = "SELECT row_version FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, coerceId(record.id()));
-            statement.setObject(2, record.tenantId());
+            statement.setObject(1, bindable(statement, coerceId(record.id())));
+            statement.setObject(2, bindable(statement, record.tenantId()));
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();
@@ -640,8 +640,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         String sql = "DELETE FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ?";
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, coerceId(id));
-            statement.setObject(2, tenantId);
+            statement.setObject(1, bindable(statement, coerceId(id)));
+            statement.setObject(2, bindable(statement, tenantId));
             statement.executeUpdate();
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed deleting concept " + conceptName + " from JDBC store", exception);
@@ -657,7 +657,13 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         Long rowVersion = null;
         for (int index = 1; index <= metaData.getColumnCount(); index++) {
             String column = metaData.getColumnLabel(index);
-            Object value = resultSet.getObject(index);
+            // Through the connection's dialect, for the same reason the bind side goes through it:
+            // rs.getObject returns whatever the DRIVER decides the column is, and that differs per
+            // engine for one declared model type. A `datetime` comes back zone-less on MySQL, which
+            // the generated OffsetDateTime DTO cannot bind -- after a write that already succeeded
+            // (STOR-10).
+            Object value = SqlDialects.forConnection(resultSet.getStatement().getConnection())
+                    .readValue(resultSet.getObject(index));
             // LNCH-16: row_version is tracked as its own ConceptRecord component, not a DSL field --
             // exclude it from data() so it never leaks into REST responses/generated entities.
             if ("row_version".equalsIgnoreCase(column)) {
@@ -826,12 +832,33 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
      * PRE-EXTRACTION this method WAS the dialect layer, spelling H2's MERGE and Postgres's ON
      * CONFLICT by hand behind a product-name probe. Kept connection-driven (rather than reading the
      * app's configured engine) because the probe is what it always was; only the statements moved.
+     *
+     * <p>The probe stayed a TWO-WAY choice until STOR-10 -- H2 or else Postgres -- so on MySQL and
+     * SQL Server this returned a Postgres upsert that neither engine can parse. Sibling of the
+     * identical bug in PostgresPersistenceCapabilityAdapter; both now ask
+     * {@link SqlDialects#forConnection}, which refuses an engine it does not know rather than
+     * assuming one.
      */
+    /**
+     * The last step before {@code setObject}: let the connection's dialect shape the value.
+     *
+     * <p>Every bind in this class goes through here. Before STOR-10 they went straight to
+     * {@code setObject}, which is correct on the two engines this store was written
+     * against and silently wrong on the other two -- MySQL Java-SERIALIZED the
+     * {@code java.util.UUID} the coercion helpers produce and reported it as an
+     * {@code Incorrect string value} on the {@code id} column, the offending bytes being
+     * the Java serialization stream header ({@code 0xACED0005}) rather than text at all.
+     *
+     * <p>Resolving the dialect from the statement's own
+     * connection (rather than {@code SqlDialects.active()}) keeps cross-engine promotion correct,
+     * which is the same reason {@code buildUpsertSql} is connection-driven.
+     */
+    private static Object bindable(PreparedStatement statement, Object value) throws SQLException {
+        return SqlDialects.forConnection(statement.getConnection()).bindableValue(value);
+    }
+
     private static String upsertSql(Connection connection, String table, String idColumn, List<String> columns) throws SQLException {
-        SqlDialect connectionDialect =
-                connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT).contains("h2")
-                        ? H2Dialect.INSTANCE
-                        : PostgresDialect.INSTANCE;
+        SqlDialect connectionDialect = SqlDialects.forConnection(connection);
         return connectionDialect.upsert().statementFor(table, List.of(idColumn), columns);
     }
 

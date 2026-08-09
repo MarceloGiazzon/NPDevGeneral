@@ -334,7 +334,8 @@ public final class ConversionHookEmitter {
         Files.writeString(destDir.resolve("hook.json"),
                 OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(hookJsonNode),
                 StandardCharsets.UTF_8);
-        Files.writeString(destDir.resolve("convert.sql"), convertSql, StandardCharsets.UTF_8);
+        Files.writeString(destDir.resolve("convert.sql"), engineHeader() + convertSql,
+                StandardCharsets.UTF_8);
     }
 
     private static CompiledField requireField(CompiledConcept concept, String fieldName) {
@@ -376,6 +377,25 @@ public final class ConversionHookEmitter {
      * unrunnable on MySQL and SQL Server, and hid behind a corrupted regex in check-dialect-sites.py
      * (a literal backspace where a word boundary was meant) until that was fixed.
      */
+    /**
+     * The {@code -- Engine:} line every emitted conversion script carries.
+     *
+     * <p>Same reason {@code SchemaRealizationEmitter} writes one: the guarded-DDL idioms below are
+     * engine-SPECIFIC since STOR-5, so a script that does not say which engine it was generated for
+     * has to be judged against all of them, and `ADD COLUMN IF NOT EXISTS` -- correct H2 -- is then
+     * reported as a MySQL and SQL Server defect that cannot happen. That is exactly what
+     * check-emitted-sql-portability.py reported against dsl-conformance-max, whose declared engine is
+     * {@code InMemory} and whose hook scripts are therefore never executed by anything at all.
+     *
+     * <p>{@code H2Local} is named explicitly in the engine-less case rather than left blank, because
+     * that IS the fallback {@link #guardedAddColumn} takes -- writing "unknown" would hide a real
+     * assumption behind an honest-looking word.
+     */
+    private String engineHeader() {
+        String name = engine != null ? engine.externalName() : "H2Local";
+        return "-- Engine: " + name + "\n";
+    }
+
     private String guardedAddColumn(String table, String column, String alterStatement) {
         SqlDialect dialect = engine != null && engine.jdbc() ? engine.dialect() : H2Dialect.INSTANCE;
         return dialect.guardedAddColumn(table, column, alterStatement);

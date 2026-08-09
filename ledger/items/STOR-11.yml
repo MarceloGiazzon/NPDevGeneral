@@ -1,0 +1,74 @@
+id: STOR-11
+title: >-
+  On MySQL a create that violates a unique constraint returns 200 and OVERWRITES the row that held
+  the value, because ON DUPLICATE KEY UPDATE reacts to every unique index -- the dialect's own
+  javadoc said no NPDev schema could produce this shape, and any `unique: true` field does
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-08
+verification: VERIFIED_LIVE
+surface: kernel/storage-dialect (MySqlUpsertStrategy)
+source: >-
+  storage/OPEN_ITEMS_PLAN.md W10, Tier C vector I3 against a REAL MySQL 8.4 container. Every other
+  Tier C vector (E1, E2, I2) passed in the same run.
+detail: |
+  MySQL has no "on conflict with THIS key". `INSERT ... ON DUPLICATE KEY UPDATE` fires on a clash
+  with ANY unique index on the table, so an upsert keyed on the id updates a row the caller never
+  named. Postgres and H2 say `ON CONFLICT (id)`, which reacts only to the primary key and raises on
+  any other unique violation.
+
+  MEASURED, not inferred:
+
+      POST /api/concepts/accounts {email: X, region: R}   -> 200   (row created)
+      POST /api/concepts/accounts {email: X, region: R}   -> 200   <-- must be >= 400
+      SHOW INDEX FROM accounts   ->  ux_accounts_email  Non_unique = 0   (the index IS there)
+      SELECT ... FROM accounts   ->  2 rows, both emails distinct       (nothing duplicated)
+
+  The constraint exists and is correct. The engine simply treats the violation as an instruction to
+  update. So a user creating a record whose unique field collides with someone else's does not get
+  an error -- they overwrite that person's row, with their own values, and are told it succeeded.
+
+  WHY IT SURVIVED, AND WHY THAT PART MATTERS MOST
+
+  This divergence was KNOWN. `MySqlUpsertStrategy`'s javadoc described it exactly, and then closed
+  with:
+
+      "Nothing in NPDev's generated schema puts a second unique index on a table it also upserts by
+       id today, and the divergence is recorded here rather than discovered later."
+
+  That sentence was false when it was written. Any model field declaring `unique: true` produces
+  precisely that shape, and `unique: true` is an ordinary thing to declare. The record was correct
+  about the ENGINE and wrong about NPDEV, which is the more dangerous half -- it turned a real
+  hazard into a closed question, and the assumption was never tested because no corpus app had ever
+  run on MySQL at all.
+
+  The javadoc has been corrected in the same commit that filed this. The behaviour has not.
+resolution: >-
+  OPEN. Measured and scoped; deliberately NOT patched inside the STOR-10 commit that found it,
+  because every candidate fix changes the semantics of every write on the engine and that should not
+  ride along with a fix for something else.
+
+  The options, in the order they should be weighed:
+
+  (a) UPDATE-then-INSERT: `UPDATE t SET ... WHERE id = ?`, and if zero rows were affected, INSERT.
+      Two statements, correct on all four engines, and it makes the "which key am I upserting on"
+      question explicit rather than delegating it to the engine. Costs a round trip on every save
+      and needs care under concurrency (the INSERT can still lose a race, which is then a genuine
+      unique violation and should surface as one).
+
+  (b) Keep ON DUPLICATE KEY UPDATE but constrain the emitted schema so a table that is upserted by
+      id carries no other unique index -- i.e. enforce the assumption the old javadoc asserted.
+      That means refusing `unique: true` on MySQL, which is a real capability regression stated
+      honestly rather than a silent one.
+
+  (c) Declare it an accepted boundary. Not defensible while it is silent: the failure mode is a user
+      overwriting another user's row and being told the write succeeded.
+
+  UNTIL THEN: MySQL must not be described as supported for any model declaring `unique: true` on a
+  non-id field. This is the specific reason E14 cannot be written yet even though the four
+  application-level assertions pass on MySQL.
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
+  - NPDevSamples/probes/p4-constraints/Input/model.json
+  - scripts/quality/run-tier-c-probes.py

@@ -278,8 +278,25 @@ public final class SchemaDiffEngine {
 
     private void compareColumn(DesiredTable dt, DesiredColumn dc, CurrentColumn cc, List<SchemaDiffItem> items) {
         // Type change.
+        //
+        // `from` is what the CATALOG says and `to` is what the MODEL declares, and on an engine that
+        // rewrites a declared type those two are different spellings of the same column. MySQL has no
+        // UUID type, so `id uuid` realizes as CHAR(36) -- and comparing the catalog's CHAR(36)
+        // against the model's UUID classified an UNCHANGED column as a DESTRUCTIVE NARROWING, which
+        // refuses to boot:
+        //
+        //   !!  DESTRUCTIVE_NARROW_TYPE  evolve_rows  id  CHAR(36) -> UUID  1
+        //       MANUAL_REVIEW: non-character-length narrowing
+        //
+        // Measured against a real MySQL 8.4 (STOR-10). Every MySQL and SQL Server app would hit it on
+        // its SECOND boot after any model change -- the first boot creates the schema and the
+        // fingerprint matches, so nothing diffs and nothing looks wrong.
+        //
+        // Asking the dialect to rewrite the DECLARED type the same way the emitter did makes the
+        // comparison apples-to-apples. Postgres and H2 answer their own spelling unchanged, so their
+        // diffs are byte-identical to before.
         String from = cc.normalizedSqlType();
-        String to = dc.normalizedSqlType();
+        String to = realizedSpellingOf(dc.normalizedSqlType());
         if (from != null && to != null && !normalize(from).equals(normalize(to))) {
             if (TypeChangeMatrix.classify(from, to) == TypeChangeMatrix.Classification.WIDENING) {
                 items.add(SchemaDiffItem.of("WIDEN_TYPE:" + dt.name() + ":" + dc.name() + ":" + from + ":" + to,
@@ -313,5 +330,27 @@ public final class SchemaDiffEngine {
     private static String normalize(String sqlType) {
         String normalized = SqlTypeNormalization.normalize(sqlType);
         return normalized == null ? Objects.toString(sqlType, "") : normalized;
+    }
+
+    /**
+     * A DECLARED type rewritten the way this engine actually realizes it.
+     *
+     * <p>The same question {@code SchemaRealizationEmitter.renderType} asks at generation time, asked
+     * again here at diff time, through the same {@code SqlDialect.portableColumnType}. If the two
+     * disagreed the diff would compare the catalog against a type the emitter never wrote.
+     *
+     * <p>Falls back to the declared type untouched when no dialect is resolvable -- a diff that
+     * cannot reach a dialect is exactly the pre-STOR-10 behaviour, so this can only improve the
+     * answer, never make an engine that worked start failing.
+     */
+    private static String realizedSpellingOf(String declaredSqlType) {
+        if (declaredSqlType == null || declaredSqlType.isBlank()) {
+            return declaredSqlType;
+        }
+        try {
+            return com.npdev.kernel.storage.sql.SqlDialects.active().portableColumnType(declaredSqlType);
+        } catch (RuntimeException noDialect) {
+            return declaredSqlType;
+        }
     }
 }
