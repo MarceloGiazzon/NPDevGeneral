@@ -125,7 +125,18 @@ class ConversionHookEmitterTest {
         new ConversionHookEmitter().emit(modelSourcePath, outRoot);
 
         Path hooksOut = outRoot.resolve("src/main/resources/db/conversion-hooks");
-        assertEquals(2, Files.list(hooksOut).count());
+        // try-with-resources, not a bare Files.list(...).count(): the returned Stream holds an open
+        // DirectoryStream, and on Windows an open directory handle leaves that directory
+        // DELETE-PENDING -- so @TempDir's teardown could not remove any ANCESTOR of it and failed the
+        // test in cleanup, long after every assertion had passed. This read as "a Windows file-lock
+        // in the harness" and was explained away for long enough to make the local T2 signal
+        // non-binary; it is a leaked handle in this line, and POSIX only hides it because it permits
+        // unlinking an open directory.
+        long hookCount;
+        try (var hooks = Files.list(hooksOut)) {
+            hookCount = hooks.count();
+        }
+        assertEquals(2, hookCount);
         assertTrue(Files.isRegularFile(hooksOut.resolve("001-a/hook.json")));
         assertTrue(Files.isRegularFile(hooksOut.resolve("002-b/hook.json")));
     }
