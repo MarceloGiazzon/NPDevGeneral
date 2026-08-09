@@ -69,13 +69,19 @@ def _git(root: Path, *args: str, strip: bool = True) -> str:
 # Step 1 -- the tree
 # ------------------------------------------------------------------------------------------------
 
-def check_tree_state(root: Path) -> dict:
-    """A manifest may only be emitted from a clean, pushed tree.
+def check_tree_state(root: Path, tag: str) -> dict:
+    """A manifest may only be emitted from a clean, pushed tree, and it describes the TAG.
 
     Not fussiness: a manifest describes a state someone else must be able to OBTAIN. A dirty tree
     describes a state that exists on exactly one disk, and an unpushed HEAD describes a sha the
     second machine cannot fetch -- in both cases every other line in the file is a claim about
     something the reader cannot get hold of.
+
+    The subject is the TAG's sha, not HEAD's. Those differ the moment a tooling-only commit lands
+    after tagging -- which is normal, because the thing that CERTIFIES a release does not have to
+    live inside it. Recording HEAD's sha alongside when they differ keeps that visible instead of
+    letting a reader assume the two were identical: the artifacts and the CI evidence are the tag's,
+    and the local gates ran at HEAD.
     """
     status = _git(root, "status", "--porcelain", strip=False)
     lines = [line for line in status.splitlines() if line.strip()]
@@ -86,15 +92,26 @@ def check_tree_state(root: Path) -> dict:
     if untracked:
         raise StepFailed("tree-clean", f"untracked file(s): {', '.join(untracked[:5])}")
 
-    sha = _git(root, "rev-parse", "HEAD")
+    head = _git(root, "rev-parse", "HEAD")
     branch = _git(root, "rev-parse", "--abbrev-ref", "HEAD")
     # Is this exact commit on the remote? `git branch -r --contains` answers "can the other machine
     # fetch this sha", which is the real question -- not "is my branch pointer up to date".
-    contains = _git(root, "branch", "-r", "--contains", sha)
+    contains = _git(root, "branch", "-r", "--contains", head)
     if not contains.strip():
-        raise StepFailed("head-pushed", f"HEAD ({sha[:8]}) is on no remote branch -- push it first")
+        raise StepFailed("head-pushed", f"HEAD ({head[:8]}) is on no remote branch -- push it first")
 
-    return {"clean": True, "pushed": True, "untrackedFiles": [], "sha": sha, "branch": branch}
+    # `^{}` dereferences an ANNOTATED tag to the commit it points at. Without it this records the
+    # tag OBJECT's sha, which is not a commit and which nothing else in the manifest refers to.
+    tag_sha = _git(root, "rev-list", "-n", "1", f"{tag}^{{}}")
+    if not tag_sha:
+        raise StepFailed("tag", f"tag {tag} does not resolve to a commit -- create and push it first")
+
+    state = {"clean": True, "pushed": True, "untrackedFiles": [], "sha": tag_sha, "branch": branch}
+    if tag_sha != head:
+        ahead = _git(root, "rev-list", "--count", f"{tag_sha}..{head}")
+        state["headSha"] = head
+        state["headCommitsAheadOfTag"] = int(ahead or 0)
+    return state
 
 
 # ------------------------------------------------------------------------------------------------
