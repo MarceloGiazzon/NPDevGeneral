@@ -33,6 +33,10 @@ RUN apt-get update \
 WORKDIR /work
 COPY run-readme.sh /usr/local/bin/run-readme.sh
 COPY inject_field.py /usr/local/bin/inject_field.py
+# Beside the script, because run-readme.sh reads it via `dirname $0`. Without this the harness
+# silently treats every failure as unaccepted -- which is the safe direction, but the run would go
+# red for a case that was examined and written down.
+COPY accepted-failures.json /usr/local/bin/accepted-failures.json
 RUN chmod +x /usr/local/bin/run-readme.sh
 
 # REPO_URL   which repository to clone (override to test a fork/branch)
