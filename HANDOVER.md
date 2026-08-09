@@ -36,8 +36,13 @@ You do need:
 **Windows:** run the `.exe`. It is not signed, so SmartScreen will warn you — "More info" →
 "Run anyway". *(That warning is expected. It is not a finding.)*
 
-**Linux:** `chmod +x NPDev.Manager_*.AppImage` then run it. See §4 first — this artifact is the
-least-proven thing in the package.
+**Linux:** `chmod +x NPDev.Manager_*.AppImage` then run it.
+
+It has been launched exactly once, on 2026-08-09, and only in a container: Ubuntu 22.04 with a
+standard desktop GL/GTK runtime, under a virtual display, with **no webkit2gtk installed** — it
+started and stayed running. That proves the bundle is self-contained. It does **not** prove it works
+on your desktop, with your GPU, your display server and your distro. **You are the first person
+running it for real**, which is why §4's row about it is worth reading before you report anything.
 
 ### 2.2 Ready
 
@@ -106,7 +111,7 @@ Do **not** try to fix anything. A workaround you apply silently is a defect we n
 | What | Why | Report it? |
 |---|---|---|
 | The Windows installer is unsigned; SmartScreen warns | No code-signing certificate yet | No |
-| **The AppImage may not start at all** | An AppImage does not bundle `webkit2gtk`. On a distro that has never had it, it can fail to launch — and it looks like a corrupt download rather than a missing library. **Nobody has launched this artifact on a stock distro.** | **YES — this is exactly what we need to know.** Send the terminal output. |
+| The AppImage needs a normal desktop graphics stack | It **does** bundle `webkit2gtk` (measured — `libwebkit2gtk-4.1.so.0` and the WebKit helper processes are inside it), so you do **not** need to install that. It does *not* bundle the libraries every desktop already has: `libGLESv2`/`libEGL`, `libgbm`, fontconfig, harfbuzz, fribidi. Any normal desktop install has them; a minimal/server image may not. `libGLESv2` is loaded at runtime, so it aborts with `Couldn't open libGLESv2.so.2` rather than a linker error | Only if you are on a **desktop** install and it still fails |
 | The five **Database** buttons need PowerShell | They drive the app's own generated `_ops` scripts. Windows always has one. A Linux desktop usually does not, and the buttons will say so rather than working. | Only if the message is confusing |
 | MySQL/H2: a failed migration cannot be rolled back | Those engines commit implicitly on DDL. NPDev reports this truthfully instead of claiming a rollback (`STOR-2`) | No |
 | Nine unused internal database methods | Dead surface, no user-visible effect (`STOR-13`) | No |

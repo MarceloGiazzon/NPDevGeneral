@@ -277,10 +277,20 @@ def not_verified_entries(artifacts: list[dict]) -> list[dict]:
     if appimage is not None and not appimage.get("launched"):
         entries.append({
             "what": f"{appimage['name']} has never been LAUNCHED",
-            "why": "Publishing is not running. An AppImage does not bundle webkit2gtk, so it can "
-                   "build, publish and checksum perfectly and still refuse to start on a stock "
-                   "distro -- and that failure looks like a corrupt download.",
-            "wouldBeFoundBy": "Running it on a stock distro that has never had webkit2gtk installed.",
+            "why": "Publishing is not running. Pass --launched with the asset name once someone has "
+                   "actually started it; nothing in an API response can tell you that.",
+            "wouldBeFoundBy": "Running it.",
+        })
+    else:
+        # Recorded even when `launched` is true, because "it started" and "it works on a real
+        # desktop" are different claims and the gap between them is where the next defect lives.
+        entries.append({
+            "what": "the AppImage on a real Linux DESKTOP -- real GPU, real display server, a distro "
+                    "other than Ubuntu 22.04",
+            "why": "It has been started under a virtual display in a container with a curated library "
+                   "set. That proves the bundle is self-contained (it carries its own webkit2gtk) but "
+                   "says nothing about a real desktop session.",
+            "wouldBeFoundBy": "One person double-clicking it on their own machine.",
         })
     return entries
 
