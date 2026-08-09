@@ -549,12 +549,9 @@ try {
         $failures += "a runtime-host template resource sits at a path the generator also writes, so the generated file is silently dropped from every app: see scripts/quality/check-template-resource-shadowing.py output above (REG-142)"
     }
 
-    # [35/36] storage/closeout/CLOSEOUT_PLAN.md section 7's closing question: STOR-4 (drivers),
-    # STOR-5 (guarded DDL) and STOR-6 (quoteIdentifier, zero calls in the generator) were the same
-    # defect three times -- the dialect layer complete and conformance-green, and the thing a user
-    # runs never asking it. check-dialect-sites.py [28/36] guards the opposite direction (SQL written
-    # OUTSIDE the dialect package); this one fails when an answer INSIDE it is never requested. It
-    # found nine more on its first run, now filed as STOR-13 rather than left invisible.
+    # [35/36] The mirror of [28/36]: that one fails when SQL is written OUTSIDE the dialect package,
+    # this one when an answer INSIDE it is never requested -- the shape STOR-4/5/6 each had. Full
+    # rationale in the checker's own docstring; it found nine more on its first run (STOR-13).
     Write-Host "[35/36] Checking every SqlDialect answer has a caller that asks it..."
     & $py "scripts/quality/check-dialect-methods-are-asked.py"
     if ($LASTEXITCODE -ne 0) {

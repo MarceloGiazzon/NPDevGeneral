@@ -5,7 +5,7 @@ title: >-
   oversight
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-09
 verification: VERIFIED_LIVE
 surface: scripts/quality
@@ -44,3 +44,33 @@ resolution: >-
   justification, so it no longer blocks unrelated work while remaining visible.
 files:
   - scripts/quality/check-dsl-coverage.py
+closed: 2026-08-09
+closure: >-
+  Split 913 -> 152 lines behind an unchanged CLI, with the moved bodies byte-for-byte identical:
+
+      check-dsl-coverage.py            152   the gate itself (coverage/calibrate/main) + the floor
+      dsl_coverage/detectors_model.py  268   concepts, fields, flows, procedures, queries
+      dsl_coverage/features.py         233   the tracked-feature table
+      dsl_coverage/detectors_ui.py     233   panels, autoPanels, workbench
+      dsl_coverage/corpus.py            87   model discovery, allowlist, contexts[] fragment merge
+      dsl_coverage/constants.py         34   corpus roots + flow step types
+      dsl_coverage/__init__.py          13
+
+  Proven by capturing the FULL corpus output before the split and diffing after, in BOTH modes
+  (default and --calibrate): identical, byte for byte. That proof earned its keep three times --
+  it caught a `from .detectors_model import *` that silently imports nothing whose name starts with
+  an underscore (every detector's does), a `REPO_ROOT = parents[2]` that pointed at `scripts/` once
+  the file moved one level deeper (33 models scanned became 0, 44 features reported ZERO), and a
+  missing FLOW_STEP_TYPES import. Each was a real regression a "looks right" review would have
+  passed. The root resolution is now content-based per REG-144 rather than a parent count.
+
+  A separate hole surfaced while RED-proving the split: deleting a detector from the table did NOT
+  fail the gate. It reported "84 feature(s) tracked" instead of 85 and exited OK, because the check
+  asks "is each TRACKED feature exercised?" and an untracked feature is not asked about. That
+  predates this work -- the split was simply the first thing that ever removed a detector. Fixed
+  with TRACKED_FEATURE_FLOOR, RED-proven (exit 1, naming the count and the floor).
+
+  One honest consequence: run-ai-knowledge-gate.ps1 grew 577 -> 586 lines because CLOSEOUT_PLAN.md
+  section 7 added a 36th check to it. Its budget ceiling was raised once, deliberately, with the
+  reason recorded in the baseline file itself -- growth for a new responsibility, not more of the
+  same. The block was compressed to 4 lines first; its rationale lives in the checker's docstring.
