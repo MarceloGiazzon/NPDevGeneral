@@ -35,6 +35,13 @@ const FIXTURE_DOCTOR_WRONG_JAVA: &str = include_str!("../fixtures/doctor-wrong-j
 // other sibling fixture in this list IS a live capture; these two are the documented exception.
 const FIXTURE_DOCTOR_ACCEPTABLE_NEWER_JAVA: &str = include_str!("../fixtures/doctor-acceptable-newer-java.json");
 const FIXTURE_DOCTOR_NO_JARS: &str = include_str!("../fixtures/doctor-no-jars.json");
+// M13. Both captured live on 2026-08-09 from `npdev db test-connection --json` against a real
+// Postgres in a container (`npdev-local-pg`, host port 15432): the OK one with its real credentials,
+// the refused one by pointing the same command at port 59999 with nothing listening. Neither is
+// hand-written -- a hand-written fixture is a guess about the shape the CLI emits, and the whole
+// reason stub mode exists is to build the UI against what the CLI ACTUALLY returns.
+const FIXTURE_DB_TEST_CONNECTION_OK: &str = include_str!("../fixtures/db-test-connection-ok.json");
+const FIXTURE_DB_TEST_CONNECTION_REFUSED: &str = include_str!("../fixtures/db-test-connection-refused.json");
 const FIXTURE_INIT_RESULT: &str = include_str!("../fixtures/init-result.json");
 const FIXTURE_SETUP_EVENTS: &str = include_str!("../fixtures/setup-events.jsonl");
 const FIXTURE_DEV_EVENTS: &str = include_str!("../fixtures/dev-events.jsonl");
@@ -138,17 +145,88 @@ fn parse_single_json(stdout: &[u8], stderr: &[u8], label: &str) -> Result<Value,
 // doctor
 // ---------------------------------------------------------------------------------------------
 
-pub async fn run_doctor(python_exe: &Path, npdev_cli: &Path, java_home: Option<&str>) -> Result<Value, String> {
+/// `app_dir` is M15. Doctor's six database checks are app-scoped -- with no `--app`, doctor looks
+/// for a `db.definition.json` in its own CWD, which for a Manager launched from a Start-menu
+/// shortcut is never an app directory. So the Ready screen has been ABLE to render those six rows
+/// since W5.3 and has never once had a database row to show: the renderer was wired, the argument
+/// that produces the data was not.
+pub async fn run_doctor(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: Option<&str>,
+) -> Result<Value, String> {
     if fake_mode() {
         let scenario = current_fake_doctor_scenario();
         return serde_json::from_str(doctor_fixture_text(&scenario))
             .map_err(|e| format!("fixture {scenario} did not parse: {e}"));
     }
-    let output = build_command(python_exe, npdev_cli, &["doctor", "--json"], java_home, None)
+    let mut args: Vec<&str> = vec!["doctor", "--json"];
+    if let Some(dir) = app_dir.filter(|d| !d.is_empty()) {
+        args.push("--app");
+        args.push(dir);
+    }
+    let output = build_command(python_exe, npdev_cli, &args, java_home, None)
         .output()
         .await
         .map_err(|e| format!("could not run doctor: {e}"))?;
     parse_single_json(&output.stdout, &output.stderr, "doctor")
+}
+
+/// M13: the same five database checks, against a connection the user is still TYPING.
+///
+/// Deliberately `npdev db test-connection` rather than any logic here: the CLI shares one code path
+/// with `doctor`'s database checks, so this button and the Ready screen cannot reach different
+/// conclusions about the same database. A Rust reimplementation would be a second opinion, and the
+/// point of the button is to be the SAME opinion, earlier.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_db_test_connection(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    engine: &str,
+    db_host: Option<&str>,
+    db_port: Option<u16>,
+    db_user: Option<&str>,
+    db_password: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        // Port 59999 is the refused fixture purely so the failure screen is reachable in stub mode
+        // with no broken machine to hand -- the same reason the doctor scenarios exist.
+        let text = if db_port == Some(59999) {
+            FIXTURE_DB_TEST_CONNECTION_REFUSED
+        } else {
+            FIXTURE_DB_TEST_CONNECTION_OK
+        };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args: Vec<String> = vec![
+        "db".into(),
+        "test-connection".into(),
+        "--json".into(),
+        "--engine".into(),
+        engine.into(),
+    ];
+    // Same rule as run_init: forward only what the user actually typed, so the CLI's per-engine
+    // defaults stay in charge. Probing a blank host would test something the app will never use.
+    for (flag, value) in [("--db-host", db_host), ("--db-user", db_user), ("--db-password", db_password)] {
+        if let Some(value) = value.filter(|v| !v.is_empty()) {
+            args.push(flag.into());
+            args.push(value.into());
+        }
+    }
+    if let Some(port) = db_port.filter(|p| *p > 0) {
+        args.push("--db-port".into());
+        args.push(port.to_string());
+    }
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
+        .output()
+        .await
+        .map_err(|e| format!("could not test the connection: {e}"))?;
+    // Exit 1 here means "the checks ran and some FAILED", which is a result to render, not an error
+    // to raise. Only a total absence of output is a real failure -- parse_single_json says so.
+    parse_single_json(&output.stdout, &output.stderr, "db test-connection")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -224,6 +302,45 @@ pub async fn run_init(
         return Err(format!("npdev init failed: {stderr}"));
     }
     parse_single_json(&output.stdout, &output.stderr, "init")
+}
+
+/// M14: one of the five database operations, run through the CLI.
+///
+/// The Manager deliberately does NOT locate `_ops` or spawn PowerShell itself. Both would be a
+/// second copy of a question the CLI already answers -- and "where does the build output live" is
+/// the question eleven copies of got three different answers in one checkout (REG-144). The CLI
+/// finds the generated script and runs it; this is a pipe.
+pub async fn run_db_operation(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    operation: &str,
+    confirm: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return Ok(serde_json::json!({
+            "schemaVersion": "npdev-cli-result.v1",
+            "command": format!("db {operation}"),
+            "ok": true,
+            "exitCode": 0,
+            "output": format!("STUB MODE -- `npdev db {operation}` was not run."),
+        }));
+    }
+    let mut args: Vec<String> = vec!["db".into(), operation.into(), "--app".into(), app_dir.into(), "--json".into()];
+    if let Some(token) = confirm.filter(|t| !t.is_empty()) {
+        args.push("--confirm".into());
+        args.push(token.into());
+    }
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
+        .output()
+        .await
+        .map_err(|e| format!("could not run db {operation}: {e}"))?;
+    // A non-zero exit is a RESULT here (the database is not running, the reset was refused), not a
+    // transport failure -- the JSON carries `ok` and the script's own words. Only genuinely empty
+    // output is an error, which parse_single_json reports with whatever stderr said.
+    parse_single_json(&output.stdout, &output.stderr, &format!("db {operation}"))
 }
 
 // ---------------------------------------------------------------------------------------------

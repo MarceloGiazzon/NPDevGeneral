@@ -27,6 +27,15 @@
     <section id="screen-ready" class="screen">
       <h1>Ready</h1>
       <p class="subtitle">Checks NPDev's own <code>doctor</code> already runs -- every row, including passes.</p>
+      <!--
+        M15: the six database checks are app-scoped, so doctor has to be TOLD which app. Without
+        this picker it defaulted to the Manager's own working directory, which is never an app
+        folder -- so the database rows the renderer already knew how to draw could never appear.
+      -->
+      <label id="doctor-app-label" hidden>
+        Database checks for:
+        <select id="doctor-app-picker"></select>
+      </label>
       <div id="doctor-rows" class="check-list"></div>
       <button id="doctor-refresh">Re-check</button>
     </section>
@@ -96,6 +105,13 @@
           <label>Port <input id="new-app-db-port" type="number" placeholder="5432" /></label>
           <label>User <input id="new-app-db-user" placeholder="postgres" /></label>
           <label>Password <input id="new-app-db-password" type="password" /></label>
+          <!--
+            M13. Deliberately a plain button and not part of submit: the answer is worth having
+            BEFORE committing to creating anything. Without it, a wrong port here is discovered
+            minutes later as a Spring stack trace, by someone who does not read Spring.
+          -->
+          <button type="button" id="test-connection-btn">Test connection</button>
+          <div id="test-connection-rows" class="check-list"></div>
         </div>
         <button type="submit">Create</button>
       </form>
@@ -107,6 +123,26 @@
       <h1>Run</h1>
       <label>App folder <input id="run-app-dir" placeholder="D:\Apps\my-app" /></label>
       <label>Port <input id="run-port" type="number" value="8080" /></label>
+
+      <!--
+        M14. The five operations the generated `_ops` toolbox provides, here rather than in a
+        terminal. This screen is where they belong: "start its database and run it" is one sentence,
+        and until now the first half of it required PowerShell and the second half did not.
+        Reset is separated and styled as destructive -- it deletes data, and a button is much easier
+        to press than the acknowledgement token is to type.
+      -->
+      <div class="db-toolbox">
+        <h2>Database</h2>
+        <div class="run-buttons">
+          <button id="db-start-btn">Start</button>
+          <button id="db-stop-btn">Stop</button>
+          <button id="db-status-btn">Status</button>
+          <button id="db-connection-btn">Connection details</button>
+          <button id="db-reset-btn" class="destructive">Reset&hellip;</button>
+        </div>
+        <div id="db-output" class="log-view" hidden></div>
+      </div>
+
       <div class="run-buttons">
         <button id="run-start-btn" class="primary">&#9654; Run</button>
         <button id="run-stop-btn" disabled>&#9632; Stop</button>
