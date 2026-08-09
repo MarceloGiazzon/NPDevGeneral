@@ -499,6 +499,73 @@ public final class MySqlDialect implements SqlDialect {
      * how a subtle write-path change ships unreviewed.
      */
     static final class MySqlUpsertStrategy implements UpsertStrategy {
+
+        /**
+         * UPDATE by key, then INSERT only if that matched nothing -- because MySQL's native upsert
+         * cannot be told WHICH key to react to (STOR-11).
+         *
+         * <p>Chosen over the two alternatives, both considered:
+         *
+         * <ul>
+         *   <li><b>Refusing {@code unique: true} on MySQL</b> -- rejected. It is an ordinary
+         *       declaration, and an engine that cannot honour it is second-class. A capability
+         *       regression stated honestly is still a capability regression, and engine parity is
+         *       the requirement this whole workstream exists to meet.</li>
+         *   <li><b>INSERT first, then UPDATE-by-id on error 1062</b> -- deferred, not rejected. It
+         *       avoids the extra round trip on the create path, but it puts vendor error-code
+         *       branching in the write path to save a cost nobody has measured. Revisit with
+         *       numbers.</li>
+         * </ul>
+         *
+         * <p>The four cases, all verified against a real MySQL 8.4:
+         *
+         * <pre>
+         *   create, no clash          UPDATE 0 rows -> INSERT succeeds
+         *   create, unique clash      UPDATE 0 rows -> INSERT raises 1062 -> 409, row untouched
+         *   save to an existing id    UPDATE 1 row  -> done, INSERT never runs
+         *   save, new value clashes   UPDATE raises 1062 -> 409, holder untouched
+         * </pre>
+         *
+         * <p>A concurrent create loses the race on its INSERT and gets a real unique violation.
+         * Correct, not a defect: the row it was told to create now exists.
+         */
+        @Override
+        public UpsertPlan planFor(String table, List<String> keyColumns, List<String> valueColumns) {
+            List<String> keys = normalizedKeys(keyColumns);
+            List<String> assignable = valueColumns.stream()
+                    .filter(column -> !keys.contains(column.toLowerCase(Locale.ROOT)))
+                    .toList();
+            if (assignable.isEmpty()) {
+                // Every column is a key column, so there is nothing an UPDATE could set. A plain
+                // INSERT carries the whole meaning, and a clash is then correctly a unique violation.
+                return UpsertPlan.single(insertStatement(table, valueColumns), valueColumns);
+            }
+            String setClause = String.join(", ", assignable.stream().map(c -> c + " = ?").toList());
+            String whereClause = String.join(" AND ", keyColumns.stream().map(c -> c + " = ?").toList());
+            // Bind order is the whole reason UpsertPlan carries it: UPDATE binds the assignable
+            // columns and THEN the keys, while INSERT binds every column in declaration order. A
+            // caller assuming one order for both would write the key into a value column.
+            List<String> updateBindings = new java.util.ArrayList<>(assignable);
+            updateBindings.addAll(keyColumns);
+            return UpsertPlan.updateThenInsert(
+                    new UpsertPlan.Step("UPDATE " + table + " SET " + setClause + " WHERE " + whereClause,
+                            updateBindings),
+                    new UpsertPlan.Step(insertStatement(table, valueColumns), valueColumns));
+        }
+
+        private static String insertStatement(String table, List<String> valueColumns) {
+            String placeholders = String.join(", ", java.util.Collections.nCopies(valueColumns.size(), "?"));
+            return "INSERT INTO " + table + " (" + String.join(", ", valueColumns) + ")"
+                    + " VALUES (" + placeholders + ")";
+        }
+
+        private static List<String> normalizedKeys(List<String> keyColumns) {
+            if (keyColumns == null || keyColumns.isEmpty()) {
+                throw new IllegalArgumentException("engine 'mysql': upsert needs at least one key column");
+            }
+            return keyColumns.stream().map(key -> key.toLowerCase(Locale.ROOT)).toList();
+        }
+
         @Override
         public String statementFor(String table, List<String> keyColumns, List<String> valueColumns) {
             if (keyColumns == null || keyColumns.isEmpty()) {

@@ -434,6 +434,46 @@ class DialectConformanceTierATest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("dialects")
+    @DisplayName("U3: an upsert reacts ONLY to the key it was given -- by statement or by plan")
+    void upsertReactsOnlyToTheDeclaredKey(SqlDialect dialect) {
+        // STOR-11. MySQL's ON DUPLICATE KEY UPDATE fires on a clash with ANY unique index, so a
+        // create whose `unique: true` column collided returned 200 and OVERWROTE the row that held
+        // the value, while Postgres and SQL Server returned 409. Measured through Tier C's I3.
+        //
+        // The fix is not "MySQL is special" -- it is that the operation is a PLAN, and MySQL's plan
+        // has two steps so the clash arrives as a real unique violation.
+        UpsertPlan plan = dialect.upsert().planFor("accounts", List.of("id"),
+                List.of("id", "email", "region"));
+
+        if ("mysql".equals(dialect.name())) {
+            assertTrue(plan.isUpdateThenInsert(), "MySQL must use UPDATE-then-INSERT: " + plan);
+            UpsertPlan.Step update = plan.steps().get(0);
+            UpsertPlan.Step insert = plan.steps().get(1);
+            assertTrue(update.sql().startsWith("UPDATE accounts SET "), update.sql());
+            assertTrue(update.sql().endsWith("WHERE id = ?"), update.sql());
+            assertTrue(insert.sql().startsWith("INSERT INTO accounts "), insert.sql());
+            // Bind ORDER is the half that would fail silently: UPDATE binds the assignable columns
+            // and THEN the key, INSERT binds every column in declaration order. Getting this wrong
+            // writes the id into `email` on one of the two statements, and both are strings.
+            assertEquals(List.of("email", "region", "id"), update.bindColumns(),
+                    "UPDATE binds values first, key last");
+            assertEquals(List.of("id", "email", "region"), insert.bindColumns(),
+                    "INSERT binds every column in declaration order");
+        } else {
+            assertFalse(plan.isUpdateThenInsert(),
+                    dialect.name() + " can name its conflict target, so it must keep its single "
+                    + "ATOMIC statement -- splitting it would add a race this engine never had: " + plan);
+            assertEquals(List.of("id", "email", "region"), plan.steps().get(0).bindColumns(),
+                    dialect.name() + ": a single-statement plan binds the value columns as given");
+            assertEquals(dialect.upsert().statementFor("accounts", List.of("id"),
+                            List.of("id", "email", "region")),
+                    plan.steps().get(0).sql(),
+                    dialect.name() + ": the plan must be the engine's own upsert, unchanged");
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
     @DisplayName("C1: EVERY engine can cap a statement, whatever shape its cap takes")
     void everyDialectCanCapAStatement(SqlDialect dialect) {
         // storage/FULL_SUPPORT_PLAN.md W1.3. The gap was never "SQL Server cannot cap rows" -- it is

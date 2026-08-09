@@ -2,8 +2,6 @@
 
 """Dialect-site regression gate: keep dialect-bound SQL out of everything but the dialect package.
 
-
-
 WHY THIS EXISTS
 
 ---------------
@@ -13,8 +11,6 @@ storage/PLAN.md's S1 moved 41 dialect-bound SQL sites -- LIMIT/OFFSET, ON CONFLI
 information_schema, SERIAL, backtick-vs-bracket quoting -- out of 19 files and into
 
 `com.npdev.kernel.storage.sql`. The measured count outside that package went 41 -> 0.
-
-
 
 **A zero that nothing defends goes back up.** The next adapter that needs a page of rows will write
 
@@ -28,21 +24,15 @@ page, since SQL Server binds (offset, limit) in the opposite order. That is a da
 
 in production, which is the failure this whole seam exists to prevent.
 
-
-
 So the count is now a gate. Adding a dialect-bound construct outside the dialect package fails here,
 
 with the file, the line, and what to call instead.
-
-
 
 This is the repo-resident half of `storage/helpers/dialect-site-inventory.py`, which stays outside
 
 the repo as the richer exploration tool. The patterns are deliberately the same, and each one earned
 
 its exclusions the hard way -- see the notes on each.
-
-
 
 USAGE
 
@@ -52,15 +42,11 @@ USAGE
 
     python scripts/quality/check-dialect-sites.py --repo <path>
 
-
-
 Exit 0 = no dialect-bound site outside the dialect package. Exit 1 = at least one. Exit 2 = usage.
 
 """
 
 from __future__ import annotations
-
-
 
 import argparse
 
@@ -71,8 +57,6 @@ import re
 import sys
 
 from pathlib import Path
-
-
 
 # Areas that speak SQL. The kernel is included so a site added there is seen -- it was NOT scanned
 
@@ -92,17 +76,11 @@ SCAN_ROOTS = [
 
 ]
 
-
-
 # Where these constructs are SUPPOSED to live. Everything else must be zero.
 
 DIALECT_PACKAGE = "com/npdev/kernel/storage/sql"
 
-
-
 SKIP_DIR_PARTS = {"build", "target", ".gradle", "test", "generated"}
-
-
 
 # construct -> (pattern, what to call instead)
 
@@ -246,8 +224,6 @@ CONSTRUCTS = {
 
 }
 
-
-
 # An escaped \"x\" is only an SQL identifier when the line is actually SQL, and `returning` is an
 
 # ordinary English word that appears in error messages. Both need a statement keyword on the line.
@@ -274,17 +250,11 @@ CONTEXT_REQUIRED = {"returning"}
 SELECT_CONTEXT = re.compile(r"\bSELECT\b", re.IGNORECASE)
 SELECT_CONTEXT_REQUIRED = {"row-lock"}
 
-
-
 # A comment that MENTIONS SQL is not emitted SQL. Counting these is how a keyword grep overstates a
 
 # job by 3x -- the original scan reported ~130 sites where there were 41.
 
 COMMENT = re.compile(r"^\s*(//|\*|/\*|#)")
-
-
-
-
 
 def iter_java(repo: Path):
 
@@ -307,10 +277,6 @@ def iter_java(repo: Path):
                 continue
 
             yield path
-
-
-
-
 
 def scan(repo: Path) -> list[dict]:
 
@@ -362,10 +328,6 @@ def scan(repo: Path) -> list[dict]:
 
     return hits
 
-
-
-
-
 def resolve_repo(explicit: str | None) -> Path | None:
 
     if explicit:
@@ -386,10 +348,6 @@ def resolve_repo(explicit: str | None) -> Path | None:
 
     return candidate if all((candidate / m).is_dir() for m in modules) else None
 
-
-
-
-
 def main() -> int:
 
     parser = argparse.ArgumentParser(description=__doc__,
@@ -401,8 +359,6 @@ def main() -> int:
     parser.add_argument("--json", action="store_true")
 
     args = parser.parse_args()
-
-
 
     repo = resolve_repo(args.repo)
 
@@ -416,11 +372,7 @@ def main() -> int:
 
         return 2
 
-
-
     hits = scan(repo)
-
-
 
     if args.json:
 
@@ -440,8 +392,6 @@ def main() -> int:
 
         return 1 if hits else 0
 
-
-
     print("Dialect-site gate")
 
     print("=" * 78)
@@ -451,8 +401,6 @@ def main() -> int:
         print(f"  PASS -- 0 dialect-bound sites outside {DIALECT_PACKAGE}")
 
         return 0
-
-
 
     print(f"  FAIL -- {len(hits)} dialect-bound site(s) outside {DIALECT_PACKAGE}\n")
 
@@ -473,10 +421,6 @@ def main() -> int:
     print("  add one rather than making an exception here.")
 
     return 1
-
-
-
-
 
 if __name__ == "__main__":
 
