@@ -38,3 +38,90 @@ jobs:
 
       - name: Run --selftest in the bare container
         run: docker run --rm npdev-manager-harness
+
+  # ---------------------------------------------------------------------------------------------
+  # ROUND2_START_PLAN.md section 2: the DB toolbox and Test connection had ZERO coverage.
+  # `test_connection` and `db_operation` were referenced 0 times by the harness above -- including
+  # `reset`, the one that deletes data. The CLI beneath them was proven live against real Postgres;
+  # the window that wraps them was not watched at all, which is the shape that has produced a defect
+  # every time it existed in this codebase.
+  #
+  # A SECOND JOB, not an addition to the first. The bare container's entire claim is that it starts
+  # with nothing; giving it a database would weaken the one thing it proves. Two jobs, two claims:
+  #
+  #   manager-selftest     bare container, nothing installed  ->  the Manager bootstraps
+  #   manager-db-toolbox   docker + PowerShell available      ->  the toolbox actually works
+  #
+  # NOT a Postgres `services:` block, which is what the plan first assumed. `npdev db start` CREATES
+  # its own container by running the generated `_ops` script -- that creation is the thing under
+  # test, so what the job needs is docker access, not a database someone else started. It also needs
+  # a PowerShell: the `_ops` toolbox is PowerShell, and a bare ubuntu runner has none. Both are
+  # checked, not assumed -- the bare image has neither, which is why these steps skip there.
+  # ---------------------------------------------------------------------------------------------
+  manager-db-toolbox:
+    name: Manager --selftest with a real engine (DB toolbox)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Build/manager-target
+          key: manager-db-toolbox-${{ hashFiles('NPDevManager/Cargo.lock') }}
+
+      # Same -dev packages the bare image installs: the Tauri binary LINKS against webkit/gtk even
+      # for `--selftest`, which never opens a window.
+      - name: Manager build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libssl-dev \
+            libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev \
+            libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      # The generated `_ops` toolbox is PowerShell. `npdev db` looks for `pwsh` then `powershell`
+      # and refuses with a named error when it finds neither -- so without this the three new steps
+      # would fail for a reason that has nothing to do with the toolbox.
+      - name: Install PowerShell
+        run: |
+          sudo apt-get install -y --no-install-recommends wget apt-transport-https software-properties-common
+          source /etc/os-release
+          wget -q "https://packages.microsoft.com/config/ubuntu/$VERSION_ID/packages-microsoft-prod.deb"
+          sudo dpkg -i packages-microsoft-prod.deb && rm packages-microsoft-prod.deb
+          sudo apt-get update && sudo apt-get install -y powershell
+          pwsh --version
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build the Manager
+        working-directory: NPDevManager
+        run: cargo build --release
+
+      # NPDEV_SELFTEST_DB=1 is what turns steps [7/9]-[9/9] on. Without it they SKIP WITH A REASON
+      # rather than vanish -- a step that disappears reads as a step that passed.
+      - name: Run --selftest with the database steps enabled
+        env:
+          NPDEV_SELFTEST_DB: '1'
+        run: |
+          TARGET_DIR="$(cd NPDevManager && cargo metadata --format-version 1 --no-deps \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+          "$TARGET_DIR/release/npdev-manager" --selftest
+
+      # The steps create real containers. Leaving them behind would let a later run pass by reusing
+      # an engine this one started, which is the "green because of what happened to be there" family.
+      - name: Tear down anything the toolbox left running
+        if: always()
+        run: docker rm -f npdev-toolbox-a npdev-toolbox-b 2>/dev/null || true
