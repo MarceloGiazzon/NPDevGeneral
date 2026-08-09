@@ -52,6 +52,12 @@ MAIN_ROOTS = ("NPDevGenerator/generator/src/main", "NPDevRuntimeHost/src/main",
 BASELINE = Path(__file__).with_name("engine-parity-baseline.json")
 
 
+# Built from character codes rather than written as literals: this file's own docstring-skipping
+# logic has to talk about triple quotes, and a literal one here would close the string it sits in.
+TRIPLE_DOUBLE = chr(34) * 3
+TRIPLE_SINGLE = chr(39) * 3
+
+
 def engine_of(tok: str) -> str | None:
     for key, spellings in SPELLINGS.items():
         if tok in spellings:
@@ -65,8 +71,22 @@ def engines_in(path: Path) -> set[str]:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return found
+    # A comment -- or a DOCSTRING -- that mentions the pattern is not the pattern. The `#`/`*` skip
+    # was always here; the triple-quote handling was added after this checker flagged
+    # run-engine-toolbox-parity.py, whose module docstring quotes the very branch form this looks
+    # for while explaining what this checker does. Counting prose is how a keyword scan overstates
+    # a job -- check-dialect-sites.py records the same lesson for SQL keywords in comments.
+    in_docstring = False
     for line in text.splitlines():
         s = line.strip()
+        fences = s.count(TRIPLE_DOUBLE) + s.count(TRIPLE_SINGLE)
+        if in_docstring:
+            if fences:
+                in_docstring = False
+            continue
+        if fences % 2 == 1:
+            in_docstring = True
+            continue
         if s.startswith(("//", "*", "#")):
             continue
         for m in CONDITIONAL.finditer(line):
