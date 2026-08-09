@@ -162,6 +162,11 @@ public final class MySqlDialect implements SqlDialect {
     }
 
     @Override
+    public String selectForUpdate(String columns, String table, String whereClause) {
+        return "SELECT " + columns + " FROM " + table + " WHERE " + whereClause + " FOR UPDATE";
+    }
+
+    @Override
     public String timestampColumnType() {
         // DATETIME, not TIMESTAMP: MySQL's TIMESTAMP is a 32-bit epoch that ends in 2038 and silently
         // converts to and from the session time zone. DATETIME(6) stores what it was given, at

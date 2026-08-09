@@ -1,0 +1,76 @@
+id: STOR-9
+title: >-
+  A row lock is a suffix on three engines and a table hint on SQL Server, and three sites spelled the
+  suffix inline -- so every app's FIRST boot on SQL Server died taking the migration lock, after the
+  schema had already realized correctly
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-08
+closed: 2026-08-08
+verification: VERIFIED_LIVE
+surface: kernel/storage-dialect, runtimehost/db, adapters/circuit-postgres
+source: >-
+  storage/OPEN_ITEMS_PLAN.md. Found by CI run 31285509636 -- the first run in which STOR-7's fix let
+  SQL Server complete schema realization AND afterMigrate, so the next thing it did was fail.
+detail: |
+  SQL Server 2022, at boot, immediately after a clean migration:
+
+      Caused by: java.lang.IllegalStateException: Failed to claim the migration lock
+      Caused by: com.microsoft.sqlserver.jdbc.SQLServerException:
+          Line 1: FOR UPDATE clause allowed only for DECLARE CURSOR.
+
+  Postgres, H2 and MySQL all write `SELECT ... WHERE ... FOR UPDATE`. T-SQL has no `FOR UPDATE`
+  outside a cursor at all; its equivalent is a TABLE HINT, and the hint goes BEFORE the `WHERE`:
+
+      SELECT instance_id FROM t WITH (UPDLOCK, ROWLOCK) WHERE claim_key = ?
+
+  So this could never have been a suffix method. It is the same shape as `rowLimited` -- an idiom
+  that is a suffix on three engines and a different POSITION on the fourth -- which the dialect's own
+  javadoc had already recorded as the reason `rowLimit()` throws on SQL Server. The lesson was
+  written down and the next instance still went in inline.
+
+  THREE sites, and the two that were not in the reported stack trace matter more than the one that
+  was:
+
+    MigrationClaimStore.claimH2          the migration lock. Every app, every boot, first thing.
+    JdbcBusinessConceptStore             findByIdForUpdate -- the read-then-persist race guard on
+                                         EVERY business write that goes through the concept gateway.
+    JdbcCircuitBreakerStateStore         recordFailure. The module is named `circuit-postgres`, but
+                                         NpdevRuntimeModeConfig binds it for ANY
+                                         npdev.storage.mode=jdbc, MySQL and SQL Server included.
+
+  The first one fails loudly at boot. The other two would have failed later, on a write and on a
+  capability failure respectively -- the second of which only runs when something else has already
+  gone wrong.
+resolution: |
+  DONE. New `SqlDialect.selectForUpdate(columns, table, whereClause)` -- it builds the whole
+  statement rather than returning a suffix, because the lock's POSITION is the engine-specific part.
+  All three sites routed through it.
+
+  Tier A conformance vector L1 asserts it on every engine, and for SQL Server asserts three separate
+  things: the hint is present, `FOR UPDATE` is absent, and the hint's index is BEFORE the `WHERE`'s.
+  The position assertion is the one that matters -- a hint after the WHERE is still a syntax error,
+  so asserting mere presence would pass a statement the engine refuses.
+
+  CONTROL: `check-dialect-sites.py` gains the `row-lock` construct. It needed a stricter context
+  filter than the existing `SQL_CONTEXT`: the string "Failed reading (for update) concept X from JDBC
+  store" satisfies SQL_CONTEXT because of the word `from`, so `row-lock` requires `SELECT` on the
+  line. RED-proven with a file containing both spellings -- the SQL line fires, the prose line does
+  not.
+
+  The RED-proof also caught, for the third time in this plan, a `\b` in a regex turning into a
+  literal backspace when the checker was edited through a shell heredoc. Every one of those made the
+  pattern silently match NOTHING while the gate reported PASS. That is why a new check is broken on
+  purpose before it is trusted.
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java
+  - NPDevKernel/adapters/circuit-postgres/src/main/java/com/npdev/adapters/circuit/jdbc/JdbcCircuitBreakerStateStore.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationClaimStore.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
+  - scripts/quality/check-dialect-sites.py

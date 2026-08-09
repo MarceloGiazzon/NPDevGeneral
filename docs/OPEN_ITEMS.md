@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**153 item(s) migrated: 4 open/partial, 149 done.**
+**154 item(s) migrated: 4 open/partial, 150 done.**
 
 ## Open / partial
 
@@ -188,7 +188,7 @@ It is MEDIUM rather than HIGH only because it fails loudly at first boot, on eve
 and nothing downstream reads either one. `jdbcUrl(definition, identity)` composes the URL for every engine from `identity`, whose data root is always `<workspace>/Build/databases/<appId>` -- appId being the `manifest.json` id, never anything the database block says. So a user who writes an explicit `jdbcUrl` to point at an existing database, or an `h2FilePath` to put the file somewhere else, gets silence: no error, no warning, and a connection to a different database than the one they named.
 Not the same defect as an unknown key. An unknown key would at least be visibly unrecognized; these two are in the schema, survive validation, and read as supported.
 
-## Done (149)
+## Done (150)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -344,6 +344,7 @@ Not the same defect as an unknown key. An unknown key would at least be visibly 
 | STOR-2 | A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-4 | MySQL and SqlServer were selectable, dialect-complete and conformance-green -- and no generated app could ever have connected to either, because the app template carried no JDBC driver for them | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-7 | A text column plays three roles -- payload, key, defaulted -- and only two were ever asked about; MySQL rejected a TEXT DEFAULT and SQL Server could not index the runtime host's own bootstrap tables, so no generated app booted on either engine | BUG | HIGH | DONE | 2026-08-08 |
+| STOR-9 | A row lock is a suffix on three engines and a table hint on SQL Server, and three sites spelled the suffix inline -- so every app's FIRST boot on SQL Server died taking the migration lock, after the schema had already realized correctly | BUG | HIGH | DONE | 2026-08-08 |
 
 ### Detail
 
@@ -7202,6 +7203,54 @@ B. SQL Server 2022, at `afterMigrate`:
 Six `CREATE TABLE` statements are issued by the runtime host ITSELF, inline, in Java, around the migration rather than by it -- npdev_schema_migration_claim, npdev_schema_migration_mark, npdev_schema_pending_ack, npdev_schema_history and npdev_schema_metadata (twice). Every one spelled `id TEXT PRIMARY KEY`. They are not in the `internalTables` catalog, so no amount of work on SchemaRealizationEmitter could ever have reached them; SQL Server renders TEXT as NVARCHAR(MAX), which it cannot index at all.
 WHY IT SURVIVED
 The same shape as STOR-4 and STOR-5 for the third and fourth time: the capability is right in the layer that owns it and is not consulted by the layer that emits. `keyableTextColumnType()` existed, was conformance-tested at Tier A on all four engines, and answered correctly -- for the one role anyone had thought to ask about. Tier B takes a raw JDBC connection and hand-writes its tables, so it never sees NPDev's own DDL. Only generating, building and BOOTING an app reaches this code, and until STOR-4 and STOR-5 were fixed nothing ever got this far.
+
+### STOR-9 — A row lock is a suffix on three engines and a table hint on SQL Server, and three sites spelled the suffix inline -- so every app's FIRST boot on SQL Server died taking the migration lock, after the schema had already realized correctly
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-08)
+**Verification:** VERIFIED_LIVE
+**Source:** storage/OPEN_ITEMS_PLAN.md. Found by CI run 31285509636 -- the first run in which STOR-7's fix let SQL Server complete schema realization AND afterMigrate, so the next thing it did was fail.
+**Surface:** `kernel/storage-dialect, runtimehost/db, adapters/circuit-postgres`
+**Files:**
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java`
+- `NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java`
+- `NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java`
+- `NPDevKernel/adapters/circuit-postgres/src/main/java/com/npdev/adapters/circuit/jdbc/JdbcCircuitBreakerStateStore.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/MigrationClaimStore.java`
+- `NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java`
+- `scripts/quality/check-dialect-sites.py`
+
+SQL Server 2022, at boot, immediately after a clean migration:
+
+    Caused by: java.lang.IllegalStateException: Failed to claim the migration lock
+    Caused by: com.microsoft.sqlserver.jdbc.SQLServerException:
+        Line 1: FOR UPDATE clause allowed only for DECLARE CURSOR.
+
+Postgres, H2 and MySQL all write `SELECT ... WHERE ... FOR UPDATE`. T-SQL has no `FOR UPDATE`
+outside a cursor at all; its equivalent is a TABLE HINT, and the hint goes BEFORE the `WHERE`:
+
+    SELECT instance_id FROM t WITH (UPDLOCK, ROWLOCK) WHERE claim_key = ?
+
+So this could never have been a suffix method. It is the same shape as `rowLimited` -- an idiom
+that is a suffix on three engines and a different POSITION on the fourth -- which the dialect's own
+javadoc had already recorded as the reason `rowLimit()` throws on SQL Server. The lesson was
+written down and the next instance still went in inline.
+
+THREE sites, and the two that were not in the reported stack trace matter more than the one that
+was:
+
+  MigrationClaimStore.claimH2          the migration lock. Every app, every boot, first thing.
+  JdbcBusinessConceptStore             findByIdForUpdate -- the read-then-persist race guard on
+                                       EVERY business write that goes through the concept gateway.
+  JdbcCircuitBreakerStateStore         recordFailure. The module is named `circuit-postgres`, but
+                                       NpdevRuntimeModeConfig binds it for ANY
+                                       npdev.storage.mode=jdbc, MySQL and SQL Server included.
+
+The first one fails loudly at boot. The other two would have failed later, on a write and on a
+capability failure respectively -- the second of which only runs when something else has already
+gone wrong.
 
 </details>
 

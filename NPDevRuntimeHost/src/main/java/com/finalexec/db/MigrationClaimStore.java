@@ -267,7 +267,7 @@ public final class MigrationClaimStore {
                 ensureCanonicalRow(connection);
                 String heldBy;
                 try (PreparedStatement select = connection.prepareStatement(
-                        "SELECT instance_id FROM " + TABLE + " WHERE claim_key = ? FOR UPDATE")) {
+                        SqlDialects.active().selectForUpdate("instance_id", TABLE, "claim_key = ?"))) {
                     select.setString(1, CLAIM_KEY);
                     try (ResultSet resultSet = select.executeQuery()) {
                         // REG-91: next()'s return value is the difference between "the row is unheld"

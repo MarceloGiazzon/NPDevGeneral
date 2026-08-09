@@ -118,7 +118,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public Optional<ConceptRecord> findByIdForUpdate(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
-        String sql = "SELECT * FROM " + shape.tableName() + " WHERE " + shape.idColumn() + " = ? AND tenant_id = ? FOR UPDATE";
+        String sql = com.npdev.kernel.storage.sql.SqlDialects.active().selectForUpdate(
+                "*", shape.tableName(), shape.idColumn() + " = ? AND tenant_id = ?");
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, coerceId(id));

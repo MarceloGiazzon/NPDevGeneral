@@ -116,6 +116,11 @@ public final class H2Dialect implements SqlDialect {
     }
 
     @Override
+    public String selectForUpdate(String columns, String table, String whereClause) {
+        return "SELECT " + columns + " FROM " + table + " WHERE " + whereClause + " FOR UPDATE";
+    }
+
+    @Override
     public String timestampColumnType() {
         return "TIMESTAMP WITH TIME ZONE";
     }

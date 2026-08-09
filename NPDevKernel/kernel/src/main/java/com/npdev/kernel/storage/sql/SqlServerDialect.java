@@ -152,6 +152,15 @@ public final class SqlServerDialect implements SqlDialect {
     }
 
     @Override
+    public String selectForUpdate(String columns, String table, String whereClause) {
+        // The hint sits between the table and the WHERE, which is why this method builds the
+        // whole statement instead of returning a suffix. UPDLOCK takes the update lock a
+        // check-then-act needs; ROWLOCK keeps it from escalating to the page or the table and
+        // serialising callers that are not competing for the same row.
+        return "SELECT " + columns + " FROM " + table + " WITH (UPDLOCK, ROWLOCK) WHERE " + whereClause;
+    }
+
+    @Override
     public String timestampColumnType() {
         // datetime2, not `timestamp` -- SQL Server's TIMESTAMP is a row-version binary counter with
         // no relationship to time at all, which is a genuinely dangerous false friend.

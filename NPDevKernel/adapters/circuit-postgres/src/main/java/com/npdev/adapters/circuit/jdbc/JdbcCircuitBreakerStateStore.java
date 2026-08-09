@@ -120,12 +120,15 @@ public class JdbcCircuitBreakerStateStore implements CircuitBreakerStateStore {
         Objects.requireNonNull(key, "key");
         seedIfAbsent(key);
 
-        String selectForUpdate = """
-                SELECT state, consecutive_failures, opened_at_ms, last_failure_at_ms, half_open_allowed_at_ms, half_open_trial_count
-                FROM npdev_circuit_breaker
-                WHERE tenant_id = ? AND capability = ? AND operation = ?
-                FOR UPDATE
-                """;
+        // The module is called circuit-postgres, but NpdevRuntimeModeConfig binds it for ANY
+        // npdev.storage.mode=jdbc -- MySQL and SQL Server included. T-SQL has no FOR UPDATE outside a
+        // cursor, so the suffix this used to spell inline made every recordFailure fail there. Asking
+        // the dialect puts the lock where each engine wants it (STOR-9).
+        String selectForUpdate = com.npdev.kernel.storage.sql.SqlDialects.active().selectForUpdate(
+                "state, consecutive_failures, opened_at_ms, last_failure_at_ms, "
+                        + "half_open_allowed_at_ms, half_open_trial_count",
+                "npdev_circuit_breaker",
+                "tenant_id = ? AND capability = ? AND operation = ?");
         String update = """
                 UPDATE npdev_circuit_breaker
                 SET state = ?, consecutive_failures = ?, opened_at_ms = ?, last_failure_at_ms = ?,
