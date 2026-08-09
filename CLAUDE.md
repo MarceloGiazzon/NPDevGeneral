@@ -81,6 +81,16 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   reports while a checker sat red, which is what `run-all-gates.ps1` exists to prevent. A new
   `scripts/quality/check-*.py` MUST be invoked by some `run-*.ps1`; `run-script-inventory-check.ps1`
   fails otherwise (Move 11 W2/O4).
+- **Generator determinism IS checked, and the checker is easy to miss.** It is
+  `scripts/hygiene/check-deterministic-generation.ps1` — note `hygiene`, not `quality`, and
+  `deterministic`, not `determinism`, which is why a `*determinism*` search finds nothing and
+  concludes it does not exist (the stabilize plan did exactly that and specified a duplicate). It
+  generates one sample **twice**, SHA-256s every emitted file under `ArtifactNP/` + `App/`, and
+  fails naming the differing paths. Its exclusions are declared, not blanket:
+  `npdev-build-info.properties` and `generation-run.json`, both deliberately non-reproducible
+  provenance. `run-generator-gate.ps1` runs it, so it is in T2 — and per the cadence ledger's
+  entry-point granularity rule it is covered transitively by the `generator` entry rather than
+  listed separately. Measured 2026-08-09: 786 files vs 786, 0 differing.
 - **Faster mid-plan verification (the Fast Lane plan, 2026-08-01):** `scripts/quality/run-fast-gate.ps1`
   is the T1 tier — T0's checks (schema-mirror-consistency, plus an optional touched model/DSL-test
   check) plus generate+build+boot+REST-smoke of the ONE frozen canary app

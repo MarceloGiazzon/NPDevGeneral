@@ -6,15 +6,58 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**159 item(s) migrated: 1 open/partial, 158 done.**
+**161 item(s) migrated: 3 open/partial, 158 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
+| QUAL-2 | Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red | BUG | MEDIUM | OPEN | 2026-08-09 |
+| QUAL-3 | Two apps scaffolded into the same folder share ONE `_ops` toolbox -- the second generation overwrites the first's resolved-db-plan.json, container name included | BUG | MEDIUM | OPEN | 2026-08-09 |
 | STOR-13 | Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in | BUG | MEDIUM | OPEN | 2026-08-09 |
 
 ### Detail
+
+### QUAL-2 — Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
+**Verification:** NOT_VERIFIED
+**Source:** storage/stabilize/STABILIZE_PLAN.md S1. Found by sweeping for the family after fixing the instance: ConversionHookEmitterTest line 128 called `Files.list(hooksOut).count()` without closing the returned Stream, which on Windows left the directory DELETE-PENDING and made JUnit's @TempDir teardown fail -- reported for long enough that it was believed to be "a Windows file-lock in the harness, not the test body". It was the test body.
+**Surface:** `runtimehost/services`
+
+`Files.list`, `Files.walk`, `Files.find` and `Files.lines` all return a Stream backed by an open OS handle, and all four javadocs say the Stream must be closed (try-with-resources). The one in the generator test was fixed under S1; the sweep that followed found ten more, all in NPDevRuntimeHost MAIN source rather than tests:
+
+    service/experimental/TemplateLibraryManagementService.java:54          Files.list
+    service/FileRuntimePluginExecutionSummaryStore.java:94                 Files.lines
+    service/internal/SemanticBehaviorWriteBackCanonicalizationService.java:57  Files.list
+    service/internal/SemanticBehaviorWriteBackService.java:451             Files.list
+    service/internal/TenantNativeGovernanceService.java:57                 Files.list
+    service/internal/TenantOperationalAdministrationService.java:75        Files.list
+    service/internal/TenantOperationalAdministrationService.java:221       Files.list
+    service/internal/TenantOperationalAdministrationService.java:250       Files.list
+    service/internal/WorkingDraftSystemService.java:440                    Files.list
+    tenant/TenantPartitionRealityVerifier.java:63                          Files.walk
+
+Why this is worth an item rather than a quiet fix: the symptom is PLATFORM-DEPENDENT and delayed. POSIX permits unlinking a directory that is still open, so on Linux CI these leak a file descriptor and nothing else observable; on Windows the directory becomes undeletable (or delete-pending, which blocks its PARENT from being removed and names the parent in the error, not the leaked path). A generated app that runs long enough on Windows can therefore fail to clean up a tenant or draft directory for a reason whose error message points somewhere else entirely -- which is exactly how the generator instance got misdiagnosed as a harness problem for so long.
+Deliberately NOT fixed in the same pass. STABILIZE_PLAN.md S4 freezes main from the release tag until the second machine reports, and states that anything discovered which does not block that machine goes to the backlog unfixed -- the point of the freeze being that the second machine tests one thing rather than a moving target. None of these ten is on the path a first-run user walks (create an app, build it, boot it, change a field): they are tenant-administration, working-draft and template-library services.
+
+### QUAL-3 — Two apps scaffolded into the same folder share ONE `_ops` toolbox -- the second generation overwrites the first's resolved-db-plan.json, container name included
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
+**Verification:** NOT_VERIFIED
+**Source:** storage/stabilize/STABILIZE_PLAN.md M14. Found while wiring the Manager's five database buttons: to drive an app's `_ops` scripts the CLI first has to LOCATE them, and locating them exposed that the location is not per-app.
+**Surface:** `generator/dbconfig`
+
+`OperationalRunbookEmitter.emit` resolves the toolbox as `finalAppRoot.getParent().resolve("_ops")` -- the PARENT of the generated FinalApp, not the app itself. With `npdev init`'s own layout (`npdev init D:\Apps\my-app` generates into `D:\Apps\my-app-app`), the toolbox lands at `D:\Apps\_ops`. A second app created the same way, `D:\Apps\other`, generates into `D:\Apps\other-app` and writes its toolbox to `D:\Apps\_ops` -- the same directory.
+`resolved-db-plan.json` is what every one of the five scripts reads, and it carries `appId`, `containerName`, `resolvedDatabaseName`, `resolvedDataRoot` and the credentials. So after the second generation, all five scripts in that folder describe the second app. Running `Reset-Environment.ps1` "for" the first app then removes the SECOND app's container and deletes the SECOND app's data root, reporting success.
+Confirmed by reading a real generated plan rather than by inference:
+
+    appId       : engine-probe
+    finalAppPath: D:/WorkSpace/NPDev/Build/engine-proof/mysql/App
+    opsRoot     : D:/WorkSpace/NPDev/Build/engine-proof/mysql/_ops
+
+The corpus hides this because essentially every generated app in it lives under its own parent directory (`engine-proof/mysql/`, `engine-proof/postgres/`, ...), so the parents differ and the toolboxes never collide. A user putting two apps in one `D:\Apps` folder -- the obvious thing to do, and what the Manager's "Folder" field invites -- hits it immediately.
+MITIGATED, NOT FIXED, in this pass: `npdev db <operation>` now prints the `appId`, engine and FinalApp path the toolbox actually describes, on every operation and in its `--json` `target` field, so acting on the wrong app is visible rather than silent. A heuristic that REFUSED on a suspected mismatch was considered and rejected: the app-directory-to-FinalApp-path relationship varies between the CLI convention (`<name>-app`) and the sample-script convention (`App`), and a guard that wrongly refuses a legitimate app is worse than the ambiguity it removes.
 
 ### STOR-13 — Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in
 
