@@ -48,6 +48,10 @@
     },
     {
       "classification": "helper",
+      "pattern": "^scripts/quality/dsl_coverage/"
+    },
+    {
+      "classification": "helper",
       "pattern": "^scripts/tests/"
     },
     {

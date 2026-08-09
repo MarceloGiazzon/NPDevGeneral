@@ -214,6 +214,24 @@
     "scripts/quality/check-x0-evaluator-coverage.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/dsl_coverage/__init__.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/dsl_coverage/constants.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/dsl_coverage/corpus.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/dsl_coverage/detectors_model.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/dsl_coverage/detectors_ui.py": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/dsl_coverage/features.py": {
+      "invocation": "orchestrated"
+    },
     "scripts/quality/firstrun-harness/check-wrongjava.sh": {
       "invocation": "manual-runbook"
     },

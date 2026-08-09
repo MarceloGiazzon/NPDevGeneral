@@ -6,44 +6,15 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**159 item(s) migrated: 2 open/partial, 157 done.**
+**159 item(s) migrated: 1 open/partial, 158 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
-| QUAL-1 | check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight | GAP | LOW | OPEN | 2026-08-09 |
 | STOR-13 | Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in | BUG | MEDIUM | OPEN | 2026-08-09 |
 
 ### Detail
-
-### QUAL-1 — check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight
-
-**Type:** GAP · **Severity:** LOW · **Status:** OPEN
-**Verification:** VERIFIED_LIVE
-**Source:** storage/parity/ENGINE_PARITY_PLAN.md P7. Found by storage/helpers/check-script-budget.py while clearing the parity round's housekeeping.
-**Surface:** `scripts/quality`
-**Files:**
-- `scripts/quality/check-dsl-coverage.py`
-
-`scripts/quality/check-dsl-coverage.py` is 913 lines. The budget for a `check-*.py` is a 250-line
-target and a 400-line hard stop, and the baseline had frozen it at 894 -- so it has also GROWN past
-its own frozen ceiling, which the budget tool treats as blocking on purpose: "the baseline records
-a ceiling, not a licence."
-
-It did not grow during this workstream. It is recorded here because the alternative was to raise
-its ceiling silently, and a limit quietly moved is indistinguishable from a limit that was never
-enforced.
-
-The other two over-budget scripts have arguments that this one does not:
-
-  run-ai-knowledge-gate.ps1 (577)   a HOST for 35 checks; a 500-line stop was sized for a script
-                                   that does one thing, and splitting the host would scatter the
-                                   ordering guarantee that makes "all gates green" mean something
-  check-emitted-sql-portability.py  2% over, and the overage is the CONSTRUCTS table where each
-                                   (409)  entry records a measured engine failure
-
-913 against 400 is not 2%. It is a checker that has accumulated several jobs.
 
 ### STOR-13 — Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in
 
@@ -70,13 +41,14 @@ Each of these is declared on `SqlDialect`, implemented by all four dialects, and
 `supports` is the one worth reading twice. CLAUDE.md instructs the reader to "ask `SqlDialects.active().supports(...)` rather than assuming a rollback" -- STOR-2's whole remedy -- and no production code does. The capability set is consulted through `capabilities()` by `StorageCapabilityGate` at GENERATION time; nothing asks at RUNTIME, which is where the DDL-in-transaction question actually gets decided.
 Not necessarily nine bugs. Some of these may be genuinely premature -- an answer prepared before its consumer exists is not wrong, it is early. What was wrong is that nothing distinguished "prepared early" from "wired and forgotten", and that is the distinction the three closed items each turned out to need. They are now enumerated in that checker's INTERNAL_ONLY allowlist with this item's id, so the list is a visible backlog rather than an invisible one, and any NEW dialect method must be wired or explicitly recorded here.
 
-## Done (157)
+## Done (158)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
+| QUAL-1 | check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight | GAP | LOW | DONE | 2026-08-09 |
 | REG-1 | 9 app definitions remain on the deprecated blanket destructive posture (down from 27) | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-10 | LNCH-19: Linux CI observed green for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-100 | CLOSED -- three silent-answer sites found by the X0 audit, now fixed: a $ref that could not resolve wrote null (while the SAME class threw for id refs), a runQuery step naming an undeclared query returned an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate went unvalidated | BUG | MEDIUM | DONE | 2026-07-31 |
@@ -236,6 +208,34 @@ Not necessarily nine bugs. Some of these may be genuinely premature -- an answer
 | STOR-9 | A row lock is a suffix on three engines and a table hint on SQL Server, and three sites spelled the suffix inline -- so every app's FIRST boot on SQL Server died taking the migration lock, after the schema had already realized correctly | BUG | HIGH | DONE | 2026-08-08 |
 
 ### Detail
+
+### QUAL-1 — check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight
+
+**Type:** GAP · **Severity:** LOW · **Status:** DONE (2026-08-09)
+**Verification:** VERIFIED_LIVE
+**Source:** storage/parity/ENGINE_PARITY_PLAN.md P7. Found by storage/helpers/check-script-budget.py while clearing the parity round's housekeeping.
+**Surface:** `scripts/quality`
+**Files:**
+- `scripts/quality/check-dsl-coverage.py`
+
+`scripts/quality/check-dsl-coverage.py` is 913 lines. The budget for a `check-*.py` is a 250-line
+target and a 400-line hard stop, and the baseline had frozen it at 894 -- so it has also GROWN past
+its own frozen ceiling, which the budget tool treats as blocking on purpose: "the baseline records
+a ceiling, not a licence."
+
+It did not grow during this workstream. It is recorded here because the alternative was to raise
+its ceiling silently, and a limit quietly moved is indistinguishable from a limit that was never
+enforced.
+
+The other two over-budget scripts have arguments that this one does not:
+
+  run-ai-knowledge-gate.ps1 (577)   a HOST for 35 checks; a 500-line stop was sized for a script
+                                   that does one thing, and splitting the host would scatter the
+                                   ordering guarantee that makes "all gates green" mean something
+  check-emitted-sql-portability.py  2% over, and the overage is the CONSTRUCTS table where each
+                                   (409)  entry records a measured engine failure
+
+913 against 400 is not 2%. It is a checker that has accumulated several jobs.
 
 ### REG-1 — 9 app definitions remain on the deprecated blanket destructive posture (down from 27)
 
