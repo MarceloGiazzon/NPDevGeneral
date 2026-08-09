@@ -304,6 +304,41 @@ pub async fn run_init(
     parse_single_json(&output.stdout, &output.stderr, "init")
 }
 
+/// Generate an app's code from its model -- the step that WRITES the `_ops` toolbox.
+///
+/// Used by `--selftest` (not by a screen): the five database operations read
+/// `_ops/resolved-db-plan.json`, which does not exist until an app has been generated, so a harness
+/// that wants to drive the toolbox has to produce one first. Kept here rather than in selftest.rs so
+/// it goes through `build_command` like every other invocation -- JAVA_HOME and NPDEV_BUILD_ROOT set
+/// the same way, which is exactly the plumbing a hand-rolled `Command` in the test would get subtly
+/// wrong.
+pub async fn run_generate_app(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    model: &str,
+    config: &str,
+    output: &str,
+) -> Result<(), String> {
+    let output_result = build_command(
+        python_exe,
+        npdev_cli,
+        &["generate", "app", "--model", model, "--config", config, "--output", output],
+        java_home,
+        None,
+    )
+    .output()
+    .await
+    .map_err(|e| format!("could not run generate app: {e}"))?;
+    if !output_result.status.success() {
+        let stderr = String::from_utf8_lossy(&output_result.stderr);
+        let stdout = String::from_utf8_lossy(&output_result.stdout);
+        return Err(format!("npdev generate app failed: {}",
+                           if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() }));
+    }
+    Ok(())
+}
+
 /// M14: one of the five database operations, run through the CLI.
 ///
 /// The Manager deliberately does NOT locate `_ops` or spawn PowerShell itself. Both would be a
