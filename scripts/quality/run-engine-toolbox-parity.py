@@ -107,7 +107,10 @@ def generate(root: Path, probe: Path, engine: str, work: Path) -> Path:
         raise SystemExit(
             f"generation failed for {engine} (exit {completed.returncode}).\n"
             f"{completed.stdout[-2000:]}\n{completed.stderr[-2000:]}")
-    ops = output.parent / "_ops"
+    # QUAL-3: the toolbox now lives INSIDE the FinalApp, not beside it. It was `output.parent`,
+    # which is the fourth site that encoded "the toolbox belongs to the parent directory" -- the
+    # assumption that let two apps in one folder share one toolbox and one database.
+    ops = output / "_ops"
     if not ops.is_dir():
         raise SystemExit(f"{engine}: no _ops directory was emitted at {ops}")
     return ops

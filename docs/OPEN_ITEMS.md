@@ -6,14 +6,13 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**161 item(s) migrated: 3 open/partial, 158 done.**
+**161 item(s) migrated: 2 open/partial, 159 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
 | QUAL-2 | Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red | BUG | MEDIUM | OPEN | 2026-08-09 |
-| QUAL-3 | Two apps scaffolded into the same folder share ONE `_ops` toolbox -- the second generation overwrites the first's resolved-db-plan.json, container name included | BUG | MEDIUM | OPEN | 2026-08-09 |
 | STOR-13 | Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in | BUG | MEDIUM | OPEN | 2026-08-09 |
 
 ### Detail
@@ -41,24 +40,6 @@
 Why this is worth an item rather than a quiet fix: the symptom is PLATFORM-DEPENDENT and delayed. POSIX permits unlinking a directory that is still open, so on Linux CI these leak a file descriptor and nothing else observable; on Windows the directory becomes undeletable (or delete-pending, which blocks its PARENT from being removed and names the parent in the error, not the leaked path). A generated app that runs long enough on Windows can therefore fail to clean up a tenant or draft directory for a reason whose error message points somewhere else entirely -- which is exactly how the generator instance got misdiagnosed as a harness problem for so long.
 Deliberately NOT fixed in the same pass. STABILIZE_PLAN.md S4 freezes main from the release tag until the second machine reports, and states that anything discovered which does not block that machine goes to the backlog unfixed -- the point of the freeze being that the second machine tests one thing rather than a moving target. None of these ten is on the path a first-run user walks (create an app, build it, boot it, change a field): they are tenant-administration, working-draft and template-library services.
 
-### QUAL-3 — Two apps scaffolded into the same folder share ONE `_ops` toolbox -- the second generation overwrites the first's resolved-db-plan.json, container name included
-
-**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
-**Verification:** NOT_VERIFIED
-**Source:** storage/stabilize/STABILIZE_PLAN.md M14. Found while wiring the Manager's five database buttons: to drive an app's `_ops` scripts the CLI first has to LOCATE them, and locating them exposed that the location is not per-app.
-**Surface:** `generator/dbconfig`
-
-`OperationalRunbookEmitter.emit` resolves the toolbox as `finalAppRoot.getParent().resolve("_ops")` -- the PARENT of the generated FinalApp, not the app itself. With `npdev init`'s own layout (`npdev init D:\Apps\my-app` generates into `D:\Apps\my-app-app`), the toolbox lands at `D:\Apps\_ops`. A second app created the same way, `D:\Apps\other`, generates into `D:\Apps\other-app` and writes its toolbox to `D:\Apps\_ops` -- the same directory.
-`resolved-db-plan.json` is what every one of the five scripts reads, and it carries `appId`, `containerName`, `resolvedDatabaseName`, `resolvedDataRoot` and the credentials. So after the second generation, all five scripts in that folder describe the second app. Running `Reset-Environment.ps1` "for" the first app then removes the SECOND app's container and deletes the SECOND app's data root, reporting success.
-Confirmed by reading a real generated plan rather than by inference:
-
-    appId       : engine-probe
-    finalAppPath: D:/WorkSpace/NPDev/Build/engine-proof/mysql/App
-    opsRoot     : D:/WorkSpace/NPDev/Build/engine-proof/mysql/_ops
-
-The corpus hides this because essentially every generated app in it lives under its own parent directory (`engine-proof/mysql/`, `engine-proof/postgres/`, ...), so the parents differ and the toolboxes never collide. A user putting two apps in one `D:\Apps` folder -- the obvious thing to do, and what the Manager's "Folder" field invites -- hits it immediately.
-MITIGATED, NOT FIXED, in this pass: `npdev db <operation>` now prints the `appId`, engine and FinalApp path the toolbox actually describes, on every operation and in its `--json` `target` field, so acting on the wrong app is visible rather than silent. A heuristic that REFUSED on a suspected mismatch was considered and rejected: the app-directory-to-FinalApp-path relationship varies between the CLI convention (`<name>-app`) and the sample-script convention (`App`), and a guard that wrongly refuses a legitimate app is worse than the ambiguity it removes.
-
 ### STOR-13 — Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in
 
 **Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
@@ -84,7 +65,7 @@ Each of these is declared on `SqlDialect`, implemented by all four dialects, and
 `supports` is the one worth reading twice. CLAUDE.md instructs the reader to "ask `SqlDialects.active().supports(...)` rather than assuming a rollback" -- STOR-2's whole remedy -- and no production code does. The capability set is consulted through `capabilities()` by `StorageCapabilityGate` at GENERATION time; nothing asks at RUNTIME, which is where the DDL-in-transaction question actually gets decided.
 Not necessarily nine bugs. Some of these may be genuinely premature -- an answer prepared before its consumer exists is not wrong, it is early. What was wrong is that nothing distinguished "prepared early" from "wired and forgotten", and that is the distinction the three closed items each turned out to need. They are now enumerated in that checker's INTERNAL_ONLY allowlist with this item's id, so the list is a visible backlog rather than an invisible one, and any NEW dialect method must be wired or explicitly recorded here.
 
-## Done (158)
+## Done (159)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -92,6 +73,7 @@ Not necessarily nine bugs. Some of these may be genuinely premature -- an answer
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
 | QUAL-1 | check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight | GAP | LOW | DONE | 2026-08-09 |
+| QUAL-3 | Two apps in one folder became ONE database -- a shared `_ops` toolbox AND a shared appId, so container name and data root collided; resetting either destroyed the other's data | BUG | HIGH | DONE | 2026-08-09 |
 | REG-1 | 9 app definitions remain on the deprecated blanket destructive posture (down from 27) | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-10 | LNCH-19: Linux CI observed green for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-100 | CLOSED -- three silent-answer sites found by the X0 audit, now fixed: a $ref that could not resolve wrote null (while the SAME class threw for id refs), a runQuery step naming an undeclared query returned an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate went unvalidated | BUG | MEDIUM | DONE | 2026-07-31 |
@@ -279,6 +261,30 @@ The other two over-budget scripts have arguments that this one does not:
                                    (409)  entry records a measured engine failure
 
 913 against 400 is not 2%. It is a checker that has accumulated several jobs.
+
+### QUAL-3 — Two apps in one folder became ONE database -- a shared `_ops` toolbox AND a shared appId, so container name and data root collided; resetting either destroyed the other's data
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-09)
+**Verification:** VERIFIED_LIVE
+**Source:** storage/stabilize/STABILIZE_PLAN.md M14 (found while wiring the Manager's five database buttons), re-rated and closed under storage/stabilize/TAG_PLAN.md section 2.
+**Surface:** `generator/dbconfig`
+
+Re-rated MEDIUM -> HIGH on filing evidence, then found to be WIDER than filed.
+Two sites encoded "this belongs to the PARENT DIRECTORY, not to the app":
+
+  1. OperationalRunbookEmitter.emit  ->  finalAppRoot.getParent().resolve("_ops")
+  2. UserDatabaseDefinitionLoader.resolveAppId  ->  two directory levels up from db.definition.json
+
+Site 2 was NOT in the original filing and is the one that destroys data. Walking two levels up is right for the corpus layouts (`<App>/definition/...` and `<App>/Input/...`) and wrong for the `npdev init` layout, which writes the definition directly into the app directory -- so two levels up is the PARENT FOLDER, shared by every app in it.
+MEASURED RED (two apps really generated into one folder, not inferred):
+
+    app-a: appId=qual3  container=npdev-qual3  dataRoot=Build/databases/qual3
+    app-b: appId=qual3  container=npdev-qual3  dataRoot=Build/databases/qual3
+    npdev db status --app <app-a>   ->   [qual3 | Postgres | .../app-b-app]
+
+So they were not two apps sharing a toolbox. They were one database with two front doors. Fixing only the `_ops` location would have left both apps pointed at one container and one data root, and Reset for either would still have destroyed the other's data -- the fix would have looked complete and changed nothing that mattered.
+Why HIGH, not MEDIUM: it destroys data and reports success (the class STOR-11 was rated HIGH for); two apps in one folder is what evaluating the product looks like, not an exotic setup; and the acknowledgement token cannot help, because the user types it correctly for the app they intend and different data is deleted. M14 had just made Reset a button, so the risk rose the day the toolbox got easier to reach.
+A THIRD and FOURTH site encoded the same assumption and had to move with it (the plan predicted only two): `scripts/quality/run-engine-toolbox-parity.py` read `output.parent / "_ops"`, and `scripts/appgen/Build-NpdevApp.ps1` writes its own separate toolbox at `$OutRoot/_ops`. The latter is per-appId by construction (`$OutRoot = $BuildRoot/$AppId`) so it cannot collide and was left alone; the former follows the emitter. A FIRST ATTEMPT AT SITE 2 WAS WRONG AND IS WORTH RECORDING. Keying identity on the directory NAME ("if it is not called `definition/`, that directory is the app") looked right and passed the new tests. Measured against the corpus, it was worse than the defect: 25 definitions live in a directory called `Input` with no manifest.json, and the rule collapsed all 25 onto `appId=Input`. T2 caught it as an unrelated-looking STOR-8 failure (`UserDatabaseDefinitionDeclaredConnectionTest`, "an h2FilePath that agrees with the derived path still loads") because that test's two temp definitions stopped resolving to one app. Path shape cannot distinguish an app directory from a wrapper directory; asking it to was the mistake.
 
 ### REG-1 — 9 app definitions remain on the deprecated blanket destructive posture (down from 27)
 
