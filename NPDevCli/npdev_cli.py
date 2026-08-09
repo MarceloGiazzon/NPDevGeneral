@@ -1433,13 +1433,23 @@ def _infer_run_app_paths(args: argparse.Namespace) -> dict | None:
                               "created (it scaffolds model.json alongside config.json).",
             )
         args.model = str(candidate)
+    # BESIDE THE MODEL, not in the current directory. `--help` has always said "default: beside the
+    # model", and this looked in the CWD -- identical whenever the model IS in the CWD, which is
+    # every no-flag invocation, so the disagreement stayed invisible. It surfaces the moment anyone
+    # follows README's own quickstart from the clone:
+    #     ./npdev dev --model ../my-app/model.json
+    #     -> CONFIG_NOT_FOUND: no config.json in the current directory (/work/src)
+    # `npdev init` scaffolds model.json and config.json side by side, so the model's own directory
+    # is the only place the config could sensibly be. Found by the first-run harness.
+    model_dir = Path(args.model).expanduser().resolve().parent
     if not args.config:
-        candidate = cwd / "config.json"
+        candidate = model_dir / "config.json"
         if not candidate.exists():
             return _diag(
                 "GENERATE", "CONFIG_NOT_FOUND",
-                f"--config not given and no config.json in the current directory ({cwd}).",
-                suggested_fix="Pass --config explicitly, or run this from a directory `npdev init` created.",
+                f"--config not given and no config.json beside the model ({model_dir}).",
+                suggested_fix="Pass --config explicitly, or point --model at a directory `npdev init` created "
+                              "(it scaffolds model.json and config.json together).",
             )
         args.config = str(candidate)
     if not args.output:
@@ -1447,7 +1457,11 @@ def _infer_run_app_paths(args: argparse.Namespace) -> dict | None:
         # inside the same folder as the model it was generated from (docs/YOUR_FIRST_APP.md's own
         # manual convention -- my-library -> ../my-library-app -- so this matches what anyone who
         # read that page already expects, rather than inventing a second convention here).
-        args.output = str(cwd.parent / f"{cwd.name}-app")
+        #
+        # Sibling of THE MODEL, for the same reason as the config above. Deriving it from the CWD
+        # sent `--model ../my-app/model.json` run from the clone to `<clone>-app` -- a directory
+        # beside the repository, named after the repository, for an app called something else.
+        args.output = str(model_dir.parent / f"{model_dir.name}-app")
     return None
 
 

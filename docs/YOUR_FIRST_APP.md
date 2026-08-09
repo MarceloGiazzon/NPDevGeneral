@@ -123,8 +123,8 @@ evolves the schema rather than recreating it.
 Doing this by hand once is worth it — you have now seen every step. After that, use the watch loop:
 
 ```sh
-cd ../my-library
-npdev dev
+cd ../NPDevGeneral     # back to the clone -- `npdev` is not on your PATH, it lives here
+./npdev dev --model ../my-library/model.json
 ```
 
 It generates, builds, boots, and then watches your model. **Save a change and it does the whole
