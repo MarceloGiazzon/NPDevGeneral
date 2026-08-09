@@ -4051,12 +4051,12 @@ def run_release_candidate(args: argparse.Namespace, root: Path) -> dict:
     try:
         # 1 -----------------------------------------------------------------------------------
         announce(1, "tree clean, HEAD pushed, no untracked files")
-        tree = rc.check_tree_state(root)
-        sha = tree["sha"]
         tag = args.tag or ""
         if not tag:
             raise rc.StepFailed("tag", "--tag is required: a manifest describes a TAG's artifacts, "
                                        "and a branch name moves")
+        tree = rc.check_tree_state(root, tag)
+        sha = tree["sha"]
 
         # 2 -----------------------------------------------------------------------------------
         announce(2, "T2 -- all four gates")
@@ -4100,9 +4100,35 @@ def run_release_candidate(args: argparse.Namespace, root: Path) -> dict:
 
         # 5 -----------------------------------------------------------------------------------
         announce(5, "first-run harness")
+        # Built from a NORMALIZED copy of the committed blobs, not from the working tree.
+        #
+        # The harness `COPY`s its scripts out of the build context, so on a Windows checkout with
+        # core.autocrlf=true `run-readme.sh` is baked in with CRLF and its own shebang becomes
+        # `#!/usr/bin/env bash\r`. The container then dies with
+        #   /usr/bin/env: 'bash\r': No such file or directory     (exit 127)
+        # before it clones anything. Measured here, and already documented in the harness README as a
+        # Windows working-tree artifact -- the committed blob is LF-only.
+        #
+        # Left alone, this gate would refuse on every Windows machine for a reason that has nothing
+        # to do with the release, which is the "red you are trained to explain away" shape S1 exists
+        # to remove. So the documented workaround is what the gate does: replay each file from
+        # `git show HEAD:<path>`, strip CR, build against that.
+        harness_rel = "scripts/quality/firstrun-harness"
         harness = root / "scripts" / "quality" / "firstrun-harness"
-        build = subprocess.run(["docker", "build", "-q", "-t", "npdev-firstrun", str(harness)],
-                               cwd=root, capture_output=True, text=True, check=False)
+        with tempfile.TemporaryDirectory(prefix="npdev-firstrun-ctx-") as ctx:
+            context = Path(ctx)
+            for source in sorted(harness.iterdir()):
+                if not source.is_file():
+                    continue
+                blob = subprocess.run(["git", "show", f"HEAD:{harness_rel}/{source.name}"],
+                                      cwd=root, capture_output=True, check=False)
+                if blob.returncode != 0:
+                    raise rc.StepFailed("firstrun-harness",
+                                        f"{source.name} is not committed at HEAD -- the harness must be "
+                                        f"built from the released state, not from an uncommitted file")
+                (context / source.name).write_bytes(blob.stdout.replace(b"\r\n", b"\n"))
+            build = subprocess.run(["docker", "build", "-q", "-t", "npdev-firstrun", str(context)],
+                                   cwd=root, capture_output=True, text=True, check=False)
         if build.returncode != 0:
             raise rc.StepFailed("firstrun-harness", f"could not build the harness image: {build.stderr.strip()[:300]}")
         run = subprocess.run(["docker", "run", "--rm", "-e", f"REPO_REF={tag}", "npdev-firstrun"],
