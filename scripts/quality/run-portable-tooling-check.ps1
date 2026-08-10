@@ -118,6 +118,42 @@ function Get-ScopedPathNeutralityFiles {
     }
 }
 
+# Python COMMENTS AND DOCSTRINGS are prose, and prose about a drive-letter defect is not a
+# drive-letter defect. PORT-2/QUAL-3's records explain the bug in exactly those words -- "`npdev init
+# D:\Apps\my-app` generates into `D:\Apps\my-app-app`" -- and six such occurrences in four lines of
+# NPDevCli/npdev_cli.py and NPDevCli/tests/test_ops_toolbox_isolation.py turned this check red in CI
+# run 31421541918 (2026-08-10), the first run in months where it actually executed.
+#
+# strip_python_prose.py removes comments and docstrings ONLY. Every other string literal stays in
+# scope, so a real `default = "D:\WorkSpace\Build"` still fails -- which is the point, since
+# NPDevCli is exactly where REG-144's "never hardcode a drive letter as a default" would be broken.
+# Excluding the two whole files was the cheap alternative and was rejected for blinding the scan in
+# the file most likely to acquire one. Note also that Get-PathNeutralityExcludedPaths is REPORTED
+# but never applied as a filter, so an exclusion entry would not have worked anyway.
+$script:PythonProseStrippedFileCount = 0
+function Get-PythonScannableText {
+    param([string]$Root, [string[]]$Paths)
+    $map = @{}
+    if (-not $Paths -or @($Paths).Count -eq 0) { return $map }
+    $stripper = Join-Path $Root "scripts/quality/strip_python_prose.py"
+    if (-not (Test-Path -LiteralPath $stripper -PathType Leaf)) { return $map }
+    $exe = $null
+    foreach ($candidate in @("python", "python3")) {
+        if (Get-Command $candidate -ErrorAction SilentlyContinue) { $exe = $candidate; break }
+    }
+    if (-not $exe) { return $map }
+    try {
+        $raw = & $exe $stripper @Paths 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $raw) { return @{} }
+        foreach ($entry in ((@($raw) -join "") | ConvertFrom-Json)) { $map[$entry.path] = $entry.text }
+    } catch {
+        # FAIL OPEN, NEVER BLIND: an empty map falls back to raw text below, which can only produce a
+        # false positive a maintainer investigates -- never a silent green.
+        return @{}
+    }
+    return $map
+}
+
 function Get-HardcodedDriveMatches {
     param([string]$Root)
     # Not "$matches" -- that name collides case-insensitively with PowerShell's automatic
@@ -125,8 +161,12 @@ function Get-HardcodedDriveMatches {
     # which silently replaces the accumulator with a regex-capture Hashtable and later breaks
     # ConvertTo-Json ("System.Collections.Hashtable is not supported"). See Get-GradlePwshCoreTaskMatches.
     $found = @()
-    foreach ($file in Get-ScopedPathNeutralityFiles -Root $Root) {
-        $text = Get-Content -Raw -LiteralPath $file.FullName
+    $scopedFiles = @(Get-ScopedPathNeutralityFiles -Root $Root)
+    $pythonPaths = @($scopedFiles | Where-Object { $_.Extension -eq ".py" } | ForEach-Object { $_.FullName })
+    $scannable = Get-PythonScannableText -Root $Root -Paths $pythonPaths
+    $script:PythonProseStrippedFileCount = @($scannable.Keys).Count
+    foreach ($file in $scopedFiles) {
+        $text = if ($scannable.ContainsKey($file.FullName)) { $scannable[$file.FullName] } else { Get-Content -Raw -LiteralPath $file.FullName }
         $regexMatches = [regex]::Matches($text, "(?<![A-Za-z])[A-Za-z]:[\\/]")
         foreach ($match in $regexMatches) {
             $found += [pscustomobject]@{
@@ -247,6 +287,10 @@ try {
         pathNeutralityScanScope = @($pathNeutralityScanScope)
         pathNeutralityExcludedPaths = @($pathNeutralityExcludedPaths)
         runtimeAbsoluteOutputPathsIgnored = $true
+        # How many .py files had comments/docstrings stripped before scanning. 0 while .py files are
+        # in scope means the stripper did not run (no python, or it failed) and those files were
+        # scanned as raw text -- the fail-open path, which over-reports rather than under-reports.
+        pythonProseStrippedFileCount = $script:PythonProseStrippedFileCount
         pathNeutralityScan = @($hardcodedMatches)
         gradleCoreTaskScan = @($gradleMatches)
         findings = @($findings)
