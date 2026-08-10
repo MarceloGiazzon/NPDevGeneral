@@ -512,6 +512,11 @@
     "scripts/quality/security-pattern-sweep.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/strip_python_prose.py": {
+      "invocation": "orchestrated",
+      "reason": "Subroutine of run-portable-tooling-check.ps1, never run on its own. Returns a .py file's source minus comments and docstrings so the drive-letter scan reads code rather than the prose that explains a drive-letter defect.",
+      "date": "2026-08-10"
+    },
     "scripts/quality/summarize-dialect-conformance.py": {
       "invocation": "ci-gate"
     },
