@@ -99,6 +99,21 @@ fn build_command(python_exe: &Path, npdev_cli: &Path, args: &[&str], java_home: 
         // M3's whole thesis: JAVA_HOME set ONLY in the spawned process's own environment, never
         // touching this machine's PATH, registry, or any system setting.
         cmd.env("JAVA_HOME", jh);
+        // ...which means JAVA_HOME deliberately DISAGREES with whatever `java` is on PATH, on any
+        // machine that already has one. `npdev doctor`'s java-home-agreement check reads that
+        // disagreement as a fault -- correctly, for a terminal user who set JAVA_HOME by hand and
+        // now has Gradle silently using a different JDK than they think.
+        //
+        // Under the Manager it is the DESIGN, not a fault. So the Manager says so, rather than
+        // leaving doctor to infer it from the shape of the path: inferring intent from where files
+        // happen to live is REG-144's family, and this is the same question ("is this ours?") that
+        // eleven build-root resolvers got wrong by guessing.
+        //
+        // Found by CI: manager-db-toolbox runs on a runner that ships a system JDK -- the same shape
+        // as an ordinary developer's machine -- so doctor failed there while the bare container
+        // (no system java, nothing to disagree with) stayed green. Every user who already has Java
+        // would have hit this on their first Ready screen.
+        cmd.env("NPDEV_MANAGED_JDK", "1");
     }
     // Without this, npdev_cli.py's own default (repo_root().parent / "Build", where repo_root()
     // is the installed version's own directory) would scatter runtimehost-libs/npdev-ai under

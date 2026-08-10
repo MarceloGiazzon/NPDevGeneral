@@ -2052,6 +2052,20 @@ def _resolve_java_home_binary(java_home: str) -> Path:
     return Path(java_home) / "bin" / ("java.exe" if os.name == "nt" else "java")
 
 
+def _managed_jdk() -> bool:
+    """True when the NPDev Manager set JAVA_HOME to its own private JDK for this process.
+
+    The Manager exports `NPDEV_MANAGED_JDK=1` beside `JAVA_HOME` (see NPDevManager/src/npdev.rs).
+    It is a DECLARATION, deliberately, rather than doctor inferring ownership from the shape of the
+    path -- "is this directory ours?" answered by guessing is what eleven build-root resolvers got
+    wrong in REG-144.
+
+    Only java-home-agreement consults it, and only to decide whether a JAVA_HOME/PATH disagreement
+    is the Manager's design (it is) or a user's misconfiguration (it is not).
+    """
+    return os.environ.get("NPDEV_MANAGED_JDK", "").strip() not in ("", "0", "false", "False")
+
+
 def _check(id_: str, name: str, status: str, *, found: str | None = None,
            expected: str | None = None, detail: str | None = None, fix: str | None = None,
            fixCommand: str | None = None) -> dict:
@@ -3001,7 +3015,28 @@ def run_doctor(args: argparse.Namespace) -> int:
                     same = java_home_bin.resolve() == Path(path_java).resolve()
             except OSError:
                 same = False
-            if not same:
+            if not same and _managed_jdk():
+                # The Manager sets JAVA_HOME to its OWN private JDK, for the spawned process only,
+                # and deliberately leaves PATH alone (M3). On any machine that already has Java --
+                # which is most developers' -- that guarantees a disagreement, BY DESIGN. Reporting
+                # it as a fault would fail doctor on the first Ready screen for every such user, and
+                # the old fix text ("Set JAVA_HOME to your Java 17 installation") told them to change
+                # something that was already correct.
+                #
+                # This reads a DECLARATION from the Manager (NPDEV_MANAGED_JDK), not the shape of the
+                # path: "is this directory ours?" answered by guessing is REG-144's family.
+                checks.append(_check(
+                    "java-home-agreement", "JAVA_HOME", "pass", found=java_home,
+                    expected="set by the Manager to its own private JDK",
+                    detail=(
+                        f"JAVA_HOME={java_home} is the Manager's private JDK and does not match the "
+                        f"`java` on PATH ({path_java}). That is intended: the Manager sets JAVA_HOME "
+                        f"for the processes it starts and never touches your PATH, so your own Java "
+                        f"stays exactly as it was. Gradle follows JAVA_HOME, so builds use the "
+                        f"private JDK."
+                    ),
+                ))
+            elif not same:
                 checks.append(_check(
                     "java-home-agreement", "JAVA_HOME", "fail", found=java_home,
                     expected="agreeing with the java on PATH",
