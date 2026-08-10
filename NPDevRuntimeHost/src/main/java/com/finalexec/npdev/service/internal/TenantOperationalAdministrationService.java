@@ -71,17 +71,20 @@ public class TenantOperationalAdministrationService {
         List<Map<String, Object>> items = new ArrayList<>();
 
         try {
+            // try-with-resources (QUAL-2) -- see TemplateLibraryManagementService for the full note.
             if (Files.exists(SNAPSHOT_ROOT)) {
-                Files.list(SNAPSHOT_ROOT)
-                        .filter(path -> path.getFileName().toString().endsWith(".json"))
-                        .forEach(path -> {
-                            try {
-                                @SuppressWarnings("unchecked")
-                                Map<String, Object> item = objectMapper.readValue(path.toFile(), LinkedHashMap.class);
-                                items.add(item);
-                            } catch (Exception ignored) {
-                            }
-                        });
+                try (var paths = Files.list(SNAPSHOT_ROOT)) {
+                    paths
+                            .filter(path -> path.getFileName().toString().endsWith(".json"))
+                            .forEach(path -> {
+                                try {
+                                    @SuppressWarnings("unchecked")
+                                    Map<String, Object> item = objectMapper.readValue(path.toFile(), LinkedHashMap.class);
+                                    items.add(item);
+                                } catch (Exception ignored) {
+                                }
+                            });
+                }
             }
         } catch (Exception ignored) {
         }
@@ -218,9 +221,14 @@ public class TenantOperationalAdministrationService {
             }
 
             int count = 0;
-            List<Path> files = Files.list(root)
-                    .filter(path -> path.getFileName().toString().endsWith(".json"))
-                    .toList();
+            // try-with-resources (QUAL-2): the Stream must be closed even though .toList()
+            // materialises it -- terminal operations do not release the directory handle.
+            List<Path> files;
+            try (var paths = Files.list(root)) {
+                files = paths
+                        .filter(path -> path.getFileName().toString().endsWith(".json"))
+                        .toList();
+            }
 
             for (Path file : files) {
                 try {
@@ -247,9 +255,14 @@ public class TenantOperationalAdministrationService {
             }
 
             int count = 0;
-            List<Path> files = Files.list(root)
-                    .filter(path -> path.getFileName().toString().endsWith(".json"))
-                    .toList();
+            // try-with-resources (QUAL-2): the Stream must be closed even though .toList()
+            // materialises it -- terminal operations do not release the directory handle.
+            List<Path> files;
+            try (var paths = Files.list(root)) {
+                files = paths
+                        .filter(path -> path.getFileName().toString().endsWith(".json"))
+                        .toList();
+            }
 
             for (Path file : files) {
                 try {

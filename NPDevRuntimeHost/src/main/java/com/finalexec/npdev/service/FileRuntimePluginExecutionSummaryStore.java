@@ -91,9 +91,13 @@ public final class FileRuntimePluginExecutionSummaryStore implements RuntimePlug
             return 0L;
         }
         try {
-            return Files.lines(storePath, StandardCharsets.UTF_8)
-                    .filter(line -> line != null && !line.isBlank())
-                    .count();
+            // try-with-resources (QUAL-2): Files.lines holds the open file until the stream is
+            // closed. Leaked, the file cannot be replaced or deleted on Windows.
+            try (var lines = Files.lines(storePath, StandardCharsets.UTF_8)) {
+                return lines
+                        .filter(line -> line != null && !line.isBlank())
+                        .count();
+            }
         } catch (IOException exception) {
             throw new IllegalStateException("Failed counting plugin execution summaries in " + storePath, exception);
         }

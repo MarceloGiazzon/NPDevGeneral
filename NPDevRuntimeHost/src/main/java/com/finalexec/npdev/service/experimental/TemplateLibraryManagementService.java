@@ -50,8 +50,14 @@ public class TemplateLibraryManagementService {
         List<Map<String, Object>> items = new ArrayList<>();
 
         try {
+            // try-with-resources (QUAL-2): Files.list returns a Stream holding an open
+            // DirectoryStream, and its javadoc requires closing it. On Windows a leaked directory
+            // handle leaves the directory DELETE-PENDING, so its PARENT cannot be removed and the
+            // error names the parent -- which is how the same defect in a test was misdiagnosed as
+            // a JUnit @TempDir platform quirk for a morning (S1).
             if (Files.exists(LIBRARY_ROOT)) {
-                Files.list(LIBRARY_ROOT)
+                try (var paths = Files.list(LIBRARY_ROOT)) {
+                paths
                         .filter(path -> path.getFileName().toString().endsWith(".json"))
                         .forEach(path -> {
                             try {
@@ -61,6 +67,7 @@ public class TemplateLibraryManagementService {
                             } catch (Exception ignored) {
                             }
                         });
+                }
             }
         } catch (Exception ignored) {
         }

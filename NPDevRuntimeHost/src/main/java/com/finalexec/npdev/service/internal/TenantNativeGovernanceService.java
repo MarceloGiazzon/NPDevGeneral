@@ -53,17 +53,20 @@ public class TenantNativeGovernanceService {
         List<Map<String, Object>> items = new ArrayList<>();
 
         try {
+            // try-with-resources (QUAL-2) -- see TemplateLibraryManagementService for the full note.
             if (Files.exists(TENANT_GOVERNANCE_ROOT)) {
-                Files.list(TENANT_GOVERNANCE_ROOT)
-                        .filter(path -> path.getFileName().toString().endsWith(".json"))
-                        .forEach(path -> {
-                            try {
-                                @SuppressWarnings("unchecked")
-                                Map<String, Object> item = objectMapper.readValue(path.toFile(), LinkedHashMap.class);
-                                items.add(item);
-                            } catch (Exception ignored) {
-                            }
-                        });
+                try (var paths = Files.list(TENANT_GOVERNANCE_ROOT)) {
+                    paths
+                            .filter(path -> path.getFileName().toString().endsWith(".json"))
+                            .forEach(path -> {
+                                try {
+                                    @SuppressWarnings("unchecked")
+                                    Map<String, Object> item = objectMapper.readValue(path.toFile(), LinkedHashMap.class);
+                                    items.add(item);
+                                } catch (Exception ignored) {
+                                }
+                            });
+                }
             }
         } catch (Exception ignored) {
         }

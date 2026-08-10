@@ -447,17 +447,20 @@ public class SemanticBehaviorWriteBackService {
     private Map<String, Object> readJsonHistory(Path root, String timeKey) {
         List<Map<String, Object>> items = new ArrayList<>();
         try {
+            // try-with-resources (QUAL-2) -- see TemplateLibraryManagementService for the full note.
             if (Files.exists(root)) {
-                Files.list(root)
-                        .filter(path -> path.getFileName().toString().endsWith(".json"))
-                        .forEach(path -> {
-                            try {
-                                @SuppressWarnings("unchecked")
-                                Map<String, Object> item = objectMapper.readValue(path.toFile(), LinkedHashMap.class);
-                                items.add(item);
-                            } catch (Exception ignored) {
-                            }
-                        });
+                try (var paths = Files.list(root)) {
+                    paths
+                            .filter(path -> path.getFileName().toString().endsWith(".json"))
+                            .forEach(path -> {
+                                try {
+                                    @SuppressWarnings("unchecked")
+                                    Map<String, Object> item = objectMapper.readValue(path.toFile(), LinkedHashMap.class);
+                                    items.add(item);
+                                } catch (Exception ignored) {
+                                }
+                            });
+                }
             }
         } catch (Exception ignored) {
         }
