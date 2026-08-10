@@ -2725,19 +2725,41 @@ def run_db_test_connection(args: argparse.Namespace) -> int:
         fix_credentials="Correct the user and password above.",
     )
 
+    # A check that COULD NOT RUN is not a check that passed.
+    #
+    # These four are the ones that actually answer "can this app use this database": the credentials,
+    # the database's existence, the right to create tables, and whether the charset will silently
+    # mangle text. When the JDBC driver is not on this machine yet -- an ORDINARY state, true of every
+    # user who has not built an app -- all four report `warn` with "Not checked".
+    #
+    # `ok = not problems` counted only `fail`, so those four warns folded into success and the command
+    # printed "Connection usable." for a WRONG PASSWORD against a reachable engine. Found by the
+    # selftest's negative case at [8/9]; the positive case passed throughout, which is exactly why the
+    # negative one exists.
+    #
+    # `database-engine-support` is deliberately NOT in this set: it warns for an experimental engine,
+    # which is advisory and must not block a verdict.
+    VERDICT_BEARING = (
+        "database-credentials", "database-exists", "database-privileges", "database-charset",
+    )
     problems = [c for c in checks if c["status"] == "fail"]
-    ok = not problems
+    unverified = [c for c in checks if c["status"] == "warn" and c["id"] in VERDICT_BEARING]
+    ok = not problems and not unverified
+    exit_code = 1 if (problems or unverified) else 0
 
     if getattr(args, "json", False):
         print(json.dumps({
             "schemaVersion": "npdev-cli-result.v1",
             "command": "db test-connection",
             "ok": ok,
-            "exitCode": 1 if problems else 0,
+            "exitCode": exit_code,
             "checks": checks,
             "engine": engine["externalName"],
+            # Explicit, so a caller never has to infer "could not check" from a status count. The
+            # Manager renders the CLI's own words; this lets it tell the two apart without parsing.
+            "verdict": "usable" if ok else ("failed" if problems else "unverified"),
         }, indent=2))
-        return 1 if problems else 0
+        return exit_code
 
     print(f"npdev db test-connection -- {engine['externalName']}")
     print("=" * 60)
@@ -2749,8 +2771,20 @@ def run_db_test_connection(args: argparse.Namespace) -> int:
         if check["status"] == "fail" and check["fix"]:
             print(f"         fix: {check['fix']}")
     print()
-    print("Connection usable." if ok else "This connection is NOT usable yet -- see the FAIL rows.")
-    return 1 if problems else 0
+    if ok:
+        print("Connection usable.")
+    elif problems:
+        print("This connection is NOT usable yet -- see the FAIL rows.")
+    else:
+        # NOT the same sentence as a failure. Nothing here says the settings are wrong -- it says
+        # nobody checked them. Telling a user their password is bad when it was never tested is the
+        # confident-wrong-diagnosis this project has already shipped once.
+        names = ", ".join(c["name"] for c in unverified)
+        print(f"Connection NOT VERIFIED -- {len(unverified)} check(s) could not run: {names}.")
+        print("Your settings may be correct; NPDev could not test them. The reason is on each warn")
+        print("row above -- usually that this machine has no JDBC driver for this engine yet.")
+        print("Run `npdev setup` (or build an app once) to fetch it, then test again.")
+    return exit_code
 
 
 # M14: the five environment operations, mapped to the scripts the GENERATOR already emits.
