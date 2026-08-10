@@ -95,6 +95,12 @@ catch {
 # and AppGen ancestry and fails on any NEW leak (the ten already present are baselined as PORT-1,
 # with reasons, so the ratchet can only tighten). Lives here rather than in the AI-knowledge gate
 # because it generates, and that gate is contractually static.
+#
+# PORT-2 added a second rule to the same run: the generated tree is COPIED to a disjoint directory
+# and scanned for any reference to where it was generated. Rule 1 was blind to that half by
+# construction -- it requires the output root to be token-free, so a file hardcoding the output root
+# carried no forbidden token and reported clean. Four files did exactly that while this gate stayed
+# green.
 $outOfTreeScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\hygiene\check-out-of-tree-generation.ps1"
 $outOfTreeReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\out-of-tree-generation-report.json"
 $outOfTreeError = $null
@@ -102,7 +108,11 @@ $outOfTreeReport = $null
 try {
     & $outOfTreeScript -WorkspaceRoot $WorkspaceRoot -ReportPath $outOfTreeReportPath | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        $outOfTreeError = "Out-of-tree generation check failed (exit $LASTEXITCODE) -- a NEW absolute path from this machine reached emitted output."
+        # Two rules can fail here, and the difference matters to whoever reads this line. Rule 1: a
+        # NEW absolute path from THIS machine reached emitted output. Rule 2 (PORT-2): the tree was
+        # copied somewhere disjoint and a file in the copy still names where it was generated -- a
+        # moved app that silently builds and runs the original. The check's own output names which.
+        $outOfTreeError = "Out-of-tree generation check failed (exit $LASTEXITCODE) -- emitted output carries either a NEW absolute path from this machine, or a reference to the directory it was generated in."
     }
 }
 catch {
@@ -112,11 +122,17 @@ if (Test-Path -LiteralPath $outOfTreeReportPath -PathType Leaf) {
     try { $outOfTreeReport = Get-Content -LiteralPath $outOfTreeReportPath -Raw | ConvertFrom-Json } catch { $outOfTreeReport = $null }
 }
 $outOfTreeEvidence = [pscustomobject]@{
-    overallStatus = if ($null -eq $outOfTreeReport) { "failed" } else { [string]$outOfTreeReport.status }
-    filesScanned  = if ($null -eq $outOfTreeReport) { 0 } else { $outOfTreeReport.filesScanned }
-    knownDefects  = if ($null -eq $outOfTreeReport) { 0 } else { @($outOfTreeReport.knownDefects).Count }
-    reportPath    = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $outOfTreeReportPath
-    error         = $outOfTreeError
+    overallStatus     = if ($null -eq $outOfTreeReport) { "failed" } else { [string]$outOfTreeReport.status }
+    filesScanned      = if ($null -eq $outOfTreeReport) { 0 } else { $outOfTreeReport.filesScanned }
+    knownDefects      = if ($null -eq $outOfTreeReport) { 0 } else { @($outOfTreeReport.knownDefects).Count }
+    # PORT-2's rule, recorded separately: a run where the copy did not happen is NOT the same
+    # evidence as one where it happened and found nothing, and a single overall status cannot tell
+    # them apart. copyComplete is the guard that says the birthplace rule actually ran.
+    copyComplete      = if ($null -eq $outOfTreeReport) { $false } else { [bool]$outOfTreeReport.copyComplete }
+    birthplaceScanned = if ($null -eq $outOfTreeReport) { 0 } else { $outOfTreeReport.birthplaceScanned }
+    knownBirthDefects = if ($null -eq $outOfTreeReport) { 0 } else { @($outOfTreeReport.knownBirthDefects).Count }
+    reportPath        = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $outOfTreeReportPath
+    error             = $outOfTreeError
 }
 
 $deterministicGenerationEvidence = [pscustomobject]@{

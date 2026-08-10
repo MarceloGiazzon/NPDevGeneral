@@ -19,32 +19,78 @@ public final class OperationalRunbookEmitter {
     private static final String RESET_CONFIRMATION = "I_UNDERSTAND_DB_DATA_WILL_BE_DELETED";
 
     /**
-     * PORT-1: resolve the plan's APP-RELATIVE data root, identically in every script that touches it.
+     * PORT-1/PORT-2: resolve every APP-RELATIVE value the plan carries, identically in every script
+     * that touches one.
      *
      * <p>Emitted as one shared block rather than copied per site for the reason QUAL-3 records: two
      * resolutions of "where is this app's data" is one database with two front doors, and the second
-     * one is always found by a user rather than by a gate. It is also why this is a FUNCTION and not
-     * a one-line expression at each call -- a per-site copy is how the H2Server branch ends up
+     * one is always found by a user rather than by a gate. It is also why these are FUNCTIONS and not
+     * one-line expressions at each call -- a per-site copy is how the H2Server branch ends up
      * anchored somewhere the Reset branch is not.
+     *
+     * <p>PORT-2 widened it from the data root to the app root itself. {@code finalAppPath} and
+     * {@code opsRoot} used to be absolute, so a copied app's toolbox built and ran the app AT THE
+     * ORIGINAL PATH -- not a failure a user notices, which is what makes it worse than a failure:
+     * they edit the copy and run the original. There is now ONE anchor
+     * ({@code Split-Path -Parent $PSScriptRoot}) and ONE resolver over it, rather than a second
+     * mechanism per value.
      *
      * <p>Twin-pair {@code app-data-root-anchor-three-seams} (token: npdev-app-data-root-anchor).
      * This RESOLVES the root {@code UserDatabaseDefinitionLoader} decided, for the five scripts --
      * one of which recursively deletes it.
      */
     private static final String DATA_ROOT_HELPER = """
-# PORT-1: the plan carries an APP-RELATIVE data root ('data', or 'data/<generated name>'), never the
-# absolute path of the machine that generated this app -- which is what used to be baked into
-# spring.datasource.url, so a generated app opened its database on a drive the recipient may not
-# have had. Both halves resolve it against the SAME anchor: the app against its own working
-# directory (the FinalApp root), this toolbox against $PSScriptRoot/.. -- the same directory,
-# because _ops lives INSIDE the app (QUAL-3). An absolute value is still honoured, so a plan written
-# by an older generator keeps working.
+# PORT-1/PORT-2: the plan carries APP-RELATIVE paths -- a data root ('data', or
+# 'data/<generated name>') and the app root itself ('.') -- never the absolute path of the machine
+# that generated this app. That absolute form is what used to be baked into spring.datasource.url,
+# so a generated app opened its database on a drive the recipient may not have had, and into
+# finalAppPath, so a COPIED app's toolbox operated the original.
+#
+# One anchor, one resolver. The app resolves its own paths against its working directory (the
+# FinalApp root); this toolbox resolves them against $PSScriptRoot/.. -- the same directory, because
+# _ops lives INSIDE the app (QUAL-3). An absolute value is still honoured, so a plan written by an
+# older generator keeps working.
+function Resolve-NpdevAppRelative {
+  param([string]$Raw)
+  if ([string]::IsNullOrWhiteSpace($Raw)) { return '' }
+  if ([System.IO.Path]::IsPathRooted($Raw)) { return [System.IO.Path]::GetFullPath($Raw) }
+  return [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $PSScriptRoot) $Raw))
+}
+
+# Falls back to the anchor itself when the plan says nothing: the app root is the one path this
+# toolbox can always know without being told, because it is where it lives.
+function Get-NpdevAppRoot {
+  param([object]$Plan)
+  $resolved = Resolve-NpdevAppRelative ([string]$Plan.finalAppPath)
+  if ([string]::IsNullOrWhiteSpace($resolved)) { return [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot)) }
+  return $resolved
+}
+
 function Get-NpdevDataRoot {
   param([object]$Plan)
-  $raw = [string]$Plan.resolvedDataRoot
-  if ([string]::IsNullOrWhiteSpace($raw)) { return '' }
-  if ([System.IO.Path]::IsPathRooted($raw)) { return [System.IO.Path]::GetFullPath($raw) }
-  return [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $PSScriptRoot) $raw))
+  return Resolve-NpdevAppRelative ([string]$Plan.resolvedDataRoot)
+}
+""";
+
+    /**
+     * PORT-2: the runtimehost-libs jar cache is the ONE absolute path in this plan that is
+     * legitimately not part of the app.
+     *
+     * <p>It is machine-level and shared by every app built on that machine, so it does not travel
+     * with a copied app and could not be made app-relative without lying. What it must never be is
+     * BAKED into a script: a recipient would have to edit generated files to point at their own.
+     * {@code $env:NPDEV_RUNTIMEHOST_LIBS} therefore wins, and the value recorded at generation time
+     * is only the fallback -- the same precedence the generated {@code build.gradle} already uses
+     * for {@code NPDEV_RUNTIMEHOST_LIBS_DIR} over {@code -PnpdevRuntimeHostLibsDir} (REG-137).
+     *
+     * <p>Every consumer {@code Test-Path}s the result, so an empty answer costs nothing: the search
+     * simply falls through to the app's own build directory and the Gradle/Maven caches.
+     */
+    private static final String RUNTIMEHOST_LIBS_HELPER = """
+function Get-NpdevRuntimeHostLibs {
+  param([object]$Plan)
+  if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_RUNTIMEHOST_LIBS)) { return $env:NPDEV_RUNTIMEHOST_LIBS }
+  return [string]$Plan.runtimeHostLibsDir
 }
 """;
 
@@ -121,8 +167,7 @@ function Test-NpdevServerReachable {
             apiKey = "dev-key";
         }
         boolean hasUserConcept = hasConcept(model, "User");
-        Path buildRoot = resolveBuildRoot(normalizedFinalAppRoot);
-        Path runtimeHostLibs = buildRoot.resolve("runtimehost-libs").toAbsolutePath().normalize();
+        Path runtimeHostLibs = resolveRuntimeHostLibs(normalizedFinalAppRoot);
 
         Map<String, Object> resolvedPlan = resolvedPlan(model, normalizedFinalAppRoot, opsRoot, runtimeHostLibs,
                 plan, serverPort, apiKey, hasUserConcept);
@@ -131,12 +176,12 @@ function Test-NpdevServerReachable {
         write(opsRoot.resolve("Start-Environment.ps1"), startEnvironmentScript());
         write(opsRoot.resolve("Stop-Environment.ps1"), stopEnvironmentScript());
         write(opsRoot.resolve("Status-Environment.ps1"), statusEnvironmentScript());
-        write(opsRoot.resolve("Build-FinalApp.ps1"), buildFinalAppScript(normalizedFinalAppRoot, runtimeHostLibs));
-        write(opsRoot.resolve("Run-FinalApp.ps1"), runFinalAppScript(normalizedFinalAppRoot, serverPort));
+        write(opsRoot.resolve("Build-FinalApp.ps1"), buildFinalAppScript());
+        write(opsRoot.resolve("Run-FinalApp.ps1"), runFinalAppScript(serverPort));
         write(opsRoot.resolve("Smoke-Test.ps1"), smokeTestScript());
         write(opsRoot.resolve("Print-DbConnectionInfo.ps1"), printDbConnectionInfoScript());
         write(opsRoot.resolve("Reset-Environment.ps1"), resetEnvironmentScript());
-        write(opsRoot.resolve("README_RUNBOOK.md"), readme(opsRoot));
+        write(opsRoot.resolve("README_RUNBOOK.md"), readme());
         return opsRoot;
     }
 
@@ -173,9 +218,21 @@ function Test-NpdevServerReachable {
         out.put("password", plan.password());
         out.put("jdbcUrl", plan.jdbcUrl());
         out.put("driverClassName", plan.driverClassName());
-        out.put("finalAppPath", slash(finalAppRoot));
-        out.put("opsRoot", slash(opsRoot));
-        out.put("runtimeHostLibsDir", slash(runtimeHostLibs));
+        // PORT-2. These were absolute, and that was the defect: a copied app's toolbox read them and
+        // went back to operate the ORIGINAL. Recorded relative to the FinalApp root and resolved at
+        // READ time against $PSScriptRoot/.. -- the same treatment resolvedDataRoot already gets, by
+        // the same resolver, against the same anchor. '.' rather than '' so the value stays a path
+        // and an older reader that concatenates it still produces something meaningful.
+        out.put("finalAppPath", relativeToApp(finalAppRoot, finalAppRoot));
+        out.put("opsRoot", relativeToApp(finalAppRoot, opsRoot));
+        // The ONE legitimate absolute, and it is a HINT, not an instruction: a machine-level jar
+        // cache shared by every app built here, which does not travel with a copied app. No script
+        // bakes it -- they call Get-NpdevRuntimeHostLibs, so $env:NPDEV_RUNTIMEHOST_LIBS overrides it
+        // without anyone editing a generated file. Empty when this app was not generated under a
+        // build root at all: a fabricated path that has never existed is not information, and
+        // recording one is how "<somewhere>/Build/runtimehost-libs" ends up in an app that was never
+        // near it.
+        out.put("runtimeHostLibsDir", runtimeHostLibs == null ? "" : slash(runtimeHostLibs));
         out.put("serverPort", serverPort);
         out.put("apiKey", apiKey);
         out.put("schemaFingerprint", plan.schemaFingerprint());
@@ -222,7 +279,7 @@ function Test-NpdevServerReachable {
 $ErrorActionPreference = 'Stop'
 $planPath = Join-Path $PSScriptRoot 'resolved-db-plan.json'
 $plan = Get-Content -Raw -LiteralPath $planPath | ConvertFrom-Json
-""" + DATA_ROOT_HELPER + EXTERNAL_NOTICE_HELPER + """
+""" + DATA_ROOT_HELPER + EXTERNAL_NOTICE_HELPER + RUNTIMEHOST_LIBS_HELPER + """
 # STOR-14: "ensure the database exists" LOSES ITS CLIENT here, and the answer is to stop trying.
 # This script can guarantee a client for a container it started -- `docker exec <container> createdb`
 # runs the client that lives INSIDE the image. A server NPDev did not start guarantees nothing, and
@@ -257,7 +314,10 @@ function Find-NpdevDriverJar {
   if ($null -eq $coord) { return $null }
   $gradleGroup = Join-Path $env:USERPROFILE ('.gradle\\caches\\modules-2\\files-2.1\\' + $coord.group + '\\' + $coord.artifact)
   $mavenGroup = Join-Path $env:USERPROFILE ('.m2\\repository\\' + ($coord.group -replace '[.]', '\\') + '\\' + $coord.artifact)
-  $roots = @($Plan.runtimeHostLibsDir, (Join-Path $Plan.finalAppPath 'build'), $gradleGroup, $mavenGroup) |
+  # PORT-2: both roots are RESOLVED, never read raw -- the libs cache through the env-first helper,
+  # the app's own build directory through the one app-root anchor. Reading $Plan.finalAppPath
+  # directly is what made a moved app search the original app's build output.
+  $roots = @((Get-NpdevRuntimeHostLibs -Plan $Plan), (Join-Path (Get-NpdevAppRoot -Plan $Plan) 'build'), $gradleGroup, $mavenGroup) |
     Where-Object { $_ -and (Test-Path -LiteralPath $_) }
   foreach ($root in $roots) {
     $jar = Get-ChildItem -Path $root -Recurse -Filter ($coord.artifact + '-*.jar') -ErrorAction SilentlyContinue |
@@ -517,7 +577,7 @@ if ($plan.profile.kind -eq 'embedded-server') {
   # E17: search the libs directory THIS app was generated against, never a path from the machine
   # that generated it. This used to read 'D:\\WorkSpace\\NPDev\\Build' -- the author's drive letter,
   # shipped to the user, and named again in the error message telling them where to look.
-  $searchRoots = @($plan.runtimeHostLibsDir, (Join-Path $plan.finalAppPath 'build'), $dataRoot) |
+  $searchRoots = @((Get-NpdevRuntimeHostLibs -Plan $plan), (Join-Path (Get-NpdevAppRoot -Plan $plan) 'build'), $dataRoot) |
     Where-Object { $_ -and (Test-Path -LiteralPath $_) }
   $jar = $null
   foreach ($root in $searchRoots) {
@@ -544,7 +604,7 @@ if ($plan.profile.kind -eq 'embedded-server') {
   # app-relative path ('./data/<db>') and H2Server resolves that path SERVER-side. Anchoring the
   # server one directory deeper than the client names would open <app>/data/data/<db> -- a second,
   # empty database, created silently, which is the failure mode this whole item is about.
-  $appRoot = Split-Path -Parent $PSScriptRoot
+  $appRoot = Get-NpdevAppRoot -Plan $plan
   $serverArgs = @('-cp', $jar.FullName, 'org.h2.tools.Server', '-tcp', '-tcpPort', [string]$plan.hostPort, '-baseDir', $appRoot, '-ifNotExists')
   $process = Start-Process -FilePath 'java' -ArgumentList $serverArgs -WorkingDirectory $appRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutLogFile -RedirectStandardError $stderrLogFile
   Set-Content -LiteralPath $pidFile -Value $process.Id
@@ -657,22 +717,57 @@ Write-Host 'InMemory has no physical database service.'
 """;
     }
 
-    private static String buildFinalAppScript(Path finalAppRoot, Path runtimeHostLibs) {
+    /**
+     * PORT-2: this script used to open with {@code Set-Location '<absolute app path>'} and pass an
+     * absolute {@code -PnpdevRuntimeHostLibsDir}. Copy the app anywhere and it kept building the
+     * ORIGINAL -- silently, successfully, with the copy's edits nowhere in the result.
+     */
+    private static String buildFinalAppScript() {
         return """
 $ErrorActionPreference = 'Stop'
-Set-Location '%s'
-& '.\\gradlew.bat' --no-daemon -PnpdevRuntimeHostLibsDir='%s' clean build --stacktrace --console=plain
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+""" + DATA_ROOT_HELPER + RUNTIMEHOST_LIBS_HELPER + """
+Set-Location (Get-NpdevAppRoot -Plan $plan)
+# The -P flag is OMITTED, not passed empty, when no libs directory is known: the generated
+# build.gradle has its own resolution chain (env var, then this property, then a marker walk), and
+# an empty property would shadow it with nothing.
+$gradleArgs = @('--no-daemon')
+$libs = Get-NpdevRuntimeHostLibs -Plan $plan
+# A cache recorded on the GENERATING machine is not a fact about THIS one. Passing it regardless is
+# how a recipient gets "Missing NPDev RuntimeHost libs manifest in D:/..." -- a drive they do not
+# have, named by a file they did not write. Dropped instead, so build.gradle's own chain runs and
+# the message names something they can act on. An explicit $env:NPDEV_RUNTIMEHOST_LIBS is passed
+# through even when it does not exist: that one is the user's own statement, and swallowing a typo
+# is worse than failing on it.
+if (-not [string]::IsNullOrWhiteSpace($libs) -and
+    [string]::IsNullOrWhiteSpace($env:NPDEV_RUNTIMEHOST_LIBS) -and
+    -not (Test-Path -LiteralPath $libs)) {
+  Write-Host "The runtimehost-libs cache recorded when this app was generated is not on this machine:"
+  Write-Host "  $libs"
+  Write-Host "Ignoring it. If the build cannot find its jars, set `$env:NPDEV_RUNTIMEHOST_LIBS to yours."
+  $libs = ''
+}
+if (-not [string]::IsNullOrWhiteSpace($libs)) { $gradleArgs += "-PnpdevRuntimeHostLibsDir=$libs" }
+$gradleArgs += @('clean', 'build', '--stacktrace', '--console=plain')
+& '.\\gradlew.bat' @gradleArgs
 exit $LASTEXITCODE
-""".formatted(ps(finalAppRoot), ps(runtimeHostLibs));
+""";
     }
 
-    private static String runFinalAppScript(Path finalAppRoot, int serverPort) {
+    /**
+     * PORT-2: same story as Build-FinalApp, one step worse -- it also named the jar by absolute
+     * path, so a moved app ran the original app's jar and reported success on the wrong binary.
+     */
+    private static String runFinalAppScript(int serverPort) {
         return """
 $ErrorActionPreference = 'Stop'
-Set-Location '%s'
-java -jar '%s' --server.port=%d
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+""" + DATA_ROOT_HELPER + """
+$appRoot = Get-NpdevAppRoot -Plan $plan
+Set-Location $appRoot
+java -jar (Join-Path $appRoot 'build\\libs\\FinalExec-0.1.0.jar') --server.port=%d
 exit $LASTEXITCODE
-""".formatted(ps(finalAppRoot), ps(finalAppRoot.resolve("build").resolve("libs").resolve("FinalExec-0.1.0.jar")), serverPort);
+""".formatted(serverPort);
     }
 
     private static String smokeTestScript() {
@@ -844,59 +939,75 @@ Write-Host "Environment reset for $($plan.appId)."
 """;
     }
 
-    private static String readme(Path opsRoot) {
-        String create = ps(opsRoot.resolve("Create-Environment.ps1"));
-        String build = ps(opsRoot.resolve("Build-FinalApp.ps1"));
-        String run = ps(opsRoot.resolve("Run-FinalApp.ps1"));
-        String smoke = ps(opsRoot.resolve("Smoke-Test.ps1"));
-        String print = ps(opsRoot.resolve("Print-DbConnectionInfo.ps1"));
-        String stop = ps(opsRoot.resolve("Stop-Environment.ps1"));
-        String reset = ps(opsRoot.resolve("Reset-Environment.ps1"));
+    /**
+     * PORT-2: the runbook used to print SEVEN absolute paths -- the commands a user is literally
+     * told to type. Copy the app and every one of them still pointed at the original, so following
+     * the instructions in the copy operated the app you were not looking at. Relative now, anchored
+     * by a sentence saying what they are relative to.
+     */
+    private static String readme() {
         return """
 # NPDev Generated FinalApp Runbook
+
+Run every command below **from this `_ops` directory** -- it lives inside the app it operates, so
+the paths are relative to it and stay correct wherever you copy the app to.
+
+```powershell
+cd <this app>/_ops
+```
 
 1. Create environment
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File '%s'
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Create-Environment.ps1
 ```
 
 2. Build FinalApp
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File '%s'
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Build-FinalApp.ps1
 ```
 
 3. Run FinalApp
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File '%s'
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Run-FinalApp.ps1
 ```
 
 4. Smoke-test FinalApp
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File '%s'
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Smoke-Test.ps1
 ```
 
 5. Open DBeaver
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File '%s'
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Print-DbConnectionInfo.ps1
 ```
 
 6. Stop environment
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File '%s'
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Stop-Environment.ps1
 ```
 
 7. Reset environment if needed
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File '%s' -Confirm I_UNDERSTAND_DB_DATA_WILL_BE_DELETED
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Reset-Environment.ps1 -Confirm I_UNDERSTAND_DB_DATA_WILL_BE_DELETED
 ```
-""".formatted(create, build, run, smoke, print, stop, reset);
+
+## Building somewhere the NPDev jar cache is not
+
+`Build-FinalApp.ps1` reuses the machine-level `runtimehost-libs` cache recorded when this app was
+generated. That directory is NOT part of the app and does not travel with a copy. Point it at your
+own without editing anything here:
+
+```powershell
+$env:NPDEV_RUNTIMEHOST_LIBS = '<your runtimehost-libs directory>'
+```
+""";
     }
 
     private static void write(Path path, String content) throws Exception {
@@ -921,22 +1032,52 @@ pwsh.exe -NoProfile -ExecutionPolicy Bypass -File '%s' -Confirm I_UNDERSTAND_DB_
         return false;
     }
 
-    private static Path resolveBuildRoot(Path finalAppRoot) {
+    /**
+     * The machine-level runtimehost-libs cache, or {@code null} when this app was not generated
+     * under a build root at all.
+     *
+     * <p>REG-144's family: NEVER a hardcoded author path. This used to answer
+     * {@code Path.of("D:/WorkSpace/NPDev/Build")}, so an app generated anywhere that is not under a
+     * directory called Build carried THIS MACHINE's drive letter to the user.
+     *
+     * <p>PORT-2 removed the replacement fallback too, and that is the less obvious half. Answering
+     * {@code <app parent>/Build/runtimehost-libs} when no build root exists is not a conservative
+     * default -- it NAMES A DIRECTORY THAT HAS NEVER EXISTED, inside the tree being generated, and
+     * writes it into the plan as though it were a fact. The out-of-tree check caught exactly that:
+     * an app generated to {@code C:\\npdev-oot\\<run>} recorded a libs cache at
+     * {@code C:\\npdev-oot\\<run>\\Build\\runtimehost-libs}, which is the app's own birthplace
+     * dressed up as a machine resource. Null is the honest answer, every consumer already filters on
+     * {@code Test-Path}, and the generated build.gradle has its own resolution chain to fall through
+     * to.
+     */
+    private static Path resolveRuntimeHostLibs(Path finalAppRoot) {
         Path current = finalAppRoot;
         while (current != null) {
             if (current.getFileName() != null && "Build".equalsIgnoreCase(current.getFileName().toString())) {
-                return current.toAbsolutePath().normalize();
+                return current.toAbsolutePath().normalize().resolve("runtimehost-libs");
             }
             current = current.getParent();
         }
-        // REG-144's family: NEVER a hardcoded author path. This used to answer
-        // Path.of("D:/WorkSpace/NPDev/Build"), so an app generated anywhere that is not under a
-        // directory called Build carried THIS MACHINE's drive letter to the user -- in the most
-        // user-visible file NPDev produces, and in the error message telling them where to look.
-        // The app's own parent is the honest answer: the toolbox lives beside the app it operates.
-        return finalAppRoot.getParent() == null
-                ? finalAppRoot.toAbsolutePath().normalize()
-                : finalAppRoot.getParent().resolve("Build").toAbsolutePath().normalize();
+        return null;
+    }
+
+    /**
+     * PORT-2: a plan value recorded relative to the FinalApp root, in the forward-slash spelling the
+     * rest of the plan uses. The app root itself becomes {@code "."} rather than {@code ""} so the
+     * value stays a usable path segment.
+     *
+     * <p>Falls back to the absolute form when the target genuinely lies outside the app -- a
+     * relative path with {@code ..} in it would be worse than an absolute one: it survives the copy
+     * syntactically and then resolves to some unrelated directory beside the new location.
+     */
+    private static String relativeToApp(Path finalAppRoot, Path target) {
+        Path app = finalAppRoot.toAbsolutePath().normalize();
+        Path abs = target.toAbsolutePath().normalize();
+        if (!abs.startsWith(app)) {
+            return slash(abs);
+        }
+        String rel = app.relativize(abs).toString().replace('\\', '/');
+        return rel.isEmpty() ? "." : rel;
     }
 
     private static int readInt(JsonNode root, int fallback, String... path) {
@@ -963,9 +1104,10 @@ pwsh.exe -NoProfile -ExecutionPolicy Bypass -File '%s' -Confirm I_UNDERSTAND_DB_
         return current;
     }
 
-    private static String ps(Path path) {
-        return path.toAbsolutePath().normalize().toString().replace("'", "''");
-    }
+    // `ps(Path)` -- single-quote-escape an absolute path for a PowerShell literal -- lived here
+    // until PORT-2. It is deleted rather than left unused on purpose: its only job was to bake an
+    // absolute path into an emitted script, which is the defect. Nothing in this emitter should need
+    // it again, and an available helper is an invitation.
 
     private static String slash(Path path) {
         return path.toAbsolutePath().normalize().toString().replace('\\', '/');
