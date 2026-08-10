@@ -1,5 +1,9 @@
 # NPDev Manager — Manual
 
+> **New machine, no terminal?** The short path is
+> [`INSTALL_ON_A_NEW_MACHINE.md`](INSTALL_ON_A_NEW_MACHINE.md) — download, install, Setup,
+> Doctor, first app, in six steps. This page is the full manual.
+
 Installs and runs NPDev on a machine that has nothing on it — no Java, no Python, no git — and
 never asks you to open a terminal.
 
