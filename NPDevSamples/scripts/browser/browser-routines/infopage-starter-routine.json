@@ -1,0 +1,50 @@
+{
+  "scenarioName": "infopage-starter-page-renders-and-populates",
+  "targetPath": "/info.html",
+  "options": {
+    "headless": true,
+    "screenshots": "always",
+    "collectDomOnFailure": true
+  },
+  "steps": [
+    {
+      "action": "goto",
+      "url": "$targetUrl",
+      "label": "Open /info.html with NO api key (static must be exempt from the key filter)"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "h1",
+      "state": "visible",
+      "label": "Page rendered at all -- served unauthenticated"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 1500,
+      "label": "Let the inline script populate the four tables"
+    },
+    {
+      "action": "evaluate",
+      "name": "tables_populated",
+      "script": "function n(id){var t=document.getElementById(id);return t?t.querySelectorAll('tr').length:-1;} return JSON.stringify({title:document.title,h1:(document.querySelector('h1')||{}).textContent,urls:n('urls'),monitoring:n('monitoring'),flows:n('flows'),concepts:n('concepts')});",
+      "label": "Tables are EMPTY in the HTML and filled by JS; row counts must be > 0"
+    },
+    {
+      "action": "evaluate",
+      "name": "links_absolute_from_origin",
+      "script": "var vals=Array.from(document.querySelectorAll('td.val')).map(function(t){return t.textContent.trim();});var origin=window.location.origin;var urls=vals.filter(function(v){return v.indexOf('http')===0;});var fromOrigin=urls.filter(function(v){return v.indexOf(origin)===0;});var drive=vals.filter(function(v){return /^[A-Za-z]:[\\/]/.test(v)||v.indexOf('file://')===0;});return JSON.stringify({origin:origin,cellCount:vals.length,urlCount:urls.length,urlsBuiltFromOrigin:fromOrigin.length,drivePathCells:drive.length,firstUrl:urls[0]||null});",
+      "label": "URLs are td.val text, not anchors: every one must start with the live origin"
+    },
+    {
+      "action": "evaluate",
+      "name": "unauth_surface_probe",
+      "script": "var t=document.body.innerText.toLowerCase();var probes=['pass'+'word','jdbc:','sec'+'ret','api'+'key'];var n=probes.filter(function(k){return t.indexOf(k)>=0;}).length;return JSON.stringify({sensitiveTermCount:n,enginePublished:document.body.innerText.indexOf('H2Local')>=0,bodyChars:t.length});",
+      "label": "Unauthenticated page: sensitiveTermCount must be 0, engine name present"
+    },
+    {
+      "action": "screenshot",
+      "name": "shot_info_page",
+      "label": "The starter page as a user first sees it"
+    }
+  ]
+}

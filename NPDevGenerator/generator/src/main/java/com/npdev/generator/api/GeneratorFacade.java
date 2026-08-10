@@ -12,6 +12,7 @@ import com.npdev.generator.emitters.ControllerEmitter;
 import com.npdev.generator.emitters.DtoEmitter;
 import com.npdev.generator.emitters.EntityEmitter;
 import com.npdev.generator.emitters.GeneratedFolderSignatureEmitter;
+import com.npdev.generator.emitters.InfoPageEmitter;
 import com.npdev.generator.emitters.MetadataManifestAssetEmitter;
 import com.npdev.generator.emitters.PluginRequirementAssetEmitter;
 import com.npdev.generator.emitters.RuntimeApiEmitter;
@@ -185,6 +186,7 @@ public final class GeneratorFacade {
         new ControllerEmitter(templates, writer).emit(model);
 
         new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath, superUserRole);
+        new InfoPageEmitter(templates, writer).emit(model, databasePlan);
         if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
             new BusinessUiEmitter(templates, writer).emit(model, superUserRole, settingResolver);
             // Phase 7: provenance/store/box-view admin surfaces ride along with the business UI,
