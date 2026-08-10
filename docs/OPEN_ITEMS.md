@@ -6,13 +6,14 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**162 item(s) migrated: 3 open/partial, 159 done.**
+**163 item(s) migrated: 4 open/partial, 159 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
 | QUAL-2 | Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red | BUG | MEDIUM | OPEN | 2026-08-09 |
+| QUAL-4 | The maturity-bootstrap CI step wraps everything in continue-on-error, which discards the exact exit-2-vs-exit-1 distinction REG-32 built -- a real failure there would keep CI green | GAP | MEDIUM | OPEN | 2026-08-10 |
 | STOR-13 | Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in | BUG | MEDIUM | OPEN | 2026-08-09 |
 | STOR-14 | No way to say "this database is not mine to manage" -- the `_ops` toolbox assumes it provisioned every server engine, and `Reset-Environment.ps1` recursively deletes a data root that may be the user's own | GAP | HIGH | OPEN | 2026-08-09 |
 
@@ -40,6 +41,37 @@
 
 Why this is worth an item rather than a quiet fix: the symptom is PLATFORM-DEPENDENT and delayed. POSIX permits unlinking a directory that is still open, so on Linux CI these leak a file descriptor and nothing else observable; on Windows the directory becomes undeletable (or delete-pending, which blocks its PARENT from being removed and names the parent in the error, not the leaked path). A generated app that runs long enough on Windows can therefore fail to clean up a tenant or draft directory for a reason whose error message points somewhere else entirely -- which is exactly how the generator instance got misdiagnosed as a harness problem for so long.
 Deliberately NOT fixed in the same pass. STABILIZE_PLAN.md S4 freezes main from the release tag until the second machine reports, and states that anything discovered which does not block that machine goes to the backlog unfixed -- the point of the freeze being that the second machine tests one thing rather than a moving target. None of these ten is on the path a first-run user walks (create an app, build it, boot it, change a field): they are tenant-administration, working-draft and template-library services.
+
+### QUAL-4 — The maturity-bootstrap CI step wraps everything in continue-on-error, which discards the exact exit-2-vs-exit-1 distinction REG-32 built -- a real failure there would keep CI green
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
+**Verification:** VERIFIED_LIVE
+**Source:** Spotted in a beta1.12-era run log: "PRECONDITION-UNMET: 21 of 21 required reports were never generated (producers not run) ... npdev command failed with exit code 2 ... Error: Process completed with exit code 2." The job was green, because the step carries continue-on-error.
+**Surface:** `ci/npdev-ci-validation`
+**Files:**
+- `.github/workflows/npdev-ci-validation.yml`
+
+Two separate problems in one step (.github/workflows/npdev-ci-validation.yml:251, "Bootstrap post-Beta0 maturity reports").
+1. THE DISTINCTION IS DISCARDED. REG-32 deliberately taught this chain to separate
+   precondition-unmet (exit 2, not a defect -- the ~21 producer gates do not run in this job) from
+   check-failed (exit 1, a real failure). The step then sets `continue-on-error: true` across the
+   whole block, which tolerates BOTH identically. So if `npdev report bootstrap` or
+   `./gradlew postBeta0MaturityCheck` ever fails for a real reason, NPDev CI Validation stays green
+   and nobody sees it.
+
+   This is the shape the project keeps finding: a distinction built carefully at one layer and
+   thrown away at the layer above. Tier B was green while no app could boot; the dialect answered
+   correctly while the emitter never asked; here the exit code is computed correctly and then
+   ignored.
+
+   The step's own comment is honest that this was deferred on purpose -- "flipping the flag for the
+   whole step is a separate, higher-stakes CI-gating decision this fix did not make" -- which was
+   reasonable when only two of the four commands in the block had been audited.
+
+2. THE COMMENT IS NOW A STALE RECORD. It states the step "prints PRECONDITION-UNMET: 19 of 21".
+   The observed log says 21 of 21. Two reports that were once produced in this job no longer are.
+   Not fatal (everything here is advisory today), but the number in the comment is the only record
+   of what the expected state IS, and it no longer matches.
 
 ### STOR-13 — Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in
 

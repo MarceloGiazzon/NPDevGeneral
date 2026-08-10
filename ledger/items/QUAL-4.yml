@@ -1,0 +1,56 @@
+id: QUAL-4
+title: >-
+  The maturity-bootstrap CI step wraps everything in continue-on-error, which discards the exact
+  exit-2-vs-exit-1 distinction REG-32 built -- a real failure there would keep CI green
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-10
+verification: VERIFIED_LIVE
+surface: ci/npdev-ci-validation
+source: >-
+  Spotted in a beta1.12-era run log: "PRECONDITION-UNMET: 21 of 21 required reports were never
+  generated (producers not run) ... npdev command failed with exit code 2 ... Error: Process
+  completed with exit code 2." The job was green, because the step carries continue-on-error.
+detail: >-
+  Two separate problems in one step (.github/workflows/npdev-ci-validation.yml:251, "Bootstrap
+  post-Beta0 maturity reports").
+
+  1. THE DISTINCTION IS DISCARDED. REG-32 deliberately taught this chain to separate
+     precondition-unmet (exit 2, not a defect -- the ~21 producer gates do not run in this job) from
+     check-failed (exit 1, a real failure). The step then sets `continue-on-error: true` across the
+     whole block, which tolerates BOTH identically. So if `npdev report bootstrap` or
+     `./gradlew postBeta0MaturityCheck` ever fails for a real reason, NPDev CI Validation stays green
+     and nobody sees it.
+
+     This is the shape the project keeps finding: a distinction built carefully at one layer and
+     thrown away at the layer above. Tier B was green while no app could boot; the dialect answered
+     correctly while the emitter never asked; here the exit code is computed correctly and then
+     ignored.
+
+     The step's own comment is honest that this was deferred on purpose -- "flipping the flag for the
+     whole step is a separate, higher-stakes CI-gating decision this fix did not make" -- which was
+     reasonable when only two of the four commands in the block had been audited.
+
+  2. THE COMMENT IS NOW A STALE RECORD. It states the step "prints PRECONDITION-UNMET: 19 of 21".
+     The observed log says 21 of 21. Two reports that were once produced in this job no longer are.
+     Not fatal (everything here is advisory today), but the number in the comment is the only record
+     of what the expected state IS, and it no longer matches.
+resolution: >-
+  Not started. Deliberately NOT fixed before the second-round tag: this changes what can fail CI, and
+  a CI-gating change during a release freeze is the wrong trade -- the step is advisory today and
+  would remain advisory until the fix lands.
+
+  The fix is small because the distinction already exists:
+
+      set +e; ./npdev report bootstrap; rc=$?; set -e
+      if [ $rc -eq 2 ]; then echo "advisory: producers not run in this job"; elif [ $rc -ne 0 ]; then exit $rc; fi
+
+  the same for postBeta0MaturityCheck, then drop continue-on-error. The other two commands in the
+  block (validate-report-schemas.ps1, generate-final-evidence-bundle.ps1, run-portable-tooling-check.ps1)
+  must be audited for the same distinction first -- that audit is the actual work, not the shell.
+
+  Reconcile 19-vs-21 in the same change, and put the number somewhere a checker reads rather than in
+  a comment, or it will drift again.
+files:
+  - .github/workflows/npdev-ci-validation.yml
