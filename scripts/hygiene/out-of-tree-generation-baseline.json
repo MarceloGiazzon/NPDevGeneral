@@ -15,7 +15,18 @@
     "                  ledger item. When one is fixed, DELETE its entry so the ratchet tightens.",
     "",
     "Do not add an entry without a reason. An allowlist that states something untrue is worse than",
-    "no allowlist (the lesson STOR-13's own allowlist taught this repo)."
+    "no allowlist (the lesson STOR-13's own allowlist taught this repo).",
+    "",
+    "2026-08-10, same day: THE known-defect LIST IS NOW EMPTY. All six of PORT-1's leaks are fixed --",
+    "application-wmsoffice.yml and AuxScreen.js earlier in the day, and in this change the four that",
+    "remained: application-npdev-db.properties + _ops/resolved-db-plan.json (one fix -- the data root",
+    "is app-relative now, so spring.datasource.url resolves against the app rather than against the",
+    "authoring machine), model-source-manifest.json and schema-realization-manifest.json (paths",
+    "recorded relative to the authoring directory, provenance kept in Reports/ where it belongs).",
+    "",
+    "The ratchet has not been loosened to get here: every `accepted` entry below is still an",
+    "accepted entry, and a NEW leak anywhere still fails on the first run. What is gone is the",
+    "excuse list. If a known-defect entry ever reappears, it is a regression, not a baseline."
   ],
   "entries": [
     {
@@ -37,31 +48,6 @@
       "pattern": "App/src/main/resources/npdev-build-info.properties",
       "category": "accepted",
       "reason": "Provenance, same declared exclusion as generation-run.json. Records the model's source path at build time; nothing resolves it at runtime."
-    },
-
-    {
-      "pattern": "application-npdev-db.properties",
-      "category": "known-defect",
-      "ledger": "PORT-1",
-      "reason": "npdev.database.data-root is baked to D:/WorkSpace/NPDev/Build/databases/<app>. This is RESOLVED AT RUNTIME -- a stranger's app tries to open a database on a drive they do not have. The most serious of the fifteen."
-    },
-    {
-      "pattern": "_ops/resolved-db-plan.json",
-      "category": "known-defect",
-      "ledger": "PORT-1",
-      "reason": "Same data-root, restated in the ops plan the user is told to read."
-    },
-    {
-      "pattern": "npdev/model-source-manifest.json",
-      "category": "known-defect",
-      "ledger": "PORT-1",
-      "reason": "rootModel is an absolute authoring path shipped inside the app's own resources. Provenance belongs in Reports/, not in src/main/resources."
-    },
-    {
-      "pattern": "npdev/db/schema-realization-manifest.json",
-      "category": "known-defect",
-      "ledger": "PORT-1",
-      "reason": "sourceOfTruth.business/database are absolute authoring paths, again shipped inside the app."
     }
   ]
 }

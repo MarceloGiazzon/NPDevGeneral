@@ -79,6 +79,7 @@ final class CrossPackBondEndToEndTest {
                 DatabaseEngine.H2_LOCAL,
                 DatabaseEngine.H2_LOCAL.storageMode(),
                 true,
+                false, // externallyProvisioned (STOR-14) -- NPDev provisioned this test's database
                 "cross-pack-bond-test",
                 "cross-pack-bond-test",
                 "test",

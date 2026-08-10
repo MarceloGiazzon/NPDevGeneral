@@ -2249,9 +2249,16 @@ def _containerized_engine_target(app_path: str | None) -> tuple[dict, dict] | No
 
 
 def _engine_requiring_docker(app_path: str | None) -> str | None:
-    """This app's engine name if it needs Docker, else None."""
+    """This app's engine name if it needs Docker, else None.
+
+    STOR-14: an externally-provisioned server is not NPDev's to create, so Docker is not required to
+    use it however containerized the engine is in general -- the same distinction the doctor check
+    makes, kept here so a second caller cannot reach the opposite conclusion.
+    """
     target = _containerized_engine_target(app_path)
-    return target[0]["externalName"] if target is not None else None
+    if target is None or target[1].get("externallyProvisioned"):
+        return None
+    return target[0]["externalName"]
 
 
 def _database_checks(app_path: str | None) -> list[dict]:
@@ -3164,9 +3171,27 @@ def run_doctor(args: argparse.Namespace) -> int:
     # Keyed on `containerized`, not `needsServer`: H2Server is a server engine whose environment is a
     # Java process, so Docker really is optional for it.
     docker_target = _containerized_engine_target(getattr(args, "app", None))
+    # STOR-14 (item 5): a DECLARATION BEATS AN INFERENCE the moment one is available. The port probe
+    # further down is the right answer while there is nothing to declare -- it can only ever conclude
+    # "something is listening", never "that something is your database". `externallyProvisioned: true`
+    # is the user saying outright that this server is theirs, so Docker is not required to reach it
+    # and reporting it as required (or as "probably fine, something answered") would be NPDev
+    # guessing at a fact it has been told.
+    docker_external = docker_target is not None and bool(docker_target[1].get("externallyProvisioned"))
+    if docker_external:
+        docker_target = None
     docker_engine = docker_target[0]["externalName"] if docker_target is not None else None
     docker_path = shutil.which("docker")
-    if docker_engine is None:
+    if docker_external:
+        checks.append(_check(
+            "docker-present", "Docker", "pass",
+            found=docker_path or "not installed",
+            expected="not required -- this app's database is externally provisioned",
+            detail="db.definition.json declares database.externallyProvisioned = true, so NPDev "
+                   "never creates a container for this app. Whether the server is reachable and "
+                   "usable is what the database checks below answer.",
+        ))
+    elif docker_engine is None:
         if docker_path is None:
             checks.append(_check(
                 "docker-present", "Docker", "warn", expected="optional",

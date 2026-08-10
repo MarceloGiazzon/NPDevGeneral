@@ -251,6 +251,7 @@ public final class GeneratorFacade {
                 DatabaseEngine.IN_MEMORY,
                 DatabaseEngine.IN_MEMORY.storageMode(),
                 false,
+                false, // externallyProvisioned -- InMemory has no server to be external (STOR-14)
                 "",
                 "",
                 "none",

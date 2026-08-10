@@ -5,8 +5,9 @@ title: >-
   to open its database on a drive the user does not have
 type: BUG
 severity: HIGH
-status: PARTIAL
+status: DONE
 opened: 2026-08-10
+closed: 2026-08-10
 verification: VERIFIED_LIVE
 surface: generator/emitted-output
 source: >-
@@ -121,6 +122,76 @@ progress: >-
   property two lines above it and caused this row to be filed against the wrong mechanism. Fixed --
   it now reports every offending line, which is why the same run went from 15 hits to 34. Nineteen
   real offending lines had been invisible in the very first report this check ever produced.
+progress2: >-
+  CLOSED 2026-08-10, same day it was filed, by the port1-stor14 campaign. The four that remained are
+  fixed, the baseline's known-defect list is EMPTY, and the check that found them reports
+  807 files scanned / 0 new / 0 known.
+
+  THE FIX FOR THE FIRST TWO IS ONE FIX, because they were one defect stated twice: the data root is
+  now APP-RELATIVE ('data', or 'data/<generated name>') and both consumers resolve it against the
+  SAME anchor -- the FinalApp directory. The app resolves it against its own working directory,
+  which is that directory in every launch path NPDev emits (java -jar from Run-FinalApp.ps1 and
+  Start-App.ps1, and bootRun, whose working directory is the Gradle project root); the _ops toolbox
+  resolves it against $PSScriptRoot/.., which is the same directory because _ops lives INSIDE the
+  app (QUAL-3). One anchor was the whole difficulty: two would have been QUAL-3 again -- one database
+  with two front doors, where Reset via one destroys data the other is serving.
+
+  No NPDEV_DATA_ROOT-style override is emitted, deliberately, and the plan that specified one is
+  overruled on this point. An override honoured by only one of the two consumers re-creates exactly
+  the two-front-doors defect; one honoured by both is a second source of truth to keep in step.
+  Spring's own --spring.datasource.url= still relocates the app for anyone who wants that, and is
+  visibly the user's act rather than NPDev's guess.
+
+  THE OTHER TWO (the manifests) record paths relative to the app's authoring directory now.
+  schema-realization-manifest.json's `internal` was the worst of the six and nobody had counted it:
+  it was resolved by walking ancestors probing for a directory literally named `NPDev_General` --
+  REG-144's predicate, in a TWELFTH site the eleven-place sweep never reached, which on GitHub (where
+  the checkout is named NPDevGeneral) never matched at all and fell through to a path relative to the
+  process's working directory. The answer never varies, so it is now the constant it always was.
+
+  A FIFTH INSTANCE, hidden behind the four, was found the moment the baseline entries were deleted:
+  NPDevRuntimeHost/src/test/resources/npdev/db/schema-realization-manifest.json -- a COMMITTED
+  fixture that travels into every generated app with the RuntimeHost template, carrying the author's
+  absolute paths in sourceOfTruth and in a fingerprintInputs entry. The baseline pattern
+  `npdev/db/schema-realization-manifest.json` matched it as well as the emitted manifest, so one
+  excused entry was silently excusing two files. That is an argument for deleting baseline entries as
+  they are fixed rather than in one jump at the end: the ratchet tightening is what exposed it.
+
+  PROVED BY THE TEST NO GATE GIVES YOU, which is the whole reason this item existed. The canary was
+  generated, built and booted three ways: `java -jar` from the app directory (database created at
+  <App>/data/npdev_canary.mv.db), `gradlew bootRun` via the fast gate, and -- the definition of done
+  -- the ENTIRE FinalApp directory copied to a path under C:\ sharing no ancestry with the
+  workspace, with its data directory removed first. It booted there, /actuator/health answered 200,
+  and it created its own database beside itself. Before this change the same copy would have opened
+  D:/WorkSpace/NPDev/Build/databases/npdev-canary -- on a machine that has a D: drive, silently the
+  wrong database; on one that does not, a boot failure.
+
+  ONE BEHAVIOURAL HAZARD THIS CREATED AND CLOSED IN THE SAME CHANGE. Putting the database inside the
+  FinalApp directory put it inside the directory regeneration deletes -- Build-NpdevApp.ps1's
+  `Remove-Item $OutRoot -Recurse` and FinalAppAssembler's deleteBeforeMount. Unnoticed, that would
+  have been worse than data loss: every schema-evolution path (KeepExistingIfCompatible, the
+  migration plans, LNCH-1's diff machinery) only runs against an EXISTING database with a changed
+  model, so the tests for it would have stayed green while testing nothing. Both wipes now spare
+  <App>/data, in place -- never moved aside and moved back, because a generation that fails in
+  between would strand a user's data somewhere they would never look. The three seams that must agree
+  on that directory are pinned by twin-pair rule `app-data-root-anchor-three-seams`.
+
+  COLLATERAL, ALL OF THE SAME FAMILY: Build-NpdevApp.ps1 carried its own hardcoded
+  'Build\databases' default under the author's drive and a hardcoded author-drive h2 jar search root
+  -- REG-144's family in a repo script, which the out-of-tree check cannot see because it scans
+  EMITTED output. Both now derive from values that travel with the app.
+
+  TWELVE CORPUS DEFINITIONS HAD TO CHANGE and none of them is a user error: six declared an absolute
+  `h2FilePath` and six an H2Server `jdbcUrl` with an absolute path, all agreeing with what NPDev used
+  to compose. STOR-8's drift check refuses a declaration that disagrees with the real connection, so
+  changing the derivation put all twelve in the refusal branch. They are updated in the same change,
+  and the refusal message now explains the new app-relative derivation and names
+  --spring.datasource.url rather than reading as though the user got it wrong.
+
+  NOT CLOSED BY THIS ITEM, restated so nobody books it: the bundle-freshness class (nothing checks
+  that a committed generated artefact matches its source, which is how AuthoringApp.js shipped a
+  string the source had already deleted), and F3/F6, which need generation PER ENGINE rather than
+  from a different directory.
 files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator
   - NPDevRuntimeHost/src/main/resources/application-wmsoffice.yml

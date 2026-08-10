@@ -340,6 +340,7 @@ final class HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest {
                 DatabaseEngine.H2_LOCAL,
                 "jdbc",
                 true,
+                false, // externallyProvisioned (STOR-14) -- NPDev provisioned this test's database
                 "harden_gc_proof",
                 "harden_gc_proof",
                 "harden-gc-proof",

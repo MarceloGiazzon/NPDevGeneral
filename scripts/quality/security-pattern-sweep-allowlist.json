@@ -2161,6 +2161,11 @@
       "rule": "F2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java:222",
       "why": "Same as c3ec577da23c -- the correlated subquery's own identifiers (matchIdCol/matchTable/onCol/table/equalsCol) resolve through SqlIdentifierSupport's [a-z0-9_]-only whitelist."
+    },
+    "80d033aa3867": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:225 (createEnvironmentScript's text block)",
+      "why": "NOT SQL AT ALL, and there is no read here to scope. The matched text is a PowerShell script emitted as a Java text block: the sweep sees the whole block as one string, finds PowerShell's `Select-Object -First 1` (the driver-jar lookup) and the English word `from` in the surrounding prose, and reads them as SELECT ... FROM. The block issues one JDBC getConnection and no query whatsoever -- STOR-14's Create-becomes-VERIFY, which asks the server whether the app's own database is reachable. There is no row set, no table and no tenant column to scope. Triaged 2026-08-10 with STOR-14."
     }
   }
 }

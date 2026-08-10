@@ -309,14 +309,29 @@ writer.writeRelative(
         }
     }
 
+    /**
+     * PORT-1: which model files produced this app, WITHOUT the author's filesystem.
+     *
+     * <p>This manifest ships inside the app, in {@code src/main/resources/npdev/}. It used to record
+     * {@code rootModel}, {@code canonicalRootDirectory} and every {@code includedFiles} entry as an
+     * absolute path on the machine that generated it -- so a recipient learned the author's drive
+     * letter and folder layout, and learned nothing more about the model than the relative form
+     * tells them. Every path is now relative to the canonical root directory, which is itself
+     * reduced to its own folder name; the absolute form is still recorded in
+     * {@code Reports/generation-run.json}, which is provenance and is not part of the app.
+     */
     private static String emitModelSourceManifest(ResolvedModelSource source) {
+        Path canonicalRoot = source.canonicalRootDirectory().toAbsolutePath().normalize();
         String included = source.includedFiles().stream()
-                .sorted(Comparator.comparing(path -> path.toString().toLowerCase(Locale.ROOT)))
-                .map(path -> "    \"" + jsonEscape(path.toString().replace('\\', '/')) + "\"")
+                .map(path -> modelSourceRelative(path, canonicalRoot))
+                .sorted(Comparator.comparing(path -> path.toLowerCase(Locale.ROOT)))
+                .map(path -> "    \"" + jsonEscape(path) + "\"")
                 .collect(Collectors.joining("," + System.lineSeparator()));
+        Path canonicalRootName = canonicalRoot.getFileName();
         return """
 {
-  "manifestVersion": "1.0.0",
+  "manifestVersion": "1.1.0",
+  "pathsRelativeTo": "canonicalRootDirectory",
   "rootModel": "%s",
   "canonicalRootDirectory": "%s",
   "includedFiles": [
@@ -324,10 +339,23 @@ writer.writeRelative(
   ]
 }
 """.formatted(
-                jsonEscape(source.rootModelPath().toString().replace('\\', '/')),
-                jsonEscape(source.canonicalRootDirectory().toString().replace('\\', '/')),
+                jsonEscape(modelSourceRelative(source.rootModelPath(), canonicalRoot)),
+                jsonEscape(canonicalRootName == null ? "" : canonicalRootName.toString()),
                 included
         );
+    }
+
+    /** A model file as a path under {@code canonicalRoot}, or its file name when it lies outside. */
+    private static String modelSourceRelative(Path path, Path canonicalRoot) {
+        if (path == null) {
+            return "";
+        }
+        Path normalized = path.toAbsolutePath().normalize();
+        if (normalized.startsWith(canonicalRoot)) {
+            return canonicalRoot.relativize(normalized).toString().replace('\\', '/');
+        }
+        Path name = normalized.getFileName();
+        return name == null ? "" : name.toString();
     }
 
     private static String readCanonicalUiSelectionJson() {

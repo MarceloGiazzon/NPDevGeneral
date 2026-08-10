@@ -92,6 +92,7 @@ final class SchemaRealizationEmitterSecondaryIndexTest {
                 DatabaseEngine.H2_LOCAL,
                 DatabaseEngine.H2_LOCAL.storageMode(),
                 true,
+                false, // externallyProvisioned (STOR-14) -- NPDev provisioned this test's database
                 "secondary-index-test",
                 "secondary-index-test",
                 "test",

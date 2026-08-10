@@ -5,9 +5,10 @@ title: >-
   user's own
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-09
-verification: NOT_VERIFIED
+closed: 2026-08-10
+verification: VERIFIED_LIVE
 surface: generator/dbconfig
 source: >-
   storage/stabilize/FOUR_AND_EXTERNAL.md Part B, filed under its own instruction ("Do not implement
@@ -102,3 +103,91 @@ remediation: >-
   Definition of done: the refusal test above, written FIRST and RED-proven; the parity gate still
   green (byte-identical across the three server engines); and `npdev db test-connection` unchanged,
   since it is already the honest answer this mode leans on.
+decision: >-
+  THE 0.2 DECISION, recorded here rather than only in code because the next implementer's first
+  instinct will be that one of these two fields should subsume the other.
+
+  `database.externallyProvisioned` and `schemaLifecycle.ownership: ExternallyManaged` are ORTHOGONAL,
+  both are kept, and NEITHER validates the other.
+
+    externallyProvisioned  -- about the SERVER. NPDev did not start it, so NPDev must never start,
+                              stop or destroy it. Governs the five _ops lifecycle operations.
+    ownership              -- about the SCHEMA. NPDev issues no DDL against it. Governs
+                              SchemaLifecycleExecutor (REG-7.1).
+
+  All four combinations are meaningful, which is the test for orthogonality and the reason no
+  cross-validation was added:
+
+    external server + NPDev-owned schema  -- a DBA hands you an empty database on their instance and
+                                             tells you to create your own tables. Common.
+    NPDev container + externally-managed schema -- a dev container seeded from a production dump that
+                                             NPDev must not re-issue DDL against. Already supported.
+    external server + externally-managed schema -- the fully hands-off case.
+    NPDev container + NPDev-owned schema  -- today's default, unchanged.
+
+  Refusing any of those combinations would be inventing a constraint neither field implies. Pinned by
+  ExternallyProvisionedDatabaseTest.orthogonalToSchemaOwnership so that a later reader who notices the
+  overlap does not tidy one into the other.
+progress: >-
+  CLOSED 2026-08-10 by the port1-stor14 campaign, refusal first, exactly in the order this item asked
+  for.
+
+  THE REFUSAL TEST WAS WRITTEN FIRST AND WAS WRONG, and finding that out is the most useful thing in
+  this entry. As drafted, helpers/red-prove-reset-refusal.ps1 invoked Reset-Environment.ps1 with NO
+  ARGUMENTS. Reset's first act is a confirmation-token check that throws before either destructive
+  half, so against UNCHANGED code the canary survived and the proof reported PASS -- including "and
+  it said so explicitly", because the word "refused" appears in `Reset refused. Re-run with -Confirm`.
+  A green RED-proof is not a fixed bug, it is a test that is not exercising the path. Fixed by passing
+  the token, which is what a user who means to reset types, and whose database is still not NPDev's
+  to destroy.
+
+  RED THEN GREEN, both measured against the SAME real generated app (npdev-canary), with the prior
+  Reset script extracted from git rather than retyped:
+
+    HEAD's script  : canary DELETED, exit 0 -- reported success while destroying a data root it did
+                     not own
+    fixed script   : canary INTACT, exit 1, refusal message present
+
+  The proof now also FAILS a silent skip: a Reset that fell through every branch by accident leaves
+  the canary intact too, so the message is required as evidence that the refusal was a decision.
+
+  WHAT WAS BUILT, in the order the item specified:
+
+    Reset   -- refuses and RETURNS before BOTH halves, and before the confirmation check. Asking for
+               the token first would be a worse guard, not a smaller one: the user types it correctly,
+               for the app they mean, and the answer is still no. Exits NON-ZERO, because the
+               destructive thing the caller asked for did not happen and a wrapper reading exit 0 as
+               "reset done" would then act on a database that still has all its data.
+    Start   -- its own refusal rather than inheriting Create's, because "start" is the verb the user
+               reached for; reports whether their server is already answering.
+    Stop    -- refuses; "other things may be using it" is the whole argument.
+    Status  -- reports REACHABILITY, not container state. `docker ps` on an external server reports
+               "not found" about a database that is running perfectly well.
+    Create  -- becomes VERIFY, as specified. It connects with the JDBC driver THE APP ITSELF uses
+               (found in runtimehost-libs, the app's build dir, or the Gradle/Maven cache) via a
+               single-file Java program, and reports "database 'x' does not exist on host:port --
+               create it and re-run". No new dependency. When java or the driver is absent it says
+               "could not verify" and points at `npdev db test-connection` -- never "ready", which is
+               the one answer that would be worse than saying nothing.
+    doctor  -- `docker-present` keys on the declaration. The port probe added in the previous round
+               stays for apps with nothing declared; a declaration beats an inference the moment one
+               exists. `_engine_requiring_docker` got the same treatment so a second caller cannot
+               reach the opposite conclusion.
+
+  THE PARITY GATE STAYED GREEN FOR FREE, exactly as this item predicted, because every branch reads
+  `$plan.externallyProvisioned` rather than an engine name: check-engine-parity.py finds 0 files
+  branching on Postgres without its siblings, and run-engine-toolbox-parity.py still reports the five
+  operations byte-identical across Postgres, MySQL and SQL Server.
+
+  ONE SCOPE DECISION WORTH NAMING. H2Server is NOT refused the flag, only the embedded engines
+  (InMemory, H2Local) are. H2Server's environment is a Java process rather than a container, but it
+  is still a server someone can already be running -- and since every operation checks the plan flag
+  BEFORE it looks at profile.kind, external mode covers it at no cost. Refusing it would have been an
+  arbitrary hole. This differs from the campaign plan's assumption that the two halves touch disjoint
+  engines; they overlap on H2Server, and the uniform ordering is what makes that a non-event.
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/GeneratedDatabasePlan.java
+  - schemas/ai/user-db-definition.schema.json
+  - NPDevCli/npdev_cli.py

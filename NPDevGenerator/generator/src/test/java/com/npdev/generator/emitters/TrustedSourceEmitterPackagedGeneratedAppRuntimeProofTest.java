@@ -854,6 +854,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 DatabaseEngine.H2_LOCAL,
                 "jdbc",
                 true,
+                false, // externallyProvisioned (STOR-14) -- NPDev provisioned this test's database
                 "item12_packaged_proof",
                 "item12_packaged_proof",
                 "item12-proof",

@@ -59,6 +59,40 @@ class UserDatabaseDefinitionDeclaredConnectionTest {
         assertTrue(message.contains("STOR-8"), "the refusal must cite its item: " + message);
     }
 
+    /**
+     * PORT-1's trap, pinned: the derived H2 path is app-relative now, so EVERY definition that
+     * declared the old absolute one lands in the refusal branch above -- six real ones did.
+     *
+     * <p>That is the correct outcome (NPDev no longer knows an absolute path at generation time, so
+     * it can neither honour nor verify one), but only if the message explains it. A refusal that
+     * still reads "declared X, actual Y, remove it" blames the user for a change NPDev made, and
+     * this is the assertion that keeps it from drifting back to that.
+     */
+    @Test
+    @DisplayName("the old absolute h2FilePath is refused with a reason, not just a mismatch")
+    void anAbsoluteFilePathIsRefusedWithThePortabilityReason(@TempDir Path temp) throws Exception {
+        Path definition = writeDefinition(temp, node ->
+                node.put("h2FilePath", "D:/WorkSpace/NPDev/Build/databases/probe/npdev_stor8_probe"));
+        String message = assertThrows(IllegalArgumentException.class,
+                () -> new UserDatabaseDefinitionLoader().load(definition, null)).getMessage();
+        assertTrue(message.contains("PORT-1"), "cite the item that changed the derivation: " + message);
+        assertTrue(message.contains("APP-RELATIVE"),
+                "say WHAT changed, not just that the values differ: " + message);
+        assertTrue(message.contains("--spring.datasource.url"),
+                "name the way to point the app somewhere else, or the refusal is a dead end: " + message);
+    }
+
+    @Test
+    @DisplayName("the app-relative path NPDev now derives is accepted in either spelling")
+    void theDerivedRelativePathIsAcceptedWithOrWithoutTheDotSlash(@TempDir Path temp) throws Exception {
+        Path bare = writeDefinition(temp, node -> node.put("h2FilePath", "data/npdev_stor8_probe"));
+        assertDoesNotThrow(() -> new UserDatabaseDefinitionLoader().load(bare, null));
+        Path dotted = writeDefinition(temp, node -> node.put("h2FilePath", "./data/npdev_stor8_probe"));
+        assertDoesNotThrow(() -> new UserDatabaseDefinitionLoader().load(dotted, null),
+                "the JDBC URL carries the './' form, so a user copying it across must not be "
+                        + "refused over punctuation");
+    }
+
     @Test
     @DisplayName("a jdbcUrl for a different database is refused -- the silent-wrong-answer case")
     void contradictingJdbcUrlIsRefused(@TempDir Path temp) throws Exception {

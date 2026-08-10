@@ -205,6 +205,7 @@ final class TrustedSourceEmitterGeneratedActionJdbcEvidenceTest {
                 DatabaseEngine.H2_LOCAL,
                 "jdbc",
                 true,
+                false, // externallyProvisioned (STOR-14) -- NPDev provisioned this test's database
                 "trusted_jdbc_test",
                 "trusted_jdbc_test",
                 "test",

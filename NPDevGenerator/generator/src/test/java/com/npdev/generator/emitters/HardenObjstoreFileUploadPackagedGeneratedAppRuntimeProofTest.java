@@ -316,6 +316,7 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
                 DatabaseEngine.H2_LOCAL,
                 "jdbc",
                 true,
+                false, // externallyProvisioned (STOR-14) -- NPDev provisioned this test's database
                 "harden_objstore_p4",
                 "harden_objstore_p4",
                 "harden-objstore-p4",

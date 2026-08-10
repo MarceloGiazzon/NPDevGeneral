@@ -183,6 +183,7 @@ final class SchemaRealizationEmitterRequiredDefaultUniqueManifestTest {
                 DatabaseEngine.H2_LOCAL,
                 DatabaseEngine.H2_LOCAL.storageMode(),
                 true,
+                false, // externallyProvisioned (STOR-14) -- NPDev provisioned this test's database
                 "required-default-unique-manifest-test",
                 "required-default-unique-manifest-test",
                 "test",

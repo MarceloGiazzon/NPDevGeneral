@@ -5,6 +5,43 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-10 — a generated app keeps its database BESIDE ITSELF, at `<FinalApp>/data` (PORT-1)
+
+**What changes.** The data root, and therefore `spring.datasource.url`, is app-relative instead of an
+absolute path on the machine that generated the app:
+
+| | before | after |
+|---|---|---|
+| `spring.datasource.url` (H2Local) | `jdbc:h2:file:D:/…/Build/databases/<app>/<db>;…` | `jdbc:h2:file:./data/<db>;…` |
+| `spring.datasource.url` (H2Server) | `jdbc:h2:tcp://host:port/D:/…/<db>;…` | `jdbc:h2:tcp://host:port/./data/<db>;…` |
+| `npdev.database.data-root` / `_ops` plan `resolvedDataRoot` | absolute | `data`, or `data/<generated name>` |
+| H2Server `-baseDir` | the data root | the FinalApp directory |
+
+**Who is affected.** Everyone with an existing app on H2Local or H2Server: **your database does not
+move itself.** The app will create a new, empty one at `<FinalApp>/data` on the next boot. To keep
+your data, copy `<Build>/databases/<appId>/*` into `<FinalApp>/data/` before running it, or start the
+app with `--spring.datasource.url=` pointing at the old file. Server engines (Postgres, MySQL, SQL
+Server) are unaffected — their URLs are built from host/port and never contained a path.
+
+Also: a `db.definition.json` that declares `database.h2FilePath`, or an H2Server
+`database.jdbcUrl` containing an absolute path, is now REFUSED at generation time — NPDev derives an
+app-relative path and cannot honour or verify an absolute one. Remove `h2FilePath` (nothing reads it),
+or rewrite the URL's path as `./data/<databaseName>`. The refusal message says both.
+
+**Why.** The absolute path was resolved at BOOT, so a generated app handed to anyone else tried to
+open its database on a drive they may not have. It is the most serious of PORT-1's six leaks and the
+only one that stops an app working. Proved fixed by copying an entire built FinalApp to a path
+sharing no ancestry with the workspace and booting it there.
+
+**Regeneration keeps your data.** `<FinalApp>/data` is now spared by both wipes (`Build-NpdevApp.ps1`
+and the generator's `deleteBeforeMount`), so the schema-evolution paths that only run against an
+existing database still have one.
+
+**No codemod.** Nothing in a model references these paths — the value is derived, and the two
+`db.definition.json` fields above are refused with a message naming the fix rather than rewritten,
+because choosing where someone's existing database should end up is not a decision a codemod can make
+for them. Same reasoning as the `wmsoffice` entry below.
+
 ## 2026-08-10 — the `wmsoffice` profile's JWT key paths are now relative and overridable (PORT-1)
 
 **What changes.** `application-wmsoffice.yml`, which ships in every generated app via the shared

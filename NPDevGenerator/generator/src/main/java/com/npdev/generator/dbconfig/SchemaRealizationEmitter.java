@@ -39,6 +39,19 @@ public final class SchemaRealizationEmitter {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
             .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
+    /**
+     * PORT-1: where NPDev's internal-table definitions live, as a path INSIDE THE PLATFORM REPO.
+     *
+     * <p>A constant, because the answer is one. The previous version walked the definition file's
+     * ancestors probing for {@code <x>/NPDev_General/NPDevKernel/...} and then {@code
+     * <x>/NPDevKernel/...} and returned an absolute directory -- which meant the manifest a user
+     * receives named a checkout on the author's disk, and which keyed on a directory NAME in exactly
+     * the way REG-144 removed from eleven other sites (GitHub checks this repo out as
+     * {@code NPDevGeneral}, so the first probe never matched there anyway).
+     */
+    private static final String INTERNAL_SCHEMA_SOURCE_PACKAGE =
+            "NPDevKernel/kernel/src/main/java/com/npdev/kernel/dbschema";
+
     public void emit(CompiledModel model, Path outRoot, GeneratedDatabasePlan plan, Path modelSourcePath) throws Exception {
         emit(model, outRoot, plan, modelSourcePath, List.of());
     }
@@ -1504,10 +1517,19 @@ public final class SchemaRealizationEmitter {
         manifest.put("destructiveAcknowledgment", destructiveAcknowledgmentToken == null ? "" : destructiveAcknowledgmentToken);
         // Insertion-ordered, not Map.of(...) -- see the schemaLifecycle comment above for the
         // ImmutableCollections.SALT mechanism this avoids.
+        // PORT-1: these three used to be absolute paths from the AUTHORING machine, shipped inside
+        // the app in src/main/resources. `internal` was the worst of them -- it was resolved by
+        // walking up looking for a directory literally named "NPDev_General" (REG-144's predicate,
+        // in a twelfth place nobody had counted) and the answer never varies, so it is now the
+        // constant it always was. `business` and `database` are recorded relative to the app's own
+        // authoring directory, which says exactly as much as the absolute form did about WHICH
+        // files, and nothing at all about whose machine.
+        Path authoringAnchor = authoringAnchor(plan.definitionPath(), modelSourcePath);
         Map<String, Object> sourceOfTruth = new LinkedHashMap<>();
-        sourceOfTruth.put("internal", resolveInternalSchemaSourcePath(plan.definitionPath()).toString());
-        sourceOfTruth.put("business", modelSourcePath == null ? "" : modelSourcePath.toAbsolutePath().normalize().toString());
-        sourceOfTruth.put("database", plan.definitionPath().toString());
+        sourceOfTruth.put("internal", INTERNAL_SCHEMA_SOURCE_PACKAGE);
+        sourceOfTruth.put("business", authoringRelative(modelSourcePath, authoringAnchor));
+        sourceOfTruth.put("database", authoringRelative(plan.definitionPath(), authoringAnchor));
+        sourceOfTruth.put("pathsRelativeTo", "the app's authoring directory");
         manifest.put("sourceOfTruth", sourceOfTruth);
         manifest.put("fingerprintInputs", plan.fingerprintInputs());
 
@@ -1777,46 +1799,49 @@ public final class SchemaRealizationEmitter {
         return SqlIdentifierSupport.safeSqlIdentifier(value);
     }
 
-    private static Path resolveInternalSchemaSourcePath(Path hint) {
-        Path current = hint == null ? Path.of("").toAbsolutePath().normalize() : hint.toAbsolutePath().normalize();
-        while (current != null) {
-            Path candidate = current.resolve("NPDev_General")
-                    .resolve("NPDevKernel")
-                    .resolve("kernel")
-                    .resolve("src")
-                    .resolve("main")
-                    .resolve("java")
-                    .resolve("com")
-                    .resolve("npdev")
-                    .resolve("kernel")
-                    .resolve("dbschema");
-            if (Files.isDirectory(candidate)) {
-                return candidate.toAbsolutePath().normalize();
-            }
-            candidate = current.resolve("NPDevKernel")
-                    .resolve("kernel")
-                    .resolve("src")
-                    .resolve("main")
-                    .resolve("java")
-                    .resolve("com")
-                    .resolve("npdev")
-                    .resolve("kernel")
-                    .resolve("dbschema");
-            if (Files.isDirectory(candidate)) {
-                return candidate.toAbsolutePath().normalize();
-            }
-            current = current.getParent();
+    /**
+     * PORT-1: the authoring directory both source-of-truth paths are recorded relative to.
+     *
+     * <p>The nearest ancestor of the db definition (at most three levels up, which covers
+     * {@code <App>/definition/...}, {@code <App>/Input/...} and {@code npdev init}'s flat layout)
+     * that also contains the model. When they share no such ancestor -- a model deliberately kept
+     * outside the app -- there is no honest relative answer and the caller falls back to file names.
+     */
+    private static Path authoringAnchor(Path definitionPath, Path modelSourcePath) {
+        if (definitionPath == null) {
+            return null;
         }
-        return Path.of("NPDevKernel")
-                .resolve("kernel")
-                .resolve("src")
-                .resolve("main")
-                .resolve("java")
-                .resolve("com")
-                .resolve("npdev")
-                .resolve("kernel")
-                .resolve("dbschema")
-                .toAbsolutePath()
-                .normalize();
+        Path anchor = definitionPath.toAbsolutePath().normalize().getParent();
+        if (modelSourcePath == null) {
+            return anchor;
+        }
+        Path model = modelSourcePath.toAbsolutePath().normalize();
+        for (int up = 0; up < 3 && anchor != null; up++, anchor = anchor.getParent()) {
+            if (model.startsWith(anchor)) {
+                return anchor;
+            }
+        }
+        return definitionPath.toAbsolutePath().normalize().getParent();
+    }
+
+    /**
+     * PORT-1: {@code path} as a stranger can read it -- relative to {@code anchor}, or its file name
+     * when it lies outside.
+     *
+     * <p>These three values ship INSIDE the app, in {@code src/main/resources}. Recording which
+     * files an app was generated from is legitimate provenance; recording the author's drive letter
+     * and folder layout to do it is not, and the absolute form is still kept where provenance
+     * belongs -- {@code Reports/generation-run.json}, which is not part of the app.
+     */
+    private static String authoringRelative(Path path, Path anchor) {
+        if (path == null) {
+            return "";
+        }
+        Path normalized = path.toAbsolutePath().normalize();
+        if (anchor != null && normalized.startsWith(anchor)) {
+            return anchor.relativize(normalized).toString().replace('\\', '/');
+        }
+        Path name = normalized.getFileName();
+        return name == null ? "" : name.toString();
     }
 }

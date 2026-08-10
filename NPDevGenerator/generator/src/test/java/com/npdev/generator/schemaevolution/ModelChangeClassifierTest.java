@@ -234,6 +234,7 @@ class ModelChangeClassifierTest {
                 DatabaseEngine.H2_LOCAL,
                 DatabaseEngine.H2_LOCAL.storageMode(),
                 true,
+                false, // externallyProvisioned (STOR-14) -- NPDev provisioned this test's database
                 "model-change-classifier-test",
                 "model-change-classifier-test",
                 "test",
