@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**165 item(s) migrated: 2 open/partial, 163 done.**
+**167 item(s) migrated: 2 open/partial, 165 done.**
 
 ## Open / partial
 
@@ -73,7 +73,7 @@ Each of these is declared on `SqlDialect`, implemented by all four dialects, and
 `supports` is the one worth reading twice. CLAUDE.md instructs the reader to "ask `SqlDialects.active().supports(...)` rather than assuming a rollback" -- STOR-2's whole remedy -- and no production code does. The capability set is consulted through `capabilities()` by `StorageCapabilityGate` at GENERATION time; nothing asks at RUNTIME, which is where the DDL-in-transaction question actually gets decided.
 Not necessarily nine bugs. Some of these may be genuinely premature -- an answer prepared before its consumer exists is not wrong, it is early. What was wrong is that nothing distinguished "prepared early" from "wired and forgotten", and that is the distinction the three closed items each turned out to need. They are now enumerated in that checker's INTERNAL_ONLY allowlist with this item's id, so the list is a visible backlog rather than an invisible one, and any NEW dialect method must be wired or explicitly recorded here.
 
-## Done (163)
+## Done (165)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -82,6 +82,8 @@ Not necessarily nine bugs. Some of these may be genuinely premature -- an answer
 |---|---|---|---|---|---|
 | PORT-1 | Six generated artefacts carry an absolute path from the AUTHORING machine into output a stranger runs -- including npdev.database.data-root, which is resolved at RUNTIME, so a generated app tries to open its database on a drive the user does not have | BUG | HIGH | DONE | 2026-08-10 |
 | PORT-2 | The _ops toolbox baked the generation-time location into four files, so a COPIED app silently built and ran the ORIGINAL -- and the check that had just declared this class closed was blind to it by construction | BUG | HIGH | DONE | 2026-08-10 |
+| PORT-3 | `guiLabel` is required of SERVER engines only but printed for ALL of them, so the three embedded profiles -- including H2Local, the DEFAULT -- shipped "Database type: " and "Notes for :" with an empty label | BUG | LOW | DONE | 2026-08-10 |
+| PORT-4 | The two documents a newcomer reads FIRST both linked to a five-release-old Manager installer, and the link still worked -- so anyone following the front page installed a build from 2026-08-06 and hit defects that were already fixed | BUG | MEDIUM | DONE | 2026-08-10 |
 | QUAL-1 | check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight | GAP | LOW | DONE | 2026-08-09 |
 | QUAL-2 | Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red | BUG | MEDIUM | DONE | 2026-08-09 |
 | QUAL-3 | Two apps in one folder became ONE database -- a shared `_ops` toolbox AND a shared appId, so container name and data root collided; resetting either destroyed the other's data | BUG | HIGH | DONE | 2026-08-09 |
@@ -334,6 +336,59 @@ This is PORT-1's family and was not covered by it: PORT-1 was about paths from t
 FINDING 2 -- THE CHECK COULD NOT SEE IT, AND NOT BY OVERSIGHT.
 scripts/hygiene/check-out-of-tree-generation.ps1 reported "807 files scanned, 0 violations" on the very tree that produced Finding 1, and was right to by its own rules. It scans emitted output for a set of forbidden absolute paths DERIVED from the live machine, and it REFUSES TO RUN unless the output root it generates into is itself token-free -- a guard added on purpose, so that a file legitimately referring to where it was generated would not be a false positive.
 That guard is precisely what hid the defect. If the output root contains no forbidden token, then a file hardcoding THE OUTPUT ROOT ITSELF contains no forbidden token either, and is invisible. The blindness is structural, not a missing pattern: it cannot be fixed by adding tokens, because the offending string IS the one string the check has guaranteed is not forbidden. A checker whose false-positive guard is also its false-negative mechanism will keep reporting zero for as long as the defect exists.
+
+### PORT-3 — `guiLabel` is required of SERVER engines only but printed for ALL of them, so the three embedded profiles -- including H2Local, the DEFAULT -- shipped "Database type: " and "Notes for :" with an empty label
+
+**Type:** BUG · **Severity:** LOW · **Status:** DONE (2026-08-10)
+**Verification:** VERIFIED_LIVE
+**Source:** Spotted by the agent implementing PORT-2, which flagged it as pre-existing and out of scope rather than silently folding it in -- the right call, and the reason it got its own item instead of being buried in an unrelated commit.
+**Surface:** `generator/dbconfig`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DockerEngineProfile.java`
+- `NPDevGenerator/generator/src/main/resources/npdev/engine-profiles.json`
+
+`DockerEngineProfile.validate()` returns early for any kind that is not SERVER:
+
+    public void validate() {
+        if (kind != Kind.SERVER) { return; }
+        require(image ...); require(containerEnv ...); require(readyProbe ...);
+        require(guiLabel ...);          <-- universal field, server-only check
+    }
+
+That early return is CORRECT for `image`, `containerEnv`, `readyProbe`, `ensureDatabase`, `dataVolumePath` and `composeImage`: an engine with no container cannot have them, which is what the Kind distinction is for. `guiLabel` is not one of those. It is the engine's human name, and `DockerDeploymentEmitter` prints it in `Print-DbConnectionInfo.ps1` for EVERY engine:
+
+    Database type: <guiLabel>
+    Notes for <guiLabel>:
+
+So H2Local, H2Server and InMemory -- none of which declared a `guiLabel` -- rendered those two lines with nothing where the name should be. **H2Local is the default engine**, so this is what a first-time user saw when they ran the connection-info script the runbook tells them to run. Small, and precisely the kind of small that reads as unfinished in the first ten minutes.
+The interesting part is that the invariant was DECLARED and did not hold. A `require(guiLabel != null && !guiLabel.isBlank(), "guiLabel")` was sitting right there, correct, and unreachable for three of the six engines. This is the same shape as the other declared-but-unenforced findings this repo has collected: the assertion exists, and something above it means it never runs.
+`check-engine-parity.py` did not catch it either -- it compares emitted OPERATIONS across the three server engines, so an asymmetry among the EMBEDDED profiles is outside what it looks at. Not a defect in that checker; a boundary of it worth knowing.
+
+### PORT-4 — The two documents a newcomer reads FIRST both linked to a five-release-old Manager installer, and the link still worked -- so anyone following the front page installed a build from 2026-08-06 and hit defects that were already fixed
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-10)
+**Verification:** VERIFIED_LIVE
+**Source:** Found while answering "what is the current state for a third party trying NPDev seriously" -- by reading the install instructions as a stranger would, rather than by any gate.
+**Surface:** `docs/first-contact`
+**Files:**
+- `README.md`
+- `docs/MANAGER.md`
+- `scripts/quality/check-pinned-download-links.py`
+
+Same third-person family as PORT-1/2/3: a defect that costs the author nothing and costs a newcomer their first ten minutes.
+
+  README.md:17        releases/download/beta1.7/NPDev.Manager_0.1.0_x64-setup.exe
+  docs/MANAGER.md:59  the same URL, inside the numbered install steps
+
+`beta1.7` was published 2026-08-06 and was five releases behind (beta1.8 ... beta1.13) by the time this was found.
+WHY IT SURVIVED FIVE RELEASES: the link WORKS. GitHub serves an asset from an old tag forever, so there is no error, no 404, no signal of any kind. A newcomer installs an old Manager, hits defects that have since been fixed -- the tag-listing rate-limit crash, the java-home-agreement false failure, `db test-connection` reporting a wrong password as usable -- and concludes those are what NPDev is. Nothing in the product or the page tells them otherwise. A broken link would have been better, because someone would have reported it.
+This is not fixable by discipline. A version-pinned download link goes stale BY CONSTRUCTION on the very next release, and the release process has no reason to open prose files. Expecting whoever cuts a tag to also remember two markdown links is the same bet this repo has already lost on file-size claims, branch-freshness claims, and blocker citations -- each of which now has a gate.
+TWO MORE STALE CLAIMS in docs/MANAGER.md, found in the same read and fixed in the same change:
+  * a note saying the Linux AppImage was "Not yet published as of 2026-08-07" -- beta1.12 and
+    beta1.13 each ship a 79 MB `.AppImage` asset.
+  * "Docker and PowerShell are never required" in the doctor's warn-row explanation. True for the
+    three EMBEDDED engines; false for Postgres/MySQL/SQL Server, which NPDev runs as containers.
+    A reader picking MySQL on that sentence's authority cannot start their database.
 
 ### QUAL-1 — check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight
 

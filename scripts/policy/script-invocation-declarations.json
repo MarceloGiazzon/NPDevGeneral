@@ -599,6 +599,9 @@
     },
     "scripts/quality/check-ledger-status-reverse-freshness.py": {
       "invocation": "ci-gate"
+    },
+    "scripts/quality/check-pinned-download-links.py": {
+      "invocation": "ci-gate"
     }
   }
 }
