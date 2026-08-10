@@ -1,0 +1,1778 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "scenarioName": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "targetUrl": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "credentials": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "variables": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "caller": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "options": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "steps": {
+      "$ref": "#/$defs/__schema7"
+    }
+  },
+  "required": [
+    "targetUrl",
+    "steps"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "__schema1": {
+      "type": "string",
+      "maxLength": 2048,
+      "format": "uri"
+    },
+    "__schema2": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/__schema3"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 5000
+      }
+    },
+    "__schema3": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+    },
+    "__schema4": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/__schema3"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 5000
+      }
+    },
+    "__schema5": {
+      "type": "object",
+      "properties": {
+        "correlationId": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "source": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "metadata": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 5000
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema6": {
+      "default": {
+        "headless": true,
+        "trace": false,
+        "screenshots": "onFailure",
+        "collectDomOnFailure": false
+      },
+      "type": "object",
+      "properties": {
+        "headless": {
+          "default": true,
+          "type": "boolean"
+        },
+        "trace": {
+          "default": false,
+          "type": "boolean"
+        },
+        "screenshots": {
+          "default": "onFailure",
+          "type": "string",
+          "enum": [
+            "off",
+            "onFailure",
+            "always"
+          ]
+        },
+        "collectDomOnFailure": {
+          "default": false,
+          "type": "boolean"
+        },
+        "viewport": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 4096
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 4096
+            }
+          },
+          "required": [
+            "width",
+            "height"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema7": {
+      "minItems": 1,
+      "maxItems": 50,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/__schema8"
+      }
+    },
+    "__schema8": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "goto"
+            },
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "url"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "reload"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "waitForLoadState"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "domcontentloaded",
+                "load",
+                "networkidle"
+              ]
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "waitForUrlContains"
+            },
+            "value": {
+              "$ref": "#/$defs/__schema25"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "waitForTimeout"
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 30000
+            }
+          },
+          "required": [
+            "action",
+            "timeoutMs"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "setViewport"
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 4096
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 4096
+            }
+          },
+          "required": [
+            "action",
+            "width",
+            "height"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "resizeWindow"
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 4096
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 4096
+            }
+          },
+          "required": [
+            "action",
+            "width",
+            "height"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "$ref": "#/$defs/__schema26"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            },
+            "value": {
+              "$ref": "#/$defs/__schema28"
+            },
+            "valueFromCredential": {
+              "$ref": "#/$defs/__schema30"
+            },
+            "valueFromVariable": {
+              "$ref": "#/$defs/__schema31"
+            }
+          },
+          "required": [
+            "action",
+            "selector"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "click"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "doubleClick"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "hover"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "press"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector",
+            "key"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "$ref": "#/$defs/__schema32"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            },
+            "value": {
+              "$ref": "#/$defs/__schema28"
+            },
+            "valueFromCredential": {
+              "$ref": "#/$defs/__schema30"
+            },
+            "valueFromVariable": {
+              "$ref": "#/$defs/__schema31"
+            }
+          },
+          "required": [
+            "action",
+            "selector"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "check"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "uncheck"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "waitForSelector"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "attached",
+                "detached",
+                "visible",
+                "hidden"
+              ]
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector",
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "waitForResponse"
+            },
+            "urlContains": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "method": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            },
+            "status": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "urlContains"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "assertVisible"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "assertHidden"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "assertEnabled"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "assertDisabled"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "assertTextContains"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "text": {
+              "$ref": "#/$defs/__schema29"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "assertUrlContains"
+            },
+            "value": {
+              "$ref": "#/$defs/__schema25"
+            }
+          },
+          "required": [
+            "action",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "assertCount"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "operator": {
+              "type": "string",
+              "enum": [
+                "=",
+                "!=",
+                ">",
+                ">=",
+                "<",
+                "<="
+              ]
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "action",
+            "selector",
+            "operator",
+            "count"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "screenshot"
+            },
+            "name": {
+              "$ref": "#/$defs/__schema3"
+            }
+          },
+          "required": [
+            "action",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "collect"
+            },
+            "what": {
+              "minItems": 1,
+              "maxItems": 5,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema33"
+              }
+            }
+          },
+          "required": [
+            "action",
+            "what"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "extractText"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "name": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "extractAttribute"
+            },
+            "selector": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "attribute": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "name": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "timeoutMs": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "required": [
+            "action",
+            "selector",
+            "attribute",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "evaluate"
+            },
+            "name": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "script": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          },
+          "required": [
+            "action",
+            "name",
+            "script"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "watch"
+            },
+            "name": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "script": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            "intervalMs": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 10000
+            },
+            "durationMs": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 30000
+            }
+          },
+          "required": [
+            "action",
+            "name",
+            "script",
+            "intervalMs",
+            "durationMs"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "waitForElapsed"
+            },
+            "sinceStepId": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "minElapsedMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 600000
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 600000
+            }
+          },
+          "required": [
+            "action",
+            "sinceStepId",
+            "minElapsedMs"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "label": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "description": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "frame": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "delayMs": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "waitFor": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "afterWaitFor": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "action": {
+              "type": "string",
+              "const": "setViewportSize"
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 4096
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 4096
+            }
+          },
+          "required": [
+            "action",
+            "width",
+            "height"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "__schema9": {
+      "$ref": "#/$defs/__schema10"
+    },
+    "__schema10": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "__schema11": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "__schema12": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "__schema13": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "urlContains": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          },
+          "required": [
+            "urlContains"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "__schema14": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 60000
+    },
+    "__schema15": {
+      "$ref": "#/$defs/__schema16"
+    },
+    "__schema16": {
+      "type": "object",
+      "properties": {
+        "timeoutMs": {
+          "$ref": "#/$defs/__schema17"
+        },
+        "selector": {
+          "$ref": "#/$defs/__schema18"
+        },
+        "state": {
+          "$ref": "#/$defs/__schema19"
+        },
+        "response": {
+          "$ref": "#/$defs/__schema20"
+        },
+        "loadState": {
+          "$ref": "#/$defs/__schema21"
+        },
+        "urlContains": {
+          "$ref": "#/$defs/__schema22"
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema17": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 60000
+    },
+    "__schema18": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "__schema19": {
+      "type": "string",
+      "enum": [
+        "attached",
+        "detached",
+        "visible",
+        "hidden"
+      ]
+    },
+    "__schema20": {
+      "type": "object",
+      "properties": {
+        "urlContains": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        }
+      },
+      "required": [
+        "urlContains"
+      ],
+      "additionalProperties": false
+    },
+    "__schema21": {
+      "type": "string",
+      "enum": [
+        "load",
+        "domcontentloaded",
+        "networkidle"
+      ]
+    },
+    "__schema22": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "__schema23": {
+      "$ref": "#/$defs/__schema16"
+    },
+    "__schema24": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 30000
+    },
+    "__schema25": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "__schema26": {
+      "type": "string",
+      "const": "fill"
+    },
+    "__schema27": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "__schema28": {
+      "$ref": "#/$defs/__schema29"
+    },
+    "__schema29": {
+      "type": "string",
+      "maxLength": 5000
+    },
+    "__schema30": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "__schema31": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "__schema32": {
+      "type": "string",
+      "const": "selectOption"
+    },
+    "__schema33": {
+      "type": "string",
+      "enum": [
+        "console",
+        "network",
+        "domText",
+        "url",
+        "pageErrors"
+      ]
+    }
+  }
+}

@@ -103,16 +103,16 @@
     "scripts/hygiene/check-out-of-tree-generation.ps1": {
       "invocation": "ci-gate"
     },
-    "scripts/hygiene/quarantine-to-outside-repo.ps1": {
-      "invocation": "manual-runbook",
-      "reason": "Deliberate maintenance action, never automatic. Moves removal candidates out of the repo with a restore manifest so 'is this unused?' can be answered by running the gates instead of by opinion.",
-      "date": "2026-08-10"
-    },
     "scripts/hygiene/clean-rebuildable-artifacts.ps1": {
       "invocation": "manual-runbook"
     },
     "scripts/hygiene/clean-workspace-state.ps1": {
       "invocation": "manual-runbook"
+    },
+    "scripts/hygiene/quarantine-to-outside-repo.ps1": {
+      "invocation": "manual-runbook",
+      "reason": "Deliberate maintenance action, never automatic. Moves removal candidates out of the repo with a restore manifest so 'is this unused?' can be answered by running the gates instead of by opinion.",
+      "date": "2026-08-10"
     },
     "scripts/npdev-common.ps1": {
       "invocation": "ci-gate"
@@ -150,6 +150,9 @@
     "scripts/quality/check-cadence-coverage.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-closeable-streams.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-config-schema.py": {
       "invocation": "ci-gate"
     },
@@ -177,13 +180,19 @@
     "scripts/quality/check-engine-parity.py": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/check-firstrun-extractor.py": {
-      "invocation": "ci-gate"
-    },
     "scripts/quality/check-engine-variant-families.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-executable-line-endings.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-firstrun-extractor.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-generated-bundle-freshness.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-ledger-status-reverse-freshness.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-markdown-links.py": {
@@ -198,6 +207,12 @@
     "scripts/quality/check-panel-provenance-schema.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-pinned-download-links.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-readme-contract.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-record-surfaces.py": {
       "invocation": "ci-gate"
     },
@@ -205,6 +220,9 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-rollback-claims.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-routine-corpus-conformance.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-schema-mirror-consistency.py": {
@@ -272,6 +290,9 @@
     },
     "scripts/quality/json-schema-validator/validate-json-schema.mjs": {
       "invocation": "ci-gate"
+    },
+    "scripts/quality/pin-routine-schema.py": {
+      "invocation": "manual-runbook"
     },
     "scripts/quality/run-ai-beta-gate.ps1": {
       "invocation": "ci-gate"
@@ -600,21 +621,6 @@
     },
     "scripts/tests/fixtures/controlled-runner/slow-build.ps1": {
       "invocation": "orchestrated"
-    },
-    "scripts/quality/check-readme-contract.py": {
-      "invocation": "ci-gate"
-    },
-    "scripts/quality/check-closeable-streams.py": {
-      "invocation": "ci-gate"
-    },
-    "scripts/quality/check-ledger-status-reverse-freshness.py": {
-      "invocation": "ci-gate"
-    },
-    "scripts/quality/check-pinned-download-links.py": {
-      "invocation": "ci-gate"
-    },
-    "scripts/quality/check-generated-bundle-freshness.py": {
-      "invocation": "ci-gate"
     }
   }
 }
