@@ -425,7 +425,7 @@ A THIRD and FOURTH site encoded the same assumption and had to move with it (the
 ### QUAL-4 — The maturity-bootstrap CI step wraps everything in continue-on-error, which discards the exact exit-2-vs-exit-1 distinction REG-32 built -- a real failure there would keep CI green
 
 **Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-10)
-**Verification:** UNIT_TESTED
+**Verification:** VERIFIED_LIVE
 **Source:** Spotted in a beta1.12-era run log: "PRECONDITION-UNMET: 21 of 21 required reports were never generated (producers not run) ... npdev command failed with exit code 2 ... Error: Process completed with exit code 2." The job was green, because the step carries continue-on-error.
 **Surface:** `ci/npdev-ci-validation`
 **Files:**
