@@ -14,8 +14,9 @@ fill in, a working application.
 ## Prefer not to use a terminal?
 
 **NPDev Manager** installs everything for you — Java included — and runs your app from a window.
-[Download it](https://github.com/MarceloGiazzon/NPDevGeneral/releases/download/beta1.7/NPDev.Manager_0.1.0_x64-setup.exe)
-(Windows), double-click, and you never touch a command line. Full manual, Linux instructions, and
+[Download it](https://github.com/MarceloGiazzon/NPDevGeneral/releases/latest) (Windows: the
+`NPDev.Manager_*_x64-setup.exe` asset; Linux: the `.AppImage`), double-click, and you never touch a
+command line. Full manual, Linux instructions, and
 troubleshooting → [`docs/MANAGER.md`](docs/MANAGER.md)
 
 ---

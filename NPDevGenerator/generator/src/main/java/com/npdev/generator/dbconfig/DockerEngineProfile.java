@@ -112,6 +112,14 @@ public record DockerEngineProfile(
      * between a build error the author sees and a runtime mystery the user sees.
      */
     public void validate() {
+        // PORT-3: guiLabel is checked for EVERY kind, before the SERVER-only early return below.
+        // It is the engine's human name, and Print-DbConnectionInfo.ps1 prints it for every engine
+        // -- so grouping it with the container-specific fields meant the three embedded profiles
+        // skipped it entirely and shipped "Database type: " and "Notes for :" with an empty label.
+        // On H2Local, which is the DEFAULT, that is what a first-time user sees. A field consumed by
+        // all kinds must be required of all kinds; the early return is for fields a non-server
+        // genuinely cannot have (image, containerEnv, readyProbe), not for universal ones.
+        require(guiLabel != null && !guiLabel.isBlank(), "guiLabel");
         if (kind != Kind.SERVER) {
             return;
         }
@@ -125,7 +133,7 @@ public record DockerEngineProfile(
         require(ensureDatabase != null, "ensureDatabase");
         require(ensureDatabase.createExec() != null && !ensureDatabase.createExec().isEmpty(),
                 "ensureDatabase.createExec");
-        require(guiLabel != null && !guiLabel.isBlank(), "guiLabel");
+        // guiLabel is asserted above for every kind, not here -- see the PORT-3 note.
         require(dataVolumePath != null && !dataVolumePath.isBlank(), "dataVolumePath");
         require(composeImage != null && !composeImage.isBlank(), "composeImage");
     }
@@ -133,9 +141,9 @@ public record DockerEngineProfile(
     private void require(boolean condition, String field) {
         if (!condition) {
             throw new IllegalStateException(
-                    "DockerEngineProfile for " + engine + " is a SERVER engine but has no '" + field
-                    + "'. Every server engine must support every environment operation -- a user's "
-                    + "experience must not depend on which engine they chose. If this engine "
+                    "DockerEngineProfile for " + engine + " (kind " + kind + ") has no '" + field
+                    + "'. Every engine must support every environment operation its kind implies -- a "
+                    + "user's experience must not depend on which engine they chose. If this engine "
                     + "genuinely cannot support it, give it a different Kind and refuse it at the "
                     + "point of choice; do not ship a half-working toolbox.");
         }

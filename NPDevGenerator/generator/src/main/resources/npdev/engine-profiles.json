@@ -206,6 +206,7 @@
       "backupCommand": ""
     },
     "H2Local": {
+      "guiLabel": "H2 (file)",
       "kind": "embedded",
       "provider": "h2-local",
       "defaultPort": null,
@@ -217,6 +218,7 @@
       ]
     },
     "H2Server": {
+      "guiLabel": "H2 (server)",
       "kind": "embedded-server",
       "provider": "h2-server",
       "defaultPort": 9092,
@@ -228,6 +230,7 @@
       ]
     },
     "InMemory": {
+      "guiLabel": "In-memory",
       "kind": "embedded",
       "provider": "in-memory",
       "defaultPort": null,

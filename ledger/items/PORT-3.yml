@@ -1,0 +1,60 @@
+id: PORT-3
+title: >-
+  `guiLabel` is required of SERVER engines only but printed for ALL of them, so the three embedded
+  profiles -- including H2Local, the DEFAULT -- shipped "Database type: " and "Notes for :" with an
+  empty label
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-08-10
+closed: 2026-08-10
+verification: VERIFIED_LIVE
+surface: generator/dbconfig
+source: >-
+  Spotted by the agent implementing PORT-2, which flagged it as pre-existing and out of scope rather
+  than silently folding it in -- the right call, and the reason it got its own item instead of being
+  buried in an unrelated commit.
+detail: >-
+  `DockerEngineProfile.validate()` returns early for any kind that is not SERVER:
+
+      public void validate() {
+          if (kind != Kind.SERVER) { return; }
+          require(image ...); require(containerEnv ...); require(readyProbe ...);
+          require(guiLabel ...);          <-- universal field, server-only check
+      }
+
+  That early return is CORRECT for `image`, `containerEnv`, `readyProbe`, `ensureDatabase`,
+  `dataVolumePath` and `composeImage`: an engine with no container cannot have them, which is what
+  the Kind distinction is for. `guiLabel` is not one of those. It is the engine's human name, and
+  `DockerDeploymentEmitter` prints it in `Print-DbConnectionInfo.ps1` for EVERY engine:
+
+      Database type: <guiLabel>
+      Notes for <guiLabel>:
+
+  So H2Local, H2Server and InMemory -- none of which declared a `guiLabel` -- rendered those two
+  lines with nothing where the name should be. **H2Local is the default engine**, so this is what a
+  first-time user saw when they ran the connection-info script the runbook tells them to run. Small,
+  and precisely the kind of small that reads as unfinished in the first ten minutes.
+
+  The interesting part is that the invariant was DECLARED and did not hold. A `require(guiLabel != null
+  && !guiLabel.isBlank(), "guiLabel")` was sitting right there, correct, and unreachable for three of
+  the six engines. This is the same shape as the other declared-but-unenforced findings this repo has
+  collected: the assertion exists, and something above it means it never runs.
+
+  `check-engine-parity.py` did not catch it either -- it compares emitted OPERATIONS across the three
+  server engines, so an asymmetry among the EMBEDDED profiles is outside what it looks at. Not a
+  defect in that checker; a boundary of it worth knowing.
+remediation: >-
+  Two halves, both landed:
+
+    1. `guiLabel` moved ABOVE the SERVER-only early return, so it is required of every kind. A future
+       engine added without one now fails at generation with a message naming the field, rather than
+       printing a blank label to a user.
+    2. The three embedded profiles declare one: H2Local "H2 (file)", H2Server "H2 (server)",
+       InMemory "In-memory".
+
+  Also corrected while there: `require()`'s message said "is a SERVER engine but has no 'X'", which
+  became untrue the moment a non-server engine could reach it. It now names the actual kind.
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DockerEngineProfile.java
+  - NPDevGenerator/generator/src/main/resources/npdev/engine-profiles.json

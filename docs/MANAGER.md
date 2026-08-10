@@ -52,32 +52,55 @@ do here is a dead end if you later want the command line.
 
 ## Installing it
 
-One download. No prerequisites.
+One download. No prerequisites — with one exception, stated at the end of this section because it
+decides which engines you can use.
 
 ### Windows
 
-1. [Download the installer](https://github.com/MarceloGiazzon/NPDevGeneral/releases/download/beta1.7/NPDev.Manager_0.1.0_x64-setup.exe)
-   (`.exe`).
+1. **[Download the installer from the latest release](https://github.com/MarceloGiazzon/NPDevGeneral/releases/latest)**
+   — the `NPDev.Manager_*_x64-setup.exe` asset.
+
+   <!-- Deliberately /releases/latest, not a pinned tag. This link read `beta1.7` for five releases
+        after beta1.7 stopped being current, and the one thing a new person does with this document
+        is click it. A version-pinned download link in an install guide goes stale by default. -->
+
 2. Run it. Windows may show **"Windows protected your PC"** — the application is not yet
    code-signed. Choose **More info → Run anyway**.
 3. Launch **NPDev Manager** from the Start menu.
 
 ### Linux
 
-1. Download the `.AppImage`.
+1. Download the `NPDev.Manager_*_amd64.AppImage` asset from the
+   [latest release](https://github.com/MarceloGiazzon/NPDevGeneral/releases/latest).
 2. Make it executable and run it:
 
 ```bash
-chmod +x NPDevManager.AppImage
-./NPDevManager.AppImage
+chmod +x NPDev.Manager_*_amd64.AppImage
+./NPDev.Manager_*_amd64.AppImage
 ```
 
 The AppImage carries its own browser engine, so there is nothing to install first.
 
-> **Not yet published as of 2026-08-07.** Building the Linux AppImage needs a Linux build host —
-> this manual was written and the Windows installer built from a Windows machine, so no `.AppImage`
-> release asset exists yet. See `docs/RELEASE_PROCESS.md`'s "Publishing the Manager" section for
-> the manual publish steps once one is built.
+> Verified inside a container, not in a real desktop session — no display server, GPU or window
+> manager has been exercised. If it fails to start on a real desktop, that is a known-unverified
+> surface and worth reporting rather than working around.
+
+### The one prerequisite: Docker, and only for some engines
+
+**H2 (file), H2 (server) and In-memory need nothing.** They are embedded — no server, no container —
+and H2 (file) is the default.
+
+**PostgreSQL, MySQL and SQL Server need Docker.** NPDev starts them as containers
+(`postgres:16`, `mysql:8.4`, `mcr.microsoft.com/mssql/server:2022-latest`), so `npdev db start` and
+the Start/Stop/Reset buttons cannot work without it.
+
+The doctor reports Docker as **warn / optional**, which is accurate for the embedded engines and
+understated for the other three. Pick an embedded engine and you can ignore Docker entirely.
+
+> **Pointing NPDev at a database server you already run** is supported to the extent that it will
+> connect and work — but the toolbox knows the server is not its own and refuses to Start, Stop or
+> Reset it (STOR-14). It will tell you so rather than acting. In particular `Reset` will not delete
+> your data root.
 
 **First run creates one folder and touches nothing else.** Windows: `%LOCALAPPDATA%\NPDev`.
 Linux: `~/.local/share/npdev`. Everything the Manager downloads lives there.
@@ -110,7 +133,7 @@ finding out the hard way.
 |---|---|---|
 | **pass** | Requirement met. | Nothing. |
 | **fail** | You cannot build an app until this is resolved. | Use the button beside it, or follow the fix text. |
-| **warn** | Optional. Something is missing that only some paths need. | Usually nothing. Docker and PowerShell are never required. |
+| **warn** | Optional. Something is missing that only some paths need. | Usually nothing. PowerShell is never required. Docker is required only for the PostgreSQL / MySQL / SQL Server engines — see "The one prerequisite" above. |
 
 ### Controls
 
