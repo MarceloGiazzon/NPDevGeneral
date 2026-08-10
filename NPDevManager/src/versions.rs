@@ -100,28 +100,58 @@ pub async fn list_tags(force_refresh: bool) -> Result<Vec<TagInfo>, String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    let tags: Vec<GhTag> = client
+    // Check the STATUS before decoding. GitHub answers a rate-limited caller with HTTP 403 and a
+    // perfectly valid JSON object -- {"message": "API rate limit exceeded for <ip>", ...} -- which
+    // is simply not a Vec<GhTag>. Decoding first turned that into "tag list response did not parse",
+    // a message that sends the reader looking for a schema bug instead of at the actual cause.
+    // Found in CI (beta1.12's Manager harness), and a real user behind a shared IP or corporate NAT
+    // hits the same 60-requests-per-hour unauthenticated limit.
+    let response = client
         .get(format!("https://api.github.com/repos/{REPO}/tags"))
         .send()
         .await
-        .map_err(|e| format!("tag list request failed: {e}"))?
+        .map_err(|e| format!("tag list request failed: {e}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        let hint = if status.as_u16() == 403 || status.as_u16() == 429 {
+            " -- GitHub's unauthenticated API allows 60 requests per hour per IP, and this machine \
+             has reached it. It resets within the hour; the version list is cached, so an earlier \
+             list may still be shown."
+        } else {
+            ""
+        };
+        return Err(format!(
+            "GitHub returned {status} for the tag list.{hint} Response: {}",
+            body.chars().take(200).collect::<String>()
+        ));
+    }
+    let tags: Vec<GhTag> = response
         .json()
         .await
         .map_err(|e| format!("tag list response did not parse: {e}"))?;
 
     let mut infos = Vec::with_capacity(tags.len());
     for tag in tags {
-        let commit: GhCommit = client
+        // One request PER TAG on top of the list request -- 12 tags is 13 calls against a 60/hour
+        // unauthenticated budget, which is why this is the step that runs out first. The date is a
+        // nicety; the tag name is the thing a user picks. So a failed lookup DEGRADES rather than
+        // failing the whole listing: previously one rate-limited commit call made the Manager show
+        // no versions at all.
+        let committed_at = match client
             .get(format!("https://api.github.com/repos/{REPO}/commits/{}", tag.commit.sha))
             .send()
             .await
-            .map_err(|e| format!("commit lookup failed for {}: {e}", tag.name))?
-            .json()
-            .await
-            .map_err(|e| format!("commit response did not parse for {}: {e}", tag.name))?;
+        {
+            Ok(r) if r.status().is_success() => match r.json::<GhCommit>().await {
+                Ok(commit) => commit.commit.committer.date,
+                Err(_) => String::new(),
+            },
+            _ => String::new(),
+        };
         infos.push(TagInfo {
             name: tag.name,
-            committed_at: commit.commit.committer.date,
+            committed_at,
         });
     }
     infos.sort_by(|a, b| b.committed_at.cmp(&a.committed_at));
