@@ -103,6 +103,11 @@
     "scripts/hygiene/check-out-of-tree-generation.ps1": {
       "invocation": "ci-gate"
     },
+    "scripts/hygiene/quarantine-to-outside-repo.ps1": {
+      "invocation": "manual-runbook",
+      "reason": "Deliberate maintenance action, never automatic. Moves removal candidates out of the repo with a restore manifest so 'is this unused?' can be answered by running the gates instead of by opinion.",
+      "date": "2026-08-10"
+    },
     "scripts/hygiene/clean-rebuildable-artifacts.ps1": {
       "invocation": "manual-runbook"
     },
