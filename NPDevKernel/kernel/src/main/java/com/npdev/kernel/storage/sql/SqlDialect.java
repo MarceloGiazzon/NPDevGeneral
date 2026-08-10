@@ -238,23 +238,25 @@ public interface SqlDialect {
     String rowLimit(long rows);
 
     /**
-     * <b>SQL Server's {@code OFFSET..FETCH} is a syntax error without {@code ORDER BY}.</b> Postgres
-     * and MySQL accept an unordered paginated query happily, so the same statement works on two
-     * engines and fails on the third.
+     * Enforce conformance vector P3: a paginated statement must carry an explicit order.
      *
-     * <p>This is conformance vector P3, and the pinned decision is: <b>refuse, on every engine,
-     * rather than inject an order on the one that needs it.</b> Injecting silently would make the
-     * engines behave differently in a way nobody can see from the model -- and an arbitrary
-     * injected order still returns overlapping pages, so it would trade a loud failure for a silent
-     * wrong answer. Callers that paginate must order.
+     * <p><b>SQL Server's {@code OFFSET..FETCH} is a syntax error without {@code ORDER BY}.</b>
+     * Postgres, MySQL and H2 accept an unordered paginated query happily, so the same statement
+     * works on three engines and fails on the fourth.
      *
-     * <p>Returns true when this engine would reject the unordered query itself; the refusal is
-     * enforced uniformly by {@link #requireOrderedForPagination(String)} regardless.
-     */
-    boolean requiresOrderByForPagination();
-
-    /**
-     * Enforce P3's pinned decision: a paginated statement must carry an explicit order.
+     * <p>P3's pinned decision is: <b>refuse, on every engine, rather than inject an order on the one
+     * that needs it.</b> Injecting silently would make the engines behave differently in a way
+     * nobody can see from the model -- and an arbitrary injected order still returns overlapping
+     * pages, so it would trade a loud failure for a silent wrong answer. Callers that paginate must
+     * order.
+     *
+     * <p><b>The refusal is unconditional, and there is deliberately no per-engine flag to consult.</b>
+     * A {@code requiresOrderByForPagination()} predicate lived on this interface until STOR-13:
+     * every dialect answered it (true on SQL Server, false on the other three) and no caller could
+     * act on the answer, because this method demands an order of every engine regardless. Shipping
+     * both an unconditional rule and a flag that reads like it gates the rule was the defect --
+     * the next reader budgets for a conditional that does not exist. The engine-level fact it
+     * carried is stated above and in {@code SqlServerDialect}'s class javadoc, where it belongs.
      *
      * @throws IllegalArgumentException naming the engine and the statement when it does not
      */

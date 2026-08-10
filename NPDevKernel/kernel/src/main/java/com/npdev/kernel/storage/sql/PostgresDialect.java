@@ -180,11 +180,6 @@ public final class PostgresDialect implements SqlDialect {
     }
 
     @Override
-    public boolean requiresOrderByForPagination() {
-        return false;
-    }
-
-    @Override
     public UpsertStrategy upsert() {
         return upsert;
     }

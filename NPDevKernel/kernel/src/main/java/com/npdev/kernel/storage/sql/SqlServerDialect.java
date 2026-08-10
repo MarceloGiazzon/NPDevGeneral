@@ -20,11 +20,14 @@ import java.util.Set;
  *       crash: the query succeeds, the user sees rows that are not theirs and misses rows that are.
  *       {@link PaginationClause} carries the order so the mistake is unrepresentable.</li>
  *   <li><b>{@code OFFSET..FETCH} is a syntax error without {@code ORDER BY}.</b> Conformance P3.
- *       {@link #requiresOrderByForPagination()} is true here and only here -- but the REFUSAL is
- *       uniform across every dialect, because injecting an arbitrary order on the one engine that
- *       needs it would hide the difference and still return overlapping pages. Measured: every
- *       paginated statement in the repo already declares an ORDER BY with a tie-breaker, so this
- *       costs nothing today.</li>
+ *       This is the only engine of the four that rejects an unordered paginated query itself -- but
+ *       the REFUSAL is uniform across every dialect
+ *       ({@link SqlDialect#requireOrderedForPagination(String)}), because injecting an arbitrary
+ *       order on the one engine that needs it would hide the difference and still return overlapping
+ *       pages. Measured: every paginated statement in the repo already declares an ORDER BY with a
+ *       tie-breaker, so this costs nothing today. There is deliberately no per-engine predicate for
+ *       this fact -- STOR-13 deleted the one that existed, because an unconditional rule plus a flag
+ *       that reads like it gates the rule is worse than the rule alone.</li>
  * </ol>
  *
  * <h2>The unresolved one: {@link #rowLimit(long)}</h2>
@@ -402,11 +405,6 @@ public final class SqlServerDialect implements SqlDialect {
             throw new IllegalArgumentException("engine 'sqlserver': selectTop needs a positive count");
         }
         return "SELECT TOP " + rows + " " + selectListOnwards;
-    }
-
-    @Override
-    public boolean requiresOrderByForPagination() {
-        return true;
     }
 
     @Override

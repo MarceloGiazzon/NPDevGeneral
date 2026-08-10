@@ -65,11 +65,19 @@ SEARCH_ROOTS = [
 
 # Methods with no caller outside the dialect package, and why that is correct.
 #
-# Two kinds of entry live here, and the difference matters:
+# Three kinds of entry live here, and the difference matters:
 #   - genuinely internal: the dialects call it themselves, and no external caller is expected.
-#   - STOR-13: declared, implemented on all four dialects, and asked by NOTHING a user runs. These
-#     are the same shape as STOR-4/5/6 and are a real open backlog, enumerated so it is visible
-#     rather than silent. They are NOT excused -- they are filed.
+#   - prepared early: implemented on all four dialects before any consumer exists. STOR-13 measured
+#     these and CLOSED them as a deliberate decision rather than a backlog -- an answer written
+#     before its question is early, not wrong. What was missing was any record of which it was;
+#     these entries are that record. Decide again when a consumer appears.
+#   - covered by a non-production consumer: asked by the conformance vectors against real engines.
+#     That is a real consumer even though this checker's search roots (production only, by design)
+#     structurally cannot see it, so it must be stated here or it reads as dead weight.
+#
+# STOR-13 opened with nine names on this list. Six were false alarms the one-hop rule below removed,
+# one (`requiresOrderByForPagination`) was DELETED from the interface, and the eight-minus-one that
+# remain are the seven entries below. None of them is an open chore.
 INTERNAL_ONLY = {
     "require": "the dialects' own X0 guard -- a dialect that cannot honour a question throws rather "
                "than returning another engine's answer. Called by the dialects, by design.",
@@ -79,7 +87,7 @@ INTERNAL_ONLY = {
     "identifiers": "the list form of identifier(), used by the upsert strategies as they compose "
                    "statement text inside the dialects.",
 
-    # --- STOR-13, AFTER the one-hop rule. ---
+    # --- STOR-13, AFTER the one-hop rule and after its closure. ---
     #
     # SIX entries left this list when reachability was measured instead of assumed, and one of them
     # matters more than the rest: `supports` was filed as "nothing asks at runtime, which is where
@@ -95,29 +103,38 @@ INTERNAL_ONLY = {
     # foldsUnquotedIdentifiersToLowerCase (<- identifier()), requireOrderedForPagination
     # (<- paginated()).
     #
-    # What remains is genuinely unasked, in three honest groups rather than "nine chores":
+    # The REDUNDANT group had exactly one member and it is gone: `requiresOrderByForPagination` was
+    # deleted from SqlDialect and its four implementations, because requireOrderedForPagination()
+    # demands ORDER BY of EVERY engine regardless of the answer, so no caller could ever act on it.
+    # Shipping the unconditional rule AND a flag that reads like it gates the rule was the defect.
+    # Nothing replaces the entry here -- this checker fails on an allowlist entry for a method the
+    # interface no longer declares, which is what keeps the deletion honest.
     #
-    #   PREPARED EARLY, no consumer yet -- an answer written before its question exists is not
-    #   wrong, it is early. Decide when a consumer appears.
-    "autoIncrementColumn": "STOR-13 (prepared early). No caller; NPDev's ids are UUIDs, so nothing "
-                           "has needed an auto-increment column yet.",
-    "timestampColumnType": "STOR-13 (prepared early). No caller in production or test.",
-    "cast": "STOR-13 (prepared early). No caller in production or test.",
-    "returning": "STOR-13 (prepared early). The INSERT paths read generated keys through JDBC "
-                 "rather than a RETURNING clause.",
+    # What remains is genuinely unasked, in two groups, and both are decisions rather than chores:
+    #
+    #   PREPARED EARLY, no consumer yet. Decide again when one appears; the reason each answer exists
+    #   before its question is the point of the entry.
+    "autoIncrementColumn": "STOR-13 (prepared early, deliberate). No caller; NPDev's ids are UUIDs, "
+                           "so nothing has needed an auto-increment column yet. Kept because the "
+                           "engines genuinely differ here and re-deriving it later is the expensive "
+                           "half.",
+    "timestampColumnType": "STOR-13 (prepared early, deliberate). No caller in production or test; "
+                           "column types are emitted through portableColumnType() today.",
+    "cast": "STOR-13 (prepared early, deliberate). No caller in production or test. Every engine "
+            "spells CAST portably enough that no site has needed the dialect to arbitrate yet.",
+    "returning": "STOR-13 (prepared early, deliberate). The INSERT paths read generated keys through "
+                 "JDBC's getGeneratedKeys rather than a RETURNING clause, so the strategy is "
+                 "answered and unused.",
 
-    #   REDUNDANT -- the per-dialect answer exists but the rule is enforced unconditionally, so
-    #   asking can never change the outcome. The strongest delete candidate of the eight.
-    "requiresOrderByForPagination": "STOR-13 (redundant). requireOrderedForPagination() demands "
-                                    "ORDER BY of EVERY engine regardless of this answer, so no "
-                                    "caller can act on it. Delete it, or make the enforcement "
-                                    "conditional on it -- but not both as they are.",
-
-    #   INTROSPECTION -- asked by the conformance vectors against real engines, which is a real
-    #   consumer even though it is not production code.
-    "listTablesSql": "STOR-13 (introspection). Exercised by the conformance vectors.",
-    "listColumnsSql": "STOR-13 (introspection). Exercised by the conformance vectors.",
-    "listIndexesSql": "STOR-13 (introspection). Exercised by the conformance vectors.",
+    #   COVERED BY THE CONFORMANCE VECTORS -- a real consumer that this checker's production-only
+    #   search roots structurally cannot see. Not "no caller": DialectConformanceTierATest asserts
+    #   their shape on all four dialects and TierB executes listColumnsSql against real engines.
+    "listTablesSql": "STOR-13 (covered). Asked by DialectConformanceTierATest against all four "
+                     "dialects -- a real consumer, outside this checker's production-only roots.",
+    "listColumnsSql": "STOR-13 (covered). Asked by DialectConformanceTierATest and EXECUTED by "
+                      "DialectConformanceTierBTest against real engines.",
+    "listIndexesSql": "STOR-13 (covered). Asked by DialectConformanceTierATest against all four "
+                      "dialects -- a real consumer, outside this checker's production-only roots.",
 }
 
 

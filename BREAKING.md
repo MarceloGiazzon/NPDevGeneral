@@ -5,6 +5,24 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-10 — `SqlDialect.requiresOrderByForPagination()` is removed (STOR-13)
+
+**What changes.** The method is gone from the `SqlDialect` interface and from all four
+implementations. Nothing replaces it: `requireOrderedForPagination(String)` already demands an
+`ORDER BY` of every engine, so the per-engine answer could never change an outcome.
+
+**Who is affected.** Any implementation of `SqlDialect` outside this repo, which would no longer
+compile against the interface — delete the override. In this repo, the four dialects and one
+anonymous test stub, all updated in the same commit. No caller is affected, because there was none:
+that is the defect this removes.
+
+**Why.** Shipping an unconditional rule alongside a flag that reads like it gates the rule invites
+the next reader to write a conditional that cannot exist. Conformance vector P3 pins the refusal to
+every engine on purpose — injecting an order on the one engine that needs it hides the difference
+from the model and still returns overlapping pages.
+
+**No codemod.** A codemod rewrites models and call sites; this method had neither.
+
 ## 2026-08-10 — `_ops/resolved-db-plan.json` records app paths RELATIVE to the app (PORT-2)
 
 **What changes.** `finalAppPath` and `opsRoot` were absolute paths on the generating machine; they

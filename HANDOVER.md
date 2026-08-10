@@ -114,7 +114,7 @@ Do **not** try to fix anything. A workaround you apply silently is a defect we n
 | The AppImage needs a normal desktop graphics stack | It **does** bundle `webkit2gtk` (measured — `libwebkit2gtk-4.1.so.0` and the WebKit helper processes are inside it), so you do **not** need to install that. It does *not* bundle the libraries every desktop already has: `libGLESv2`/`libEGL`, `libgbm`, fontconfig, harfbuzz, fribidi. Any normal desktop install has them; a minimal/server image may not. `libGLESv2` is loaded at runtime, so it aborts with `Couldn't open libGLESv2.so.2` rather than a linker error | Only if you are on a **desktop** install and it still fails |
 | The five **Database** buttons need PowerShell | They drive the app's own generated `_ops` scripts. Windows always has one. A Linux desktop usually does not, and the buttons will say so rather than working. | Only if the message is confusing |
 | MySQL/H2: a failed migration cannot be rolled back | Those engines commit implicitly on DDL. NPDev reports this truthfully instead of claiming a rollback (`STOR-2`) | No |
-| Nine unused internal database methods | Dead surface, no user-visible effect (`STOR-13`) | No |
+| Seven unused internal database methods | Four are answers prepared before any consumer exists, three are exercised by the dialect conformance vectors instead of production code. Deliberate and recorded, no user-visible effect (`STOR-13`) | No |
 | The first build is slow | Gradle is populating a cold cache. Later builds are much faster | No |
 
 **Anything not in this table is worth reporting**, including "the wording confused me".

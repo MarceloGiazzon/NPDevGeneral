@@ -320,8 +320,11 @@ def known_limitations() -> list[dict]:
     """
     return [
         {
-            "limitation": "Nine SqlDialect methods have no production caller. They are dead surface, "
-                          "not wrong behaviour, and nothing a second machine does will touch them.",
+            "limitation": "Seven SqlDialect methods have no production caller: four are answers "
+                          "written before any consumer exists (auto-increment columns, timestamp "
+                          "types, CAST, RETURNING), three are exercised by the dialect conformance "
+                          "vectors rather than by production code. Deliberate and recorded, not "
+                          "wrong behaviour, and nothing a second machine does will touch them.",
             "ledgerId": "STOR-13",
             "workaround": "None needed -- no user-visible effect.",
         },

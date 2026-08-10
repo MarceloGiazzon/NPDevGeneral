@@ -110,9 +110,6 @@ class StorageCapabilityGateTest {
             @Override public String rowLimit(long rows) {
                 throw new UnsupportedOperationException();
             }
-            @Override public boolean requiresOrderByForPagination() {
-                throw new UnsupportedOperationException();
-            }
             @Override public UpsertStrategy upsert() {
                 throw new UnsupportedOperationException();
             }
