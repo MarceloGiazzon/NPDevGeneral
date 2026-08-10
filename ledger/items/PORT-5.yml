@@ -1,0 +1,59 @@
+id: PORT-5
+title: >-
+  Nothing compared a committed generated artefact against its source, so the React bundle shipped a
+  string the source had already deleted -- and the advice that makes the bundle reviewable ("ignore
+  it entirely") is exactly what made the staleness invisible
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-10
+closed: 2026-08-10
+verification: VERIFIED_LIVE
+surface: quality/generated-artefacts
+source: >-
+  Named but deliberately NOT closed by PORT-1, whose own detail says: "Rebuilding closes the
+  instance; the absent bundle-freshness check is the class, and is NOT closed by this item." This is
+  that item.
+detail: >-
+  PORT-1 found `[string]$NPDevRoot = 'D:\WorkSpace\NPDev_General'` inside
+  `npdev-templates/static-react/assets/AuthoringApp.js` -- an author path AND a hardcoded repo folder
+  name, the pair REG-144 had already removed from eleven resolution sites.
+
+  The SOURCE was correct the whole time. `NPDevEditor/ui-react/src/authoring/pipeline/
+  pipelineHandoff.ts` emits `$env:NPDEV_ROOT` and carries a REG-144 comment saying it used to emit
+  the other thing. What shipped was the BUNDLE, committed and never rebuilt after that fix. A string
+  the source had deleted went on being distributed inside every generated app.
+
+  WHY IT WAS UNSEEABLE, and the part worth keeping: CLAUDE.md tells every reader the bundle is a
+  "generated bundle, ignore entirely". That advice is CORRECT -- it is 141 KB of minified output and
+  reviewing it is a waste of a human. It is also precisely why a stale copy survives: reviewers skip
+  it, greps skip it, and no gate compared it to the source it claims to be built from. Good advice
+  and a blind spot were the same sentence.
+
+  This generalizes past the one bundle. Any committed build output has the same property: the repo
+  contains both a source of truth and a derived copy, and nothing asserts the derived one was
+  refreshed.
+remediation: >-
+  `scripts/quality/check-generated-bundle-freshness.py` (AI-knowledge gate step 42/43) declares
+  (source tree -> committed artefact) pairs and fails when the artefact's most recent commit is
+  OLDER than the source tree's. One pair today: `NPDevEditor/ui-react/src` ->
+  `npdev-templates/static-react/assets`. Adding a pair is one tuple.
+
+  GIT TIMESTAMPS, NOT HASHES, and the reasoning matters because hashing is the obvious first
+  instinct. Hashing means either running the build inside the gate -- minutes, plus a `node_modules`
+  the workspace-slimness policy forbids -- or recording an input digest that must enumerate every
+  build input (vite config, package-lock, toolchain) and silently under-reports the moment one is
+  forgotten. The actual question is "was it rebuilt after the source changed?", and git already
+  knows.
+
+  KNOWN IMPRECISION, recorded rather than hidden: a source commit that cannot affect the bundle
+  still fails, and the remedy is a rebuild producing a byte-identical artefact. Paid deliberately --
+  the alternative failure mode is shipping a stale artefact for weeks, which is what happened. Test
+  files are excluded so the common case stays quiet.
+
+  Calibrated against a REAL throwaway git repo driven through real commits, because asserting
+  `a > b` would prove nothing about the plumbing: fresh artefact stays quiet, source-change-without-
+  rebuild fires, test-only change stays quiet.
+files:
+  - scripts/quality/check-generated-bundle-freshness.py
+  - scripts/quality/run-ai-knowledge-gate.ps1
