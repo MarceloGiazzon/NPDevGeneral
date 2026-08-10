@@ -6,74 +6,13 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**168 item(s) migrated: 2 open/partial, 166 done.**
+**168 item(s) migrated: 0 open/partial, 168 done.**
 
 ## Open / partial
 
-| ID | Title | Type | Sev | Status | Opened |
-|---|---|---|---|---|---|
-| QUAL-4 | The maturity-bootstrap CI step wraps everything in continue-on-error, which discards the exact exit-2-vs-exit-1 distinction REG-32 built -- a real failure there would keep CI green | GAP | MEDIUM | OPEN | 2026-08-10 |
-| STOR-13 | EIGHT SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in (filed as nine; see round3_correction -- six of the original nine were false alarms, `supports` most importantly of all, and three of the eight are asked by the conformance vectors) | BUG | MEDIUM | OPEN | 2026-08-09 |
+None currently open.
 
-### Detail
-
-### QUAL-4 — The maturity-bootstrap CI step wraps everything in continue-on-error, which discards the exact exit-2-vs-exit-1 distinction REG-32 built -- a real failure there would keep CI green
-
-**Type:** GAP · **Severity:** MEDIUM · **Status:** OPEN
-**Verification:** VERIFIED_LIVE
-**Source:** Spotted in a beta1.12-era run log: "PRECONDITION-UNMET: 21 of 21 required reports were never generated (producers not run) ... npdev command failed with exit code 2 ... Error: Process completed with exit code 2." The job was green, because the step carries continue-on-error.
-**Surface:** `ci/npdev-ci-validation`
-**Files:**
-- `.github/workflows/npdev-ci-validation.yml`
-
-Two separate problems in one step (.github/workflows/npdev-ci-validation.yml:251, "Bootstrap post-Beta0 maturity reports").
-1. THE DISTINCTION IS DISCARDED. REG-32 deliberately taught this chain to separate
-   precondition-unmet (exit 2, not a defect -- the ~21 producer gates do not run in this job) from
-   check-failed (exit 1, a real failure). The step then sets `continue-on-error: true` across the
-   whole block, which tolerates BOTH identically. So if `npdev report bootstrap` or
-   `./gradlew postBeta0MaturityCheck` ever fails for a real reason, NPDev CI Validation stays green
-   and nobody sees it.
-
-   This is the shape the project keeps finding: a distinction built carefully at one layer and
-   thrown away at the layer above. Tier B was green while no app could boot; the dialect answered
-   correctly while the emitter never asked; here the exit code is computed correctly and then
-   ignored.
-
-   The step's own comment is honest that this was deferred on purpose -- "flipping the flag for the
-   whole step is a separate, higher-stakes CI-gating decision this fix did not make" -- which was
-   reasonable when only two of the four commands in the block had been audited.
-
-2. THE COMMENT IS NOW A STALE RECORD. It states the step "prints PRECONDITION-UNMET: 19 of 21".
-   The observed log says 21 of 21. Two reports that were once produced in this job no longer are.
-   Not fatal (everything here is advisory today), but the number in the comment is the only record
-   of what the expected state IS, and it no longer matches.
-
-### STOR-13 — EIGHT SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in (filed as nine; see round3_correction -- six of the original nine were false alarms, `supports` most importantly of all, and three of the eight are asked by the conformance vectors)
-
-**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
-**Verification:** NOT_VERIFIED
-**Source:** storage/closeout/CLOSEOUT_PLAN.md section 7 ("what test would have caught all three?"). Found by the check that section asked for -- scripts/quality/check-dialect-methods-are-asked.py -- on its first run, against the tree at the moment STOR-6 closed.
-**Surface:** `kernel/storage-dialect`
-
-The plan's closing question was: STOR-4 (drivers), STOR-5 (guarded DDL) and STOR-6 (`quoteIdentifier`, zero calls in the generator) are the same defect three times, so what check catches the family rather than the instances? The answer -- a check that the thing a user runs ASKS the dialect, not merely that the dialect answers correctly -- was built, and it immediately found nine more.
-Each of these is declared on `SqlDialect`, implemented by all four dialects, and called from nowhere in `NPDevKernel/*/src/main`, `NPDevGenerator/generator/src/main`, `NPDevRuntimeHost/src/main` or `NPDevContract/dsl/src/main`. The test-caller counts below are dialect-receiver calls found under `src/test` -- proven correct, wired to nothing:
-
-    supports                       12 test callers, 0 production
-    autoIncrementColumn             9 test callers, 0 production
-    rowLimit                        7 test callers, 0 production
-    returning                       5 test callers, 0 production
-    listColumnsSql                  4 test callers, 0 production
-    limitOnly                       4 test callers, 0 production
-    listTablesSql                   3 test callers, 0 production
-    listIndexesSql                  3 test callers, 0 production
-    cast                            0 test callers, 0 production
-    timestampColumnType             0 test callers, 0 production
-    requiresOrderByForPagination    0 test callers, 0 production
-
-`supports` is the one worth reading twice. CLAUDE.md instructs the reader to "ask `SqlDialects.active().supports(...)` rather than assuming a rollback" -- STOR-2's whole remedy -- and no production code does. The capability set is consulted through `capabilities()` by `StorageCapabilityGate` at GENERATION time; nothing asks at RUNTIME, which is where the DDL-in-transaction question actually gets decided.
-Not necessarily nine bugs. Some of these may be genuinely premature -- an answer prepared before its consumer exists is not wrong, it is early. What was wrong is that nothing distinguished "prepared early" from "wired and forgotten", and that is the distinction the three closed items each turned out to need. They are now enumerated in that checker's INTERNAL_ONLY allowlist with this item's id, so the list is a visible backlog rather than an invisible one, and any NEW dialect method must be wired or explicitly recorded here.
-
-## Done (166)
+## Done (168)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -88,6 +27,7 @@ Not necessarily nine bugs. Some of these may be genuinely premature -- an answer
 | QUAL-1 | check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight | GAP | LOW | DONE | 2026-08-09 |
 | QUAL-2 | Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red | BUG | MEDIUM | DONE | 2026-08-09 |
 | QUAL-3 | Two apps in one folder became ONE database -- a shared `_ops` toolbox AND a shared appId, so container name and data root collided; resetting either destroyed the other's data | BUG | HIGH | DONE | 2026-08-09 |
+| QUAL-4 | The maturity-bootstrap CI step wraps everything in continue-on-error, which discards the exact exit-2-vs-exit-1 distinction REG-32 built -- a real failure there would keep CI green | GAP | MEDIUM | DONE | 2026-08-10 |
 | REG-1 | 9 app definitions remain on the deprecated blanket destructive posture (down from 27) | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-10 | LNCH-19: Linux CI observed green for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-100 | CLOSED -- three silent-answer sites found by the X0 audit, now fixed: a $ref that could not resolve wrote null (while the SAME class threw for id refs), a runQuery step naming an undeclared query returned an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate went unvalidated | BUG | MEDIUM | DONE | 2026-07-31 |
@@ -237,6 +177,7 @@ Not necessarily nine bugs. Some of these may be genuinely premature -- an answer
 | STOR-10 | Five more two-engine assumptions between "the app boots" and "the app works" -- a Postgres-by- default dialect probe, UUID and timestamp values bound and read in shapes only two engines accept, a schema differ comparing the catalog against a type it never emitted, and a two-way column rename | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-11 | On MySQL a create that violates a unique constraint returns 200 and OVERWRITES the row that held the value, because ON DUPLICATE KEY UPDATE reacts to every unique index -- the dialect's own javadoc said no NPDev schema could produce this shape, and any `unique: true` field does | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-12 | A MySQL or SQL Server app boots once and never again -- the migration-claim store tested for Postgres's SQLSTATE 23505, so the ordinary "the canonical row already exists" case was reported as a hard failure, with a message asserting the exact opposite of the truth | BUG | HIGH | DONE | 2026-08-09 |
+| STOR-13 | EIGHT SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in (filed as nine; see round3_correction -- six of the original nine were false alarms, `supports` most importantly of all, and three of the eight are asked by the conformance vectors) | BUG | MEDIUM | DONE | 2026-08-09 |
 | STOR-14 | No way to say "this database is not mine to manage" -- the `_ops` toolbox assumes it provisioned every server engine, and `Reset-Environment.ps1` recursively deletes a data root that may be the user's own | GAP | HIGH | DONE | 2026-08-09 |
 | STOR-2 | A conversion hook's refusal claimed "the hook's changes were rolled back; nothing persisted" on engines that COMMIT IMPLICITLY ON DDL -- false on H2 today, and the decision MySQL forced | BUG | HIGH | DONE | 2026-08-08 |
 | STOR-3 | MySQL, PostgreSQL and SQL Server each pass 13/13 Tier B vectors against REAL containers -- but none is supported until that run is repeatable rather than a manual dispatch of unpinned images | GAP | MEDIUM | DONE | 2026-08-08 |
@@ -480,6 +421,37 @@ MEASURED RED (two apps really generated into one folder, not inferred):
 So they were not two apps sharing a toolbox. They were one database with two front doors. Fixing only the `_ops` location would have left both apps pointed at one container and one data root, and Reset for either would still have destroyed the other's data -- the fix would have looked complete and changed nothing that mattered.
 Why HIGH, not MEDIUM: it destroys data and reports success (the class STOR-11 was rated HIGH for); two apps in one folder is what evaluating the product looks like, not an exotic setup; and the acknowledgement token cannot help, because the user types it correctly for the app they intend and different data is deleted. M14 had just made Reset a button, so the risk rose the day the toolbox got easier to reach.
 A THIRD and FOURTH site encoded the same assumption and had to move with it (the plan predicted only two): `scripts/quality/run-engine-toolbox-parity.py` read `output.parent / "_ops"`, and `scripts/appgen/Build-NpdevApp.ps1` writes its own separate toolbox at `$OutRoot/_ops`. The latter is per-appId by construction (`$OutRoot = $BuildRoot/$AppId`) so it cannot collide and was left alone; the former follows the emitter. A FIRST ATTEMPT AT SITE 2 WAS WRONG AND IS WORTH RECORDING. Keying identity on the directory NAME ("if it is not called `definition/`, that directory is the app") looked right and passed the new tests. Measured against the corpus, it was worse than the defect: 25 definitions live in a directory called `Input` with no manifest.json, and the rule collapsed all 25 onto `appId=Input`. T2 caught it as an unrelated-looking STOR-8 failure (`UserDatabaseDefinitionDeclaredConnectionTest`, "an h2FilePath that agrees with the derived path still loads") because that test's two temp definitions stopped resolving to one app. Path shape cannot distinguish an app directory from a wrapper directory; asking it to was the mistake.
+
+### QUAL-4 — The maturity-bootstrap CI step wraps everything in continue-on-error, which discards the exact exit-2-vs-exit-1 distinction REG-32 built -- a real failure there would keep CI green
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-10)
+**Verification:** UNIT_TESTED
+**Source:** Spotted in a beta1.12-era run log: "PRECONDITION-UNMET: 21 of 21 required reports were never generated (producers not run) ... npdev command failed with exit code 2 ... Error: Process completed with exit code 2." The job was green, because the step carries continue-on-error.
+**Surface:** `ci/npdev-ci-validation`
+**Files:**
+- `.github/workflows/npdev-ci-validation.yml`
+
+Two separate problems in one step (.github/workflows/npdev-ci-validation.yml:251, "Bootstrap post-Beta0 maturity reports").
+1. THE DISTINCTION IS DISCARDED. REG-32 deliberately taught this chain to separate
+   precondition-unmet (exit 2, not a defect -- the ~21 producer gates do not run in this job) from
+   check-failed (exit 1, a real failure). The step then sets `continue-on-error: true` across the
+   whole block, which tolerates BOTH identically. So if `npdev report bootstrap` or
+   `./gradlew postBeta0MaturityCheck` ever fails for a real reason, NPDev CI Validation stays green
+   and nobody sees it.
+
+   This is the shape the project keeps finding: a distinction built carefully at one layer and
+   thrown away at the layer above. Tier B was green while no app could boot; the dialect answered
+   correctly while the emitter never asked; here the exit code is computed correctly and then
+   ignored.
+
+   The step's own comment is honest that this was deferred on purpose -- "flipping the flag for the
+   whole step is a separate, higher-stakes CI-gating decision this fix did not make" -- which was
+   reasonable when only two of the four commands in the block had been audited.
+
+2. THE COMMENT IS NOW A STALE RECORD. It states the step "prints PRECONDITION-UNMET: 19 of 21".
+   The observed log says 21 of 21. Two reports that were once produced in this job no longer are.
+   Not fatal (everything here is advisory today), but the number in the comment is the only record
+   of what the expected state IS, and it no longer matches.
 
 ### REG-1 — 9 app definitions remain on the deprecated blanket destructive posture (down from 27)
 
@@ -7422,6 +7394,31 @@ entirely.
 So the bug needed: a real MySQL/SQL Server, a database that already has NPDev's tables, AND a
 model change. That is not an exotic combination -- it is what every deployment does after its
 first release. It just is not what a fresh test harness does.
+
+### STOR-13 — EIGHT SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in (filed as nine; see round3_correction -- six of the original nine were false alarms, `supports` most importantly of all, and three of the eight are asked by the conformance vectors)
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-10)
+**Verification:** UNIT_TESTED
+**Source:** storage/closeout/CLOSEOUT_PLAN.md section 7 ("what test would have caught all three?"). Found by the check that section asked for -- scripts/quality/check-dialect-methods-are-asked.py -- on its first run, against the tree at the moment STOR-6 closed.
+**Surface:** `kernel/storage-dialect`
+
+The plan's closing question was: STOR-4 (drivers), STOR-5 (guarded DDL) and STOR-6 (`quoteIdentifier`, zero calls in the generator) are the same defect three times, so what check catches the family rather than the instances? The answer -- a check that the thing a user runs ASKS the dialect, not merely that the dialect answers correctly -- was built, and it immediately found nine more.
+Each of these is declared on `SqlDialect`, implemented by all four dialects, and called from nowhere in `NPDevKernel/*/src/main`, `NPDevGenerator/generator/src/main`, `NPDevRuntimeHost/src/main` or `NPDevContract/dsl/src/main`. The test-caller counts below are dialect-receiver calls found under `src/test` -- proven correct, wired to nothing:
+
+    supports                       12 test callers, 0 production
+    autoIncrementColumn             9 test callers, 0 production
+    rowLimit                        7 test callers, 0 production
+    returning                       5 test callers, 0 production
+    listColumnsSql                  4 test callers, 0 production
+    limitOnly                       4 test callers, 0 production
+    listTablesSql                   3 test callers, 0 production
+    listIndexesSql                  3 test callers, 0 production
+    cast                            0 test callers, 0 production
+    timestampColumnType             0 test callers, 0 production
+    requiresOrderByForPagination    0 test callers, 0 production
+
+`supports` is the one worth reading twice. CLAUDE.md instructs the reader to "ask `SqlDialects.active().supports(...)` rather than assuming a rollback" -- STOR-2's whole remedy -- and no production code does. The capability set is consulted through `capabilities()` by `StorageCapabilityGate` at GENERATION time; nothing asks at RUNTIME, which is where the DDL-in-transaction question actually gets decided.
+Not necessarily nine bugs. Some of these may be genuinely premature -- an answer prepared before its consumer exists is not wrong, it is early. What was wrong is that nothing distinguished "prepared early" from "wired and forgotten", and that is the distinction the three closed items each turned out to need. They are now enumerated in that checker's INTERNAL_ONLY allowlist with this item's id, so the list is a visible backlog rather than an invisible one, and any NEW dialect method must be wired or explicitly recorded here.
 
 ### STOR-14 — No way to say "this database is not mine to manage" -- the `_ops` toolbox assumes it provisioned every server engine, and `Reset-Environment.ps1` recursively deletes a data root that may be the user's own
 
