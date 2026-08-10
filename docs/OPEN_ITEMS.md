@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**167 item(s) migrated: 2 open/partial, 165 done.**
+**168 item(s) migrated: 2 open/partial, 166 done.**
 
 ## Open / partial
 
@@ -73,7 +73,7 @@ Each of these is declared on `SqlDialect`, implemented by all four dialects, and
 `supports` is the one worth reading twice. CLAUDE.md instructs the reader to "ask `SqlDialects.active().supports(...)` rather than assuming a rollback" -- STOR-2's whole remedy -- and no production code does. The capability set is consulted through `capabilities()` by `StorageCapabilityGate` at GENERATION time; nothing asks at RUNTIME, which is where the DDL-in-transaction question actually gets decided.
 Not necessarily nine bugs. Some of these may be genuinely premature -- an answer prepared before its consumer exists is not wrong, it is early. What was wrong is that nothing distinguished "prepared early" from "wired and forgotten", and that is the distinction the three closed items each turned out to need. They are now enumerated in that checker's INTERNAL_ONLY allowlist with this item's id, so the list is a visible backlog rather than an invisible one, and any NEW dialect method must be wired or explicitly recorded here.
 
-## Done (165)
+## Done (166)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -84,6 +84,7 @@ Not necessarily nine bugs. Some of these may be genuinely premature -- an answer
 | PORT-2 | The _ops toolbox baked the generation-time location into four files, so a COPIED app silently built and ran the ORIGINAL -- and the check that had just declared this class closed was blind to it by construction | BUG | HIGH | DONE | 2026-08-10 |
 | PORT-3 | `guiLabel` is required of SERVER engines only but printed for ALL of them, so the three embedded profiles -- including H2Local, the DEFAULT -- shipped "Database type: " and "Notes for :" with an empty label | BUG | LOW | DONE | 2026-08-10 |
 | PORT-4 | The two documents a newcomer reads FIRST both linked to a five-release-old Manager installer, and the link still worked -- so anyone following the front page installed a build from 2026-08-06 and hit defects that were already fixed | BUG | MEDIUM | DONE | 2026-08-10 |
+| PORT-5 | Nothing compared a committed generated artefact against its source, so the React bundle shipped a string the source had already deleted -- and the advice that makes the bundle reviewable ("ignore it entirely") is exactly what made the staleness invisible | GAP | MEDIUM | DONE | 2026-08-10 |
 | QUAL-1 | check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight | GAP | LOW | DONE | 2026-08-09 |
 | QUAL-2 | Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red | BUG | MEDIUM | DONE | 2026-08-09 |
 | QUAL-3 | Two apps in one folder became ONE database -- a shared `_ops` toolbox AND a shared appId, so container name and data root collided; resetting either destroyed the other's data | BUG | HIGH | DONE | 2026-08-09 |
@@ -389,6 +390,21 @@ TWO MORE STALE CLAIMS in docs/MANAGER.md, found in the same read and fixed in th
   * "Docker and PowerShell are never required" in the doctor's warn-row explanation. True for the
     three EMBEDDED engines; false for Postgres/MySQL/SQL Server, which NPDev runs as containers.
     A reader picking MySQL on that sentence's authority cannot start their database.
+
+### PORT-5 — Nothing compared a committed generated artefact against its source, so the React bundle shipped a string the source had already deleted -- and the advice that makes the bundle reviewable ("ignore it entirely") is exactly what made the staleness invisible
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-10)
+**Verification:** VERIFIED_LIVE
+**Source:** Named but deliberately NOT closed by PORT-1, whose own detail says: "Rebuilding closes the instance; the absent bundle-freshness check is the class, and is NOT closed by this item." This is that item.
+**Surface:** `quality/generated-artefacts`
+**Files:**
+- `scripts/quality/check-generated-bundle-freshness.py`
+- `scripts/quality/run-ai-knowledge-gate.ps1`
+
+PORT-1 found `[string]$NPDevRoot = 'D:\WorkSpace\NPDev_General'` inside `npdev-templates/static-react/assets/AuthoringApp.js` -- an author path AND a hardcoded repo folder name, the pair REG-144 had already removed from eleven resolution sites.
+The SOURCE was correct the whole time. `NPDevEditor/ui-react/src/authoring/pipeline/ pipelineHandoff.ts` emits `$env:NPDEV_ROOT` and carries a REG-144 comment saying it used to emit the other thing. What shipped was the BUNDLE, committed and never rebuilt after that fix. A string the source had deleted went on being distributed inside every generated app.
+WHY IT WAS UNSEEABLE, and the part worth keeping: CLAUDE.md tells every reader the bundle is a "generated bundle, ignore entirely". That advice is CORRECT -- it is 141 KB of minified output and reviewing it is a waste of a human. It is also precisely why a stale copy survives: reviewers skip it, greps skip it, and no gate compared it to the source it claims to be built from. Good advice and a blind spot were the same sentence.
+This generalizes past the one bundle. Any committed build output has the same property: the repo contains both a source of truth and a derived copy, and nothing asserts the derived one was refreshed.
 
 ### QUAL-1 — check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight
 

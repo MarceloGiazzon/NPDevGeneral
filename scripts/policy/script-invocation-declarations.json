@@ -602,6 +602,9 @@
     },
     "scripts/quality/check-pinned-download-links.py": {
       "invocation": "ci-gate"
+    },
+    "scripts/quality/check-generated-bundle-freshness.py": {
+      "invocation": "ci-gate"
     }
   }
 }
