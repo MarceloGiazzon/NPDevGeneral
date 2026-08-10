@@ -243,22 +243,73 @@ jobs:
       # false positive found verifying this fix (validateBoundaryLocks's own hardcoded-drive-letter-
       # path scan matched a COMMENT describing a Windows path, not an actual embedded one) is also
       # fixed. `postBeta0MaturityCheck` now runs clean locally end to end.
-      # continue-on-error is kept for now regardless: this same step also runs `npdev report
-      # bootstrap`, validate-report-schemas.ps1, generate-final-evidence-bundle.ps1, and
-      # run-portable-tooling-check.ps1 in one shell block, and only the two REG-35 targets were
-      # audited for the precondition-unmet-vs-exit-code distinction here — flipping the flag for the
-      # whole step is a separate, higher-stakes CI-gating decision this fix did not make.
-      - name: Bootstrap post-Beta0 maturity reports (advisory — REG-32 PowerShell chain fixed; REG-35 Gradle-native gap open)
-        continue-on-error: true
+      # QUAL-4 (fixed 2026-08-10). `continue-on-error: true` used to wrap this whole block, which
+      # threw away the very distinction REG-32 built: exit 2 (precondition-unmet, not a defect) and
+      # exit 1 (a real check failure) were tolerated identically, so a genuine failure of
+      # `npdev report bootstrap` or `postBeta0MaturityCheck` kept this workflow green. The step's own
+      # comment was honest that it deferred the decision because only two of the block's commands had
+      # been audited. All five are now audited:
+      #   ./npdev report bootstrap        0/1/2 — REG-3 convention (bootstrap-post-beta0-reports.ps1);
+      #                                   npdev_cli.py returns the child's code verbatim.
+      #   ./gradlew postBeta0MaturityCheck 0/1  — build.gradle's validateReports counts a
+      #                                   'precondition-unmet' report as NOT a failure internally, so
+      #                                   a non-zero exit here is always real.
+      #   validate-report-schemas.ps1     0/1/2 — REG-3 convention.
+      #   generate-final-evidence-bundle.ps1 0/1/2 — REG-3 convention.
+      #   run-portable-tooling-check.ps1  0/1   — has no unmet-precondition state by construction: it
+      #                                   runs the CLI itself rather than consuming another gate's
+      #                                   output, so every non-zero is a defect.
+      # Not one of them exits 2 for a non-defect other than the two that do so deliberately, so
+      # per-command handling costs nothing and the blanket flag is gone.
+      #
+      # A second QUAL-4 finding, and the reason the block below aborted at its FIRST command for a
+      # long time: bash -e plus exit 2 killed the step, so gradle and the three PowerShell commands
+      # never ran at all. "Advisory" was not the whole story — four of the five were dead.
+      #
+      # 19-vs-21, reconciled: the old comment's "PRECONDITION-UNMET: 19 of 21" was a LOCAL number,
+      # measured on a dev machine where scripts/reports/out/ carries leftovers from other gate runs
+      # (it is 18 of 21 there today, and drifts with whatever ran last). Nothing regressed and no two
+      # reports stopped being produced. scripts/reports/out/ is git-ignored in its entirety and holds
+      # no tracked file, so a fresh checkout has NONE of the 21 and 21-of-21 is the only value CI can
+      # print. That is why the expectation below is asserted as a RELATION the checker reads out of
+      # the report (missing == required) rather than a literal in a comment: a literal is exactly what
+      # drifted.
+      - name: Bootstrap post-Beta0 maturity reports
         timeout-minutes: 60
         run: |
           chmod +x ./npdev
           chmod +x ./gradlew
-          ./npdev report bootstrap
-          ./gradlew postBeta0MaturityCheck --no-daemon --console=plain
-          pwsh -NoProfile -File ./scripts/quality/validate-report-schemas.ps1
-          pwsh -NoProfile -File ./scripts/quality/generate-final-evidence-bundle.ps1
-          pwsh -NoProfile -File ./scripts/quality/run-portable-tooling-check.ps1
+
+          # 0 -> passed. 2 -> PRECONDITION-UNMET, expected in this job (it runs none of the ~21
+          # producer gates). Anything else -> a real failure, and the run goes red.
+          maturity_command() {
+            label="$1"
+            shift
+            set +e
+            "$@"
+            rc=$?
+            set -e
+            if [ "$rc" -eq 0 ]; then
+              echo "PASSED: $label"
+            elif [ "$rc" -eq 2 ]; then
+              echo "::notice title=Advisory::$label reported PRECONDITION-UNMET (exit 2) -- this job does not run the producer gates."
+            else
+              echo "::error title=$label::exit $rc -- a real check failure, not an unmet precondition."
+              exit "$rc"
+            fi
+          }
+
+          maturity_command "npdev report bootstrap" ./npdev report bootstrap
+
+          # The number, where a checker reads it. A partial miss means a producer DID run in this job,
+          # which is not the state this step tolerates -- update the expectation deliberately rather
+          # than letting it drift in a comment again.
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); m,r,f,s=d["missingReportCount"],d["requiredReportCount"],d["failedReportCount"],d["schemaInvalidReportCount"]; print("bootstrap precondition profile: %d of %d required reports absent, %d failed, %d schema-invalid" % (m,r,f,s)); sys.exit(0 if (m==r and f==0 and s==0) or (m==0 and f==0 and s==0) else 1)' scripts/reports/out/report-bootstrap-and-regeneration-report.json
+
+          maturity_command "gradlew postBeta0MaturityCheck" ./gradlew postBeta0MaturityCheck --no-daemon --console=plain
+          maturity_command "validate-report-schemas.ps1" pwsh -NoProfile -File ./scripts/quality/validate-report-schemas.ps1
+          maturity_command "generate-final-evidence-bundle.ps1" pwsh -NoProfile -File ./scripts/quality/generate-final-evidence-bundle.ps1
+          maturity_command "run-portable-tooling-check.ps1" pwsh -NoProfile -File ./scripts/quality/run-portable-tooling-check.ps1
 
       # CI-2 (2026-07-23): upload-artifact@v4 forbids '..' in path patterns. The evidence bundle lives
       # OUTSIDE the repo (build-output policy). Copy it into an in-workspace dir first, then upload

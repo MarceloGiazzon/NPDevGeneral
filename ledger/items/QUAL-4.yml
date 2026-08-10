@@ -4,9 +4,10 @@ title: >-
   exit-2-vs-exit-1 distinction REG-32 built -- a real failure there would keep CI green
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-10
-verification: VERIFIED_LIVE
+closed: 2026-08-10
+verification: UNIT_TESTED
 surface: ci/npdev-ci-validation
 source: >-
   Spotted in a beta1.12-era run log: "PRECONDITION-UNMET: 21 of 21 required reports were never
@@ -37,20 +38,72 @@ detail: >-
      Not fatal (everything here is advisory today), but the number in the comment is the only record
      of what the expected state IS, and it no longer matches.
 resolution: >-
-  Not started. Deliberately NOT fixed before the second-round tag: this changes what can fail CI, and
-  a CI-gating change during a release freeze is the wrong trade -- the step is advisory today and
-  would remain advisory until the fix lands.
+  2026-08-10, after the second-round tag as this item required. `continue-on-error: true` is gone;
+  each of the five commands in the block is now handled by exit code.
 
-  The fix is small because the distinction already exists:
+  THE AUDIT WAS THE WORK, AND IT CHANGED NOTHING ABOUT THE SHELL -- which is the good outcome, since
+  the risk was finding a command that exits non-zero for a precondition and would turn CI red for a
+  non-defect. Measured, per command:
 
-      set +e; ./npdev report bootstrap; rc=$?; set -e
-      if [ $rc -eq 2 ]; then echo "advisory: producers not run in this job"; elif [ $rc -ne 0 ]; then exit $rc; fi
+    ./npdev report bootstrap             0/1/2. bootstrap-post-beta0-reports.ps1 implements REG-3,
+                                         and npdev_cli.py's CalledProcessError handler returns the
+                                         child's code verbatim (`return exc.returncode`), so the 2
+                                         survives the Python wrapper.
+    ./gradlew postBeta0MaturityCheck     0/1. It has no exit-2 path and does not need one: the
+                                         precondition distinction is INTERNAL to it -- build.gradle's
+                                         validateReports sorts a report whose status is
+                                         'precondition-unmet' into its own bucket and only
+                                         `failures` throws. So a non-zero here is always real.
+    validate-report-schemas.ps1          0/1/2. REG-3, scoped to reports that EXIST.
+    generate-final-evidence-bundle.ps1   0/1/2. REG-3, same scoping.
+    run-portable-tooling-check.ps1       0/1. No unmet-precondition state BY CONSTRUCTION: it runs
+                                         the CLI itself rather than consuming another gate's output,
+                                         so it has no missing input to tolerate. Every non-zero is a
+                                         defect.
 
-  the same for postBeta0MaturityCheck, then drop continue-on-error. The other two commands in the
-  block (validate-report-schemas.ps1, generate-final-evidence-bundle.ps1, run-portable-tooling-check.ps1)
-  must be audited for the same distinction first -- that audit is the actual work, not the shell.
+  A SECOND DEFECT THIS ITEM DID NOT KNOW IT HAD, found while writing the fix. The block runs under
+  `bash -e`. `./npdev report bootstrap` was the FIRST command and exited 2 on every run, so the step
+  aborted there and the other four NEVER EXECUTED -- gradle's whole Gradle-native validation
+  pipeline, both PowerShell producers, and the portable-tooling check. The step was not merely
+  advisory; four fifths of it was dead, and `continue-on-error` is what made that invisible. They run
+  now.
 
-  Reconcile 19-vs-21 in the same change, and put the number somewhere a checker reads rather than in
-  a comment, or it will drift again.
+  19-vs-21 RECONCILED, and the answer is not "two reports stopped being produced". The 19 was a LOCAL
+  number: the comment says "verified locally", and on a dev machine scripts/reports/out/ carries
+  leftovers from other gate runs (18 of 21 there today, drifting with whatever ran last).
+  scripts/reports/out/ is git-ignored in its entirety and holds no tracked file -- `git ls-files
+  scripts/reports/out` is empty -- so a fresh CI checkout has NONE of the 21 and 21-of-21 is the only
+  value CI can print. Nothing regressed. A machine-dependent number was written down as if it were
+  the expected CI state, which is exactly the drift this item's fourth instruction is about.
+
+  THE NUMBER NOW LIVES WHERE A CHECKER READS IT, as a RELATION rather than a literal. After the
+  bootstrap command the step reads
+  scripts/reports/out/report-bootstrap-and-regeneration-report.json and asserts
+  `missingReportCount == requiredReportCount` (or 0 missing, when everything was produced), plus zero
+  failed and zero schema-invalid. A literal 21 would drift the moment the registry grew; the relation
+  cannot, and a PARTIAL miss -- which would mean a producer ran in this job -- now fails loudly
+  instead of passing as "close enough".
+
+  PROVED BOTH DIRECTIONS, WITHOUT SPENDING A 2-HOUR CI RUN ON EACH. The step's `run:` block is
+  EXTRACTED from the workflow YAML (never retyped -- a retyped copy proves the copy) and executed
+  under `bash --noprofile --norc -eo pipefail`, exactly what GitHub runs for `shell: bash`, against
+  stub ./npdev, ./gradlew and pwsh with controllable exit codes. 7 of 7 cases pass:
+    exit 2 + all-21-absent      -> step GREEN, and all five commands run (the dead-tail fix)
+    exit 1 from bootstrap       -> step RED, and nothing after it runs
+    exit 1 from gradle          -> step RED
+    exit 2 from a producer      -> advisory, chain continues
+    exit 1 from portable-tooling-> step RED
+    20-of-21 absent             -> step RED (the drift assertion)
+    everything produced, exit 0 -> step GREEN
+  The first run of the harness reported the two RED cases as passing for the WRONG reason (bash
+  resolved to WSL, which could not exec at all, so every case "failed" with exit 1); the trace
+  assertions are what caught it. Harness:
+  NPDev_General__OutsideRepo/audit-2026-08-10/qual4-proof/.
+
+  WHAT IS STILL UNPROVEN, stated rather than glossed: whether the four commands that had not executed
+  in CI for months actually PASS there. They pass locally and their inputs are the same, but the four
+  Linux-only defects this workflow has already found (REG-136, REG-137, and three generator failures)
+  are the argument against assuming. The next scheduled or dispatched run is the measurement, and if
+  one of them is red the answer is to fix it, not to re-add the flag.
 files:
   - .github/workflows/npdev-ci-validation.yml
