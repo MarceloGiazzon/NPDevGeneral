@@ -142,3 +142,51 @@ Preserve a specific bundle while pruning:
 ```powershell
 pwsh -File scripts\hygiene\prune-release-evidence.ps1 -KeepLatest 5 -PreserveReleaseBundle runtimehost-beta-YYYYMMDD-HHMMSS
 ```
+
+---
+
+## Quarantining removal candidates
+
+`scripts/hygiene/quarantine-to-outside-repo.ps1` moves candidates **out of the repo** into a dated
+folder under `NPDev_General__OutsideRepo/quarantine/`, writing a manifest that restores every one of
+them exactly.
+
+It exists because "is this still used?" should be a **measurement, not an opinion**:
+
+1. quarantine the candidate
+2. run `scripts/quality/run-all-gates.ps1`
+3. green → it was genuinely unused · red → restore it, and you have just learned why it exists
+
+Being wrong is free, which is the only reason it is reasonable to try.
+
+```powershell
+# see what would move, touch nothing
+pwsh -File scripts\hygiene\quarantine-to-outside-repo.ps1 -WhatIf
+
+# regenerable byproducts only (node_modules, sample Output, .gradle, __pycache__)
+pwsh -File scripts\hygiene\quarantine-to-outside-repo.ps1 -Scope ephemeral
+
+# the documents and scripts measured as referenced by nothing
+pwsh -File scripts\hygiene\quarantine-to-outside-repo.ps1 -Scope orphans
+
+# test one specific thing, e.g. whether a sample app is still load-bearing
+pwsh -File scripts\hygiene\quarantine-to-outside-repo.ps1 -Scope candidate -Path NPDevSamples/durable-workflow-demo
+
+# put a batch back
+pwsh -File scripts\hygiene\quarantine-to-outside-repo.ps1 -Restore quarantine-20260810-143000
+```
+
+### What it refuses, and why
+
+**Process docs** — `*_PLAN.md`, `*_CHECKLIST*.md`, `*_FINDINGS*.md`, `MOVE*`, `SCREEN_TAXONOMY` —
+are refused outright. Measured 2026-08-10: all 23 tested are cited by live files including
+`CLAUDE.md`, `CONTRIBUTING.md` and a CI workflow. Worse,
+`scripts/quality/check-blocker-citation-freshness.py` is **scoped to those exact filenames**, so
+moving them makes that check pass while checking zero files — a silent green.
+
+### What the audit actually found
+
+The tracked repo is not bloated. 79 of 83 docs are referenced by something; 201/201 scripts are
+classified and invocation-declared; there are **zero** tracked build artefacts. The true orphan set
+is 4 documents and 1 retired script, about 7 KB in total. The accumulation worth cleaning is the
+untracked byproducts, and `Test-WorkspaceSlimness.ps1` already blocks a commit when they build up.
