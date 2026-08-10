@@ -1,7 +1,9 @@
 id: STOR-13
 title: >-
-  Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is
-  the exact state STOR-4, STOR-5 and STOR-6 were each found in
+  EIGHT SqlDialect methods have no production caller -- exercised only by their own tests, which is
+  the exact state STOR-4, STOR-5 and STOR-6 were each found in (filed as nine; see
+  round3_correction -- six of the original nine were false alarms, `supports` most importantly of
+  all, and three of the eight are asked by the conformance vectors)
 type: BUG
 severity: MEDIUM
 status: OPEN

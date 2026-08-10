@@ -14,6 +14,13 @@ npdev:
     jwt:
       issuer: wmsoffice
       audience: wmsoffice-api
-      public-key-path: D:/WorkSpace/NPDev/Build/wmsoffice-keys/jwt-public.pem
-      private-key-path: D:/WorkSpace/NPDev/Build/wmsoffice-keys/jwt-private-pkcs8.pem
+      # PORT-1: these were absolute paths under the AUTHOR's own build directory, shipped inside
+      # EVERY generated app because this file lives in the shared RuntimeHost template. "Inert
+      # unless the profile is active" was the stated reason it was safe to ship, and inert is not
+      # the same as harmless: it published one machine's filesystem layout to every recipient and
+      # named key material. Now overridable, defaulting to a directory beside the running app.
+      # (The old literal path is deliberately NOT quoted here -- check-out-of-tree-generation.ps1
+      # scans emitted output for it, and a comment reciting it re-introduces the string it forbids.)
+      public-key-path: ${NPDEV_WMSOFFICE_KEYS_DIR:./wmsoffice-keys}/jwt-public.pem
+      private-key-path: ${NPDEV_WMSOFFICE_KEYS_DIR:./wmsoffice-keys}/jwt-private-pkcs8.pem
       expiry-seconds: 28800

@@ -1,0 +1,67 @@
+{
+  "$comment": [
+    "BASELINE for check-out-of-tree-generation.ps1, established 2026-08-10 by the first real",
+    "out-of-tree generation this repo has ever run (npdev-canary, 807 files scanned, 15 hits).",
+    "",
+    "The gate is a RATCHET, not a clean bill of health. Every entry below is a path pattern whose",
+    "absolute-path leak was ALREADY PRESENT when the check was written. A NEW leak anywhere else",
+    "fails immediately -- which is the whole point, since eight defects of exactly this family",
+    "reached a third party while every gate stayed green.",
+    "",
+    "Two categories, and the difference is the entire honesty of this file:",
+    "  accepted     -- correct as-is; will never be 'fixed'. Provenance records and comments that",
+    "                  DISCUSS the defect are not instances of it.",
+    "  known-defect -- a real leak, filed, still present. These are NOT excused. Each names its",
+    "                  ledger item. When one is fixed, DELETE its entry so the ratchet tightens.",
+    "",
+    "Do not add an entry without a reason. An allowlist that states something untrue is worse than",
+    "no allowlist (the lesson STOR-13's own allowlist taught this repo)."
+  ],
+  "entries": [
+    {
+      "pattern": "App/gradle.properties",
+      "category": "accepted",
+      "reason": "The match is INSIDE a comment explaining why a hardcoded D:/WorkSpace build-output path must not be used. Prose about the defect is not the defect."
+    },
+    {
+      "pattern": "App/_ops/Create-Environment.ps1",
+      "category": "accepted",
+      "reason": "Same shape: a comment recording that this line USED to read the author's drive letter and no longer does. Deleting the comment to satisfy a grep would destroy the record of the fix."
+    },
+    {
+      "pattern": "Reports/generation-run.json",
+      "category": "accepted",
+      "reason": "Provenance. Records which workspace produced this run and is already declared non-reproducible by check-deterministic-generation.ps1. Not shipped inside the app."
+    },
+    {
+      "pattern": "App/src/main/resources/npdev-build-info.properties",
+      "category": "accepted",
+      "reason": "Provenance, same declared exclusion as generation-run.json. Records the model's source path at build time; nothing resolves it at runtime."
+    },
+
+    {
+      "pattern": "application-npdev-db.properties",
+      "category": "known-defect",
+      "ledger": "PORT-1",
+      "reason": "npdev.database.data-root is baked to D:/WorkSpace/NPDev/Build/databases/<app>. This is RESOLVED AT RUNTIME -- a stranger's app tries to open a database on a drive they do not have. The most serious of the fifteen."
+    },
+    {
+      "pattern": "_ops/resolved-db-plan.json",
+      "category": "known-defect",
+      "ledger": "PORT-1",
+      "reason": "Same data-root, restated in the ops plan the user is told to read."
+    },
+    {
+      "pattern": "npdev/model-source-manifest.json",
+      "category": "known-defect",
+      "ledger": "PORT-1",
+      "reason": "rootModel is an absolute authoring path shipped inside the app's own resources. Provenance belongs in Reports/, not in src/main/resources."
+    },
+    {
+      "pattern": "npdev/db/schema-realization-manifest.json",
+      "category": "known-defect",
+      "ledger": "PORT-1",
+      "reason": "sourceOfTruth.business/database are absolute authoring paths, again shipped inside the app."
+    }
+  ]
+}
