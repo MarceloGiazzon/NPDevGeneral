@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.dev/schemas/ai/exploration-run.schema.json",
+  "title": "NPDev exploration run record (run.json / one line of runs.jsonl)",
+  "description": "The ONE run record every exploration driver emits -- the ScrapForAI routine runner, the Playwright reporter adapter, and anything added later. MONITOR_PLAN D6/A4 and EXPLORATIONS_ANALYSIS.md 2.3+2.6: the DEFINITION formats stay different (declarative JSON steps vs imperative spec code, which are genuinely different things), the RUN RECORD is unified, because it is what history, attribution and the filmstrip UI read. Written by `npdev explore run` / `npdev explore record`; never hand-authored.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runId", "scope", "definition", "target", "driver", "startedAt", "status", "steps", "evidence", "verdict"],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-exploration-run.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Sortable, filesystem-safe: <UTC timestamp>_<definition stem>, e.g. 2026-08-10T14-22-05_01-login. Also the run directory name."
+    },
+    "scope": {
+      "enum": ["app", "platform"],
+      "description": "app: stored under <app>/_ops/exploration-runs. platform: the editor/e2e suites, which test NPDev itself and belong to no app -- stored under <Build>/npdev-explorations/platform/<suite>/runs."
+    },
+    "suite": {
+      "type": ["string", "null"],
+      "description": "Platform-scoped runs only: which suite produced it (e.g. \"editor-core\")."
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "contentSha256"],
+      "properties": {
+        "kind": {
+          "enum": ["routine-json", "playwright-spec"]
+        },
+        "path": {
+          "type": ["string", "null"],
+          "description": "RELATIVE to the app root (or the repo, for platform scope). Never absolute: a run record is copied and read on other machines, and PORT-1 spent 2026-08-10 removing baked machine paths from six emitters."
+        },
+        "scenarioName": {
+          "type": ["string", "null"]
+        },
+        "contentSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "WHICH VERSION of the definition ran. Half of the attribution triple -- see target.modelSha256 and target.platform."
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseUrl"],
+      "properties": {
+        "app": { "type": ["string", "null"] },
+        "baseUrl": {
+          "type": "string",
+          "description": "The origin the routine actually navigated. Recorded as it was used (127.0.0.1 for probing -- see R3), not as it is displayed."
+        },
+        "engine": { "type": ["string", "null"], "description": "Database engine external name, from the resolved plan." },
+        "modelSha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "platform": {
+          "type": ["string", "null"],
+          "description": "Generator/kernel identity at run time (a release tag + commit), so a red run can be attributed to a platform change rather than guessed at."
+        }
+      }
+    },
+    "driver": {
+      "enum": ["harness", "monitor-ui", "ai-session", "playwright", "cli"],
+      "description": "WHO executed it. Distinct from definition.kind: an ai-session and the harness can run the same routine-json."
+    },
+    "engineVersion": { "type": ["string", "null"] },
+    "startedAt": { "type": "string", "description": "UTC ISO-8601." },
+    "finishedAt": { "type": ["string", "null"] },
+    "durationMs": { "type": ["integer", "null"], "minimum": 0 },
+    "status": {
+      "enum": ["passed", "failed", "error"],
+      "description": "The DRIVER's own verdict on the steps. Distinct from verdict.green, which additionally weighs evidence -- a routine whose every step passed while the page logged a console error is status=passed, verdict.green=false."
+    },
+    "failedStepIndex": { "type": ["integer", "null"], "minimum": 0 },
+    "error": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "type": { "type": ["string", "null"] },
+        "message": { "type": ["string", "null"] }
+      }
+    },
+    "finalUrl": { "type": ["string", "null"] },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["index", "status"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "action": { "type": ["string", "null"] },
+          "label": { "type": ["string", "null"] },
+          "status": { "type": "string" },
+          "durationMs": { "type": ["integer", "null"], "minimum": 0 },
+          "screenshot": {
+            "type": ["string", "null"],
+            "description": "Repo-relative blob path, e.g. blobs/<sha256>.png. Content-addressed, so an unchanged screen across 50 runs is ONE file."
+          },
+          "error": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["consoleErrors", "pageErrors", "networkFailures", "unexpectedExternalRequests"],
+      "properties": {
+        "consoleErrors": { "type": "array" },
+        "pageErrors": { "type": "array" },
+        "networkFailures": { "type": "array" },
+        "unexpectedExternalRequests": { "type": "array" },
+        "screenshots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "name": { "type": ["string", "null"] },
+              "blob": { "type": ["string", "null"] },
+              "sha256": { "type": ["string", "null"] },
+              "bytes": { "type": ["integer", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["green", "allowedConsoleErrorSubstrings", "excused"],
+      "description": "MONITOR_PLAN D5: ONE definition of green, applied in ONE place (the CLI). Green = status passed AND zero console/page/external errors MINUS a declared allowlist -- and every excuse is recorded here, because an allowlist nobody can see is how an excuse outlives the reason it was written for (structurally QUAL-4's continue-on-error).",
+      "properties": {
+        "green": { "type": "boolean" },
+        "allowedConsoleErrorSubstrings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The allowlist that was IN FORCE for this run, recorded on the run. Not a global constant read at display time -- the run has to carry what it was judged by."
+        },
+        "excused": {
+          "type": "array",
+          "description": "Each error actually forgiven, with the rule that forgave it. The run detail renders these VISIBLY rather than hiding them.",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["kind", "text", "rule"],
+            "properties": {
+              "kind": { "enum": ["consoleError", "pageError", "networkFailure", "unexpectedExternalRequest"] },
+              "text": { "type": "string" },
+              "rule": {
+                "type": "string",
+                "description": "Which rule excused it, e.g. \"default:theme-css-404-no-custom-theme\" or \"app:<substring>\"."
+              }
+            }
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Why green is false, in words. Empty when green."
+        }
+      }
+    },
+    "extracted": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "DOM text / URLs collected by `collect` steps."
+    },
+    "baselineDiff": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "description": "C3: hash compare only, never pixel diffing -- a 'green but the screen changed' signal that costs nothing because the blobs are already content-addressed.",
+      "properties": {
+        "comparedTo": { "type": ["string", "null"], "description": "runId of the accepted baseline." },
+        "screenshotsChanged": { "type": "integer", "minimum": 0 },
+        "screenshotsAdded": { "type": "integer", "minimum": 0 },
+        "screenshotsRemoved": { "type": "integer", "minimum": 0 },
+        "textChanged": { "type": "boolean" },
+        "changed": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "pinned": {
+      "type": "boolean",
+      "default": false,
+      "description": "A4 retention rule 3: pinned runs keep their blobs indefinitely. Records are NEVER deleted -- only blobs are pruned."
+    },
+    "ledgerId": {
+      "type": ["string", "null"],
+      "description": "e.g. REG-144. A run linked to an OPEN ledger item keeps its blobs regardless of age: pruning the only evidence of a still-open bug on day 31 is how evidence disappears without anyone deciding to lose it."
+    },
+    "notes": { "type": ["string", "null"] }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "npdev-pinned-schema-meta.v1",
+  "pins": "scrapforai-routine.schema.json",
+  "pinnedAt": "2026-08-10T23:29:47Z",
+  "source": "live-engine GET http://127.0.0.1:3000/v1/schema/routine.request.json",
+  "engine": {
+    "name": "scrapforai",
+    "version": "1.0.0",
+    "commit": "991e394"
+  },
+  "authority": "THE ENGINE, not this repo. The routine vocabulary is defined by src/schemas/explorationRequest.schema.ts (Zod) and enforced by the engine at runtime; scrapforai-routine.schema.json is a PIN of what that endpoint served, nothing more.",
+  "whyPinnedAndNotWritten": [
+    "Measured 2026-08-10 against the UNIFIED corpus (42 routines, 846 steps, all under a browser-routines/ directory): the engine defines 32 actions; the corpus uses 16.",
+    "A schema induced from the corpus would REJECT the 16 actions it happens not to use (assertDisabled, assertEnabled, assertUrlContains, doubleClick, extractAttribute, extractText, hover, resizeWindow, setViewport, setViewportSize, uncheck, waitForElapsed, waitForLoadState, waitForResponse, waitForUrlContains, watch).",
+    "It would also miss every constraint examples cannot reveal -- label <= 160, selector <= 500, value <= 5000, stepId <= 80, timeoutMs <= STEP_TIMEOUT_MS, and evaluate/watch gated behind ALLOW_EVALUATE. All five were found by being REJECTED at runtime, never by reading a routine.",
+    "So the corpus is a CONFORMANCE TEST against this pin (scripts/quality/check-routine-corpus-conformance.py), not the source of it."
+  ],
+  "howToRepin": "Start the engine, then: python scripts/quality/pin-routine-schema.py --port <engine port>. Never hand-edit the pinned file -- a hand edit is a second opinion about a contract this repo does not own.",
+  "routineFileVsEngineRequest": "A checked-in ROUTINE FILE is not byte-identical to an engine REQUEST: it carries NPDev's own `targetPath` (port-agnostic) where the engine requires an absolute `targetUrl`. The harness composes the request (scrapforai-harness.ps1, Invoke-ScrapRoutine) and so does `npdev explore validate` -- both substitute targetUrl from the app base URL and drop targetPath before validating. Validating the composed request is what makes \"valid in the UI\" mean \"runs in the harness\"."
+}

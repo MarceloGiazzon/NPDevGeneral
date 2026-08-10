@@ -25,6 +25,11 @@ from pathlib import Path
 # drifts. Imported plainly (not lazily) because argparse needs engine_keys() to build --engine's
 # choices at parser-construction time.
 import npdev_engines
+# MONITOR_PLAN A2/D9/D10. Imported plainly, like npdev_engines and for the same reason: argparse
+# needs OPS_SCRIPTS for `monitor ops --script`'s choices and DEFAULT_ENGINE_PORT for two defaults at
+# parser-construction time. Stdlib-only inside (R9), so this import cannot fail on a machine that
+# has the CLI zip and nothing else.
+import npdev_monitor
 
 VERSION = "0.9.0"
 # REG-130: the three numbers a bug report could cite, none of them derived from the others.
@@ -4675,6 +4680,317 @@ def inspect_app(args: argparse.Namespace) -> None:
     )
 
 
+# -------------------------------------------------------------------------------------------------
+# MONITOR_PLAN A2/A4 command bodies. Thin: the modules hold the behaviour, these hold the argv-to-
+# call translation and the ONE printing convention the rest of this file already uses (exit 0 = fully
+# ok, exit 2 = ran fine and reported a real structured problem, exit 1 only for an unexpected raise).
+# -------------------------------------------------------------------------------------------------
+
+def _print_result(result: dict, args: argparse.Namespace) -> None:
+    """--json prints the object; without it, a short human summary. Both, always -- a command that
+    only speaks JSON is a command a person cannot use, and the CLI has to stay usable in a terminal
+    for D1's promise ('nothing here is a dead end if you later want the command line') to be true."""
+    if getattr(args, "json", False):
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+    print(_human_summary(result))
+
+
+def _human_summary(result: dict) -> str:
+    command = result.get("command", "")
+    lines: list[str] = []
+    if "apps" in result:
+        for app in result["apps"]:
+            mark = {"running": "UP", "stopped": "--", "starting": "..", "error": "!!"}.get(app.get("health"), "??")
+            lines.append(f"  [{mark}] {app.get('name'):<24} {app.get('engine') or '-':<10} "
+                         f"port {app.get('port') or '-':<6} {app.get('appDir')}")
+        lines.insert(0, f"{len(result['apps'])} app(s) found:")
+        for searched in result.get("searched", []):
+            if not searched.get("exists"):
+                lines.append(f"  (path not found: {searched['path']})")
+    elif command == "monitor probe" or "health" in result:
+        lines.append(f"{result.get('name')}  {result.get('health')}  {result.get('healthDetail') or ''}")
+        for key in ("appDir", "opsDir", "modelPath", "jarPath", "dbFile", "superUserKeyFile", "logsDir"):
+            if result.get(key):
+                lines.append(f"  {key:<18} {result[key]}")
+    elif "found" in result and "state" in result:
+        lines.append(f"ScrapForAI engine: {result['state']}")
+        lines.append(f"  via      : {result.get('via')}")
+        lines.append(f"  endpoint : {result.get('endpoint')}")
+        lines.append(f"  root     : {result.get('root')}")
+        lines.append(f"  {result.get('detail')}")
+    else:
+        lines.append(json.dumps(result, indent=2, ensure_ascii=False))
+    return "\n".join(lines)
+
+
+def _split_paths(raw: str) -> list[str]:
+    """';' always, and ':' too on POSIX. Never ':' on Windows -- 'D:\\Apps' would split into 'D' and
+    '\\Apps', which is the classic way a path list silently loses every entry."""
+    parts = raw.split(";")
+    if os.name != "nt":
+        expanded = []
+        for part in parts:
+            expanded.extend(part.split(":"))
+        parts = expanded
+    return [p for p in (p.strip() for p in parts) if p]
+
+
+def run_monitor(args: argparse.Namespace) -> int:
+    if args.monitor_command == "scan":
+        result = npdev_monitor.scan_paths(
+            _split_paths(args.paths), max_depth=args.depth,
+            include_info=args.include_info, health_timeout=args.health_timeout)
+        _print_result(result, args)
+        return 0
+    if args.monitor_command == "probe":
+        result = npdev_monitor.probe_app(
+            Path(args.app_dir), include_info=args.include_info, origin="explicit",
+            health_timeout=args.health_timeout)
+        result.setdefault("schemaVersion", "npdev-monitor-probe.v1")
+        result.setdefault("command", "monitor probe")
+        result["ok"] = result.get("status") == "ok"
+        _print_result(result, args)
+        return 0 if result["ok"] else 2
+    if args.monitor_command == "engine":
+        result = npdev_monitor.detect_engine(args.port, args.root, repo_root())
+        result["schemaVersion"] = "npdev-monitor-engine.v1"
+        result["command"] = "monitor engine"
+        result["ok"] = True
+        _print_result(result, args)
+        return 0
+    if args.monitor_command == "logs":
+        return _run_monitor_logs(args)
+    if args.monitor_command == "ops":
+        return _run_monitor_ops(args)
+    raise CliError("usage: npdev monitor {scan|probe|engine|logs|ops}")
+
+
+def _run_monitor_logs(args: argparse.Namespace) -> int:
+    app_dir = Path(args.app_dir)
+    if args.action == "export":
+        if not args.out:
+            raise CliError("npdev monitor logs export needs --out <file.zip>")
+        result = npdev_monitor.export_logs(app_dir, Path(args.out), runs=args.runs)
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"wrote {result['zip']} ({result['bytes']} bytes, {len(result['included'])} entries)")
+            print("Credentials are redacted. Nothing is sent anywhere -- send it yourself, deliberately.")
+        return 0
+    if args.follow:
+        return _follow_logs(app_dir, args)
+    result = npdev_monitor.collect_logs(app_dir, args.source, args.tail)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        for source in result["sources"]:
+            print(f"--- {source['source']} ({source['directory'] or 'no directory'}) ---")
+            if source["detail"]:
+                print(f"    {source['detail']}")
+            for line in source["tail"]:
+                print(line)
+    return 0
+
+
+def _follow_logs(app_dir: Path, args: argparse.Namespace) -> int:
+    """`tail -f` over the NEWEST file of the chosen source. Emits JSON Lines under --json so the
+    Manager can stream it through the same pattern `start_dev_streaming` already uses."""
+    files = npdev_monitor._log_files(Path(app_dir).expanduser().resolve(),
+                                     args.source if args.source != "all" else "app")
+    if not files:
+        message = npdev_monitor._no_logs_detail(args.source if args.source != "all" else "app")
+        if args.json:
+            print(json.dumps({"kind": "empty", "detail": message}))
+        else:
+            print(message)
+        return 0
+    target = files[-1]
+    if args.json:
+        print(json.dumps({"kind": "following", "file": str(target)}))
+    else:
+        print(f"--- following {target} (Ctrl-C to stop) ---")
+    for line in npdev_monitor._tail(target, args.tail):
+        print(json.dumps({"kind": "line", "text": line}) if args.json else line)
+    try:
+        with target.open("r", encoding="utf-8", errors="replace") as handle:
+            handle.seek(0, os.SEEK_END)
+            while True:
+                line = handle.readline()
+                if not line:
+                    time.sleep(0.4)
+                    continue
+                text = line.rstrip("\n")
+                print(json.dumps({"kind": "line", "text": text}) if args.json else text, flush=True)
+    except KeyboardInterrupt:
+        return 0
+
+
+def _run_monitor_ops(args: argparse.Namespace) -> int:
+    script = npdev_monitor.ops_script_path(Path(args.app_dir), args.script)
+    if script is None:
+        raise CliError(
+            f"this app has no {npdev_monitor.OPS_SCRIPTS[args.script]} -- generate it first "
+            "(the _ops toolbox is written by generation, and lives INSIDE the app)"
+        )
+    required_token = npdev_monitor.DESTRUCTIVE_OPS.get(args.script)
+    if required_token and args.confirm != required_token:
+        result = {
+            "schemaVersion": "npdev-cli-result.v1", "command": f"monitor ops {args.script}",
+            "ok": False, "exitCode": 2,
+            "error": {"message": f"refused: {args.script} destroys data. Re-run with --confirm {required_token}"},
+        }
+        _print_result(result, args)
+        return 2
+    powershell = npdev_monitor.find_powershell()
+    if powershell is None:
+        raise CliError("no PowerShell found (pwsh or powershell) -- the generated runbook needs one")
+
+    # D10 source 2: also append to <app>/logs/ops-<script>-<timestamp>.log, so a closed window is
+    # not a lost run. The stream still goes to stdout for the caller.
+    log_path = npdev_monitor.ops_log_path(Path(args.app_dir), args.script)
+    command = [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)]
+    if required_token:
+        command += ["-Confirm", required_token]
+    captured: list[str] = []
+    with log_path.open("w", encoding="utf-8") as log_file:
+        log_file.write(f"# npdev monitor ops {args.script}\n# {script}\n# started {_utc_now()}\n")
+        process = subprocess.Popen(command, cwd=str(script.parent), stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+        for line in process.stdout:
+            line = line.rstrip("\n")
+            captured.append(line)
+            log_file.write(line + "\n")
+            log_file.flush()
+            if args.json:
+                print(json.dumps({"kind": "line", "text": line}), flush=True)
+            else:
+                print(line, flush=True)
+        code = process.wait()
+    result = {
+        "schemaVersion": "npdev-cli-result.v1",
+        "command": f"monitor ops {args.script}",
+        "ok": code == 0,
+        "exitCode": code,
+        "script": str(script),
+        "logFile": str(log_path),
+        "output": "\n".join(captured),
+    }
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"(exit {code}; captured to {log_path})")
+    return 0 if code == 0 else 2
+
+
+def run_explore(args: argparse.Namespace) -> int:
+    import npdev_explore
+
+    root = repo_root()
+    try:
+        if args.explore_command == "list":
+            result = npdev_explore.list_explorations(Path(args.app_dir), args.limit)
+        elif args.explore_command == "show":
+            result = npdev_explore.show_run(Path(args.app_dir), args.run)
+        elif args.explore_command == "validate":
+            result = npdev_explore.validate_routine(root, Path(args.file), args.base_url)
+            result.setdefault("schemaVersion", "npdev-exploration-validate.v1")
+            result.setdefault("command", "explore validate")
+        elif args.explore_command == "preflight":
+            result = npdev_explore.preflight(Path(args.app_dir), args.engine_port, args.engine_root, root)
+            result["schemaVersion"] = "npdev-exploration-preflight.v1"
+            result["command"] = "explore preflight"
+        elif args.explore_command == "run":
+            variables = {}
+            for pair in args.var:
+                name, _, value = pair.partition("=")
+                if name:
+                    variables[name] = value
+            emit = (lambda event: print(json.dumps(event), flush=True)) if args.json else \
+                   (lambda event: print(f"  [{event.get('kind')}] "
+                                        f"{event.get('phase') or event.get('state') or event.get('runId') or ''}",
+                                        flush=True))
+            result = npdev_explore.run_exploration(
+                root, Path(args.app_dir), Path(args.file),
+                engine_port=args.engine_port, configured_root=args.engine_root, api_key=args.api_key,
+                driver=args.driver, variables=variables, ledger_id=args.ledger_id,
+                keep_engine=args.keep_engine, on_event=emit)
+            result["command"] = "explore run"
+            result["ok"] = True
+        elif args.explore_command == "record":
+            payload = read_json(Path(args.from_file))
+            result = npdev_explore.record_external(
+                root, Path(args.app_dir) if args.app_dir else None, payload,
+                driver=args.driver, scope=args.scope, suite=args.suite,
+                definition_kind=args.definition_kind,
+                routine_file=Path(args.routine_file) if args.routine_file else None,
+                ledger_id=args.ledger_id)
+            result["command"] = "explore record"
+            result["ok"] = True
+        elif args.explore_command == "prune":
+            result = npdev_explore.prune(Path(args.app_dir), keep_per_scenario=args.keep_per_scenario,
+                                         red_days=args.red_days, dry_run=args.dry_run)
+        elif args.explore_command == "pin":
+            result = npdev_explore.pin_run(Path(args.app_dir), args.run, args.ledger, args.unpin)
+        elif args.explore_command == "accept":
+            result = npdev_explore.accept_baseline(Path(args.app_dir), args.run)
+        elif args.explore_command == "context":
+            result = npdev_explore.build_context_pack(root, Path(args.app_dir), args.exemplars)
+        else:
+            raise CliError("usage: npdev explore {list|show|validate|preflight|run|record|prune|pin|accept|context}")
+    except npdev_explore.ExploreError as exc:
+        # A refusal is a DIAGNOSED problem, not a crash -- and never rendered like a failed
+        # exploration (D4). Exit 2, structured, with the sentence that says what to do.
+        raise CliError(str(exc)) from exc
+
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(_explore_human_summary(args.explore_command, result))
+    return 0 if result.get("ok", True) else 2
+
+
+def _explore_human_summary(command: str, result: dict) -> str:
+    lines: list[str] = []
+    if command == "list":
+        lines.append(f"{len(result['definitions'])} definition(s), {result['runCount']} run(s)")
+        for definition in result["definitions"]:
+            lines.append(f"  {definition['name']:<32} {definition['stepCount']:>3} steps  "
+                         f"{'baseline' if definition['hasBaseline'] else ''}")
+        for run in result["runs"][:10]:
+            verdict = "GREEN" if (run.get("verdict") or {}).get("green") else "RED"
+            lines.append(f"  {run['runId']:<40} {verdict:<6} {run.get('driver')}")
+    elif command == "validate":
+        lines.append("VALID" if result["valid"] else "INVALID")
+        for error in result.get("errors", []):
+            lines.append(f"  error   {error.get('path')} {error.get('message')}")
+        for warning in result.get("warnings", []):
+            lines.append(f"  {warning['level']:<7} {warning['message']}")
+        if result.get("unassertedFormats"):
+            lines.append(f"  note    these `format` values were NOT asserted: "
+                         f"{', '.join(result['unassertedFormats'])}")
+    elif command in ("run", "record"):
+        verdict = result.get("verdict") or {}
+        lines.append(f"{result.get('runId')}  status={result.get('status')}  "
+                     f"{'GREEN' if verdict.get('green') else 'RED'}")
+        for reason in verdict.get("reasons", []):
+            lines.append(f"  why-not-green: {reason}")
+        for excuse in verdict.get("excused", []):
+            lines.append(f"  excused ({excuse['rule']}): {excuse['text'][:120]}")
+    elif command == "preflight":
+        for check in result["checks"]:
+            lines.append(f"  [{check['status']}] {check['name']} -- {check.get('detail')}")
+    elif command == "prune":
+        lines.append(f"kept {result['runsKept']} run(s); removed {result['blobsRemoved']} blob(s), "
+                     f"{result['bytesFreed']} bytes")
+        lines.append(f"  {result['recordsNote']}")
+        for run_id, why in list(result["keptBecause"].items())[:20]:
+            lines.append(f"  kept {run_id}: {why}")
+    else:
+        lines.append(json.dumps(result, indent=2, ensure_ascii=False))
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     # P3 (FIRST_IMPRESSION_PLAN.md I4): the top-level command list used to show all 13 commands
     # with zero descriptions -- a newcomer could not tell which four are theirs. The epilog is the
@@ -5139,6 +5455,177 @@ def build_parser() -> argparse.ArgumentParser:
                               "manifest says so -- an AppImage that has never been launched is a "
                               "download, not an installer.")
 
+    # ------------------------------------------------------------------------------------------
+    # MONITOR_PLAN A2/D9/D10: `npdev monitor`. The Monitor screen is a WINDOW onto these verbs --
+    # D1's rule is that every Monitor capability is a CLI verb with --json first, so a terminal user
+    # gets it too and the Manager's fixtures can be CAPTURED rather than guessed.
+    # ------------------------------------------------------------------------------------------
+    monitor = subparsers.add_parser(
+        "monitor", help="Discover, probe and read the logs of generated apps on this machine."
+    )
+    monitor_sub = monitor.add_subparsers(dest="monitor_command")
+
+    monitor_scan = monitor_sub.add_parser(
+        "scan", help="Find every generated app under one or more paths (read-only)."
+    )
+    monitor_scan.add_argument("--paths", required=True,
+                              help="One or more directories to search, separated by ';' (or ':' on POSIX).")
+    monitor_scan.add_argument("--depth", type=int, default=4,
+                              help="How deep to descend before giving up on a branch (default 4).")
+    monitor_scan.add_argument("--include-info", action="store_true",
+                              help="Also inline each app's generated info.json (the inspector's data).")
+    monitor_scan.add_argument("--health-timeout", type=float, default=1.0)
+    monitor_scan.add_argument("--json", action="store_true")
+
+    monitor_probe = monitor_sub.add_parser(
+        "probe", help="Probe ONE app -- the Monitor's refresh unit."
+    )
+    monitor_probe.add_argument("--app-dir", required=True)
+    monitor_probe.add_argument("--include-info", action="store_true")
+    monitor_probe.add_argument("--health-timeout", type=float, default=1.0)
+    monitor_probe.add_argument("--json", action="store_true")
+
+    monitor_engine = monitor_sub.add_parser(
+        "engine",
+        help="Find the ScrapForAI engine: running service first, then a declared root, then derived "
+             "candidates. Never a path literal (D9).",
+    )
+    monitor_engine.add_argument("--port", type=int, default=npdev_monitor.DEFAULT_ENGINE_PORT)
+    monitor_engine.add_argument("--root", default=None,
+                                help="A declared root (what manager.json holds, if anything). "
+                                     "Optional BY DESIGN: detection must work with nothing.")
+    monitor_engine.add_argument("--json", action="store_true")
+
+    monitor_logs = monitor_sub.add_parser(
+        "logs", help="Read (or export) an app's logs: its own runtime output, its ops runs, the Manager's."
+    )
+    # `export` as an optional positional keeps the plan's own spelling (`npdev monitor logs export`)
+    # working while `npdev monitor logs` stays the viewer.
+    monitor_logs.add_argument("action", nargs="?", choices=["export"], default=None)
+    monitor_logs.add_argument("--app-dir", required=True)
+    monitor_logs.add_argument("--source", default="all", choices=["app", "ops", "manager", "all"])
+    monitor_logs.add_argument("--tail", type=int, default=200)
+    monitor_logs.add_argument("--follow", action="store_true",
+                              help="Stream new lines as they are written (Ctrl-C to stop).")
+    monitor_logs.add_argument("--out", default=None, help="export only: the .zip to write.")
+    monitor_logs.add_argument("--runs", type=int, default=5,
+                              help="export only: how many recent exploration runs to include.")
+    monitor_logs.add_argument("--json", action="store_true")
+
+    monitor_ops = monitor_sub.add_parser(
+        "ops", help="Run one of the app's own generated _ops scripts (the Monitor's run-command strip)."
+    )
+    monitor_ops.add_argument("--app-dir", required=True)
+    monitor_ops.add_argument("--script", required=True, choices=sorted(npdev_monitor.OPS_SCRIPTS),
+                             help="Which runbook script. An allowlist, not a filename: the Monitor "
+                                  "sends this from a window.")
+    monitor_ops.add_argument("--confirm", default=None,
+                             help="The acknowledgement token a destructive script demands. The window "
+                                  "must be at least as careful as the terminal.")
+    monitor_ops.add_argument("--json", action="store_true")
+
+    # ------------------------------------------------------------------------------------------
+    # MONITOR_PLAN A4: `npdev explore`. The Scrap Manager screen calls these; so does the
+    # PowerShell harness (C1) and the Playwright reporter (C2) -- one verdict, one store, three
+    # drivers (R10).
+    # ------------------------------------------------------------------------------------------
+    explore = subparsers.add_parser(
+        "explore", help="Browser explorations: definitions, runs, verdicts, history, retention."
+    )
+    explore_sub = explore.add_subparsers(dest="explore_command")
+
+    explore_list = explore_sub.add_parser("list", help="Definitions and run history for one app.")
+    explore_list.add_argument("--app-dir", required=True)
+    explore_list.add_argument("--limit", type=int, default=100)
+    explore_list.add_argument("--json", action="store_true")
+
+    explore_show = explore_sub.add_parser("show", help="One full run record, with resolved blob paths.")
+    explore_show.add_argument("--app-dir", required=True)
+    explore_show.add_argument("--run", required=True)
+    explore_show.add_argument("--json", action="store_true")
+
+    explore_validate = explore_sub.add_parser(
+        "validate",
+        help="Schema-check a routine against the PINNED engine schema, plus the semantic lint. The UI "
+             "never validates on its own -- it calls this, so 'valid here' means 'runs in the harness'.",
+    )
+    explore_validate.add_argument("--file", required=True)
+    explore_validate.add_argument("--base-url", default="http://127.0.0.1:8080",
+                                  help="Used only to COMPOSE the request the engine would receive.")
+    explore_validate.add_argument("--json", action="store_true")
+
+    explore_run = explore_sub.add_parser("run", help="Run a routine against a booted app and record it.")
+    explore_run.add_argument("--app-dir", required=True)
+    explore_run.add_argument("--file", required=True)
+    explore_run.add_argument("--engine-port", type=int, default=npdev_monitor.DEFAULT_ENGINE_PORT)
+    explore_run.add_argument("--engine-root", default=None)
+    explore_run.add_argument("--api-key", default=None)
+    explore_run.add_argument("--driver", default="cli",
+                             choices=["cli", "monitor-ui", "harness", "ai-session", "playwright"])
+    explore_run.add_argument("--var", action="append", default=[], metavar="NAME=VALUE",
+                             help="Runtime variable override, repeatable.")
+    explore_run.add_argument("--ledger-id", default=None,
+                             help="Link this run to a ledger item; a linked run keeps its blobs.")
+    explore_run.add_argument("--keep-engine", action="store_true",
+                             help="Leave a self-started engine running (R2: it then needs stopping).")
+    explore_run.add_argument("--json", action="store_true")
+
+    explore_preflight = explore_sub.add_parser(
+        "preflight", help="Report each precondition as its own row, without running anything (D4)."
+    )
+    explore_preflight.add_argument("--app-dir", required=True)
+    explore_preflight.add_argument("--engine-port", type=int, default=npdev_monitor.DEFAULT_ENGINE_PORT)
+    explore_preflight.add_argument("--engine-root", default=None)
+    explore_preflight.add_argument("--json", action="store_true")
+
+    explore_record = explore_sub.add_parser(
+        "record",
+        help="Record a result produced elsewhere (the PowerShell harness, the Playwright reporter) "
+             "through the SAME verdict -- so PowerShell does no schema work and no driver keeps its "
+             "own copy of the rules.",
+    )
+    explore_record.add_argument("--from-file", required=True, help="A driver result JSON document.")
+    explore_record.add_argument("--app-dir", default=None)
+    explore_record.add_argument("--routine-file", default=None)
+    explore_record.add_argument("--driver", default="harness",
+                                choices=["harness", "monitor-ui", "ai-session", "playwright", "cli"])
+    explore_record.add_argument("--scope", default="app", choices=["app", "platform"])
+    explore_record.add_argument("--suite", default=None, help="platform scope only.")
+    explore_record.add_argument("--definition-kind", default="routine-json",
+                                choices=["routine-json", "playwright-spec"])
+    explore_record.add_argument("--ledger-id", default=None)
+    explore_record.add_argument("--json", action="store_true")
+
+    explore_prune = explore_sub.add_parser(
+        "prune", help="Blob retention. Records are NEVER deleted; pinned runs keep their blobs."
+    )
+    explore_prune.add_argument("--app-dir", required=True)
+    explore_prune.add_argument("--keep-per-scenario", type=int, default=10)
+    explore_prune.add_argument("--red-days", type=int, default=30)
+    explore_prune.add_argument("--dry-run", action="store_true")
+    explore_prune.add_argument("--json", action="store_true")
+
+    explore_pin = explore_sub.add_parser("pin", help="Keep a run's evidence indefinitely.")
+    explore_pin.add_argument("--app-dir", required=True)
+    explore_pin.add_argument("--run", required=True)
+    explore_pin.add_argument("--ledger", default=None, metavar="REG-nn")
+    explore_pin.add_argument("--unpin", action="store_true")
+    explore_pin.add_argument("--json", action="store_true")
+
+    explore_accept = explore_sub.add_parser(
+        "accept", help="Accept a run as the baseline (screenshot SHAs + extracted text)."
+    )
+    explore_accept.add_argument("--app-dir", required=True)
+    explore_accept.add_argument("--run", required=True)
+    explore_accept.add_argument("--json", action="store_true")
+
+    explore_context = explore_sub.add_parser(
+        "context", help="E1: the assistant's context pack -- concepts, routes, schema actions, gotchas, exemplars."
+    )
+    explore_context.add_argument("--app-dir", required=True)
+    explore_context.add_argument("--exemplars", type=int, default=2)
+    explore_context.add_argument("--json", action="store_true")
+
     review = subparsers.add_parser(
         "review", help="Build a review pack, or ingest a review verdict."
     )
@@ -5264,6 +5751,10 @@ def main(argv: list[str] | None = None) -> int:
             result = run_verify(args)
             print(json.dumps(result, indent=2))
             return 0 if result.get("ok") else 2
+        if args.command == "monitor":
+            return run_monitor(args)
+        if args.command == "explore":
+            return run_explore(args)
         if args.command == "review" and args.review_command == "pack":
             run_review_pack(args)
             return 0
