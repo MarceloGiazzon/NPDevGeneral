@@ -2006,6 +2006,23 @@ def run_setup(args: argparse.Namespace) -> int:
         out.narrate(f"npdev setup: {len(copied)} jar(s) copied, {len(up_to_date)} already current -> {libs_dir}")
     out.event("jars", "done", seconds=round(_time.monotonic() - jars_started, 1), source=jars_source)
 
+    # JDBC drivers, on BOTH jar paths. The build path used to leave Postgres in the Gradle module
+    # cache as a side effect of compiling the RuntimeHost template; the download path stages prebuilt
+    # jars, runs no Gradle, and left nothing -- so `db test-connection` and doctor's credential/
+    # charset checks could not run at all, and said so ("verdict": "unverified"). That is the CLI
+    # being honest about an absent precondition, and setup is the thing that is supposed to supply it:
+    # this command's own output tells the user "Run `npdev setup` ... to fetch it". Now that is true
+    # however setup got its jars. Best-effort: an offline machine still completes setup.
+    drivers_started = _time.monotonic()
+    out.event("jdbc-drivers", "started")
+    driver_results: dict[str, str] = {}
+    for engine_key in sorted(_JDBC_DRIVER_COORDINATES):
+        jar, outcome = _ensure_jdbc_driver(engine_key)
+        driver_results[engine_key] = outcome
+        out.narrate(f"npdev setup: [2/3] JDBC driver {engine_key}: {outcome}")
+    out.event("jdbc-drivers", "done", seconds=round(_time.monotonic() - drivers_started, 1),
+              **driver_results)
+
     # Clean the source builds' own build/ dirs afterward -- build output does not belong inside
     # the repo tree (this repo's own standing policy); scoped to exactly the three source roots
     # walked above, nothing else.
@@ -2487,6 +2504,92 @@ _JDBC_DRIVER_COORDINATES = {
 }
 
 
+def _npdev_driver_cache_root() -> Path | None:
+    """NPDev's OWN driver cache, laid out like a Gradle module cache so the search below needs no
+    special case: <buildRoot>/jdbc-drivers/<group>/<artifact>/<version>/<artifact>-<version>.jar.
+
+    Outside the repo, next to runtimehost-libs, because it is build output (this repo's standing
+    policy) and because `npdev setup` already owns that directory."""
+    try:
+        return _ai_build_root() / "jdbc-drivers"
+    except Exception:
+        # Driver lookup must never be the thing that breaks doctor on a machine where the build root
+        # cannot be resolved -- the Gradle/m2 roots below still work.
+        return None
+
+
+def _declared_jdbc_driver_version(group: str, artifact: str) -> str | None:
+    """The version the RuntimeHost TEMPLATE declares for a driver, or None.
+
+    Read rather than hardcoded so there is one source of truth: when the template bumps a driver,
+    `npdev setup` fetches the bumped one and doctor probes with the same jar the app will use. A
+    second copy of "42.7.4" here would be a version that drifts silently, which is the shape this
+    repo keeps finding."""
+    template = repo_root() / "NPDevRuntimeHost" / "build.gradle"
+    if not template.is_file():
+        return None
+    pattern = re.compile(
+        r"""['"]""" + re.escape(f"{group}:{artifact}") + r":([^'\"]+)['\"]")
+    match = pattern.search(template.read_text(encoding="utf-8", errors="replace"))
+    return match.group(1) if match else None
+
+
+def _ensure_jdbc_driver(engine_key: str) -> tuple[Path | None, str]:
+    """Make sure this machine has the engine's JDBC driver; return (jar, human-readable outcome).
+
+    WHY SETUP HAS TO DO THIS. `_find_jdbc_driver_jar` searches the Gradle/Maven module caches, and
+    the comment on _JDBC_DRIVER_COORDINATES says Postgres lands there via `npdev setup`. That is only
+    true when setup BUILDS: `_try_download_runtimehost_libs` stages prebuilt jars and runs no Gradle,
+    so on the download path nothing populates a module cache. Measured in the Manager harness
+    (`jarsSource=download`), where `db test-connection` then reported `verdict: unverified` for
+    correct credentials and the selftest's [8/9] failed -- the CLI was right, its precondition was
+    absent. Setup's own printed advice ("Run `npdev setup` ... to fetch it") was false on that path.
+
+    Downloads are best-effort by design: an offline machine still gets a working setup, and doctor
+    still says exactly why the probe cannot run. Never raises."""
+    existing = _find_jdbc_driver_jar(engine_key)
+    if existing is not None:
+        return existing, f"already present ({existing.name})"
+
+    coordinate = _JDBC_DRIVER_COORDINATES.get(engine_key)
+    if coordinate is None:
+        return None, "no coordinate declared for this engine"
+    group, artifact = coordinate
+    version = _declared_jdbc_driver_version(group, artifact)
+    if version is None:
+        # h2 is the real case: the template lets the Spring BOM pick it, so there is no version to
+        # resolve here and nothing to fetch. Not an error.
+        return None, f"{group}:{artifact} declares no explicit version in the RuntimeHost template"
+
+    cache_root = _npdev_driver_cache_root()
+    if cache_root is None:
+        return None, "could not resolve the NPDev build root"
+    target_dir = cache_root / group / artifact / version
+    target = target_dir / f"{artifact}-{version}.jar"
+    if target.is_file():
+        return target, f"already present ({target.name})"
+
+    import urllib.error
+    import urllib.request
+
+    url = (f"https://repo1.maven.org/maven2/{group.replace('.', '/')}/{artifact}/{version}/"
+           f"{artifact}-{version}.jar")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    staging = target_dir / f".{target.name}.part"
+    try:
+        urllib.request.urlretrieve(url, staging)
+        # A proxy or a 404 page saved as a .jar is the failure worth catching: it would sit in the
+        # cache forever and surface later as an unreadable driver rather than a missing one.
+        with open(staging, "rb") as handle:
+            if handle.read(2) != b"PK":
+                raise ValueError(f"downloaded file is not a jar: {url}")
+        os.replace(staging, target)
+    except (urllib.error.URLError, OSError, ValueError) as exception:
+        staging.unlink(missing_ok=True)
+        return None, f"download failed ({exception})"
+    return target, f"downloaded {artifact}-{version}.jar"
+
+
 def _find_jdbc_driver_jar(engine_key: str) -> Path | None:
     """The engine's driver jar from this machine's Gradle module cache, or None.
 
@@ -2514,6 +2617,12 @@ def _find_jdbc_driver_jar(engine_key: str) -> Path | None:
     group, artifact = coordinate
     roots = [Path.home() / ".gradle" / "caches" / "modules-2" / "files-2.1" / group / artifact,
              Path.home() / ".m2" / "repository" / group.replace(".", "/") / artifact]
+    # NPDev's own cache, populated by `npdev setup` on BOTH jar paths -- the download path runs no
+    # Gradle and so leaves the two roots above empty. Searched last: a driver a real build resolved
+    # outranks one setup fetched, because the build's is by definition the one the app will use.
+    npdev_cache = _npdev_driver_cache_root()
+    if npdev_cache is not None:
+        roots.append(npdev_cache / group / artifact)
     for root in roots:
         if not root.is_dir():
             continue
@@ -2535,10 +2644,11 @@ def _run_database_probe(engine: dict, database: dict, host: str, port: int) -> d
     driver_jar = _find_jdbc_driver_jar(engine["key"])
     if driver_jar is None:
         return {"unavailable": (
-            f"the JDBC driver for {engine['externalName']} is not in this machine's Gradle cache "
-            f"yet, so there is nothing to connect with. It is downloaded the first time an app for "
-            f"this engine is built -- run the app once, then re-run doctor. (Reachability above is "
-            f"checked without a driver and is unaffected.)")}
+            f"the JDBC driver for {engine['externalName']} is not on this machine yet, so there is "
+            f"nothing to connect with. `npdev setup` fetches it (it does so on both of its jar "
+            f"paths) -- re-run setup, then re-run doctor. Building an app for this engine also "
+            f"leaves one behind. (Reachability above is checked without a driver and is "
+            f"unaffected.)")}
     java_home = os.environ.get("JAVA_HOME")
     java_bin = _resolve_java_home_binary(java_home) if java_home else None
     if java_bin is None or not java_bin.exists():
