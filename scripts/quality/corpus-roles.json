@@ -43,6 +43,8 @@
     "AppGen/apps/pack-sample": "dsl-fixture",
     "AppGen/apps/s1-scale-canary": "repro-case",
     "AppGen/apps/simple-consumer-h2server": "dsl-fixture",
+    "AppGen/apps/simple-log-mysql": "engine-variant",
+    "AppGen/apps/simple-log-sqlserver": "engine-variant",
     "AppGen/apps/simple-product-h2local": "dsl-fixture",
     "AppGen/apps/simple-user-registry-h2local": "engine-variant",
     "AppGen/apps/simple-user-registry-h2local-freshdb": "engine-variant",
@@ -89,6 +91,10 @@
     "p77-hookproof": [
       "AppGen/apps/p77-hookproof",
       "AppGen/apps/p77-hookproof-pg"
+    ],
+    "simple-log": [
+      "AppGen/apps/simple-log-mysql",
+      "AppGen/apps/simple-log-sqlserver"
     ]
   }
 }
