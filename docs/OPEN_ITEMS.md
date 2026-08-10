@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**164 item(s) migrated: 2 open/partial, 162 done.**
+**165 item(s) migrated: 2 open/partial, 163 done.**
 
 ## Open / partial
 
@@ -73,7 +73,7 @@ Each of these is declared on `SqlDialect`, implemented by all four dialects, and
 `supports` is the one worth reading twice. CLAUDE.md instructs the reader to "ask `SqlDialects.active().supports(...)` rather than assuming a rollback" -- STOR-2's whole remedy -- and no production code does. The capability set is consulted through `capabilities()` by `StorageCapabilityGate` at GENERATION time; nothing asks at RUNTIME, which is where the DDL-in-transaction question actually gets decided.
 Not necessarily nine bugs. Some of these may be genuinely premature -- an answer prepared before its consumer exists is not wrong, it is early. What was wrong is that nothing distinguished "prepared early" from "wired and forgotten", and that is the distinction the three closed items each turned out to need. They are now enumerated in that checker's INTERNAL_ONLY allowlist with this item's id, so the list is a visible backlog rather than an invisible one, and any NEW dialect method must be wired or explicitly recorded here.
 
-## Done (162)
+## Done (163)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -81,6 +81,7 @@ Not necessarily nine bugs. Some of these may be genuinely premature -- an answer
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
 | PORT-1 | Six generated artefacts carry an absolute path from the AUTHORING machine into output a stranger runs -- including npdev.database.data-root, which is resolved at RUNTIME, so a generated app tries to open its database on a drive the user does not have | BUG | HIGH | DONE | 2026-08-10 |
+| PORT-2 | The _ops toolbox baked the generation-time location into four files, so a COPIED app silently built and ran the ORIGINAL -- and the check that had just declared this class closed was blind to it by construction | BUG | HIGH | DONE | 2026-08-10 |
 | QUAL-1 | check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight | GAP | LOW | DONE | 2026-08-09 |
 | QUAL-2 | Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red | BUG | MEDIUM | DONE | 2026-08-09 |
 | QUAL-3 | Two apps in one folder became ONE database -- a shared `_ops` toolbox AND a shared appId, so container name and data root collided; resetting either destroyed the other's data | BUG | HIGH | DONE | 2026-08-09 |
@@ -307,6 +308,32 @@ Ranked by how badly a stranger is hurt:
    bundle-freshness check is the class, and is NOT closed by this item.
 
 WHY NO GATE SAW ANY OF THIS: all generation in this repo happens under the author's own layout, where an absolute path to that layout is indistinguishable from a correct one. The defect is not visible from inside; it requires generating somewhere else and looking. That is now check scripts/hygiene/check-out-of-tree-generation.ps1, wired into run-generator-gate.ps1.
+
+### PORT-2 — The _ops toolbox baked the generation-time location into four files, so a COPIED app silently built and ran the ORIGINAL -- and the check that had just declared this class closed was blind to it by construction
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-10)
+**Verification:** VERIFIED_LIVE
+**Source:** A post-implementation review of 9fd1f74e (the commit that closed PORT-1 and STOR-14), by hand, against the checklist written before that commit landed. The review copied a generated app to a directory sharing no ancestry with its birthplace and read what the copy still pointed at. The gates did not find this; a human moving a directory did.
+**Surface:** `generator/emitted-output, quality/out-of-tree-check`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java`
+- `NPDevCli/npdev_cli.py`
+- `scripts/hygiene/check-out-of-tree-generation.ps1`
+- `scripts/hygiene/out-of-tree-generation-baseline.json`
+
+TWO FINDINGS, AND THE SECOND ONE IS WHY THE FIRST SHIPPED AS "CLOSED". They are filed as one item deliberately: separating them would record a leak that was fixed and lose the reason nobody saw it.
+FINDING 1 -- FOUR FILES NAMED THEIR BIRTHPLACE.
+
+  _ops/Run-FinalApp.ps1        Set-Location '<abs app path>'; java -jar '<abs>/build/libs/...jar'
+  _ops/Build-FinalApp.ps1      Set-Location '<abs app path>'; -PnpdevRuntimeHostLibsDir='<abs>'
+  _ops/resolved-db-plan.json   finalAppPath, opsRoot, runtimeHostLibsDir -- all absolute
+  _ops/README_RUNBOOK.md       seven absolute paths, in the commands a user is told to type
+
+The consequence is worse than "does not work", which is what makes it expensive. A moved app does not fail: it builds and runs the ORIGINAL app at the original path, successfully. Someone who copies an app, edits the copy and runs _ops/Run-FinalApp.ps1 is running the app they did not edit, and nothing anywhere says so. If the original has since been deleted they get an error naming a directory they never chose.
+This is PORT-1's family and was not covered by it: PORT-1 was about paths from the AUTHOR'S LAYOUT (the build root, a key directory, ~/.gradle) reaching a stranger's machine. This is a path that is perfectly correct on the generating machine and wrong the instant the artefact is handed on.
+FINDING 2 -- THE CHECK COULD NOT SEE IT, AND NOT BY OVERSIGHT.
+scripts/hygiene/check-out-of-tree-generation.ps1 reported "807 files scanned, 0 violations" on the very tree that produced Finding 1, and was right to by its own rules. It scans emitted output for a set of forbidden absolute paths DERIVED from the live machine, and it REFUSES TO RUN unless the output root it generates into is itself token-free -- a guard added on purpose, so that a file legitimately referring to where it was generated would not be a false positive.
+That guard is precisely what hid the defect. If the output root contains no forbidden token, then a file hardcoding THE OUTPUT ROOT ITSELF contains no forbidden token either, and is invisible. The blindness is structural, not a missing pattern: it cannot be fixed by adding tokens, because the offending string IS the one string the check has guaranteed is not forbidden. A checker whose false-positive guard is also its false-negative mechanism will keep reporting zero for as long as the defect exists.
 
 ### QUAL-1 — check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight
 

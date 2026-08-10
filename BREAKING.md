@@ -5,6 +5,28 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-10 — `_ops/resolved-db-plan.json` records app paths RELATIVE to the app (PORT-2)
+
+**What changes.** `finalAppPath` and `opsRoot` were absolute paths on the generating machine; they
+are now `"."` and `"_ops"`, resolved against the app directory at read time — the same treatment
+`resolvedDataRoot` received in PORT-1. `Run-FinalApp.ps1`, `Build-FinalApp.ps1` and
+`README_RUNBOOK.md` no longer name an absolute app location either. `runtimeHostLibsDir` stays
+absolute (it is a machine-level cache, not part of the app) but is now overridable via
+`NPDEV_RUNTIMEHOST_LIBS` and is dropped when the recorded cache is not present locally.
+
+**Who is affected.** Anything reading `resolved-db-plan.json` and expecting `finalAppPath`/`opsRoot`
+to be absolute. In this repo that is `NPDevCli/npdev_cli.py`, updated in the same commit.
+`NPDevManager` mentions the file only in a doc comment and parses none of these fields.
+
+**Why.** A copied or shared app's toolbox operated the ORIGINAL app: `_ops/Run-FinalApp.ps1` ran the
+jar at the path the app was generated in. Not a failure — a silent success against the wrong
+artefact. Someone who copied an app, edited it, and pressed run was running the copy they had not
+edited.
+
+**No codemod.** Nothing in a model references these paths, and a regenerated app is correct by
+construction. An app generated before this change keeps working where it was generated; copy it and
+it will not.
+
 ## 2026-08-10 — a generated app keeps its database BESIDE ITSELF, at `<FinalApp>/data` (PORT-1)
 
 **What changes.** The data root, and therefore `spring.datasource.url`, is app-relative instead of an

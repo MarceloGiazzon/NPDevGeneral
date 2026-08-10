@@ -2914,7 +2914,15 @@ def run_db_operation(args: argparse.Namespace) -> int:
     if plan_path.is_file():
         try:
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
-            target = {"appId": plan.get("appId"), "finalAppPath": plan.get("finalAppPath"),
+            # PORT-2: finalAppPath is recorded RELATIVE to the FinalApp root ('.'), because an
+            # absolute one made a copied app's toolbox operate the original. Resolved here against
+            # the same anchor the PowerShell half uses -- the _ops directory's parent -- so this
+            # line still prints the app a human can go and look at. An absolute value (an older
+            # plan, or the legacy shared toolbox) is passed through unchanged.
+            raw_app_path = str(plan.get("finalAppPath") or ".")
+            final_app_path = (raw_app_path if os.path.isabs(raw_app_path)
+                              else str((ops_root.parent / raw_app_path).resolve()))
+            target = {"appId": plan.get("appId"), "finalAppPath": final_app_path,
                       "engine": plan.get("engine"), "containerName": plan.get("containerName")}
         except (json.JSONDecodeError, OSError):
             target = {}

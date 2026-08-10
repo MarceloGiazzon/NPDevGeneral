@@ -1,0 +1,149 @@
+id: PORT-2
+title: >-
+  The _ops toolbox baked the generation-time location into four files, so a COPIED app silently
+  built and ran the ORIGINAL -- and the check that had just declared this class closed was blind to
+  it by construction
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-10
+closed: 2026-08-10
+verification: VERIFIED_LIVE
+surface: generator/emitted-output, quality/out-of-tree-check
+source: >-
+  A post-implementation review of 9fd1f74e (the commit that closed PORT-1 and STOR-14), by hand,
+  against the checklist written before that commit landed. The review copied a generated app to a
+  directory sharing no ancestry with its birthplace and read what the copy still pointed at. The
+  gates did not find this; a human moving a directory did.
+detail: >-
+  TWO FINDINGS, AND THE SECOND ONE IS WHY THE FIRST SHIPPED AS "CLOSED". They are filed as one item
+  deliberately: separating them would record a leak that was fixed and lose the reason nobody saw it.
+
+  FINDING 1 -- FOUR FILES NAMED THEIR BIRTHPLACE.
+
+    _ops/Run-FinalApp.ps1        Set-Location '<abs app path>'; java -jar '<abs>/build/libs/...jar'
+    _ops/Build-FinalApp.ps1      Set-Location '<abs app path>'; -PnpdevRuntimeHostLibsDir='<abs>'
+    _ops/resolved-db-plan.json   finalAppPath, opsRoot, runtimeHostLibsDir -- all absolute
+    _ops/README_RUNBOOK.md       seven absolute paths, in the commands a user is told to type
+
+  The consequence is worse than "does not work", which is what makes it expensive. A moved app does
+  not fail: it builds and runs the ORIGINAL app at the original path, successfully. Someone who
+  copies an app, edits the copy and runs _ops/Run-FinalApp.ps1 is running the app they did not edit,
+  and nothing anywhere says so. If the original has since been deleted they get an error naming a
+  directory they never chose.
+
+  This is PORT-1's family and was not covered by it: PORT-1 was about paths from the AUTHOR'S LAYOUT
+  (the build root, a key directory, ~/.gradle) reaching a stranger's machine. This is a path that is
+  perfectly correct on the generating machine and wrong the instant the artefact is handed on.
+
+  FINDING 2 -- THE CHECK COULD NOT SEE IT, AND NOT BY OVERSIGHT.
+
+  scripts/hygiene/check-out-of-tree-generation.ps1 reported "807 files scanned, 0 violations" on the
+  very tree that produced Finding 1, and was right to by its own rules. It scans emitted output for
+  a set of forbidden absolute paths DERIVED from the live machine, and it REFUSES TO RUN unless the
+  output root it generates into is itself token-free -- a guard added on purpose, so that a file
+  legitimately referring to where it was generated would not be a false positive.
+
+  That guard is precisely what hid the defect. If the output root contains no forbidden token, then
+  a file hardcoding THE OUTPUT ROOT ITSELF contains no forbidden token either, and is invisible. The
+  blindness is structural, not a missing pattern: it cannot be fixed by adding tokens, because the
+  offending string IS the one string the check has guaranteed is not forbidden. A checker whose
+  false-positive guard is also its false-negative mechanism will keep reporting zero for as long as
+  the defect exists.
+remediation: >-
+  FINDING 2 WAS FIXED FIRST, on purpose. Fixing the emitter first and then verifying it with the
+  check that had already missed the bug means trusting the same hand test twice; fixing the check
+  first turns the emitter fix into something a gate asserts rather than something a person claims.
+  The order was followed and it paid: the reshaped check reproduced all four files and 14 offending
+  lines before a single line of the emitter changed.
+
+  THE SHAPE CHANGED, THE DETECTOR DID NOT:
+
+    generate at A  ->  copy the whole tree to B (neither inside the other, and B's own path does not
+                       contain A's as a substring, since the scan searches file CONTENT for A)
+                   ->  scan B for any reference to A, in the same four path skins rule 1 uses
+                       (native, forward-slash, JSON-escaped, URI-percent)
+
+  Both rules run every time; the birthplace rule is additional, not a replacement. Rule 1 catches a
+  path from the author's layout that has nothing to do with this app; rule 2 catches a path that is
+  right where it was born and wrong everywhere else. The path-skin generation is now ONE function
+  (Get-PathSkins) shared by both, because a second hand-rolled list of spellings is how one rule
+  quietly stops seeing what the other one does.
+
+  NO ALLOWLIST WAS NEEDED FOR THE NEW RULE, and that was a design constraint rather than a lucky
+  outcome: nothing legitimate in a portable app can name where it used to live. The four existing
+  `accepted` baseline entries are unchanged and now excuse both readings -- all four are provenance
+  or prose ABOUT paths, and provenance saying where something came from is its job. The three
+  surviving birthplace hits are Reports/generation-run.json's outputRoot/artifactRoot/finalAppRoot,
+  which is that file's entire purpose; it sits beside the app, not inside it.
+
+  A THIRD VACUOUS-PASS GUARD was added alongside the two that already existed (refuse to run
+  in-ancestry; enforce a file-count floor): if the copy to B produced fewer files than A, the run
+  FAILS instead of scanning what did arrive. A partial copy is the quietest possible false pass --
+  files that never got there cannot mention anything.
+
+  THE EMITTER FIX REUSES THE IDIOM PORT-1 ESTABLISHED rather than inventing a second one. PORT-1's
+  Get-NpdevDataRoot resolved an app-relative plan value against Split-Path -Parent $PSScriptRoot;
+  that body is now Resolve-NpdevAppRelative, with Get-NpdevDataRoot and a new Get-NpdevAppRoot as
+  its two callers. One anchor, one resolver, four values. finalAppPath is '.' and opsRoot is '_ops'.
+
+  runtimeHostLibsDir stays ABSOLUTE, and is the only one -- it is a machine-level jar cache shared by
+  every app built on that machine, so making it app-relative would be a lie that survives the copy
+  syntactically and then resolves to some unrelated directory. It is never BAKED, though:
+  Get-NpdevRuntimeHostLibs reads $env:NPDEV_RUNTIMEHOST_LIBS first and falls back to the recorded
+  value, so a recipient redirects it without editing a generated file -- the same precedence the
+  generated build.gradle already gives NPDEV_RUNTIMEHOST_LIBS_DIR over -PnpdevRuntimeHostLibsDir
+  (REG-137).
+progress: >-
+  DONE 2026-08-10, verified.
+
+  TWO THINGS THE FIX FOUND THAT THE REVIEW HAD NOT NAMED.
+
+  1. THE FABRICATED BUILD ROOT. resolveBuildRoot() walked up for a directory named 'Build' and, when
+     there was none, ANSWERED <app parent>/Build anyway -- so an app generated to C:\npdev-oot\<run>
+     recorded a machine-level libs cache at C:\npdev-oot\<run>\Build\runtimehost-libs: the app's own
+     birthplace, inside the tree being generated, written into the plan as though it were a fact
+     about the machine. That fallback was itself the last surviving reason the new rule would have
+     needed an allowlist entry. It is deleted -- the function is resolveRuntimeHostLibs() and returns
+     null when there is no build root. Null is honest, every consumer already filters on Test-Path,
+     and the generated build.gradle has its own resolution chain to fall through to. A path that has
+     never existed is not a conservative default; it is a fact nobody checked.
+
+  2. A RECORDED CACHE THAT IS NOT ON THE RECIPIENT'S MACHINE. Build-FinalApp.ps1 passed
+     -PnpdevRuntimeHostLibsDir unconditionally, so a recipient's first build failed with "Missing
+     NPDev RuntimeHost libs manifest in D:/WorkSpace/..." -- a drive they do not have, named by a
+     file they did not write. It now drops the recorded value when it is not present locally and says
+     so in one sentence, letting build.gradle's own chain run. An explicit
+     $env:NPDEV_RUNTIMEHOST_LIBS is still passed through even when it does not exist: that one is the
+     user's own statement, and swallowing a typo is worse than failing on it.
+
+  ALSO CORRECTED, the review's Finding 3: out-of-tree-generation-baseline.json's header narrated
+  PORT-1's closure as "application-wmsoffice.yml and AuxScreen.js". It was AuthoringApp.js. AuxScreen
+  is an unrelated sample app, and a baseline file is a record other people read.
+
+  MEASURED, RED THEN GREEN, ON THE SAME CHECK:
+
+    before the emitter changed   17 birthplace hits, 14 new -- Build-FinalApp.ps1 x2,
+                                 README_RUNBOOK.md x7, resolved-db-plan.json x3, Run-FinalApp.ps1 x2
+    after                        3 birthplace hits, 0 new (all three are generation-run.json's
+                                 provenance), rule 1 unchanged at 807 scanned / 0 new / 0 known
+
+  AND BY HAND, WHICH IS THE TEST THIS ITEM EXISTS FOR: npdev-canary generated to
+  D:\WorkSpace\NPDev\Build\npdev-canary, the whole App directory (706 files) copied to
+  C:\npdev-moved-8841\App, and grepped for the original location in every skin -- nothing. Run from
+  the copy, Print-DbConnectionInfo.ps1 and Status-Environment.ps1 both answer
+  C:\npdev-moved-8841\App\data. Before this change they answered D:\WorkSpace\NPDev\Build\....
+
+  PARITY AND THE STOR-14 REFUSAL ARE INTACT. The five _ops operations are still byte-identical across
+  Postgres, MySQL and SQL Server (run-engine-toolbox-parity.py), check-engine-parity.py is clean, and
+  the STOR-14 canary proof still refuses and says why. Every new branch is on plan DATA
+  (externallyProvisioned, profile.kind, a path's presence), never on an engine name.
+
+  NOT CLOSED BY THIS ITEM, restated so nobody books it: the bundle-freshness class PORT-1 also left
+  open, and F3/F6, which need generation PER ENGINE rather than from a different directory. This
+  check still closes the different-directory half only.
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
+  - NPDevCli/npdev_cli.py
+  - scripts/hygiene/check-out-of-tree-generation.ps1
+  - scripts/hygiene/out-of-tree-generation-baseline.json

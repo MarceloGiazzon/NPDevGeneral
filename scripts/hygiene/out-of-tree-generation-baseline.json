@@ -8,6 +8,14 @@
     "fails immediately -- which is the whole point, since eight defects of exactly this family",
     "reached a third party while every gate stayed green.",
     "",
+    "ONE BASELINE, TWO RULES (PORT-2, 2026-08-10). The check now asks a second question -- copy the",
+    "generated tree to a disjoint directory B and scan B for any reference to A, where it was",
+    "generated -- and these same entries excuse both scans. A pattern here means 'this FILE is",
+    "allowed to name a path', and the reason has to hold for both readings or the entry is wrong.",
+    "For the four below it does: all four are provenance or prose ABOUT paths, and provenance is",
+    "supposed to say where something came from. Nothing else needed an entry: the birthplace rule",
+    "wants no allowlist, because a portable app cannot legitimately name where it used to live.",
+    "",
     "Two categories, and the difference is the entire honesty of this file:",
     "  accepted     -- correct as-is; will never be 'fixed'. Provenance records and comments that",
     "                  DISCUSS the defect are not instances of it.",
@@ -18,7 +26,7 @@
     "no allowlist (the lesson STOR-13's own allowlist taught this repo).",
     "",
     "2026-08-10, same day: THE known-defect LIST IS NOW EMPTY. All six of PORT-1's leaks are fixed --",
-    "application-wmsoffice.yml and AuxScreen.js earlier in the day, and in this change the four that",
+    "application-wmsoffice.yml and AuthoringApp.js earlier in the day, and in this change the four that",
     "remained: application-npdev-db.properties + _ops/resolved-db-plan.json (one fix -- the data root",
     "is app-relative now, so spring.datasource.url resolves against the app rather than against the",
     "authoring machine), model-source-manifest.json and schema-realization-manifest.json (paths",
@@ -42,7 +50,7 @@
     {
       "pattern": "Reports/generation-run.json",
       "category": "accepted",
-      "reason": "Provenance. Records which workspace produced this run and is already declared non-reproducible by check-deterministic-generation.ps1. Not shipped inside the app."
+      "reason": "Provenance. Records which workspace produced this run, and (the birthplace rule's reading) the outputRoot/artifactRoot/finalAppRoot it produced it into -- which is the file's entire job. Already declared non-reproducible by check-deterministic-generation.ps1, sits in Reports/ beside the app rather than inside it, and nothing resolves it at runtime."
     },
     {
       "pattern": "App/src/main/resources/npdev-build-info.properties",
