@@ -100,6 +100,9 @@
     "scripts/hygiene/check-deterministic-generation.ps1": {
       "invocation": "ci-gate"
     },
+    "scripts/hygiene/check-out-of-tree-generation.ps1": {
+      "invocation": "ci-gate"
+    },
     "scripts/hygiene/clean-rebuildable-artifacts.ps1": {
       "invocation": "manual-runbook"
     },
@@ -592,6 +595,9 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-closeable-streams.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-ledger-status-reverse-freshness.py": {
       "invocation": "ci-gate"
     }
   }

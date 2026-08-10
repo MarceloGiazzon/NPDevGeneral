@@ -6,41 +6,81 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**163 item(s) migrated: 4 open/partial, 159 done.**
+**164 item(s) migrated: 4 open/partial, 160 done.**
 
 ## Open / partial
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
-| QUAL-2 | Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red | BUG | MEDIUM | OPEN | 2026-08-09 |
+| PORT-1 | Six generated artefacts carry an absolute path from the AUTHORING machine into output a stranger runs -- including npdev.database.data-root, which is resolved at RUNTIME, so a generated app tries to open its database on a drive the user does not have | BUG | HIGH | PARTIAL | 2026-08-10 |
 | QUAL-4 | The maturity-bootstrap CI step wraps everything in continue-on-error, which discards the exact exit-2-vs-exit-1 distinction REG-32 built -- a real failure there would keep CI green | GAP | MEDIUM | OPEN | 2026-08-10 |
-| STOR-13 | Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in | BUG | MEDIUM | OPEN | 2026-08-09 |
+| STOR-13 | EIGHT SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in (filed as nine; see round3_correction -- six of the original nine were false alarms, `supports` most importantly of all, and three of the eight are asked by the conformance vectors) | BUG | MEDIUM | OPEN | 2026-08-09 |
 | STOR-14 | No way to say "this database is not mine to manage" -- the `_ops` toolbox assumes it provisioned every server engine, and `Reset-Environment.ps1` recursively deletes a data root that may be the user's own | GAP | HIGH | OPEN | 2026-08-09 |
 
 ### Detail
 
-### QUAL-2 — Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red
+### PORT-1 — Six generated artefacts carry an absolute path from the AUTHORING machine into output a stranger runs -- including npdev.database.data-root, which is resolved at RUNTIME, so a generated app tries to open its database on a drive the user does not have
 
-**Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
-**Verification:** NOT_VERIFIED
-**Source:** storage/stabilize/STABILIZE_PLAN.md S1. Found by sweeping for the family after fixing the instance: ConversionHookEmitterTest line 128 called `Files.list(hooksOut).count()` without closing the returned Stream, which on Windows left the directory DELETE-PENDING and made JUnit's @TempDir teardown fail -- reported for long enough that it was believed to be "a Windows file-lock in the harness, not the test body". It was the test body.
-**Surface:** `runtimehost/services`
+**Type:** BUG · **Severity:** HIGH · **Status:** PARTIAL
+**Verification:** VERIFIED_LIVE
+**Source:** Found by the first out-of-tree generation this repo has ever performed (scripts/hygiene/check-out-of-tree-generation.ps1, written for exactly this purpose on 2026-08-10 after THIRD_PERSON_TRIAL_ANALYSIS_2026-08-10.md observed that every existing gate verifies THE REPO and none verifies the experience of generating from somewhere else).
+npdev-canary generated to C:\npdev-oot\... -- outside both the workspace and AppGen ancestry -- 807 emitted files scanned, 15 hits, of which 4 are provenance or comments ABOUT the defect and ten are real. The check reproduced F7 from the third-person trial independently, without being told to look for it.
+**Surface:** `generator/emitted-output`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator`
+- `NPDevRuntimeHost/src/main/resources/application-wmsoffice.yml`
+- `scripts/hygiene/check-out-of-tree-generation.ps1`
+- `scripts/hygiene/out-of-tree-generation-baseline.json`
 
-`Files.list`, `Files.walk`, `Files.find` and `Files.lines` all return a Stream backed by an open OS handle, and all four javadocs say the Stream must be closed (try-with-resources). The one in the generator test was fixed under S1; the sweep that followed found ten more, all in NPDevRuntimeHost MAIN source rather than tests:
+The forbidden token set is DERIVED from the live machine at runtime (workspace root, build root, runtimehost-libs, AppGen root, user profile), so this is not a D:-drive quirk: the same emitters will bake in whatever absolute paths the generating machine happens to have. On a contributor's machine they leak that contributor's paths instead.
+Ranked by how badly a stranger is hurt:
+1. RESOLVED AT RUNTIME -- the app does not work.
+     src/main/resources/application-npdev-db.properties
+       spring.datasource.url=jdbc:h2:file:D:/WorkSpace/NPDev/Build/databases/<app>/<db>
+       npdev.database.data-root=D:/WorkSpace/NPDev/Build/databases/<app>
+     _ops/resolved-db-plan.json  (the same root, restated in the ops plan the user is told to read)
 
-    service/experimental/TemplateLibraryManagementService.java:54          Files.list
-    service/FileRuntimePluginExecutionSummaryStore.java:94                 Files.lines
-    service/internal/SemanticBehaviorWriteBackCanonicalizationService.java:57  Files.list
-    service/internal/SemanticBehaviorWriteBackService.java:451             Files.list
-    service/internal/TenantNativeGovernanceService.java:57                 Files.list
-    service/internal/TenantOperationalAdministrationService.java:75        Files.list
-    service/internal/TenantOperationalAdministrationService.java:221       Files.list
-    service/internal/TenantOperationalAdministrationService.java:250       Files.list
-    service/internal/WorkingDraftSystemService.java:440                    Files.list
-    tenant/TenantPartitionRealityVerifier.java:63                          Files.walk
+   The one that matters is spring.datasource.url. UserDatabaseDefinitionLoader builds the H2_LOCAL
+   URL as "jdbc:h2:file:" + identity.resolvedDataRoot(), so the author's absolute path is baked
+   INTO THE JDBC URL, and Spring resolves it at boot. A generated app handed to anyone else tries
+   to open its database on a drive letter they may not have.
 
-Why this is worth an item rather than a quiet fix: the symptom is PLATFORM-DEPENDENT and delayed. POSIX permits unlinking a directory that is still open, so on Linux CI these leak a file descriptor and nothing else observable; on Windows the directory becomes undeletable (or delete-pending, which blocks its PARENT from being removed and names the parent in the error, not the leaked path). A generated app that runs long enough on Windows can therefore fail to clean up a tenant or draft directory for a reason whose error message points somewhere else entirely -- which is exactly how the generator instance got misdiagnosed as a harness problem for so long.
-Deliberately NOT fixed in the same pass. STABILIZE_PLAN.md S4 freezes main from the release tag until the second machine reports, and states that anything discovered which does not block that machine goes to the backlog unfixed -- the point of the freeze being that the second machine tests one thing rather than a moving target. None of these ten is on the path a first-run user walks (create an app, build it, boot it, change a field): they are tenant-administration, working-draft and template-library services.
+   Recorded precisely because the first version of this row got it wrong: it blamed
+   npdev.database.data-root, which NO Java code reads (grep-confirmed across RuntimeHost and
+   Kernel main source -- its only consumers are the _ops PowerShell scripts). The check had
+   reported only the FIRST offending line per file and hid the datasource URL two lines below.
+   The scanner now reports every offending line, for exactly this reason.
+
+2. SHIPPED INSIDE THE APP -- wrong, and leaks the author's filesystem layout to whoever receives
+   the artefact.
+     src/main/resources/npdev/model-source-manifest.json      rootModel: <abs authoring path>
+     src/main/resources/npdev/db/schema-realization-manifest.json  sourceOfTruth.business/database
+   Provenance is legitimate; putting it in src/main/resources rather than Reports/ is not.
+
+3. AN APP-SPECIFIC PROFILE LEAKING INTO EVERY APP (this is F7).
+     src/main/resources/application-wmsoffice.yml
+   Carries D:/WorkSpace/NPDev/Build/wmsoffice-keys/jwt-public.pem and its private-key sibling.
+   Every generated app -- for every user, whatever they modelled -- ships a WmsOffice JWT profile
+   pointing at the author's key directory. Two defects in one: the profile should not be there at
+   all, and it names key paths.
+
+4. A STALE COMMITTED BUNDLE -- and this one is a DIFFERENT defect from the other five.
+     static/npdev-ui-react/assets/AuthoringApp.js
+   The bundle emits a PowerShell snippet defaulting to
+   `[string]$NPDevRoot = 'D:\WorkSpace\NPDev_General'` -- an author path AND a hardcoded repo
+   folder NAME, the exact pair REG-144 eliminated from eleven resolution sites.
+
+   But the SOURCE was already fixed. NPDevEditor/ui-react/src/authoring/pipeline/pipelineHandoff.ts
+   emits `$env:NPDEV_ROOT` today and carries a REG-144 comment saying so. What shipped is the
+   BUNDLE, committed under npdev-templates/static-react/assets/ and never rebuilt after that fix.
+
+   So the live defect is DRIFT between a committed generated artefact and the source it is
+   generated from, with nothing checking. CLAUDE.md tells every reader the bundle is "generated,
+   ignore entirely" -- correct advice for reviewing it, and exactly why a stale copy could ship a
+   string the source had already deleted. Rebuilding closes the instance; the absent
+   bundle-freshness check is the class, and is NOT closed by this item.
+
+WHY NO GATE SAW ANY OF THIS: all generation in this repo happens under the author's own layout, where an absolute path to that layout is indistinguishable from a correct one. The defect is not visible from inside; it requires generating somewhere else and looking. That is now check scripts/hygiene/check-out-of-tree-generation.ps1, wired into run-generator-gate.ps1.
 
 ### QUAL-4 — The maturity-bootstrap CI step wraps everything in continue-on-error, which discards the exact exit-2-vs-exit-1 distinction REG-32 built -- a real failure there would keep CI green
 
@@ -73,7 +113,7 @@ Two separate problems in one step (.github/workflows/npdev-ci-validation.yml:251
    Not fatal (everything here is advisory today), but the number in the comment is the only record
    of what the expected state IS, and it no longer matches.
 
-### STOR-13 — Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in
+### STOR-13 — EIGHT SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in (filed as nine; see round3_correction -- six of the original nine were false alarms, `supports` most importantly of all, and three of the eight are asked by the conformance vectors)
 
 **Type:** BUG · **Severity:** MEDIUM · **Status:** OPEN
 **Verification:** NOT_VERIFIED
@@ -134,7 +174,7 @@ TWO ESTIMATE CORRECTIONS, measured against the tree at ac0ccc35 rather than assu
 
 ALREADY EXISTS AND MUST NOT BE DUPLICATED: `schemaLifecycle.ownership: ExternallyManaged` (REG-7.1) already declares that NPDev issues no schema DDL against this database, and UserDatabaseDefinitionLoader enforces it (KeepExistingIfCompatible + no destructive recreate). That is a statement about the SCHEMA; this item is about the SERVER. They are genuinely different -- an NPDev-provisioned container can hold an externally-managed schema -- but an implementer who does not notice the existing field will add a second overlapping one. Decide explicitly whether the new flag lives beside it or subsumes it.
 
-## Done (159)
+## Done (160)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
@@ -142,6 +182,7 @@ ALREADY EXISTS AND MUST NOT BE DUPLICATED: `schemaLifecycle.ownership: Externall
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
 | QUAL-1 | check-dsl-coverage.py is 913 lines against a 400-line hard stop -- a genuine split candidate that keeps blocking unrelated work, recorded so the ceiling it was given is a decision rather than an oversight | GAP | LOW | DONE | 2026-08-09 |
+| QUAL-2 | Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red | BUG | MEDIUM | DONE | 2026-08-09 |
 | QUAL-3 | Two apps in one folder became ONE database -- a shared `_ops` toolbox AND a shared appId, so container name and data root collided; resetting either destroyed the other's data | BUG | HIGH | DONE | 2026-08-09 |
 | REG-1 | 9 app definitions remain on the deprecated blanket destructive posture (down from 27) | GAP | MEDIUM | DONE | 2026-07-21 |
 | REG-10 | LNCH-19: Linux CI observed green for the first time | GAP | MEDIUM | DONE | 2026-07-21 |
@@ -330,6 +371,29 @@ The other two over-budget scripts have arguments that this one does not:
                                    (409)  entry records a measured engine failure
 
 913 against 400 is not 2%. It is a checker that has accumulated several jobs.
+
+### QUAL-2 — Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-10)
+**Verification:** UNIT_TESTED
+**Source:** storage/stabilize/STABILIZE_PLAN.md S1. Found by sweeping for the family after fixing the instance: ConversionHookEmitterTest line 128 called `Files.list(hooksOut).count()` without closing the returned Stream, which on Windows left the directory DELETE-PENDING and made JUnit's @TempDir teardown fail -- reported for long enough that it was believed to be "a Windows file-lock in the harness, not the test body". It was the test body.
+**Surface:** `runtimehost/services`
+
+`Files.list`, `Files.walk`, `Files.find` and `Files.lines` all return a Stream backed by an open OS handle, and all four javadocs say the Stream must be closed (try-with-resources). The one in the generator test was fixed under S1; the sweep that followed found ten more, all in NPDevRuntimeHost MAIN source rather than tests:
+
+    service/experimental/TemplateLibraryManagementService.java:54          Files.list
+    service/FileRuntimePluginExecutionSummaryStore.java:94                 Files.lines
+    service/internal/SemanticBehaviorWriteBackCanonicalizationService.java:57  Files.list
+    service/internal/SemanticBehaviorWriteBackService.java:451             Files.list
+    service/internal/TenantNativeGovernanceService.java:57                 Files.list
+    service/internal/TenantOperationalAdministrationService.java:75        Files.list
+    service/internal/TenantOperationalAdministrationService.java:221       Files.list
+    service/internal/TenantOperationalAdministrationService.java:250       Files.list
+    service/internal/WorkingDraftSystemService.java:440                    Files.list
+    tenant/TenantPartitionRealityVerifier.java:63                          Files.walk
+
+Why this is worth an item rather than a quiet fix: the symptom is PLATFORM-DEPENDENT and delayed. POSIX permits unlinking a directory that is still open, so on Linux CI these leak a file descriptor and nothing else observable; on Windows the directory becomes undeletable (or delete-pending, which blocks its PARENT from being removed and names the parent in the error, not the leaked path). A generated app that runs long enough on Windows can therefore fail to clean up a tenant or draft directory for a reason whose error message points somewhere else entirely -- which is exactly how the generator instance got misdiagnosed as a harness problem for so long.
+Deliberately NOT fixed in the same pass. STABILIZE_PLAN.md S4 freezes main from the release tag until the second machine reports, and states that anything discovered which does not block that machine goes to the backlog unfixed -- the point of the freeze being that the second machine tests one thing rather than a moving target. None of these ten is on the path a first-run user walks (create an app, build it, boot it, change a field): they are tenant-administration, working-draft and template-library services.
 
 ### QUAL-3 — Two apps in one folder became ONE database -- a shared `_ops` toolbox AND a shared appId, so container name and data root collided; resetting either destroyed the other's data
 

@@ -1,0 +1,128 @@
+id: PORT-1
+title: >-
+  Six generated artefacts carry an absolute path from the AUTHORING machine into output a stranger
+  runs -- including npdev.database.data-root, which is resolved at RUNTIME, so a generated app tries
+  to open its database on a drive the user does not have
+type: BUG
+severity: HIGH
+status: PARTIAL
+opened: 2026-08-10
+verification: VERIFIED_LIVE
+surface: generator/emitted-output
+source: >-
+  Found by the first out-of-tree generation this repo has ever performed
+  (scripts/hygiene/check-out-of-tree-generation.ps1, written for exactly this purpose on 2026-08-10
+  after THIRD_PERSON_TRIAL_ANALYSIS_2026-08-10.md observed that every existing gate verifies THE
+  REPO and none verifies the experience of generating from somewhere else).
+
+  npdev-canary generated to C:\npdev-oot\... -- outside both the workspace and AppGen ancestry --
+  807 emitted files scanned, 15 hits, of which 4 are provenance or comments ABOUT the defect and
+  ten are real. The check reproduced F7 from the third-person trial independently, without being
+  told to look for it.
+detail: >-
+  The forbidden token set is DERIVED from the live machine at runtime (workspace root, build root,
+  runtimehost-libs, AppGen root, user profile), so this is not a D:-drive quirk: the same emitters
+  will bake in whatever absolute paths the generating machine happens to have. On a contributor's
+  machine they leak that contributor's paths instead.
+
+  Ranked by how badly a stranger is hurt:
+
+  1. RESOLVED AT RUNTIME -- the app does not work.
+       src/main/resources/application-npdev-db.properties
+         spring.datasource.url=jdbc:h2:file:D:/WorkSpace/NPDev/Build/databases/<app>/<db>
+         npdev.database.data-root=D:/WorkSpace/NPDev/Build/databases/<app>
+       _ops/resolved-db-plan.json  (the same root, restated in the ops plan the user is told to read)
+
+     The one that matters is spring.datasource.url. UserDatabaseDefinitionLoader builds the H2_LOCAL
+     URL as "jdbc:h2:file:" + identity.resolvedDataRoot(), so the author's absolute path is baked
+     INTO THE JDBC URL, and Spring resolves it at boot. A generated app handed to anyone else tries
+     to open its database on a drive letter they may not have.
+
+     Recorded precisely because the first version of this row got it wrong: it blamed
+     npdev.database.data-root, which NO Java code reads (grep-confirmed across RuntimeHost and
+     Kernel main source -- its only consumers are the _ops PowerShell scripts). The check had
+     reported only the FIRST offending line per file and hid the datasource URL two lines below.
+     The scanner now reports every offending line, for exactly this reason.
+
+  2. SHIPPED INSIDE THE APP -- wrong, and leaks the author's filesystem layout to whoever receives
+     the artefact.
+       src/main/resources/npdev/model-source-manifest.json      rootModel: <abs authoring path>
+       src/main/resources/npdev/db/schema-realization-manifest.json  sourceOfTruth.business/database
+     Provenance is legitimate; putting it in src/main/resources rather than Reports/ is not.
+
+  3. AN APP-SPECIFIC PROFILE LEAKING INTO EVERY APP (this is F7).
+       src/main/resources/application-wmsoffice.yml
+     Carries D:/WorkSpace/NPDev/Build/wmsoffice-keys/jwt-public.pem and its private-key sibling.
+     Every generated app -- for every user, whatever they modelled -- ships a WmsOffice JWT profile
+     pointing at the author's key directory. Two defects in one: the profile should not be there at
+     all, and it names key paths.
+
+  4. A STALE COMMITTED BUNDLE -- and this one is a DIFFERENT defect from the other five.
+       static/npdev-ui-react/assets/AuthoringApp.js
+     The bundle emits a PowerShell snippet defaulting to
+     `[string]$NPDevRoot = 'D:\WorkSpace\NPDev_General'` -- an author path AND a hardcoded repo
+     folder NAME, the exact pair REG-144 eliminated from eleven resolution sites.
+
+     But the SOURCE was already fixed. NPDevEditor/ui-react/src/authoring/pipeline/pipelineHandoff.ts
+     emits `$env:NPDEV_ROOT` today and carries a REG-144 comment saying so. What shipped is the
+     BUNDLE, committed under npdev-templates/static-react/assets/ and never rebuilt after that fix.
+
+     So the live defect is DRIFT between a committed generated artefact and the source it is
+     generated from, with nothing checking. CLAUDE.md tells every reader the bundle is "generated,
+     ignore entirely" -- correct advice for reviewing it, and exactly why a stale copy could ship a
+     string the source had already deleted. Rebuilding closes the instance; the absent
+     bundle-freshness check is the class, and is NOT closed by this item.
+
+  WHY NO GATE SAW ANY OF THIS: all generation in this repo happens under the author's own layout,
+  where an absolute path to that layout is indistinguishable from a correct one. The defect is not
+  visible from inside; it requires generating somewhere else and looking. That is now check
+  scripts/hygiene/check-out-of-tree-generation.ps1, wired into run-generator-gate.ps1.
+remediation: >-
+  Each of the six is independent; none needs the others. In severity order:
+
+  1. application-npdev-db.properties + resolved-db-plan.json: emit a RELATIVE data-root (or a
+     ${NPDEV_DATA_ROOT:-./data} style default the app resolves at boot). The value is already
+     computed from the build root -- the fix is to stop resolving it at GENERATION time.
+  2. model-source-manifest.json + schema-realization-manifest.json: either move them to Reports/ or
+     record a workspace-relative path. Get-NPDevWorkspaceRelativePath already exists.
+  3. application-wmsoffice.yml: stop emitting it. It is one app's profile in every app's output.
+  4. AuthoringApp.js: the snippet default must come from the caller, not a baked constant.
+
+  The ratchet is already in place: scripts/hygiene/out-of-tree-generation-baseline.json records
+  these six as `known-defect` WITH reasons, and any NEW leak fails the gate immediately. Delete an
+  entry from the baseline as its emitter is fixed -- the baseline shrinking to zero IS this item's
+  definition of done.
+progress: >-
+  2026-08-10, same day. TWO of the six are closed and their baseline entries deleted, so the
+  ratchet has already tightened once:
+
+    application-wmsoffice.yml  FIXED. Key paths are now
+                               ${NPDEV_WMSOFFICE_KEYS_DIR:./wmsoffice-keys}/... -- overridable,
+                               defaulting beside the running app. WmsOffice keeps working; no
+                               recipient receives the author's layout.
+    AuthoringApp.js            FIXED by rebuilding the bundle (npm run build:templates). The
+                               SOURCE was already correct; only the committed artefact was stale.
+                               Verified: 0 occurrences of the old string, NPDEV_ROOT present.
+
+  FOUR REMAIN, and they are deliberately not being rushed at this point in the release sequence:
+
+    spring.datasource.url / npdev.database.data-root   (application-npdev-db.properties)
+    _ops/resolved-db-plan.json
+    npdev/model-source-manifest.json
+    npdev/db/schema-realization-manifest.json
+
+  The datasource URL is the one that breaks a stranger's app, and fixing it changes where EVERY
+  generated app looks for its database -- a behavioural change with SchemaRealizationEmitter test
+  impact. It wants its own change with its own verification, not a same-day edit alongside six
+  others. The ratchet holds the line meanwhile: these four cannot get worse without failing.
+
+  ALSO LEARNED, and worth more than any single one of the six: the first version of the checker
+  reported only the FIRST offending line per file, which hid spring.datasource.url behind the inert
+  property two lines above it and caused this row to be filed against the wrong mechanism. Fixed --
+  it now reports every offending line, which is why the same run went from 15 hits to 34. Nineteen
+  real offending lines had been invisible in the very first report this check ever produced.
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator
+  - NPDevRuntimeHost/src/main/resources/application-wmsoffice.yml
+  - scripts/hygiene/check-out-of-tree-generation.ps1
+  - scripts/hygiene/out-of-tree-generation-baseline.json

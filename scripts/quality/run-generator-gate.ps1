@@ -88,6 +88,37 @@ catch {
     }
 }
 
+# THIRD_PERSON_TRIAL_ANALYSIS_2026-08-10.md: every gate this repo has verifies THE REPO; none
+# verified the experience of generating from somewhere else, which is where F1/F2/F7/F8 lived --
+# four defects a fully green gate run had missed, all of them absolute paths from the author's
+# machine emitted into output a stranger runs. This generates one sample OUT of both the workspace
+# and AppGen ancestry and fails on any NEW leak (the ten already present are baselined as PORT-1,
+# with reasons, so the ratchet can only tighten). Lives here rather than in the AI-knowledge gate
+# because it generates, and that gate is contractually static.
+$outOfTreeScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\hygiene\check-out-of-tree-generation.ps1"
+$outOfTreeReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\out-of-tree-generation-report.json"
+$outOfTreeError = $null
+$outOfTreeReport = $null
+try {
+    & $outOfTreeScript -WorkspaceRoot $WorkspaceRoot -ReportPath $outOfTreeReportPath | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        $outOfTreeError = "Out-of-tree generation check failed (exit $LASTEXITCODE) -- a NEW absolute path from this machine reached emitted output."
+    }
+}
+catch {
+    $outOfTreeError = $_.Exception.Message
+}
+if (Test-Path -LiteralPath $outOfTreeReportPath -PathType Leaf) {
+    try { $outOfTreeReport = Get-Content -LiteralPath $outOfTreeReportPath -Raw | ConvertFrom-Json } catch { $outOfTreeReport = $null }
+}
+$outOfTreeEvidence = [pscustomobject]@{
+    overallStatus = if ($null -eq $outOfTreeReport) { "failed" } else { [string]$outOfTreeReport.status }
+    filesScanned  = if ($null -eq $outOfTreeReport) { 0 } else { $outOfTreeReport.filesScanned }
+    knownDefects  = if ($null -eq $outOfTreeReport) { 0 } else { @($outOfTreeReport.knownDefects).Count }
+    reportPath    = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $outOfTreeReportPath
+    error         = $outOfTreeError
+}
+
 $deterministicGenerationEvidence = [pscustomobject]@{
     overallStatus = if ($null -eq $deterministicGenerationReport) { "failed" } else { [string]$deterministicGenerationReport.overallStatus }
     reportPath = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $deterministicGenerationReportPath
@@ -202,8 +233,10 @@ $releaseGateEvidence = [pscustomobject]@{
     error = $releaseGateError
 }
 $gateReport | Add-Member -NotePropertyName releaseGateT2 -NotePropertyValue $releaseGateEvidence -Force
+$gateReport | Add-Member -NotePropertyName outOfTreeGeneration -NotePropertyValue $outOfTreeEvidence -Force
 
 if (
+    -not [string]::IsNullOrWhiteSpace($outOfTreeError) -or
     -not [string]::IsNullOrWhiteSpace($deterministicGenerationError) -or
     -not [string]::IsNullOrWhiteSpace($generatorGovernanceError) -or
     ($null -eq $deterministicGenerationReport) -or
@@ -218,6 +251,9 @@ if (
     $gateReport.failureReasons = @(
         @($gateReport.failureReasons) +
         @(
+            if (-not [string]::IsNullOrWhiteSpace($outOfTreeError)) {
+                $outOfTreeError
+            }
             if (-not [string]::IsNullOrWhiteSpace($deterministicGenerationError)) {
                 $deterministicGenerationError
             }

@@ -5,6 +5,26 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-10 — the `wmsoffice` profile's JWT key paths are now relative and overridable (PORT-1)
+
+**What changes.** `application-wmsoffice.yml`, which ships in every generated app via the shared
+RuntimeHost template, had `public-key-path` and `private-key-path` set to absolute paths under the
+AUTHOR's build directory. They are now
+`${NPDEV_WMSOFFICE_KEYS_DIR:./wmsoffice-keys}/jwt-{public,private-pkcs8}.pem`.
+
+**Who is affected.** Only an app that activates the `wmsoffice` Spring profile — for everyone else
+the file was, and remains, inert. If you activate it, either put the keys in `./wmsoffice-keys`
+beside the running app or set `NPDEV_WMSOFFICE_KEYS_DIR`.
+
+**Why.** The file's own comment argued it was "inert for any app that doesn't activate the profile,
+so it's safe to ship". Inert is not the same as harmless: every generated app, for every user,
+carried one machine's filesystem layout and named its key material. Found by the first out-of-tree
+generation this repo has run (`scripts/hygiene/check-out-of-tree-generation.ps1`), which reproduced
+it independently as F7 from the third-person trial.
+
+**No codemod.** Nothing in a model or in generated code references these paths; the change is a
+default in a template resource.
+
 ## 2026-08-09 — an app's `_ops` toolbox and its database identity are now per-APP, not per-FOLDER (QUAL-3)
 
 **What changes.** Two things move, and they are one defect:
