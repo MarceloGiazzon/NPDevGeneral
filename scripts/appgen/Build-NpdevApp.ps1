@@ -290,7 +290,31 @@ delete the stale plan artifacts in the directory above; that is a deliberate act
 $PlanJsonPath = Join-Path $OutRoot 'migration-plan.json'
 
 # ---- 2. stage definition ---------------------------------------------------
-if (Test-Path -LiteralPath $OutRoot) { Write-Step "Removing existing output root: $OutRoot"; Remove-Item -LiteralPath $OutRoot -Recurse -Force }
+# PORT-1 made the app's database app-relative (<OutRoot>\App\data) so that a generated app can be
+# handed to someone else and still find it. That put the database INSIDE the directory this line used
+# to delete wholesale -- so a plain regeneration would have destroyed it, and with it every path
+# through SchemaLifecycleExecutor that only runs against an EXISTING database with a changed model
+# (KeepExistingIfCompatible, the migration plans, LNCH-1's whole diff machinery). Losing those
+# quietly would have been the worse half of this change: the schema-evolution tests would still pass,
+# against a fresh database, proving nothing.
+#
+# So the wipe now spares exactly one directory, in place -- never moved to a temp location and moved
+# back, because a generation that fails in between would strand a user's data somewhere they would
+# never think to look.
+$PreservedDataRoot = Join-Path $OutRoot 'App\data'
+if (Test-Path -LiteralPath $OutRoot) {
+  if (Test-Path -LiteralPath $PreservedDataRoot) {
+    Write-Step "Removing existing output root (preserving the app's database at App\data): $OutRoot"
+    Get-ChildItem -LiteralPath $OutRoot -Force | Where-Object { $_.Name -ne 'App' } |
+      ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+    Get-ChildItem -LiteralPath (Join-Path $OutRoot 'App') -Force | Where-Object { $_.Name -ne 'data' } |
+      ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+  }
+  else {
+    Write-Step "Removing existing output root: $OutRoot"
+    Remove-Item -LiteralPath $OutRoot -Recurse -Force
+  }
+}
 New-Item -ItemType Directory -Force -Path $OutRoot | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $OutRoot '_logs') | Out-Null
 $StagedInput = Join-Path $OutRoot 'Input'
@@ -636,16 +660,25 @@ $DbDef = Read-JsonFile $DbDefinitionPath
 $Engine = "$($DbDef.database.engine)"
 $JdbcUrl = "$($DbDef.database.jdbcUrl)"
 $H2Port = 9092
-$DataRoot = Join-Path 'D:\WorkSpace\NPDev\Build\databases' $AppId
+# PORT-1. Was `Join-Path 'D:\WorkSpace\NPDev\Build\databases' $AppId` -- this machine's drive letter,
+# written as a default in a script that ships to everyone, which is REG-144's family in a place its
+# eleven-site sweep did not reach. It is now the SAME anchor the generator uses (<FinalApp>/data), so
+# this toolbox and the app it operates cannot name two different databases -- the QUAL-3 defect.
+#
+# The old jdbcUrl-derived override is deleted rather than adapted: it existed to recover the absolute
+# root from an H2Server URL, and the URL is app-relative now, so `Split-Path -Parent` on it would
+# produce a relative fragment that resolves against whatever directory the caller happened to be in.
+$DataRoot = Join-Path $GeneratedAppRoot 'data'
 if ($JdbcUrl -match 'tcp://localhost:(\d+)/') { $H2Port = [int]$Matches[1] }
-if ($JdbcUrl -match 'tcp://localhost(?::\d+)?/([^;]+)') {
-  $urlPath = $Matches[1] -replace '/', '\'
-  $DataRoot = Split-Path -Parent $urlPath
-}
 $DbPlan = [ordered]@{
   engine = $Engine; appId = $AppId; serverPort = $ServerPort; apiKey = $ApiKey
   hostPort = $H2Port; resolvedDataRoot = $DataRoot; jdbcUrl = $JdbcUrl
   resolvedDatabaseName = "$($DbDef.database.databaseName)"
+  # The H2Server baseDir. NOT the data root: the app's URL carries './data/<db>', which H2 resolves
+  # SERVER-side, so a server anchored at <App>/data would open <App>/data/data/<db> -- a second,
+  # silently-created, empty database.
+  appRoot = $GeneratedAppRoot
+  runtimeHostLibsDir = $RuntimeHostLibsDir
 }
 Write-JsonFile $DbPlan (Join-Path $OpsDir 'resolved-db-plan.json')
 
@@ -655,7 +688,12 @@ $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan
 if ($plan.engine -eq 'InMemory') { Write-Host 'InMemory: no environment to start.'; exit 0 }
 if ($plan.engine -eq 'H2Server') {
   New-Item -ItemType Directory -Force -Path $plan.resolvedDataRoot | Out-Null
-  $jar = @(Get-ChildItem -Path 'D:\WorkSpace\NPDev\Build', (Join-Path $env:USERPROFILE '.gradle\caches') -Recurse -Filter 'h2-2*.jar' -ErrorAction SilentlyContinue) |
+  # REG-144's family again: this used to search a literal 'D:\WorkSpace\NPDev\Build'. The libs
+  # directory THIS app was staged against travels in the plan; the gradle cache stays as the
+  # fallback, since that is where the jar actually comes from on a fresh machine.
+  $h2SearchRoots = @($plan.runtimeHostLibsDir, (Join-Path $env:USERPROFILE '.gradle\caches')) |
+                   Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+  $jar = @(Get-ChildItem -Path $h2SearchRoots -Recurse -Filter 'h2-2*.jar' -ErrorAction SilentlyContinue) |
          Where-Object { $_.FullName -notlike '*\gradle-8*\lib\*' -and $_.Name -notlike '*-sources.jar' -and $_.Name -notlike '*-javadoc.jar' } |
          Sort-Object LastWriteTime -Descending | Select-Object -First 1
   if ($null -eq $jar) { throw 'No standalone h2-2*.jar (binary, non-sources/javadoc) found under Build or ~/.gradle. Build an app once to populate the gradle cache.' }
@@ -665,8 +703,8 @@ if ($plan.engine -eq 'H2Server') {
     $p = Get-Process -Id ([int](Get-Content -Raw -LiteralPath $pidFile)) -ErrorAction SilentlyContinue
     if ($null -ne $p) { Write-Host "H2Server already running (PID $($p.Id))."; exit 0 }
   }
-  $args = @('-cp', $jar.FullName, 'org.h2.tools.Server', '-tcp', '-tcpPort', [string]$plan.hostPort, '-tcpAllowOthers', '-ifNotExists', '-baseDir', $plan.resolvedDataRoot)
-  $proc = Start-Process -FilePath 'java' -ArgumentList $args -WorkingDirectory $plan.resolvedDataRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $PSScriptRoot 'h2server.err.log')
+  $args = @('-cp', $jar.FullName, 'org.h2.tools.Server', '-tcp', '-tcpPort', [string]$plan.hostPort, '-tcpAllowOthers', '-ifNotExists', '-baseDir', $plan.appRoot)
+  $proc = Start-Process -FilePath 'java' -ArgumentList $args -WorkingDirectory $plan.appRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $PSScriptRoot 'h2server.err.log')
   $proc.Id | Set-Content -LiteralPath $pidFile -Encoding ascii
   Start-Sleep -Seconds 2
   Write-Host "H2Server started on tcp port $($plan.hostPort) (PID $($proc.Id)), data $($plan.resolvedDataRoot), jar $($jar.Name)"

@@ -1,190 +1,387 @@
 {
-  "businessTableAdditiveColumns" : {
-    "appointments" : [ "tenant_id", "row_version", "version", "check_in_time", "check_out_time", "duration_minutes", "id", "scheduled_at", "status", "visit_reason" ],
-    "insurance_claims" : [ "tenant_id", "row_version", "version", "id", "status" ],
-    "patients" : [ "tenant_id", "row_version", "version", "allergies", "chart_label", "emergency_contact", "first_name", "id", "last_name", "mrn", "preferred_language", "reminder_language" ],
-    "providers" : [ "tenant_id", "row_version", "version", "full_name", "id", "npi", "specialty" ]
+  "businessTableAdditiveColumns": {
+    "appointments": [
+      "tenant_id",
+      "row_version",
+      "version",
+      "check_in_time",
+      "check_out_time",
+      "duration_minutes",
+      "id",
+      "scheduled_at",
+      "status",
+      "visit_reason"
+    ],
+    "insurance_claims": [
+      "tenant_id",
+      "row_version",
+      "version",
+      "id",
+      "status"
+    ],
+    "patients": [
+      "tenant_id",
+      "row_version",
+      "version",
+      "allergies",
+      "chart_label",
+      "emergency_contact",
+      "first_name",
+      "id",
+      "last_name",
+      "mrn",
+      "preferred_language",
+      "reminder_language"
+    ],
+    "providers": [
+      "tenant_id",
+      "row_version",
+      "version",
+      "full_name",
+      "id",
+      "npi",
+      "specialty"
+    ]
   },
-  "businessTableColumnDefaultLiterals" : {
-    "patients" : {
-      "preferred_language" : "\"en-US\""
+  "businessTableColumnDefaultLiterals": {
+    "patients": {
+      "preferred_language": "\"en-US\""
     }
   },
-  "businessTableColumnTypes" : {
-    "appointments" : {
-      "check_in_time" : "TIMESTAMP WITH TIME ZONE",
-      "check_out_time" : "TIMESTAMP WITH TIME ZONE",
-      "duration_minutes" : "INTEGER",
-      "id" : "UUID",
-      "patient_id" : "UUID",
-      "provider_id" : "UUID",
-      "row_version" : "BIGINT",
-      "scheduled_at" : "TIMESTAMP WITH TIME ZONE",
-      "status" : "VARCHAR(255)",
-      "tenant_id" : "VARCHAR(120)",
-      "version" : "BIGINT",
-      "visit_reason" : "VARCHAR(255)"
+  "businessTableColumnTypes": {
+    "appointments": {
+      "check_in_time": "TIMESTAMP WITH TIME ZONE",
+      "check_out_time": "TIMESTAMP WITH TIME ZONE",
+      "duration_minutes": "INTEGER",
+      "id": "UUID",
+      "patient_id": "UUID",
+      "provider_id": "UUID",
+      "row_version": "BIGINT",
+      "scheduled_at": "TIMESTAMP WITH TIME ZONE",
+      "status": "VARCHAR(255)",
+      "tenant_id": "VARCHAR(120)",
+      "version": "BIGINT",
+      "visit_reason": "VARCHAR(255)"
     },
-    "insurance_claims" : {
-      "appointment_id" : "UUID",
-      "id" : "UUID",
-      "patient_id" : "UUID",
-      "provider_id" : "UUID",
-      "row_version" : "BIGINT",
-      "status" : "VARCHAR(255)",
-      "tenant_id" : "VARCHAR(120)",
-      "version" : "BIGINT"
+    "insurance_claims": {
+      "appointment_id": "UUID",
+      "id": "UUID",
+      "patient_id": "UUID",
+      "provider_id": "UUID",
+      "row_version": "BIGINT",
+      "status": "VARCHAR(255)",
+      "tenant_id": "VARCHAR(120)",
+      "version": "BIGINT"
     },
-    "patients" : {
-      "allergies" : "JSONB",
-      "chart_label" : "VARCHAR(255)",
-      "emergency_contact" : "JSONB",
-      "first_name" : "VARCHAR(255)",
-      "id" : "UUID",
-      "last_name" : "VARCHAR(255)",
-      "mrn" : "VARCHAR(12)",
-      "preferred_language" : "VARCHAR(255)",
-      "reminder_language" : "VARCHAR(255)",
-      "row_version" : "BIGINT",
-      "tenant_id" : "VARCHAR(120)",
-      "version" : "BIGINT"
+    "patients": {
+      "allergies": "JSONB",
+      "chart_label": "VARCHAR(255)",
+      "emergency_contact": "JSONB",
+      "first_name": "VARCHAR(255)",
+      "id": "UUID",
+      "last_name": "VARCHAR(255)",
+      "mrn": "VARCHAR(12)",
+      "preferred_language": "VARCHAR(255)",
+      "reminder_language": "VARCHAR(255)",
+      "row_version": "BIGINT",
+      "tenant_id": "VARCHAR(120)",
+      "version": "BIGINT"
     },
-    "providers" : {
-      "full_name" : "VARCHAR(255)",
-      "id" : "UUID",
-      "npi" : "VARCHAR(10)",
-      "row_version" : "BIGINT",
-      "specialty" : "VARCHAR(255)",
-      "tenant_id" : "VARCHAR(120)",
-      "version" : "BIGINT"
+    "providers": {
+      "full_name": "VARCHAR(255)",
+      "id": "UUID",
+      "npi": "VARCHAR(10)",
+      "row_version": "BIGINT",
+      "specialty": "VARCHAR(255)",
+      "tenant_id": "VARCHAR(120)",
+      "version": "BIGINT"
     }
   },
-  "businessTableColumns" : {
-    "appointments" : [ "check_in_time", "check_out_time", "duration_minutes", "id", "patient_id", "provider_id", "scheduled_at", "status", "visit_reason", "version", "row_version", "tenant_id" ],
-    "insurance_claims" : [ "appointment_id", "id", "patient_id", "provider_id", "status", "version", "row_version", "tenant_id" ],
-    "patients" : [ "allergies", "chart_label", "emergency_contact", "first_name", "id", "last_name", "mrn", "preferred_language", "reminder_language", "version", "row_version", "tenant_id" ],
-    "providers" : [ "full_name", "id", "npi", "specialty", "version", "row_version", "tenant_id" ]
+  "businessTableColumns": {
+    "appointments": [
+      "check_in_time",
+      "check_out_time",
+      "duration_minutes",
+      "id",
+      "patient_id",
+      "provider_id",
+      "scheduled_at",
+      "status",
+      "visit_reason",
+      "version",
+      "row_version",
+      "tenant_id"
+    ],
+    "insurance_claims": [
+      "appointment_id",
+      "id",
+      "patient_id",
+      "provider_id",
+      "status",
+      "version",
+      "row_version",
+      "tenant_id"
+    ],
+    "patients": [
+      "allergies",
+      "chart_label",
+      "emergency_contact",
+      "first_name",
+      "id",
+      "last_name",
+      "mrn",
+      "preferred_language",
+      "reminder_language",
+      "version",
+      "row_version",
+      "tenant_id"
+    ],
+    "providers": [
+      "full_name",
+      "id",
+      "npi",
+      "specialty",
+      "version",
+      "row_version",
+      "tenant_id"
+    ]
   },
-  "businessTableExpressionDefaultColumns" : {
-    "patients" : [ "reminder_language" ]
+  "businessTableExpressionDefaultColumns": {
+    "patients": [
+      "reminder_language"
+    ]
   },
-  "businessTableForeignKeys" : {
-    "appointments" : [ {
-      "columns" : [ "patient_id" ],
-      "referencedColumns" : [ "id" ],
-      "referencedTable" : "patients"
-    }, {
-      "columns" : [ "provider_id" ],
-      "referencedColumns" : [ "id" ],
-      "referencedTable" : "providers"
-    } ],
-    "insurance_claims" : [ {
-      "columns" : [ "appointment_id" ],
-      "referencedColumns" : [ "id" ],
-      "referencedTable" : "appointments"
-    }, {
-      "columns" : [ "patient_id" ],
-      "referencedColumns" : [ "id" ],
-      "referencedTable" : "patients"
-    }, {
-      "columns" : [ "provider_id" ],
-      "referencedColumns" : [ "id" ],
-      "referencedTable" : "providers"
-    } ]
+  "businessTableForeignKeys": {
+    "appointments": [
+      {
+        "columns": [
+          "patient_id"
+        ],
+        "referencedColumns": [
+          "id"
+        ],
+        "referencedTable": "patients"
+      },
+      {
+        "columns": [
+          "provider_id"
+        ],
+        "referencedColumns": [
+          "id"
+        ],
+        "referencedTable": "providers"
+      }
+    ],
+    "insurance_claims": [
+      {
+        "columns": [
+          "appointment_id"
+        ],
+        "referencedColumns": [
+          "id"
+        ],
+        "referencedTable": "appointments"
+      },
+      {
+        "columns": [
+          "patient_id"
+        ],
+        "referencedColumns": [
+          "id"
+        ],
+        "referencedTable": "patients"
+      },
+      {
+        "columns": [
+          "provider_id"
+        ],
+        "referencedColumns": [
+          "id"
+        ],
+        "referencedTable": "providers"
+      }
+    ]
   },
-  "businessTableIndexes" : {
-    "appointments" : [ {
-      "columns" : [ "patient_id" ],
-      "unique" : false
-    }, {
-      "columns" : [ "provider_id" ],
-      "unique" : false
-    } ],
-    "insurance_claims" : [ {
-      "columns" : [ "appointment_id" ],
-      "unique" : true
-    }, {
-      "columns" : [ "appointment_id" ],
-      "unique" : false
-    }, {
-      "columns" : [ "patient_id" ],
-      "unique" : false
-    }, {
-      "columns" : [ "provider_id" ],
-      "unique" : false
-    } ],
-    "patients" : [ {
-      "columns" : [ "mrn" ],
-      "unique" : true
-    } ],
-    "providers" : [ {
-      "columns" : [ "npi" ],
-      "unique" : true
-    } ]
+  "businessTableIndexes": {
+    "appointments": [
+      {
+        "columns": [
+          "patient_id"
+        ],
+        "unique": false
+      },
+      {
+        "columns": [
+          "provider_id"
+        ],
+        "unique": false
+      }
+    ],
+    "insurance_claims": [
+      {
+        "columns": [
+          "appointment_id"
+        ],
+        "unique": true
+      },
+      {
+        "columns": [
+          "appointment_id"
+        ],
+        "unique": false
+      },
+      {
+        "columns": [
+          "patient_id"
+        ],
+        "unique": false
+      },
+      {
+        "columns": [
+          "provider_id"
+        ],
+        "unique": false
+      }
+    ],
+    "patients": [
+      {
+        "columns": [
+          "mrn"
+        ],
+        "unique": true
+      }
+    ],
+    "providers": [
+      {
+        "columns": [
+          "npi"
+        ],
+        "unique": true
+      }
+    ]
   },
-  "businessTableRenamedColumns" : { },
-  "businessTableRenames" : { },
-  "businessTableRequiredColumns" : {
-    "appointments" : [ "id", "patient_id", "provider_id", "scheduled_at", "status" ],
-    "insurance_claims" : [ "appointment_id", "id", "patient_id", "provider_id", "status" ],
-    "patients" : [ "first_name", "id", "last_name" ],
-    "providers" : [ "full_name", "id" ]
+  "businessTableRenamedColumns": {},
+  "businessTableRenames": {},
+  "businessTableRequiredColumns": {
+    "appointments": [
+      "id",
+      "patient_id",
+      "provider_id",
+      "scheduled_at",
+      "status"
+    ],
+    "insurance_claims": [
+      "appointment_id",
+      "id",
+      "patient_id",
+      "provider_id",
+      "status"
+    ],
+    "patients": [
+      "first_name",
+      "id",
+      "last_name"
+    ],
+    "providers": [
+      "full_name",
+      "id"
+    ]
   },
-  "businessTableUniqueConstraints" : {
-    "insurance_claims" : [ {
-      "columns" : [ "appointment_id" ],
-      "name" : "ux_insurance_claims_appointment_id",
-      "tenantScoped" : true
-    } ],
-    "patients" : [ {
-      "columns" : [ "mrn" ],
-      "name" : "ux_patients_mrn",
-      "tenantScoped" : true
-    } ],
-    "providers" : [ {
-      "columns" : [ "npi" ],
-      "name" : "ux_providers_npi",
-      "tenantScoped" : true
-    } ]
+  "businessTableUniqueConstraints": {
+    "insurance_claims": [
+      {
+        "columns": [
+          "appointment_id"
+        ],
+        "name": "ux_insurance_claims_appointment_id",
+        "tenantScoped": true
+      }
+    ],
+    "patients": [
+      {
+        "columns": [
+          "mrn"
+        ],
+        "name": "ux_patients_mrn",
+        "tenantScoped": true
+      }
+    ],
+    "providers": [
+      {
+        "columns": [
+          "npi"
+        ],
+        "name": "ux_providers_npi",
+        "tenantScoped": true
+      }
+    ]
   },
-  "businessTables" : [ "appointments", "insurance_claims", "patients", "providers" ],
-  "database" : {
-    "containerName" : "",
-    "databaseInstanceId" : "",
-    "databaseNameSource" : "none",
-    "dbeaver" : {
-      "database" : "",
-      "host" : "",
-      "port" : 0,
-      "ssl" : "disabled",
-      "username" : ""
+  "businessTables": [
+    "appointments",
+    "insurance_claims",
+    "patients",
+    "providers"
+  ],
+  "database": {
+    "containerName": "",
+    "databaseInstanceId": "",
+    "databaseNameSource": "none",
+    "dbeaver": {
+      "database": "",
+      "host": "",
+      "port": 0,
+      "ssl": "disabled",
+      "username": ""
     },
-    "host" : "",
-    "hostPort" : 0,
-    "jdbcUrl" : "",
-    "requestedDatabaseName" : "",
-    "resolvedDataRoot" : "",
-    "resolvedDatabaseName" : ""
+    "host": "",
+    "hostPort": 0,
+    "jdbcUrl": "",
+    "requestedDatabaseName": "",
+    "resolvedDataRoot": "",
+    "resolvedDatabaseName": ""
   },
-  "destructiveAcknowledgment" : "",
-  "engine" : "InMemory",
-  "fingerprintInputs" : [ "legacyGeneratorFacade=true", "engine=InMemory", "storageMode=in-memory", "namespace=canonical.clinicdemo", "modelSourcePath=D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevGenerator\\resources\\Models\\canonical-demo\\model.json" ],
-  "internalTables" : [ "npdev_flow_instance", "npdev_correlation_owner", "npdev_event_store", "npdev_audit_log", "npdev_trace", "npdev_idempotency", "npdev_circuit_breaker", "npdev_scheduled_event", "npdev_publication_execution", "npdev_publication_audit", "npdev_schema_metadata", "npdev_promotion_state", "npdev_tenant", "npdev_api_credential", "npdev_pack_install_intent" ],
-  "migrationPlanItemStableStrings" : [ ],
-  "physicalDatabase" : false,
-  "schemaFingerprint" : "sha256:c068e8237edb85e036f4f79600ed35a8f969918f6a5984d4d3ed367d3043acf0",
-  "schemaLifecycle" : {
-    "allowDestructiveRecreate" : false,
-    "destructiveRecreateConfirmation" : "",
-    "ownership" : "NpdevManaged",
-    "scope" : "NpdevOwnedLogicalStoresOnly",
-    "strategy" : "KeepExistingIfCompatible"
+  "destructiveAcknowledgment": "",
+  "engine": "InMemory",
+  "fingerprintInputs": [
+    "legacyGeneratorFacade=true",
+    "engine=InMemory",
+    "storageMode=in-memory",
+    "namespace=canonical.clinicdemo",
+    "modelSourcePath=model.json"
+  ],
+  "internalTables": [
+    "npdev_flow_instance",
+    "npdev_correlation_owner",
+    "npdev_event_store",
+    "npdev_audit_log",
+    "npdev_trace",
+    "npdev_idempotency",
+    "npdev_circuit_breaker",
+    "npdev_scheduled_event",
+    "npdev_publication_execution",
+    "npdev_publication_audit",
+    "npdev_schema_metadata",
+    "npdev_promotion_state",
+    "npdev_tenant",
+    "npdev_api_credential",
+    "npdev_pack_install_intent"
+  ],
+  "migrationPlanItemStableStrings": [],
+  "physicalDatabase": false,
+  "schemaFingerprint": "sha256:c068e8237edb85e036f4f79600ed35a8f969918f6a5984d4d3ed367d3043acf0",
+  "schemaLifecycle": {
+    "allowDestructiveRecreate": false,
+    "destructiveRecreateConfirmation": "",
+    "ownership": "NpdevManaged",
+    "scope": "NpdevOwnedLogicalStoresOnly",
+    "strategy": "KeepExistingIfCompatible"
   },
-  "schemaRealizationVersion" : "1",
-  "sourceOfTruth" : {
-    "business" : "D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevGenerator\\resources\\Models\\canonical-demo\\model.json",
-    "database" : "D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevGenerator\\resources\\Models\\canonical-demo\\model.json",
-    "internal" : "D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevKernel\\kernel\\src\\main\\java\\com\\npdev\\kernel\\dbschema"
+  "schemaRealizationVersion": "1",
+  "sourceOfTruth": {
+    "business": "model.json",
+    "database": "model.json",
+    "internal": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/dbschema",
+    "pathsRelativeTo": "the app's authoring directory"
   },
-  "storageMode" : "in-memory"
+  "storageMode": "in-memory"
 }

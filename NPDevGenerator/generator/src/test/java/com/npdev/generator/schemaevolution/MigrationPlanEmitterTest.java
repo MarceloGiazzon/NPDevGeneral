@@ -274,7 +274,7 @@ class MigrationPlanEmitterTest {
         CompiledModel model = model(concept("Widget", "", id(), field("name", "string", false, false)));
         UserDatabaseDefinition definition = new UserDatabaseDefinition(
                 DatabaseEngine.H2_LOCAL, "", 0, "", "", "", "", "", "",
-                true, true,
+                true, true, false,
                 new SchemaLifecyclePolicy(SchemaLifecycleStrategy.KEEP_EXISTING_IF_COMPATIBLE, false, "",
                         SchemaLifecyclePolicy.NPDEV_TABLE_SCOPE));
         // The REAL production fingerprint for this exact model+definition -- not an arbitrary
@@ -346,6 +346,7 @@ class MigrationPlanEmitterTest {
                 DatabaseEngine.H2_LOCAL,
                 DatabaseEngine.H2_LOCAL.storageMode(),
                 true,
+                false, // externallyProvisioned (STOR-14) -- NPDev provisioned this test's database
                 "migration-plan-emitter-test",
                 "migration-plan-emitter-test",
                 "test",

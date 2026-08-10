@@ -164,7 +164,7 @@ public final class ModelChangeClassifierMain {
     private static GeneratedDatabasePlan defaultPlan(String currentPath, CompiledModel current) {
         UserDatabaseDefinition definition = new UserDatabaseDefinition(
                 DatabaseEngine.H2_LOCAL, "", 0, "", "", "", "", "", "",
-                true, true,
+                true, true, false,
                 new SchemaLifecyclePolicy(SchemaLifecycleStrategy.KEEP_EXISTING_IF_COMPATIBLE, false, "",
                         SchemaLifecyclePolicy.NPDEV_TABLE_SCOPE));
         String fingerprint = UserDatabaseDefinitionLoader.computeSchemaFingerprint(definition, current);
@@ -173,6 +173,7 @@ public final class ModelChangeClassifierMain {
                 DatabaseEngine.H2_LOCAL,
                 DatabaseEngine.H2_LOCAL.storageMode(),
                 true,
+                false, // externallyProvisioned -- H2Local is embedded (STOR-14)
                 "model-change-classifier",
                 "model-change-classifier",
                 "cli",

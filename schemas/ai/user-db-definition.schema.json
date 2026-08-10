@@ -21,7 +21,11 @@
         "username": { "type": "string" },
         "password": { "type": "string" },
         "createInternalTables": { "type": "boolean" },
-        "createBusinessTables": { "type": "boolean" }
+        "createBusinessTables": { "type": "boolean" },
+        "externallyProvisioned": {
+          "type": "boolean",
+          "description": "STOR-14. Optional, defaults to false. True means THIS SERVER IS YOURS, NOT NPDEV'S: NPDev did not start it and must never start, stop or destroy it, so the generated _ops toolbox refuses Create/Start/Stop/Reset and reports reachability instead of container state. Orthogonal to schemaLifecycle.ownership, which is about the SCHEMA (whether NPDev issues DDL) rather than the SERVER (whether NPDev provisioned it); all four combinations are meaningful. Refused on the embedded engines (InMemory, H2Local), which have no server to be external."
+        }
       },
       "allOf": [
         {

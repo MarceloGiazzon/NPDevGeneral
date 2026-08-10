@@ -34,6 +34,35 @@ public final class UserDatabaseDefinitionLoader {
      *  has been edited through, and this comparison must not be the thing that breaks the build. */
     private static final char BACKSLASH = (char) 92;
 
+    /**
+     * PORT-1: the ONE folder every generated app keeps its own database in, named RELATIVE to the
+     * FinalApp directory.
+     *
+     * <p>This used to be {@code <workspace>/Build/databases/<appId>} -- an absolute path computed
+     * from the AUTHORING machine's layout and then written into {@code spring.datasource.url}, which
+     * Spring resolves at boot. A generated app handed to anyone else tried to open its database on a
+     * drive they may not have.
+     *
+     * <p>Relative to WHAT is the load-bearing question, and the answer has to be the same for both
+     * consumers or you get QUAL-3 again -- one database with two front doors. It is the FinalApp
+     * directory: the app's working directory IS that directory in every launch path NPDev emits
+     * ({@code java -jar} from {@code Run-FinalApp.ps1}/{@code Start-App.ps1}, and {@code bootRun},
+     * whose working directory is the Gradle project root), and {@code _ops} lives INSIDE the app
+     * (QUAL-3) so {@code $PSScriptRoot/..} names the same directory without either side naming a
+     * drive.
+     *
+     * <p>No {@code NPDEV_DATA_ROOT}-style override is emitted, deliberately. An override that only
+     * one of the two consumers honours re-creates the two-front-doors defect; one that both honour
+     * is a second source of truth to keep in step. Spring's own
+     * {@code --spring.datasource.url=} still works for anyone who genuinely wants to point the app
+     * elsewhere, and is visibly the user's own act rather than NPDev's guess.
+     *
+     * <p>Twin-pair {@code app-data-root-anchor-three-seams} (token: npdev-app-data-root-anchor).
+     * This DECIDES the root; {@code OperationalRunbookEmitter} resolves it back for the toolbox and
+     * {@code FinalAppAssembler} spares it from the regeneration wipe. All three must agree.
+     */
+    private static final String DATA_ROOT_FOLDER = "data";
+
     public GeneratedDatabasePlan load(Path definitionPath, CompiledModel model) throws Exception {
         if (definitionPath == null) {
             throw new IllegalArgumentException("--dbDefinitionPath is required");
@@ -67,14 +96,13 @@ public final class UserDatabaseDefinitionLoader {
                 rawText(database, "password"),
                 bool(database, "createInternalTables", true),
                 bool(database, "createBusinessTables", true),
+                bool(database, "externallyProvisioned", false),
                 policy
         );
         validate(definition);
 
         String appId = resolveAppId(normalizedPath);
-        Path workspaceRoot = resolveWorkspaceRoot(normalizedPath);
-        Path appDatabaseRoot = workspaceRoot.resolve("Build").resolve("databases").resolve(appId);
-        DatabaseIdentity identity = resolveIdentity(definition, appId, appDatabaseRoot);
+        DatabaseIdentity identity = resolveIdentity(definition, appId);
         String jdbcUrl = jdbcUrl(definition, identity);
         refuseDeclarationThatDisagrees(definition, identity, jdbcUrl);
         String driver = switch (engine) {
@@ -93,6 +121,7 @@ public final class UserDatabaseDefinitionLoader {
                 engine,
                 engine.storageMode(),
                 engine.jdbc(),
+                definition.externallyProvisioned(),
                 identity.requestedDatabaseName(),
                 identity.resolvedDatabaseName(),
                 identity.databaseNameSource(),
@@ -168,12 +197,22 @@ public final class UserDatabaseDefinitionLoader {
         if (!declaredFile.isBlank()) {
             String expected = identity.resolvedDataRoot() + "/" + identity.resolvedDatabaseName();
             if (!samePath(declaredFile, expected)) {
+                // PORT-1 changed what "actual" IS here, so the message had to change with it or the
+                // check would start blaming the user for a decision NPDev made. Every definition
+                // that declared the old absolute path now lands in this branch -- six real ones did
+                // -- and "declared X, actual Y, remove it" without the WHY reads as a regression.
                 throw new IllegalArgumentException(
                         "database.h2FilePath declares a file NPDev will not use -- declared '"
-                        + declaredFile + "', actual '" + expected + "'. NPDev derives the H2 file "
-                        + "from the app's identity; h2FilePath is read and then consulted by "
-                        + "nothing, so this value would be silently ignored. Remove it, or set "
-                        + "databaseName so the derived path is the one you want. (STOR-8)");
+                        + declaredFile + "', actual '" + expected + "'. As of PORT-1 the H2 file is "
+                        + "APP-RELATIVE: it lives at <FinalApp>/" + expected + ", so that a "
+                        + "generated app can be handed to someone else and still find its own "
+                        + "database. That means NPDev no longer knows an absolute path at generation "
+                        + "time and an absolute h2FilePath can be neither honoured nor verified. "
+                        + "Remove database.h2FilePath (it is read and then consulted by nothing, so "
+                        + "removing it changes no behaviour), or set databaseName so the derived "
+                        + "relative path is the one you want. To run the app against a database "
+                        + "somewhere else entirely, pass --spring.datasource.url at startup. "
+                        + "(STOR-8, PORT-1)");
             }
         }
     }
@@ -196,6 +235,12 @@ public final class UserDatabaseDefinitionLoader {
 
     private static String normalizePath(String path) {
         String slashed = path.trim().replace(BACKSLASH, '/').toLowerCase(Locale.ROOT);
+        // "./data/x" and "data/x" are the same declaration. Both spellings appear in the wild now
+        // that the derived path is relative -- the JDBC URL carries the "./" form and a user copying
+        // it into h2FilePath would otherwise be refused for punctuation.
+        while (slashed.startsWith("./")) {
+            slashed = slashed.substring(2);
+        }
         while (slashed.endsWith("/")) {
             slashed = slashed.substring(0, slashed.length() - 1);
         }
@@ -224,6 +269,23 @@ public final class UserDatabaseDefinitionLoader {
                         + "not own).");
             }
         }
+        // STOR-14: an EMBEDDED engine has no server, so there is nothing for someone else to have
+        // provisioned. Refused here -- at generation time, at the point of choice -- rather than
+        // accepted and then quietly ignored by five _ops scripts that have no container to skip.
+        //
+        // H2Server is deliberately NOT refused. Its environment is a Java process rather than a
+        // container, but it is still a server someone can already be running, and every _ops
+        // operation keys on the plan flag before it keys on profile.kind -- so external mode covers
+        // it for free and refusing it would be an arbitrary hole.
+        if (definition.externallyProvisioned()
+                && (engine == DatabaseEngine.IN_MEMORY || engine == DatabaseEngine.H2_LOCAL)) {
+            throw new IllegalArgumentException("database.externallyProvisioned=true is not valid for "
+                    + engine.externalName() + ": it is an embedded engine, so there is no server for "
+                    + "anyone to have provisioned -- the database is a file (or memory) belonging to "
+                    + "this app alone. Drop the flag, or choose a server engine (Postgres, MySQL, "
+                    + "SqlServer, H2Server) if you mean to connect to a database you already run. "
+                    + "(STOR-14)");
+        }
         if (engine == DatabaseEngine.IN_MEMORY) {
             return;
         }
@@ -244,7 +306,7 @@ public final class UserDatabaseDefinitionLoader {
         }
     }
 
-    private static DatabaseIdentity resolveIdentity(UserDatabaseDefinition definition, String appId, Path appDatabaseRoot) {
+    private static DatabaseIdentity resolveIdentity(UserDatabaseDefinition definition, String appId) {
         DatabaseEngine engine = definition.engine();
         if (engine == DatabaseEngine.IN_MEMORY) {
             return new DatabaseIdentity(
@@ -267,10 +329,15 @@ public final class UserDatabaseDefinitionLoader {
         String source = requested.isBlank() ? "generated" : "explicit";
         String resolvedName = requested.isBlank() ? uniqueDatabaseName(appId) : requested;
         String instanceId = requested.isBlank() ? resolvedName : appId;
-        Path dataRootPath = requested.isBlank()
-                ? appDatabaseRoot.resolve(resolvedName)
-                : appDatabaseRoot;
-        String dataRoot = dataRootPath.toAbsolutePath().normalize().toString().replace('\\', '/');
+        // PORT-1. App-relative, never absolute -- see DATA_ROOT_FOLDER for why, and for what the two
+        // consumers resolve it against. The generated-name subfolder is kept from the previous
+        // (absolute) shape: a generated name carries a timestamp, so each generation is a distinct
+        // instance and they must not land on top of each other. An EXPLICIT databaseName means the
+        // user is naming one durable database, which is the case that has to survive regeneration,
+        // so it stays flat at <app>/data.
+        String dataRoot = requested.isBlank()
+                ? DATA_ROOT_FOLDER + "/" + resolvedName
+                : DATA_ROOT_FOLDER;
         String containerName = engine.usesContainer() ? "npdev-" + slug(instanceId) : "";
         String host = resolveHost(definition);
         int hostPort = resolveHostPort(definition);
@@ -313,10 +380,16 @@ public final class UserDatabaseDefinitionLoader {
             // flush on every commit, trading write throughput for the durability this engine exists
             // to provide. Postgres is unaffected -- COMMIT is synchronous to WAL there, no analogous
             // buffering parameter exists or is needed.
-            case H2_LOCAL -> "jdbc:h2:file:" + identity.resolvedDataRoot() + "/" + identity.resolvedDatabaseName()
+            // PORT-1: "./" + an app-relative root, so Spring resolves it at boot against the app's
+            // own working directory instead of against a drive letter from the machine that
+            // generated it. H2 resolves a relative file: path against the JVM's working directory.
+            case H2_LOCAL -> "jdbc:h2:file:./" + identity.resolvedDataRoot() + "/" + identity.resolvedDatabaseName()
                     + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0";
+            // H2Server resolves the path SERVER-side, so the relative path is relative to the H2
+            // process's baseDir -- which Create-Environment sets to the FinalApp directory, the same
+            // anchor the client uses. Both halves therefore name <app>/data/<db>, from either end.
             case H2_SERVER -> "jdbc:h2:tcp://" + identity.host() + ":" + identity.hostPort()
-                    + "/" + identity.resolvedDataRoot() + "/" + identity.resolvedDatabaseName()
+                    + "/./" + identity.resolvedDataRoot() + "/" + identity.resolvedDatabaseName()
                     + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0";
             // characterEncoding=UTF-8 and connectionCollation=utf8mb4 are NOT cosmetic. MySQL's
             // legacy "utf8" is a three-byte encoding that cannot represent anything outside the
@@ -396,26 +469,13 @@ public final class UserDatabaseDefinitionLoader {
         return "npdev-app";
     }
 
-    private static Path resolveWorkspaceRoot(Path definitionPath) {
-        Path current = definitionPath.toAbsolutePath().normalize();
-        while (current != null) {
-            if (current.getFileName() != null && "AppGen".equalsIgnoreCase(current.getFileName().toString())) {
-                Path parent = current.getParent();
-                if (parent != null) {
-                    return parent;
-                }
-            }
-            current = current.getParent();
-        }
-        current = definitionPath.toAbsolutePath().normalize();
-        while (current != null) {
-            if (Files.isDirectory(current.resolve("Build")) && Files.isDirectory(current.resolve("NPDev_General"))) {
-                return current;
-            }
-            current = current.getParent();
-        }
-        return Path.of("D:/WorkSpace/NPDev").toAbsolutePath().normalize();
-    }
+    // resolveWorkspaceRoot() was deleted here by PORT-1, not moved. It walked up looking for a
+    // directory named "AppGen", then for one holding BOTH "Build" and a directory literally named
+    // "NPDev_General" (the folder-NAME predicate REG-144 removed from eleven other sites), and
+    // finally fell back to the literal Path.of("D:/WorkSpace/NPDev"). Its only caller was the data
+    // root, which is now app-relative -- so the whole question "which workspace generated this?" no
+    // longer has to be answered to know where an app keeps its database, which is the right shape:
+    // the answer was never about the authoring machine in the first place.
 
     private static String uniqueDatabaseName(String appId) {
         byte[] bytes = new byte[2];

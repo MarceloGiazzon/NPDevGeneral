@@ -222,6 +222,21 @@
         "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java",
         "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java"
       ]
+    },
+    {
+      "id": "app-data-root-anchor-three-seams",
+      "citedBy": "PORT-1",
+      "description": "THREE places have to agree on where a generated app keeps its database, and they are reached by different callers so no one of them can catch a drift in the others. UserDatabaseDefinitionLoader DECIDES the app-relative root (and composes it into spring.datasource.url, which Spring resolves at boot); OperationalRunbookEmitter RESOLVES it back to an absolute path for the five _ops scripts, one of which does `Remove-Item -Recurse -Force` on it; FinalAppAssembler SPARES it when deleteBeforeMount wipes the FinalApp tree on regeneration. Disagreement between the first two is QUAL-3 again -- one database with two front doors, where resetting via one destroys data the other is serving. Disagreement with the third is silent data loss on the next regeneration, which would ALSO leave every schema-evolution test green against a fresh database instead of the existing one it exists to exercise. Each carries the 'npdev-app-data-root-anchor' token so dropping one fails run-ai-knowledge-gate.ps1. Cover is AppIdentityIsolationTest plus the copy-the-app-elsewhere-and-boot proof recorded on PORT-1.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev-app-data-root-anchor"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java"
+      ]
     }
   ]
 }

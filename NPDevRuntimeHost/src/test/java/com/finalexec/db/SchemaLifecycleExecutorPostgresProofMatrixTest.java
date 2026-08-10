@@ -239,6 +239,7 @@ class SchemaLifecycleExecutorPostgresProofMatrixTest {
                 DatabaseEngine.POSTGRES,
                 DatabaseEngine.POSTGRES.storageMode(),
                 true,
+                false, // externallyProvisioned (STOR-14) -- NPDev provisioned this test's database
                 appId,
                 appId,
                 "test",

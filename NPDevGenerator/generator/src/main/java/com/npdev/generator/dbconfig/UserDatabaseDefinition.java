@@ -12,6 +12,11 @@ public record UserDatabaseDefinition(
         String password,
         boolean createInternalTables,
         boolean createBusinessTables,
+        // STOR-14: this SERVER is the user's, not NPDev's -- NPDev did not start it and must never
+        // start, stop or destroy it. Deliberately NOT the same statement as
+        // schemaLifecycle.ownership, which is about the SCHEMA (does NPDev issue DDL). All four
+        // combinations are meaningful; see the STOR-14 ledger item for the decision and why.
+        boolean externallyProvisioned,
         SchemaLifecyclePolicy schemaLifecycle
 ) {
     public UserDatabaseDefinition {

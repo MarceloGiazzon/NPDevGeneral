@@ -18,6 +18,80 @@ public final class OperationalRunbookEmitter {
             .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
     private static final String RESET_CONFIRMATION = "I_UNDERSTAND_DB_DATA_WILL_BE_DELETED";
 
+    /**
+     * PORT-1: resolve the plan's APP-RELATIVE data root, identically in every script that touches it.
+     *
+     * <p>Emitted as one shared block rather than copied per site for the reason QUAL-3 records: two
+     * resolutions of "where is this app's data" is one database with two front doors, and the second
+     * one is always found by a user rather than by a gate. It is also why this is a FUNCTION and not
+     * a one-line expression at each call -- a per-site copy is how the H2Server branch ends up
+     * anchored somewhere the Reset branch is not.
+     *
+     * <p>Twin-pair {@code app-data-root-anchor-three-seams} (token: npdev-app-data-root-anchor).
+     * This RESOLVES the root {@code UserDatabaseDefinitionLoader} decided, for the five scripts --
+     * one of which recursively deletes it.
+     */
+    private static final String DATA_ROOT_HELPER = """
+# PORT-1: the plan carries an APP-RELATIVE data root ('data', or 'data/<generated name>'), never the
+# absolute path of the machine that generated this app -- which is what used to be baked into
+# spring.datasource.url, so a generated app opened its database on a drive the recipient may not
+# have had. Both halves resolve it against the SAME anchor: the app against its own working
+# directory (the FinalApp root), this toolbox against $PSScriptRoot/.. -- the same directory,
+# because _ops lives INSIDE the app (QUAL-3). An absolute value is still honoured, so a plan written
+# by an older generator keeps working.
+function Get-NpdevDataRoot {
+  param([object]$Plan)
+  $raw = [string]$Plan.resolvedDataRoot
+  if ([string]::IsNullOrWhiteSpace($raw)) { return '' }
+  if ([System.IO.Path]::IsPathRooted($raw)) { return [System.IO.Path]::GetFullPath($raw) }
+  return [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $PSScriptRoot) $raw))
+}
+""";
+
+    /**
+     * STOR-14: the shared notice every operation that would touch someone else's server prints.
+     *
+     * <p>Data-driven on {@code $plan.externallyProvisioned} and therefore byte-identical across
+     * Postgres, MySQL and SQL Server -- which is not a nicety, it is what
+     * {@code check-engine-parity.py} enforces, and a hand-written {@code -eq 'Postgres'} here would
+     * fail that gate on the first run.
+     */
+    private static final String EXTERNAL_NOTICE_HELPER = """
+# STOR-14: this server is the USER'S. NPDev did not start it, so NPDev does not get to start it,
+# stop it, re-create it, or delete anything it stores.
+#
+# Every operation that would checks this BEFORE it branches on profile.kind, and RETURNS. That
+# ordering is the whole item: the obvious partial fix -- make the `docker rm` branch a no-op when the
+# server is external -- leaves Reset's `Remove-Item -Recurse -Force` aimed at a data root the user
+# chose, because that delete is guarded by `physicalDatabase` and existence and never by WHOSE
+# database it is.
+function Write-NpdevExternalNotice {
+  param([object]$Plan, [string]$Operation)
+  Write-Host ''
+  Write-Host "This app's database is EXTERNALLY PROVISIONED -- it is yours, not NPDev's."
+  Write-Host "  engine    : $($Plan.engine) at $($Plan.host):$($Plan.hostPort)"
+  Write-Host "  database  : $($Plan.resolvedDatabaseName)"
+  Write-Host '  declared  : database.externallyProvisioned = true, in db.definition.json'
+  Write-Host ''
+  Write-Host "$Operation is refused. NPDev did not provision this server, so managing its lifecycle"
+  Write-Host 'is not its to do. Nothing was started, stopped, removed or deleted.'
+  Write-Host ''
+}
+
+# The reachability question an external server CAN be asked without owning it. Same probe
+# Create-Environment uses for the port-collision check, and the same one `npdev doctor` uses -- one
+# answer, not three.
+function Test-NpdevServerReachable {
+  param([string]$ServerHost, [int]$ServerPort, [int]$TimeoutMs = 1500)
+  $probe = New-Object System.Net.Sockets.TcpClient
+  try {
+    $wait = $probe.BeginConnect($ServerHost, $ServerPort, $null, $null)
+    if ($wait.AsyncWaitHandle.WaitOne($TimeoutMs) -and $probe.Connected) { return $true }
+    return $false
+  } catch { return $false } finally { $probe.Close() }
+}
+""";
+
     public Path emit(CompiledModel model, JsonNode config, Path finalAppRoot, GeneratedDatabasePlan plan) throws Exception {
         if (finalAppRoot == null || plan == null) {
             return null;
@@ -81,6 +155,11 @@ public final class OperationalRunbookEmitter {
         out.put("engine", plan.engine().externalName());
         out.put("storageMode", plan.storageMode());
         out.put("physicalDatabase", plan.physicalDatabase());
+        // STOR-14. The five scripts branch on THIS, never on the engine's name -- the same reason
+        // `profile` exists a few lines below. A plan field is required here, not merely preferred:
+        // an `-eq 'Postgres'` implementation of the same behaviour fails check-engine-parity.py
+        // immediately, and would have to be written three times to pass it.
+        out.put("externallyProvisioned", plan.externallyProvisioned());
         out.put("requestedDatabaseName", plan.requestedDatabaseName());
         out.put("resolvedDatabaseName", plan.resolvedDatabaseName());
         out.put("databaseNameSource", plan.databaseNameSource());
@@ -143,6 +222,143 @@ public final class OperationalRunbookEmitter {
 $ErrorActionPreference = 'Stop'
 $planPath = Join-Path $PSScriptRoot 'resolved-db-plan.json'
 $plan = Get-Content -Raw -LiteralPath $planPath | ConvertFrom-Json
+""" + DATA_ROOT_HELPER + EXTERNAL_NOTICE_HELPER + """
+# STOR-14: "ensure the database exists" LOSES ITS CLIENT here, and the answer is to stop trying.
+# This script can guarantee a client for a container it started -- `docker exec <container> createdb`
+# runs the client that lives INSIDE the image. A server NPDev did not start guarantees nothing, and
+# on Windows psql / mysql / sqlcmd are rarely on PATH. So in external mode Create becomes VERIFY:
+# connect with the JDBC driver THE APP ITSELF uses, and report what is actually true.
+#
+# It degrades honestly rather than guessing. No java, or no driver jar on this machine yet, produces
+# "could not verify" and a pointer at `npdev db test-connection` -- never "ready", which is the one
+# answer that would be worse than saying nothing.
+
+# The driver's MAVEN COORDINATE, not a file-name glob.
+#
+# Measured, not assumed: the first version searched the whole Gradle cache for 'postgresql-*.jar'
+# and found testcontainers' postgresql-1.21.4.jar, which is not a JDBC driver. The cache is laid out
+# by group/artifact, so a name glob matches any artifact whose NAME starts that way -- and the run
+# then reported "database does not exist" on the strength of "No suitable driver found". Same
+# coordinate list `npdev doctor` uses, for the same reason it uses one.
+function Get-NpdevDriverCoordinate {
+  param([object]$Plan)
+  switch -Wildcard ([string]$Plan.driverClassName) {
+    'org.postgresql.*'          { return @{ group = 'org.postgresql';          artifact = 'postgresql' } }
+    'com.mysql.*'               { return @{ group = 'com.mysql';               artifact = 'mysql-connector-j' } }
+    'com.microsoft.sqlserver.*' { return @{ group = 'com.microsoft.sqlserver'; artifact = 'mssql-jdbc' } }
+    'org.h2.*'                  { return @{ group = 'com.h2database';          artifact = 'h2' } }
+  }
+  return $null
+}
+
+function Find-NpdevDriverJar {
+  param([object]$Plan)
+  $coord = Get-NpdevDriverCoordinate -Plan $Plan
+  if ($null -eq $coord) { return $null }
+  $gradleGroup = Join-Path $env:USERPROFILE ('.gradle\\caches\\modules-2\\files-2.1\\' + $coord.group + '\\' + $coord.artifact)
+  $mavenGroup = Join-Path $env:USERPROFILE ('.m2\\repository\\' + ($coord.group -replace '[.]', '\\') + '\\' + $coord.artifact)
+  $roots = @($Plan.runtimeHostLibsDir, (Join-Path $Plan.finalAppPath 'build'), $gradleGroup, $mavenGroup) |
+    Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+  foreach ($root in $roots) {
+    $jar = Get-ChildItem -Path $root -Recurse -Filter ($coord.artifact + '-*.jar') -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -notmatch 'sources|javadoc' } |
+      Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($null -ne $jar) { return $jar.FullName }
+  }
+  return $null
+}
+
+# SQLStates that mean THIS DATABASE IS NOT THERE, and nothing else.
+#
+# Deliberately short. A missing database has to be PROVEN, not inferred from "the connection
+# failed" -- wrong credentials, a firewall and an unloadable driver all fail too, and this project
+# has already shipped a doctor that reported a missing database as a credentials failure. Postgres's
+# 3D000 (invalid_catalog_name) and H2's 90149 mean exactly one thing. MySQL's 42000 is the whole
+# syntax-error class and SQL Server's are reused across unrelated faults, so they are NOT listed:
+# on those engines this reports the driver's own words without a verdict, and points at
+# `npdev db test-connection`, which asks the server properly.
+$NpdevDatabaseMissingSqlStates = @('3D000', '90149')
+
+function Test-NpdevDatabaseExists {
+  param([object]$Plan)
+  $java = if ($env:JAVA_HOME -and (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME 'bin\\java.exe'))) {
+    Join-Path $env:JAVA_HOME 'bin\\java.exe'
+  } else {
+    (Get-Command java -ErrorAction SilentlyContinue).Source
+  }
+  if (-not $java) { return @{ verified = $false; reason = 'no java on this machine' } }
+  $jar = Find-NpdevDriverJar -Plan $Plan
+  if (-not $jar) { return @{ verified = $false; reason = "no JDBC driver jar for $($Plan.engine) found on this machine yet -- build this app once, or run ``npdev setup``" } }
+  $work = Join-Path ([System.IO.Path]::GetTempPath()) ('npdev-verify-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+  New-Item -ItemType Directory -Force -Path $work | Out-Null
+  try {
+    $src = Join-Path $work 'NpdevVerifyDb.java'
+    Set-Content -LiteralPath $src -Encoding UTF8 -Value @'
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+public class NpdevVerifyDb {
+  public static void main(String[] args) {
+    try (Connection c = DriverManager.getConnection(args[0], args[1], args[2])) {
+      System.out.println("NPDEV_DB_OK");
+    } catch (SQLException e) {
+      // The SQLSTATE, not the sentence: every engine phrases "no such database" differently, and a
+      // status that depends on English phrasing is a bug this codebase has already paid for.
+      System.out.println("NPDEV_DB_FAIL|" + e.getSQLState() + "|" + e.getMessage());
+      System.exit(3);
+    } catch (Exception e) {
+      System.out.println("NPDEV_DB_FAIL||" + e);
+      System.exit(3);
+    }
+  }
+}
+'@
+    $out = & $java '--class-path' $jar $src $Plan.jdbcUrl $Plan.username $Plan.password 2>&1 | Out-String
+    if ($out -match 'NPDEV_DB_OK') { return @{ verified = $true; exists = $true } }
+    $state = ''
+    $message = $out.Trim()
+    if ($out -match 'NPDEV_DB_FAIL\\|([^|]*)\\|([^\\r\\n]*)') {
+      $state = $Matches[1].Trim()
+      $message = $Matches[2].Trim()
+    }
+    if ($NpdevDatabaseMissingSqlStates -contains $state) {
+      return @{ verified = $true; exists = $false; state = $state; detail = $message }
+    }
+    return @{ verified = $false; reason = "the driver refused the connection and did not say the database is missing (SQLSTATE '$state'): $message" }
+  }
+  finally { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+if ($plan.externallyProvisioned) {
+  Write-NpdevExternalNotice -Plan $plan -Operation 'Creating the environment'
+  Write-Host 'Checking what is actually there instead:'
+  Write-Host ''
+  if (-not (Test-NpdevServerReachable -ServerHost $plan.host -ServerPort ([int]$plan.hostPort))) {
+    Write-Host "Nothing is listening on $($plan.host):$($plan.hostPort). Start your $($plan.engine)"
+    Write-Host 'server, then run this again.'
+    exit 1
+  }
+  Write-Host "Reachable: something is serving on $($plan.host):$($plan.hostPort)."
+  $probe = Test-NpdevDatabaseExists -Plan $plan
+  if (-not $probe.verified) {
+    Write-Host ''
+    Write-Host "Could NOT verify database '$($plan.resolvedDatabaseName)' on $($plan.host):$($plan.hostPort)."
+    Write-Host "  $($probe.reason)"
+    Write-Host ''
+    Write-Host 'That is not a verdict on your settings -- nobody checked them. Run'
+    Write-Host '`npdev db test-connection`, which tells a missing database apart from a wrong password.'
+    exit 1
+  }
+  if ($probe.exists) {
+    Write-Host "Database '$($plan.resolvedDatabaseName)' exists and accepts this app's credentials."
+    exit 0
+  }
+  Write-Host ''
+  Write-Host "database '$($plan.resolvedDatabaseName)' does not exist on $($plan.host):$($plan.hostPort) -- create it and re-run"
+  Write-Host ''
+  Write-Host "  the server said so itself (SQLSTATE $($probe.state)): $($probe.detail)"
+  exit 1
+}
 
 # Substitute the placeholders a profile uses. Kept in one function so every operation resolves
 # them identically -- a per-site copy is how {password} ends up literal in one script and expanded
@@ -227,7 +443,8 @@ if ($plan.profile.kind -eq 'embedded' -and $plan.engine -eq 'InMemory') {
   exit 0
 }
 
-New-Item -ItemType Directory -Force -Path $plan.resolvedDataRoot | Out-Null
+$dataRoot = Get-NpdevDataRoot -Plan $plan
+New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
 
 if ($plan.profile.kind -eq 'server') {
   docker version | Out-Null
@@ -292,7 +509,7 @@ if ($plan.profile.kind -eq 'server') {
 }
 
 if ($plan.engine -eq 'H2Local') {
-  Write-Host "H2Local data root ready: $($plan.resolvedDataRoot)"
+  Write-Host "H2Local data root ready: $dataRoot"
   exit 0
 }
 
@@ -300,7 +517,7 @@ if ($plan.profile.kind -eq 'embedded-server') {
   # E17: search the libs directory THIS app was generated against, never a path from the machine
   # that generated it. This used to read 'D:\\WorkSpace\\NPDev\\Build' -- the author's drive letter,
   # shipped to the user, and named again in the error message telling them where to look.
-  $searchRoots = @($plan.runtimeHostLibsDir, (Join-Path $plan.finalAppPath 'build'), $plan.resolvedDataRoot) |
+  $searchRoots = @($plan.runtimeHostLibsDir, (Join-Path $plan.finalAppPath 'build'), $dataRoot) |
     Where-Object { $_ -and (Test-Path -LiteralPath $_) }
   $jar = $null
   foreach ($root in $searchRoots) {
@@ -323,8 +540,13 @@ if ($plan.profile.kind -eq 'embedded-server') {
       exit 0
     }
   }
-  $serverArgs = @('-cp', $jar.FullName, 'org.h2.tools.Server', '-tcp', '-tcpPort', [string]$plan.hostPort, '-ifNotExists')
-  $process = Start-Process -FilePath 'java' -ArgumentList $serverArgs -WorkingDirectory $plan.resolvedDataRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutLogFile -RedirectStandardError $stderrLogFile
+  # PORT-1: -baseDir is the FINALAPP ROOT, not the data root, because the client URL now carries the
+  # app-relative path ('./data/<db>') and H2Server resolves that path SERVER-side. Anchoring the
+  # server one directory deeper than the client names would open <app>/data/data/<db> -- a second,
+  # empty database, created silently, which is the failure mode this whole item is about.
+  $appRoot = Split-Path -Parent $PSScriptRoot
+  $serverArgs = @('-cp', $jar.FullName, 'org.h2.tools.Server', '-tcp', '-tcpPort', [string]$plan.hostPort, '-baseDir', $appRoot, '-ifNotExists')
+  $process = Start-Process -FilePath 'java' -ArgumentList $serverArgs -WorkingDirectory $appRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutLogFile -RedirectStandardError $stderrLogFile
   Set-Content -LiteralPath $pidFile -Value $process.Id
   Start-Sleep -Seconds 2
   Write-Host "H2Server started on port $($plan.hostPort), PID $($process.Id)"
@@ -338,6 +560,22 @@ throw "Unsupported engine '$($plan.engine)' in resolved-db-plan.json."
     private static String startEnvironmentScript() {
         return """
 $ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+""" + EXTERNAL_NOTICE_HELPER + """
+# Start has its own refusal rather than inheriting Create's, because "start" is the word a user
+# reaches for and the answer they need names THAT verb. Create's external branch goes on to verify
+# the database exists, which is a different (useful) job; this one is a straight no.
+if ($plan.externallyProvisioned) {
+  Write-NpdevExternalNotice -Plan $plan -Operation 'Starting the environment'
+  if (Test-NpdevServerReachable -ServerHost $plan.host -ServerPort ([int]$plan.hostPort)) {
+    Write-Host "Something is already serving on $($plan.host):$($plan.hostPort) -- if that is your"
+    Write-Host 'server, there is nothing to start. Run the app.'
+    exit 0
+  }
+  Write-Host "Nothing is listening on $($plan.host):$($plan.hostPort). Start your $($plan.engine)"
+  Write-Host 'server the way you normally do, then run the app.'
+  exit 1
+}
 & (Join-Path $PSScriptRoot 'Create-Environment.ps1')
 """;
     }
@@ -346,6 +584,12 @@ $ErrorActionPreference = 'Stop'
         return """
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+""" + EXTERNAL_NOTICE_HELPER + """
+if ($plan.externallyProvisioned) {
+  Write-NpdevExternalNotice -Plan $plan -Operation 'Stopping the environment'
+  Write-Host 'Stop it yourself if you mean to -- other things may be using it.'
+  exit 0
+}
 if ($plan.profile.kind -eq 'server') {
   $running = docker ps --filter "name=^/$($plan.containerName)$" --format "{{.Names}}" 2>$null
   if ($running -eq $plan.containerName) { docker stop $plan.containerName | Out-Null }
@@ -371,10 +615,26 @@ Write-Host "No background environment service to stop for $($plan.engine)."
         return """
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+""" + DATA_ROOT_HELPER + EXTERNAL_NOTICE_HELPER + """
+$dataRoot = Get-NpdevDataRoot -Plan $plan
 Write-Host "Engine: $($plan.engine)"
 Write-Host "Physical database: $($plan.physicalDatabase)"
 Write-Host "Resolved database: $($plan.resolvedDatabaseName)"
-Write-Host "Data root: $($plan.resolvedDataRoot)"
+Write-Host "Data root: $dataRoot"
+# STOR-14: an external server has NO CONTAINER TO INSPECT, so `docker ps` would report "not found"
+# about a database that is running perfectly well. Reachability is the question that has an answer
+# here, and it is the question the user actually asked.
+if ($plan.externallyProvisioned) {
+  Write-Host 'Provisioning: EXTERNAL -- this server is yours, not NPDev''s.'
+  if (Test-NpdevServerReachable -ServerHost $plan.host -ServerPort ([int]$plan.hostPort)) {
+    Write-Host "Reachable: yes -- something is serving on $($plan.host):$($plan.hostPort)."
+    Write-Host 'That it is YOUR database, with this app''s credentials, is what'
+    Write-Host '`npdev db test-connection` settles; a port probe cannot.'
+    exit 0
+  }
+  Write-Host "Reachable: NO -- nothing is listening on $($plan.host):$($plan.hostPort)."
+  exit 1
+}
 if ($plan.profile.kind -eq 'server') {
   docker ps -a --filter "name=^/$($plan.containerName)$"
   exit 0
@@ -390,7 +650,7 @@ if ($plan.profile.kind -eq 'embedded-server') {
   exit 1
 }
 if ($plan.engine -eq 'H2Local') {
-  Write-Host "H2Local data root exists: $(Test-Path -LiteralPath $plan.resolvedDataRoot)"
+  Write-Host "H2Local data root exists: $(Test-Path -LiteralPath $dataRoot)"
   exit 0
 }
 Write-Host 'InMemory has no physical database service.'
@@ -468,6 +728,14 @@ exit 0
     private static String printDbConnectionInfoScript() {
         return """
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+""" + DATA_ROOT_HELPER + """
+# PORT-1: the H2 rows below name a FILE, and DBeaver needs a path it can open -- so this one screen
+# resolves the app-relative form to an absolute one rather than printing 'data/npdev_x' and leaving
+# the reader to work out what it is relative to. The app and the toolbox still share one anchor;
+# this is the same directory, spelled for a human.
+$dataRoot = Get-NpdevDataRoot -Plan $plan
+$h2File = if ([string]::IsNullOrWhiteSpace([string]$plan.resolvedDatabaseName)) { $dataRoot }
+          else { Join-Path $dataRoot $plan.resolvedDatabaseName }
 
 # The quirks are printed HERE because this is the screen a user already has open when they need
 # them -- that MySQL's utf8mb4 is not optional, that SQL Server's 'sa' is not their app's username.
@@ -501,10 +769,13 @@ if ($plan.engine -eq 'H2Local') {
   Write-Host 'DBeaver connection'
   Write-Host ''
   Write-Host "Database type: $($plan.profile.guiLabel)"
-  Write-Host "JDBC URL: $($plan.jdbcUrl)"
-  Write-Host "Database: $($plan.dbeaver.database)"
+  Write-Host "JDBC URL: jdbc:h2:file:$h2File;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0"
+  Write-Host "Database file: $h2File"
   Write-Host "Username: $($plan.username)"
   Write-Host "Password: $($plan.password)"
+  Write-Host ''
+  Write-Host "The app itself uses the app-relative form ($($plan.jdbcUrl)),"
+  Write-Host 'resolved against its own directory. Same file, spelled for a tool that is not the app.'
   Show-EngineQuirks -Plan $plan
   exit 0
 }
@@ -515,9 +786,12 @@ if ($plan.engine -eq 'H2Server') {
   Write-Host "Host: $($plan.dbeaver.host)"
   Write-Host "Port: $($plan.dbeaver.port)"
   Write-Host "JDBC URL: $($plan.jdbcUrl)"
-  Write-Host "Database: $($plan.dbeaver.database)"
+  Write-Host "Database file: $h2File"
   Write-Host "Username: $($plan.username)"
   Write-Host "Password: $($plan.password)"
+  Write-Host ''
+  Write-Host 'The path in the URL is resolved by the H2 SERVER, against the baseDir'
+  Write-Host 'Create-Environment.ps1 starts it with -- this app''s own directory.'
   Show-EngineQuirks -Plan $plan
   exit 0
 }
@@ -529,17 +803,42 @@ throw "Unsupported engine '$($plan.engine)' in resolved-db-plan.json."
         return """
 param([string]$Confirm)
 $ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+""" + DATA_ROOT_HELPER + EXTERNAL_NOTICE_HELPER + """
+# STOR-14, THE CENTREPIECE -- and it comes BEFORE the confirmation check on purpose.
+#
+# Asking for the token first would not be a smaller version of this guard, it would be a worse one:
+# the user types it correctly, for the app they mean, and the answer is still no. Refusing first says
+# so without first teaching them the token that removes the only other safety here.
+#
+# It also comes before BOTH destructive halves, and it RETURNS. The two halves below are `docker rm`
+# and a `Remove-Item -Recurse -Force` on the data root -- and the second one is guarded by
+# `physicalDatabase` and existence, NEVER by whose database it is. Skipping only the Docker branch
+# and continuing, which is the obvious partial fix, leaves that recursive delete aimed at a path the
+# user chose. That is the difference between an incomplete feature and a destructive one.
+if ($plan.externallyProvisioned) {
+  Write-NpdevExternalNotice -Plan $plan -Operation 'Resetting the environment'
+  Write-Host 'In particular: your data root was NOT deleted, and no container was removed.'
+  Write-Host "  data root left intact : $(Get-NpdevDataRoot -Plan $plan)"
+  Write-Host ''
+  Write-Host 'To start this app from an empty database, drop and re-create the database on your own'
+  Write-Host 'server with your own tools -- NPDev will not do it for you on a server it did not'
+  Write-Host 'provision.'
+  # Non-zero: the destructive thing the caller asked for did NOT happen, and a wrapper that reads
+  # exit 0 as "reset done" would then act on a database that still has all its data in it.
+  exit 1
+}
 if ($Confirm -ne 'I_UNDERSTAND_DB_DATA_WILL_BE_DELETED') {
   throw 'Reset refused. Re-run with -Confirm I_UNDERSTAND_DB_DATA_WILL_BE_DELETED'
 }
-$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+$dataRoot = Get-NpdevDataRoot -Plan $plan
 & (Join-Path $PSScriptRoot 'Stop-Environment.ps1')
 if ($plan.profile.kind -eq 'server') {
   $existing = docker ps -a --filter "name=^/$($plan.containerName)$" --format "{{.Names}}" 2>$null
   if ($existing -eq $plan.containerName) { docker rm -f $plan.containerName | Out-Null }
 }
-if ($plan.physicalDatabase -and (Test-Path -LiteralPath $plan.resolvedDataRoot)) {
-  Remove-Item -LiteralPath $plan.resolvedDataRoot -Recurse -Force
+if ($plan.physicalDatabase -and $dataRoot -and (Test-Path -LiteralPath $dataRoot)) {
+  Remove-Item -LiteralPath $dataRoot -Recurse -Force
 }
 Write-Host "Environment reset for $($plan.appId)."
 """;

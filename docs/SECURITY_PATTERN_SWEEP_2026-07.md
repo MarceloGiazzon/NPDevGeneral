@@ -392,6 +392,12 @@ All four are the direct, mechanical fallout of REG-120's fix (a new kernel metho
 |---|---|---|
 | `SqlServerDialect.java:272–278` — the refusal message of the new prefix row cap | 7 | Rule **false-positive**, the same class as §4.7's `AuthoringMergeGate` hit: **the matched text is an exception message, not SQL.** `rowLimited` rewrites `SELECT` into `SELECT TOP n`, and when a statement does not begin with `SELECT` (a CTE, for instance) it throws — because there is nowhere to put a PREFIX cap and guessing would cap the wrong thing. Four hits are `read-without-tenant-predicate` firing on the words "SELECT TOP n" and "select" inside that English explanation; nothing in the method reads a row, so there is no row set to scope. Three are `sql-string-building` firing on `"... Statement: " + sql.strip()` — the caller's own statement echoed back so the operator can see WHICH one was refused. It reaches a log, never a database, and the method throws immediately afterwards. A refusal that does not name what it refused is a riddle, so the concatenation stays. |
 
+### 4.9 → 2026-08-10, STOR-14 (`Create-Environment.ps1` becomes VERIFY in external mode)
+
+| Lead | Hits | Resolution |
+|---|---|---|
+| `OperationalRunbookEmitter.java:225` — `createEnvironmentScript()`'s text block | 1 | Rule **false-positive**, and a new sub-class worth naming: **the matched "SQL" is PowerShell.** The block is an emitted script, so the sweep sees the whole text block as one string and joins PowerShell's `Select-Object -First 1` (the JDBC-driver-jar lookup) to the English word "from" in the surrounding prose, reading them as `SELECT … FROM`. The block runs exactly one `DriverManager.getConnection` and issues no query at all — STOR-14's Create-becomes-VERIFY, which asks an externally-provisioned server whether the app's own database is reachable. There is no row set, no table and no tenant column, so there is nothing a tenant predicate could scope. Any future emitted-PowerShell block using `Select-Object` near prose will hit this same way. |
+
 ## 5. Reproducing this
 
 ```bash

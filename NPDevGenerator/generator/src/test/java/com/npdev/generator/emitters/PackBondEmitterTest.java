@@ -145,6 +145,7 @@ class PackBondEmitterTest {
                 DatabaseEngine.POSTGRES,
                 DatabaseEngine.POSTGRES.storageMode(),
                 true,
+                false, // externallyProvisioned (STOR-14) -- NPDev provisioned this test's database
                 "pack-bond-test",
                 "pack-bond-test",
                 "test",

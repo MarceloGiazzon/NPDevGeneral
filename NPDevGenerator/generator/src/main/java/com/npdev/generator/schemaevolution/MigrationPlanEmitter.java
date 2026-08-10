@@ -161,6 +161,10 @@ public final class MigrationPlanEmitter {
         return new UserDatabaseDefinition(
                 databasePlan.engine(), "", 0, "", "", "", "", "", "",
                 databasePlan.createInternalTables(), databasePlan.createBusinessTables(),
+                // externallyProvisioned is not a fingerprint input either (who provisioned the
+                // server says nothing about the SCHEMA), so it is threaded through faithfully rather
+                // than hardcoded -- one less field whose value here diverges from the real plan's.
+                databasePlan.externallyProvisioned(),
                 databasePlan.schemaLifecycle());
     }
 

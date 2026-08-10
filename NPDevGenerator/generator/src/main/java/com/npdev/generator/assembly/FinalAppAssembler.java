@@ -60,6 +60,17 @@ public final class FinalAppAssembler {
             "com/finalexec/npdev/service/experimental/*.java"
     );
 
+    /**
+     * PORT-1: the one directory under a FinalApp root that regeneration must not remove -- the app's
+     * own database. Must stay in step with {@code UserDatabaseDefinitionLoader.DATA_ROOT_FOLDER},
+     * which decides where the app and its {@code _ops} toolbox both look.
+     *
+     * <p>Twin-pair {@code app-data-root-anchor-three-seams} (token: npdev-app-data-root-anchor).
+     * This SPARES the root the other two decide and resolve; a drift here is silent data loss on the
+     * next regeneration.
+     */
+    private static final String PRESERVED_APP_DATA_DIRECTORY = "data";
+
     public AssemblyResult assemble(Options options) throws IOException {
         Options normalized = options.normalized();
         validate(normalized);
@@ -68,6 +79,12 @@ public final class FinalAppAssembler {
             ensureSafeDeleteTarget(normalized);
             deleteTree(normalized.finalAppRoot());
         }
+        // PORT-1: an app's database now lives at <FinalApp>/data (app-relative, so a generated app
+        // can be handed to someone else and still find it). deleteBeforeMount predates that and
+        // would take the database with it on every regeneration -- which is not merely data loss, it
+        // is data loss that leaves the schema-evolution tests green against a fresh database instead
+        // of the existing one they exist to exercise. deleteTree() therefore spares exactly this one
+        // directory; everything mounted afterwards is regenerated anyway.
 
         Files.createDirectories(normalized.finalAppRoot());
 
@@ -156,16 +173,35 @@ public final class FinalAppAssembler {
         return left.equals(right) || left.startsWith(right) || right.startsWith(left);
     }
 
+    /**
+     * Delete the FinalApp tree, sparing the app's own database directory.
+     *
+     * <p>PORT-1: {@code <FinalApp>/data} is where every generated app keeps its database now that the
+     * path is app-relative rather than an absolute path from the authoring machine. It is the one
+     * thing under this root that regeneration cannot reproduce, so it is the one thing this does not
+     * remove. Everything else here is emitted output.
+     *
+     * <p>Consequence, stated rather than left to be discovered: this method no longer guarantees the
+     * root is gone, so the "still exists" retry now asks whether anything BUT the spared directory
+     * survived.
+     */
     private static void deleteTree(Path root) throws IOException {
+        Path preserved = root.resolve(PRESERVED_APP_DATA_DIRECTORY);
         IOException lastFailure = null;
         for (int attempt = 1; attempt <= DELETE_RETRY_ATTEMPTS; attempt++) {
             try (var stream = Files.walk(root)) {
-                var paths = stream.sorted((left, right) -> right.compareTo(left)).toList();
+                var paths = stream
+                        .filter(path -> !path.startsWith(preserved))
+                        .sorted((left, right) -> right.compareTo(left))
+                        .toList();
                 for (Path path : paths) {
+                    if (path.equals(root) && Files.exists(preserved)) {
+                        continue;
+                    }
                     deletePathWithRetry(path);
                 }
             }
-            if (!Files.exists(root)) {
+            if (!Files.exists(root) || onlyPreservedDataRemains(root, preserved)) {
                 return;
             }
 
@@ -176,6 +212,12 @@ public final class FinalAppAssembler {
         }
 
         throw lastFailure;
+    }
+
+    private static boolean onlyPreservedDataRemains(Path root, Path preserved) throws IOException {
+        try (var entries = Files.list(root)) {
+            return entries.allMatch(entry -> entry.equals(preserved));
+        }
     }
 
     private static void deletePathWithRetry(Path path) throws IOException {

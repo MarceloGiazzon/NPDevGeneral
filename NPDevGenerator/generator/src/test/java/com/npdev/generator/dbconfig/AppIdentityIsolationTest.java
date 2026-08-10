@@ -7,7 +7,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * QUAL-3: two apps scaffolded into ONE folder must not become one database.
@@ -55,6 +57,63 @@ class AppIdentityIsolationTest {
     }
 
     /**
+     * PORT-1 changed what this test is really asserting, so it says so out loud rather than leaving
+     * the next reader to assume the old mechanism still holds.
+     *
+     * <p>The data root used to be {@code <workspace>/Build/databases/<appId>} -- one shared
+     * directory for every app on the machine, where two apps colliding on {@code appId} genuinely
+     * WAS one database with two front doors. It is now app-relative ({@code data}, or
+     * {@code data/<generated name>}), resolved against each app's own FinalApp directory. Two apps
+     * that both resolve to the string {@code data} therefore still have two separate databases,
+     * because their FinalApp directories are different directories.
+     *
+     * <p>That makes the isolation structural rather than derived, which is stronger -- but it also
+     * means the string comparison above would pass vacuously for any app that declares an explicit
+     * {@code databaseName}. This test pins the property that still carries weight there: the appId,
+     * from which the container name is built, and which is what {@code npdev db status --app} keys
+     * on.
+     */
+    @Test
+    void anExplicitDatabaseNameGivesTwoAppsTheSameRelativeRootAndStillNotTheSameDatabase(
+            @TempDir Path tempDir) throws Exception {
+        Path a = writeInitStyleDefinition(tempDir, "app-a", "shared_name");
+        Path b = writeInitStyleDefinition(tempDir, "app-b", "shared_name");
+
+        GeneratedDatabasePlan planA = new UserDatabaseDefinitionLoader().load(a, null);
+        GeneratedDatabasePlan planB = new UserDatabaseDefinitionLoader().load(b, null);
+
+        assertEquals("data", planA.resolvedDataRoot(),
+                "PORT-1: the data root is app-relative, never this machine's absolute path");
+        assertEquals(planA.resolvedDataRoot(), planB.resolvedDataRoot(),
+                "and identical as a STRING for two apps naming the same database -- which is safe "
+                        + "only because each is resolved against its own FinalApp directory");
+        assertNotEquals(planA.appId(), planB.appId(),
+                "the identity that still has to differ: containerName and `npdev db status --app` "
+                        + "are both derived from appId");
+    }
+
+    /** PORT-1: no emitted path may carry the generating machine's layout. */
+    @Test
+    void theDataRootIsRelativeAndNamesNoDrive(@TempDir Path tempDir) throws Exception {
+        Path definition = writeInitStyleDefinition(tempDir, "portable-app", "");
+
+        GeneratedDatabasePlan plan = new UserDatabaseDefinitionLoader().load(definition, null);
+
+        assertFalse(Path.of(plan.resolvedDataRoot()).isAbsolute(),
+                "an absolute data root is baked into spring.datasource.url and resolved at BOOT, so "
+                        + "a stranger's app opens its database on a drive they may not have: "
+                        + plan.resolvedDataRoot());
+        assertTrue(plan.resolvedDataRoot().startsWith("data"),
+                "the root is <FinalApp>/data: " + plan.resolvedDataRoot());
+        assertTrue(plan.jdbcUrl().startsWith("jdbc:h2:file:./data/"),
+                "the H2 URL must be app-relative too -- it is the one value Spring resolves at "
+                        + "boot, and the only one of the six that stops an app working: "
+                        + plan.jdbcUrl());
+        assertFalse(plan.jdbcUrl().contains(tempDir.toString().replace('\\', '/')),
+                "the URL must not name the generating machine's directory: " + plan.jdbcUrl());
+    }
+
+    /**
      * The AppGen layout must keep behaving exactly as before: there the definition genuinely lives
      * one level below the app, and the app is the directory holding {@code definition/}.
      */
@@ -77,11 +136,19 @@ class AppIdentityIsolationTest {
      * and both apps fall back to the shared parent folder's name, which is the defect.
      */
     private static Path writeInitStyleDefinition(Path parent, String appName) throws Exception {
+        return writeInitStyleDefinition(parent, appName, "");
+    }
+
+    private static Path writeInitStyleDefinition(Path parent, String appName, String databaseName)
+            throws Exception {
         Path appDir = Files.createDirectories(parent.resolve(appName));
         Files.writeString(appDir.resolve("manifest.json"),
                 "{\"id\": \"" + appName + "\", \"title\": \"" + appName + "\"}\n");
         Path definitionPath = appDir.resolve("db.definition.json");
-        Files.writeString(definitionPath, h2LocalDefinition());
+        Files.writeString(definitionPath, databaseName.isBlank()
+                ? h2LocalDefinition()
+                : h2LocalDefinition().replace("\"engine\": \"H2Local\",",
+                        "\"engine\": \"H2Local\", \"databaseName\": \"" + databaseName + "\","));
         return definitionPath;
     }
 
