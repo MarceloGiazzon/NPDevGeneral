@@ -51,6 +51,7 @@ USAGE
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
@@ -98,39 +99,66 @@ def check(repo: Path, pairs) -> list[tuple[str, str, str, int, int, str]]:
 
 
 def calibrate() -> int:
-    """Drive the real comparison through a real git repo -- not a restatement of `a > b`."""
+    """Drive the real comparison through a real git repo -- not a restatement of `a > b`.
+
+    GIT_COMMITTER_DATE is set on every commit, not just --date. This matters and it was a real bug:
+    `git log --format=%ct` reports the COMMITTER date, while `--date` sets only the AUTHOR date. The
+    first version passed when run by hand and FAILED inside the gate, because under load all four
+    commits landed in the same wall-clock second, making "source newer than artefact" false. A
+    calibration that depends on how busy the machine is proves nothing -- it would have gone green
+    again on the next run and been believed.
+    """
     ok = True
     with tempfile.TemporaryDirectory() as td:
         repo = Path(td)
-        run = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, check=False)
+        def run(*a, when: str | None = None):
+            env = dict(os.environ)
+            if when:
+                env["GIT_COMMITTER_DATE"] = when
+                env["GIT_AUTHOR_DATE"] = when
+            return subprocess.run(["git", "-C", str(repo), *a],
+                                  capture_output=True, check=False, env=env)
+
+        def commit(msg: str, when: str):
+            run("add", "-A")
+            r = run("commit", "-q", "-m", msg, when=when)
+            return r.returncode == 0
+
         run("init", "-q")
         run("config", "user.email", "c@example.com")
         run("config", "user.name", "c")
+        run("config", "commit.gpgsign", "false")
 
         (repo / "src").mkdir()
         (repo / "out").mkdir()
-        (repo / "src" / "a.ts").write_text("v1\n", encoding="utf-8")
-        run("add", "-A"); run("commit", "-q", "-m", "src v1", "--date", "2020-01-01T00:00:00")
-        (repo / "out" / "bundle.js").write_text("built from v1\n", encoding="utf-8")
-        run("add", "-A"); run("commit", "-q", "-m", "build", "--date", "2020-01-02T00:00:00")
-
         pairs = [("t", "src", "out", "rebuild")]
+
+        (repo / "src" / "a.ts").write_text("v1\n", encoding="utf-8")
+        committed = commit("src v1", "2020-01-01T00:00:00 +0000")
+        (repo / "out" / "bundle.js").write_text("built from v1\n", encoding="utf-8")
+        committed &= commit("build", "2020-01-02T00:00:00 +0000")
+
+        # If git refused to commit at all, every later assertion would pass vacuously (no commits ->
+        # no timestamps -> no findings). Prove the fixture exists before trusting anything it says.
+        print(f"  {'PASS' if committed else 'FAIL'}  the throwaway git fixture actually commits")
+        ok &= committed
+
         fresh_ok = len(check(repo, pairs)) == 0
         print(f"  {'PASS' if fresh_ok else 'FAIL'}  an artefact built AFTER its source is fresh")
         ok &= fresh_ok
 
         (repo / "src" / "a.ts").write_text("v2\n", encoding="utf-8")
-        run("add", "-A"); run("commit", "-q", "-m", "src v2", "--date", "2020-01-03T00:00:00")
+        commit("src v2", "2020-01-03T00:00:00 +0000")
         stale_fires = len(check(repo, pairs)) == 1
         print(f"  {'PASS' if stale_fires else 'FAIL'}  a source change with no rebuild fires")
         ok &= stale_fires
 
         (repo / "src" / "a.test.ts").write_text("t\n", encoding="utf-8")
-        run("add", "-A"); run("commit", "-q", "-m", "test only", "--date", "2020-01-04T00:00:00")
+        commit("test only", "2020-01-04T00:00:00 +0000")
         (repo / "out" / "bundle.js").write_text("built from v2\n", encoding="utf-8")
-        run("add", "-A"); run("commit", "-q", "-m", "rebuild", "--date", "2020-01-05T00:00:00")
+        commit("rebuild", "2020-01-05T00:00:00 +0000")
         (repo / "src" / "b.test.ts").write_text("t2\n", encoding="utf-8")
-        run("add", "-A"); run("commit", "-q", "-m", "test only 2", "--date", "2020-01-06T00:00:00")
+        commit("test only 2", "2020-01-06T00:00:00 +0000")
         test_quiet = len(check(repo, pairs)) == 0
         print(f"  {'PASS' if test_quiet else 'FAIL'}  a test-only source change stays quiet")
         ok &= test_quiet
