@@ -2198,12 +2198,28 @@ def _find_db_definition(explicit: str | None) -> Path | None:
     return here if here.is_file() else None
 
 
-def _engine_requiring_docker(app_path: str | None) -> str | None:
-    """This app's engine name if it needs Docker, else None.
+def _probe_tcp(host: str, port: int, timeout: float = 3.0) -> OSError | None:
+    """None if something accepted a TCP connection on host:port; the OSError otherwise.
 
-    None covers three genuinely different situations, and all three mean the same thing for this
-    check: no app is in scope (a machine with no NPDev app on it is not a broken machine), the
-    definition is unreadable (`database-engine-support` reports that, and one cause should not
+    One probe, two callers, on purpose. `database-reachable` needs the exception text (its whole
+    value is naming WHY), and `docker-present` needs only the yes/no -- but they must never come to
+    different conclusions about the same host and port in the same run of doctor.
+    """
+    import socket
+
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return None
+    except OSError as exc:
+        return exc
+
+
+def _containerized_engine_target(app_path: str | None) -> tuple[dict, dict] | None:
+    """(engine, database) for an app whose engine NPDev would containerize, else None.
+
+    None covers three genuinely different situations, and all three mean the same thing for the
+    docker check: no app is in scope (a machine with no NPDev app on it is not a broken machine),
+    the definition is unreadable (`database-engine-support` reports that, and one cause should not
     produce two red lines), or the engine has nothing to containerize.
     """
     definition_path = _find_db_definition(app_path)
@@ -2211,10 +2227,17 @@ def _engine_requiring_docker(app_path: str | None) -> str | None:
         return None
     try:
         definition = json.loads(definition_path.read_text(encoding="utf-8"))
-        engine = npdev_engines.resolve((definition.get("database") or {}).get("engine") or "h2local")
+        database = definition.get("database") or {}
+        engine = npdev_engines.resolve(database.get("engine") or "h2local")
     except (json.JSONDecodeError, OSError, ValueError):
         return None
-    return engine["externalName"] if engine.get("containerized") else None
+    return (engine, database) if engine.get("containerized") else None
+
+
+def _engine_requiring_docker(app_path: str | None) -> str | None:
+    """This app's engine name if it needs Docker, else None."""
+    target = _containerized_engine_target(app_path)
+    return target[0]["externalName"] if target is not None else None
 
 
 def _database_checks(app_path: str | None) -> list[dict]:
@@ -2307,12 +2330,9 @@ def _database_checks_for(engine: dict, database: dict, *, source: str,
     host = database.get("host") or "localhost"
     port = int(database.get("port") or engine["port"])
 
-    import socket
-    reachable = False
-    try:
-        with socket.create_connection((host, port), timeout=3):
-            reachable = True
-    except OSError as exc:
+    exc = _probe_tcp(host, port)
+    reachable = exc is None
+    if exc is not None:
         checks.append(_check(
             "database-reachable", "Database reachable", "fail", found=f"{host}:{port}",
             expected="accepting connections",
@@ -3074,7 +3094,8 @@ def run_doctor(args: argparse.Namespace) -> int:
     #
     # Keyed on `containerized`, not `needsServer`: H2Server is a server engine whose environment is a
     # Java process, so Docker really is optional for it.
-    docker_engine = _engine_requiring_docker(getattr(args, "app", None))
+    docker_target = _containerized_engine_target(getattr(args, "app", None))
+    docker_engine = docker_target[0]["externalName"] if docker_target is not None else None
     docker_path = shutil.which("docker")
     if docker_engine is None:
         if docker_path is None:
@@ -3085,13 +3106,43 @@ def run_doctor(args: argparse.Namespace) -> int:
         else:
             checks.append(_check("docker-present", "Docker", "pass", found=docker_path, expected="optional"))
     elif docker_path is None:
-        checks.append(_check(
-            "docker-present", "Docker", "fail", expected="required",
-            detail=f"Docker not found, and this app's engine is {docker_engine} -- NPDev creates its "
-                   f"database in a container, so `npdev db start` cannot work without it.",
-            fix="Install Docker Desktop (https://docs.docker.com/get-docker/), or choose H2Local, "
-                "which needs no server at all.",
-        ))
+        # Docker is how NPDev CREATES a database for you. It is not how an app REACHES one. An
+        # externally-provisioned server -- a managed instance, or a PostgreSQL the user installed
+        # themselves years ago -- makes this app perfectly runnable with no Docker anywhere, and
+        # calling that machine broken is the same true-in-general/false-for-you failure the branch
+        # above already avoids in the other direction.
+        #
+        # So: probe the port this app is actually configured to use, with the same probe
+        # database-reachable uses, and DOWNGRADE to a warning when something answers.
+        #
+        # The message must state the INFERENCE, not assert a fact. The probe knows something is
+        # listening on that port; it does not know it is your database. Both branches are named and
+        # neither is assumed -- otherwise this trades one confident wrong answer for another, and
+        # this codebase has already shipped a doctor that called a missing database a *credentials*
+        # failure. `npdev db test-connection` is what actually settles it, and it is named here.
+        docker_db = docker_target[1]
+        docker_host = docker_db.get("host") or "localhost"
+        docker_port = int(docker_db.get("port") or docker_target[0]["port"])
+        if _probe_tcp(docker_host, docker_port, timeout=1.5) is None:
+            checks.append(_check(
+                "docker-present", "Docker", "warn",
+                expected="optional when the database is already provided",
+                detail=f"Docker not found. Something is already serving on {docker_host}:"
+                       f"{docker_port}, so if that is your own {docker_engine} you do not need "
+                       f"Docker to reach it -- `npdev db test-connection` will confirm. If you "
+                       f"meant NPDev to create a database for you, install Docker or free the port.",
+            ))
+        else:
+            checks.append(_check(
+                "docker-present", "Docker", "fail", expected="required",
+                detail=f"Docker not found, and this app's engine is {docker_engine} -- NPDev creates "
+                       f"its database in a container, so `npdev db start` cannot work without it. "
+                       f"Nothing is listening on {docker_host}:{docker_port} either, so there is no "
+                       f"already-running server to use instead.",
+                fix="Install Docker Desktop (https://docs.docker.com/get-docker/), point "
+                    "db.definition.json at a database you already run, or choose H2Local, which "
+                    "needs no server at all.",
+            ))
     else:
         checks.append(_check("docker-present", "Docker", "pass", found=docker_path, expected="required",
                              detail=f"required by this app's engine ({docker_engine})"))

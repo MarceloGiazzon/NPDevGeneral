@@ -241,10 +241,12 @@ if ($plan.profile.kind -eq 'server') {
     # with their own server and reports a raw Docker port-binding error, and "the tool fought my
     # database" is a first impression that has nothing to do with whether the tool is any good.
     #
-    # DETECT, do not solve. NPDev has no EXTERNAL engine kind yet -- a mode where the toolbox knows
-    # the server is not its to manage and disables Start/Stop/Reset -- and adding one touches the
-    # profile model, all five scripts, the picker and the schema. Naming the collision converts a
-    # confusing failure into a sentence for a fraction of that.
+    # DETECT, do not solve. NPDev has no EXTERNAL mode yet -- one where the toolbox knows the server
+    # is not its to manage and refuses Start/Stop/Reset. That is STOR-14, and its centrepiece is not
+    # the disabling: Reset's recursive delete of the data root is guarded by `physicalDatabase`, not
+    # by whose database it is, so a no-op on the `docker rm` half alone would leave a
+    # `Remove-Item -Recurse -Force` aimed at a path the user chose. Naming the collision converts a
+    # confusing failure into a sentence for a fraction of that, and destroys nothing.
     #
     # Same shape `npdev dev` already uses for the APP port ("Port N is already in use before this run
     # even started"), one layer down, and emitted HERE so the CLI, the Manager and a terminal user all

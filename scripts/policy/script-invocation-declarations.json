@@ -169,7 +169,13 @@
     "scripts/quality/check-engine-parity.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-firstrun-extractor.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-engine-variant-families.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-executable-line-endings.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-markdown-links.py": {
@@ -234,6 +240,9 @@
     },
     "scripts/quality/firstrun-harness/check-wrongjava.sh": {
       "invocation": "manual-runbook"
+    },
+    "scripts/quality/firstrun-harness/extract_commands.py": {
+      "invocation": "orchestrated"
     },
     "scripts/quality/firstrun-harness/inject_field.py": {
       "invocation": "orchestrated"

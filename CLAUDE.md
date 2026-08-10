@@ -71,8 +71,10 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
 - **Quality gates — "all gates green" means ONE command:**
   `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1` (T2). It runs four gates by default, in
   this order, and keeps going past a failure so you see every red in one run:
-  `run-ai-knowledge-gate.ps1` (static — no build, no boot; hosts all 20 `check-*.py` across 28
-  checks. **Measured 811 s / ~13.5 min on 2026-08-08**, not the "seconds" this line used to claim;
+  `run-ai-knowledge-gate.ps1` (static — no build, no boot; hosts 31 of the 32
+  `scripts/quality/check-*.py` across 40 numbered checks — the one exception,
+  `check-dsl-reference-output-floor.py`, runs in `run-generator-gate.ps1` because it needs a build.
+  **Measured 811 s / ~13.5 min on 2026-08-08**, not the "seconds" this line used to claim;
   budget for it) → `run-generator-gate.ps1`
   → `run-runtimehost-gate.ps1` → `run-frontend-gate.ps1`. `run-beta-release-gate.ps1` (release
   posture, T3) is **deferred by default** since the Fast Lane plan's item 4 — pass

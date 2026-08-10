@@ -6,7 +6,7 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**161 item(s) migrated: 2 open/partial, 159 done.**
+**162 item(s) migrated: 3 open/partial, 159 done.**
 
 ## Open / partial
 
@@ -14,6 +14,7 @@
 |---|---|---|---|---|---|
 | QUAL-2 | Ten unclosed Files.list/walk/lines streams in NPDevRuntimeHost production services -- the same leaked-directory-handle defect that made the local generator gate permanently red | BUG | MEDIUM | OPEN | 2026-08-09 |
 | STOR-13 | Nine SqlDialect methods have no production caller -- exercised only by their own tests, which is the exact state STOR-4, STOR-5 and STOR-6 were each found in | BUG | MEDIUM | OPEN | 2026-08-09 |
+| STOR-14 | No way to say "this database is not mine to manage" -- the `_ops` toolbox assumes it provisioned every server engine, and `Reset-Environment.ps1` recursively deletes a data root that may be the user's own | GAP | HIGH | OPEN | 2026-08-09 |
 
 ### Detail
 
@@ -64,6 +65,42 @@ Each of these is declared on `SqlDialect`, implemented by all four dialects, and
 
 `supports` is the one worth reading twice. CLAUDE.md instructs the reader to "ask `SqlDialects.active().supports(...)` rather than assuming a rollback" -- STOR-2's whole remedy -- and no production code does. The capability set is consulted through `capabilities()` by `StorageCapabilityGate` at GENERATION time; nothing asks at RUNTIME, which is where the DDL-in-transaction question actually gets decided.
 Not necessarily nine bugs. Some of these may be genuinely premature -- an answer prepared before its consumer exists is not wrong, it is early. What was wrong is that nothing distinguished "prepared early" from "wired and forgotten", and that is the distinction the three closed items each turned out to need. They are now enumerated in that checker's INTERNAL_ONLY allowlist with this item's id, so the list is a visible backlog rather than an invisible one, and any NEW dialect method must be wired or explicitly recorded here.
+
+### STOR-14 — No way to say "this database is not mine to manage" -- the `_ops` toolbox assumes it provisioned every server engine, and `Reset-Environment.ps1` recursively deletes a data root that may be the user's own
+
+**Type:** GAP · **Severity:** HIGH · **Status:** OPEN
+**Verification:** NOT_VERIFIED
+**Source:** storage/stabilize/FOUR_AND_EXTERNAL.md Part B, filed under its own instruction ("Do not implement the flag before the round -- file it as a ledger item"). The gap was first NAMED in code, not in a plan: OperationalRunbookEmitter.java's own comment beside the port-collision probe says "NPDev has no EXTERNAL engine kind yet -- a mode where the toolbox knows the server is not its to manage and disables Start/Stop/Reset". That comment chose to DETECT rather than solve, and this is the item it deferred to.
+**Surface:** `generator/dbconfig`
+
+A machine that already runs PostgreSQL is the likely case, not the exotic one -- people pick the engine they already use. NPDev has no way to be told so. Every server engine is assumed to be NPDev's own container, on all five `_ops` operations.
+THE DESTRUCTIVE HALF, and the reason this is HIGH rather than MEDIUM. `Reset-Environment.ps1` (OperationalRunbookEmitter.resetEnvironmentScript, ~lines 535-541) has two halves, and only the first is engine-aware:
+
+    if ($plan.profile.kind -eq 'server') { ... docker rm -f $plan.containerName ... }
+    if ($plan.physicalDatabase -and (Test-Path -LiteralPath $plan.resolvedDataRoot)) {
+      Remove-Item -LiteralPath $plan.resolvedDataRoot -Recurse -Force
+    }
+
+The recursive delete is guarded by `physicalDatabase` and existence -- never by whose database it is. So the obvious partial implementation, "make the Docker branch a no-op when the server is external", leaves a `Remove-Item -Recurse -Force` pointed at a path the user may have set to something real. That is the difference between an incomplete feature and a destructive one, and it is the same shape as QUAL-3: an operation that looks aimed at NPDev's own resources and is not.
+BOTH scripts must HARD-REFUSE AND RETURN -- not skip a branch and continue.
+WHOEVER IMPLEMENTS THIS WRITES THE REFUSAL TEST FIRST: an external app whose `resolvedDataRoot` points at a directory containing a canary file; reset -> refuses, canary intact. RED-prove it against today's code, where it deletes the canary.
+"ENSURE THE DATABASE EXISTS" LOSES ITS CLIENT, AND THE ANSWER IS TO STOP TRYING. Create-Environment guarantees a client today only because it runs `docker exec <container> createdb` -- the client lives in the container. A server NPDev did not start guarantees nothing, and on Windows `psql` / `mysql` / `sqlcmd` are rarely on PATH. In external mode Create becomes VERIFY: connect over JDBC with the driver the app already ships and report
+
+    database 'myapp' does not exist on localhost:5432 -- create it and re-run
+
+Honest, no new dependency, and the same thing `npdev db test-connection` already does.
+THE PARITY GATE STAYS GREEN FOR FREE, BUT ONLY IF THE BRANCH READS A PLAN FIELD. The five `_ops` operations are emitted BYTE-IDENTICAL for Postgres, MySQL and SQL Server (E15), and `run-engine-toolbox-parity.py` / `check-engine-parity.py` enforce it. A data-driven `if ($plan.externallyProvisioned)` is byte-identical across all three; a hand-written `-eq 'Postgres'` fails the parity gate immediately. The architecture pushes toward the right fix -- a plan field is REQUIRED here, not merely preferred, and an implementer who does not know that will waste a cycle discovering it.
+WHERE IT IS MODELLED. Not in `engine-profiles.json`. External-ness is a property of THIS APP'S DEPLOYMENT, not of the engine -- the same Postgres is Docker on a laptop and a managed instance in staging. Putting it in the profile model states it in the wrong place, and the profile model should not be touched at all.
+TWO ESTIMATE CORRECTIONS, measured against the tree at ac0ccc35 rather than assumed, because the estimate everyone reaches for is wrong in both directions:
+
+  * NO FOUR-COPY MIRROR TAX. `model.schema.json`'s four-place mirror rule (CLAUDE.md) does NOT
+    apply. `schemas/ai/user-db-definition.schema.json` exists in exactly ONE place.
+  * BUT THERE **IS** A SCHEMA, and FOUR_AND_EXTERNAL.md's Part B.1 is wrong to say there is not.
+    That file has `"additionalProperties": false` at the root AND inside `database`, so a new
+    field is REJECTED before the loader ever sees it, and `NPDevCli/tests/test_engines.py` asserts
+    every scaffolded definition validates against it. One copy to edit, not zero and not four.
+
+ALREADY EXISTS AND MUST NOT BE DUPLICATED: `schemaLifecycle.ownership: ExternallyManaged` (REG-7.1) already declares that NPDev issues no schema DDL against this database, and UserDatabaseDefinitionLoader enforces it (KeepExistingIfCompatible + no destructive recreate). That is a statement about the SCHEMA; this item is about the SERVER. They are genuinely different -- an NPDev-provisioned container can hold an externally-managed schema -- but an implementer who does not notice the existing field will add a second overlapping one. Decide explicitly whether the new flag lives beside it or subsumes it.
 
 ## Done (159)
 

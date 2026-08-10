@@ -1,0 +1,70 @@
+# Line endings are a portability contract, not a preference.
+#
+# WHY THIS FILE EXISTS (2026-08-09)
+#
+# `core.autocrlf=true` is Git for Windows' default, so a Windows checkout gets CRLF. That is
+# harmless for a file Windows reads -- and fatal for a file Linux EXECUTES, because the kernel reads
+# the shebang literally:
+#
+#     #!/usr/bin/env bash\r   ->   /usr/bin/env: 'bash\r': No such file or directory
+#
+# That is not hypothetical. `scripts/quality/firstrun-harness` -- the harness whose entire job is to
+# prove NPDev's instructions work on a machine that starts with nothing -- could not start at all
+# from this checkout. `COPY run-readme.sh` baked the CRLF shebang into the image, and the container
+# died on its first line.
+#
+# **The tool that exists to catch "works on my machine" was itself not portable**, and it failed only
+# on Windows, so CI -- which checks out LF on a Linux runner -- stayed green the whole time. Seven
+# earlier defects in this repo share that shape; this is the eighth.
+#
+# `scripts/quality/check-executable-line-endings.py` enforces the general rule (any file declaring a
+# shebang must be LF) because THIS FILE IS A DECLARATION AND DECLARATIONS DRIFT: a new extension, a
+# generator, or an editor can reintroduce CRLF that no glob here covers.
+
+# Sensible default: let git decide what is text, and normalise it in the repository.
+* text=auto
+
+# ---------------------------------------------------------------------------------------------
+# EXECUTED ON LINUX -- CRLF makes these unrunnable, not merely untidy.
+# ---------------------------------------------------------------------------------------------
+*.sh            text eol=lf
+*.bash          text eol=lf
+gradlew         text eol=lf
+Dockerfile      text eol=lf
+Dockerfile.*    text eol=lf
+*.dockerfile    text eol=lf
+
+# Python: conventionally LF, and several of these carry a shebang and are COPY'd into containers.
+*.py            text eol=lf
+
+# ---------------------------------------------------------------------------------------------
+# WINDOWS-NATIVE -- CRLF is correct here. PowerShell in particular is happiest with it, and these
+# are never executed by a Linux kernel.
+# ---------------------------------------------------------------------------------------------
+*.ps1           text eol=crlf
+*.psm1          text eol=crlf
+*.psd1          text eol=crlf
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+gradlew.bat     text eol=crlf
+
+# ---------------------------------------------------------------------------------------------
+# BINARY -- never touch these. A "helpful" line-ending conversion corrupts them silently, which is
+# the worst failure mode available: the file still exists and is no longer valid.
+# ---------------------------------------------------------------------------------------------
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.pdf           binary
+*.zip           binary
+*.jar           binary
+*.exe           binary
+*.dll           binary
+*.so            binary
+*.dylib         binary
+*.AppImage      binary
+*.woff          binary
+*.woff2         binary
+*.ttf           binary
