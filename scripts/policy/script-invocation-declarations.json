@@ -581,6 +581,9 @@
     },
     "scripts/quality/check-readme-contract.py": {
       "invocation": "ci-gate"
+    },
+    "scripts/quality/check-closeable-streams.py": {
+      "invocation": "ci-gate"
     }
   }
 }

@@ -73,37 +73,51 @@ SEARCH_ROOTS = [
 INTERNAL_ONLY = {
     "require": "the dialects' own X0 guard -- a dialect that cannot honour a question throws rather "
                "than returning another engine's answer. Called by the dialects, by design.",
-    "quoteIdentifier": "the unconditional form. Callers ask identifier(), which quotes only when "
-                       "isReservedIdentifier() says this engine reserves the name (STOR-6); quoting "
-                       "everything would change the emitted SQL of every deployed database.",
     "isReservedIdentifier": "the predicate behind identifier(). Callers ask identifier() and get "
                             "the decision for free; asking this directly would mean re-implementing "
                             "the quoting rule at the call site, which is the STOR-6 defect.",
-    "foldsUnquotedIdentifiersToLowerCase": "consulted by identifier() before quoting -- on the "
-                                           "engines that fold, a deployed column really is "
-                                           "lowercase, so the quoted form has to match it.",
     "identifiers": "the list form of identifier(), used by the upsert strategies as they compose "
                    "statement text inside the dialects.",
-    "requireOrderedForPagination": "the guard behind paginated(); callers get it for free by "
-                                   "calling paginated() and cannot bypass it.",
 
-    # --- STOR-13: no production caller. Filed, not excused. ---
-    "supports": "STOR-13. capabilities() is consulted by StorageCapabilityGate at GENERATION time; "
-                "nothing asks at runtime, which is where CLAUDE.md's documented STOR-2 remedy "
-                "(ask before assuming a rollback) would actually have to run.",
-    "autoIncrementColumn": "STOR-13. No production caller; NPDev's ids are UUIDs, so nothing has "
-                           "needed an auto-increment column yet.",
-    "timestampColumnType": "STOR-13. No production caller and no test caller either.",
-    "requiresOrderByForPagination": "STOR-13. No production caller; paginated() enforces the rule "
-                                    "itself via requireOrderedForPagination.",
-    "cast": "STOR-13. No production caller and no test caller either.",
-    "returning": "STOR-13. No production caller; the INSERT paths read generated keys through JDBC "
+    # --- STOR-13, AFTER the one-hop rule. ---
+    #
+    # SIX entries left this list when reachability was measured instead of assumed, and one of them
+    # matters more than the rest: `supports` was filed as "nothing asks at runtime, which is where
+    # CLAUDE.md's documented STOR-2 remedy would actually have to run". That was FALSE.
+    # `PartialApplicationTruth.afterRollback()` asks it, and ConversionHookRunner and
+    # SchemaHistoryStore call that on the real failure path -- so a user on MySQL or H2 IS told their
+    # schema changes were already committed. The capability model is enforced at runtime; it was the
+    # checker's package exclusion that made it look otherwise, and this allowlist repeated the
+    # mistake as fact. An allowlist that asserts something untrue is worse than none, because the
+    # next reader believes it and "fixes" a non-problem.
+    #
+    # Also left: limitOnly (<- limited()), rowLimit (<- rowLimited()), quoteIdentifier and
+    # foldsUnquotedIdentifiersToLowerCase (<- identifier()), requireOrderedForPagination
+    # (<- paginated()).
+    #
+    # What remains is genuinely unasked, in three honest groups rather than "nine chores":
+    #
+    #   PREPARED EARLY, no consumer yet -- an answer written before its question exists is not
+    #   wrong, it is early. Decide when a consumer appears.
+    "autoIncrementColumn": "STOR-13 (prepared early). No caller; NPDev's ids are UUIDs, so nothing "
+                           "has needed an auto-increment column yet.",
+    "timestampColumnType": "STOR-13 (prepared early). No caller in production or test.",
+    "cast": "STOR-13 (prepared early). No caller in production or test.",
+    "returning": "STOR-13 (prepared early). The INSERT paths read generated keys through JDBC "
                  "rather than a RETURNING clause.",
-    "limitOnly": "STOR-13. No production caller; callers reach for limited()/paginated().",
-    "rowLimit": "STOR-13. No production caller; callers reach for rowLimited()/paginated().",
-    "listTablesSql": "STOR-13. Introspection, exercised only by the conformance vectors.",
-    "listColumnsSql": "STOR-13. Introspection, exercised only by the conformance vectors.",
-    "listIndexesSql": "STOR-13. Introspection, exercised only by the conformance vectors.",
+
+    #   REDUNDANT -- the per-dialect answer exists but the rule is enforced unconditionally, so
+    #   asking can never change the outcome. The strongest delete candidate of the eight.
+    "requiresOrderByForPagination": "STOR-13 (redundant). requireOrderedForPagination() demands "
+                                    "ORDER BY of EVERY engine regardless of this answer, so no "
+                                    "caller can act on it. Delete it, or make the enforcement "
+                                    "conditional on it -- but not both as they are.",
+
+    #   INTROSPECTION -- asked by the conformance vectors against real engines, which is a real
+    #   consumer even though it is not production code.
+    "listTablesSql": "STOR-13 (introspection). Exercised by the conformance vectors.",
+    "listColumnsSql": "STOR-13 (introspection). Exercised by the conformance vectors.",
+    "listIndexesSql": "STOR-13 (introspection). Exercised by the conformance vectors.",
 }
 
 
@@ -167,6 +181,63 @@ def callers_of(method: str, blobs: list[tuple[str, str]]) -> list[str]:
     return found
 
 
+# One hop, and it removes a whole class of FALSE alarm.
+#
+# A method can be reached from production without any production file naming it: `limited()` and
+# `rowLimited()` are `default` methods ON SqlDialect that call `limitOnly()` / `rowLimit()`, and
+# `PartialApplicationTruth` (in the dialect package, but PUBLIC and called by ConversionHookRunner
+# and SchemaHistoryStore) calls `supports()`. All three were filed under STOR-13 as "no production
+# caller", which read as dead weight -- and for `supports` the allowlist went further and asserted
+# that "nothing asks at runtime", which is simply false: that is exactly where STOR-2's documented
+# remedy runs. An allowlist that states something untrue is worse than no allowlist, because the
+# next reader believes it.
+#
+# So: a method also counts as ASKED when a same-package helper calls it AND that helper is itself
+# used from outside. Deliberately one hop only -- an arbitrary-depth reachability walk would
+# eventually declare everything asked, which is the failure mode in the other direction.
+DIALECT_PACKAGE_HELPERS_TO_SCAN = ("SqlDialect.java", "PartialApplicationTruth.java", "SqlDialects.java")
+
+
+def concrete_method_bodies(code: str) -> list[tuple[str, str]]:
+    """(name, body) for each method in a helper that HAS a body, by brace matching.
+
+    Needed because attribution must be per-METHOD, not per-file. Checking whether the file contains
+    the call and then blaming whichever entry point happens to have callers reported every method as
+    reached "via SqlDialect.bindableValue()" -- an over-report, and this file's own header says a
+    checker that over-reports callers is worse than none.
+    """
+    bodies = []
+    signature = re.compile(r"(?:public|default|static|final|\s)+[\w<>,\[\]. ]+?\s+(\w+)\s*\([^;{]*\)\s*\{")
+    for match in signature.finditer(code):
+        name, depth, index = match.group(1), 1, match.end()
+        while index < len(code) and depth:
+            depth += (code[index] == "{") - (code[index] == "}")
+            index += 1
+        bodies.append((name, code[match.end():index]))
+    return bodies
+
+
+def reached_via_dialect_package_helper(method: str, root: Path, blobs: list[tuple[str, str]]) -> str | None:
+    """The helper method that calls `method` AND is itself used from outside, or None."""
+    package = root / DIALECT_PACKAGE
+    needle = re.compile(r"[.:\s]" + re.escape(method) + r"\s*\(")
+    for helper_name in DIALECT_PACKAGE_HELPERS_TO_SCAN:
+        helper = package / helper_name
+        if not helper.is_file():
+            continue
+        # Strip comments first -- a javadoc `{@link #supports}` is not a call.
+        code = "\n".join(line for line in helper.read_text(encoding="utf-8", errors="replace").splitlines()
+                         if not line.strip().startswith(("*", "//", "/*")))
+        stem = helper_name[:-5]
+        for entry, body in concrete_method_bodies(code):
+            if entry == method or not needle.search(body):
+                continue
+            used_outside = bool(callers_of(entry, blobs)) or any(f"{stem}.{entry}(" in blob for _, blob in blobs)
+            if used_outside:
+                return f"{stem}.{entry}()"
+    return None
+
+
 def main() -> int:
     root = repo_root()
     dialect_source = (root / DIALECT_FILE).read_text(encoding="utf-8")
@@ -181,8 +252,14 @@ def main() -> int:
 
     unasked: list[str] = []
     stale_allowlist: list[str] = []
+    reached_indirectly: list[str] = []
     for method in methods:
         callers = callers_of(method, blobs)
+        if not callers:
+            via = reached_via_dialect_package_helper(method, root, blobs)
+            if via is not None:
+                callers = [f"(via {via})"]
+                reached_indirectly.append(f"{method} <- {via}")
         allowed = method in INTERNAL_ONLY
         if callers and allowed:
             stale_allowlist.append(f"{method} -- allowlisted as internal-only, but called by "

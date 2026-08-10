@@ -60,7 +60,16 @@ public class TenantPartitionRealityVerifier {
         List<String> mismatches = new ArrayList<>();
 
         try {
-            for (Path file : Files.walk(tenantRoot).filter(Files::isRegularFile).filter(path -> path.toString().endsWith(".json")).toList()) {
+            // try-with-resources (QUAL-2): Files.walk holds an open handle for EVERY directory it
+            // descends into, so a leak here costs more than one -- and .toList() does not release
+            // them. See TemplateLibraryManagementService for why this matters on Windows.
+            List<Path> evidenceFiles;
+            try (var walk = Files.walk(tenantRoot)) {
+                evidenceFiles = walk.filter(Files::isRegularFile)
+                        .filter(path -> path.toString().endsWith(".json"))
+                        .toList();
+            }
+            for (Path file : evidenceFiles) {
                 evidenceCount++;
                 if ("partition-summary.json".equalsIgnoreCase(file.getFileName().toString())) {
                     continue;

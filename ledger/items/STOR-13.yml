@@ -52,3 +52,34 @@ remediation: >-
   Per method, decide and record: wire the production caller, or delete the method, or state in the
   allowlist why the answer exists before its consumer. `supports` should be first -- STOR-2's
   documented remedy currently has no runtime implementation.
+
+round3_correction: >-
+  2026-08-09, round3 Part 2.2. The plan asked for nine independent decisions and warned they might be
+  three groups. Measured: they are SIX FALSE ALARMS plus eight genuinely-unasked methods in three
+  groups -- and the most important correction is that the item's headline claim about `supports` was
+  wrong.
+
+  `supports` IS asked at runtime. `PartialApplicationTruth.afterRollback()` calls it, and
+  `ConversionHookRunner` (line 405) and `SchemaHistoryStore` (line 317) call THAT on the real
+  failure path. So a user on MySQL or H2 IS told their schema changes were already committed --
+  STOR-2's documented remedy runs. This item recorded the opposite ("nothing asks at runtime"),
+  because check-dialect-methods-are-asked.py excludes the dialect package from its caller search and
+  PartialApplicationTruth lives there. The exclusion is right for its purpose; repeating its output
+  as a statement about the system was not.
+
+  Five more were the same artifact, each reached one hop away through the interface's own public
+  API: limitOnly (<- limited()), rowLimit (<- rowLimited()), quoteIdentifier and
+  foldsUnquotedIdentifiersToLowerCase (<- identifier()), requireOrderedForPagination
+  (<- paginated()). The checker now follows exactly one hop -- a same-package helper that is itself
+  used from outside -- so this class of false alarm cannot recur. One hop only: an arbitrary-depth
+  walk would eventually declare everything asked.
+
+  The eight that remain are not one backlog:
+    PREPARED EARLY (4)  autoIncrementColumn, timestampColumnType, cast, returning -- an answer
+                        written before its question exists is early, not wrong.
+    REDUNDANT (1)       requiresOrderByForPagination -- requireOrderedForPagination() demands
+                        ORDER BY of every engine regardless, so no caller can act on this. It is the
+                        strongest delete candidate of the eight: delete it, or make the enforcement
+                        conditional on it, but not both as they are.
+    INTROSPECTION (3)   listTablesSql, listColumnsSql, listIndexesSql -- asked by the conformance
+                        vectors against real engines, which is a real consumer.

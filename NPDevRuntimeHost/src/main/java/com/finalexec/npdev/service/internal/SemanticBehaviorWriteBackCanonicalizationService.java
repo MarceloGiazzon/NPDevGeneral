@@ -53,17 +53,20 @@ public class SemanticBehaviorWriteBackCanonicalizationService {
         List<Map<String, Object>> items = new ArrayList<>();
 
         try {
+            // try-with-resources (QUAL-2) -- see TemplateLibraryManagementService for the full note.
             if (Files.exists(PLAN_ROOT)) {
-                Files.list(PLAN_ROOT)
-                        .filter(path -> path.getFileName().toString().endsWith(".json"))
-                        .forEach(path -> {
-                            try {
-                                @SuppressWarnings("unchecked")
-                                Map<String, Object> item = objectMapper.readValue(path.toFile(), LinkedHashMap.class);
-                                items.add(item);
-                            } catch (Exception ignored) {
-                            }
-                        });
+                try (var paths = Files.list(PLAN_ROOT)) {
+                    paths
+                            .filter(path -> path.getFileName().toString().endsWith(".json"))
+                            .forEach(path -> {
+                                try {
+                                    @SuppressWarnings("unchecked")
+                                    Map<String, Object> item = objectMapper.readValue(path.toFile(), LinkedHashMap.class);
+                                    items.add(item);
+                                } catch (Exception ignored) {
+                                }
+                            });
+                }
             }
         } catch (Exception ignored) {
         }
