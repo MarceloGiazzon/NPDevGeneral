@@ -6,9 +6,10 @@ title: >-
   all, and three of the eight are asked by the conformance vectors)
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-09
-verification: NOT_VERIFIED
+closed: 2026-08-10
+verification: UNIT_TESTED
 surface: kernel/storage-dialect
 source: >-
   storage/closeout/CLOSEOUT_PLAN.md section 7 ("what test would have caught all three?"). Found by
@@ -85,3 +86,42 @@ round3_correction: >-
                         conditional on it, but not both as they are.
     INTROSPECTION (3)   listTablesSql, listColumnsSql, listIndexesSql -- asked by the conformance
                         vectors against real engines, which is a real consumer.
+
+resolution: >-
+  2026-08-10. Closed as the round3 correction predicted: ONE deletion and SEVEN re-classifications.
+  Seven of the eight needed a true reason recorded, not code -- and that is the honest outcome, not a
+  shortfall. The item's value was never the eight methods; it was that nothing had distinguished
+  "prepared early" from "wired and forgotten", and that distinction is now written where the checker
+  reads it rather than in an item nobody opens.
+
+  DELETED (1). `requiresOrderByForPagination` is gone from `SqlDialect` and from all four
+  implementations (H2 false, MySQL false, Postgres false, SQL Server true), plus the anonymous
+  dialect stub in `StorageCapabilityGateTest`. Deleted rather than made load-bearing, because the
+  alternative -- making `requireOrderedForPagination()` conditional on it -- would reverse conformance
+  vector P3's pinned decision. P3 refuses an unordered paginated query on EVERY engine on purpose:
+  injecting an order on the one engine that needs it hides the difference from the model and STILL
+  returns overlapping pages, trading a loud failure for a silent wrong answer. So the flag could only
+  ever have been decoration, and decoration that reads like a gate is worse than nothing -- the next
+  reader budgets for a conditional that does not exist. The engine-level FACT it carried (SQL Server
+  alone rejects the unordered query itself) is not lost: it is stated in
+  `SqlDialect.requireOrderedForPagination`'s javadoc and in `SqlServerDialect`'s class javadoc, which
+  is where a reader looks for it.
+
+  RE-FILED AS DELIBERATE (4). autoIncrementColumn, timestampColumnType, cast, returning. Each
+  allowlist entry now says WHY the answer exists before its question -- "ids are UUIDs", "types go
+  through portableColumnType()", "no site has needed the dialect to arbitrate CAST",
+  "INSERT reads generated keys through JDBC getGeneratedKeys" -- rather than the bare "no caller"
+  that reads as dead weight to the next person. They stay because the engines genuinely differ and
+  re-deriving the differences later is the expensive half.
+
+  RE-FILED AS COVERED (3). listTablesSql, listColumnsSql, listIndexesSql. Measured, not assumed:
+  `DialectConformanceTierATest` asserts their shape on all four dialects (lines 632-658) and
+  `DialectConformanceTierBTest` EXECUTES `listColumnsSql` against real engines (line 375). That is a
+  real consumer which this checker's production-only search roots structurally cannot see -- which is
+  precisely why it has to be stated in the allowlist or it looks identical to "nobody asks".
+
+  WHAT KEEPS IT HONEST. `check-dialect-methods-are-asked.py` fails on an allowlist entry for a method
+  the interface no longer declares, so the deletion could not be half-done. Verified: the checker
+  reports 41 declared methods, 930 production files searched, OK; `:kernel:compileJava`,
+  `:kernel:compileTestJava` and `:generator:compileTestJava` all compile; `DialectConformanceTierATest`
+  (all four dialects) passes.
