@@ -68,13 +68,59 @@ docker run --rm -e LOCAL_SRC=1 -v /d/WorkSpace/NPDev/NPDev_General:/work/src:ro 
    sentence names, then checks whether Java 17 / Python 3 / `pwsh` are actually present. A tool
    NPDev needs but README never named fails **here**, with a message naming the *documentation*
    defect rather than a confusing downstream error.
-2. **Quickstart** — extracts fenced code blocks under `## Quickstart`, joins backslash
-   continuations, substitutes the placeholder output path, and **runs each command in order.**
+2. **Quickstart** — extracts the commands under `## Quickstart` / `## See it run`, derives the app
+   output directory from those same commands, and **runs each one in order.**
 3. **Structural checks** — asserts that the documented sequence contains the jar-build step (W1) and
    `bootJar` (W2), independent of whether the commands happened to succeed.
 4. **Serve** — starts the built jar, polls `http://localhost:$APP_PORT/` for up to 120 s, accepts
    `200/301/302/401/403` (an auth redirect is a live app), and checks that the URL and the login-key
    location are documented (W3).
+
+### `extract_commands.py` — markdown in, commands out
+
+**Everything about how a documented command becomes a runnable one lives in one module, and that
+module has its own unit tests** (`scripts/quality/check-firstrun-extractor.py`, in
+`run-ai-knowledge-gate.ps1`). It knows about fence languages, backslash continuations, `$` prompts,
+`&&`, CRLF, and a trailing ` # comment` that must be dropped without corrupting a quoted `#`.
+
+That is not tidiness. The extraction has been wrong **three separate times**, each found only by a
+~30-minute run of this container, and each reported as a *product* failure:
+
+| # | What it did | What the run said |
+|---|---|---|
+| 1 | ran a bare `npdev` a fresh clone does not have on PATH | command not found, ×N |
+| 2 | executed an example **output** block as shell | `FAIL cmd: 14:09:47  ready in 45.2s …` |
+| 3 | took ` # back to the clone …` as part of a path | `directory does not exist: /work/src     # back to the clone …` |
+
+> **Three wrongs in three different ways means the next patch would not have been the last.** The
+> harness tests the docs; nothing tested the harness. Now something does, in milliseconds, with no
+> clone, no JDK and no Docker — and it also asserts *statically* that README still has the heading
+> the harness keys off, the rename that once produced thirteen false product failures.
+
+**Select a block by CONTENT, not by index.** Step 5 of `YOUR_FIRST_APP.md` gained a `### Let it do
+that for you` sub-section with its own `sh` fence, which pushed the closing commit block from index
+2 to index 3. The harness kept reading index 2, ran the dev-loop block under the label
+`step5-commit`, and then failed a separate check for the commit that had never happened — two reds,
+one wrong offset, neither message pointing at it.
+
+### PASS · FAIL · FAIL(accepted) · SKIP
+
+A **SKIP** is a check that could not be answered on this run, with the reason printed beside it and
+again in the summary. It is not a pass (it verified nothing) and not a failure (nothing is broken).
+
+The case it exists for: README's documented way to run the app is `npdev dev`, a **watch loop**, and
+this harness deliberately refuses to execute a command that never exits. Asserting the jar that
+deferred command would have built is asserting an artifact the harness itself prevented from being
+made. The alternatives were worse — rewriting README to suit the test is the tail wagging the dog,
+and quietly running some *other* command first means asserting a path the README never told the
+reader to take.
+
+> **A skip must never be silent.** A silent skip is how a harness stops testing without anyone
+> noticing — which is exactly what happened here when README's anchor heading moved.
+
+Product checks that merely *happened* to be hosted on the README-built app (the editor surface, the
+REG-139 draft-shape check) were moved onto the app section 4 boots with `npdev run app`, so they
+keep running whatever flow README documents this month.
 
 ---
 
@@ -162,8 +208,14 @@ docker run --rm -e LOCAL_SRC=1 -v /d/WorkSpace/NPDev/NPDev_General:/work/src:ro 
   Docker-in-Docker while exercising the same walls. Add the compose path later only if it earns it.
 - **Ubuntu only** at Level 1. macOS is not covered by anything today, including CI.
 - **Needs network** — clone plus Gradle dependency resolution.
-- **Keys off the literal heading `## Quickstart`.** If README's structure changes, the
-  `quickstart-section` check fails loudly rather than silently skipping — that is deliberate.
+- **Keys off the headings `## Quickstart` / `## See it run`.** If README's structure changes again,
+  the run stops with **exit 2** ("the harness itself could not run") rather than reporting thirteen
+  cascading product failures — that is deliberate, and it is now also checked *statically* by
+  `check-firstrun-extractor.py` so the rename is caught in the knowledge gate, in milliseconds,
+  instead of after a 30-minute container run.
+- **A `#` inside an unquoted `$( … )` or backticks is treated as a comment** by the extractor. No
+  documented command in this repo has that shape, and handling it properly means writing a real
+  shell parser. If a doc ever needs it, quote it.
 - **`LOCAL_SRC=1` on a Windows host can show a false RED unrelated to the docs under test.** The
   bind mount is read-only, so it exposes the host checkout exactly as `core.autocrlf` left it on
   disk -- if that produced CRLF line endings, `gradlew`'s `#!/bin/sh` shebang becomes `#!/bin/sh\r`,

@@ -20,6 +20,13 @@ CHECKS_RUN=0
 SRC=/work/src
 LOG=/work/harness.log
 APP_LOG=/work/app.log
+# Created up front, not on first append. `log_start=$(wc -l < "$LOG" 2>/dev/null || echo 0)` cannot
+# suppress its own failure: bash applies `< "$LOG"` BEFORE the `2>/dev/null` that was meant to hide
+# it, so a missing log made the harness print
+#     run-readme.sh: line 172: /work/harness.log: No such file or directory
+# once, at the very first command it ran -- a harness-shaped error in the middle of the product's
+# output, which is precisely the confusion this file exists to avoid causing.
+: > "$LOG"
 : "${APP_PORT:=8080}"
 
 # ---------------------------------------------------------------- output helpers
@@ -65,7 +72,41 @@ fail() {
   return 0
 }
 
+# A check that CANNOT be answered on this run, with the reason printed. Distinct from both a pass
+# (it did not verify anything) and a failure (nothing is broken).
+#
+# The case it exists for: README's documented way to run the app is `npdev dev`, a WATCH LOOP that
+# never exits, which this loop correctly defers -- and then `app-jar-exists` asserted the jar that
+# command would have produced. Three options were on the table and only one is right. Changing
+# README to document a non-watch path is the tail wagging the dog. Having the harness quietly run
+# some OTHER command first means asserting a path the README never told the reader to take. So:
+# skip, and say why. It matches what this harness already does for
+# `documents-bootJar-before-run (n/a -- the documented flow never runs a prebuilt jar)`.
+#
+# IT MUST PRINT THE REASON, AND THE SUMMARY MUST NAME IT AGAIN. A silent skip is how a harness
+# stops testing without anyone noticing -- exactly what happened to this one when README's anchor
+# heading moved and thirteen checks quietly stopped meaning anything.
+SKIPPED=0
+SKIP_LIST=""
+skip() {
+  CHECKS_RUN=$((CHECKS_RUN+1))
+  SKIPPED=$((SKIPPED+1))
+  SKIP_LIST="$SKIP_LIST
+     $1"
+  c_yel "  SKIP  $1"
+  [ $# -gt 1 ] && echo "        why: $2"
+  return 0
+}
+
 die() { c_red "HARNESS ERROR: $*"; exit 2; }
+
+# The extractor: markdown -> the commands a reader would actually type. It has its own unit tests
+# (scripts/quality/check-firstrun-extractor.py, in the AI knowledge gate) because its extraction
+# has now been wrong three different ways -- a bare `npdev`, an example OUTPUT block run as shell,
+# and a trailing ` # comment` taken as part of an argument -- and each was found only by a
+# ~30-minute container run that then blamed the product.
+EXTRACTOR=/usr/local/bin/extract_commands.py
+QUICKSTART_HEADING='^##\s+(Quickstart|See it run)'
 
 # run_cmd_list <label-prefix>
 # Executes commands read one-per-line from stdin, tracking a `cd` across lines via the
@@ -77,6 +118,12 @@ die() { c_red "HARNESS ERROR: $*"; exit 2; }
 # harness -- README's Quickstart, YOUR_FIRST_APP.md, and change-a-field's scripted regenerate
 # -- so a parsing/execution fix in one applies to all of them, per the plan's own instruction
 # not to write a second extraction.
+#
+# Every deferred command is also RECORDED (DEFERRED_COMMANDS), because a deferral is not free: it
+# means whatever that command would have produced does not exist. A check downstream of it must be
+# able to say "skipped, because its producer was deferred" instead of failing as though the product
+# were broken -- see skip() above.
+DEFERRED_COMMANDS=""
 run_cmd_list() {
   local label_prefix="$1"
   local cmd target candidate
@@ -94,6 +141,8 @@ run_cmd_list() {
         echo
         echo "  \$ $cmd"
         echo "        (long-running/foreground command -- not executed by this loop)"
+        DEFERRED_COMMANDS="$DEFERRED_COMMANDS
+$cmd"
         pass "$label_prefix (recognized, deferred): $(echo "$cmd" | cut -c1-40)"
         continue
         ;;
@@ -264,67 +313,75 @@ fi
 
 section "2. Run README's Quickstart commands, verbatim and in order"
 
-# Extract fenced code blocks that appear under the Quickstart heading, up to the
-# next '## ' heading. We run only lines that look like commands (skip comments
-# and blank lines), substituting the placeholder output path.
-# The heading this keys off is a CONTRACT with README.md, and it has already been broken once
+# The commands under README's Quickstart heading, in order. Everything about HOW they are pulled
+# out of the markdown -- which fences count, joining backslash continuations, dropping a trailing
+# ` # comment` without corrupting a quoted one, splitting `a && b`, surviving a CRLF working tree
+# -- lives in extract_commands.py, which has its own unit-test corpus. That is deliberate: this
+# extraction has been wrong three separate times, and each time a ~30-minute container run was the
+# only thing that noticed, and it blamed the product.
+#
+# The heading it keys off is a CONTRACT with README.md, and it has already been broken once
 # silently: README was rewritten (188add8, "lead with what NPDev lets you build") and `## Quickstart`
-# became `## See it run`. This awk then matched nothing, so the command list was EMPTY, so
+# became `## See it run`. The extraction then matched nothing, so the command list was EMPTY, so
 # `npdev setup` never ran, so runtimehost-libs were never staged -- and every downstream gradlew
 # bootJar / run app / dev check failed. The harness reported 14 failures as if the product were
 # broken. It was reporting its own missing anchor, thirteen times, in someone else's name.
 #
-# Two changes, because the rename was only half the problem:
+# Three responses, because the rename was only half the problem:
 #   1. Accept the headings README has actually used. A rename is a normal editorial act; silently
 #      disarming the harness must not be its consequence.
-#   2. Treat "no section found" as EXIT 2 -- "the harness itself could not run", which its own exit
-#      contract already defines -- and stop. Continuing produced thirteen cascading failures that
-#      pointed at the product instead of at this line, which is the most expensive kind of red:
-#      one that sends the reader to the wrong place.
-QUICKSTART=$(awk '
-  /^##[[:space:]]+(Quickstart|See it run)/ { inq=1; next }
-  inq && /^##[[:space:]]/                  { inq=0 }
-  inq                                       { print }
-' README.md)
+#   2. Treat "no section found" (exit 3) and "section found, no commands in it" as EXIT 2 -- "the
+#      harness itself could not run", which its own exit contract already defines -- and stop.
+#      Continuing produced thirteen cascading failures that pointed at the product instead of at
+#      this line, which is the most expensive kind of red: one that sends the reader to the wrong
+#      place.
+#   3. check-firstrun-extractor.py asserts the same anchor STATICALLY, in the AI knowledge gate,
+#      so the next rename is caught in milliseconds instead of after a container run.
+command -v python3 >/dev/null 2>&1 \
+  || die "python3 is not installed, so the harness cannot extract README's commands. Section 1's \
+prereq-present check above says whether README is at fault; either way this run cannot continue."
 
-if [ -z "$QUICKSTART" ]; then
+CMDS=$(python3 "$EXTRACTOR" --section "$QUICKSTART_HEADING" README.md)
+EXTRACT_RC=$?
+if [ "$EXTRACT_RC" -eq 3 ]; then
   c_red "  HARNESS CANNOT RUN: no runnable section found in README.md."
   echo  "    Looked for a '## Quickstart' or '## See it run' heading and found neither."
   echo  "    This is NOT a product failure -- it means the harness has no commands to follow, and"
-  echo  "    every check after this one would fail for that reason alone. Fix the heading list in"
-  echo  "    this script, or restore the section in README.md."
+  echo  "    every check after this one would fail for that reason alone. Fix QUICKSTART_HEADING in"
+  echo  "    this script (and in scripts/quality/check-firstrun-extractor.py, which pins the same"
+  echo  "    regex), or restore the section in README.md."
+  exit 2
+elif [ "$EXTRACT_RC" -ne 0 ]; then
+  die "the command extractor failed (exit $EXTRACT_RC) -- see the error above"
+elif [ -z "$CMDS" ]; then
+  c_red "  HARNESS CANNOT RUN: README's quickstart section contains no runnable commands."
+  echo  "    The heading was found, but it holds no \`\`\`sh/bash/shell fence. Same consequence as a"
+  echo  "    missing heading: nothing to follow, and every check after this one red for that reason."
   exit 2
 fi
 pass "quickstart-section"
 
-# Collect commands from fenced blocks, joining backslash continuations. LOCAL_SRC mode (see
-# harness/README.md's own documented "pre-merge" use case) mounts whatever line endings the
-# HOST checkout has -- on Windows with core.autocrlf, that is CRLF, even though the repository's
-# own git blob is LF (confirmed: `git show HEAD:README.md` has none). A trailing \r left on an
-# extracted line survives as a literal, invisible character on the last token of that line (a
-# file path, most often), producing a baffling "not found" for a path that is visibly correct in
-# the log. Strip it here rather than depending on every host's checkout matching git's own
-# normalization, since LOCAL_SRC exists specifically to test an UNCOMMITTED tree.
-# Only ```sh/```bash fences are COMMANDS. Toggling on any fence (`infence = !infence`) was safe
-# while the section held exactly one block; the current section also shows an illustrative dev-loop
-# LOG, and running that as shell produced failures like
-#     FAIL  cmd: 14:09:47  ready in 45.2s   http://localhost:8080
-# -- the harness executing example output and reporting the product broken when it could not.
-# A latent bug, not a new one: it needed a second fenced block to become visible.
-CMDS=$(printf '%s\n' "$QUICKSTART" | tr -d '\r' | awk '
-  /^```/ {
-    if (infence) { infence = 0 }
-    else { lang = substr($0, 4); gsub(/[[:space:]]/, "", lang);
-           infence = (lang == "sh" || lang == "bash" || lang == "shell") }
-    next
-  }
-  infence { print }
-' | sed 's/[[:space:]]*#.*$//' | grep -v '^[[:space:]]*$' \
-  | sed ':a;/\\$/{N;s/\\\n[[:space:]]*/ /;ba}' \
-  | sed 's/ && /\n/g')
-
-OUT=/work/my-first-app
-CMDS=$(printf '%s\n' "$CMDS" | sed "s|/path/outside/this/repo/canonical-demo-app|$OUT|g")
+# Where README's OWN flow puts the app. Derived from the commands just extracted, never hardcoded.
+# The previous literal (/work/my-first-app, substituted for a `/path/outside/this/repo/...`
+# placeholder README no longer contains) quietly stopped pointing at anything the documented flow
+# produces -- and section 3's jar check then failed for a reason that had nothing to do with the
+# product. Same failure mode as the heading rename, one layer down.
+#
+# Two sources, in the order a reader would take them: an explicit `--output`, else `npdev init
+# <dir>`, whose app output defaults to `../<dir>-app` (npdev_cli._infer_run_app_paths, and
+# dev_loop's `--output` help text says the same). `realpath -m` normalises `..` without requiring
+# the directory to exist yet -- at this point in the run it does not.
+OUT=$(printf '%s\n' "$CMDS" | sed -n 's|.*--output[[:space:]]\{1,\}\([^[:space:]]\{1,\}\).*|\1|p' | head -1)
+if [ -z "$OUT" ]; then
+  INIT_TARGET=$(printf '%s\n' "$CMDS" | sed -n 's|^\./npdev init[[:space:]]\{1,\}\([^[:space:]]\{1,\}\).*|\1|p' | head -1)
+  if [ -n "$INIT_TARGET" ]; then
+    case "$INIT_TARGET" in /*) OUT="$INIT_TARGET-app" ;;
+                            *) OUT="$(realpath -m "$SRC/$INIT_TARGET")-app" ;; esac
+  fi
+else
+  case "$OUT" in /*) ;; *) OUT=$(realpath -m "$SRC/$OUT") ;; esac
+fi
+echo "  README's app output resolves to: ${OUT:-<README names none>}"
 
 echo "  commands found:"
 printf '%s\n' "$CMDS" | sed 's/^/    $ /'
@@ -372,15 +429,120 @@ else
        "insert './gradlew bootJar' before any run instruction"
 fi
 
+# probe_editor_surface <base-url>
+# The three product checks that need a LIVE app: the editor screen every generated app ships, every
+# chunk the generator claims to have copied, and the JSON shape the editor's default tab renders
+# from. Extracted into a function because their host moved: they used to hang off the app README's
+# quickstart built, and README's documented run path is now a watch loop this harness defers. They
+# are product checks, not documentation checks -- so they run against the app section 4 boots, which
+# does not depend on which flow README happens to document this month.
+probe_editor_surface() {
+  local base="$1"
+
+  # editor/ANALYSIS.md E4: the editor ships inside every generated app at /npdev-ui-react/ --
+  # a broken screen there is a first-impression defect (the Manager's own hand-off is "open
+  # your running app"), so prove it is actually reachable rather than trusting that it compiled.
+  local editor_html=/work/editor-index.html editor_status
+  # -L: /npdev-ui-react/ 302-redirects to /npdev-ui-react/index.html (UiRedirectController).
+  editor_status=$(curl -sSL -o "$editor_html" -w '%{http_code}' "$base/npdev-ui-react/" 2>/dev/null)
+  if [ "$editor_status" = "200" ] && grep -q 'assets/app\.js' "$editor_html"; then
+    pass "editor responds at /npdev-ui-react/ and references its own bundle"
+  else
+    fail "editor responds at /npdev-ui-react/ and references its own bundle" \
+         "HTTP status was '$editor_status', or the page did not reference assets/app.js" \
+         "see $editor_html"
+  fi
+
+  # A 200 on index.html proves nothing about the OTHER shipped files -- Vite code-splits into a
+  # variable number of chunks (e.g. AuthoringApp.js, ReactWorkbenchApp.js) that index.html never
+  # references directly (they're lazy-loaded from app.js only once a user opens that surface), so
+  # a stale/incomplete generator copy step can drop one and still pass the check above. Read the
+  # manifest the SOURCE checkout says it shipped (written by build-templates.ps1, consumed by
+  # RuntimeApiEmitter.emitOptionalReactUiAssets()) and probe every one of those files for real,
+  # rather than trusting index.html's own text.
+  local editor_manifest="$SRC/NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json"
+  local asset asset_status asset_failures
+  if [ -f "$editor_manifest" ]; then
+    asset_failures=""
+    for asset in $(python3 -c "import json,sys; print('\n'.join(json.load(open(sys.argv[1]))))" "$editor_manifest"); do
+      asset_status=$(curl -sS -o /dev/null -w '%{http_code}' "$base/npdev-ui-react/$asset" 2>/dev/null)
+      if [ "$asset_status" != "200" ]; then
+        asset_failures="$asset_failures $asset=$asset_status"
+      fi
+    done
+    if [ -z "$asset_failures" ]; then
+      pass "editor: every manifested asset resolves (not just index.html)"
+    else
+      fail "editor: every manifested asset resolves (not just index.html)" \
+           "non-200 for:$asset_failures" \
+           "check RuntimeApiEmitter.emitOptionalReactUiAssets() actually copied everything the manifest lists"
+    fi
+  else
+    fail "editor: every manifested asset resolves (not just index.html)" \
+         "no manifest at $editor_manifest -- cannot know what the build actually shipped"
+  fi
+
+  # REG-139: a 200 on index.html AND every manifested chunk resolving is not proof the page
+  # rendered anything -- the model editor's default tab crashed on a genuinely fresh boot because
+  # the draft endpoint served the wrong SHAPE (the compiled model verbatim, no `entities` key at
+  # all), which neither of the two checks above can see since they never look at the app's own
+  # JSON responses. Hit the same endpoint the default tab's own first render depends on and check
+  # the shape directly -- this is the harness-level check REG-139 says was missing.
+  local editor_draft
+  editor_draft=$(curl -sS "$base/api/admin/model/editor/draft" -H 'X-Api-Key: dev-key' 2>/dev/null)
+  if printf '%s' "$editor_draft" | python3 -c "
+import json, sys
+try:
+    body = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if isinstance(body, dict) and isinstance(body.get('entities'), list) else 1)
+" 2>/dev/null; then
+    pass "editor: model editor draft endpoint returns a real ModelEditorDraft shape (entities[]), not the compiled model verbatim"
+  else
+    fail "editor: model editor draft endpoint returns a real ModelEditorDraft shape (entities[]), not the compiled model verbatim" \
+         "response was not a JSON object with an 'entities' array -- the default tab will crash on a fresh boot (REG-139)" \
+         "body: $(printf '%s' "$editor_draft" | tail -c 300)"
+  fi
+}
+
 # ---------------------------------------------------------------- 3. serve
 
 section "3. Does the app actually run, on the documented port?"
 
-JAR=$(find "$OUT" -name '*.jar' -path '*build/libs*' 2>/dev/null | head -1)
+# W3: is the login path documented? Pure documentation greps -- they used to sit INSIDE the
+# jar-exists branch below, so a flow that produced no jar took them down with it and the harness
+# stopped asking the question entirely. Nothing about them needs a running app.
+if grep -rq 'SUPER_USER_KEY' README.md docs/GETTING_STARTED.md 2>/dev/null; then
+  pass "documents-login-key"
+else
+  fail "documents-login-key" \
+       "neither README nor GETTING_STARTED mentions SUPER_USER_KEY.txt -- the user has a running app and no way in (W3)" \
+       "print the URL and key location at the end of 'generate app', and document both"
+fi
 
-if [ -z "$JAR" ]; then
+if grep -rqE 'localhost:[0-9]{4}' README.md docs/GETTING_STARTED.md 2>/dev/null; then
+  pass "documents-app-url"
+else
+  fail "documents-app-url" "no localhost URL documented" "state http://localhost:$APP_PORT"
+fi
+
+JAR=""
+[ -n "$OUT" ] && JAR=$(find "$OUT" -name '*.jar' -path '*build/libs*' 2>/dev/null | head -1)
+
+if [ -z "$JAR" ] && [ -n "$DEFERRED_COMMANDS" ]; then
+  # F1 (FOUR_AND_EXTERNAL.md A.2). README's documented way to run the app is `npdev dev`, a watch
+  # loop -- and this harness correctly refuses to execute a command that never exits. Asserting the
+  # jar that deferred command would have built is asserting an artifact the harness itself prevented
+  # from being made; it is not a product defect, and the very next section proves the product builds
+  # and boots. Skipped WITH THE REASON PRINTED, not silently, and named again in the summary.
+  skip "app-jar-exists" \
+       "the documented flow's app-producing command was deferred (it never exits, so this loop cannot run it):$(printf '%s' "$DEFERRED_COMMANDS" | tr '\n' ' ') -- section 4 proves generate+build+boot for real, and section 9 exercises the watch loop itself with its own timeout"
+  skip "app-responds on :$APP_PORT" \
+       "no jar to start (see app-jar-exists just above)"
+elif [ -z "$JAR" ]; then
   fail "app-jar-exists" \
-       "no build/libs/*.jar under $OUT -- nothing to run" \
+       "no build/libs/*.jar under ${OUT:-<README names no app output directory>} -- nothing to run, and no documented command was deferred that would explain it" \
        "consequence of W1/W2 above"
 else
   pass "app-jar-exists ($(basename "$JAR"))"
@@ -400,90 +562,11 @@ else
 
   if [ "$UP" = "1" ]; then
     pass "app-responds on :$APP_PORT"
-
-    # editor/ANALYSIS.md E4: the editor ships inside every generated app at /npdev-ui-react/ --
-    # a broken screen there is a first-impression defect (the Manager's own hand-off is "open
-    # your running app"), so prove it is actually reachable rather than trusting that it compiled.
-    EDITOR_HTML=/work/editor-index.html
-    # -L: /npdev-ui-react/ 302-redirects to /npdev-ui-react/index.html (UiRedirectController).
-    EDITOR_STATUS=$(curl -sSL -o "$EDITOR_HTML" -w '%{http_code}' "http://localhost:$APP_PORT/npdev-ui-react/" 2>/dev/null)
-    if [ "$EDITOR_STATUS" = "200" ] && grep -q 'assets/app\.js' "$EDITOR_HTML"; then
-      pass "editor responds at /npdev-ui-react/ and references its own bundle"
-    else
-      fail "editor responds at /npdev-ui-react/ and references its own bundle" \
-           "HTTP status was '$EDITOR_STATUS', or the page did not reference assets/app.js" \
-           "see $EDITOR_HTML"
-    fi
-
-    # A 200 on index.html proves nothing about the OTHER shipped files -- Vite code-splits into a
-    # variable number of chunks (e.g. AuthoringApp.js, ReactWorkbenchApp.js) that index.html never
-    # references directly (they're lazy-loaded from app.js only once a user opens that surface), so
-    # a stale/incomplete generator copy step can drop one and still pass the check above. Read the
-    # manifest the SOURCE checkout says it shipped (written by build-templates.ps1, consumed by
-    # RuntimeApiEmitter.emitOptionalReactUiAssets()) and probe every one of those files for real,
-    # rather than trusting index.html's own text.
-    EDITOR_MANIFEST="$SRC/NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json"
-    if [ -f "$EDITOR_MANIFEST" ]; then
-      EDITOR_ASSET_FAILURES=""
-      for asset in $(python3 -c "import json,sys; print('\n'.join(json.load(open(sys.argv[1]))))" "$EDITOR_MANIFEST"); do
-        ASSET_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' "http://localhost:$APP_PORT/npdev-ui-react/$asset" 2>/dev/null)
-        if [ "$ASSET_STATUS" != "200" ]; then
-          EDITOR_ASSET_FAILURES="$EDITOR_ASSET_FAILURES $asset=$ASSET_STATUS"
-        fi
-      done
-      if [ -z "$EDITOR_ASSET_FAILURES" ]; then
-        pass "editor: every manifested asset resolves (not just index.html)"
-      else
-        fail "editor: every manifested asset resolves (not just index.html)" \
-             "non-200 for:$EDITOR_ASSET_FAILURES" \
-             "check RuntimeApiEmitter.emitOptionalReactUiAssets() actually copied everything the manifest lists"
-      fi
-    else
-      fail "editor: every manifested asset resolves (not just index.html)" \
-           "no manifest at $EDITOR_MANIFEST -- cannot know what the build actually shipped"
-    fi
-
-    # REG-139: a 200 on index.html AND every manifested chunk resolving is not proof the page
-    # rendered anything -- the model editor's default tab crashed on a genuinely fresh boot because
-    # the draft endpoint served the wrong SHAPE (the compiled model verbatim, no `entities` key at
-    # all), which neither of the two checks above can see since they never look at the app's own
-    # JSON responses. Hit the same endpoint the default tab's own first render depends on and check
-    # the shape directly -- this is the harness-level check REG-139 says was missing.
-    EDITOR_DRAFT=$(curl -sS "http://localhost:$APP_PORT/api/admin/model/editor/draft" -H 'X-Api-Key: dev-key' 2>/dev/null)
-    if printf '%s' "$EDITOR_DRAFT" | python3 -c "
-import json, sys
-try:
-    body = json.load(sys.stdin)
-except Exception:
-    sys.exit(1)
-sys.exit(0 if isinstance(body, dict) and isinstance(body.get('entities'), list) else 1)
-" 2>/dev/null; then
-      pass "editor: model editor draft endpoint returns a real ModelEditorDraft shape (entities[]), not the compiled model verbatim"
-    else
-      fail "editor: model editor draft endpoint returns a real ModelEditorDraft shape (entities[]), not the compiled model verbatim" \
-           "response was not a JSON object with an 'entities' array -- the default tab will crash on a fresh boot (REG-139)" \
-           "body: $(printf '%s' "$EDITOR_DRAFT" | tail -c 300)"
-    fi
   else
     fail "app-responds on :$APP_PORT" \
          "no HTTP response within 120s" \
          "check $APP_LOG; also confirm the documented port matches the app's actual port"
     tail -15 "$APP_LOG" | sed 's/^/          | /'
-  fi
-
-  # W3: is the login path documented, and does it materialise?
-  if grep -rq 'SUPER_USER_KEY' README.md docs/GETTING_STARTED.md 2>/dev/null; then
-    pass "documents-login-key"
-  else
-    fail "documents-login-key" \
-         "neither README nor GETTING_STARTED mentions SUPER_USER_KEY.txt -- the user has a running app and no way in (W3)" \
-         "print the URL and key location at the end of 'generate app', and document both"
-  fi
-
-  if grep -rqE 'localhost:[0-9]{4}' README.md docs/GETTING_STARTED.md 2>/dev/null; then
-    pass "documents-app-url"
-  else
-    fail "documents-app-url" "no localhost URL documented" "state http://localhost:$APP_PORT"
   fi
 
   kill "$APP_PID" 2>/dev/null; wait "$APP_PID" 2>/dev/null
@@ -498,14 +581,25 @@ section "4. Does 'npdev run app' work as a one-shot command? (REG-131)"
 # dev-machine path can break invisibly for everyone but its author (REG-131: NPDEV_RUNTIMEHOST_LIBS_DIR
 # used to default to a literal D:/WorkSpace/... string). A foreign machine is the only thing that
 # can prove this, which is why it belongs in this harness rather than only in a unit test.
+#
+# --timeout 600, not 300. This is the FIRST full Gradle build of a generated app in this container:
+# empty dependency cache, no daemon, everything resolved from the network. Every later section
+# (5, 6, 7, 9) builds against the cache this one fills, so 300 s was the tightest budget in the whole
+# harness applied to its single heaviest step. Measured failing at 300 with
+#     "logExcerpt": "BUILD exceeded the overall --timeout budget."
+# on a machine that was also running Gradle elsewhere -- and a timeout reported as
+# `npdev run app ... FAILED` reads as a product defect, which is exactly the misdirection the
+# canary's own -CanaryBootTimeoutSeconds was raised to 300 to stop (CLAUDE.md records that episode:
+# two false REDs while health, smoke and acceptance all passed at a longer timeout).
 RUN_APP_OUT=/work/my-run-app
 RUN_APP_PORT=8081
 cd "$SRC" || die "cannot cd to $SRC for section 4"
 if RUN_APP_JSON=$(./npdev run app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json \
     --config NPDevContract/dsl/resources/Models/canonical-demo/config.json \
-    --output "$RUN_APP_OUT" --port "$RUN_APP_PORT" --timeout 300 2>>"$LOG"); then
+    --output "$RUN_APP_OUT" --port "$RUN_APP_PORT" --timeout 600 2>>"$LOG"); then
   if printf '%s' "$RUN_APP_JSON" | grep -q '"ok": true'; then
     pass "npdev run app (one-shot generate+build+boot) succeeds"
+    RUN_APP_OK=1
   else
     fail "npdev run app (one-shot generate+build+boot) succeeds" \
          "exited 0 but reported ok:false; tail of its own JSON below" \
@@ -520,6 +614,20 @@ else
   tail -12 "$LOG" | sed 's/^/          | /'
 fi
 
+# `npdev run app` leaves the app RUNNING on purpose (it returns at READY -- see the
+# `_RUN_APP_CHILD_PROCESS = None` comment in npdev_cli._run_app), so this is the harness's one
+# reliable live app, whatever README currently documents. The editor/REG-139 probes ride on it.
+if [ "${RUN_APP_OK:-0}" = "1" ]; then
+  probe_editor_surface "http://localhost:$RUN_APP_PORT"
+else
+  skip "editor responds at /npdev-ui-react/ and references its own bundle" \
+       "npdev run app did not reach READY, so there is no live app to probe (see the failure above)"
+  skip "editor: every manifested asset resolves (not just index.html)" \
+       "npdev run app did not reach READY, so there is no live app to probe"
+  skip "editor: model editor draft endpoint returns a real ModelEditorDraft shape (entities[])" \
+       "npdev run app did not reach READY, so there is no live app to probe"
+fi
+
 # ---------------------------------------------------------------- 5. change-a-field
 
 section "5. change-a-field -- prove the product, not just the install (I2)"
@@ -528,8 +636,17 @@ section "5. change-a-field -- prove the product, not just the install (I2)"
 # "the field the user added is actually there" is. So this asserts on the running API's own
 # response, not on a log line saying a command exited zero.
 CAF_DIR=/work/change-a-field
-CAF_OUT="$OUT"          # the SAME --output section 2/3 already generated -- proves in-place
-                          # schema evolution, not a fresh directory that would prove nothing
+# The SAME --output an earlier section already generated -- the point is IN-PLACE schema evolution
+# over an existing app and its existing database, not a fresh directory that would prove nothing.
+#
+# That prior app is section 4's, not section 2/3's. This used to point at README's quickstart
+# output, which was right while README documented generating the canonical-demo app into an
+# explicit `--output`; README now documents `npdev init` + `npdev dev`, a watch loop this harness
+# defers, so nothing was ever produced there and the whole section died on its own precondition.
+# Section 4 generates the same canonical-demo model+config into $RUN_APP_OUT and boots it, so it is
+# the same claim against an app that actually exists -- and it does not depend on which flow README
+# documents this month, which is exactly the coupling that broke it.
+CAF_OUT="$RUN_APP_OUT"
 CAF_CONCEPT="Provider"
 CAF_FIELD_JSON='{"name": "phone", "type": "string", "ui": {"label": "Phone"}}'
 CAF_PORT=8083
@@ -538,10 +655,17 @@ cd "$SRC" || die "cannot cd to $SRC for section 5"
 
 if [ ! -d "$CAF_OUT" ]; then
   fail "change-a-field: prior app exists at $CAF_OUT" \
-       "section 2/3 above did not produce $CAF_OUT -- this check regenerates against the SAME --output on purpose (the plan's own step 1: 'generate + run the demo app (already covered)')" \
-       "check sections 2/3 above"
+       "section 4 above did not produce $CAF_OUT -- this check regenerates against the SAME --output on purpose (the plan's own step 1: 'generate + run the demo app (already covered)')" \
+       "check section 4 above"
 else
   pass "change-a-field: prior app exists at $CAF_OUT"
+
+  # Section 4 deliberately left that app running. Regenerating and rebuilding underneath a live JVM
+  # would race it for the jar and for the H2 file lock, so stop it first -- and give it a moment to
+  # release both. Same technique section 7 uses for its own leftover app.
+  echo "  stopping the app section 4 left running on :$RUN_APP_PORT"
+  pkill -f "$RUN_APP_OUT" 2>/dev/null
+  sleep 5
 
   rm -rf "$CAF_DIR"; mkdir -p "$CAF_DIR"
   cp NPDevContract/dsl/resources/Models/canonical-demo/model.json  "$CAF_DIR/model.json"
@@ -692,6 +816,30 @@ step = next((s for s in steps if s['n'] == $1), None)
 print(step['blocks'][$2]['body'] if step and len(step['blocks']) > $2 else '', end='')
 "; }
 
+    # yfa_block_matching <step-n> <needle> -- the first sh block in that step whose body contains
+    # <needle>. Positional indexing is fine for a block whose position IS the point ("step 2's json
+    # fragment"); it is NOT fine for a block identified by what it does, and step 5 proved why. A
+    # `### Let it do that for you` sub-section was added to step 5 with its own ```sh fence, which
+    # pushed the closing commit block from index 2 to index 3. The harness went on reading index 2,
+    # ran the dev-loop block under the label "step5-commit", and then failed a SEPARATE check for
+    # the commit that had, of course, never happened -- two reds, one wrong offset, and neither
+    # message pointing at it. Selecting by content is stable across an editorial insertion, which is
+    # a normal thing for a tutorial to receive.
+    yfa_block_matching() { python3 -c "
+import json, sys
+steps = json.load(open('/work/yfa-steps.json'))
+step = next((s for s in steps if s['n'] == $1), None)
+needle = sys.argv[1]
+blocks = [b for b in (step or {}).get('blocks', []) if b['lang'] == 'sh' and needle in b['body']]
+print(blocks[0]['body'] if blocks else '', end='')
+" "$2"; }
+
+    # Every YFA block goes through the SAME extractor README's quickstart uses -- one place that
+    # knows about `&&`, backslash continuations, `$` prompts and trailing comments. The trailing
+    # comment is not hypothetical here: step 5's `cd ../NPDevGeneral     # back to the clone ...`
+    # was run verbatim, comment and all, and reported as "directory does not exist".
+    normalize() { python3 "$EXTRACTOR" --normalize-block; }
+
     # Step 1 (sh): `npdev init ../my-library` -- one command now does what used to be four
     # separate steps (mkdir+cp, write db.definition.json, git init+add+commit): I3 built `npdev
     # init` precisely so this doc could stop teaching those as separate manual steps. Runs from
@@ -701,7 +849,7 @@ print(step['blocks'][$2]['body'] if step and len(step['blocks']) > $2 else '', e
     # undercounting every check inside it. `<<<` redirects stdin without forking, so counters
     # and CURRENT_DIR both persist correctly.)
     CURRENT_DIR="$SRC"
-    S1=$(yfa_block 1 0 | subst | sed 's/ && /\n/g')
+    S1=$(yfa_block 1 0 | subst | normalize)
     if [ -n "$S1" ]; then run_cmd_list "your-first-app step1" <<< "$S1"
     else fail "your-first-app step1: block present" "no sh block found under step 1"; fi
 
@@ -745,13 +893,13 @@ with open('$YFA_WORK/model.json', 'w', encoding='utf-8') as f:
     fi
 
     # Step 3 (sh): cd back to repo root + validate
-    S3=$(yfa_block 3 0 | subst | sed 's/ && /\n/g')
+    S3=$(yfa_block 3 0 | subst | normalize)
     CURRENT_DIR="$SRC"
     if [ -n "$S3" ]; then run_cmd_list "your-first-app step3" <<< "$S3"
     else fail "your-first-app step3: block present" "no sh block found under step 3"; fi
 
     # Step 4 (sh): generate, cd, gradlew bootJar, java -jar (deferred by run_cmd_list)
-    S4=$(yfa_block 4 0 | subst | sed 's/ && /\n/g')
+    S4=$(yfa_block 4 0 | subst | normalize)
     CURRENT_DIR="$SRC"
     if [ -n "$S4" ]; then run_cmd_list "your-first-app step4" <<< "$S4"
     else fail "your-first-app step4: block present" "no sh block found under step 4"; fi
@@ -800,7 +948,7 @@ with open('$YFA_WORK/model.json', 'w', encoding='utf-8') as f:
       fail "your-first-app step5: publishedYear field injected into Book" "see $LOG"
     fi
 
-    S5=$(yfa_block 5 1 | subst | sed 's/ && /\n/g')
+    S5=$(yfa_block 5 1 | subst | normalize)
     CURRENT_DIR="$SRC"
     if [ -n "$S5" ]; then run_cmd_list "your-first-app step5" <<< "$S5"
     else fail "your-first-app step5: sh block present" "no second (sh) block found under step 5"; fi
@@ -852,10 +1000,11 @@ with open('$YFA_WORK/model.json', 'w', encoding='utf-8') as f:
     # commit happens BEFORE any edit, so both the concepts-replacement and publishedYear are
     # tracked modifications by the time this runs) actually produces a second commit, not a
     # silently-empty `git commit -am`.
-    S5_COMMIT=$(yfa_block 5 2 | subst | sed 's/ && /\n/g')
+    S5_COMMIT=$(yfa_block_matching 5 "git commit" | subst | normalize)
     CURRENT_DIR="$SRC"
     if [ -n "$S5_COMMIT" ]; then run_cmd_list "your-first-app step5-commit" <<< "$S5_COMMIT"
-    else fail "your-first-app step5: closing commit block present" "no third block found under step 5"; fi
+    else fail "your-first-app step5: closing commit block present" \
+              "no sh block under step 5 contains 'git commit' -- the doc no longer closes the loop by committing, or the block moved out of step 5"; fi
 
     if [ "$(git -C "$YFA_WORK" log --oneline 2>>"$LOG" | wc -l)" -ge 2 ]; then
       pass "your-first-app step5: git commit -am actually committed the tracked changes"
@@ -1132,7 +1281,18 @@ echo "  failures   : $FAILURES"
 if [ "$ACCEPTED_FAILURES" -gt 0 ]; then
   echo "  accepted   : $ACCEPTED_FAILURES (declared in accepted-failures.json)"
 fi
+if [ "$SKIPPED" -gt 0 ]; then
+  echo "  skipped    : $SKIPPED (could not be answered on this run -- each named below)"
+fi
 echo
+
+if [ "$SKIPPED" -gt 0 ]; then
+  # Named at the bottom, where a reader skimming for a verdict will see them. A skip that only
+  # appears mid-scroll is halfway to a silent skip, and a silent skip is how this harness stopped
+  # testing anything at all the last time its README anchor moved.
+  c_yel "  SKIPPED ($SKIPPED) -- verified nothing; the reason is printed beside each one above:$SKIP_LIST"
+  echo
+fi
 
 if [ "$FAILURES" -eq 0 ]; then
   if [ "$ACCEPTED_FAILURES" -gt 0 ]; then
@@ -1148,9 +1308,11 @@ fi
 
 c_red "  RED -- $FAILURES documented step(s) do not work on a clean machine."
 echo
-c_yel "  Before the documentation fixes, FOUR failures are expected:"
+c_yel "  Before the documentation fixes this harness was written against, FOUR failures were expected:"
 echo "     prereq-present (python3 / pwsh) · documents-building-platform-jars"
-echo "     documents-bootJar-before-run    · app-jar-exists / documents-login-key"
+echo "     documents-bootJar-before-run    · documents-login-key"
+echo "  (app-jar-exists was the fifth. It is now a SKIP, not a failure, whenever README's own"
+echo "   app-producing command is a watch loop this harness defers -- see the skip's printed reason.)"
 echo
 c_yel "  A harness that is green on its first run is not testing anything."
 exit 1

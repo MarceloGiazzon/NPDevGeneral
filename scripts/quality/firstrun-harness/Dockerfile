@@ -33,6 +33,11 @@ RUN apt-get update \
 WORKDIR /work
 COPY run-readme.sh /usr/local/bin/run-readme.sh
 COPY inject_field.py /usr/local/bin/inject_field.py
+# The command extractor -- the one place that knows how to turn documented markdown into commands.
+# It has its own unit-test corpus (scripts/quality/check-firstrun-extractor.py, in the AI knowledge
+# gate) because its extraction has been wrong three separate times and each was found only by a
+# ~30-minute run of THIS container, which then reported the defect against the product.
+COPY extract_commands.py /usr/local/bin/extract_commands.py
 # Beside the script, because run-readme.sh reads it via `dirname $0`. Without this the harness
 # silently treats every failure as unaccepted -- which is the safe direction, but the run would go
 # red for a case that was examined and written down.

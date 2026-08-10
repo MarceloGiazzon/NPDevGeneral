@@ -1,0 +1,104 @@
+id: STOR-14
+title: >-
+  No way to say "this database is not mine to manage" -- the `_ops` toolbox assumes it provisioned
+  every server engine, and `Reset-Environment.ps1` recursively deletes a data root that may be the
+  user's own
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-09
+verification: NOT_VERIFIED
+surface: generator/dbconfig
+source: >-
+  storage/stabilize/FOUR_AND_EXTERNAL.md Part B, filed under its own instruction ("Do not implement
+  the flag before the round -- file it as a ledger item"). The gap was first NAMED in code, not in a
+  plan: OperationalRunbookEmitter.java's own comment beside the port-collision probe says "NPDev has
+  no EXTERNAL engine kind yet -- a mode where the toolbox knows the server is not its to manage and
+  disables Start/Stop/Reset". That comment chose to DETECT rather than solve, and this is the item
+  it deferred to.
+detail: >-
+  A machine that already runs PostgreSQL is the likely case, not the exotic one -- people pick the
+  engine they already use. NPDev has no way to be told so. Every server engine is assumed to be
+  NPDev's own container, on all five `_ops` operations.
+
+  THE DESTRUCTIVE HALF, and the reason this is HIGH rather than MEDIUM. `Reset-Environment.ps1`
+  (OperationalRunbookEmitter.resetEnvironmentScript, ~lines 535-541) has two halves, and only the
+  first is engine-aware:
+
+      if ($plan.profile.kind -eq 'server') { ... docker rm -f $plan.containerName ... }
+      if ($plan.physicalDatabase -and (Test-Path -LiteralPath $plan.resolvedDataRoot)) {
+        Remove-Item -LiteralPath $plan.resolvedDataRoot -Recurse -Force
+      }
+
+  The recursive delete is guarded by `physicalDatabase` and existence -- never by whose database it
+  is. So the obvious partial implementation, "make the Docker branch a no-op when the server is
+  external", leaves a `Remove-Item -Recurse -Force` pointed at a path the user may have set to
+  something real. That is the difference between an incomplete feature and a destructive one, and it
+  is the same shape as QUAL-3: an operation that looks aimed at NPDev's own resources and is not.
+
+  BOTH scripts must HARD-REFUSE AND RETURN -- not skip a branch and continue.
+
+  WHOEVER IMPLEMENTS THIS WRITES THE REFUSAL TEST FIRST: an external app whose `resolvedDataRoot`
+  points at a directory containing a canary file; reset -> refuses, canary intact. RED-prove it
+  against today's code, where it deletes the canary.
+
+  "ENSURE THE DATABASE EXISTS" LOSES ITS CLIENT, AND THE ANSWER IS TO STOP TRYING. Create-Environment
+  guarantees a client today only because it runs `docker exec <container> createdb` -- the client
+  lives in the container. A server NPDev did not start guarantees nothing, and on Windows `psql` /
+  `mysql` / `sqlcmd` are rarely on PATH. In external mode Create becomes VERIFY: connect over JDBC
+  with the driver the app already ships and report
+
+      database 'myapp' does not exist on localhost:5432 -- create it and re-run
+
+  Honest, no new dependency, and the same thing `npdev db test-connection` already does.
+
+  THE PARITY GATE STAYS GREEN FOR FREE, BUT ONLY IF THE BRANCH READS A PLAN FIELD. The five `_ops`
+  operations are emitted BYTE-IDENTICAL for Postgres, MySQL and SQL Server (E15), and
+  `run-engine-toolbox-parity.py` / `check-engine-parity.py` enforce it. A data-driven
+  `if ($plan.externallyProvisioned)` is byte-identical across all three; a hand-written
+  `-eq 'Postgres'` fails the parity gate immediately. The architecture pushes toward the right fix --
+  a plan field is REQUIRED here, not merely preferred, and an implementer who does not know that
+  will waste a cycle discovering it.
+
+  WHERE IT IS MODELLED. Not in `engine-profiles.json`. External-ness is a property of THIS APP'S
+  DEPLOYMENT, not of the engine -- the same Postgres is Docker on a laptop and a managed instance in
+  staging. Putting it in the profile model states it in the wrong place, and the profile model
+  should not be touched at all.
+
+  TWO ESTIMATE CORRECTIONS, measured against the tree at ac0ccc35 rather than assumed, because the
+  estimate everyone reaches for is wrong in both directions:
+
+    * NO FOUR-COPY MIRROR TAX. `model.schema.json`'s four-place mirror rule (CLAUDE.md) does NOT
+      apply. `schemas/ai/user-db-definition.schema.json` exists in exactly ONE place.
+    * BUT THERE **IS** A SCHEMA, and FOUR_AND_EXTERNAL.md's Part B.1 is wrong to say there is not.
+      That file has `"additionalProperties": false` at the root AND inside `database`, so a new
+      field is REJECTED before the loader ever sees it, and `NPDevCli/tests/test_engines.py` asserts
+      every scaffolded definition validates against it. One copy to edit, not zero and not four.
+
+  ALREADY EXISTS AND MUST NOT BE DUPLICATED: `schemaLifecycle.ownership: ExternallyManaged` (REG-7.1)
+  already declares that NPDev issues no schema DDL against this database, and
+  UserDatabaseDefinitionLoader enforces it (KeepExistingIfCompatible + no destructive recreate).
+  That is a statement about the SCHEMA; this item is about the SERVER. They are genuinely different
+  -- an NPDev-provisioned container can hold an externally-managed schema -- but an implementer who
+  does not notice the existing field will add a second overlapping one. Decide explicitly whether
+  the new flag lives beside it or subsumes it.
+remediation: >-
+  Five places, in order:
+
+    1. `db.definition.json` record field (name it for the deployment, e.g.
+       `database.externallyProvisioned: true`), plus `schemas/ai/user-db-definition.schema.json` --
+       ONE copy, but `additionalProperties: false` makes it mandatory.
+    2. `UserDatabaseDefinitionLoader` read + validation: refuse the flag on an EMBEDDED engine
+       (InMemory/H2Local have no server to be external), at compile time, at the point of choice.
+    3. `GeneratedDatabasePlan` field + `OperationalRunbookEmitter`'s plan-JSON writer, so the scripts
+       can branch on data rather than on the engine name (see the parity note above).
+    4. The five `_ops` scripts. Create -> VERIFY over JDBC, never create. Start/Stop -> refuse and
+       return, naming the server as the user's. Status -> report reachability, not container state.
+       Reset -> REFUSE AND RETURN BEFORE the recursive delete, which is the centrepiece.
+    5. `npdev doctor` -- once the flag exists, `docker-present` should key on it rather than only on
+       the port probe added in this same round. The probe is the right answer while there is nothing
+       to declare; a declaration beats an inference the moment one is available.
+
+  Definition of done: the refusal test above, written FIRST and RED-proven; the parity gate still
+  green (byte-identical across the three server engines); and `npdev db test-connection` unchanged,
+  since it is already the honest answer this mode leans on.
