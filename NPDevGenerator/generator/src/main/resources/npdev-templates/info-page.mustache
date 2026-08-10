@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{namespace}} -- Starter Info</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; line-height: 1.4; }
+    h1 { margin: 0 0 4px; font-size: 1.4rem; }
+    .subtitle { color: #666; margin: 0 0 24px; }
+    h2 { font-size: 1rem; margin: 24px 0 8px; border-bottom: 1px solid #8883; padding-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; }
+    td { padding: 4px 8px; vertical-align: top; border-bottom: 1px solid #8882; }
+    td.prop { white-space: nowrap; color: #666; width: 1%; }
+    td.val { font-family: ui-monospace, monospace; word-break: break-all; }
+    button { font: inherit; font-size: 0.8rem; padding: 2px 8px; margin-left: 6px; cursor: pointer; }
+    .empty { color: #888; font-style: italic; }
+  </style>
+</head>
+<body>
+<h1>{{namespace}}</h1>
+<p class="subtitle">Starter info page -- generated with the app, always present regardless of how it was built.</p>
+
+<h2>URLs</h2>
+<table id="urls"></table>
+
+<h2>Monitoring</h2>
+<table id="monitoring"></table>
+
+<h2>Flows</h2>
+<table id="flows"></table>
+
+<h2>Concepts (CRUD)</h2>
+<table id="concepts"></table>
+
+<h2>Database</h2>
+<table>
+  <tr><td class="prop">Engine</td><td class="val">{{dbEngine}}</td><td></td></tr>
+</table>
+
+<script>
+(function () {
+  var base = window.location.origin;
+
+  function row(table, prop, path) {
+    var url = base + path;
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="prop">' + escapeHtml(prop) + '</td>' +
+      '<td class="val">' + escapeHtml(url) + '</td>' +
+      '<td>' +
+      '<button type="button" data-copy="' + escapeHtml(url) + '">Copy</button>' +
+      '<button type="button" data-open="' + escapeHtml(url) + '">Open</button>' +
+      '</td>';
+    table.appendChild(tr);
+  }
+
+  function emptyRow(table) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td class="empty" colspan="3">(none declared)</td>';
+    table.appendChild(tr);
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  var urls = document.getElementById('urls');
+  row(urls, 'Base URL', '/');
+  row(urls, 'Operator UI', '/npdev-ui');
+  row(urls, 'Business UI', '/npdev-business-ui/');
+  row(urls, 'Info page (this page)', '/info.html');
+  row(urls, 'Flows list', '/api/flows');
+  {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td class="prop">API key header</td><td class="val">X-Api-Key: dev-key</td><td></td>';
+    urls.appendChild(tr);
+  }
+
+  var monitoring = document.getElementById('monitoring');
+  row(monitoring, 'Health', '/actuator/health');
+  row(monitoring, 'Audit', '/api/audit');
+  row(monitoring, 'Storage summary', '/api/admin/storage/summary');
+
+  var flowRows = {{{flowsJson}}};
+  var flowsTable = document.getElementById('flows');
+  if (flowRows.length === 0) {
+    emptyRow(flowsTable);
+  } else {
+    flowRows.forEach(function (name) {
+      row(flowsTable, 'Execute ' + name, '/api/flows/' + encodeURIComponent(name) + '/execute');
+    });
+  }
+
+  var conceptRows = {{{conceptsJson}}};
+  var conceptsTable = document.getElementById('concepts');
+  if (conceptRows.length === 0) {
+    emptyRow(conceptsTable);
+  } else {
+    conceptRows.forEach(function (concept) {
+      row(conceptsTable, 'CRUD ' + concept.name, '/api/' + concept.route);
+    });
+  }
+
+  document.body.addEventListener('click', function (event) {
+    var copyUrl = event.target.getAttribute && event.target.getAttribute('data-copy');
+    var openUrl = event.target.getAttribute && event.target.getAttribute('data-open');
+    if (copyUrl && navigator.clipboard) {
+      navigator.clipboard.writeText(copyUrl);
+    } else if (openUrl) {
+      window.open(openUrl, '_blank');
+    }
+  });
+})();
+</script>
+</body>
+</html>
