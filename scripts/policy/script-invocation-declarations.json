@@ -76,6 +76,9 @@
     "scripts/docs/generate_gaps_roadmap.py": {
       "invocation": "ci-gate"
     },
+    "scripts/docs/generate_maturity_max_roadmap_docs.py": {
+      "invocation": "orchestrated"
+    },
     "scripts/evidence/write-security-hardening-maturity-report.ps1": {
       "invocation": "ci-gate"
     },
@@ -438,7 +441,9 @@
       "invocation": "manual-runbook"
     },
     "scripts/quality/run-post-beta0-roadmap-boundary-check.ps1": {
-      "invocation": "manual-runbook"
+      "invocation": "retired",
+      "reason": "Checks scripts/policy/post-beta0-maturity-roadmap-policy.json's older 8-checkpoint roadmap (anti-horizon-controls, kernel-postgres-adapter-fidelity, ...) against docs/maintainers/ROADMAP_BOUNDARY_POLICY.md -- but that doc's content was superseded by the current 16-checkpoint Full Maturity Closure Roadmap (scripts/policy/maturity-max-roadmap-policy.json, checked by run-maturity-max-roadmap-boundary-check.ps1) and no longer mentions any of the old checkpoint names. Confirmed already failing on its own doc-text assertions before md-zero-2026-08-11 PLAN.md Phase 3 touched anything (git stash-free run against HEAD). Its only remaining live reference was an incidental mention inside ROADMAP_BOUNDARY_POLICY.md's own prose, removed when that doc became generated from the current policy.",
+      "date": "2026-08-11"
     },
     "scripts/quality/run-publication-runtime-sql-neutrality-check.ps1": {
       "invocation": "ci-gate"

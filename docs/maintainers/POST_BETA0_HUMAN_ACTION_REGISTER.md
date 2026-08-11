@@ -1,12 +1,11 @@
 # Post-Beta0 Human Action Register
 
+> **GENERATED FILE — do not hand-edit.** Source: `scripts/policy/maturity-max-roadmap-policy.json`
+> (`humanActionRegister`). Regenerate with `python scripts/docs/generate_maturity_max_roadmap_docs.py`.
+
 This register separates AI-executable maturity work from actions that require repository administration, independent review, product judgment, or real human participation. These items are not represented as completed by automation.
 
-**AI-delegable? column (added per ADR-0009, P9).** Whether an external AI (no repo/filesystem/shell/network
-access, verdict recorded as `external-ai-verdict`, never `independent-human-role`) could stand in for
-this row. ❌ is permanent for E5/E6/E7-shaped items — see `docs/adr/ADR-0009-external-ai-delegation.md`
-§"honesty contract" items 1-2. A ✅/⚠️ here is not a claim any of these rows have actually been
-delegated; it only records whether the mechanism could apply.
+**AI-delegable? column (added per ADR-0009, P9).** Whether an external AI (no repo/filesystem/shell/network access, verdict recorded as `external-ai-verdict`, never `independent-human-role`) could stand in for this row. ❌ is permanent for E5/E6/E7-shaped items — see `docs/adr/ADR-0009-external-ai-delegation.md` §"honesty contract" items 1-2. A ✅/⚠️ here is not a claim any of these rows have actually been delegated; it only records whether the mechanism could apply.
 
 | Action | Owner | Status | Evidence path | Blocking status | AI-delegable? | Notes |
 | --- | --- | --- | --- | --- | --- | --- |

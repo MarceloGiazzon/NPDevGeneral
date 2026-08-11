@@ -1,4 +1,5 @@
 {
+  "why": "The NPDev Full Maturity Closure Roadmap's boundary contract, machine-checked so it cannot silently drift. md-zero-2026-08-11 PLAN.md Phase 3 consolidated this from three places that had already drifted from each other: checkpoint names/evidence-file-list/classifications lived in this JSON AND as separately hardcoded PowerShell array literals inside run-maturity-max-roadmap-boundary-check.ps1 (duplicated, not derived); 'what Checkpoint 0 does not solve' had three DIFFERENT wordings (this script's own 7-item list, docs/maintainers/ROADMAP_BOUNDARY_POLICY.md's prose, docs/maintainers/MATURITY_CLOSURE_LEDGER.md's shorter prose); the classification taxonomy's meaning/action text differed in wording between ROADMAP_BOUNDARY_POLICY.md's two-column table and MATURITY_CLOSURE_LEDGER.md's one-column table for the same six values. This file is now the only place any of that is written; docs/maintainers/ROADMAP_BOUNDARY_POLICY.md, MATURITY_CLOSURE_LEDGER.md and POST_BETA0_HUMAN_ACTION_REGISTER.md are generated from it by scripts/docs/generate_maturity_max_roadmap_docs.py.",
   "schemaVersion": "npdev-maturity-max-roadmap-policy.v1",
   "roadmapName": "NPDev Full Maturity Closure Roadmap",
   "authoritativeRoadmapInput": "C:\\Users\\Marcelo\\Downloads\\npdev_full_maturity_closure_roadmap_updated.md",
@@ -21,94 +22,30 @@
   "checkpointStopRule": true,
   "checkpointCount": 16,
   "checkpoints": [
-    {
-      "number": 0,
-      "slug": "honest-state-and-closure-contract",
-      "name": "Honest State and Closure Contract"
-    },
-    {
-      "number": 1,
-      "slug": "phase-2-postgres-and-linux-residual-fixes",
-      "name": "Phase-2 Postgres and Linux Residual Fixes"
-    },
-    {
-      "number": 2,
-      "slug": "runtimehost-integration-test-infrastructure",
-      "name": "RuntimeHost Integration Test Infrastructure"
-    },
-    {
-      "number": 3,
-      "slug": "trusted-source-and-custom-scenario-reconciliation",
-      "name": "Trusted-Source and Custom Scenario Reconciliation"
-    },
-    {
-      "number": 4,
-      "slug": "report-bootstrap-and-evidence-regeneration",
-      "name": "Report Bootstrap and Evidence Regeneration"
-    },
-    {
-      "number": 5,
-      "slug": "portable-tooling-and-path-neutrality",
-      "name": "Portable Tooling and Path Neutrality"
-    },
-    {
-      "number": 6,
-      "slug": "gradle-native-validation-migration",
-      "name": "Gradle-Native Validation Migration"
-    },
-    {
-      "number": 7,
-      "slug": "schema-consolidation-and-strict-legacy-rejection",
-      "name": "Schema Consolidation and Strict Legacy Rejection"
-    },
-    {
-      "number": 8,
-      "slug": "stateful-additive-migration-support",
-      "name": "Stateful Additive Migration Support"
-    },
-    {
-      "number": 9,
-      "slug": "incremental-migration-test-harness",
-      "name": "Incremental Migration Test Harness"
-    },
-    {
-      "number": 10,
-      "slug": "trusted-source-security-hardening",
-      "name": "Trusted Source Security Hardening"
-    },
-    {
-      "number": 11,
-      "slug": "shift-left-ai-safety-and-schema-hardening",
-      "name": "Shift-Left AI Safety and Schema Hardening"
-    },
-    {
-      "number": 12,
-      "slug": "custom-ux-and-extensibility-support",
-      "name": "Custom UX and Extensibility Support"
-    },
-    {
-      "number": 13,
-      "slug": "react-editor-decomplexification",
-      "name": "React Editor Decomplexification"
-    },
-    {
-      "number": 14,
-      "slug": "dsl-parser-robustness",
-      "name": "DSL Parser Robustness"
-    },
-    {
-      "number": 15,
-      "slug": "ci-parallelization-caching-onboarding-and-final-closure",
-      "name": "CI Parallelization, Caching, Onboarding, and Final Closure"
-    }
+    { "number": 0, "slug": "honest-state-and-closure-contract", "name": "Honest State and Closure Contract", "scripts": [] },
+    { "number": 1, "slug": "phase-2-postgres-and-linux-residual-fixes", "name": "Phase-2 Postgres and Linux Residual Fixes", "scripts": ["scripts/quality/run-phase2-residual-fidelity-check.ps1"] },
+    { "number": 2, "slug": "runtimehost-integration-test-infrastructure", "name": "RuntimeHost Integration Test Infrastructure", "scripts": ["scripts/quality/run-runtimehost-integration-infrastructure-check.ps1"] },
+    { "number": 3, "slug": "trusted-source-and-custom-scenario-reconciliation", "name": "Trusted-Source and Custom Scenario Reconciliation", "scripts": ["scripts/quality/run-scenario-scope-reconciliation-check.ps1"] },
+    { "number": 4, "slug": "report-bootstrap-and-evidence-regeneration", "name": "Report Bootstrap and Evidence Regeneration", "scripts": [] },
+    { "number": 5, "slug": "portable-tooling-and-path-neutrality", "name": "Portable Tooling and Path Neutrality", "scripts": ["scripts/quality/run-portable-tooling-check.ps1"] },
+    { "number": 6, "slug": "gradle-native-validation-migration", "name": "Gradle-Native Validation Migration", "scripts": [] },
+    { "number": 7, "slug": "schema-consolidation-and-strict-legacy-rejection", "name": "Schema Consolidation and Strict Legacy Rejection", "scripts": ["scripts/quality/run-schema-consolidation-check.ps1"] },
+    { "number": 8, "slug": "stateful-additive-migration-support", "name": "Stateful Additive Migration Support", "scripts": ["scripts/quality/run-stateful-additive-migrations-check.ps1"] },
+    { "number": 9, "slug": "incremental-migration-test-harness", "name": "Incremental Migration Test Harness", "scripts": [] },
+    { "number": 10, "slug": "trusted-source-security-hardening", "name": "Trusted Source Security Hardening", "scripts": [] },
+    { "number": 11, "slug": "shift-left-ai-safety-and-schema-hardening", "name": "Shift-Left AI Safety and Schema Hardening", "scripts": ["scripts/quality/run-shift-left-ai-safety-check.ps1"] },
+    { "number": 12, "slug": "custom-ux-and-extensibility-support", "name": "Custom UX and Extensibility Support", "scripts": ["scripts/quality/run-custom-ux-extensibility-check.ps1"] },
+    { "number": 13, "slug": "react-editor-decomplexification", "name": "React Editor Decomplexification", "scripts": [] },
+    { "number": 14, "slug": "dsl-parser-robustness", "name": "DSL Parser Robustness", "scripts": ["scripts/quality/run-dsl-parser-robustness-check.ps1"] },
+    { "number": 15, "slug": "ci-parallelization-caching-onboarding-and-final-closure", "name": "CI Parallelization, Caching, Onboarding, and Final Closure", "scripts": ["scripts/quality/run-maturity-max-final-closure-check.ps1", "scripts/quality/run-maturity-max-roadmap-boundary-check.ps1", "scripts/quality/run-maturity-score.ps1"] }
   ],
   "allowedNewFindingClassifications": [
-    "current-checkpoint-blocker",
-    "current-roadmap-blocker",
-    "known-risk-accepted",
-    "post-roadmap-backlog",
-    "human-decision-required",
-    "invalid-or-duplicate"
+    { "value": "current-checkpoint-blocker", "meaning": "Prevents the current checkpoint from passing honestly", "action": "Fix before checkpoint approval" },
+    { "value": "current-roadmap-blocker", "meaning": "Prevents final roadmap closure", "action": "Fix before final closure" },
+    { "value": "known-risk-accepted", "meaning": "Real issue, documented, and not blocking this roadmap", "action": "Record in the known-risk ledger" },
+    { "value": "post-roadmap-backlog", "meaning": "Real future work outside this roadmap", "action": "Add to backlog; do not expand the checkpoint" },
+    { "value": "human-decision-required", "meaning": "Requires product, human, admin, or release decision", "action": "Add to the human decision register" },
+    { "value": "invalid-or-duplicate", "meaning": "Not reproducible, already fixed, duplicate, or out of date", "action": "Close with evidence" }
   ],
   "checkpointEvidenceRequirements": [
     "checkpoint-summary.md",
@@ -128,5 +65,83 @@
   "checkpoint0AdditionalEvidence": [
     "artifacts/roadmap/npdev_full_maturity_closure_roadmap_updated.md",
     "artifacts/roadmap/roadmap-sha256.txt"
+  ],
+  "evidencePathPolicy": {
+    "cursorLocalDefault": "D:\\WorkSpace\\NPDev_General__OutsideRepo\\temp\\last-roadmap",
+    "cloudFallbackEnvironmentVariable": "NPDEV_CHECKPOINT_DIR",
+    "repoRelativeFallback": "docs/maturity-closure/checkpoints/last-roadmap",
+    "maxZipSizeMB": 100,
+    "bulkyArtifactsProse": "`node_modules`, `.gradle`, `build`, `dist`, `target`, generated application build directories, browser videos, duplicate logs, and other nonessential generated outputs"
+  },
+  "closureDefinition": [
+    "Checkpoints 0 through 15 are accepted.",
+    "Each checkpoint has a reviewed evidence bundle.",
+    "The final maturity closure evidence passes.",
+    "Any remaining issues are classified as `known-risk-accepted`, `post-roadmap-backlog`, `human-decision-required`, or `invalid-or-duplicate`.",
+    "No checkpoint remains `failed`, `partial`, or `deferred`.",
+    "No new roadmap is automatically generated from this roadmap.",
+    "The `beta0` tag has not been moved, recreated, deleted, or reinterpreted."
+  ],
+  "checkpoint0DoesNotSolve": [
+    "Does not modify product code.",
+    "Does not fix Postgres or Linux fidelity.",
+    "Does not fix golden scenarios.",
+    "Does not address schema, parser, migration, UI maintainability, CI performance, or onboarding gaps.",
+    "Does not clean the worktree.",
+    "Does not move, recreate, delete, retag, or reinterpret beta0.",
+    "Does not proceed to Checkpoint 1."
+  ],
+  "beta0RepositoryStates": [
+    { "value": "beta0-verified", "meaning": "The peeled `beta0` commit matches the commit recorded in Beta0 closure evidence." },
+    { "value": "beta0-stale-evidence", "meaning": "The tag exists, but available closure evidence is missing or does not match the peeled commit." },
+    { "value": "pre-release-hardening", "meaning": "The `beta0` tag is missing." }
+  ],
+  "beta0StateTruthReportPath": "scripts/reports/out/beta0-state-truth-report.json",
+  "humanActionRegister": [
+    {
+      "action": "Checkpoint 1 approval gate",
+      "owner": "Human roadmap owner",
+      "status": "open",
+      "evidencePath": "`D:\\WorkSpace\\NPDev_General__OutsideRepo\\temp\\last-roadmap\\checkpoint-result.json`",
+      "blockingStatus": "blocking-for-next-checkpoint",
+      "aiDelegable": "\u274c permanently (E6 \u2014 checkpoint approval/authority)",
+      "notes": "Codex/Cursor must not proceed to Checkpoint 1 until Checkpoint 0 is reviewed and approved."
+    },
+    {
+      "action": "New checkpoint approval",
+      "owner": "Human roadmap owner",
+      "status": "standing-required",
+      "evidencePath": "`docs/ROADMAP_BOUNDARY_POLICY.md`",
+      "blockingStatus": "blocking-for-scope-change",
+      "aiDelegable": "\u274c permanently (E6 \u2014 checkpoint approval/authority)",
+      "notes": "Any checkpoint addition, removal, rename, split, merge, or reorder requires explicit human approval."
+    },
+    {
+      "action": "Branch protection required Linux job",
+      "owner": "Human repository owner",
+      "status": "open",
+      "evidencePath": "`.github/workflows/npdev-ci-validation.yml`",
+      "blockingStatus": "non-blocking-for-cp0",
+      "aiDelegable": "\u274c permanently (E6 \u2014 repo admin)",
+      "notes": "Configure GitHub branch protection after the relevant workflow changes are accepted and observed in GitHub Actions."
+    },
+    {
+      "action": "Independent audit sign-off",
+      "owner": "Human owner / independent reviewer",
+      "status": "open \u2014 **review now done, sign-off still owner's**",
+      "evidencePath": "`scripts/reports/out/maturity-max-roadmap-boundary-report.json`; M6's real run: `docs/external-ai-review/runs/M6-AUDIT-VERDICT.json`, verdict `NPDev_General__OutsideRepo/external-ai-review/packs/M6-AUDIT-VERDICT/*-nvidia-verdict.json`",
+      "blockingStatus": "non-blocking-for-cp0",
+      "aiDelegable": "\u26a0\ufe0f AI does the **review** (E4, mission M6 \u2014 actually run 2026-07-27 against a real evidence bundle, appropriately skeptical result); the **sign-off** stays the owner's",
+      "notes": "Arrange review outside Codex/Cursor. Automation can register the need but cannot perform independent sign-off."
+    },
+    {
+      "action": "Real participant sessions",
+      "owner": "Human product/research owner",
+      "status": "open",
+      "evidencePath": "`docs/POST_BETA0_HUMAN_ACTION_REGISTER.md`",
+      "blockingStatus": "non-blocking-for-cp0",
+      "aiDelegable": "\u274c permanently (E5 \u2014 an AI persona is not a participant)",
+      "notes": "Schedule real participant validation sessions after technical closure. Automation cannot substitute for participant feedback. Owner's call formally recorded 2026-07-27 (D5, `docs/DECISION_BRIEFS_2026-07.md`): permanently open with this honest label, not scheduled sessions or an AI-persona substitute, until there is a live product and real users to invite."
+    }
   ]
 }

@@ -1,5 +1,8 @@
 # NPDev Full Maturity Closure Roadmap Boundary Policy
 
+> **GENERATED FILE — do not hand-edit.** Source: `scripts/policy/maturity-max-roadmap-policy.json`.
+> Regenerate with `python scripts/docs/generate_maturity_max_roadmap_docs.py`.
+
 This policy governs the NPDev Full Maturity Closure Roadmap. It is a finite maturity-maximization roadmap with hard closure. It is not a source for automatic new phases, checkpoints, epics, or another open-ended analysis cycle.
 
 The authoritative human-provided roadmap input for Checkpoint 0 is:
@@ -44,8 +47,7 @@ The roadmap contains exactly these 16 checkpoints:
 
 No checkpoint may be added, removed, renamed, split, merged, or reordered without explicit human approval. Checkpoint numbers without a script named above either have no dedicated per-checkpoint script (verification is manual/narrative) or their script lives outside this per-checkpoint naming convention -- absence here is not itself evidence the checkpoint is unverified.
 
-This policy document's own boundary rules (the checkpoint list, the no-new-roadmap rule, the closure
-definition) are themselves checked against reality by two scripts, run manually against this file: `scripts/quality/run-post-beta0-roadmap-boundary-check.ps1` (reads this document as `$DocumentationPath`) and `scripts/quality/run-maturity-max-roadmap-boundary-check.ps1`.
+This policy document's own boundary rules (the checkpoint list, the no-new-roadmap rule, the closure definition) are themselves checked against reality by `scripts/quality/run-maturity-max-roadmap-boundary-check.ps1`, which reads `scripts/policy/maturity-max-roadmap-policy.json` directly -- never this rendered file.
 
 ## Beta0 Tag Rule
 
@@ -143,4 +145,10 @@ Existing uncommitted work is preserved. Dirty worktree state is recorded as evid
 
 ## Checkpoint 0 Does Not Solve
 
-Checkpoint 0 does not modify product code, fix Postgres or Linux fidelity, fix golden scenarios, address schema/parser gaps, implement migrations, refactor UI code, speed up CI, clean the worktree, or change the `beta0` tag. Does not proceed to Checkpoint 1. It only establishes honest state, closure policy, evidence discipline, and whether Checkpoint 1 is unblocked.
+- Does not modify product code.
+- Does not fix Postgres or Linux fidelity.
+- Does not fix golden scenarios.
+- Does not address schema, parser, migration, UI maintainability, CI performance, or onboarding gaps.
+- Does not clean the worktree.
+- Does not move, recreate, delete, retag, or reinterpret beta0.
+- Does not proceed to Checkpoint 1.

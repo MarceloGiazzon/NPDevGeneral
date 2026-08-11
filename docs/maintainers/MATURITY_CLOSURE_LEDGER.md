@@ -1,5 +1,8 @@
 # NPDev Maturity Closure Ledger
 
+> **GENERATED FILE — do not hand-edit.** Source: `scripts/policy/maturity-max-roadmap-policy.json`.
+> Regenerate with `python scripts/docs/generate_maturity_max_roadmap_docs.py`.
+
 This ledger records the bounded maturity-closure contract for the NPDev Full Maturity Closure Roadmap.
 
 ## Baseline and Target
@@ -19,12 +22,12 @@ Every new finding must use exactly one allowed classification:
 
 | Classification | Closure handling |
 |---|---|
-| `current-checkpoint-blocker` | Must be resolved before the current checkpoint can pass. |
-| `current-roadmap-blocker` | Must be resolved before final roadmap closure. |
-| `known-risk-accepted` | Documented and accepted as non-blocking for this roadmap. |
-| `post-roadmap-backlog` | Deferred outside this roadmap without expanding scope. |
-| `human-decision-required` | Registered for human/product/admin decision. |
-| `invalid-or-duplicate` | Closed with evidence. |
+| `current-checkpoint-blocker` | Fix before checkpoint approval. |
+| `current-roadmap-blocker` | Fix before final closure. |
+| `known-risk-accepted` | Record in the known-risk ledger. |
+| `post-roadmap-backlog` | Add to backlog; do not expand the checkpoint. |
+| `human-decision-required` | Add to the human decision register. |
+| `invalid-or-duplicate` | Close with evidence. |
 
 ## Beta0 Truth
 
@@ -40,4 +43,4 @@ The repository state is declared by `scripts/reports/out/beta0-state-truth-repor
 
 ## Checkpoint 0 Does Not Solve
 
-Checkpoint 0 does not modify product code, fix technical gaps, clean the worktree, retag Beta0, or proceed to Checkpoint 1. It establishes the honest-state and closure contract that later checkpoints must obey.
+Does not modify product code. Does not fix Postgres or Linux fidelity. Does not fix golden scenarios. Does not address schema, parser, migration, UI maintainability, CI performance, or onboarding gaps. Does not clean the worktree. Does not move, recreate, delete, retag, or reinterpret beta0. Does not proceed to Checkpoint 1.

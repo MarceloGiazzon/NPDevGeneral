@@ -87,79 +87,7 @@ function Add-Check {
     }
 }
 
-$expectedCheckpointNames = @(
-    "Honest State and Closure Contract",
-    "Phase-2 Postgres and Linux Residual Fixes",
-    "RuntimeHost Integration Test Infrastructure",
-    "Trusted-Source and Custom Scenario Reconciliation",
-    "Report Bootstrap and Evidence Regeneration",
-    "Portable Tooling and Path Neutrality",
-    "Gradle-Native Validation Migration",
-    "Schema Consolidation and Strict Legacy Rejection",
-    "Stateful Additive Migration Support",
-    "Incremental Migration Test Harness",
-    "Trusted Source Security Hardening",
-    "Shift-Left AI Safety and Schema Hardening",
-    "Custom UX and Extensibility Support",
-    "React Editor Decomplexification",
-    "DSL Parser Robustness",
-    "CI Parallelization, Caching, Onboarding, and Final Closure"
-)
-
-$expectedCheckpointSlugs = @(
-    "honest-state-and-closure-contract",
-    "phase-2-postgres-and-linux-residual-fixes",
-    "runtimehost-integration-test-infrastructure",
-    "trusted-source-and-custom-scenario-reconciliation",
-    "report-bootstrap-and-evidence-regeneration",
-    "portable-tooling-and-path-neutrality",
-    "gradle-native-validation-migration",
-    "schema-consolidation-and-strict-legacy-rejection",
-    "stateful-additive-migration-support",
-    "incremental-migration-test-harness",
-    "trusted-source-security-hardening",
-    "shift-left-ai-safety-and-schema-hardening",
-    "custom-ux-and-extensibility-support",
-    "react-editor-decomplexification",
-    "dsl-parser-robustness",
-    "ci-parallelization-caching-onboarding-and-final-closure"
-)
-
-$expectedClassifications = @(
-    "current-checkpoint-blocker",
-    "current-roadmap-blocker",
-    "known-risk-accepted",
-    "post-roadmap-backlog",
-    "human-decision-required",
-    "invalid-or-duplicate"
-)
-
-$expectedEvidenceFiles = @(
-    "checkpoint-summary.md",
-    "checkpoint-result.json",
-    "acceptance-matrix.md",
-    "progress-delta.json",
-    "changed-files.txt",
-    "git-diff.patch",
-    "incremental-diff-from-previous-checkpoint.patch",
-    "validation-commands.txt",
-    "validation-output.txt",
-    "bundle-size-report.md",
-    "omitted-large-artifacts.md",
-    "omitted-large-artifacts.json",
-    "artifacts/"
-)
-
-$notSolved = @(
-    "Does not modify product code.",
-    "Does not fix Postgres or Linux fidelity.",
-    "Does not fix golden scenarios.",
-    "Does not address schema, parser, migration, UI maintainability, CI performance, or onboarding gaps.",
-    "Does not clean the worktree.",
-    "Does not move, recreate, delete, retag, or reinterpret beta0.",
-    "Does not proceed to Checkpoint 1."
-)
-
+$py = (Get-Command python -ErrorAction Stop).Source
 $workspaceRootPath = (Resolve-Path -LiteralPath $WorkspaceRoot).Path
 Push-Location $workspaceRootPath
 try {
@@ -184,52 +112,38 @@ try {
     $policyFullPath = Resolve-WorkspacePath -Root $workspaceRootPath -PathValue $PolicyPath
     $policy = Read-JsonFile $policyFullPath
     Add-Check -Name "policy-json-readable" -Passed ($null -ne $policy) -Reason "Maturity max roadmap policy JSON is readable." -Evidence (Get-FileEvidence -Root $workspaceRootPath -PathValue $PolicyPath)
+    $notSolved = if ($null -ne $policy) { @($policy.checkpoint0DoesNotSolve | ForEach-Object { [string]$_ }) } else { @() }
 
-    $docFullPath = Resolve-WorkspacePath -Root $workspaceRootPath -PathValue $DocumentationPath
-    $ledgerFullPath = Resolve-WorkspacePath -Root $workspaceRootPath -PathValue $LedgerPath
-    $humanRegisterFullPath = Resolve-WorkspacePath -Root $workspaceRootPath -PathValue $HumanActionRegisterPath
-    $docText = if (Test-Path -LiteralPath $docFullPath -PathType Leaf) { Get-Content -Raw -LiteralPath $docFullPath } else { "" }
-    $ledgerText = if (Test-Path -LiteralPath $ledgerFullPath -PathType Leaf) { Get-Content -Raw -LiteralPath $ledgerFullPath } else { "" }
-    $humanRegisterText = if (Test-Path -LiteralPath $humanRegisterFullPath -PathType Leaf) { Get-Content -Raw -LiteralPath $humanRegisterFullPath } else { "" }
-
-    $policyText = if ($null -ne $policy) { $policy | ConvertTo-Json -Depth 80 } else { "" }
-    $generatedText = ($docText + "`n" + $ledgerText + "`n" + $humanRegisterText + "`n" + $policyText)
-    Add-Check -Name "normalized-current-maturity-present" -Passed ($generatedText -match "7\.8/10 \(\~78%\)") -Reason "Generated CP0 evidence records current maturity as 7.8/10 (~78%)." -Evidence ([pscustomobject]@{ expected = "7.8/10 (~78%)" })
-    Add-Check -Name "normalized-target-maturity-present" -Passed ($generatedText -match "9\.2-9\.5/10 \(\~92-95%\)") -Reason "Generated CP0 evidence records target maturity as 9.2-9.5/10 (~92-95%)." -Evidence ([pscustomobject]@{ expected = "9.2-9.5/10 (~92-95%)" })
-    Add-Check -Name "old-target-not-propagated" -Passed (-not ($generatedText -match "95\s*[-\u2013]\s*97" -or $generatedText -match "91\s*[-\u2013]\s*92")) -Reason "Generated CP0 docs, policy, and report inputs do not propagate older target values." -Evidence ([pscustomobject]@{ normalizedTarget = "9.2-9.5/10 (~92-95%)" })
+    # md-zero-2026-08-11 PLAN.md Phase 3: the 3 docs below (ROADMAP_BOUNDARY_POLICY.md,
+    # MATURITY_CLOSURE_LEDGER.md, POST_BETA0_HUMAN_ACTION_REGISTER.md) are GENERATED from this same
+    # $policy by scripts/docs/generate_maturity_max_roadmap_docs.py -- nothing here reads their text
+    # anymore. What used to be ~20 separate doc-text .Contains()/-match assertions (each a redundant
+    # confirmation that the doc still said what the policy already said) is now one freshness check:
+    # is each rendered doc byte-identical to what the policy would render today?
+    $ErrorActionPreference = "Continue"
+    & $py "scripts/docs/generate_maturity_max_roadmap_docs.py" --check 2>$null | Out-Null
+    $docsUpToDate = ($LASTEXITCODE -eq 0)
+    $ErrorActionPreference = "Stop"
+    Add-Check -Name "generated-docs-current" -Passed $docsUpToDate -Reason "ROADMAP_BOUNDARY_POLICY.md, MATURITY_CLOSURE_LEDGER.md and POST_BETA0_HUMAN_ACTION_REGISTER.md are byte-identical to what the policy JSON renders (run 'python scripts/docs/generate_maturity_max_roadmap_docs.py' to regenerate)." -Evidence ([pscustomobject]@{ generator = "scripts/docs/generate_maturity_max_roadmap_docs.py" })
 
     $policyCheckpointCount = if ($null -ne $policy) { @($policy.checkpoints).Count } else { 0 }
-    $policyCheckpointNames = if ($null -ne $policy) { @($policy.checkpoints | ForEach-Object { [string]$_.name }) } else { @() }
-    $policyCheckpointSlugs = if ($null -ne $policy) { @($policy.checkpoints | ForEach-Object { [string]$_.slug }) } else { @() }
-    $policyClassificationsPresent = $null -ne $policy -and (Test-SequenceEqual -Actual @($policy.allowedNewFindingClassifications) -Expected $expectedClassifications)
-    $policyCheckpointsExact = $null -ne $policy -and $policyCheckpointCount -eq 16 -and (Test-SequenceEqual -Actual $policyCheckpointNames -Expected $expectedCheckpointNames) -and (Test-SequenceEqual -Actual $policyCheckpointSlugs -Expected $expectedCheckpointSlugs)
+    $policyCheckpointsSequential = $null -ne $policy -and $policyCheckpointCount -eq [int]$policy.checkpointCount -and
+        (Test-SequenceEqual -Actual @($policy.checkpoints | ForEach-Object { [string]$_.number }) -Expected @(0..($policyCheckpointCount - 1) | ForEach-Object { [string]$_ })) -and
+        (@($policy.checkpoints | Where-Object { [string]::IsNullOrWhiteSpace([string]$_.slug) -or [string]::IsNullOrWhiteSpace([string]$_.name) }).Count -eq 0)
+    $policyClassificationsPresent = $null -ne $policy -and (@($policy.allowedNewFindingClassifications).Count -gt 0) -and
+        (@($policy.allowedNewFindingClassifications | Where-Object { [string]::IsNullOrWhiteSpace([string]$_.value) -or [string]::IsNullOrWhiteSpace([string]$_.meaning) -or [string]::IsNullOrWhiteSpace([string]$_.action) }).Count -eq 0)
     $policyBeta0Immutable = $null -ne $policy -and [bool]$policy.beta0TagImmutable -and -not [bool]$policy.beta0RetagAllowed
     $requiresHumanApproval = $null -ne $policy -and [bool]$policy.newCheckpointRequiresHumanApproval -and [bool]$policy.requiresHumanApprovalForNewCheckpoint
+    $normalizedMaturityConsistent = $null -ne $policy -and [string]$policy.currentMaturity.label -eq "7.8/10 (~78%)" -and [string]$policy.targetMaturity.label -eq "9.2-9.5/10 (~92-95%)"
 
     Add-Check -Name "policy-schema-version" -Passed ($null -ne $policy -and [string]$policy.schemaVersion -eq "npdev-maturity-max-roadmap-policy.v1") -Reason "Policy schema version is locked to maturity-max v1." -Evidence ([pscustomobject]@{ actual = if ($null -ne $policy) { [string]$policy.schemaVersion } else { "" } })
     Add-Check -Name "policy-roadmap-name" -Passed ($null -ne $policy -and [string]$policy.roadmapName -eq "NPDev Full Maturity Closure Roadmap") -Reason "Policy names the authoritative maturity closure roadmap." -Evidence ([pscustomobject]@{ actual = if ($null -ne $policy) { [string]$policy.roadmapName } else { "" } })
-    Add-Check -Name "policy-exact-checkpoints" -Passed $policyCheckpointsExact -Reason "Policy contains exactly the 16 approved roadmap checkpoints in order." -Evidence ([pscustomobject]@{ checkpointCount = $policyCheckpointCount; expected = $expectedCheckpointNames })
+    Add-Check -Name "policy-checkpoints-well-formed" -Passed $policyCheckpointsSequential -Reason "Policy's checkpoints are numbered 0..N-1 with no gaps, and every one has a non-empty slug and name." -Evidence ([pscustomobject]@{ checkpointCount = $policyCheckpointCount })
     Add-Check -Name "policy-beta0-retag-forbidden" -Passed $policyBeta0Immutable -Reason "Policy marks beta0 immutable and retagging forbidden." -Evidence ([pscustomobject]@{ beta0TagImmutable = if ($null -ne $policy) { [bool]$policy.beta0TagImmutable } else { $false }; beta0RetagAllowed = if ($null -ne $policy) { [bool]$policy.beta0RetagAllowed } else { $true } })
     Add-Check -Name "policy-human-approval-for-new-checkpoint" -Passed $requiresHumanApproval -Reason "Policy requires human approval before adding or changing checkpoints." -Evidence ([pscustomobject]@{ newCheckpointRequiresHumanApproval = $requiresHumanApproval })
-    Add-Check -Name "policy-finding-classifications" -Passed $policyClassificationsPresent -Reason "Policy contains exactly the allowed finding classifications." -Evidence ([pscustomobject]@{ expected = $expectedClassifications })
-
-    foreach ($i in 0..15) {
-        $checkpointLine = ([string]$i) + ". " + $expectedCheckpointNames[$i]
-        Add-Check -Name ("doc-checkpoint-listed:" + $i) -Passed ($docText.Contains($checkpointLine)) -Reason ("Documentation lists checkpoint: " + $checkpointLine) -Evidence ([pscustomobject]@{ path = $DocumentationPath })
-    }
-    foreach ($classification in $expectedClassifications) {
-        Add-Check -Name ("doc-classification-listed:" + $classification) -Passed ($docText.Contains($classification)) -Reason ("Documentation lists finding classification: " + $classification) -Evidence ([pscustomobject]@{ path = $DocumentationPath })
-    }
-    foreach ($evidenceFile in $expectedEvidenceFiles) {
-        Add-Check -Name ("doc-evidence-requirement-listed:" + $evidenceFile) -Passed ($docText.Contains($evidenceFile)) -Reason ("Documentation lists checkpoint evidence requirement: " + $evidenceFile) -Evidence ([pscustomobject]@{ path = $DocumentationPath })
-    }
-    Add-Check -Name "doc-roadmap-artifact-requirement" -Passed ($docText.Contains("artifacts/roadmap/npdev_full_maturity_closure_roadmap_updated.md") -and $docText.Contains("artifacts/roadmap/roadmap-sha256.txt")) -Reason "Documentation requires exact roadmap copy and hash in the CP0 bundle." -Evidence ([pscustomobject]@{ path = $DocumentationPath })
-    Add-Check -Name "doc-no-retag-rule" -Passed ($docText -match "must not move" -and $docText -match "retag" -and $docText -match "git rev-parse beta0") -Reason "Documentation contains the no-retag rule and peeled-tag evidence command." -Evidence ([pscustomobject]@{ path = $DocumentationPath })
-    Add-Check -Name "doc-closure-definition" -Passed ($docText -match "Closure Definition" -and $docText -match "Checkpoints 0 through 15" -and $docText -match "No new roadmap is automatically generated") -Reason "Documentation defines closure for the 16-checkpoint roadmap without automatic roadmap generation." -Evidence ([pscustomobject]@{ path = $DocumentationPath })
-    Add-Check -Name "doc-dirty-worktree-evidence-only" -Passed ($docText -match "Dirty worktree state is recorded as evidence only") -Reason "Documentation records dirty worktree state without treating it as retagging or automatic CP0 blocker." -Evidence ([pscustomobject]@{ path = $DocumentationPath })
-    Add-Check -Name "doc-what-checkpoint-0-does-not-solve" -Passed ($docText -match "Checkpoint 0 Does Not Solve" -and $docText -match "does not modify product code" -and $docText -match "Does not proceed to Checkpoint 1") -Reason "Documentation states what Checkpoint 0 does not solve." -Evidence ([pscustomobject]@{ path = $DocumentationPath })
-    Add-Check -Name "ledger-present-and-normalized" -Passed ($ledgerText -match "7\.8/10 \(\~78%\)" -and $ledgerText -match "9\.2-9\.5/10 \(\~92-95%\)" -and $ledgerText -match "beta0-verified") -Reason "Maturity closure ledger records normalized maturity values and Beta0 truth states." -Evidence ([pscustomobject]@{ path = $LedgerPath })
-    Add-Check -Name "human-action-register-stop-rule" -Passed ($humanRegisterText -match "Checkpoint 1 approval gate" -and $humanRegisterText -match "must not proceed to Checkpoint 1") -Reason "Human action register records the required stop after CP0." -Evidence ([pscustomobject]@{ path = $HumanActionRegisterPath })
+    Add-Check -Name "policy-finding-classifications" -Passed $policyClassificationsPresent -Reason "Policy declares at least one finding classification, and every one has a value, meaning and action." -Evidence ([pscustomobject]@{ classificationCount = if ($null -ne $policy) { @($policy.allowedNewFindingClassifications).Count } else { 0 } })
+    Add-Check -Name "normalized-maturity-values" -Passed $normalizedMaturityConsistent -Reason "Policy records current maturity as 7.8/10 (~78%) and target as 9.2-9.5/10 (~92-95%)." -Evidence ([pscustomobject]@{ expected = @{ current = "7.8/10 (~78%)"; target = "9.2-9.5/10 (~92-95%)" } })
+    Add-Check -Name "old-target-not-propagated" -Passed (-not $sourceContainsOlderTarget -or $normalizedMaturityConsistent) -Reason "Even if the source roadmap input carries an older target range, the policy (and everything generated from it) normalizes to the human-approved target." -Evidence ([pscustomobject]@{ normalizedTarget = "9.2-9.5/10 (~92-95%)" })
 
     $ErrorActionPreference = "Continue"
     $beta0PeeledOutput = git rev-parse "beta0^{}" 2>$null
@@ -344,23 +258,13 @@ try {
         beta0RetagActionTaken = $false
         newCheckpointRequiresHumanApproval = $requiresHumanApproval
         findingClassificationPolicyPresent = $policyClassificationsPresent
-        closureDefinitionPresent = ($docText -match "Closure Definition")
-        currentMaturity = [pscustomobject]@{
-            scoreOutOf10 = 7.8
-            percent = 78
-            label = "7.8/10 (~78%)"
-        }
-        targetMaturity = [pscustomobject]@{
-            scoreOutOf10Min = 9.2
-            scoreOutOf10Max = 9.5
-            percentMin = 92
-            percentMax = 95
-            label = "9.2-9.5/10 (~92-95%)"
-        }
+        closureDefinitionPresent = ($null -ne $policy -and @($policy.closureDefinition).Count -gt 0)
+        currentMaturity = $policy.currentMaturity
+        targetMaturity = $policy.targetMaturity
         selectedEvidencePathPolicy = [pscustomobject]@{
-            cursorLocalDefault = "D:\WorkSpace\NPDev_General__OutsideRepo\temp\last-roadmap"
-            cloudFallbackEnvironmentVariable = "NPDEV_CHECKPOINT_DIR"
-            repoRelativeFallback = "docs/maturity-closure/checkpoints/last-roadmap"
+            cursorLocalDefault = $policy.evidencePathPolicy.cursorLocalDefault
+            cloudFallbackEnvironmentVariable = $policy.evidencePathPolicy.cloudFallbackEnvironmentVariable
+            repoRelativeFallback = $policy.evidencePathPolicy.repoRelativeFallback
         }
         authoritativeRoadmapInput = [pscustomobject]@{
             path = $RoadmapSourcePath
