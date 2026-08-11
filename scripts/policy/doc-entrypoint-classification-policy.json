@@ -109,18 +109,6 @@
       "classification": "future-non-release",
       "releaseRelevant": false,
       "reason": "REG-125 (Move 16 Phase A3): this script was never built and never will be under this name -- REG-125's own resolution was to remove PROJECT_DIGEST.md's dangling reference to it (done) rather than build it. The path now survives only as literal text inside docs/OPEN_ITEMS.md's permanent, generated historical record of the closed REG-125 ledger item (ledger/items/*.yml entries are never pruned from that doc, even once DONE), not as a real commitment anywhere."
-    },
-    {
-      "path": "scripts/appgen/generate-sample-app.ps1",
-      "classification": "future-non-release",
-      "releaseRelevant": false,
-      "reason": "REG-123 (Move 15 Phase C item C2): docs/NPDEV_OPEN_ITEMS_REGISTER.md's own \"Where.\" line for a historical LNCH-19 finding names this path as it was AT THE TIME -- that document is explicitly historical/archived-in-place (CLAUDE.md: 'read for narrative, never for status'), so its content is left untouched rather than mechanically re-pointed. The script's real current location is NPDevSamples/scripts/generate-sample-app.ps1; this entry only stops the archived doc's historical path mention from blocking the gate, it is not a claim that scripts/appgen/generate-sample-app.ps1 exists today."
-    },
-    {
-      "path": "scripts/appgen/run-sample-app.ps1",
-      "classification": "future-non-release",
-      "releaseRelevant": false,
-      "reason": "REG-123 (Move 15 Phase C item C2): same historical-archived-doc class as scripts/appgen/generate-sample-app.ps1 above -- see that entry's reason. Real current location: NPDevSamples/scripts/run-sample-app.ps1."
     }
   ],
   "reportClassifications": [
