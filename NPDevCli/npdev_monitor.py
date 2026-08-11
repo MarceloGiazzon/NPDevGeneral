@@ -168,7 +168,16 @@ class MachineSnapshot:
         self.enumerated = False
         self._docker: dict[str, dict] = {}
         self._docker_available = bool(shutil.which("docker")) if want_docker else False
+        self._cmdlines: dict[int, str] | None = None
         self._collect_ports()
+
+    def command_line(self, pid: int) -> str | None:
+        """The command line of a process, for the identity check in `probe_app`. Collected LAZILY and
+        once: it is a second machine-wide query, and most scans never need it (only apps whose port
+        is occupied do)."""
+        if self._cmdlines is None:
+            self._cmdlines = _collect_command_lines()
+        return self._cmdlines.get(pid)
 
     def _collect_ports(self) -> None:
         try:
@@ -224,6 +233,44 @@ class MachineSnapshot:
             state = _docker_state(container)
         self._docker[container] = state
         return state
+
+
+def _collect_command_lines() -> dict[int, str]:
+    """pid -> command line, best effort. Empty when it cannot be determined, which the caller
+    reports as `identity: unknown` -- never as a match and never as a mismatch."""
+    try:
+        import psutil  # type: ignore
+
+        out: dict[int, str] = {}
+        for process in psutil.process_iter(["pid", "cmdline"]):
+            try:
+                out[process.info["pid"]] = " ".join(process.info["cmdline"] or [])
+            except Exception:
+                continue
+        return out
+    except Exception:
+        pass
+    try:
+        if os.name == "nt":
+            completed = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "Get-CimInstance Win32_Process | "
+                 "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"],
+                capture_output=True, text=True, timeout=30)
+            rows = json.loads(completed.stdout or "[]")
+            if isinstance(rows, dict):
+                rows = [rows]
+            return {int(r["ProcessId"]): (r.get("CommandLine") or "")
+                    for r in rows if r.get("ProcessId") is not None}
+        completed = subprocess.run(["ps", "-eo", "pid=,args="], capture_output=True, text=True, timeout=20)
+        out = {}
+        for line in completed.stdout.splitlines():
+            parts = line.strip().split(None, 1)
+            if len(parts) == 2 and parts[0].isdigit():
+                out[int(parts[0])] = parts[1]
+        return out
+    except Exception:
+        return {}
 
 
 def _listeners_on(port: int) -> list[int]:
@@ -292,6 +339,21 @@ def _resolve_app_relative(app_root: Path, raw: str | None) -> str | None:
     if candidate.is_absolute():
         return str(candidate)
     return str((app_root / candidate).resolve())
+
+
+def _find_info_json(app_root: Path) -> Path | None:
+    """`InfoPageEmitter` writes into the GENERATED source set, not the app module's handwritten one.
+    Both are on the classpath (`processResources` merges them), so both are plausible places to look
+    -- generated first, because that is the one the emitter owns and the only one that exists in a
+    plain generation."""
+    for relative in (
+        Path("npdev-generated") / "src" / "main" / "resources" / "static" / "info.json",
+        Path("src") / "main" / "resources" / "static" / "info.json",
+    ):
+        candidate = app_root / relative
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _newest_jar(app_root: Path) -> tuple[str | None, str | None]:
@@ -417,9 +479,9 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
     record["builtAt"] = built_at
     record["logsDir"] = str(final_app_root / "logs") if (final_app_root / "logs").is_dir() else None
 
-    info_json = final_app_root / "src" / "main" / "resources" / "static" / "info.json"
-    record["infoJsonPath"] = str(info_json) if info_json.is_file() else None
-    record["hasInfoJson"] = info_json.is_file()
+    info_json = _find_info_json(final_app_root)
+    record["infoJsonPath"] = str(info_json) if info_json else None
+    record["hasInfoJson"] = info_json is not None
 
     # --- liveness ---------------------------------------------------------------------------
     # R3: probe over 127.0.0.1, ALWAYS. `localhost` resolves to ::1 first on Windows while the app
@@ -438,12 +500,42 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
         (_tcp_open("127.0.0.1", port) if port else False) if not snapshot.enumerated else False
     )
 
+    # WHOSE process is on that port. This check exists because the obvious implementation produced a
+    # false GREEN in its first live test on 2026-08-10: a freshly built app was started, failed to
+    # bind because a DIFFERENT app from an earlier session already held 8103, exited -- and the probe
+    # reported `health: running`, because something healthy was indeed answering there. "A healthy
+    # NPDev app is on this app's port" and "THIS app is running" are different claims, and a Monitor
+    # card that conflates them is confidently wrong in exactly the situation a user opened it for.
+    record["identity"] = "unknown"
+    record["identityDetail"] = None
+    if pids and jar:
+        cmdline = snapshot.command_line(pids[0])
+        if cmdline:
+            haystack = cmdline.replace("/", "\\").lower()
+            if str(final_app_root).replace("/", "\\").lower() in haystack:
+                record["identity"] = "confirmed"
+            else:
+                record["identity"] = "mismatch"
+                record["identityDetail"] = (
+                    f"PID {pids[0]} holds port {port} but its command line does not mention this app: "
+                    f"{cmdline[:220]}"
+                )
+
     if not port:
         record["health"] = "unknown"
         record["healthDetail"] = "the resolved plan names no serverPort"
     elif not record["listening"]:
         record["health"] = "stopped"
         record["healthDetail"] = f"nothing is listening on 127.0.0.1:{port}"
+    elif record["identity"] == "mismatch":
+        # Its OWN state, not a flavour of running and not a flavour of error: the fix is to change a
+        # port or stop the other app, and neither "running" nor "error" would say that.
+        record["health"] = "port-conflict"
+        record["healthDetail"] = (
+            record["identityDetail"]
+            + " -- this app is NOT the one serving. Stop the other process or give this app a "
+              "different serverPort."
+        )
     else:
         status, body = _http_json(f"http://127.0.0.1:{port}/actuator/health", timeout=health_timeout)
         if status is None:
@@ -454,7 +546,12 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
             record["healthDetail"] = f"port is open but /actuator/health did not answer: {body}"
         elif isinstance(body, dict) and body.get("status") == "UP":
             record["health"] = "running"
-            record["healthDetail"] = None
+            record["healthDetail"] = (
+                None if record["identity"] == "confirmed"
+                # Never silently upgrade "probably" to "certainly": psutil is optional and the
+                # PowerShell fallback can be blocked, so say which one this is.
+                else "healthy on this app's port, but the owning process could not be identified"
+            )
         else:
             record["health"] = "error"
             record["healthDetail"] = f"/actuator/health returned {status}: {json.dumps(body)[:300]}"
@@ -465,7 +562,7 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
     record["explorations"] = _exploration_summary(app_root)
 
     if include_info:
-        record["info"] = _read_json(info_json) if info_json.is_file() else None
+        record["info"] = _read_json(info_json) if info_json else None
 
     record["status"] = "ok"
     return record

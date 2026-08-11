@@ -1,0 +1,12 @@
+{
+  "found": false,
+  "state": "not-found",
+  "via": null,
+  "endpoint": null,
+  "port": 59998,
+  "root": null,
+  "detail": "no engine answered on 127.0.0.1:59998 and none was found on this machine. Set SCRAPFORAI_ROOT (or scrapforai_root in manager.json) if it is installed somewhere unusual, or install it -- exploration Play stays disabled until then.",
+  "schemaVersion": "npdev-monitor-engine.v1",
+  "command": "monitor engine",
+  "ok": true
+}

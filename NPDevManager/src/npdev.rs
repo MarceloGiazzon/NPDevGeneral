@@ -45,6 +45,23 @@ const FIXTURE_DB_TEST_CONNECTION_REFUSED: &str = include_str!("../fixtures/db-te
 const FIXTURE_INIT_RESULT: &str = include_str!("../fixtures/init-result.json");
 const FIXTURE_SETUP_EVENTS: &str = include_str!("../fixtures/setup-events.jsonl");
 const FIXTURE_DEV_EVENTS: &str = include_str!("../fixtures/dev-events.jsonl");
+// MONITOR_PLAN B1/D1/G1. Every one of these was CAPTURED from the real CLI on 2026-08-10 (see each
+// file's own `_captured` header) -- never hand-written. A hand-written fixture is a guess about the
+// shape the CLI emits, and the entire reason stub mode exists is to build the UI against what the
+// CLI ACTUALLY returns.
+const FIXTURE_MONITOR_SCAN_MIXED: &str = include_str!("../fixtures/monitor-scan-mixed.json");
+const FIXTURE_MONITOR_SCAN_EMPTY: &str = include_str!("../fixtures/monitor-scan-empty.json");
+const FIXTURE_MONITOR_PROBE: &str = include_str!("../fixtures/monitor-probe.json");
+const FIXTURE_MONITOR_ENGINE_RUNNING: &str = include_str!("../fixtures/monitor-engine-running.json");
+const FIXTURE_MONITOR_ENGINE_STOPPED: &str = include_str!("../fixtures/monitor-engine-stopped.json");
+const FIXTURE_MONITOR_ENGINE_MISSING: &str = include_str!("../fixtures/monitor-engine-missing.json");
+const FIXTURE_MONITOR_LOGS: &str = include_str!("../fixtures/monitor-logs.json");
+const FIXTURE_EXPLORE_LIST: &str = include_str!("../fixtures/explore-list.json");
+const FIXTURE_EXPLORE_RUN_GREEN: &str = include_str!("../fixtures/explore-run-green.json");
+const FIXTURE_EXPLORE_RUN_RED: &str = include_str!("../fixtures/explore-run-red.json");
+const FIXTURE_EXPLORE_VALIDATE_OK: &str = include_str!("../fixtures/explore-validate-ok.json");
+const FIXTURE_EXPLORE_VALIDATE_BAD: &str = include_str!("../fixtures/explore-validate-bad.json");
+const FIXTURE_EXPLORE_PREFLIGHT: &str = include_str!("../fixtures/explore-preflight.json");
 
 /// Which doctor fixture stub mode serves -- switchable at runtime (see `set_fake_doctor_scenario`
 /// command) so every failure screen (missing Java, wrong version, unstaged jars) can be exercised
@@ -141,12 +158,38 @@ fn build_command(python_exe: &Path, npdev_cli: &Path, args: &[&str], java_home: 
     cmd
 }
 
+/// The Manager runs whatever NPDev version the user INSTALLED, which may be older than this window.
+/// argparse's answer to an unknown verb is a 40-line usage dump on stderr, and showing that to
+/// somebody who pressed a button is telling them nothing they can act on.
+///
+/// Found by `--selftest` on 2026-08-10: the Monitor's very first call failed against the installed
+/// `beta1.14`, which predates `npdev monitor`, and the message was the usage dump. The capability is
+/// genuinely absent -- the honest report is which version is installed and what to do, not a stack
+/// of choices.
+fn version_too_old_message(stderr: &str, label: &str) -> Option<String> {
+    if !stderr.contains("invalid choice") {
+        return None;
+    }
+    let verb = label.split_whitespace().next().unwrap_or(label);
+    if !stderr.contains(&format!("'{verb}'")) {
+        return None;
+    }
+    Some(format!(
+        "the installed NPDev version has no `npdev {verb}` command. This screen needs a newer one -- \
+         install it on the Versions tab, then come back. (Nothing is broken: the feature simply does \
+         not exist in the version currently selected.)"
+    ))
+}
+
 fn parse_single_json(stdout: &[u8], stderr: &[u8], label: &str) -> Result<Value, String> {
     let text = String::from_utf8_lossy(stdout);
     let trimmed = text.trim();
     if trimmed.is_empty() {
         let err_text = String::from_utf8_lossy(stderr);
         let err_trimmed = err_text.trim();
+        if let Some(message) = version_too_old_message(err_trimmed, label) {
+            return Err(message);
+        }
         return Err(if err_trimmed.is_empty() {
             format!("{label}: no output on stdout (and nothing on stderr either)")
         } else {
@@ -549,6 +592,281 @@ pub async fn start_dev_streaming(
         #[cfg(windows)]
         job,
     }))
+}
+
+// ---------------------------------------------------------------------------------------------
+// MONITOR_PLAN B1 / D1: `npdev monitor` and `npdev explore`, wrapped.
+//
+// Every function below is the same three lines -- build argv, run the CLI, parse one JSON object.
+// That is the whole point. The Monitor's discovery rule, its health verdict, the exploration
+// verdict, the retention policy and the engine-detection order all live in the CLI, so a terminal
+// user has them and this window cannot form a second opinion. Two opinions about "is this app
+// running" is the class of defect REG-144 cost twelve days of red CI.
+// ---------------------------------------------------------------------------------------------
+
+/// Runs the CLI and parses one JSON object, treating a non-zero exit as a RESULT rather than a
+/// transport error whenever the command still produced JSON -- `_emit_json_error` guarantees it
+/// does. Only genuinely empty stdout is a failure.
+async fn run_json(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    args: &[String],
+    java_home: Option<&str>,
+    label: &str,
+) -> Result<Value, String> {
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
+        .output()
+        .await
+        .map_err(|e| format!("could not run {label}: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, label)
+}
+
+pub async fn run_monitor_scan(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    paths: &[String],
+    include_info: bool,
+) -> Result<Value, String> {
+    if fake_mode() {
+        let text = if paths.is_empty() { FIXTURE_MONITOR_SCAN_EMPTY } else { FIXTURE_MONITOR_SCAN_MIXED };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    if paths.is_empty() {
+        // Not an error and not an empty scan of the whole disk: with no inspect paths configured the
+        // Monitor shows only the apps the Manager itself created, which is the honest answer. Guessing
+        // where a user keeps their apps is how a path literal gets born.
+        return Ok(serde_json::json!({
+            "schemaVersion": "npdev-monitor-scan.v1", "command": "monitor scan", "ok": true,
+            "searched": [], "apps": []
+        }));
+    }
+    let mut args = vec!["monitor".to_string(), "scan".to_string(), "--json".to_string(),
+                        "--paths".to_string(), paths.join(";")];
+    if include_info {
+        args.push("--include-info".to_string());
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "monitor scan").await
+}
+
+pub async fn run_monitor_probe(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    include_info: bool,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_MONITOR_PROBE).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args = vec!["monitor".to_string(), "probe".to_string(), "--json".to_string(),
+                        "--app-dir".to_string(), app_dir.to_string()];
+    if include_info {
+        args.push("--include-info".to_string());
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "monitor probe").await
+}
+
+/// D9. Three fixtures rather than one, because the three states drive three DIFFERENT screens --
+/// enabled, "Start engine", and an honest "not installed" -- and the only way to be sure all three
+/// render is to be able to reach all three without uninstalling anything.
+pub async fn run_monitor_engine(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    port: u16,
+    configured_root: Option<&str>,
+    fake_scenario: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        let text = match fake_scenario {
+            "engine-stopped" => FIXTURE_MONITOR_ENGINE_STOPPED,
+            "engine-missing" => FIXTURE_MONITOR_ENGINE_MISSING,
+            _ => FIXTURE_MONITOR_ENGINE_RUNNING,
+        };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args = vec!["monitor".to_string(), "engine".to_string(), "--json".to_string(),
+                        "--port".to_string(), port.to_string()];
+    if let Some(root) = configured_root.filter(|r| !r.is_empty()) {
+        args.push("--root".to_string());
+        args.push(root.to_string());
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "monitor engine").await
+}
+
+pub async fn run_monitor_logs(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    source: &str,
+    tail: u32,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_MONITOR_LOGS).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let args = vec!["monitor".to_string(), "logs".to_string(), "--json".to_string(),
+                    "--app-dir".to_string(), app_dir.to_string(),
+                    "--source".to_string(), source.to_string(),
+                    "--tail".to_string(), tail.to_string()];
+    run_json(python_exe, npdev_cli, &args, java_home, "monitor logs").await
+}
+
+pub async fn run_monitor_logs_export(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    out_zip: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return Ok(serde_json::json!({
+            "schemaVersion": "npdev-monitor-logs-export.v1", "command": "monitor logs export",
+            "ok": true, "zip": out_zip, "bytes": 0,
+            "included": ["STUB MODE -- no bundle was written."],
+        }));
+    }
+    let args = vec!["monitor".to_string(), "logs".to_string(), "export".to_string(),
+                    "--json".to_string(), "--app-dir".to_string(), app_dir.to_string(),
+                    "--out".to_string(), out_zip.to_string()];
+    run_json(python_exe, npdev_cli, &args, java_home, "monitor logs export").await
+}
+
+pub async fn run_explore(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    args: Vec<String>,
+    label: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        let text = match label {
+            "explore list" => FIXTURE_EXPLORE_LIST,
+            "explore preflight" => FIXTURE_EXPLORE_PREFLIGHT,
+            "explore validate" => {
+                if args.iter().any(|a| a.contains("invalid")) { FIXTURE_EXPLORE_VALIDATE_BAD }
+                else { FIXTURE_EXPLORE_VALIDATE_OK }
+            }
+            "explore run" => {
+                // Reaching the RED screen must not require a broken app -- the same reason the doctor
+                // scenarios exist.
+                if args.iter().any(|a| a.contains("red")) { FIXTURE_EXPLORE_RUN_RED }
+                else { FIXTURE_EXPLORE_RUN_GREEN }
+            }
+            _ => FIXTURE_EXPLORE_LIST,
+        };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, label).await
+}
+
+/// B5 + D10 source 2: run one `_ops` script, streaming its output as `ops-event` so the window shows
+/// a build happening instead of freezing for two minutes. The CLI also tees every line to
+/// `<app>/logs/ops-<script>-<timestamp>.log`, so a closed window is not a lost run.
+pub async fn run_ops_script_streaming(
+    app: AppHandle,
+    python_exe: PathBuf,
+    npdev_cli: PathBuf,
+    java_home: Option<String>,
+    app_dir: String,
+    script: String,
+    confirm: Option<String>,
+) -> Result<Option<RunningProcess>, String> {
+    if fake_mode() {
+        let app2 = app.clone();
+        let script2 = script.clone();
+        tauri::async_runtime::spawn(async move {
+            for line in [
+                format!("STUB MODE -- `npdev monitor ops --script {script2}` was not run."),
+                "This is what the streamed output looks like.".to_string(),
+            ] {
+                let _ = app2.emit("ops-event", serde_json::json!({"kind": "line", "text": line}));
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+            let _ = app2.emit("ops-event", serde_json::json!({"kind": "done", "exitCode": 0}));
+        });
+        return Ok(None);
+    }
+
+    let mut args: Vec<String> = vec!["monitor".into(), "ops".into(), "--json".into(),
+                                     "--app-dir".into(), app_dir.clone(), "--script".into(), script.clone()];
+    if let Some(token) = confirm.filter(|t| !t.is_empty()) {
+        args.push("--confirm".into());
+        args.push(token);
+    }
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut cmd = build_command(&python_exe, &npdev_cli, &borrowed, java_home.as_deref(), None);
+    let mut child = cmd.spawn().map_err(|e| format!("could not start {script}: {e}"))?;
+    #[cfg(windows)]
+    let job = assign_to_new_job(&child);
+    let stdout = child.stdout.take().ok_or("ops: no stdout pipe")?;
+    let stderr = child.stderr.take().ok_or("ops: no stderr pipe")?;
+    let mut reader = BufReader::new(stdout).lines();
+    // Same reason as run_setup_streaming: a full stderr pipe blocks the child's next stdout write.
+    let mut stderr_reader = BufReader::new(stderr).lines();
+    tokio::spawn(async move { while let Ok(Some(_)) = stderr_reader.next_line().await {} });
+
+    let app2 = app.clone();
+    let script2 = script.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut last: Option<Value> = None;
+        while let Ok(Some(line)) = reader.next_line().await {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if let Ok(value) = serde_json::from_str::<Value>(line) {
+                let _ = app2.emit("ops-event", value.clone());
+                last = Some(value);
+            }
+        }
+        let exit_code = last
+            .as_ref()
+            .and_then(|v| v.get("exitCode"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let _ = app2.emit("ops-event", serde_json::json!({
+            "kind": "done", "script": script2, "exitCode": exit_code,
+            "logFile": last.and_then(|v| v.get("logFile").cloned()),
+        }));
+    });
+
+    Ok(Some(RunningProcess {
+        child,
+        #[cfg(windows)]
+        job,
+    }))
+}
+
+/// R2: the engine outlives requests by design, so the Manager starts it through the process registry
+/// and it dies with the window. Started via the CLI, so the SSRF allowlist is composed in exactly one
+/// place (R4) -- the UI never assembles origins.
+pub async fn start_engine_streaming(
+    python_exe: PathBuf,
+    npdev_cli: PathBuf,
+    java_home: Option<String>,
+    root: String,
+    port: u16,
+    origins: Vec<String>,
+) -> Result<RunningProcess, String> {
+    let mut args: Vec<String> = vec!["monitor".into(), "engine-start".into(), "--json".into(),
+                                     "--root".into(), root, "--port".into(), port.to_string()];
+    for origin in origins.iter().filter(|o| !o.is_empty()) {
+        args.push("--allow-origin".into());
+        args.push(origin.clone());
+    }
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut cmd = build_command(&python_exe, &npdev_cli, &borrowed, java_home.as_deref(), None);
+    let child = cmd.spawn().map_err(|e| format!("could not start the exploration engine: {e}"))?;
+    #[cfg(windows)]
+    let job = assign_to_new_job(&child);
+    Ok(RunningProcess {
+        child,
+        #[cfg(windows)]
+        job,
+    })
 }
 
 /// Kills the whole process tree `start_dev_streaming` started, not just the tracked `Child` --

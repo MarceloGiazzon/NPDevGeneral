@@ -1,0 +1,103 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "id": "app-is-generated",
+      "name": "the target is a generated NPDev app",
+      "status": "pass",
+      "detail": "D:\\WorkSpace\\NPDev\\Build\\monitor-live"
+    },
+    {
+      "id": "app-healthy",
+      "name": "the app answers /actuator/health",
+      "status": "pass",
+      "detail": "http://127.0.0.1:8411",
+      "fixCommand": null
+    },
+    {
+      "id": "engine-available",
+      "name": "the ScrapForAI engine is available",
+      "status": "pass",
+      "detail": "the engine answered /v1/status with HTTP 401. Its location is not needed.",
+      "found": "running"
+    },
+    {
+      "id": "origin-allowlisted",
+      "name": "the app origin will be allowlisted for this run",
+      "status": "pass",
+      "detail": "ALLOWED_TARGET_ORIGINS will include http://127.0.0.1:8411"
+    }
+  ],
+  "app": {
+    "name": "npdev-canary",
+    "appDir": "D:\\WorkSpace\\NPDev\\Build\\monitor-live",
+    "outputRoot": "D:\\WorkSpace\\NPDev\\Build",
+    "opsDir": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\_ops",
+    "origin": "explicit",
+    "isAppRoot": true,
+    "discoveredBy": "marker-pair",
+    "probedAt": "2026-08-11T00:14:07Z",
+    "opsLayout": "in-app",
+    "finalAppRoot": "D:\\WorkSpace\\NPDev\\Build\\monitor-live",
+    "engine": "H2Local",
+    "storageMode": "jdbc",
+    "port": 8411,
+    "externallyProvisioned": false,
+    "physicalDatabase": true,
+    "schemaFingerprint": "sha256:8bc2c96643d8b273c06d2d0c67db476cf8df9cdeae9f6b211eef6a1c0bec2cf5",
+    "connection": {
+      "engine": "H2Local",
+      "host": "localhost",
+      "port": null,
+      "database": "npdev_canary",
+      "username": "sa",
+      "containerName": null,
+      "driverClassName": "org.h2.Driver"
+    },
+    "dataRoot": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\data",
+    "dbFile": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\data\\npdev_canary.mv.db",
+    "appDefinitionRoot": null,
+    "modelPath": null,
+    "superUserKeyFile": null,
+    "jarPath": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\build\\libs\\FinalExec-0.1.0.jar",
+    "builtAt": "2026-08-11T00:06:41Z",
+    "logsDir": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\logs",
+    "infoJsonPath": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\npdev-generated\\src\\main\\resources\\static\\info.json",
+    "hasInfoJson": true,
+    "probeBaseUrl": "http://127.0.0.1:8411",
+    "baseUrl": "http://localhost:8411",
+    "pid": 24520,
+    "pids": [
+      24520
+    ],
+    "listening": true,
+    "identity": "confirmed",
+    "identityDetail": null,
+    "health": "running",
+    "healthDetail": null,
+    "docker": null,
+    "explorations": {
+      "definitionCount": 2,
+      "definitions": [
+        "01-info-page-loads.json",
+        "02-deliberately-broken.json"
+      ],
+      "runCount": 5,
+      "lastRunId": "2026-08-11T00-13-54_01-info-page-loads",
+      "lastRunAt": "2026-08-11T00:13:53Z",
+      "lastRunGreen": true
+    },
+    "status": "ok"
+  },
+  "engine": {
+    "found": true,
+    "state": "running",
+    "via": "service-probe",
+    "endpoint": "http://127.0.0.1:3010",
+    "port": 3010,
+    "root": null,
+    "detail": "the engine answered /v1/status with HTTP 401. Its location is not needed."
+  },
+  "schemaVersion": "npdev-exploration-preflight.v1",
+  "command": "explore preflight"
+}

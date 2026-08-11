@@ -2,6 +2,7 @@
 //! folder deletes the Manager entirely -- nothing else is ever written outside it, and nothing is
 //! ever installed system-wide (no PATH edits, no registry).
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -71,6 +72,39 @@ pub struct ManagerState {
     /// Recorded once M3/M4 succeed, so later runs don't re-probe: exact resolved binary paths.
     pub jdk_home: Option<String>,
     pub python_exe: Option<String>,
+    /// MONITOR_PLAN D7: the Monitor shows the UNION of apps the Manager created and apps found by
+    /// scanning these paths. Persisted so a user adds "where my apps live" once, not every launch.
+    /// Empty by default -- the Monitor then shows only registered apps, which is correct rather
+    /// than a guess about this machine's layout.
+    #[serde(default)]
+    pub inspect_paths: Vec<String>,
+    /// D9 detection order #2: the user's explicit answer, which always beats a derived guess. Left
+    /// None until detection finds an engine somewhere derived and the user says "remember it" --
+    /// the Manager never ASKS for a path before trying to find one itself.
+    #[serde(default)]
+    pub scrapforai_root: Option<String>,
+    /// E2: the assistant provider, if the user configured one. The Manager never bundles an API key.
+    #[serde(default)]
+    pub assistant: Option<AssistantConfig>,
+}
+
+/// E2. Two shapes, both supplied entirely by the user: an external command template (their own
+/// Claude CLI, say) or an HTTP endpoint plus a key they typed. Nothing here ships with the Manager.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AssistantConfig {
+    /// "command" or "http".
+    pub kind: String,
+    /// command kind: the argv template. `{prompt_file}` and `{context_file}` are substituted with
+    /// paths to temp files -- never with the content itself, which would put a user's DOM excerpt
+    /// on a command line where it lands in shell history and process listings.
+    #[serde(default)]
+    pub command: Vec<String>,
+    #[serde(default)]
+    pub endpoint: Option<String>,
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 impl ManagerState {
@@ -96,18 +130,33 @@ impl ManagerState {
     }
 }
 
-/// Tauri-managed shared state: the on-disk `ManagerState` plus handles to any currently-running
-/// child process (the `dev` loop is long-running and must be stoppable from a later command).
+/// Tauri-managed shared state: the on-disk `ManagerState` plus handles to every currently-running
+/// child process.
+///
+/// MONITOR_PLAN B2: this used to be `Mutex<Option<RunningProcess>>` -- one app at a time, enforced
+/// by the TYPE. The Monitor's whole premise is a wall of apps, several of them running, so the
+/// registry is now keyed by app directory. The Run screen keeps its one-at-a-time feel BY POLICY,
+/// which is a UX choice it can change, rather than by a data structure that cannot.
+///
+/// **Nothing is ever trusted from memory.** Kill the Manager mid-run and the registry is gone while
+/// the apps keep serving; a Manager that then reported them stopped would be confidently wrong. The
+/// Monitor re-derives every card from `npdev monitor probe` and uses this map only to know which
+/// processes IT can stop directly. That is the M0-M8 AppState lesson, restated.
 pub struct AppState {
     pub manager: Mutex<ManagerState>,
-    pub running_dev: Mutex<Option<crate::npdev::RunningProcess>>,
+    /// key = app directory, canonicalised by the caller.
+    pub running: Mutex<HashMap<String, crate::npdev::RunningProcess>>,
+    /// R2: the exploration engine outlives individual requests by design, so it gets an EXPLICIT
+    /// lifecycle -- a status chip and a stop button -- rather than being left to leak.
+    pub engine: Mutex<Option<crate::npdev::RunningProcess>>,
 }
 
 impl AppState {
     pub fn new() -> Self {
         AppState {
             manager: Mutex::new(ManagerState::load()),
-            running_dev: Mutex::new(None),
+            running: Mutex::new(HashMap::new()),
+            engine: Mutex::new(None),
         }
     }
 }

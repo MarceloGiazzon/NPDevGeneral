@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "npdev-exploration-show.v1",
+  "command": "explore show",
+  "ok": true,
+  "run": {
+    "schemaVersion": "npdev-exploration-run.v1",
+    "runId": "2026-08-11T00-13-54_01-info-page-loads",
+    "scope": "app",
+    "suite": null,
+    "definition": {
+      "kind": "routine-json",
+      "path": "_ops\\explorations\\01-info-page-loads.json",
+      "scenarioName": "info-page-loads",
+      "contentSha256": "b96fd420e0245e79969b31a97453007f7dad988b90402d568fa54164397935f9"
+    },
+    "target": {
+      "app": "npdev-canary",
+      "baseUrl": "http://127.0.0.1:8411",
+      "engine": "H2Local",
+      "modelSha256": null,
+      "platform": "beta1.14-2-g5fe52fad"
+    },
+    "driver": "cli",
+    "engineVersion": "running",
+    "startedAt": "2026-08-11T00:13:53Z",
+    "finishedAt": "2026-08-11T00:13:54Z",
+    "durationMs": 1083,
+    "status": "passed",
+    "failedStepIndex": null,
+    "error": null,
+    "finalUrl": "http://127.0.0.1:8411/info.html",
+    "steps": [
+      {
+        "index": 0,
+        "action": "goto",
+        "label": "Open the app's own info page",
+        "status": "passed",
+        "durationMs": 18,
+        "screenshot": null,
+        "error": null
+      },
+      {
+        "index": 1,
+        "action": "waitForSelector",
+        "label": "Wait for the first record table to render",
+        "status": "passed",
+        "durationMs": 34,
+        "screenshot": null,
+        "error": null
+      },
+      {
+        "index": 2,
+        "action": "assertTextContains",
+        "label": "The Monitoring section is present",
+        "status": "passed",
+        "durationMs": 3,
+        "screenshot": null,
+        "error": null
+      },
+      {
+        "index": 3,
+        "action": "screenshot",
+        "label": "Capture the rendered page",
+        "status": "passed",
+        "durationMs": 781,
+        "screenshot": null,
+        "error": null
+      },
+      {
+        "index": 4,
+        "action": "collect",
+        "label": "Record where we ended up",
+        "status": "passed",
+        "durationMs": 5,
+        "screenshot": null,
+        "error": null
+      }
+    ],
+    "evidence": {
+      "screenshots": [
+        {
+          "name": "info-page",
+          "blob": "blobs/cd7270299909db91ac951a2f17d3c54ed38981b63033b360f6a1168e528b18a5.png",
+          "sha256": "cd7270299909db91ac951a2f17d3c54ed38981b63033b360f6a1168e528b18a5",
+          "bytes": 79393,
+          "resolvedPath": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\_ops\\exploration-runs\\blobs\\cd7270299909db91ac951a2f17d3c54ed38981b63033b360f6a1168e528b18a5.png"
+        }
+      ],
+      "consoleErrors": [],
+      "pageErrors": [],
+      "networkFailures": [],
+      "unexpectedExternalRequests": [],
+      "domTextSnapshot": "sample.npdevcanary\n\nGenerated with the app. Portable facts only -- nothing here names a path on the machine that built it.\n\nURLs\nBase URL\thttp://127.0.0.1:8411/\tCopyOpen\nHome\thttp://127.0.0.1:8411/\tCopyOpen\nLogin\thttp://127.0.0.1:8411/login.html\tCopyOpen\nOperator UI\thttp://127.0.0.1:8411/npdev-ui\tCopyOpen\nBusiness UI\thttp://127.0.0.1:8411/npdev-business-ui/\tCopyOpen\nControl Panel\thttp://127.0.0.1:8411/control-panel.html\tCopyOpen\nApp tree\thttp://127.0.0.1:8411/app-tree.html\tCopyOpen\nInfo page (this page)\thttp://127.0.0.1:8411/info.html\tCopyOpen\nAPI key header\tX-Api-Key: dev-key\tCopy\nMonitoring\nHealth\thttp://127.0.0.1:8411/actuator/health\tCopyOpen\nAudit\thttp://127.0.0.1:8411/api/audit\tCopyOpen\nStorage summary\thttp://127.0.0.1:8411/api/admin/storage/summary\tCopyOpen\nFlows\nFlows list\thttp://127.0.0.1:8411/api/flows\tCopyOpen\nExecute CreateCanaryTask\thttp://127.0.0.1:8411/api/flows/CreateCanaryTask/execute\tCopyOpen\nConcepts\nCRUD CanaryOwner\thttp://127.0.0.1:8411/api/canary_owners\tCopyOpen\nCRUD CanaryTask\thttp://127.0.0.1:8411/api/canary_tasks\tCopyOpen\nDatabase\nDB engine\tH2Local\tCopy\nNot here on purpose: the jar, the _ops toolbox, the model file, the database file, the super-user key file, the port, the PID and container state. Those are true of a machine rather than of this app, so they are never written into generated output. Ask for them with npdev monitor probe --app-dir <this app>, or open this app in the NPDev Manager's Monitor, which overlays them onto this page's rows.",
+      "finalUrl": "http://127.0.0.1:8411/info.html",
+      "consoleCount": 0,
+      "networkCount": 0
+    },
+    "verdict": {
+      "green": true,
+      "allowedConsoleErrorSubstrings": [],
+      "excused": [],
+      "reasons": []
+    },
+    "extracted": {},
+    "baselineDiff": null,
+    "pinned": false,
+    "ledgerId": null,
+    "notes": null,
+    "runDir": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\_ops\\exploration-runs\\2026-08-11T00-13-54_01-info-page-loads",
+    "blobsDir": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\_ops\\exploration-runs\\blobs"
+  }
+}

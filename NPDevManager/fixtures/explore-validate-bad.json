@@ -1,0 +1,70 @@
+{
+  "ok": false,
+  "valid": false,
+  "file": "C:\\Users\\Marcelo\\AppData\\Local\\Temp\\claude\\d--WorkSpace-NPDev-NPDev-General\\00857461-ff1b-4d59-acb3-a284cb9b608f\\scratchpad\\invalid-routine.json",
+  "composedTargetUrl": "http://127.0.0.1:8080/info.html",
+  "stepCount": 3,
+  "errors": [
+    {
+      "path": "/steps/1",
+      "keyword": "oneOf",
+      "message": "`action: 'clickk'` is not one of the 32 the engine defines",
+      "allowedValues": [
+        "assertCount",
+        "assertDisabled",
+        "assertEnabled",
+        "assertHidden",
+        "assertTextContains",
+        "assertUrlContains",
+        "assertVisible",
+        "check",
+        "click",
+        "collect",
+        "doubleClick",
+        "evaluate",
+        "extractAttribute",
+        "extractText",
+        "fill",
+        "goto",
+        "hover",
+        "press",
+        "reload",
+        "resizeWindow",
+        "screenshot",
+        "selectOption",
+        "setViewport",
+        "setViewportSize",
+        "uncheck",
+        "waitForElapsed",
+        "waitForLoadState",
+        "waitForResponse",
+        "waitForSelector",
+        "waitForTimeout",
+        "waitForUrlContains",
+        "watch"
+      ]
+    },
+    {
+      "path": "/steps/2",
+      "keyword": "oneOf",
+      "message": "is not a valid `waitForSelector` step: /steps/2 is missing the required property 'state'",
+      "matchedBranch": "waitForSelector"
+    }
+  ],
+  "warnings": [
+    {
+      "level": "info",
+      "rule": "label-missing",
+      "message": "step 1 has no label: the filmstrip and every failure message read much better with one"
+    },
+    {
+      "level": "info",
+      "rule": "label-missing",
+      "message": "step 2 has no label: the filmstrip and every failure message read much better with one"
+    }
+  ],
+  "validator": "pinned-engine-schema (schemas/ai/scrapforai-routine.schema.json)",
+  "unassertedFormats": [],
+  "schemaVersion": "npdev-exploration-validate.v1",
+  "command": "explore validate"
+}

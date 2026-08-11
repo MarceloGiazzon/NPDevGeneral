@@ -1,0 +1,12 @@
+{
+  "found": true,
+  "state": "installed-stopped",
+  "via": "derived-candidate",
+  "endpoint": null,
+  "port": 3010,
+  "root": "D:\\WorkSpace\\ScrapForAILegacy",
+  "detail": "found by scanning locations derived from this machine's own layout. Offer Start, and offer to remember it.",
+  "schemaVersion": "npdev-monitor-engine.v1",
+  "command": "monitor engine",
+  "ok": true
+}

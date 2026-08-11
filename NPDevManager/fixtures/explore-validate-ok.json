@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "valid": true,
+  "file": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\_ops\\explorations\\01-info-page-loads.json",
+  "composedTargetUrl": "http://127.0.0.1:8411/info.html",
+  "stepCount": 5,
+  "errors": [],
+  "warnings": [],
+  "validator": "pinned-engine-schema (schemas/ai/scrapforai-routine.schema.json)",
+  "unassertedFormats": [],
+  "schemaVersion": "npdev-exploration-validate.v1",
+  "command": "explore validate"
+}

@@ -160,6 +160,7 @@ function Test-NpdevServerReachable {
         // collide because neither has anywhere to collide.
         Path opsRoot = normalizedFinalAppRoot.resolve("_ops").toAbsolutePath().normalize();
         Files.createDirectories(opsRoot);
+        writeRootMarker(normalizedFinalAppRoot);
 
         int serverPort = readInt(config, 8080, "runtime", "serverPort");
         String apiKey = readText(config, "trialDefaults", "apiKey");
@@ -757,6 +758,17 @@ exit $LASTEXITCODE
     /**
      * PORT-2: same story as Build-FinalApp, one step worse -- it also named the jar by absolute
      * path, so a moved app ran the original app's jar and reported success on the wrong binary.
+     *
+     * <p>MONITOR_PLAN D10: it also TEES stdout+stderr to {@code <app>/logs/app-<timestamp>.log}.
+     * Until now the generated app's own output was persisted NOWHERE -- and {@code HANDOVER.md} §5,
+     * the escape hatch for "it will not start at all", sent a tester to collect {@code .log} files
+     * from a directory that does not exist, for an app whose output was never captured. Plan B
+     * graded that BLOCKER-FOR-TESTERS.
+     *
+     * <p>The path is APP-RELATIVE (PORT-1), and {@code Tee-Object} rather than a redirect so the
+     * console still shows the boot live -- a run that only writes to a file looks hung. The
+     * precedent is in this same emitter: {@code h2server.stdout.log} via
+     * {@code -RedirectStandardOutput}.
      */
     private static String runFinalAppScript(int serverPort) {
         return """
@@ -765,7 +777,20 @@ $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan
 """ + DATA_ROOT_HELPER + """
 $appRoot = Get-NpdevAppRoot -Plan $plan
 Set-Location $appRoot
-java -jar (Join-Path $appRoot 'build\\libs\\FinalExec-0.1.0.jar') --server.port=%d
+
+# D10 source 1. `logs` sits beside `data` inside the app, and is spared by the same rule that spares
+# `data` on regeneration -- a rebuild that destroys the evidence of why the last run failed is a
+# rebuild that destroys the only thing worth having.
+$logDir = Join-Path $appRoot 'logs'
+if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
+$logFile = Join-Path $logDir ('app-' + (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') + '.log')
+Write-Host "Logging this run to $logFile"
+
+# 2>&1 merges the JVM's stderr into the same stream, because a stack trace on stderr is exactly what
+# the person reading this file is looking for. Tee keeps the console live -- a run that only writes
+# to a file looks hung during the ~24s boot.
+java -jar (Join-Path $appRoot 'build\\libs\\FinalExec-0.1.0.jar') --server.port=%d 2>&1 |
+  Tee-Object -FilePath $logFile
 exit $LASTEXITCODE
 """.formatted(serverPort);
     }
@@ -1008,6 +1033,38 @@ own without editing anything here:
 $env:NPDEV_RUNTIMEHOST_LIBS = '<your runtimehost-libs directory>'
 ```
 """;
+    }
+
+    /**
+     * The {@code .npdev-root} marker, written BESIDE {@code _ops} and by the same emitter, so the
+     * marker PAIR the Monitor's discovery keys on can never be half-present.
+     *
+     * <p>MONITOR_PLAN D7 and CLAUDE.md both say "a generated FinalApp carries its own
+     * {@code .npdev-root} marker" -- and on 2026-08-10 that was measurably FALSE. Nothing had ever
+     * written one: the file existed once, at the platform repo's own root, while
+     * {@code clean-sample-output.ps1} listed {@code App\.npdev-root} as an artefact to retain and no
+     * app in the machine's Build root had one. A scan keyed on the marker pair therefore found zero
+     * apps. Writing it here makes the documented invariant true going forward; `npdev monitor` still
+     * accepts {@code _ops/resolved-db-plan.json} as well, so every app generated before today stays
+     * visible.
+     *
+     * <p>Content is a fixed sentence with no timestamp, path or version in it. Two things depend on
+     * that: {@code check-deterministic-generation.ps1} hashes every emitted file across two runs,
+     * and nothing anywhere parses this file -- only its existence is ever tested.
+     */
+    private static void writeRootMarker(Path finalAppRoot) throws Exception {
+        Path marker = finalAppRoot.resolve(".npdev-root");
+        if (Files.exists(marker)) {
+            return;
+        }
+        write(marker,
+                "This directory is a generated NPDev application.\n"
+                        + "\n"
+                        + "It is identified by this marker together with the `_ops` toolbox beside it -- the pair,\n"
+                        + "never either alone, because the NPDev platform repository carries a marker too.\n"
+                        + "Only the existence of this file is ever tested; nothing parses its contents.\n"
+                        + "\n"
+                        + "  npdev monitor probe --app-dir <this directory>\n");
     }
 
     private static void write(Path path, String content) throws Exception {

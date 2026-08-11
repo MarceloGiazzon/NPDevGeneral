@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capabilities the main window needs: listening for the progress/log events emitted from Rust (setup-event, dev-event, jdk-progress, python-progress, version-install-progress), and the opener plugin's open_path/open_url used by the Apps and Run screens.",
+  "description": "Capabilities the main window needs: listening for the progress/log events emitted from Rust (setup-event, dev-event, ops-event, jdk-progress, python-progress, version-install-progress), the opener plugin's open_path/open_url used by the Apps, Run and Monitor screens, and the asset protocol so the Scrap Manager's filmstrip can render exploration screenshots. R1: every new event name and asset scope lands in the SAME commit as the feature that needs it -- in M0-M8 both listen() and the asset protocol were blocked by default ACL, and the symptom is a silent empty panel rather than an error anyone can read. The asset SCOPE itself is in tauri.conf.json (app.security.assetProtocol) and is narrowed to exploration blob directories: the Manager has no reason to be able to read arbitrary files off the machine, and a filmstrip is not a file browser.",
   "windows": ["main"],
   "permissions": [
     "core:default",

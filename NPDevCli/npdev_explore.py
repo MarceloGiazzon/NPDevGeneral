@@ -38,6 +38,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -396,6 +397,44 @@ def _sha256_file(path: Path) -> str:
 
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def resolve_artifact(raw: str, artifact_dir: Path | None) -> Path | None:
+    """Where the engine's screenshot actually is.
+
+    MEASURED 2026-08-10: the engine returns `artifacts/job_<id>/screenshots/<name>.png` -- relative,
+    with an `artifacts/` prefix that corresponds to ARTIFACT_DIR ITSELF, so the file really lives at
+    `<ARTIFACT_DIR>/job_<id>/screenshots/<name>.png`. Treating the value as a path and calling
+    `is_file()` on it therefore finds nothing, and the first green run recorded
+    "the engine's artifact was gone before it could be stored" for a screenshot sitting on disk two
+    directories away. A missing screenshot that is not actually missing is the worst kind: the run
+    still goes green and the evidence quietly is not there.
+
+    Candidates in order, each a real filesystem check rather than a guess about the engine's
+    convention -- the convention can change, and this survives it."""
+    candidate = Path(raw)
+    if candidate.is_absolute() and candidate.is_file():
+        return candidate
+    if artifact_dir is None:
+        return candidate if candidate.is_file() else None
+    attempts = [artifact_dir / candidate]
+    parts = candidate.parts
+    if len(parts) > 1:
+        # Strip the prefix segment that names the artifact root itself.
+        attempts.append(artifact_dir / Path(*parts[1:]))
+    attempts.append(Path.cwd() / candidate)
+    for attempt in attempts:
+        if attempt.is_file():
+            return attempt
+    # Last resort: the basename, anywhere under the artifact dir. Bounded by that directory, so it
+    # cannot wander, and it keeps working if the engine reshapes its layout again.
+    try:
+        for found in artifact_dir.rglob(candidate.name):
+            if found.is_file():
+                return found
+    except OSError:
+        pass
+    return None
 
 
 def store_blob(app_dir: Path, source: Path) -> tuple[str, str, int] | None:
@@ -912,7 +951,8 @@ def build_run_record(*, app_dir: Path, repo_root: Path, result: dict, routine: d
                      routine_file: Path | None, driver: str, app_record: dict,
                      started_at: str, duration_ms: int, engine_version: str | None,
                      ledger_id: str | None = None, scope: str = "app",
-                     suite: str | None = None, definition_kind: str = "routine-json") -> dict:
+                     suite: str | None = None, definition_kind: str = "routine-json",
+                     artifact_dir: Path | None = None) -> dict:
     """Engine result (or a Playwright reporter's equivalent) -> our run record. The three hashes are
     the heart of it: with definition.contentSha256 + target.modelSha256 + target.platform, every red
     run is attributable -- 'same routine, same model, new platform' names the culprit instead of
@@ -934,15 +974,20 @@ def build_run_record(*, app_dir: Path, repo_root: Path, result: dict, routine: d
 
     evidence = dict(result.get("evidence") or {})
     stored_shots = []
+    artifact_dir = artifact_dir or (runs_root(app_dir) / ".engine-artifacts")
     for shot in evidence.get("screenshots") or []:
         source = shot.get("path")
         entry = {"name": shot.get("name"), "blob": None, "sha256": None, "bytes": None}
         if source:
-            stored = store_blob(app_dir, Path(source))
+            resolved = resolve_artifact(str(source), artifact_dir)
+            stored = store_blob(app_dir, resolved) if resolved else None
             if stored:
                 entry["blob"], entry["sha256"], entry["bytes"] = stored
             else:
-                entry["detail"] = "the engine's artifact was gone before it could be stored"
+                # Name what was looked for. "gone" without a path is the kind of message that turns
+                # a two-minute check into an investigation.
+                entry["detail"] = (f"could not resolve the engine's artifact {source!r} under "
+                                   f"{artifact_dir}")
         stored_shots.append(entry)
     evidence["screenshots"] = stored_shots
     # `console` and `network` are the FULL streams; the run record keeps the failure subsets plus a
@@ -1027,8 +1072,13 @@ def _start_engine(root: str, port: int, origins: list[str], api_key: str, artifa
         )
     env = dict(os.environ)
     env.update(npdev_monitor.engine_start_env(port, origins, api_key, artifact_dir))
+    # Its own process group / session, so `_stop_process` can take the launcher AND the node server
+    # it spawns down together. Without this the tree-kill has nothing to aim at on POSIX.
+    spawn_kwargs: dict = {}
+    if os.name != "nt":
+        spawn_kwargs["start_new_session"] = True
     process = subprocess.Popen(argv, cwd=artifact_dir, env=env,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **spawn_kwargs)
     endpoint = f"http://127.0.0.1:{port}"
     for _ in range(60):
         if process.poll() is not None:
@@ -1042,14 +1092,43 @@ def _start_engine(root: str, port: int, origins: list[str], api_key: str, artifa
 
 
 def _stop_process(process) -> None:
+    """Kill the process TREE, not just the tracked child.
+
+    MEASURED 2026-08-10, and it is R2 exactly: the launcher (`tsx`) spawns the real server as its
+    own child, so `terminate()` on the tracked process left node still LISTENING on 3010 after the
+    run finished. The next run then found a "running" engine via the service probe, reused it,
+    correctly declined to stop something it had not started -- and the orphan outlived every run
+    that came after it. A browser-automation server left listening on a user's machine by a tool
+    that believed it had cleaned up is precisely what R2 is about.
+
+    Same remedy the Manager already uses for `npdev dev`: a job/process-group kill rather than a
+    signal to one PID."""
+    try:
+        pid = process.pid
+    except Exception:
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)],
+                           capture_output=True, timeout=15)
+        except Exception:
+            pass
+    else:
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+        except Exception:
+            pass
     try:
         process.terminate()
-        try:
-            process.wait(timeout=5)
-        except Exception:
-            process.kill()
     except Exception:
         pass
+    try:
+        process.wait(timeout=5)
+    except Exception:
+        try:
+            process.kill()
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1175,6 +1254,92 @@ def build_context_pack(repo_root: Path, app_dir: Path, exemplars: int = 2) -> di
         },
         "gotchas": DURABLE_GOTCHAS,
         "exemplars": picked,
+    }
+
+
+def build_repair_payload(repo_root: Path, app_dir: Path, prompt: str, *, run_id: str | None = None,
+                         include_page_text: bool = False) -> dict:
+    """E3-a: the EXACT bytes an assistant request would carry -- composed, and sent nowhere.
+
+    Three layers, all required, because each one covers what the others cannot:
+
+    1. **Structure-first by default.** The DOM excerpt is selectors, tags, attributes and the error;
+       no text nodes. Most failures are selector problems, so this is usually sufficient, and it is
+       the cheapest possible way to not send someone's data anywhere. `--include-page-text` is an
+       explicit opt-in PER REQUEST, and which mode was used is recorded on the payload so a repair
+       made from a text-included request is distinguishable later.
+    2. **Redact before composing.** Credential-shaped keys and `password=`/`token=` pairs are
+       replaced. This catches CREDENTIALS, not content -- which is exactly why layers 1 and 3 exist.
+    3. **Show, then send.** This function returns the payload; nothing here transmits. `npdev ai
+       generate-routine` sends what it is handed, so the bytes that leave are provably the bytes that
+       were displayed.
+    """
+    app_dir = Path(app_dir).expanduser().resolve()
+    context = build_context_pack(repo_root, app_dir)
+
+    failure = None
+    if run_id:
+        record = read_run(app_dir, run_id)
+        if record is None:
+            raise ExploreError(f"no such run: {run_id}")
+        evidence = record.get("evidence") or {}
+        failed_index = record.get("failedStepIndex")
+        steps = record.get("steps") or []
+        failure = {
+            "runId": run_id,
+            "status": record.get("status"),
+            "failedStepIndex": failed_index,
+            "failedStep": steps[failed_index] if isinstance(failed_index, int) and failed_index < len(steps) else None,
+            "error": record.get("error"),
+            "verdict": record.get("verdict"),
+            "consoleErrors": [_text_of(e)[:400] for e in (evidence.get("consoleErrors") or [])[:20]],
+            "pageErrors": [_text_of(e)[:400] for e in (evidence.get("pageErrors") or [])[:20]],
+            "networkFailures": (evidence.get("networkFailures") or [])[:20],
+            "domExcerpt": _dom_excerpt(record, include_page_text=include_page_text),
+        }
+        definition_path = (record.get("definition") or {}).get("path")
+        if definition_path:
+            candidate = app_dir / definition_path
+            if candidate.is_file():
+                failure["routine"] = npdev_monitor._read_json(candidate)
+
+    payload = {
+        "schemaVersion": "npdev-assistant-payload.v1",
+        "command": "explore repair-payload",
+        "ok": True,
+        "composedAt": _utc_now(),
+        "egress": {
+            "sentAnywhereByThisCommand": False,
+            "mode": "structure-and-text" if include_page_text else "structure-only",
+            "note": "Nothing has left this machine. `npdev ai generate-routine` sends exactly these "
+                    "bytes, to the provider YOU configured, when you ask it to.",
+        },
+        "prompt": prompt,
+        "app": context["app"],
+        "concepts": context["concepts"],
+        "routes": context["routes"],
+        "routineSchema": context["routineSchema"],
+        "gotchas": context["gotchas"],
+        "exemplars": context["exemplars"],
+        "failure": failure,
+    }
+    # Layer 2 last, over the WHOLE payload, so nothing composed above can smuggle a credential
+    # through a field this function did not think about.
+    return npdev_monitor.redact(payload)
+
+
+def _dom_excerpt(record: dict, *, include_page_text: bool) -> dict:
+    """Structure, not content. `extracted` is where a routine's `collect` steps put DOM text, so it is
+    the one field that reliably carries a user's real data -- names, addresses, order lines."""
+    extracted = record.get("extracted") or {}
+    if include_page_text:
+        return {"mode": "structure-and-text", "extracted": extracted}
+    keys = sorted(extracted.keys()) if isinstance(extracted, dict) else []
+    return {
+        "mode": "structure-only",
+        "extractedKeys": keys,
+        "note": "page text withheld. The routine collected the keys above; their VALUES are this "
+                "app's data and are not included unless you opt in per request.",
     }
 
 

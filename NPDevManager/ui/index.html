@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <title>NPDev Manager</title>
 <link rel="stylesheet" href="app.css" />
+<link rel="stylesheet" href="monitor.css" />
 </head>
 <body>
   <div id="fake-banner" class="fake-banner" hidden>
@@ -20,6 +21,8 @@
     <button class="tab" data-screen="apps">Apps</button>
     <button class="tab" data-screen="run">Run</button>
     <button class="tab" data-screen="versions">Versions</button>
+    <button class="tab" data-screen="monitor">The Monitor</button>
+    <button class="tab" data-screen="scrap">Scrap Manager</button>
   </nav>
 
   <main>
@@ -160,8 +163,193 @@
       <div id="version-list" class="version-list"></div>
       <p class="subtitle">Each version is one folder under the Manager's own home. Removing it deletes exactly that folder.</p>
     </section>
+    <!-- 6: The Monitor (MONITOR_PLAN Phase B) -->
+    <section id="screen-monitor" class="screen" hidden>
+      <h1>▚ THE MONITOR <span class="dim">// every generated app on this machine</span></h1>
+      <p class="subtitle">
+        One wall of screens. Each card is what <code>npdev monitor probe</code> just saw — never what
+        this window remembers, so it stays right across a restart.
+      </p>
+
+      <!--
+        D7: the union of apps this Manager created and apps found under these paths. Empty by
+        default: guessing where somebody keeps their apps is how a path literal gets born.
+      -->
+      <section class="inspect">
+        <label>INSPECT PATHS</label>
+        <span id="inspect-chips"></span>
+        <input id="inspect-add" type="text"
+               placeholder="Add a folder to inspect, then press Enter (an app = _ops + .npdev-root or resolved-db-plan.json)…" />
+        <button class="btn" id="inspect-scan">⟳ INSPECT</button>
+        <button class="btn ghost" id="inspect-auto">AUTO 30s</button>
+      </section>
+
+      <div class="statusbar">
+        <span id="monitor-counts"></span>
+        <div class="viewtoggle" id="monitor-view">
+          <button data-v="grid" class="active" title="Wall of monitors">⊞ GRID</button>
+          <button data-v="list" title="Vertical list, info beside each monitor">☰ LIST</button>
+        </div>
+        <div class="filters" id="monitor-filters">
+          <button class="active" data-f="all">All</button>
+          <button data-f="running">Running</button>
+          <button data-f="attention">Attention</button>
+          <button data-f="idle">Idle</button>
+        </div>
+      </div>
+
+      <main class="grid" id="monitor-grid"></main>
+    </section>
+
+    <!-- 7: Scrap Manager (MONITOR_PLAN Phase D) -->
+    <section id="screen-scrap" class="screen" hidden>
+      <h1>▚ SCRAP MANAGER <span class="dim">// browser explorations</span></h1>
+      <p class="subtitle">
+        Does this app still work in a real browser, and did that change? History, evidence and one
+        definition of green — the same one the PowerShell harness and the Playwright reporter record
+        through.
+      </p>
+
+      <div class="statusbar">
+        <label class="subtitle" style="margin:0">App
+          <select id="scrap-app"></select>
+        </label>
+        <button class="btn ghost" id="scrap-refresh">⟳ REFRESH</button>
+        <button class="btn" id="scrap-new">+ NEW EXPLORATION</button>
+        <button class="btn ghost" id="assistant-open">✦ ASSISTANT</button>
+        <span style="margin-left:auto; display:flex; align-items:center; gap:10px">
+          <span class="enginechip" id="engine-chip">engine: checking…</span>
+          <button class="btn" id="engine-start" hidden>Start engine</button>
+          <button class="btn ghost" id="engine-stop" hidden>Stop engine</button>
+        </span>
+      </div>
+      <p class="subtitle" id="engine-detail"></p>
+
+      <div class="scrap-layout">
+        <div>
+          <div class="pane">
+            <h3>Routines</h3>
+            <div id="scrap-definitions" class="runlist"></div>
+          </div>
+          <div class="pane" style="margin-top:14px">
+            <h3>History</h3>
+            <div id="scrap-runs" class="runlist"></div>
+          </div>
+        </div>
+        <div id="scrap-detail">
+          <div class="pane"><p class="subtitle">Pick a run on the left, or press ▶ on a routine.</p></div>
+        </div>
+      </div>
+    </section>
   </main>
 
+  <!-- The Monitor's inspector (B4/B7) -->
+  <div class="backdrop" id="monitor-backdrop"></div>
+  <aside class="inspector" id="monitor-inspector">
+    <div class="insp-head">
+      <span class="led off" id="insp-led"></span>
+      <h2 id="insp-title">—</h2>
+      <button class="close" id="insp-close">✕ CLOSE</button>
+    </div>
+    <div class="insp-sub" id="insp-sub"></div>
+    <div class="insp-tabs" id="insp-tabs">
+      <button data-tab="info" class="active">INFO</button>
+      <button data-tab="logs">LOGS</button>
+    </div>
+    <div class="insp-tools">
+      <input id="insp-filter" placeholder="filter rows…" autocomplete="off" />
+    </div>
+    <div class="insp-body" id="insp-body"></div>
+    <div class="runbox" id="runbox" hidden>
+      <div class="runhead">
+        <span class="led info"></span>
+        <span class="title" id="run-title"></span>
+        <button id="runbox-close">HIDE</button>
+      </div>
+      <pre class="runout" id="runout"></pre>
+    </div>
+  </aside>
+
+  <!-- D3: create -->
+  <div class="modal" id="create-modal">
+    <div class="box">
+      <div class="mhead">
+        <h3>NEW EXPLORATION</h3>
+        <button class="btn ghost" data-close-modal="create-modal">✕</button>
+      </div>
+      <div class="mbody">
+        <div class="tabbar" id="create-tabs">
+          <button data-t="json" class="active">JSON</button>
+          <button data-t="assistant">Assistant</button>
+        </div>
+        <div id="create-json-pane">
+          <label>Name (letters, digits, - and _)</label>
+          <input type="text" id="create-name" placeholder="03-create-an-order" />
+          <label>Routine</label>
+          <textarea id="create-json" spellcheck="false"></textarea>
+          <div class="valout" id="create-validation"></div>
+        </div>
+        <div id="create-assistant-pane" hidden>
+          <p class="subtitle">
+            The assistant writes a first draft; you review it in the JSON tab and press Play. It is
+            never required — the JSON tab works with no provider configured at all.
+          </p>
+        </div>
+      </div>
+      <div class="mfoot">
+        <button class="btn ghost" id="create-validate">Validate</button>
+        <button class="btn ghost" id="create-save">Save routine</button>
+        <button class="btn" id="create-play" data-needs-engine="1" disabled>▶ Play</button>
+        <span class="subtitle" style="margin-left:auto">Play is enabled only once the CLI says VALID.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- E3-a: compose, show, then send -->
+  <div class="modal" id="assistant-modal">
+    <div class="box">
+      <div class="mhead">
+        <h3>ASSISTANT</h3>
+        <span class="subtitle" id="assistant-state" style="margin:0"></span>
+        <button class="btn ghost" data-close-modal="assistant-modal">✕</button>
+      </div>
+      <div class="mbody">
+        <label>What should it do?</label>
+        <input type="text" id="assistant-prompt" placeholder="log in and create an order, then check it appears in the list" />
+        <label style="display:flex; gap:8px; align-items:center; margin-top:10px">
+          <input type="checkbox" id="assistant-include-text" />
+          Include page TEXT as well as structure
+        </label>
+        <p class="subtitle">
+          Off by default. The default excerpt is selectors, tags, attributes and the error — no text
+          nodes — because most failures are selector problems and page text on a real machine is
+          somebody's real data. Credentials are redacted either way, and which mode you used is
+          recorded on the run.
+        </p>
+        <button class="btn ghost" id="assistant-compose">1 · Compose (sends nothing)</button>
+        <label>Exactly what would be sent</label>
+        <pre class="runout" id="assistant-payload" style="max-height:320px"></pre>
+        <div class="valout" id="assistant-result"></div>
+      </div>
+      <div class="mfoot">
+        <button class="btn" id="assistant-send" disabled>2 · Send this</button>
+        <span class="subtitle" style="margin-left:auto">Nothing leaves this machine until you press Send.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="lightbox" id="lightbox"><img alt="screenshot" /></div>
+  <div class="toast" id="monitor-toast"></div>
+
   <script src="app.js"></script>
+  <script src="monitor.js"></script>
+  <script src="scrap.js"></script>
+  <script>
+    // Boot the two new screens after their files have defined their init hooks. Kept here rather
+    // than inside app.js's own init() so the five original screens are unaffected if either of these
+    // throws -- a Monitor bug must not take the Install tab down with it.
+    window.__npdevInitMonitor();
+    window.__npdevInitScrap();
+  </script>
 </body>
 </html>

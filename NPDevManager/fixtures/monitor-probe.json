@@ -1,0 +1,213 @@
+{
+  "name": "npdev-canary",
+  "appDir": "D:\\WorkSpace\\NPDev\\Build\\monitor-live",
+  "outputRoot": "D:\\WorkSpace\\NPDev\\Build",
+  "opsDir": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\_ops",
+  "origin": "explicit",
+  "isAppRoot": true,
+  "discoveredBy": "marker-pair",
+  "probedAt": "2026-08-11T00:09:21Z",
+  "opsLayout": "in-app",
+  "finalAppRoot": "D:\\WorkSpace\\NPDev\\Build\\monitor-live",
+  "engine": "H2Local",
+  "storageMode": "jdbc",
+  "port": 8411,
+  "externallyProvisioned": false,
+  "physicalDatabase": true,
+  "schemaFingerprint": "sha256:8bc2c96643d8b273c06d2d0c67db476cf8df9cdeae9f6b211eef6a1c0bec2cf5",
+  "connection": {
+    "engine": "H2Local",
+    "host": "localhost",
+    "port": null,
+    "database": "npdev_canary",
+    "username": "sa",
+    "containerName": null,
+    "driverClassName": "org.h2.Driver"
+  },
+  "dataRoot": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\data",
+  "dbFile": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\data\\npdev_canary.mv.db",
+  "appDefinitionRoot": null,
+  "modelPath": null,
+  "superUserKeyFile": null,
+  "jarPath": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\build\\libs\\FinalExec-0.1.0.jar",
+  "builtAt": "2026-08-11T00:06:41Z",
+  "logsDir": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\logs",
+  "infoJsonPath": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\npdev-generated\\src\\main\\resources\\static\\info.json",
+  "hasInfoJson": true,
+  "probeBaseUrl": "http://127.0.0.1:8411",
+  "baseUrl": "http://localhost:8411",
+  "pid": 24520,
+  "pids": [
+    24520
+  ],
+  "listening": true,
+  "identity": "confirmed",
+  "identityDetail": null,
+  "health": "running",
+  "healthDetail": null,
+  "docker": null,
+  "explorations": {
+    "definitionCount": 0,
+    "definitions": [],
+    "runCount": 0,
+    "lastRunId": null,
+    "lastRunAt": null,
+    "lastRunGreen": null
+  },
+  "info": {
+    "schemaVersion": "npdev-app-info.v1",
+    "namespace": "sample.npdevcanary",
+    "dbEngine": "H2Local",
+    "flows": [
+      "CreateCanaryTask"
+    ],
+    "concepts": [
+      {
+        "name": "CanaryOwner",
+        "route": "canary_owners"
+      },
+      {
+        "name": "CanaryTask",
+        "route": "canary_tasks"
+      }
+    ],
+    "records": [
+      {
+        "section": "URLs",
+        "property": "Base URL",
+        "path": "/",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "URLs",
+        "property": "Home",
+        "path": "/",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "URLs",
+        "property": "Login",
+        "path": "/login.html",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "URLs",
+        "property": "Operator UI",
+        "path": "/npdev-ui",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "URLs",
+        "property": "Business UI",
+        "path": "/npdev-business-ui/",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "URLs",
+        "property": "Control Panel",
+        "path": "/control-panel.html",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "URLs",
+        "property": "App tree",
+        "path": "/app-tree.html",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "URLs",
+        "property": "Info page (this page)",
+        "path": "/info.html",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "URLs",
+        "property": "API key header",
+        "value": "X-Api-Key: dev-key",
+        "openable": false,
+        "important": false
+      },
+      {
+        "section": "Monitoring",
+        "property": "Health",
+        "path": "/actuator/health",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "Monitoring",
+        "property": "Audit",
+        "path": "/api/audit",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "Monitoring",
+        "property": "Storage summary",
+        "path": "/api/admin/storage/summary",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "Flows",
+        "property": "Flows list",
+        "path": "/api/flows",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "Flows",
+        "property": "Execute CreateCanaryTask",
+        "path": "/api/flows/CreateCanaryTask/execute",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "Concepts",
+        "property": "CRUD CanaryOwner",
+        "path": "/api/canary_owners",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "Concepts",
+        "property": "CRUD CanaryTask",
+        "path": "/api/canary_tasks",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "Database",
+        "property": "DB engine",
+        "value": "H2Local",
+        "openable": false,
+        "important": false
+      }
+    ],
+    "probedFacts": [
+      "jarPath",
+      "opsDir",
+      "modelPath",
+      "dbFile",
+      "superUserKeyFile",
+      "port",
+      "pid",
+      "health",
+      "dockerState"
+    ],
+    "probedBy": "npdev monitor probe --app-dir <this app>",
+    "note": "Portable facts only. Anything true of one machine rather than of this app is supplied by `npdev monitor probe` at display time and is never written here."
+  },
+  "status": "ok",
+  "schemaVersion": "npdev-monitor-probe.v1",
+  "command": "monitor probe",
+  "ok": true
+}
