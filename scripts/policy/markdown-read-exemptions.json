@@ -1,0 +1,69 @@
+{
+  "_comment": [
+    "md-zero-2026-08-11 PLAN.md Phase 7's own zero-rule gate (check-no-markdown-reads.py) needs an",
+    "explicit exemption list, in tension with the plan's literal 'zero allowlist entries' line --",
+    "resolved in favour of this list after a real risk audit (asked of the user, recorded in the",
+    "session) found the plan's premise false: only 10 of 287 tracked .md files are rendered from a",
+    "registry, so deleting the scripts that VALIDATE the other 277 (link integrity, doc",
+    "classification, script-mention verification, download-link pinning, hardcoded-path scanning,",
+    "process-doc banning) would remove real, working protection with nothing to replace it.",
+    "",
+    "THE DISTINCTION THIS LIST DRAWS: a script that mines markdown prose as an unstructured DATA",
+    "SOURCE feeding program logic or a generated artifact (RAG indexing, CLI command extraction,",
+    "policy assertions parsed from prose) is the actual defect class Groups B-G fixed -- there are",
+    "zero of those left, and none belong on this list. A script whose entire job IS validating",
+    "markdown prose itself (because that prose is hand-authored and nothing else guarantees its",
+    "correctness) is a different, legitimate thing: a linter. Every entry below is a linter.",
+    "",
+    "Every entry requires a non-empty `why` (check-doc-inventory.py's R4 discipline, the same this",
+    "repo already applies to every other allowlist -- security-pattern-sweep-allowlist.json,",
+    "twin-pair-registry.json). R3-equivalent: an entry naming a file that no longer exists must be",
+    "removed in the same commit that removes the file."
+  ],
+  "exemptFiles": [
+    {
+      "path": "scripts/quality/check-markdown-links.py",
+      "why": "The only link-integrity check in the repo: walks every tracked .md and verifies relative links resolve. 277 of 287 tracked docs are hand-authored, not generated from any registry, so nothing else catches a broken link in them."
+    },
+    {
+      "path": "scripts/quality/run-doc-entrypoint-validation.ps1",
+      "why": "Classifies every docs/**/*.md by path pattern (JSON-driven) and verifies script/report paths mentioned in doc prose still exist. 134 of 144 scanned documents are hand-authored; this is the only thing catching a stale script-path mention in them."
+    },
+    {
+      "path": "scripts/quality/run-doc-entrypoint-validation-tests.ps1",
+      "why": "Test harness for run-doc-entrypoint-validation.ps1 above; its fixtures are .md files by necessity, same exemption."
+    },
+    {
+      "path": "scripts/quality/run-script-inventory-check.ps1",
+      "why": "Its manual-runbook classification's only verification mechanism is checking whether a script's name appears in some tracked .md file's text -- covers 79 of 209 inventoried scripts, all of them documented in hand-authored prose, not a registry."
+    },
+    {
+      "path": "scripts/quality/check-doc-inventory.py",
+      "why": "The process-document ban: lists tracked .md paths (git ls-files) and classifies by path pattern against a JSON policy. Enumerates paths, never opens a file's content -- but the plan's own idiom list names glob(\"*.md\") explicitly, so it is listed here rather than left to a scope judgement call a future reader would have to re-derive."
+    },
+    {
+      "path": "scripts/quality/check-pinned-download-links.py",
+      "why": "md-zero-2026-08-11 PLAN.md Phase 3 already narrowed this from a 94-file sweep to 3 declared knownLinkSites (scripts/policy/release-download-links.json) -- but verifying a download link has not drifted to a pinned version still means reading those 3 real files' actual text. No registry generates README.md/docs/MANAGER.md/docs/RELEASE_PROCESS.md, so this is the only thing catching a hand-typed pinned link."
+    },
+    {
+      "path": "scripts/quality/run-portable-tooling-check.ps1",
+      "why": "Scans NPDevCli/**/*.md (among other extensions) for hardcoded drive-letter paths (REG-144). The .md files under NPDevCli are hand-authored, not generated, and a hardcoded path IN the doc's prose is itself the defect this check exists to catch -- there is no registry to move the assertion into."
+    },
+    {
+      "path": "scripts/docs/generate_group_d_docs.py",
+      "why": "Generator's own --check mode reads back the .md files it renders (README.md, docs/GETTING_STARTED.md, docs/YOUR_FIRST_APP.md, docs/AUTHORING_WITH_AI.md) to detect a hand-edit that bypassed content/*.yml. Reading its OWN declared output for round-trip drift verification is a different, narrower thing than mining markdown as an external data source."
+    },
+    {
+      "path": "scripts/docs/generate_group_e_docs.py",
+      "why": "Same self-verification pattern as generate_group_d_docs.py above, for docs/NPDEV_CONCEPTS_DEEP_DIVE.md, docs/NPDEV_USER_MANUAL.md, docs/ai/AUTHORING_FOR_AI.md."
+    },
+    {
+      "path": "scripts/docs/generate_maturity_max_roadmap_docs.py",
+      "why": "Same self-verification pattern, for the 3 docs/maintainers/*.md maturity-roadmap docs."
+    },
+    {
+      "path": "scripts/quality/run-maturity-max-roadmap-boundary-check.ps1",
+      "why": "Reads $RoadmapSourcePath (default C:\\Users\\Marcelo\\Downloads\\npdev_full_maturity_closure_roadmap_updated.md), an EXTERNAL, non-repo, machine-local reference document the maintainer downloaded once, cross-checked against the policy JSON for stale-target drift. Not a repo-tracked coupling this plan's rule targets -- gated on Test-Path and soft-fails to an empty comparison if absent; never shipped, never affects npdev setup or any end-user path."
+    }
+  ]
+}

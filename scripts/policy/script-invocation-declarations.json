@@ -635,6 +635,9 @@
     },
     "scripts/quality/check-doc-inventory.py": {
       "invocation": "ci-gate"
+    },
+    "scripts/quality/check-no-markdown-reads.py": {
+      "invocation": "ci-gate"
     }
   }
 }

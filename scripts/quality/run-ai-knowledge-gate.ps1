@@ -448,10 +448,13 @@ try {
     # [24/42] S4 Phase B (S4_SPEC.md): does an ADR decision the owner accepted actually have live
     # code behind it? ADR-0011's D4 ("no physical table prefixing") was ratified in S2's own gate
     # and recorded in the ADR, but ModelCompiler never implemented it -- found only by running the
-    # S3 codemod against real content. Opt-in per decision (a ```decision-check fenced block naming
-    # a file + a required substring); today only ADR-0011's D1-D4 carry one. RED-verified live
-    # (2026-08-03): reverting ModelCompiler.tableNameSource made this fail with exactly the D4
-    # finding, restored to green after re-applying the fix.
+    # S3 codemod against real content. Opt-in per decision (an entry in
+    # scripts/policy/adr-decision-checks.json naming a file + a required substring -- moved out of a
+    # ```decision-check fenced block IN the ADR itself, md-zero-2026-08-11 PLAN.md Phase 7, once
+    # building the zero-markdown-reads gate found this checker was globbing docs/adr/ADR-*.md); today
+    # only ADR-0011's D1-D4 carry an entry. RED-verified live (2026-08-03, re-proven by the JSON
+    # rewrite's own --calibrate): reverting ModelCompiler.tableNameSource made this fail with exactly
+    # the D4 finding, restored to green after re-applying the fix.
     Write-Host "[24/42] Checking accepted ADR decisions carrying a decision-check claim are implemented..."
     & $py "scripts/quality/check-adr-decision-implementation.py"
     if ($LASTEXITCODE -ne 0) {
@@ -704,14 +707,26 @@ try {
         $failures += "a script's classification/invocation declaration is missing or does not match reality, or a scripts/quality/check-*.py is invoked by no gate at all: see scripts/quality/run-script-inventory-check.ps1 output above, or scripts/reports/out/script-inventory-report.json"
     }
 
-    # [42/42] The process-document ban. Measured 2026-08-11: 302 tracked .md files, 265 of them read
-    # by NOTHING -- an agent's working state externalised, one session at a time, until a gate read
-    # one and it could no longer be deleted. Reorganising did not help (301 -> 302 tracked). The only
-    # thing that works is refusing the next one. Blocking, same rationale as [5/42]/[6/42]/[7/42].
+    # [42/42] Markdown policy: the process-document ban, and (md-zero-2026-08-11 PLAN.md Phase 7,
+    # bundled into this same slot rather than renumbering all 42 banners -- Phase 1's own precedent)
+    # the zero-rule gate. The ban: measured 2026-08-11, 302 tracked .md files, 265 of them read by
+    # NOTHING -- an agent's working state externalised, one session at a time, until a gate read one
+    # and it could no longer be deleted. Reorganising did not help (301 -> 302 tracked); the only
+    # thing that works is refusing the next one. The zero-rule gate is the other half of the same
+    # problem: a SCRIPT reading a tracked .md as a data source is exactly how "265 of 302 read by
+    # nothing" stopped being true for the other 37 -- Groups B-G of that plan converted every one to
+    # read JSON/YAML; this is what stops a new one growing back, with an explicit, provenance-carrying
+    # exemption list for the markdown LINTERS whose entire job is validating prose that no registry
+    # generates (scripts/policy/markdown-read-exemptions.json). Both blocking, same rationale as
+    # [5/42]/[6/42]/[7/42].
     Write-Host "[42/42] Checking no new process document (plan/checklist/findings/register) entered the repo..."
     & $py "scripts/quality/check-doc-inventory.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a banned process document was added, or the frozen legacy list grew/rotted: see scripts/quality/check-doc-inventory.py output above, and scripts/policy/doc-inventory-policy.json for the rule"
+    }
+    & $py "scripts/quality/check-no-markdown-reads.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a script reads markdown content with no exemption: see scripts/quality/check-no-markdown-reads.py output above, and scripts/policy/markdown-read-exemptions.json for the exemption discipline"
     }
 
     if ($failures.Count -gt 0) {

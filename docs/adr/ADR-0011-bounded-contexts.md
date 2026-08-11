@@ -47,11 +47,7 @@ references (`{"context": "...", "concept": "..."}` instead of a string) — reje
 ergonomics, since every reference site (`where`, `groupBy`, panel `dataSource` bindings) is a flat
 string today.
 
-```decision-check
-id: ADR-0011-D1
-file: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
-contains: mergeQualifiedConcepts("Context",
-```
+*(Machine-verified: `scripts/policy/adr-decision-checks.json`, id `ADR-0011-D1`.)*
 
 ### D2 — A context is a file/folder boundary, composed via the existing `$ref`/fragment machinery
 
@@ -71,11 +67,7 @@ implementation with its own bug surface.
 directory-of-files loader that does not reuse fragment/pack composition (duplicates hardened logic for
 no benefit).
 
-```decision-check
-id: ADR-0011-D2
-file: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
-contains: loadPackJson(contextFile, state)
-```
+*(Machine-verified: `scripts/policy/adr-decision-checks.json`, id `ADR-0011-D2`.)*
 
 ### D3 — Explicit `imports[]`; an undeclared cross-context reference is a compile error
 
@@ -94,11 +86,7 @@ needs to be."
 declaration) — friendlier short-term, but reintroduces the undisciplined flat-vocabulary coupling B20
 exists to fix, with `::` punctuation sprinkled on top.
 
-```decision-check
-id: ADR-0011-D3
-file: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
-contains: imports undeclared context '
-```
+*(Machine-verified: `scripts/policy/adr-decision-checks.json`, id `ADR-0011-D3`.)*
 
 ### D4 — No physical table prefixing in v1
 
@@ -124,11 +112,7 @@ the app that actually needs two physically separate same-named tables.
 stands unchanged — the default is still `false`, blanket prefixing was never built, and no existing
 app's tables moved. See the Wave 4 addendum below for what shipped and two real gaps it found.
 
-```decision-check
-id: ADR-0011-D4
-file: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
-contains: tableNameSource
-```
+*(Machine-verified: `scripts/policy/adr-decision-checks.json`, id `ADR-0011-D4`.)*
 
 ### D8 — The import graph must be acyclic
 

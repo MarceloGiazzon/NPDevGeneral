@@ -14,29 +14,27 @@ none of them asks "is an accepted ADR decision actually implemented?" This is th
 
 THE SHAPE -- deliberately narrow, opt-in, machine-checkable
 -------------------------------------------------------------
-This does NOT parse ADR prose. An ADR opts a decision into checking with an explicit fenced block:
+This does NOT parse ADR prose. `scripts/policy/adr-decision-checks.json` declares each opted-in
+decision explicitly:
 
-    ```decision-check
-    id: ADR-0011-D4
-    file: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
-    contains: tableNameSource
-    ```
+    {"id": "ADR-0011-D4", "adr": "docs/adr/ADR-0011-bounded-contexts.md",
+     "file": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+     "contains": "tableNameSource", "why": "..."}
 
-Each block is a claim: "the named file's text contains this substring." Same "text pattern, not
+Each entry is a claim: "the named file's text contains this substring." Same "text pattern, not
 full AST" convention security-pattern-sweep.py and check-twin-pair-consistency.py already use, for
 the same reason -- a substring check is auditable at a glance and cannot silently rot into parsing
 the wrong thing.
 
-A decision with no `decision-check` block is simply not checked -- this is the opt-in, not a gap.
-Per S4_SPEC.md Phase B: start with ADR-0011's four decisions (D1-D4) only; do NOT retrofit this
-across the other 10 ADRs in one sweep -- the value is in the pattern existing and covering the
-newest decisions, not in prose-parsing a decade of older ones.
+md-zero-2026-08-11 PLAN.md Phase 7: this used to glob `docs/adr/ADR-*.md` and parse ```decision-check
+fenced blocks out of the prose -- a real script reading .md content as data, discovered only while
+building the zero-markdown-reads gate (the plan's own 37-coupling audit missed it). The claim moved
+here; the ADR stays narrative-only, with a one-line pointer back to this file at each decision.
 
-SCOPE
------
-Every docs/adr/ADR-*.md file is scanned for ```decision-check blocks (glob, not a hand-list --
-a future ADR opts in for free by adding a block, no checker change needed). Today only ADR-0011
-has any.
+A decision with no entry here is simply not checked -- this is the opt-in, not a gap. Per
+S4_SPEC.md Phase B: start with ADR-0011's four decisions (D1-D4) only; do NOT retrofit this across
+the other ADRs in one sweep -- the value is in the pattern existing and covering the newest
+decisions, not in prose-parsing a decade of older ones.
 
 USAGE
 -----
@@ -47,119 +45,80 @@ USAGE
 from __future__ import annotations
 
 import argparse
-import re
+import json
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ADR_GLOB = "docs/adr/ADR-*.md"
+POLICY_PATH = REPO_ROOT / "scripts" / "policy" / "adr-decision-checks.json"
 
-BLOCK_RE = re.compile(r"```decision-check\s*\n(.*?)```", re.DOTALL)
-REQUIRED_KEYS = ("id", "file", "contains")
+REQUIRED_KEYS = ("id", "adr", "file", "contains", "why")
 
 
-class MalformedBlockError(Exception):
+class MalformedEntryError(Exception):
     pass
 
 
-def parse_block(raw: str) -> dict:
-    """A block is a handful of `key: value` lines -- not YAML, deliberately (no escaping rules to
-    get wrong, matching this repo's other check-*.py's "simplest thing that cannot lie" bias).
-    `contains` takes everything after the first ': ' on its line, so a marker itself may contain a
-    colon (an identifier never does in this codebase, but no reason to forbid it)."""
-    fields: dict[str, str] = {}
-    for line in raw.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if ":" not in line:
-            raise MalformedBlockError(f"line is not 'key: value': {line!r}")
-        key, _, value = line.partition(":")
-        key = key.strip()
-        value = value.strip()
-        if key not in REQUIRED_KEYS:
-            raise MalformedBlockError(f"unknown key {key!r} (expected one of {REQUIRED_KEYS})")
-        fields[key] = value
-    missing = [k for k in REQUIRED_KEYS if k not in fields]
-    if missing:
-        raise MalformedBlockError(f"block is missing required key(s): {missing}")
-    return fields
-
-
-def find_blocks(adr_text: str, adr_rel_path: str) -> tuple[list[dict], list[str]]:
-    """Every ```decision-check block in one ADR file. Returns (parsed blocks, parse failures) --
-    a malformed block is a finding, not a crash, so one bad block doesn't hide every other result."""
-    blocks: list[dict] = []
+def load_decisions(policy_path: Path) -> tuple[list[dict], list[str]]:
+    """Returns (valid entries, malformed-entry failure messages) -- one bad entry does not hide
+    every other result, same convention as the .md-parsing version this replaced."""
+    data = json.loads(policy_path.read_text(encoding="utf-8"))
+    entries: list[dict] = []
     failures: list[str] = []
-    for match in BLOCK_RE.finditer(adr_text):
+    for i, raw in enumerate(data.get("decisions", [])):
         try:
-            fields = parse_block(match.group(1))
-        except MalformedBlockError as exc:
-            failures.append(f"{adr_rel_path}: malformed decision-check block: {exc}")
-            continue
-        fields["_source"] = adr_rel_path
-        blocks.append(fields)
-    return blocks, failures
+            missing = [k for k in REQUIRED_KEYS if not str(raw.get(k, "")).strip()]
+            if missing:
+                raise MalformedEntryError(f"missing/empty required key(s): {missing}")
+            entries.append(raw)
+        except MalformedEntryError as exc:
+            failures.append(f"{policy_path.name}[{i}] ({raw.get('id', '?')!r}): {exc}")
+    return entries, failures
 
 
-def collect_all_blocks(root: Path) -> tuple[list[dict], list[str]]:
-    blocks: list[dict] = []
-    failures: list[str] = []
-    for adr_path in sorted(root.glob(ADR_GLOB)):
-        rel = adr_path.relative_to(root).as_posix()
-        text = adr_path.read_text(encoding="utf-8", errors="replace")
-        found, block_failures = find_blocks(text, rel)
-        blocks.extend(found)
-        failures.extend(block_failures)
-    return blocks, failures
-
-
-def verify_block(block: dict, root: Path) -> str | None:
+def verify_entry(entry: dict, root: Path) -> str | None:
     """Returns a failure message, or None if the claim holds."""
-    target = root / block["file"]
+    target = root / entry["file"]
     if not target.is_file():
-        return (f"{block['_source']}: {block['id']}: declared file does not exist: {block['file']} "
-                f"(the decision-check block itself is stale)")
+        return (f"{entry['id']}: declared file does not exist: {entry['file']} "
+                f"(the decision-check entry itself is stale)")
     text = target.read_text(encoding="utf-8", errors="replace")
-    if block["contains"] not in text:
-        return (f"{block['_source']}: {block['id']}: {block['file']} no longer contains "
-                f"{block['contains']!r} -- this decision was accepted but its implementation is "
+    if entry["contains"] not in text:
+        return (f"{entry['id']}: {entry['file']} no longer contains "
+                f"{entry['contains']!r} -- this decision was accepted but its implementation is "
                 f"missing or was reverted")
     return None
 
 
-def run(root: Path) -> tuple[list[dict], list[str]]:
-    """Returns (checked blocks, failure messages) -- duplicate ids and per-block verification
+def run(root: Path, policy_path: Path) -> tuple[list[dict], list[str]]:
+    """Returns (checked entries, failure messages) -- duplicate ids and per-entry verification
     failures are both collected before returning, same "report everything found, not just the
     first" convention as check-twin-pair-consistency.py."""
-    blocks, failures = collect_all_blocks(root)
+    entries, failures = load_decisions(policy_path)
 
-    seen_ids: dict[str, str] = {}
-    for block in blocks:
-        block_id = block["id"]
-        if block_id in seen_ids:
-            failures.append(
-                f"{block['_source']}: duplicate decision-check id {block_id!r} "
-                f"(also declared in {seen_ids[block_id]})"
-            )
+    seen_ids: dict[str, int] = {}
+    for i, entry in enumerate(entries):
+        entry_id = entry["id"]
+        if entry_id in seen_ids:
+            failures.append(f"duplicate decision-check id {entry_id!r} (entries {seen_ids[entry_id]} and {i})")
         else:
-            seen_ids[block_id] = block["_source"]
+            seen_ids[entry_id] = i
 
-    for block in blocks:
-        failure = verify_block(block, root)
+    for entry in entries:
+        failure = verify_entry(entry, root)
         if failure:
             failures.append(failure)
 
-    return blocks, failures
+    return entries, failures
 
 
-def main_check(root: Path) -> int:
+def main_check(root: Path, policy_path: Path) -> int:
     print("ADR decision-implementation check (S4 Phase B):")
-    blocks, failures = run(root)
-    print(f"  found {len(blocks)} decision-check block(s) across {ADR_GLOB}")
-    for block in blocks:
-        status = "OK" if not any(block["id"] in f for f in failures) else "FAILED"
-        print(f"  [{status}] {block['id']} -- {block['file']} contains {block['contains']!r}")
+    entries, failures = run(root, policy_path)
+    print(f"  found {len(entries)} decision-check entr{'y' if len(entries) == 1 else 'ies'} in {policy_path.relative_to(root) if policy_path.is_relative_to(root) else policy_path}")
+    for entry in entries:
+        status = "OK" if not any(entry["id"] in f for f in failures) else "FAILED"
+        print(f"  [{status}] {entry['id']} -- {entry['file']} contains {entry['contains']!r}")
 
     if failures:
         print()
@@ -169,7 +128,7 @@ def main_check(root: Path) -> int:
         return 1
 
     print()
-    print(f"OK: all {len(blocks)} declared ADR decision(s) are implemented as claimed.")
+    print(f"OK: all {len(entries)} declared ADR decision(s) are implemented as claimed.")
     return 0
 
 
@@ -180,8 +139,8 @@ def calibrate() -> int:
       2. the SAME decision, with its implementation reverted, fails -- this is the literal
          "revert D4 and prove RED" proof the spec requires, run automatically on every gate
          invocation instead of once by hand.
-      3. a malformed block (missing key) is reported, not silently skipped.
-      4. a duplicate id across two ADR files is reported.
+      3. a malformed entry (missing/empty required key) is reported, not silently skipped.
+      4. a duplicate id across two entries is reported.
     """
     import tempfile
 
@@ -198,52 +157,34 @@ def calibrate() -> int:
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        (root / "docs" / "adr").mkdir(parents=True)
         target = root / "Target.java"
+        policy_path = root / "adr-decision-checks.json"
 
-        adr_text = (
-            "# ADR-9999 Fixture\n\n"
-            "### D1 fixture decision\n\n"
-            "```decision-check\n"
-            "id: ADR-9999-D1\n"
-            "file: Target.java\n"
-            "contains: marker_string\n"
-            "```\n"
-        )
-        (root / "docs" / "adr" / "ADR-9999-fixture.md").write_text(adr_text, encoding="utf-8")
+        def write_policy(decisions: list[dict]) -> None:
+            policy_path.write_text(json.dumps({"decisions": decisions}), encoding="utf-8")
 
+        base_entry = {
+            "id": "ADR-9999-D1", "adr": "docs/adr/ADR-9999-fixture.md",
+            "file": "Target.java", "contains": "marker_string", "why": "fixture",
+        }
+
+        write_policy([base_entry])
         target.write_text("class Target { void marker_string() {} }\n", encoding="utf-8")
-        _, implemented_failures = run(root)
+        _, implemented_failures = run(root, policy_path)
         report("implementation present -- must NOT fire", implemented_failures, expect_fire=False)
 
         target.write_text("class Target { /* reverted */ }\n", encoding="utf-8")
-        _, reverted_failures = run(root)
+        _, reverted_failures = run(root, policy_path)
         report("implementation reverted (the D4 RED proof) -- MUST fire", reverted_failures, expect_fire=True)
 
-        malformed_adr = (root / "docs" / "adr" / "ADR-9998-malformed.md")
-        malformed_adr.write_text(
-            "```decision-check\n"
-            "id: ADR-9998-D1\n"
-            "file: Target.java\n"
-            "```\n",
-            encoding="utf-8",
-        )
+        write_policy([{**base_entry, "why": "  "}])
         target.write_text("class Target { void marker_string() {} }\n", encoding="utf-8")
-        _, malformed_failures = run(root)
-        report("malformed block (missing 'contains') -- MUST fire", malformed_failures, expect_fire=True)
-        malformed_adr.unlink()
+        _, malformed_failures = run(root, policy_path)
+        report("malformed entry (empty 'why') -- MUST fire", malformed_failures, expect_fire=True)
 
-        dup_adr = (root / "docs" / "adr" / "ADR-9997-dup.md")
-        dup_adr.write_text(
-            "```decision-check\n"
-            "id: ADR-9999-D1\n"
-            "file: Target.java\n"
-            "contains: marker_string\n"
-            "```\n",
-            encoding="utf-8",
-        )
-        _, dup_failures = run(root)
-        report("duplicate id across two ADR files -- MUST fire", dup_failures, expect_fire=True)
+        write_policy([base_entry, dict(base_entry)])
+        _, dup_failures = run(root, policy_path)
+        report("duplicate id across two entries -- MUST fire", dup_failures, expect_fire=True)
 
     if not ok:
         print("\nFAIL: at least one control did not behave as required -- this checker does not ship "
@@ -256,13 +197,14 @@ def calibrate() -> int:
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", default=str(REPO_ROOT), help="repo root (default: this repo)")
+    parser.add_argument("--policy", default=str(POLICY_PATH), help="path to adr-decision-checks.json")
     parser.add_argument("--calibrate", action="store_true", help="run the required self-test controls and exit")
     args = parser.parse_args(argv)
 
     if args.calibrate:
         return calibrate()
 
-    return main_check(Path(args.root).resolve())
+    return main_check(Path(args.root).resolve(), Path(args.policy).resolve())
 
 
 if __name__ == "__main__":
