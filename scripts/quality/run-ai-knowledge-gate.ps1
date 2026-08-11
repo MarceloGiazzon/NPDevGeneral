@@ -623,6 +623,10 @@ try {
     # hit defects already fixed, and nothing anywhere told them they were not on the current build. A
     # pinned link goes stale BY CONSTRUCTION on the next release and the release process has no
     # reason to touch prose, so discipline cannot fix it -- /releases/latest never needs editing.
+    # md-zero-2026-08-11 PLAN.md Phase 3 narrowed this from a 94-file sweep to a targeted check
+    # against scripts/policy/release-download-links.json's 3 declared knownLinkSites -- see that
+    # policy's own `why` for the coverage trade-off (a brand new pinned link in an undeclared doc is
+    # no longer caught automatically; add a knownLinkSites entry the day a new download link ships).
     Write-Host "[38/42] Checking no install guide pins a specific release in a download link..."
     & $py "scripts/quality/check-pinned-download-links.py"
     if ($LASTEXITCODE -ne 0) {

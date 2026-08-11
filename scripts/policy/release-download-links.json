@@ -1,0 +1,21 @@
+{
+  "why": "Found twice on 2026-08-10, in the two documents a new person reads FIRST: README.md and docs/MANAGER.md both linked releases/download/beta1.7/NPDev.Manager_0.1.0_x64-setup.exe -- beta1.7 was five releases old, the link still RESOLVED (GitHub happily serves an old asset), and nothing told a newcomer they were not on the current build. A version-pinned download link goes stale BY CONSTRUCTION on the very next release, and the release process has no reason to touch prose -- /releases/latest is always right and never needs editing. md-zero-2026-08-11 PLAN.md Phase 3: check-pinned-download-links.py used to sweep README.md + all of docs/**/*.md (94 files) for a pinned-URL regex; that swept ALL prose to catch a pattern only ever actually found at these 3 specific known link sites. This file declares those 3 sites; the checker now verifies only them (a narrow, targeted read of 2 files, not a 94-file sweep) plus that canonicalReleaseUrl itself is never a pin. Trade-off, stated plainly: a BRAND NEW pinned link typed into some other, undeclared doc would no longer be caught automatically -- the same accepted-risk shape this plan already applies to CLAUDE.md's file-size prose (durable human docs are curated, not swept).",
+  "canonicalReleaseUrl": "https://github.com/MarceloGiazzon/NPDevGeneral/releases/latest",
+  "knownLinkSites": [
+    {
+      "file": "README.md",
+      "anchor": "Download it",
+      "why": "The 'Prefer not to use a terminal?' section -- the front page's own install link, one of the two 2026-08-10 incident sites."
+    },
+    {
+      "file": "docs/MANAGER.md",
+      "anchor": "Download the installer from the latest release",
+      "why": "Windows install step 1 -- the other 2026-08-10 incident site."
+    },
+    {
+      "file": "docs/MANAGER.md",
+      "anchor": "latest release",
+      "why": "Linux install step 1's download-asset sentence."
+    }
+  ]
+}
