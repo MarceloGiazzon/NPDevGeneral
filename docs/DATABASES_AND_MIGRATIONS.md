@@ -309,7 +309,7 @@ NPDev's migration story is genuinely strong on *not silently doing damage*. What
 
 ## 12. Operator control surface (ownership, strategy, mark-done, recreate)
 
-> **See also:** [`IMPACT_REPORTS.md`](IMPACT_REPORTS.md) — the read-only "what will this upgrade do to my
+> **See also:** [`IMPACT_REPORTS.md`](archive/programme-history/IMPACT_REPORTS.md) — the read-only "what will this upgrade do to my
 > data?" report (the GeneXus IAR equivalent) written on every upgrade boot and led by the destructive
 > refusal message.
 
@@ -348,7 +348,7 @@ Mapping to the four operator "options" one naturally wants:
 | Delete & rebuild tables | `allowDestructiveRecreate` + confirmation | shipped |
 | Export & recover data | pre-drop JSONL snapshots (export) | **export only — restore is manual** |
 | Do nothing (NPDev doesn't own the schema) | `ExternallyManaged` + `mark-done` | shipped (all-or-nothing) |
-| Manually program the SQL — per-item, verified | **conversion hooks** (SER Phase 7): operator SQL that claims a specific diff item, verified by re-diff, no token needed for what it resolves | shipped — see [`IMPACT_REPORTS.md`](IMPACT_REPORTS.md#conversion-hooks--sanctioned-destruction-implemented-phase-7) |
+| Manually program the SQL — per-item, verified | **conversion hooks** (SER Phase 7): operator SQL that claims a specific diff item, verified by re-diff, no token needed for what it resolves | shipped — see [`IMPACT_REPORTS.md`](archive/programme-history/IMPACT_REPORTS.md#conversion-hooks--sanctioned-destruction-implemented-phase-7) |
 
 ## 13. Data safety: snapshots, refusals, rollback
 
@@ -541,7 +541,7 @@ Phases 1–9, all closed):** the declarative ideal §16 described as a destinati
 actually works. One canonical desired-vs-current model (`CurrentSchema` / `DesiredSchema` / `SchemaDiff`,
 `SchemaDiffEngine`) is diffed once and consumed by every pass and every surface built after it:
 
-- The Impact Report (§12's link, [`IMPACT_REPORTS.md`](IMPACT_REPORTS.md)) — the GeneXus IAR equivalent,
+- The Impact Report (§12's link, [`IMPACT_REPORTS.md`](archive/programme-history/IMPACT_REPORTS.md)) — the GeneXus IAR equivalent,
   on three surfaces: printed on every upgrade boot, the `-ImpactOnly` pre-deploy CLI, and a ControlPanel
   endpoint — all three read the identical diff, so they can never disagree about what an upgrade would do.
 - **Conversion hooks** (Phase 7) — operator SQL that claims a specific diff item and resolves it itself;

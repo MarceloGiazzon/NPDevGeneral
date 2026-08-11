@@ -54,7 +54,7 @@ HARDEN-GC's spread is almost entirely **P3 (orphan sweep for failed uploads)** �
 
 ## 2. HARDEN-DL — Safe file download (closes the stored-XSS vector)
 
-**Gap today:** [`FileUploadController.download`](../NPDevRuntimeHost/src/main/java/com/finalexec/api/FileUploadController.java)
+**Gap today:** [`FileUploadController.download`](../../../NPDevRuntimeHost/src/main/java/com/finalexec/api/FileUploadController.java)
 serves bytes with `Content-Disposition: inline` and a **caller-supplied** `contentType` query param.
 An attacker who can get an HTML/SVG file past a permissive `contentTypes` allowlist can serve
 active content from the app's own origin → stored XSS (session theft, CSRF, etc.). Tenant isolation
@@ -108,14 +108,14 @@ is already correct; this is purely about how bytes are *served back*.
 ## 3. HARDEN-OBJSTORE — Production object-store adapter (closes "dev-only")
 
 **Gap today:** the locked file-storage decision was **inproc filesystem (dev) + S3-compatible object
-store (prod)**; only [`file-store-inproc`](../NPDevKernel/adapters/file-store-inproc) was built. There
+store (prod)**; only [`file-store-inproc`](../../../NPDevKernel/adapters/file-store-inproc) was built. There
 is no adapter suitable for a horizontally-scaled prod deployment (the filesystem adapter is
 single-node and not durable across container restarts).
 
 ### HARDEN-OBJSTORE-P1 — S3-compatible adapter module
 - **Status:** OPEN · **Effort:** 1.5 – 2.5 days · **Risk:** Med
 - **What:** New `file-store-objectstore` adapter implementing
-  [`FileStoreContract`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/FileStoreContract.java)
+  [`FileStoreContract`](../../../NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/FileStoreContract.java)
   against S3-compatible storage (works with AWS S3, MinIO, Cloudflare R2, GCS-S3).
 - **Where:** new module `NPDevKernel/adapters/file-store-objectstore` (mirror `file-store-inproc`'s
   layout + `build.gradle`); register in `NPDevKernel/settings.gradle`; add the AWS SDK v2 S3
@@ -136,7 +136,7 @@ single-node and not durable across container restarts).
 - **Status:** BLOCKED on P1 · **Effort:** 0.5 day · **Risk:** Low
 - **What:** Choose the adapter by config: `npdev.filestore.provider: inproc | objectstore`, with
   endpoint/region/bucket/credentials for the object-store path.
-- **Where:** [`NpdevFileStoreConfig`](../NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevFileStoreConfig.java)
+- **Where:** [`NpdevFileStoreConfig`](../../../NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevFileStoreConfig.java)
   (`@ConditionalOnProperty` bean selection); `application.yml` (defaults `inproc`); credentials from
   env/secret, never committed.
 - **Why:** One binary serves dev (filesystem) and prod (object store) by config only.
@@ -181,7 +181,7 @@ hygiene problem.
 - **What:** When a record is deleted, delete every file handle it holds (across all `file` fields,
   incl. `multiple`).
 - **Where:** the generated CRUD delete path
-  ([`service-base.mustache`](../NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache))
+  ([`service-base.mustache`](../../../NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache))
   or a kernel-level post-delete hook; needs the compiled model's per-concept `file`-field list at
   runtime + the `FileStoreContract` bean; tenant-scoped.
 - **Why:** The dominant orphan source; the most valuable single slice.

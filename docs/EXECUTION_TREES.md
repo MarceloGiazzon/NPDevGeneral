@@ -375,5 +375,5 @@ information that decides everything in TREE 2.
 
 *Companions: [TREE1_LAUNCH_UNBLOCK_PLAN.md](TREE1_LAUNCH_UNBLOCK_PLAN.md) (executable detail) ·
 [NPDEV_OPEN_ITEMS_REGISTER.md](NPDEV_OPEN_ITEMS_REGISTER.md) (bug/gap ledger) ·
-[DECISION_BRIEFS_2026-07.md](DECISION_BRIEFS_2026-07.md) (4 open owner verdicts) ·
+[DECISION_BRIEFS_2026-07.md](archive/programme-history/DECISION_BRIEFS_2026-07.md) (4 open owner verdicts) ·
 [OPEN_GAPS_AND_ROADMAP.md](OPEN_GAPS_AND_ROADMAP.md) (runtime/generator items).*

@@ -2,11 +2,11 @@
 
 > **Generated:** 2026-07-13 · **Branch at capture:** `beta1-vision-spine`
 > **Objective:** Turn every one of the six **accepted design boundaries** in §6 of
-> [OPEN_GAPS_AND_ROADMAP.md](OPEN_GAPS_AND_ROADMAP.md) into a **supported platform feature**. When
+> [OPEN_GAPS_AND_ROADMAP.md](../../OPEN_GAPS_AND_ROADMAP.md) into a **supported platform feature**. When
 > this roadmap closes, none of ARCH-6 / ARCH-7 / ARCH-loop / ARCH-upload / ARCH-compound-unique /
 > ARCH-13 is a constraint anymore — each has a first-class, tested, live-verified implementation.
 >
-> Companion to the boundary definitions in [OPEN_GAPS_AND_ROADMAP.md §6](OPEN_GAPS_AND_ROADMAP.md).
+> Companion to the boundary definitions in [OPEN_GAPS_AND_ROADMAP.md §6](../../OPEN_GAPS_AND_ROADMAP.md).
 > Same authoring contract as that document: every item carries a **stable ID** and the same six
 > fields (What / Where / Why / How / Definition of Done / Verify) so an autonomous agent can pick up
 > any item without re-deriving context.
@@ -71,11 +71,11 @@ then the two big subsystems (LIFT-UPLOAD, LIFT-LOOP) last where the most design 
 ## 2. LIFT-EXPR — Unified expression engine (lifts ARCH-6)
 
 **Decision locked:** extend the in-repo, dependency-free
-[`ComputedExpression`](../NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java)
+[`ComputedExpression`](../../../NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java)
 (already does arithmetic / comparison / logical / parens / field-refs for AutoPanel computed columns)
 into the *single* expression grammar for both computed values **and** invariants — retiring the
 hand-rolled DNF matcher in
-[`CelInvariantEngine`](../NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/adapters/expression/cel/CelInvariantEngine.java).
+[`CelInvariantEngine`](../../../NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/adapters/expression/cel/CelInvariantEngine.java).
 
 ### LIFT-EXPR-P1 — Boolean-complete the evaluator
 - **Status:** DONE (2026-07-13) · **Risk:** Medium
@@ -160,12 +160,12 @@ hand-rolled DNF matcher in
   referenced DNF (invariants are server/kernel-enforced only, no client-side invariant hint emitted
   today). Fixed: stale comment in `PanelRuntime.applyQueryWhereFilter` that cited "CelInvariantEngine's
   documented DNF-only scope" (unrelated LIFT-QUERY code, comment only). Moved ARCH-6 from
-  [OPEN_GAPS_AND_ROADMAP.md](OPEN_GAPS_AND_ROADMAP.md) §6 (boundaries) to §7 (fixed), with a changelog
+  [OPEN_GAPS_AND_ROADMAP.md](../../OPEN_GAPS_AND_ROADMAP.md) §6 (boundaries) to §7 (fixed), with a changelog
   entry.
 - **What:** Wherever generation or docs assumed "invariants must be DNF, no arithmetic," update to the
   new grammar; ensure any generator-emitted client-side invariant hint uses the same expression.
 - **Where:** `NPDevGenerator/.../emitters/*` invariant emission; `docs/` references; the ARCH-6 note in
-  [OPEN_GAPS_AND_ROADMAP.md §6](OPEN_GAPS_AND_ROADMAP.md).
+  [OPEN_GAPS_AND_ROADMAP.md §6](../../OPEN_GAPS_AND_ROADMAP.md).
 - **Why:** Close the loop so authors aren't told to hand-DNF anymore.
 - **How:** grep `DNF`/`De Morgan`/"not supported" in docs+emitters; update; move ARCH-6 from §6
   (boundaries) to §7 (fixed) in the prior roadmap.
@@ -194,7 +194,7 @@ hand-rolled DNF matcher in
 
 ## 3. LIFT-UNIQUE — Compound (multi-field) unique invariants (lifts ARCH-compound-unique)
 
-**Boundary today:** [`SemanticValidator.java:363`](../NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/SemanticValidator.java#L363)
+**Boundary today:** [`SemanticValidator.java:363`](../../../NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/SemanticValidator.java#L363)
 throws *"compound unique (multiple fields) not supported yet"*. Single-field `unique` works.
 
 ### LIFT-UNIQUE-P1 — Schema + DSL accept multi-field unique
@@ -367,7 +367,7 @@ server-side, then feed the filtered rows into the capability as ordinary input. 
 - **What:** Procedure steps `listConcepts` and `runQuery` apply the query's declared `where` instead of
   passing a null filter and returning all rows.
 - **Where:**
-  [`DefaultProcedureExecutor.java`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java)
+  [`DefaultProcedureExecutor.java`](../../../NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java)
   `listConcepts` (`:147`) / `runQuery` (`:148`); reuse the where-predicate shape already used by
   `PanelRuntime`'s `applyQueryWhereFilter` (extract it to a shared helper so both share one predicate
   implementation).
@@ -540,7 +540,7 @@ the same `maxLoopIterations` safety cap procedures use.
   `new StepAst(...)` call.
 - **What:** Add a `forEach` flow step (collection ref, item var, ordered body steps).
 - **Where:** flow-step `type` enum in `model.schema.json` (×4);
-  [`CompiledFlowStep.java`](../NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledFlowStep.java);
+  [`CompiledFlowStep.java`](../../../NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledFlowStep.java);
   `JsonModelParser`/`ModelCompiler` flow parsing; `SemanticValidator`.
 - **Why:** Contract first; mirror the procedure `forEach` shape for author familiarity.
 - **How:** add the enum + a nested-steps body to the compiled flow step; validate collection + item
@@ -572,7 +572,7 @@ the same `maxLoopIterations` safety cap procedures use.
   to a later slice.
 - **What:** Execute the loop body once per item with **resume-safe** iteration state — a mid-loop
   crash/await resumes at the right iteration+step, not from the top.
-- **Where:** [`KernelRunner.java`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java)
+- **Where:** [`KernelRunner.java`](../../../NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java)
   (`executeForEachStep`, `resumeExecution`); `FlowStepDefinition`.
 - **Why:** This is the whole reason flows didn't have loops — durability is non-trivial.
 - **Definition of Done:** a `forEach` over N items runs the body N times; killing the app mid-loop and
@@ -599,7 +599,7 @@ the same `maxLoopIterations` safety cap procedures use.
   `case "capability"`/`case "branch"` switches — none found elsewhere), so no other wiring point exists
   to miss.
 - **What:** flow-compiled adapter + any generated flow dispatch handle the new step.
-- **Where:** [`CompiledModelFlowDefinitionProvider.java`](../NPDevKernel/adapters/flow-compiled/src/main/java/com/npdev/adapters/flowcompiled/CompiledModelFlowDefinitionProvider.java).
+- **Where:** [`CompiledModelFlowDefinitionProvider.java`](../../../NPDevKernel/adapters/flow-compiled/src/main/java/com/npdev/adapters/flowcompiled/CompiledModelFlowDefinitionProvider.java).
 - **Why:** End-to-end execution.
 - **Definition of Done:** a generated app runs a flow `forEach` end-to-end.
 - **Verify:** new `CompiledModelFlowDefinitionProviderTest.providerMapsCompiledForEachStepAndExecutesEachLoopIterationOnce`
@@ -652,8 +652,8 @@ the same `maxLoopIterations` safety cap procedures use.
   were added (extended `FlowStepsTable.tsx` and `modelDocumentTypes.ts` in place), so no
   `ui-boundary.json` registration was needed.
 - **What:** The flow designer offers a `forEach` node with a collection binding and a nested body.
-- **Where:** [`FlowStepsTable.tsx`](../NPDevEditor/ui-react/src/authoring/editors/flows/FlowStepsTable.tsx);
-  [`modelDocumentTypes.ts`](../NPDevEditor/ui-react/src/authoring/editors/modelDocumentTypes.ts).
+- **Where:** [`FlowStepsTable.tsx`](../../../NPDevEditor/ui-react/src/authoring/editors/flows/FlowStepsTable.tsx);
+  [`modelDocumentTypes.ts`](../../../NPDevEditor/ui-react/src/authoring/editors/modelDocumentTypes.ts).
 - **Why:** Full-stack reach.
 - **Definition of Done:** authoring a loop in the flow builder round-trips to a working, resumable
   flow.
@@ -694,11 +694,11 @@ the same `maxLoopIterations` safety cap procedures use.
   returning early for a genuine wait.
 - **What:** a `forEach` loop body with exactly one reachable `await` step resumes correctly across a
   real process restart, with events arriving out of order.
-- **Where:** [`FlowStateCodec.java`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/FlowStateCodec.java),
-  [`ForEachStep.java`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/ForEachStep.java),
-  [`AwaitEventStep.java`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/AwaitEventStep.java),
-  [`ResumeCoordinator.java`](../NPDevKernel/kernel/src/main/java/com/npdev/kernel/ResumeCoordinator.java),
-  [`FlowValidation.java`](../NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java)
+- **Where:** [`FlowStateCodec.java`](../../../NPDevKernel/kernel/src/main/java/com/npdev/kernel/FlowStateCodec.java),
+  [`ForEachStep.java`](../../../NPDevKernel/kernel/src/main/java/com/npdev/kernel/ForEachStep.java),
+  [`AwaitEventStep.java`](../../../NPDevKernel/kernel/src/main/java/com/npdev/kernel/AwaitEventStep.java),
+  [`ResumeCoordinator.java`](../../../NPDevKernel/kernel/src/main/java/com/npdev/kernel/ResumeCoordinator.java),
+  [`FlowValidation.java`](../../../NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java)
   (`:470-478`, `countAwaitSteps` replacing `containsAwaitStep` — up to one reachable await is now
   allowed, two or more still rejected since that shape was never exercised by the restart-proof
   tests).
