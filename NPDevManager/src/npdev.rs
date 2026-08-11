@@ -328,6 +328,7 @@ pub async fn run_init(
     db_port: Option<u16>,
     db_user: Option<&str>,
     db_password: Option<&str>,
+    externally_provisioned: bool,
 ) -> Result<Value, String> {
     if fake_mode() {
         return serde_json::from_str(FIXTURE_INIT_RESULT).map_err(|e| e.to_string());
@@ -349,6 +350,13 @@ pub async fn run_init(
     if let Some(port) = db_port.filter(|p| *p > 0) {
         args.push("--db-port".into());
         args.push(port.to_string());
+    }
+    // STOR-15. Unlike the connection fields above, this is NOT "forward only when the user typed
+    // something": it is a store_true switch, so sending it means yes and omitting it means no --
+    // both real answers. The CLI refuses it for embedded engines, which is why the checkbox lives
+    // inside the connection group that appears only for engines that connect somewhere.
+    if externally_provisioned {
+        args.push("--externally-provisioned".into());
     }
     let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
     let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)

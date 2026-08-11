@@ -177,8 +177,11 @@ async fn scaffold_app(python: &std::path::Path, cli: &std::path::Path, java_home
                       workspace: &std::path::Path, name: &str, port: u16)
                       -> Result<std::path::PathBuf, StepError> {
     let dir = workspace.join(name);
+    // STOR-15: `false` -- the selftest's Postgres IS NPDev's own container, started by the db
+    // toolbox two steps earlier. Passing true here would make the very next step (Reset) refuse,
+    // which is correct behaviour and the wrong fixture.
     npdev::run_init(python, cli, java_home, &dir.to_string_lossy(), Some("postgres"),
-                    Some("localhost"), Some(port), Some("npdev"), Some("npdev"))
+                    Some("localhost"), Some(port), Some("npdev"), Some("npdev"), false)
         .await
         .map_err(|e| ("7/9 scaffold", format!("npdev init {name}: {e}")))?;
     npdev::run_generate_app(

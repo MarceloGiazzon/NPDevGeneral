@@ -101,8 +101,10 @@ as containers. If you have not got Docker and do not want it, **pick H2Local**. 
 
 > **Already run your own database server?** You can point NPDev at it and it will connect and work.
 > **Do not press Start, Stop or Reset.** NPDev only knows a server is yours when
-> `db.definition.json` declares `"externallyProvisioned": true`, and no Manager screen can set
-> that yet — so on a normal setup those buttons still act as if the server were NPDev's own, and
+> `db.definition.json` declares `"externallyProvisioned": true`. **Since 2026-08-11 you can set
+> it:** tick *"This server is mine, not NPDev's"* when creating the app, or pass
+> `--externally-provisioned` to `npdev init`. Apps created BEFORE that still need the flag added by
+> hand — so on a normal setup those buttons still act as if the server were NPDev's own, and
 > **Reset deletes data**. If you want the protection today, add that flag to the app's
 > `db.definition.json` by hand.
 

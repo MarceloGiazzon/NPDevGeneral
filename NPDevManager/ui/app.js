@@ -482,6 +482,12 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
       dbPort: portRaw ? parseInt(portRaw, 10) : null,
       dbUser: document.getElementById("new-app-db-user").value.trim() || null,
       dbPassword: document.getElementById("new-app-db-password").value || null,
+      // STOR-15. Sent unconditionally as a real boolean, never omitted-when-false: `false` IS the
+      // answer for a server NPDev provisioned, and it is the answer that arms Reset. A field that
+      // vanished when unticked would make "the user said no" and "the UI never asked"
+      // indistinguishable at the CLI -- which is the state this item exists to end.
+      externallyProvisioned:
+        document.getElementById("new-app-externally-provisioned").checked === true,
     });
     statusEl.textContent = "created.";
     await refreshAppList();

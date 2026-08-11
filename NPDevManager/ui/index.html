@@ -115,6 +115,26 @@
           -->
           <button type="button" id="test-connection-btn">Test connection</button>
           <div id="test-connection-rows" class="check-list"></div>
+          <!--
+            STOR-15. Lives inside #new-app-connection on purpose: it is revealed by exactly the
+            condition that makes the question meaningful -- an engine that connects SOMEWHERE. For
+            H2 (file) there is no server for anyone to have provisioned, and the CLI refuses the
+            flag outright.
+
+            Before this existed, nothing a user could reach wrote `externallyProvisioned`, so
+            STOR-14's refusal -- complete, correct and tested -- never fired for anybody. An app
+            pointed at a server the user already ran still declared the database was NPDev's own,
+            and Reset deleted their data root.
+          -->
+          <label class="checkbox-line">
+            <input type="checkbox" id="new-app-externally-provisioned" />
+            This server is mine, not NPDev's
+          </label>
+          <p class="field-hint">
+            Tick this when you are pointing NPDev at a database server you already run. NPDev will
+            then refuse to start, stop or reset it. Leave it clear and the toolbox treats the server
+            as its own &mdash; <strong>Reset deletes the data root</strong>.
+          </p>
         </div>
         <button type="submit">Create</button>
       </form>
