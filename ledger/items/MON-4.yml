@@ -1,0 +1,33 @@
+id: MON-4
+title: >-
+  `npdev explore run` left the exploration engine running after every run -- terminate() killed
+  the launcher and not the node server it spawned
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-10
+closed: 2026-08-10
+verification: VERIFIED_LIVE
+surface: cli/explore
+source: >-
+  Observed on the third live run, 2026-08-10: `npdev doctor` reported the engine 'running on
+  127.0.0.1:3010' when nothing should have been running.
+detail: >-
+  MONITOR_PLAN R2 names this risk in the abstract -- "the engine is the risky one; it outlives requests
+  by design" -- and the first implementation walked straight into it. The launcher (`tsx`) spawns the
+  real server as its own child, so terminating the tracked process left node LISTENING.
+
+  The second-order effect is what makes it more than untidy: the next run's service probe found a
+  "running" engine, reused it, and correctly declined to stop something it had not started. So one leak
+  survived every run after it, and a browser-automation server was left listening on the machine by a
+  tool that believed it had cleaned up.
+resolution: >-
+  Process-TREE termination -- `taskkill /T /F` on Windows, a process-group signal on POSIX, with the
+  engine spawned into its own session so the group exists to signal. The same remedy the Manager
+  already applies to `npdev dev`, which had learned this lesson in M0-M8.
+
+  VERIFIED LIVE both ways: before the fix, port 3010 still answered after the run finished and
+  `Get-CimInstance` showed the node child alive under the launcher; after, the port is refused the
+  moment the run returns.
+files:
+  - NPDevCli/npdev_explore.py

@@ -1138,7 +1138,8 @@ def _stop_process(process) -> None:
 def record_external(repo_root: Path, app_dir: Path | None, payload: dict, *, driver: str = "harness",
                     scope: str = "app", suite: str | None = None,
                     definition_kind: str = "routine-json",
-                    routine_file: Path | None = None, ledger_id: str | None = None) -> dict:
+                    routine_file: Path | None = None, ledger_id: str | None = None,
+                    artifact_dir: Path | None = None) -> dict:
     """The PowerShell harness and the Playwright reporter both call this rather than deciding for
     themselves. `Assert-RoutineGreen` stays for console UX; the RECORDED verdict comes from here."""
     if scope == "app":
@@ -1151,7 +1152,18 @@ def record_external(repo_root: Path, app_dir: Path | None, payload: dict, *, dri
         target_dir = platform_runs_root(repo_root, suite or "platform")
         (target_dir / "_ops" / "exploration-runs").mkdir(parents=True, exist_ok=True)
 
-    routine = payload.get("routine") or {}
+    # The DEFINITION is read from the file when one is named, not taken from the result: an engine
+    # result carries no routine, and `definition.contentSha256` is the whole point of the attribution
+    # triple -- a hash of "{}" would make every run look like it ran the same thing.
+    routine: dict = {}
+    if routine_file and Path(routine_file).is_file():
+        try:
+            routine = json.loads(Path(routine_file).read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError as exc:
+            raise ExploreError(f"the routine file named is not valid JSON: {exc}") from exc
+    elif isinstance(payload.get("routine"), dict):
+        routine = payload["routine"]
+
     record = build_run_record(
         app_dir=target_dir,
         repo_root=repo_root,
@@ -1167,6 +1179,9 @@ def record_external(repo_root: Path, app_dir: Path | None, payload: dict, *, dri
         scope=scope,
         suite=suite,
         definition_kind=definition_kind,
+        # Another driver's artifacts live wherever IT put them -- the harness uses
+        # <build>/scrapforai-artifacts, `explore run` uses the app's own. Told, never assumed.
+        artifact_dir=artifact_dir,
     )
     append_run(target_dir, record)
     return record

@@ -5016,7 +5016,8 @@ def run_explore(args: argparse.Namespace) -> int:
                 driver=args.driver, scope=args.scope, suite=args.suite,
                 definition_kind=args.definition_kind,
                 routine_file=Path(args.routine_file) if args.routine_file else None,
-                ledger_id=args.ledger_id)
+                ledger_id=args.ledger_id,
+                artifact_dir=Path(args.artifact_dir) if args.artifact_dir else None)
             result["command"] = "explore record"
             result["ok"] = True
         elif args.explore_command == "prune":
@@ -5829,6 +5830,11 @@ def build_parser() -> argparse.ArgumentParser:
     explore_record.add_argument("--definition-kind", default="routine-json",
                                 choices=["routine-json", "playwright-spec"])
     explore_record.add_argument("--ledger-id", default=None)
+    explore_record.add_argument("--artifact-dir", default=None,
+                                help="Where THIS driver wrote its screenshots. Told rather than "
+                                     "assumed: the harness uses <build>/scrapforai-artifacts and "
+                                     "`explore run` uses the app's own, and a wrong guess silently "
+                                     "records a run with no evidence.")
     explore_record.add_argument("--json", action="store_true")
 
     explore_prune = explore_sub.add_parser(

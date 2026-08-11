@@ -1,0 +1,41 @@
+id: MON-8
+title: >-
+  Playwright suites left no structured record at all, so a green editor e2e run evaporated and a
+  red one could not be attributed
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-10
+closed: 2026-08-10
+verification: VERIFIED_LIVE
+surface: editor/e2e
+source: >-
+  MONITOR_PLAN C2, EXPLORATIONS_ANALYSIS.md 2.6.
+detail: >-
+  Explorations happen two ways here. ScrapForAI routines produced structured evidence on every run.
+  Direct Playwright specs produced console text: `list` reporter, trace on-first-retry, screenshots
+  only-on-failure. There was no way to see "this suite was green for twelve runs and went red today",
+  and no way to say whether the routine, the model or the platform changed.
+resolution: >-
+  `e2e/npdev-run-reporter.ts` emits the SAME run record as a routine run -- steps from `test.step`,
+  attachments as blobs, the three identity hashes -- and records it through `npdev explore record`. The
+  definition FORMATS stay different (data vs code, and forcing either into the other loses what makes
+  it good); the RUN RECORD is unified, which is what history and the filmstrip read.
+
+  The verdict is deliberately NOT computed in the reporter. A `green = failures === 0` line there would
+  be a second opinion, and it would drift from the CLI's the first time an allowlist entry was added on
+  one side (R10).
+
+  `e2e/npdev-evidence-fixture.ts` wires console/pageerror/requestfailed once, because Playwright's
+  reporter API cannot observe page events -- without it the evidence arrays would be empty, and an
+  empty array reads as "nothing went wrong" when it means "nobody was listening".
+
+  VERIFIED LIVE: `npm run e2e` -> 7 passed -> a platform-scoped record with 7 steps,
+  `definition.kind: playwright-spec`, a content hash and the same verdict fields as a routine run. A
+  run that could not START (the dist was not staged) was recorded RED rather than not at all, which is
+  the more useful half.
+files:
+  - NPDevEditor/ui-react/e2e/npdev-run-reporter.ts
+  - NPDevEditor/ui-react/e2e/npdev-evidence-fixture.ts
+  - NPDevEditor/ui-react/playwright.config.ts
+  - NPDevEditor/ui-react/playwright.generated-app.config.ts

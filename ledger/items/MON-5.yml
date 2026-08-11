@@ -1,0 +1,52 @@
+id: MON-5
+title: >-
+  Two producers wrote `info.html` and the handwritten one silently won, so an ops-wrapper build
+  and a plain generation shipped different info pages for the same app
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-10
+closed: 2026-08-10
+verification: VERIFIED_LIVE
+surface: generator/InfoPageEmitter
+source: >-
+  MONITOR_PLAN D2-a, confirmed by measurement 2026-08-10.
+detail: >-
+  `InfoPageEmitter` (landed 30d9743f, shipped in beta1.14) writes
+  `npdev-generated/src/main/resources/static/info.html` for every generated app.
+  `scripts/appgen/New-AppInfoPage.ps1` wrote its own, richer, 38-row page to
+  `src/main/resources/static/info.html` for ops-wrapper builds.
+
+  Both source sets are merged by `processResources` under `DuplicatesStrategy.EXCLUDE`. MEASURED on a
+  clean `gradlew clean processResources` with a marker in each: the HANDWRITTEN copy wins. So since
+  beta1.14 the page an app serves has depended on which builder ran, and nothing anywhere said so.
+
+  The ops-wrapper page also baked absolute paths -- including a literal
+  `D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Build-AppGenApp.ps1` -- into generated output,
+  which is the family PORT-1 removed from six emitters on the same day.
+resolution: >-
+  One model, one renderer, split by WHO KNOWS THE FACT rather than by who writes the file.
+
+  The emitter owns `info.json` + `info.html` and carries only portable facts: routes as PATHS composed
+  against the live origin, flows, concepts, the DB engine's name. No absolute path, no credentials, no
+  baked port.
+
+  `New-AppInfoPage.ps1` renders nothing. It contributes a LOCAL overlay -- jar, toolbox, model, DB
+  file, key file, commands -- into `starter.html` at the build output root only, through a `<script
+  type="application/json" id="npdev-local">` block the emitted page already knows how to read. It also
+  deletes a stale handwritten `info.html` if one is present, or the fix would not stick. Its builder
+  path is now derived from `$PSScriptRoot`.
+
+  D2-b: the page EMBEDS its JSON rather than fetching it, because `starter.html` is meant to be opened
+  from `file://` while the app is OFF and `fetch()` from a file origin is blocked by every browser -- a
+  fetch-based page renders empty in exactly the state being diagnosed. The page also stops printing
+  `window.location.origin` blind: under `file://` that string is "null", which is how the offline page
+  came to show `null/api/flows`.
+
+  VERIFIED: inline JSON byte-identical to `info.json`; the page renders from `file://` with an honest
+  banner; `check-out-of-tree-generation.ps1` green -- 811 emitted files, no local absolute path, and
+  nothing naming its birthplace.
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/InfoPageEmitter.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/info-page.mustache
+  - scripts/appgen/New-AppInfoPage.ps1

@@ -1,0 +1,50 @@
+id: MON-7
+title: >-
+  The browser-routine corpus was split across two locations and had no schema at all, so any
+  conformance glob would have passed while ignoring half of it
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-10
+closed: 2026-08-10
+verification: VERIFIED_LIVE
+surface: samples/browser-routines
+source: >-
+  MONITOR_PLAN A3.
+detail: >-
+  19 routines sat loose in `NPDevSamples/scripts/browser/` and 1 in
+  `NPDevSamples/scripts/browser/browser-routines/`, while 22 more lived under other samples'
+  `browser-routines/` directories. Nothing validated any of them: the vocabulary is enforced only by
+  the engine, at runtime, when a routine is already being run.
+
+  A3 originally proposed writing the schema from the routines. Measurement says that would have been a
+  second, drifting definition of a vocabulary this repo does not own: the engine defines 32 actions and
+  the corpus uses 16, and five constraints (label <= 160, selector <= 500, value <= 5000, stepId <= 80,
+  evaluate/watch behind ALLOW_EVALUATE) exist only as runtime rejections and cannot be induced from
+  examples at all.
+resolution: >-
+  The schema is PINNED from a running engine into `schemas/ai/scrapforai-routine.schema.json`, with a
+  `.meta.json` recording source, engine version and commit. `scripts/quality/pin-routine-schema.py`
+  re-pins and REFUSES to derive from source when no engine answers -- a reading of the code is not the
+  contract the engine enforces, and the difference is invisible until something is rejected.
+
+  All 42 routines now live under a `browser-routines/` directory -- one corpus, one glob -- and
+  `scripts/quality/check-routine-corpus-conformance.py` (ai-knowledge gate [43/44]) validates each one,
+  composed exactly as the harness composes it, against the pin. It ALSO fails on a routine-shaped file
+  outside that directory, because the split is what would let a conformance test report green about
+  work it never looked at. It self-tests first, on temp files, so its verdict cannot be an artefact of
+  the repo being clean today.
+
+  A defect this found in its own implementation: the action extractor missed `$ref`-hoisted `const`s
+  and reported 30 actions instead of 32, losing `fill` and `selectOption` -- which the corpus uses on
+  hundreds of steps. Undercounting there would have handed the assistant a smaller vocabulary than the
+  engine accepts: A3's own defect, one layer down.
+
+  VERIFIED: 42/42 conform; self-test green; RED-proven by an injected `clickk` step and by a routine
+  placed outside the directory.
+files:
+  - schemas/ai/scrapforai-routine.schema.json
+  - schemas/ai/scrapforai-routine.schema.meta.json
+  - schemas/ai/exploration-run.schema.json
+  - scripts/quality/check-routine-corpus-conformance.py
+  - scripts/quality/pin-routine-schema.py

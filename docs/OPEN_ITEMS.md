@@ -6,19 +6,27 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**168 item(s) migrated: 0 open/partial, 168 done.**
+**176 item(s) migrated: 0 open/partial, 176 done.**
 
 ## Open / partial
 
 None currently open.
 
-## Done (168)
+## Done (176)
 
 <details>
 <summary>Expand the closed-item table and full detail archive</summary>
 
 | ID | Title | Type | Sev | Status | Opened |
 |---|---|---|---|---|---|
+| MON-1 | The Monitor and the Scrap Manager had no CLI underneath them -- every capability the two new screens need existed only as a plan | GAP | MEDIUM | DONE | 2026-08-10 |
+| MON-2 | Nothing emitted `.npdev-root` into a generated app, so the marker-pair rule CLAUDE.md states as an invariant matched zero apps on this machine | BUG | HIGH | DONE | 2026-08-10 |
+| MON-3 | `npdev monitor probe` reported a stopped app as RUNNING because a different app was serving on its port | BUG | HIGH | DONE | 2026-08-10 |
+| MON-4 | `npdev explore run` left the exploration engine running after every run -- terminate() killed the launcher and not the node server it spawned | BUG | MEDIUM | DONE | 2026-08-10 |
+| MON-5 | Two producers wrote `info.html` and the handwritten one silently won, so an ops-wrapper build and a plain generation shipped different info pages for the same app | BUG | MEDIUM | DONE | 2026-08-10 |
+| MON-6 | HANDOVER.md sent testers to a directory that does not exist, to collect log files nothing had ever written, for an app whose output was never captured | BUG | HIGH | DONE | 2026-08-10 |
+| MON-7 | The browser-routine corpus was split across two locations and had no schema at all, so any conformance glob would have passed while ignoring half of it | GAP | MEDIUM | DONE | 2026-08-10 |
+| MON-8 | Playwright suites left no structured record at all, so a green editor e2e run evaporated and a red one could not be attributed | GAP | MEDIUM | DONE | 2026-08-10 |
 | PORT-1 | Six generated artefacts carry an absolute path from the AUTHORING machine into output a stranger runs -- including npdev.database.data-root, which is resolved at RUNTIME, so a generated app tries to open its database on a drive the user does not have | BUG | HIGH | DONE | 2026-08-10 |
 | PORT-2 | The _ops toolbox baked the generation-time location into four files, so a COPIED app silently built and ran the ORIGINAL -- and the check that had just declared this class closed was blind to it by construction | BUG | HIGH | DONE | 2026-08-10 |
 | PORT-3 | `guiLabel` is required of SERVER engines only but printed for ALL of them, so the three embedded profiles -- including H2Local, the DEFAULT -- shipped "Database type: " and "Notes for :" with an empty label | BUG | LOW | DONE | 2026-08-10 |
@@ -189,6 +197,128 @@ None currently open.
 | STOR-9 | A row lock is a suffix on three engines and a table hint on SQL Server, and three sites spelled the suffix inline -- so every app's FIRST boot on SQL Server died taking the migration lock, after the schema had already realized correctly | BUG | HIGH | DONE | 2026-08-08 |
 
 ### Detail
+
+### MON-1 — The Monitor and the Scrap Manager had no CLI underneath them -- every capability the two new screens need existed only as a plan
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-10)
+**Verification:** VERIFIED_LIVE
+**Source:** MONITOR_PLAN A2/A3/A4. The mockups were approved; nothing behind them existed.
+**Surface:** `cli/monitor-explore`
+**Files:**
+- `NPDevCli/npdev_monitor.py`
+- `NPDevCli/npdev_explore.py`
+- `NPDevCli/npdev_jsonschema.py`
+- `NPDevCli/npdev_cli.py`
+- `NPDevCli/tests/test_monitor_and_explore.py`
+
+D1's rule is that no Manager capability may live only in the window: it lands in `npdev_cli.py` first, with `--json`, so a terminal user has it and the Manager's stub-mode fixtures can be CAPTURED rather than guessed. Before this item there was no `npdev monitor` and no `npdev explore` at all, so both screens would have had to decide for themselves what an app is, what healthy means, and what green means -- three answers the CLI now owns.
+
+### MON-2 — Nothing emitted `.npdev-root` into a generated app, so the marker-pair rule CLAUDE.md states as an invariant matched zero apps on this machine
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-10)
+**Verification:** VERIFIED_LIVE
+**Source:** Measured while implementing MONITOR_PLAN A2's discovery rule, 2026-08-10.
+**Surface:** `generator/OperationalRunbookEmitter`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java`
+- `NPDevCli/npdev_monitor.py`
+
+CLAUDE.md says "A generated FinalApp carries its own `.npdev-root` marker", MONITOR_PLAN D7 builds discovery on the marker PAIR (`.npdev-root` + `_ops`), and `scripts/samples/clean-sample-output.ps1` lists `App\.npdev-root` among the evidence files it retains. All three describe something that was not happening: `git ls-files` shows exactly one `.npdev-root`, this repo's own, and a `find` over 30+ generated apps in the machine's Build root returned nothing.
+A scan keyed on the documented rule therefore found ZERO apps -- including every app a tester already has. This is the shape where a documented invariant is load-bearing for a NEW feature and turns out never to have been true.
+
+### MON-3 — `npdev monitor probe` reported a stopped app as RUNNING because a different app was serving on its port
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-10)
+**Verification:** VERIFIED_LIVE
+**Source:** First live test of the probe, 2026-08-10.
+**Surface:** `cli/monitor`
+**Files:**
+- `NPDevCli/npdev_monitor.py`
+
+A freshly built app was started through its own `Run-FinalApp.ps1`, failed to bind because an app from an earlier session already held port 8103, and exited. The probe reported `health: running`.
+It was not wrong about what it measured -- something healthy WAS answering `/actuator/health` on that port. It was wrong about what it CLAIMED. "A healthy NPDev app is on this app's port" and "this app is running" are different statements, and a Monitor card that conflates them is confidently wrong in exactly the situation somebody opened the Monitor to understand.
+The failure is invisible to any test that starts one app on a free port, which is every test anyone would naturally write.
+
+### MON-4 — `npdev explore run` left the exploration engine running after every run -- terminate() killed the launcher and not the node server it spawned
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-10)
+**Verification:** VERIFIED_LIVE
+**Source:** Observed on the third live run, 2026-08-10: `npdev doctor` reported the engine 'running on 127.0.0.1:3010' when nothing should have been running.
+**Surface:** `cli/explore`
+**Files:**
+- `NPDevCli/npdev_explore.py`
+
+MONITOR_PLAN R2 names this risk in the abstract -- "the engine is the risky one; it outlives requests by design" -- and the first implementation walked straight into it. The launcher (`tsx`) spawns the real server as its own child, so terminating the tracked process left node LISTENING.
+The second-order effect is what makes it more than untidy: the next run's service probe found a "running" engine, reused it, and correctly declined to stop something it had not started. So one leak survived every run after it, and a browser-automation server was left listening on the machine by a tool that believed it had cleaned up.
+
+### MON-5 — Two producers wrote `info.html` and the handwritten one silently won, so an ops-wrapper build and a plain generation shipped different info pages for the same app
+
+**Type:** BUG · **Severity:** MEDIUM · **Status:** DONE (2026-08-10)
+**Verification:** VERIFIED_LIVE
+**Source:** MONITOR_PLAN D2-a, confirmed by measurement 2026-08-10.
+**Surface:** `generator/InfoPageEmitter`
+**Files:**
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/InfoPageEmitter.java`
+- `NPDevGenerator/generator/src/main/resources/npdev-templates/info-page.mustache`
+- `scripts/appgen/New-AppInfoPage.ps1`
+
+`InfoPageEmitter` (landed 30d9743f, shipped in beta1.14) writes `npdev-generated/src/main/resources/static/info.html` for every generated app. `scripts/appgen/New-AppInfoPage.ps1` wrote its own, richer, 38-row page to `src/main/resources/static/info.html` for ops-wrapper builds.
+Both source sets are merged by `processResources` under `DuplicatesStrategy.EXCLUDE`. MEASURED on a clean `gradlew clean processResources` with a marker in each: the HANDWRITTEN copy wins. So since beta1.14 the page an app serves has depended on which builder ran, and nothing anywhere said so.
+The ops-wrapper page also baked absolute paths -- including a literal `D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Build-AppGenApp.ps1` -- into generated output, which is the family PORT-1 removed from six emitters on the same day.
+
+### MON-6 — HANDOVER.md sent testers to a directory that does not exist, to collect log files nothing had ever written, for an app whose output was never captured
+
+**Type:** BUG · **Severity:** HIGH · **Status:** DONE (2026-08-10)
+**Verification:** VERIFIED_LIVE
+**Source:** MONITOR_PLAN D10; Plan B graded this BLOCKER-FOR-TESTERS and it was still open.
+**Surface:** `manager/logs`
+**Files:**
+- `NPDevManager/src/log.rs`
+- `NPDevManager/src/main.rs`
+- `NPDevCli/npdev_monitor.py`
+- `NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java`
+- `scripts/appgen/Build-NpdevApp.ps1`
+- `HANDOVER.md`
+
+Three failures stacked, all in the one path a tester uses when nothing else works:
+1. `state.rs::logs_dir()` has been created on every Manager startup since M0-M8, and NOTHING ever
+   wrote into it -- `Cargo.toml` had no logging dependency of any kind.
+2. HANDOVER.md section 5 named `%LOCALAPPDATA%\npdev-manager\`, which is not the Manager's home
+   (`%LOCALAPPDATA%\NPDev` is).
+3. A generated app's own stdout was persisted nowhere: `Run-FinalApp.ps1` ran `java -jar` with no
+   redirect at all.
+
+So the escape hatch for "it will not start at all" asked for files that did not exist, in a folder that did not exist, about a process whose output had been discarded.
+
+### MON-7 — The browser-routine corpus was split across two locations and had no schema at all, so any conformance glob would have passed while ignoring half of it
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-10)
+**Verification:** VERIFIED_LIVE
+**Source:** MONITOR_PLAN A3.
+**Surface:** `samples/browser-routines`
+**Files:**
+- `schemas/ai/scrapforai-routine.schema.json`
+- `schemas/ai/scrapforai-routine.schema.meta.json`
+- `schemas/ai/exploration-run.schema.json`
+- `scripts/quality/check-routine-corpus-conformance.py`
+- `scripts/quality/pin-routine-schema.py`
+
+19 routines sat loose in `NPDevSamples/scripts/browser/` and 1 in `NPDevSamples/scripts/browser/browser-routines/`, while 22 more lived under other samples' `browser-routines/` directories. Nothing validated any of them: the vocabulary is enforced only by the engine, at runtime, when a routine is already being run.
+A3 originally proposed writing the schema from the routines. Measurement says that would have been a second, drifting definition of a vocabulary this repo does not own: the engine defines 32 actions and the corpus uses 16, and five constraints (label <= 160, selector <= 500, value <= 5000, stepId <= 80, evaluate/watch behind ALLOW_EVALUATE) exist only as runtime rejections and cannot be induced from examples at all.
+
+### MON-8 — Playwright suites left no structured record at all, so a green editor e2e run evaporated and a red one could not be attributed
+
+**Type:** GAP · **Severity:** MEDIUM · **Status:** DONE (2026-08-10)
+**Verification:** VERIFIED_LIVE
+**Source:** MONITOR_PLAN C2, EXPLORATIONS_ANALYSIS.md 2.6.
+**Surface:** `editor/e2e`
+**Files:**
+- `NPDevEditor/ui-react/e2e/npdev-run-reporter.ts`
+- `NPDevEditor/ui-react/e2e/npdev-evidence-fixture.ts`
+- `NPDevEditor/ui-react/playwright.config.ts`
+- `NPDevEditor/ui-react/playwright.generated-app.config.ts`
+
+Explorations happen two ways here. ScrapForAI routines produced structured evidence on every run. Direct Playwright specs produced console text: `list` reporter, trace on-first-retry, screenshots only-on-failure. There was no way to see "this suite was green for twelve runs and went red today", and no way to say whether the routine, the model or the platform changed.
 
 ### PORT-1 — Six generated artefacts carry an absolute path from the AUTHORING machine into output a stranger runs -- including npdev.database.data-root, which is resolved at RUNTIME, so a generated app tries to open its database on a drive the user does not have
 
