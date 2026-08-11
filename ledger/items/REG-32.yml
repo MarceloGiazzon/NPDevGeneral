@@ -21,4 +21,3 @@ detail: |
   prior fix had deliberately retired to false. Verified: errorCount 0 (was 10). CI step's
   continue-on-error kept intentionally (not removed) since REG-35's Gradle-native residual still
   trips on the same tree.
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-32

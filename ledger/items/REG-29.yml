@@ -19,4 +19,3 @@ detail: |
   boot's own claim was acquired, asserts the throw and that the claim store is empty afterward.
   RED-first: verified the test fails when the finally's release is neutralized, passes with the real
   code.
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-29

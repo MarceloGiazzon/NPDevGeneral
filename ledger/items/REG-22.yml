@@ -12,4 +12,3 @@ detail: |
   SuperUserCredentialAuthFilter now sets a marker only after a live super-key resolves ACTIVE; the
   actuator gate requires that marker, so a JWT-borne (or revoked) SUPERUSER role no longer opens
   metrics. RED-first: a role-only claim now 403s.
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-22

@@ -1,9 +1,10 @@
 # Python dependencies for scripts/ that are not stdlib-only.
 #
-# scripts/quality/check-register-consistency.py (Rule T3, docs/REMEDIATION_PLAN.md R-D2) and
-# scripts/quality/generate_open_items.py both parse ledger/items/*.yml. Every other script under
-# scripts/ is stdlib-only. Installed by .github/workflows/ai-knowledge-gate.yml before running
-# either script -- see ledger/README.md.
+# scripts/quality/generate_open_items.py parses ledger/items/*.yml; scripts/docs/generate_gaps_roadmap.py
+# and scripts/ai/extract_platform_status.py parse ledger/gaps.yml; scripts/quality/check-workflow-yaml-syntax.py
+# parses .github/workflows/*.yml. (check-register-consistency.py was a fifth consumer, deleted by
+# md-zero-2026-08-11 PLAN.md Phase 2.) Every other script under scripts/ is stdlib-only. Installed by
+# .github/workflows/ai-knowledge-gate.yml before running any of them -- see ledger/README.md.
 PyYAML>=6.0.1
 
 # scripts/quality/check-config-schema.py validates every corpus config.json against

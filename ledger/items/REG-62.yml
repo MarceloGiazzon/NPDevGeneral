@@ -56,4 +56,3 @@ detail: |
   (4 cases: clean match, no-allowedActions state left unrestricted, misspelled entry rejected naming
   the real actions, and no-autoPanel-at-all rejected naming "(none)") -- all green; full DSL module
   test suite green afterward (no other lifecycle/autoPanel test regressed).
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-62

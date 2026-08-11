@@ -20,4 +20,3 @@ detail: |
   PostgreSQL mode, which does not enforce this limit; that gap is why the bug shipped and is now
   closed (a real-Postgres PostgresIdempotencyKeyBoundTest added). Tests: IdempotencyKeysTest (6),
   InProcIdempotencyStoreTest (+3).
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-36

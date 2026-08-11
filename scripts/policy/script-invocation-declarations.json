@@ -56,7 +56,7 @@
       "invocation": "manual-runbook"
     },
     "scripts/appgen/New-ControlPanelPage.ps1": {
-      "invocation": "manual-runbook"
+      "invocation": "orchestrated"
     },
     "scripts/appgen/New-PropertiesAdminPage.ps1": {
       "invocation": "manual-runbook"
@@ -147,9 +147,6 @@
     "scripts/quality/check-allowlist-citations.py": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/check-blocker-citation-freshness.py": {
-      "invocation": "ci-gate"
-    },
     "scripts/quality/check-cadence-coverage.py": {
       "invocation": "ci-gate"
     },
@@ -189,6 +186,9 @@
     "scripts/quality/check-executable-line-endings.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-external-ai-mission-coverage.py": {
+      "invocation": "manual-runbook"
+    },
     "scripts/quality/check-firstrun-extractor.py": {
       "invocation": "ci-gate"
     },
@@ -204,9 +204,6 @@
     "scripts/quality/check-markdown-links.py": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/check-narrative-status-drift.py": {
-      "invocation": "ci-gate"
-    },
     "scripts/quality/check-panel-provenance-impact.py": {
       "invocation": "ci-gate"
     },
@@ -220,9 +217,6 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-record-surfaces.py": {
-      "invocation": "ci-gate"
-    },
-    "scripts/quality/check-register-consistency.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-rollback-claims.py": {
@@ -292,7 +286,7 @@
       "invocation": "manual-runbook"
     },
     "scripts/quality/invoke-ai-beta-app-smoke.ps1": {
-      "invocation": "manual-runbook"
+      "invocation": "orchestrated"
     },
     "scripts/quality/json-schema-validator/validate-json-schema.mjs": {
       "invocation": "ci-gate"
@@ -393,7 +387,7 @@
       "invocation": "orchestrated"
     },
     "scripts/quality/run-frontend-gate-tests.ps1": {
-      "invocation": "manual-runbook"
+      "invocation": "orchestrated"
     },
     "scripts/quality/run-frontend-gate.ps1": {
       "invocation": "manual-runbook"
@@ -587,7 +581,7 @@
       "invocation": "manual-runbook"
     },
     "scripts/security/Invoke-StructuredCommandRequest.ps1": {
-      "invocation": "manual-runbook"
+      "invocation": "orchestrated"
     },
     "scripts/statezip-common.ps1": {
       "invocation": "ci-gate"

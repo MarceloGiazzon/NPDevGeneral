@@ -18,4 +18,3 @@ detail: |
   on an undocumented RuntimeHost-libs staging prerequisite whose own suggested fix also fails
   standalone in a fresh worktree; the doc's claimed 400 status for an invariant violation is actually
   422.
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-14

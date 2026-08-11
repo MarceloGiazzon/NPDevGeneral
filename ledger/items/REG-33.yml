@@ -15,4 +15,3 @@ detail: |
   cwd=validator_root (no --prefix). Verified locally RED->GREEN: removed node_modules, ran
   `npdev migrate`, install ran from the validator dir, exit 0. CI also pre-installs the deps in the
   Windows job as belt-and-suspenders.
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-33

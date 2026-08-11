@@ -18,4 +18,3 @@ detail: |
   check). RED->GREEN RowLevelAuthorizationAttackTest (both InMemory and JDBC/H2 adapters): confirmed
   RED pre-fix (leaked the status via the lifecycle exception), GREEN after (ROW_SCOPE_DENIED, no
   status disclosed).
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-41

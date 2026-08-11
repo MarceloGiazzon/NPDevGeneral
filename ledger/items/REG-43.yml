@@ -19,4 +19,3 @@ detail: |
   unchanged behavior; any OTHER SQL error -> fail CLOSED, log ERROR. RED->GREEN
   TenantRegistryServiceTest (+3): exactly one test RED against pre-fix code, missing-table fail-open
   test stays green, proving the fix discriminates rather than flipping everything closed.
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-43
