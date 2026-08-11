@@ -7,9 +7,12 @@ knowledge/platform-status.json already uses relative to the gaps ledger
 (scripts/ai/extract_platform_status.py).
 
 MIGRATION COMPLETE (see ledger/README.md): all 64 tracked ids are migrated.
-docs/NPDEV_OPEN_ITEMS_REGISTER.md is archived-in-place (kept for its `#reg-N` anchors and prose
-investigation narrative, linked from every item's `legacyDetailRef`) and is no longer hand-edited
-for status.
+docs/NPDEV_OPEN_ITEMS_REGISTER.md was archived-in-place, then moved out of the repo entirely by
+md-zero-2026-08-11 PLAN.md Phase 2 (git history keeps it; __OutsideRepo/md-zero-2026-08-11/
+archived-programme-docs/ keeps a working copy) -- every item's `detail:` field in ledger/items/*.yml
+is self-sufficient on its own, and the `legacyDetailRef` pointer each item used to carry (a link
+into that doc's `#reg-N` anchors) was removed in the same commit rather than left pointing at a
+path this repo no longer has.
 
     python scripts/quality/generate_open_items.py           # writes docs/OPEN_ITEMS.md
     python scripts/quality/generate_open_items.py --check    # exit 1 if the file is stale
@@ -118,10 +121,8 @@ def render(items: list[dict]) -> str:
         "",
         "> **GENERATED FILE — do not hand-edit.** Source: `ledger/items/*.yml`, the authoritative",
         "> record for every tracked id. Regenerate with `python scripts/quality/generate_open_items.py`.",
-        "> See `ledger/README.md` for the schema.",
-        "> `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md` is archived-in-place (its",
-        "> prose investigation narrative, linked from each item's `legacyDetailRef`) and is no longer",
-        "> hand-edited for status.",
+        "> See `ledger/README.md` for the schema. Each item's `detail:` field is self-sufficient; none",
+        "> of these items cite an external doc for their narrative.",
         "",
         f"**{len(items)} item(s) migrated: {len(open_items)} open/partial, {len(done_items)} done.**",
         "",

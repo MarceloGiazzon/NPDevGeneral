@@ -22,4 +22,3 @@ detail: |
   strangler-fig with a proven 100% behavior-equivalence shadow-parity gate on H2 + Postgres before
   each pass switched over. Remaining known limit (separate, documented, not a re-derivation): no
   explicit FK/index diff (P0.2/P5.2, deferred enhancement).
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-6

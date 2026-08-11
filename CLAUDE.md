@@ -132,6 +132,11 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md`.
 - **Maintainer skills** (tracked, un-ignored under `.claude/skills/`): `rebuild-app` (three-cache
   refresh via `scripts/appgen/Rebuild-And-Restage.ps1`) and `verify-in-browser` (ScrapForAI).
+- **Other manual verification scripts, not wired into any gate:** `scripts/quality/run-boundary-lock-check.ps1`
+  (controller/UI-component/deprecated-schema-alias classification vs. reality — run it by hand after
+  adding a controller class or a `NPDevEditor/ui-react/src` component) and
+  `scripts/proofs/run-item20-postgres-proof.ps1` (a one-off real-Postgres repro for a specific closed
+  item; kept for re-running against a suspected regression, not part of any regular cadence).
 - **After changing kernel/adapter Java, restage jars before regenerating an app:**
   `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars`. **The defaults now agree**
   (both resolve to `D:\WorkSpace\NPDev\Build\runtimehost-libs` via `Get-NPDevRuntimeHostLibsDir`,
@@ -207,9 +212,10 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
 ## Where the truth lives (read before filing or editing status)
 
 - **Open items:** `ledger/items/*.yml` is authoritative. `docs/OPEN_ITEMS.md` is GENERATED from it
-  (`scripts/quality/generate_open_items.py`) — never hand-edit.
-  `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md` is HISTORICAL/archived-in-place: read
-  for narrative (root causes, fix rationale), never for status.
+  (`scripts/quality/generate_open_items.py`) — never hand-edit. `NPDEV_OPEN_ITEMS_REGISTER.md` was
+  HISTORICAL/archived-in-place, then moved out of the repo entirely by md-zero-2026-08-11 PLAN.md
+  Phase 2 (git history keeps it) once every ledger item's `detail:` field was confirmed
+  self-sufficient without it.
 - **The gaps ledger too:** `ledger/gaps.yml` is authoritative for `docs/OPEN_GAPS_AND_ROADMAP.md`'s
   Priority-index and Fixed-engine-bugs tables (`scripts/docs/generate_gaps_roadmap.py`) — same
   never-hand-edit discipline (docs-decoupling-2026-08-11 PLAN.md Phase 1).
@@ -246,16 +252,14 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
   chain, and `REG-112`'s test-exclusion sibling pair), and fails the gate the moment any of them
   diverges — add a new rule there the next time a "one place updated, its twin forgotten" bug is
   found, rather than letting a fourth instance go unnoticed the way REG-89/104/112 did.
-- **Citing a `REG-nn`/ledger id as a live blocker** in `docs/SCREEN_TAXONOMY.md` (stays at `docs/`
-  root) or `docs/archive/programme-history/MOVE*_CHECKLISTS.md` /
-  `docs/archive/programme-history/MOVE*_FINDINGS.md` / `docs/archive/programme-history/MOVE1_PANEL_GAPS.md`
-  (archived docs-decoupling-2026-08-11)? Check the id's own ledger status BEFORE
-  writing "blocked by REG-nn" or "REG-nn (open ...)" — `scripts/quality/check-blocker-citation-freshness.py`
-  (wired in `run-ai-knowledge-gate.ps1`) fails the moment that id's `ledger/items/REG-nn.yml` says
-  DONE/PARTIAL while the doc still calls it a live blocker. Move 15 Phase D item D1: five separate
-  times a console/screen record said "blocked by X" while X had already been closed in a later move,
-  and `SCREEN_TAXONOMY.md` itself sat four moves stale before a human re-read caught it — this is the
-  mechanical control that was missing (five other defect families already had one).
+- **Citing a `REG-nn`/ledger id as a live blocker** anywhere? Check the id's own ledger status BEFORE
+  writing "blocked by REG-nn" or "REG-nn (open ...)" — a doc calling an id a live blocker after its
+  `ledger/items/REG-nn.yml` says DONE/PARTIAL is stale prose. Move 15 Phase D item D1: five separate
+  times a console/screen record said "blocked by X" while X had already been closed in a later move.
+  (The mechanical gate that caught this, `check-blocker-citation-freshness.py`, was deleted by
+  md-zero-2026-08-11 PLAN.md Phase 2 along with the closed-programme `MOVE*_CHECKLISTS.md`/
+  `MOVE*_FINDINGS.md`/`MOVE1_PANEL_GAPS.md` docs it scanned — 177 items across every ledger family it
+  guarded were DONE. `docs/SCREEN_TAXONOMY.md` stays at `docs/` root and is unaffected.)
 - **Adding a script under `scripts/`?** It needs both a classification (pattern-matched in
   `scripts/policy/script-inventory-policy.json`) and a declared `invocation` in
   `scripts/policy/script-invocation-declarations.json`; `run-script-inventory-check.ps1` enforces

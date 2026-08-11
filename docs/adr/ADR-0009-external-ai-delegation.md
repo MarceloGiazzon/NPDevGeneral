@@ -93,8 +93,8 @@ its author opts in, per app, per mission, per vendor — the model-surface field
   spots too — the same structural flaw, moved one layer out. Mitigation: multi-vendor by design
   for security missions (≥2 vendors), per D1.
 - **An AI verdict laundered into assurance** is the failure this ADR exists to prevent. Rule 1
-  above is enforced by the P8 gate (`run-external-ai-gate.ps1` + a `check-register-consistency.py`
-  extension), not left as a documentation convention alone.
+  above is enforced by the P8 gate (`run-external-ai-gate.ps1` +
+  `check-external-ai-mission-coverage.py`), not left as a documentation convention alone.
 - **"No findings" is not proof of absence.** P4's calibration run (against the pre-fix parents of
   known bugs LNCH13-F1 and R3-F2) is the control: if the model finds neither known bug, the channel
   is recorded low-yield, not "clean."

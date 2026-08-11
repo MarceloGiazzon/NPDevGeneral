@@ -20,4 +20,3 @@ detail: |
   copied verbatim by FinalAppAssembler, so a generated app's own gradlew bootJar could not run on any
   machine but the original dev box. Removed from the template so generated apps use gradle's portable
   default cache.
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-11

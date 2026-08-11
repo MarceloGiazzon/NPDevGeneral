@@ -19,4 +19,3 @@ detail: |
   first cold run. Real finding filed (not silently fixed): the user manual's own createConcept/
   updateConcept examples omit the persistence capability/binding block, producing a model that
   validates cleanly but 500s at runtime with no diagnostic naming the real cause.
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-13

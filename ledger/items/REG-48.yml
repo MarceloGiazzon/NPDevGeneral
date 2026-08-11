@@ -19,4 +19,3 @@ detail: |
   after (ROW_SCOPE_DENIED, invariant never evaluated). delete() is store-agnostic, so InMemory+H2
   coverage is the complete adapter matrix for this bug. Re-verified live against the platform source
   directly (never exposed to the REG-49 staleness class).
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-48

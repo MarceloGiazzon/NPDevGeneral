@@ -46,5 +46,5 @@ written after exactly that happened on this project — see `docs/CLOSEOUT_PLAN.
 ## What we have already reviewed
 
 Adversarial review history and known accepted boundaries:
-[`docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md`](docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md),
+[`docs/OPEN_ITEMS.md`](docs/OPEN_ITEMS.md),
 [`docs/SECURITY_PATTERN_SWEEP_2026-07.md`](docs/SECURITY_PATTERN_SWEEP_2026-07.md).

@@ -37,4 +37,3 @@ detail: |
   authored fresh and confirmed live, 0 problems from check-panel-provenance-impact.py against each
   app's real bundle). C4 promotes the corpus validator to a permanent blocking gate so this class does
   not recur silently.
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-63

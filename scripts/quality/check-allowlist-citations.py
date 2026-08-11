@@ -26,13 +26,17 @@ today, so this is a zero-grandfathering, zero-risk rule to turn on now, before t
 `check-query-predicate-compilable.py` -- was retired in favor of the same grammar running at DSL
 authoring-time validation.)
 
-`plan-deferral-citation-allowlist.json` (8 entries) and `security-pattern-sweep-allowlist.json`
-(281 entries) use a DIFFERENT, already-established convention -- doc-paragraph narrative and a
-`docs/SECURITY_PATTERN_SWEEP_2026-07.md` cross-reference, respectively, neither shaped like
-`REG-nn`/`B-nn`. Retrofitting a citation requirement onto either is explicitly NOT attempted here
+`security-pattern-sweep-allowlist.json` (281 entries) uses a DIFFERENT, already-established
+convention -- a `docs/SECURITY_PATTERN_SWEEP_2026-07.md` cross-reference, not shaped like
+`REG-nn`/`B-nn`. Retrofitting a citation requirement onto it is explicitly NOT attempted here
 (docs/FAIL_OPEN_PLAN.md R3's own scope note: "not proposed: auditing the 281 security entries") --
-this script only REPORTS their counts, so growth is visible without demanding anyone re-read either
-file's existing rows.
+this script only REPORTS its count, so growth is visible without demanding anyone re-read its
+existing rows.
+
+(`plan-deferral-citation-allowlist.json` was this section's other REPORT_ONLY member until
+md-zero-2026-08-11 PLAN.md Phase 2 deleted it: its one consumer, check-register-consistency.py's
+check_plan_deferral_citations rule, was itself deleted along with that script, so the allowlist had
+no rule left to exempt anything from.)
 
 CALIBRATE BEFORE TRUSTING IT
 ------------------------------
@@ -69,7 +73,6 @@ ENFORCED = (
 
 # Files with an established, different citation convention -- counted, never enforced here.
 REPORT_ONLY = (
-    "scripts/quality/plan-deferral-citation-allowlist.json",
     "scripts/quality/security-pattern-sweep-allowlist.json",
 )
 

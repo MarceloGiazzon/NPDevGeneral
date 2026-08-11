@@ -36,4 +36,3 @@ detail: |
   (`npdev report bootstrap`, validate-report-schemas.ps1, generate-final-evidence-bundle.ps1,
   run-portable-tooling-check.ps1) whose own precondition-unmet-vs-exit-code handling was not
   re-audited here -- flipping the flag for the whole step is a separate decision.
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-35

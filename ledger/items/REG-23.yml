@@ -15,4 +15,3 @@ detail: |
   instant, default off = today's lenient behavior); once reached, tv-less tokens are rejected on both
   paths. Bridged Spring->system-property by TvlessTokenCutoverBridge (fails fast on a malformed
   value). Verified: 4/4 IdentityRoleLookupTvlessRevocationTest.
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-23

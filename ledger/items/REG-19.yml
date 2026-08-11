@@ -11,4 +11,3 @@ surface: runtimehost/auth
 detail: |
   Hard cap (100k) added with expired-first + oldest-live eviction and a cutoff tie-break. RED-first
   LoginThrottleBoundedTest sprays 3x the cap.
-legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-19

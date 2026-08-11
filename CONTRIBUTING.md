@@ -10,9 +10,10 @@ keep moving. That said, the conventions below are stable and enforced by CI, not
   reading in full, environment notes). It applies to human contributors as much as to an AI agent.
 - Check `docs/OPEN_ITEMS.md` for known open items before filing a new one. It is GENERATED from
   `ledger/items/*.yml` — the ledger is the source of truth, so file and edit items there, never in
-  the rendered document. (It used to say `docs/NPDEV_OPEN_ITEMS_REGISTER.md`; that register is
-  historical and now lives under `docs/archive/programme-history/` — read it for narrative, never
-  for status.)
+  the rendered document. (It used to say `docs/NPDEV_OPEN_ITEMS_REGISTER.md`; that register was
+  historical, then moved out of the repo entirely by md-zero-2026-08-11 PLAN.md Phase 2 once every
+  ledger item's own `detail:` field was confirmed to carry its narrative without it — git history
+  keeps the original.)
 
 ## Build output and evidence never go in the repo
 
