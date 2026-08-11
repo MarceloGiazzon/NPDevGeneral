@@ -450,6 +450,20 @@ def provenance_audit_gaps(root: Path) -> list[str]:
     return gaps
 
 
+def _plan_documents(root: Path) -> list[Path]:
+    """Every `*PLAN*.md`, at docs/ root AND in docs/archive/programme-history/.
+
+    docs-decoupling-2026-08-11 PLAN.md Phase 3b: most closed plans moved to the archive, so scanning
+    docs/ root alone would eventually starve this check to zero live-tense declarations even though
+    the archived ones are exactly where "does this still read as a live backlog" matters most (Rule 1
+    resolution (a), re-point rather than narrow). A handful of still-ACTIVE plans (found via the
+    STATUS check itself, not assumed) remain at docs/ root.
+    """
+    return sorted((root / "docs").glob("*PLAN*.md")) + sorted(
+        (root / "docs" / "archive" / "programme-history").glob("*PLAN*.md")
+    )
+
+
 def check_plan_status_banners(root: Path, verbose: bool) -> list[str]:
     """Every planning document must declare its tense in its first few lines.
 
@@ -463,22 +477,23 @@ def check_plan_status_banners(root: Path, verbose: bool) -> list[str]:
     the author to SAY, in one line, which of EXECUTED / ACTIVE / HISTORICAL / SUPERSEDED applies.
     Stating the tense costs a sentence; leaving it implicit costs a reader an hour.
     """
-    matched = sorted((root / "docs").glob("*PLAN*.md"))
+    matched = _plan_documents(root)
     if not matched:
         raise EmptyScopeError(
-            "check_plan_status_banners(): docs/*PLAN*.md matched 0 files -- this would report a "
-            "false PASS having checked no plan documents. Re-point the scan at the new location of "
-            "these documents, or delete this rule outright, before letting it run on an empty set "
-            "(Rule 1, docs-decoupling-2026-08-11 PLAN.md)."
+            "check_plan_status_banners(): docs/*PLAN*.md (root + archive/programme-history/) "
+            "matched 0 files -- this would report a false PASS having checked no plan documents. "
+            "Re-point the scan at the new location of these documents, or delete this rule outright, "
+            "before letting it run on an empty set (Rule 1, docs-decoupling-2026-08-11 PLAN.md)."
         )
     problems: list[str] = []
     checked = 0
     for path in matched:
+        rel = path.relative_to(root).as_posix()
         head = "\n".join(path.read_text(encoding="utf-8", errors="replace").split("\n")[:8])
         checked += 1
         if "STATUS:" not in head:
             problems.append(
-                f"docs/{path.name}: no `> **STATUS: …**` line in the first 8 lines. Add one saying "
+                f"{rel}: no `> **STATUS: …**` line in the first 8 lines. Add one saying "
                 f"EXECUTED (work landed) / ACTIVE (live backlog) / HISTORICAL (unverified) / "
                 f"SUPERSEDED (point at the replacement), so a reader knows whether to act on it."
             )
@@ -604,20 +619,21 @@ def check_plan_deferral_citations(root: Path, verbose: bool) -> list[str]:
     scope decision, not prose describing work that already addressed an earlier deferral. A reviewed
     residual false positive can be cleared in plan-deferral-citation-allowlist.json.
     """
-    matched = sorted((root / "docs").glob("*PLAN*.md"))
+    matched = _plan_documents(root)
     if not matched:
         raise EmptyScopeError(
-            "check_plan_deferral_citations(): docs/*PLAN*.md matched 0 files -- this would report a "
-            "false PASS having scanned no plan documents. Re-point the scan at the new location of "
-            "these documents, or delete this rule outright, before letting it run on an empty set "
-            "(Rule 1, docs-decoupling-2026-08-11 PLAN.md)."
+            "check_plan_deferral_citations(): docs/*PLAN*.md (root + archive/programme-history/) "
+            "matched 0 files -- this would report a false PASS having scanned no plan documents. "
+            "Re-point the scan at the new location of these documents, or delete this rule outright, "
+            "before letting it run on an empty set (Rule 1, docs-decoupling-2026-08-11 PLAN.md)."
         )
     problems: list[str] = []
     checked = 0
     allowlist = load_deferral_allowlist()
     for path in matched:
+        rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8", errors="replace")
-        doc_problems = plan_deferral_citations_text(f"docs/{path.name}", text, allowlist, verbose)
+        doc_problems = plan_deferral_citations_text(rel, text, allowlist, verbose)
         head = "\n".join(text.split("\n")[:8])
         status_match = PLAN_STATUS_WORD_RE.search(head)
         if status_match is not None and status_match.group(1).upper() in CLOSED_STATUS_WORDS:
@@ -1008,19 +1024,31 @@ def calibrate(root: Path) -> int:
     # deferred (owner's call...)" with no REG-nn/B-nn citation. Pinned by SHA per T1's own rule, even
     # though (confirmed via `git show`) this pin's content is currently identical to the pre-fix
     # working tree -- the discipline matters going forward, not just today.
-    dsl2_path = root / "docs" / "DSL2_AND_DECOMPOSITION_PLAN.md"
-    pre_citation_text = git_show(dsl2_path, revision="b7a4f0f")
+    #
+    # Two DIFFERENT paths, not one (docs-decoupling-2026-08-11 PLAN.md Phase 3b): b7a4f0f predates
+    # the archival move, so the historical git-show lookup must keep using the OLD docs/ path (that
+    # commit has no docs/archive/ tree at all) -- but the CURRENT working-tree read must use the NEW
+    # archive path, since the file now lives there. Conflating them either 404s the historical lookup
+    # or silently stops running the post-citation working-tree control (a control that quietly stops
+    # running is exactly the docs/FAIL_OPEN_PLAN.md R1 hazard EXPECTED_CONTROLS exists to catch).
+    dsl2_path_historical = root / "docs" / "DSL2_AND_DECOMPOSITION_PLAN.md"
+    dsl2_path_current = root / "docs" / "archive" / "programme-history" / "DSL2_AND_DECOMPOSITION_PLAN.md"
+    pre_citation_text = git_show(dsl2_path_historical, revision="b7a4f0f")
     empty_allowlist: dict = {}
     if pre_citation_text is not None:
         report(
             "Rule T4 vs. DSL2_AND_DECOMPOSITION_PLAN.md @ b7a4f0f (pre-citation, real instance)",
-            plan_deferral_citations_text("DSL2_AND_DECOMPOSITION_PLAN.md", pre_citation_text, empty_allowlist),
+            plan_deferral_citations_text("docs/DSL2_AND_DECOMPOSITION_PLAN.md", pre_citation_text, empty_allowlist),
             expect_fire=True,
         )
-    if dsl2_path.exists():
+    if dsl2_path_current.exists():
         report(
             "Rule T4 vs. DSL2_AND_DECOMPOSITION_PLAN.md in the working tree (post-citation, B25 added)",
-            plan_deferral_citations_text("DSL2_AND_DECOMPOSITION_PLAN.md", dsl2_path.read_text(encoding="utf-8", errors="replace"), empty_allowlist),
+            plan_deferral_citations_text(
+                "docs/archive/programme-history/DSL2_AND_DECOMPOSITION_PLAN.md",
+                dsl2_path_current.read_text(encoding="utf-8", errors="replace"),
+                empty_allowlist,
+            ),
             expect_fire=False,
         )
     report(

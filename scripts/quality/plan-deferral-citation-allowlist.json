@@ -34,6 +34,18 @@
     },
     "480dc90dc28f": {
       "why": "docs/TREE1_LAUNCH_UNBLOCK_PLAN.md T1.14 -- same verification task as above, quoting the pre-existing memory claim being investigated."
+    },
+    "b90cb96b0201": {
+      "why": "docs/archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md -- 'DataMigrationHook Java interface is deliberately deferred' cites its own tracking: 'code-bearing objects belong to' the ADR-0003 code-bearing-objects track (a design-decision reference, not the REG-nn/B-nn shape this rule looks for). First surfaced by docs-decoupling-2026-08-11 PLAN.md Phase 3b re-pointing check_plan_deferral_citations() to also scan docs/archive/programme-history/ -- this is a pre-existing deferral in an already-closed (STATUS: EXECUTED) historical plan, predating the REG-nn/B-nn convention, not a new scope cut."
+    },
+    "675682ff83c8": {
+      "why": "docs/archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md -- 'FK/index verification is still deferred' is the SAME deferral tracked extensively elsewhere in this same document under its own local task ids (P0.2, P5.2, G8 in the sibling SER_FINAL_CLOSURE_PLAN.md), the exact 'local task id that doesn't match REG-nn/B-nn' shape this allowlist's own header describes. Confirmed independently: project memory (schema_engine_rebuild_reg6.md) records 'FK/index diffing deferred' as the one accepted residual of REG-6's closure. First surfaced by Phase 3b's archive re-pointing, not a new deferral."
+    },
+    "82fc1242e380": {
+      "why": "docs/archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md -- same DataMigrationHook / ADR-0003 code-bearing-objects deferral as b90cb96b0201 above (this plan's earlier-phase sibling document restates it). First surfaced by Phase 3b's archive re-pointing."
+    },
+    "68a321ca366a": {
+      "why": "docs/archive/programme-history/SER_FINAL_CLOSURE_PLAN.md -- the G8 risk-register row IS this deferral's own tracking id in this document's local task-id scheme (see this file's own SS3.1 'G8 -- FK/index diffing (P5.2)' section), the same shape check-register-consistency.py's docstring already excuses. First surfaced by Phase 3b's archive re-pointing, not a new untracked scope cut."
     }
   }
 }
