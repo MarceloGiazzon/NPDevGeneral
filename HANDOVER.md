@@ -126,12 +126,30 @@ Do **not** try to fix anything. A workaround you apply silently is a defect we n
 Send us the output of these and stop:
 
 ```
-# Windows (PowerShell)
-%LOCALAPPDATA%\npdev-manager\  →  send any .log files
+# Windows — the Manager's own log
+%LOCALAPPDATA%\NPDev\logs\   →  send manager.log
 
-# Linux — run the AppImage from a terminal so you can see why it exited
+# Linux — the same folder, plus running the AppImage from a terminal so you can see why it exited
+~/.local/share/npdev/logs/   →  send manager.log
 ./NPDev.Manager_*.AppImage
 ```
+
+**If the Manager starts but an APP will not**, there is now one better thing to send. Open The
+Monitor, find the app's card, and use **Actions → Export support bundle**. That writes a single zip
+next to the app containing its own run logs, the output of every `_ops` script you ran from the
+window, the Manager's log, and what the probe saw — with the database password redacted, because
+the whole point of the file is that it leaves your machine. Send that one file.
+
+From a terminal it is the same thing:
+
+```
+npdev monitor logs export --app-dir <the app folder> --out support.zip
+```
+
+*(This section named `%LOCALAPPDATA%\npdev-manager\` until 2026-08-10 — a folder that does not
+exist; the Manager's home is `%LOCALAPPDATA%\NPDev`. It also asked for `.log` files that nothing had
+ever written. Both are fixed: the Manager writes `manager.log` from this release onward, and a
+generated app now keeps its own run logs under `<app>\logs\`.)*
 
 A refusal to start is a **complete** result, not a failed session. It is the single most useful
 thing this exercise can find.

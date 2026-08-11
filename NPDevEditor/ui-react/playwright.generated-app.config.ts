@@ -23,7 +23,13 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [["github"], ["list"]] : "list",
+  // MONITOR_PLAN C2: the npdev reporter runs ALONGSIDE the console ones, never instead of
+  // them -- `list` is what a developer watches, and a run record is what history reads. It
+  // records through `npdev explore record`, so this suite is judged by the same definition of
+  // green as a ScrapForAI routine (R10). A recording failure warns and never fails the run.
+  reporter: process.env.CI
+    ? [["github"], ["list"], ["./e2e/npdev-run-reporter.ts", { suite: "editor-in-generated-app" }]]
+    : [["list"], ["./e2e/npdev-run-reporter.ts", { suite: "editor-in-generated-app" }]],
   use: {
     baseURL,
     trace: "on-first-retry",

@@ -1,0 +1,47 @@
+id: MON-1
+title: >-
+  The Monitor and the Scrap Manager had no CLI underneath them -- every capability the two new
+  screens need existed only as a plan
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-10
+closed: 2026-08-10
+verification: VERIFIED_LIVE
+surface: cli/monitor-explore
+source: >-
+  MONITOR_PLAN A2/A3/A4. The mockups were approved; nothing behind them existed.
+detail: >-
+  D1's rule is that no Manager capability may live only in the window: it lands in `npdev_cli.py`
+  first, with `--json`, so a terminal user has it and the Manager's stub-mode fixtures can be CAPTURED
+  rather than guessed. Before this item there was no `npdev monitor` and no `npdev explore` at all, so
+  both screens would have had to decide for themselves what an app is, what healthy means, and what
+  green means -- three answers the CLI now owns.
+resolution: >-
+  `npdev monitor scan|probe|engine|engine-start|logs|ops` and `npdev explore
+  list|show|validate|preflight|run|record|prune|pin|accept|context|repair-payload`, plus `npdev ai
+  generate-routine`. Three new modules: npdev_monitor.py, npdev_explore.py and npdev_jsonschema.py --
+  the last a draft-2020-12 SUBSET validator, because the Manager's private Python has no third-party
+  packages and the repo's ajv wrapper needs a clone plus node (R9).
+
+  The subset validator is safe to hand-roll for one reason, enforced in code: an unknown keyword is an
+  ERROR, never an ignore. It was cross-checked against the reference `jsonschema` package on all 42
+  corpus routines and 9 adversarial cases -- agreement everywhere except a relative `targetUrl`, where
+  the library does not assert `format` and this one does, matching `z.string().url()`, which is what
+  the engine actually runs.
+
+  Its union error messages were rewritten after they proved unusable: a 30-branch discriminated union
+  reported "must equal 'goto'; must equal 'reload'; ..." -- three facts the author already knows and
+  none about the step they wrote. It now finds the branch whose `action` matches and reports only that
+  one ("is not a valid `waitForSelector` step: missing the required property 'state'"). D3 shows these
+  messages verbatim in the window, so an unusable message here is an unusable Validate button there.
+
+  VERIFIED LIVE: 118 apps discovered on this machine in 1.26s; a routine run RED (broken selector,
+  failedStepIndex + evidence persisted), then GREEN, then re-run GREEN with the blob count NOT growing
+  -- the dedup proof A4's acceptance asks for. 38 new unit tests.
+files:
+  - NPDevCli/npdev_monitor.py
+  - NPDevCli/npdev_explore.py
+  - NPDevCli/npdev_jsonschema.py
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_monitor_and_explore.py

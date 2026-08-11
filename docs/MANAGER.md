@@ -7,7 +7,7 @@
 Installs and runs NPDev on a machine that has nothing on it — no Java, no Python, no git — and
 never asks you to open a terminal.
 
-**Windows · Linux · 5 screens · 21 actions · Private runtimes**
+**Windows · Linux · 7 screens · 44 actions · Private runtimes**
 
 ## Contents
 
@@ -18,6 +18,8 @@ never asks you to open a terminal.
 - [3 · Apps](#3--apps)
 - [4 · Run](#4--run)
 - [5 · Versions](#5--versions)
+- [6 · The Monitor](#6--the-monitor)
+- [7 · Scrap Manager](#7--scrap-manager)
 - [Files & folders](#files-and-folders)
 - [The ten checks](#the-ten-checks)
 - [Commands it runs](#commands-it-runs-for-you)
@@ -277,6 +279,54 @@ Your apps are stored separately and are never touched by any of this.
 that happens the release notes say so, and NPDev ships an automatic converter for existing
 models — but keep your model in git before updating.
 
+## 6 · The Monitor
+
+Every generated app on this machine, on one wall of screens. Full reference: [MONITOR.md](MONITOR.md).
+
+| Control | What it does |
+|---|---|
+| **Inspect paths** | Folders to search for apps. The Monitor also always shows the apps this Manager created. Empty by default — it will not guess where you keep things. |
+| **⊞ / ☰** | Card wall, or a dense list with each app's details beside it. |
+| **Filters** | All · Running · Attention · Idle. |
+| **Open** | Opens the app in your browser. |
+| **Start / Stop** | Runs the app's own runbook. Stop kills the whole process tree when this window started it, and uses the app's own `Stop-Environment` when something else did. |
+| **Logs** | The app's own output, the ops scripts you ran, and the Manager's log — plus **Export support bundle**. |
+| **Actions** | Every `_ops` runbook script, the app and `_ops` folders, and "Explore this app". |
+| **Click a screen** | Opens the inspector: every URL, flow and concept from the app's own `info.json`, plus the paths, port, PID and health that only this machine knows. |
+
+A card is drawn from what `npdev monitor probe` just saw, never from what the window remembers — so
+closing the Manager while apps keep running and reopening it shows the truth.
+
+**Reset-Environment deletes data**, so it arms first: one click arms it visibly, a second within five
+seconds runs it, and the Manager passes the same acknowledgement token the terminal makes you type.
+
+**"Port taken" is its own state.** If a *different* app is already serving on this app's port, the
+card says so and names the other jar, rather than showing green because something healthy answered.
+
+## 7 · Scrap Manager
+
+Does this app still work in a real browser, and did that change? Full reference:
+[MONITOR.md](MONITOR.md).
+
+| Control | What it does |
+|---|---|
+| **App** | Which app's explorations you are looking at. |
+| **Routines** | The saved explorations for that app. ▶ plays one. |
+| **History** | Every run, newest first, green or red, with the driver that produced it. |
+| **Run detail** | Verdict, the three identity hashes, a step-by-step timeline with the failing step highlighted, evidence, and screenshots. |
+| **+ New exploration** | Write a routine in the JSON tab, Validate, Play. Validation is the CLI's, shown verbatim — "valid here" means "the engine accepts it". |
+| **✦ Assistant** | Optional. Composes a request, shows you exactly what would be sent, and only sends when you press Send. |
+| **Engine chip** | The browser engine, discovered rather than configured. |
+
+The engine is found by looking, not by asking: a running service first, then anything you have
+declared, then the usual places on this machine. If it is not installed the tab still shows your
+routines and history — only ▶ is disabled, and it says why.
+
+**Excused errors are shown, not hidden.** Every NPDev app logs a `theme.css` 404 when it has no
+custom theme, and a 401 on the first pre-auth load. Those are excused so runs are not red forever —
+but each one is listed on the run, struck through, with the rule that excused it. An app that ships a
+real theme does not inherit that excuse.
+
 ## Files and folders
 
 Everything the Manager creates lives in one place.
@@ -297,7 +347,7 @@ Everything the Manager creates lives in one place.
     beta1.7/              another, side by side
   runtimehost-libs/      NPDev's internal build files
   apps/                   apps created without choosing a folder
-  logs/                   what happened, for troubleshooting
+  logs/                   manager.log -- what the Manager itself did (send this if it will not start)
 ```
 
 Your own apps live wherever you chose when creating them. Nothing outside this folder is
@@ -386,6 +436,47 @@ The complete internal surface — useful when reporting a problem or reading the
 | `remove_installed_version` | Delete a version |
 | `fake_doctor_scenarios` | List preview scenarios |
 | `set_fake_doctor_scenario` | Choose one |
+
+#### The Monitor
+
+Every one of these is a pipe to `npdev monitor ...`. Nothing about what counts as an app, what
+counts as healthy, or where the engine lives is decided in the window.
+
+| Action | Purpose |
+|---|---|
+| `monitor_scan` | Find every app under the inspect paths + the Manager's own apps |
+| `monitor_probe` | Refresh one card |
+| `read_info_json` | The inspector's data (probe + the app's generated `info.json`) |
+| `get_inspect_paths` / `set_inspect_paths` | Which folders to search |
+| `start_app` / `stop_app` | Run or stop an app through its own runbook |
+| `run_ops_script` | Run one `_ops` script, streaming |
+| `owned_processes` | Which apps THIS window is holding a process for |
+| `monitor_logs` | Read the app's, the ops and the Manager's logs |
+| `export_logs` | Write one support zip, credentials redacted |
+| `manager_log_path` | Where the Manager's own log is |
+
+#### Scrap Manager and the engine
+
+| Action | Purpose |
+|---|---|
+| `engine_status` | Where the exploration engine is, if anywhere |
+| `start_engine` / `stop_engine` | Start it (dies with the window) or stop what this window started |
+| `remember_engine_root` | Remember a discovered engine so it need not be found again |
+| `explore_list` / `explore_show` | Definitions and history; one full run |
+| `explore_validate` | Schema + lint, through the CLI |
+| `explore_preflight` | Each precondition as its own row |
+| `explore_run` | Run a routine and record it |
+| `explore_accept_baseline` / `explore_pin` | Accept a baseline; keep evidence indefinitely |
+| `explore_context` | The assistant's context pack |
+| `save_routine` | Write a routine into the app's `explorations/` folder |
+
+#### Assistant
+
+| Action | Purpose |
+|---|---|
+| `assistant_config` / `set_assistant_config` | Your provider (NPDev bundles no key) |
+| `assistant_compose` | Build the request and send nothing |
+| `assistant_generate` | Send exactly what you were shown |
 
 ## Progress events
 

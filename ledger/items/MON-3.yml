@@ -1,0 +1,38 @@
+id: MON-3
+title: >-
+  `npdev monitor probe` reported a stopped app as RUNNING because a different app was serving on
+  its port
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-10
+closed: 2026-08-10
+verification: VERIFIED_LIVE
+surface: cli/monitor
+source: >-
+  First live test of the probe, 2026-08-10.
+detail: >-
+  A freshly built app was started through its own `Run-FinalApp.ps1`, failed to bind because an app
+  from an earlier session already held port 8103, and exited. The probe reported `health: running`.
+
+  It was not wrong about what it measured -- something healthy WAS answering `/actuator/health` on
+  that port. It was wrong about what it CLAIMED. "A healthy NPDev app is on this app's port" and "this
+  app is running" are different statements, and a Monitor card that conflates them is confidently
+  wrong in exactly the situation somebody opened the Monitor to understand.
+
+  The failure is invisible to any test that starts one app on a free port, which is every test anyone
+  would naturally write.
+resolution: >-
+  The probe now identifies the OWNER of the port: the listening PID's command line is matched against
+  the app's own directory, and the record carries `identity: confirmed | mismatch | unknown`. A
+  mismatch is reported as its own health state, `port-conflict`, naming the jar that actually holds the
+  port -- not as `running` and not as `error`, because the fix (stop the other process, or change this
+  app's port) is neither.
+
+  `unknown` is kept as a distinct answer rather than folded into `confirmed`: psutil is optional and
+  the PowerShell fallback can be blocked, and "we could not tell" must not be dressed as "we checked".
+
+  VERIFIED LIVE, both directions: `mismatch` for the conflicting app, naming the occupying jar; and
+  `confirmed` for an app really serving on its own port.
+files:
+  - NPDevCli/npdev_monitor.py

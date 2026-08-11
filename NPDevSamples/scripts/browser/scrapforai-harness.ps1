@@ -29,9 +29,41 @@ $ErrorActionPreference = "Stop"
 # Reuse the sample helpers (Info/Ok/Fail/Ensure-*). Idempotent to re-dot-source.
 . (Join-Path (Split-Path -Parent $PSScriptRoot) "sample-common.ps1")
 
-$script:ScrapForAIDefaultRoot = "D:\WorkSpace\ScrapForAILegacy"
+# MONITOR_PLAN D9 / C1. This line used to be
+#
+#     $script:ScrapForAIDefaultRoot = "D:\WorkSpace\ScrapForAILegacy"
+#
+# -- an author's drive letter, used whenever no override was given, in the harness the Monitor is
+# built on. That is the family PORT-1 removed from six emitters on 2026-08-10 and REG-144 removed
+# from eleven root resolvers before that, and the obvious way to implement "detect the engine" was
+# to copy this constant into the Manager.
+#
+# There is no default any more. The engine is DISCOVERED, by the one implementation that owns the
+# question: `npdev monitor engine --json`, which probes the running service first, then a declared
+# root, then candidates derived from this machine's own layout -- and reports "not found" rather than
+# falling back to a path that exists on one machine.
 $script:ScrapForAIDefaultKey  = "npdev-scrapforai-localkey-0001"   # >= 16 chars
 $script:ScrapForAIDefaultPort = 3010
+
+function Get-NpdevCliPath {
+    # $PSScriptRoot arithmetic, exact and with no walk: NPDevSamples/scripts/browser -> repo root.
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+    return (Join-Path $repoRoot "NPDevCli\npdev_cli.py")
+}
+
+function Find-NpdevScrapEngine {
+    <#
+        Asks the CLI. One implementation of "where is the engine", shared by this harness, the
+        Manager and a terminal user -- a second opinion here is the two-greens drift R10 forbids.
+    #>
+    $cli = Get-NpdevCliPath
+    if (-not (Test-Path -LiteralPath $cli)) { return $null }
+    try {
+        $json = & python $cli monitor engine --json 2>$null
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($json)) { return $null }
+        return ($json | ConvertFrom-Json)
+    } catch { return $null }
+}
 
 # StrictMode-safe optional-property read. The scraper omits optional result fields
 # (failedStepIndex on success, failureText/status on some network rows), and
@@ -47,7 +79,16 @@ function Get-Prop([object]$Obj, [string]$Name, $Default = $null) {
 function Get-ScrapForAIRoot([string]$Override = "") {
     $root = $Override
     if ([string]::IsNullOrWhiteSpace($root)) { $root = $env:SCRAPFORAI_ROOT }
-    if ([string]::IsNullOrWhiteSpace($root)) { $root = $script:ScrapForAIDefaultRoot }
+    if ([string]::IsNullOrWhiteSpace($root)) {
+        # Discovered, never defaulted. A "not found" here is a fixable sentence; a drive letter that
+        # exists on one machine is a failure somebody else cannot diagnose.
+        $found = Find-NpdevScrapEngine
+        if ($null -ne $found -and $found.root) { $root = [string]$found.root }
+    }
+    if ([string]::IsNullOrWhiteSpace($root)) {
+        Fail ("Could not find the ScrapForAI engine on this machine. Run ``npdev monitor engine --json`` " +
+              "to see what was tried, set `$env:SCRAPFORAI_ROOT, or pass -Root explicitly.")
+    }
     $root = Normalize-AbsolutePath $root
     Ensure-Directory -PathValue $root -Label "ScrapForAI root"
     Ensure-File -PathValue (Join-Path $root "src\server.ts") -Label "ScrapForAI server.ts"
@@ -103,7 +144,12 @@ function Start-ScrapForAI {
     if ($Port -le 0) { $Port = $script:ScrapForAIDefaultPort }
     if ([string]::IsNullOrWhiteSpace($ApiKey)) { $ApiKey = $script:ScrapForAIDefaultKey }
     if ([string]::IsNullOrWhiteSpace($ArtifactDir)) {
-        $ArtifactDir = Join-Path "D:\WorkSpace\NPDev\Build" "scrapforai-artifacts"
+        # REG-144, same family as the engine root above: this was a hardcoded build root. The answer
+        # comes from Get-NPDevBuildRoot, which identifies the workspace by its CONTENTS -- never a
+        # literal, and never repeated as one (CLAUDE.md's own rule about calling that function
+        # rather than copying its answer).
+        . (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "..\scripts\npdev-common.ps1")
+        $ArtifactDir = Join-Path (Get-NPDevBuildRoot) "scrapforai-artifacts"
     }
     $ArtifactDir = Normalize-AbsolutePath $ArtifactDir
     New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
@@ -371,4 +417,57 @@ function Save-RoutineEvidence {
     $summary | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $path -Encoding UTF8
     Ok ("Evidence summary -> " + $path)
     return $path
+}
+
+# MONITOR_PLAN C1 + R10. Append this result to the app's append-only run history, THROUGH THE CLI.
+#
+# The point is not convenience, it is that the verdict is computed in exactly one place. This harness
+# keeps `Assert-RoutineGreen` for console UX -- a hard stop with a readable message is what a sample
+# script needs -- but the RECORDED verdict comes from `npdev explore record`, which applies the same
+# D5 rules the Manager and `npdev explore run` apply. Two implementations of "green" is how green
+# quietly comes to mean different things per driver, which is exactly what the all-gates rule exists
+# to prevent one layer up.
+#
+# PowerShell therefore does no schema work and holds no allowlist: it hands over the engine's raw
+# result and the CLI decides.
+function Add-RoutineRunToHistory {
+    param(
+        [Parameter(Mandatory = $true)][object]$Result,
+        [Parameter(Mandatory = $true)][string]$AppDir,
+        [string]$RoutinePath = "",
+        [string]$Driver = "harness",
+        [string]$LedgerId = "",
+        [string]$ArtifactDir = ""
+    )
+    $cli = Get-NpdevCliPath
+    if (-not (Test-Path -LiteralPath $cli)) {
+        Info "npdev CLI not found next to this harness -- run history not recorded."
+        return $null
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $AppDir "_ops"))) {
+        Info ("No _ops toolbox at " + $AppDir + " -- run history not recorded (nowhere to record it).")
+        return $null
+    }
+
+    $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("npdev-run-" + [guid]::NewGuid().ToString("N") + ".json")
+    try {
+        $Result | ConvertTo-Json -Depth 40 | Set-Content -LiteralPath $temp -Encoding UTF8
+        $args = @($cli, "explore", "record", "--json", "--from-file", $temp, "--app-dir", $AppDir, "--driver", $Driver)
+        if (-not [string]::IsNullOrWhiteSpace($RoutinePath)) { $args += @("--routine-file", $RoutinePath) }
+        if (-not [string]::IsNullOrWhiteSpace($LedgerId))    { $args += @("--ledger-id", $LedgerId) }
+        if (-not [string]::IsNullOrWhiteSpace($ArtifactDir)) { $args += @("--artifact-dir", $ArtifactDir) }
+        $json = & python @args 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            # Never fail the SAMPLE because history could not be written. The run itself already
+            # passed or failed on its own evidence; losing the history line is a smaller problem than
+            # turning a green demonstration red for a bookkeeping reason.
+            Info ("Could not record run history: " + ($json | Out-String).Trim())
+            return $null
+        }
+        $record = $json | ConvertFrom-Json
+        Ok ("Run recorded -> " + $record.runId + "  (verdict green=" + $record.verdict.green + ")")
+        return $record
+    } finally {
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+    }
 }

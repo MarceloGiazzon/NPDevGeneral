@@ -1,0 +1,51 @@
+id: MON-6
+title: >-
+  HANDOVER.md sent testers to a directory that does not exist, to collect log files nothing had
+  ever written, for an app whose output was never captured
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-10
+closed: 2026-08-10
+verification: VERIFIED_LIVE
+surface: manager/logs
+source: >-
+  MONITOR_PLAN D10; Plan B graded this BLOCKER-FOR-TESTERS and it was still open.
+detail: >-
+  Three failures stacked, all in the one path a tester uses when nothing else works:
+
+  1. `state.rs::logs_dir()` has been created on every Manager startup since M0-M8, and NOTHING ever
+     wrote into it -- `Cargo.toml` had no logging dependency of any kind.
+  2. HANDOVER.md section 5 named `%LOCALAPPDATA%\npdev-manager\`, which is not the Manager's home
+     (`%LOCALAPPDATA%\NPDev` is).
+  3. A generated app's own stdout was persisted nowhere: `Run-FinalApp.ps1` ran `java -jar` with no
+     redirect at all.
+
+  So the escape hatch for "it will not start at all" asked for files that did not exist, in a folder
+  that did not exist, about a process whose output had been discarded.
+resolution: >-
+  Three sources, one surface, plus the artefact that was actually missing.
+
+  - `Run-FinalApp.ps1` tees stdout+stderr to `<app>/logs/app-<timestamp>.log` (app-relative, PORT-1),
+    and `<app>/logs` joins `<app>/data` on the spared-from-wipe list so a rebuild does not destroy the
+    evidence of why the last run failed.
+  - `npdev monitor ops` tees every ops script to `<app>/logs/ops-<script>-<timestamp>.log`.
+  - The Manager writes `manager.log` to its own `logs_dir()`, with rotation and a stated cap. A
+    ~90-line module rather than a logging crate: what is needed is one append-only file, a size cap
+    and a line saying what happened, and three more crates on an already-slow cold build buys spans
+    nobody here uses. The trade is written down where the decision is.
+  - `npdev monitor logs export` produces ONE zip -- app + ops + manager logs, the probe snapshot,
+    `info.json`, and `resolved-db-plan.json` WITH CREDENTIALS REDACTED. Redaction is not optional: the
+    plan carries a database password and the whole point of an export is that it leaves the machine.
+  - HANDOVER.md now names the right folder and the export command.
+
+  VERIFIED LIVE, on the case that matters most: an app that failed to bind its port left the reason in
+  `logs/app-*.log`, readable after the window was gone. A unit test greps the exported zip for the
+  password and requires zero hits.
+files:
+  - NPDevManager/src/log.rs
+  - NPDevManager/src/main.rs
+  - NPDevCli/npdev_monitor.py
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
+  - scripts/appgen/Build-NpdevApp.ps1
+  - HANDOVER.md

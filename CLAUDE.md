@@ -148,6 +148,33 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
 - **A generated FinalApp carries its own `.npdev-root` marker**, so that file alone does NOT identify
   this repo — every root resolution pairs it with the module directories. Only the marker's existence
   is ever tested; nothing parses its content.
+  **This became true on 2026-08-10 (MON-2) and was false before it.** Nothing had ever written a
+  marker into a generated app: `git ls-files` showed exactly one, this repo's own, while CLAUDE.md
+  said the above and `clean-sample-output.ps1` retained `App\.npdev-root` as evidence. So a scan keyed
+  on the marker pair found ZERO of the 118 apps in this machine's Build root.
+  `OperationalRunbookEmitter` now writes it beside `_ops`, and **`npdev monitor` accepts
+  `_ops/resolved-db-plan.json` as the alternative half of the pair** so every app generated before
+  today stays discoverable. If you need "is this a generated app?", use
+  `npdev_monitor.discovery_rule()` rather than testing the marker yourself.
+
+- **The Monitor + Scrap Manager (`docs/MONITOR.md`).** `npdev monitor scan|probe|engine|logs|ops` and
+  `npdev explore list|show|validate|preflight|run|record|prune|pin|accept|context` are the CLI half of
+  the Manager's two newest screens; the Tauri commands are thin wrappers (no CLI behaviour in Rust).
+  Three rules worth knowing before touching any of it:
+  - **The routine schema is the ENGINE's, pinned** (`schemas/ai/scrapforai-routine.schema.json`).
+    Never hand-edit it; re-pin with `scripts/quality/pin-routine-schema.py` against a running engine.
+    All 42 routines live under a `browser-routines/` directory and are conformance-checked by
+    `check-routine-corpus-conformance.py` (ai-knowledge gate [43/44]).
+  - **"Green" is one function**, `npdev_explore.evaluate_verdict`. The PowerShell harness and the
+    Playwright reporter record THROUGH `npdev explore record` rather than judging for themselves.
+  - **Records are never deleted**; `explore prune` prunes blobs only, exempts pinned and
+    ledger-linked runs, and prints what it kept and why.
+
+- **A generated app keeps its own logs at `<app>\logs\`** (MON-6): `Run-FinalApp.ps1` tees stdout+
+  stderr there, `npdev monitor ops` tees ops-script output there, and the directory is spared by
+  `Build-NpdevApp.ps1`'s wipe alongside `data`. `npdev monitor logs export` bundles them with a
+  redacted `resolved-db-plan.json` — **that plan carries a DB password, so anything that copies it
+  off the machine must go through `npdev_monitor.redact()`.**
 
 ## Stability policy
 

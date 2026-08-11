@@ -1,0 +1,41 @@
+id: MON-2
+title: >-
+  Nothing emitted `.npdev-root` into a generated app, so the marker-pair rule CLAUDE.md states as
+  an invariant matched zero apps on this machine
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-10
+closed: 2026-08-10
+verification: VERIFIED_LIVE
+surface: generator/OperationalRunbookEmitter
+source: >-
+  Measured while implementing MONITOR_PLAN A2's discovery rule, 2026-08-10.
+detail: >-
+  CLAUDE.md says "A generated FinalApp carries its own `.npdev-root` marker", MONITOR_PLAN D7 builds
+  discovery on the marker PAIR (`.npdev-root` + `_ops`), and `scripts/samples/clean-sample-output.ps1`
+  lists `App\.npdev-root` among the evidence files it retains. All three describe something that was
+  not happening: `git ls-files` shows exactly one `.npdev-root`, this repo's own, and a `find` over
+  30+ generated apps in the machine's Build root returned nothing.
+
+  A scan keyed on the documented rule therefore found ZERO apps -- including every app a tester
+  already has. This is the shape where a documented invariant is load-bearing for a NEW feature and
+  turns out never to have been true.
+resolution: >-
+  Two halves, because either alone leaves a hole:
+
+  1. `OperationalRunbookEmitter` now writes `.npdev-root` beside `_ops`, in the same method, so the
+     pair can never be half-present. Content is a fixed sentence with no timestamp or path -- the
+     determinism check hashes every emitted file, and nothing anywhere parses it.
+  2. Discovery accepts the marker pair OR `_ops/resolved-db-plan.json`, which is strictly STRONGER
+     evidence (it names appId, engine and port where a marker asserts nothing). Every record reports
+     which rule matched, in `discoveredBy`, so the rule is never silently variable.
+
+  `.npdev-root` alone is still never enough: this repo has one and is not an app.
+
+  VERIFIED LIVE: a freshly generated app reports `discoveredBy: marker-pair`; apps generated before
+  today report `resolved-plan`; a directory with a marker and no `_ops` is reported `not-an-app` with
+  the reason. Four unit tests cover both rules in both directions.
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
+  - NPDevCli/npdev_monitor.py
