@@ -99,7 +99,7 @@
     },
     {
       "path": "docs/maintainers/MATURITY_CLOSURE_LEDGER.md",
-      "reason": "Read by run-maturity-max-roadmap-boundary-check.ps1; declared STATUS: ACTIVE."
+      "reason": "GENERATED from scripts/policy/maturity-max-roadmap-policy.json by scripts/docs/generate_maturity_max_roadmap_docs.py (md-zero-2026-08-11 PLAN.md Phase 3) -- nothing reads this rendered file as data, but it stays live governance for a human reader."
     },
     {
       "path": "docs/maintainers/NEXT_EXECUTION_PLAN.md",
@@ -107,7 +107,7 @@
     },
     {
       "path": "docs/maintainers/POST_BETA0_HUMAN_ACTION_REGISTER.md",
-      "reason": "Read by run-maturity-max-roadmap-boundary-check.ps1; declared STATUS: ACTIVE."
+      "reason": "GENERATED from scripts/policy/maturity-max-roadmap-policy.json's humanActionRegister by scripts/docs/generate_maturity_max_roadmap_docs.py (md-zero-2026-08-11 PLAN.md Phase 3) -- nothing reads this rendered file as data, but it stays live governance for a human reader."
     },
     {
       "path": "docs/maintainers/RECORD_SURFACES_PLAN.md",
