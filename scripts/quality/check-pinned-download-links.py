@@ -20,31 +20,18 @@ editing.
 
 THE RULE
 --------
-Fail when a user-facing document contains a GitHub release URL that names a specific tag:
+scripts/policy/release-download-links.json declares `canonicalReleaseUrl` (must itself never be a
+pin) and `knownLinkSites` -- the specific (file, anchor) pairs where a download link has actually
+been found before. For each site, this script reads ONLY that file, finds the anchor text, and
+fails if the markdown link immediately following it is not exactly `canonicalReleaseUrl`.
 
-    .../releases/download/<tag>/<asset>     <- pinned, always goes stale
-    .../releases/tag/<tag>                  <- same
-
-`/releases/latest` and `/releases` are fine, and are the fix.
-
-SCOPE, and why some files are excused
--------------------------------------
-Scanned: README.md and docs/*.md -- what a newcomer actually reads.
-
-Excused, because naming a specific release is their JOB, not a mistake:
-  docs/RELEASE_PROCESS.md   describes publishing a given tag
-  BREAKING.md               a historical record; entries are ABOUT particular versions
-  docs/OPEN_ITEMS.md        GENERATED from ledger/items/*.yml -- a defect register has to be able to
-                            quote the defect. This check fired on it within minutes of shipping,
-                            against PORT-4's own row, which cites the very URL it exists to forbid.
-  docs/archive/**           frozen by definition; rewriting history to satisfy a linter is worse
-
-PROSE ABOUT A DEFECT IS NOT THE DEFECT. That sentence had to be learned three separate times on
-2026-08-10 -- by check-out-of-tree-generation.ps1 (twice: a gradle.properties comment and a
-Create-Environment.ps1 comment, both explaining why a path must not be hardcoded), and then again
-here. Any checker that greps for a bad string will eventually flag the document explaining why the
-string is bad. Decide where the record lives, excuse it explicitly, and say why -- do not make the
-record lie to keep a linter quiet.
+md-zero-2026-08-11 PLAN.md Phase 3 narrowed this from a 94-file sweep (README.md + every
+docs/**/*.md, regex-scanned for ANY `releases/download/<tag>` or `releases/tag/<tag>` pattern) to
+this targeted form -- see the policy JSON's own `why` for the coverage trade-off this accepts: a
+brand new pinned link typed into some OTHER, undeclared doc is no longer caught automatically. Add
+a `knownLinkSites` entry (with its own `why`) the day a new download link is added anywhere, the
+same discipline `check-allowlist-citations.py` already expects of every other allowlist in this
+repo.
 
 CALIBRATE BEFORE TRUSTING IT
 ----------------------------
@@ -59,12 +46,14 @@ USAGE
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+POLICY_PATH = REPO_ROOT / "scripts" / "policy" / "release-download-links.json"
 
 # A release URL that names a tag. `latest` is explicitly NOT a pin -- it is the remedy.
 PINNED = re.compile(
@@ -72,36 +61,39 @@ PINNED = re.compile(
     re.IGNORECASE,
 )
 
-EXCUSED_NAMES = {"RELEASE_PROCESS.md", "BREAKING.md", "OPEN_ITEMS.md"}
-EXCUSED_DIR_PARTS = {"archive"}
+# The markdown link immediately following the anchor text: `anchor](URL)`.
+LINK_AFTER_ANCHOR = re.compile(r"\]\(([^)]+)\)")
 
 
-def scanned_files(root: Path) -> list[Path]:
-    files = []
-    readme = root / "README.md"
-    if readme.is_file():
-        files.append(readme)
-    docs = root / "docs"
-    if docs.is_dir():
-        for p in sorted(docs.rglob("*.md")):
-            if p.name in EXCUSED_NAMES:
-                continue
-            if EXCUSED_DIR_PARTS & set(p.parts):
-                continue
-            files.append(p)
-    return files
+def findings(root: Path, policy: dict) -> list[str]:
+    out: list[str] = []
+    canonical = policy["canonicalReleaseUrl"]
+    if PINNED.search(canonical):
+        out.append(f"scripts/policy/release-download-links.json: canonicalReleaseUrl itself is "
+                    f"pinned: {canonical}")
 
-
-def findings(root: Path) -> list[tuple[str, int, str, str]]:
-    out = []
-    for path in scanned_files(root):
-        try:
-            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
+    for site in policy.get("knownLinkSites", []):
+        rel_path = site["file"]
+        anchor = site["anchor"]
+        full_path = root / rel_path
+        if not full_path.is_file():
+            out.append(f"{rel_path}: declared knownLinkSites file does not exist on disk")
             continue
-        for idx, line in enumerate(lines):
-            for m in PINNED.finditer(line):
-                out.append((path.relative_to(root).as_posix(), idx + 1, m.group(1), line.strip()[:110]))
+        text = full_path.read_text(encoding="utf-8", errors="replace")
+        anchor_at = text.find(anchor)
+        if anchor_at < 0:
+            out.append(f"{rel_path}: anchor text {anchor!r} not found -- the surrounding prose "
+                        f"moved or was reworded; update knownLinkSites")
+            continue
+        after = text[anchor_at + len(anchor):anchor_at + len(anchor) + 400]
+        m = LINK_AFTER_ANCHOR.search(after)
+        if not m:
+            out.append(f"{rel_path}: no markdown link found immediately after anchor {anchor!r}")
+            continue
+        url = m.group(1)
+        if url != canonical:
+            out.append(f"{rel_path}: link after {anchor!r} is {url!r}, expected the canonical "
+                        f"{canonical!r}")
     return out
 
 
@@ -109,28 +101,44 @@ def calibrate() -> int:
     ok = True
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
-        (root / "docs").mkdir()
 
-        (root / "README.md").write_text(
-            "[Download](https://github.com/x/y/releases/download/beta1.7/app.exe)\n", encoding="utf-8")
-        (root / "docs" / "GOOD.md").write_text(
-            "[Download](https://github.com/x/y/releases/latest)\n", encoding="utf-8")
-        (root / "docs" / "RELEASE_PROCESS.md").write_text(
-            "publish to https://github.com/x/y/releases/tag/beta1.9\n", encoding="utf-8")
-        # The register that RECORDS this defect must be able to quote it. Real regression: this
-        # check failed on docs/OPEN_ITEMS.md minutes after shipping, over PORT-4's own row.
-        (root / "docs" / "OPEN_ITEMS.md").write_text(
-            "PORT-4 cites releases/download/beta1.7/app.exe as the defect\n", encoding="utf-8")
+        base_policy = {
+            "canonicalReleaseUrl": "https://github.com/x/y/releases/latest",
+            "knownLinkSites": [{"file": "README.md", "anchor": "Download it", "why": "test"}],
+        }
 
-        got = {f[0] for f in findings(root)}
-        for label, cond in (
-            ("a pinned download link fires", "README.md" in got),
-            ("/releases/latest stays quiet", "docs/GOOD.md" not in got),
-            ("RELEASE_PROCESS.md is excused", "docs/RELEASE_PROCESS.md" not in got),
-            ("the generated defect register may quote the defect", "docs/OPEN_ITEMS.md" not in got),
-        ):
-            print(f"  {'PASS' if cond else 'FAIL'}  {label}")
-            ok &= cond
+        def report(label: str, readme_text: str, policy: dict, expect_fire: bool) -> None:
+            nonlocal ok
+            (root / "README.md").write_text(readme_text, encoding="utf-8")
+            found = findings(root, policy)
+            fired = bool(found)
+            passed = fired == expect_fire
+            ok = ok and passed
+            print(f"  [{'PASS' if passed else 'FAIL'}] {label} ({'fired' if fired else 'silent'})")
+            for f in found[:2]:
+                print(f"           {f}")
+
+        report(
+            "a pinned download link at a known site fires",
+            "[Download it](https://github.com/x/y/releases/download/beta1.7/app.exe)\n",
+            base_policy, expect_fire=True,
+        )
+        report(
+            "the canonical /releases/latest link stays quiet",
+            "[Download it](https://github.com/x/y/releases/latest)\n",
+            base_policy, expect_fire=False,
+        )
+        report(
+            "a missing anchor (prose reworded) fires",
+            "Nothing here matches.\n",
+            base_policy, expect_fire=True,
+        )
+        pinned_canonical = dict(base_policy, canonicalReleaseUrl="https://github.com/x/y/releases/download/beta1.9/app.exe")
+        report(
+            "a pinned canonicalReleaseUrl itself fires, independent of the doc",
+            "[Download it](https://github.com/x/y/releases/latest)\n",
+            pinned_canonical, expect_fire=True,
+        )
     return 0 if ok else 1
 
 
@@ -143,18 +151,19 @@ def main() -> int:
         print("Calibrating check-pinned-download-links:")
         return calibrate()
 
-    found = findings(REPO_ROOT)
-    n = len(scanned_files(REPO_ROOT))
-    print(f"Pinned-download-link check: {n} user-facing document(s) scanned.")
+    policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+    found = findings(REPO_ROOT, policy)
+    n = len(policy.get("knownLinkSites", []))
+    print(f"Pinned-download-link check: {n} known link site(s) verified against "
+          f"scripts/policy/release-download-links.json.")
 
     if not found:
-        print("OK: no install link names a specific release.")
+        print("OK: no known link site names a specific release, and the canonical URL is not pinned.")
         return 0
 
-    print(f"\nFAIL: {len(found)} version-pinned release link(s).\n")
-    for rel, line, tag, text in found:
-        print(f"  {rel}:{line}  pins '{tag}'")
-        print(f"    {text}")
+    print(f"\nFAIL: {len(found)} finding(s).\n")
+    for f in found:
+        print(f"  {f}")
     print("\n  A pinned link still RESOLVES, so it fails silently -- a newcomer installs an old build")
     print("  and nothing tells them. Use /releases/latest, which never needs editing.")
     return 1
