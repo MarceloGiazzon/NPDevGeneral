@@ -37,18 +37,28 @@ existing gate seed) and the beta0 tag-immutability rules already written into
 
 ## Publishing the Manager (FINAL_PLAN.md/F2)
 
-**Deliberately manual, not part of tag-push automation, as of 2026-08-07.**
-`.github/workflows/publish-runtimehost-libs.yml` auto-builds and attaches `runtimehost-libs-
-<tag>.zip` to every pushed tag because that artifact is plain JVM bytecode — platform-independent,
-built once on `ubuntu-latest`. The Manager installer is the opposite shape: a platform-specific
-Tauri/Rust build (Windows NSIS `.exe`, Linux `.AppImage`) that needs a matching runner per
-platform, and (for Linux) system packages like `webkit2gtk` the CI image may not carry. Wiring that
-up as real, tested automation is real work, not a few lines copied from the JVM-artifact workflow —
-so rather than ship an unverified CI job, this is recorded as a known gap instead (grouped with the
-other explicitly-deferred items — macOS, code signing — in `FINAL_PLAN.md`'s §7).
+**AUTOMATED since W6.2/E13 and E16. This section said "deliberately manual" until 2026-08-11 and
+was wrong by two releases.** `.github/workflows/publish-runtimehost-libs.yml` now carries three
+jobs, all on `push: tags`:
 
-**Until that automation exists, publishing a Manager build is a manual step, run from a clean
-checkout of the tag being released:**
+| Job | Runner | Asset |
+|---|---|---|
+| `publish` | ubuntu | `runtimehost-libs-<tag>.zip` + `SHA256SUMS` |
+| `publish-manager-installer` | windows | `NPDev.Manager_<version>_x64-setup.exe` + `manager-installer-SHA256SUMS` |
+| `publish-manager-appimage` | ubuntu | `NPDev.Manager_<version>_amd64.AppImage` + `manager-appimage-SHA256SUMS` |
+
+Both Manager jobs carry `continue-on-error` on purpose and narrowly: the libs zip is what
+`npdev setup` DEPENDS ON, so a Manager build failure must not stop it being published. A missing
+installer is an inconvenience; a missing libs zip breaks every fresh install. The job still shows
+red.
+
+**Verified on `beta1.15` (2026-08-11):** the tag alone produced all three, with no manual step. The
+staleness of this very section is the reason to check before believing it — it sent a reader off to
+build an installer by hand while CI was already building the same one from the tagged commit on a
+clean runner, which is strictly better than any local build.
+
+**The manual path below is the fallback**, for a republish or a runner outage. Run it from a clean
+checkout of the tag being released — never from a working tree that has moved past it:
 
 ```powershell
 cd NPDevManager
