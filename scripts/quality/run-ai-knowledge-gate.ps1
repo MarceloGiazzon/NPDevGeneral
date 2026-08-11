@@ -173,6 +173,15 @@ try {
     & $py "scripts/ai/build_knowledge.py" --validate-only
     if ($LASTEXITCODE -ne 0) { $failures += "knowledge-card validation failed" }
 
+    # Bundled into the same [2/42] slot (docs-decoupling-2026-08-11 PLAN.md Phase 1's precedent:
+    # avoid renumbering every banner for one more freshness check). md-zero-2026-08-11 PLAN.md
+    # Phase 4: docs/NPDEV_CONCEPTS_DEEP_DIVE.md, docs/NPDEV_USER_MANUAL.md and
+    # docs/ai/AUTHORING_FOR_AI.md are GENERATED from content/*.yml, the same prose
+    # scripts/ai/build_rag_index.py chunks and scripts/ai/build_core_context.py concatenates whole
+    # -- if a hand-edit touches the .md without touching its YAML source, this catches it.
+    & $py "scripts/docs/generate_group_e_docs.py" --check
+    if ($LASTEXITCODE -ne 0) { $failures += "a Group E doc (NPDEV_CONCEPTS_DEEP_DIVE.md / NPDEV_USER_MANUAL.md / ai/AUTHORING_FOR_AI.md) is STALE relative to its content/*.yml source: see scripts/docs/generate_group_e_docs.py output above (run without --check to regenerate)" }
+
     Write-Host "[3/42] Checking failure-signature normalizer..."
     $sig = & $py "scripts/ai/failure_signatures.py" "Panel 'Orders' references unknown entity 'Customer'"
     $expected = "panel <id> references unknown entity <id>"

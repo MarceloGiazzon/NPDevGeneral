@@ -2,7 +2,9 @@
 """Assemble the prompt-cacheable core-context bundle for AI authoring.
 
 Concatenates, in a STABLE order (so it forms a cacheable prompt prefix):
-  1. the authoring contract (docs/ai/AUTHORING_FOR_AI.md),
+  1. the authoring contract (content/authoring-for-ai.yml, rendered back to its original text --
+     never read from docs/ai/AUTHORING_FOR_AI.md, which is GENERATED from that same YAML by
+     scripts/docs/generate_group_e_docs.py -- md-zero-2026-08-11 PLAN.md Phase 4),
   2. the authoring object schemas (schemas/ai/<curated>.schema.json),
   3. golden, verified example models (a few official samples).
 
@@ -20,6 +22,8 @@ import json
 import sys
 from pathlib import Path
 
+import yaml
+
 from npdev_ai_common import ai_out_dir, repo_root
 
 # Curated, deterministic order. Authoring object schemas the AI actually emits.
@@ -34,7 +38,25 @@ GOLDEN_SAMPLES = [
 
 
 def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8") if path.exists() else ""
+    """No `if path.exists() else ""`: a missing file used to silently empty this section of the
+    cacheable prompt prefix with the build still succeeding. That is a build failure now."""
+    if not path.exists():
+        raise FileNotFoundError(f"{path} does not exist -- the core-context bundle would silently "
+                                 f"lose this section")
+    return path.read_text(encoding="utf-8")
+
+
+def render_authoring_contract(content_path: Path) -> str:
+    """Reconstructs content/authoring-for-ai.yml back into its original markdown text -- the exact
+    inverse used by scripts/docs/generate_group_e_docs.py's own render(), duplicated here (5 lines)
+    rather than cross-imported from scripts/docs/, since the two directories are siblings with no
+    shared package. Keep both in sync if the split-doc shape ever changes."""
+    doc = yaml.safe_load(content_path.read_text(encoding="utf-8"))
+    parts = doc["preamble"].split("\n")
+    for section in doc["sections"]:
+        parts.append("#" * section["level"] + " " + section["title"])
+        parts.extend(section["body"].split("\n"))
+    return "\n".join(parts)
 
 
 def build_bundle() -> tuple[str, dict]:
@@ -56,8 +78,8 @@ def build_bundle() -> tuple[str, dict]:
         "prompt (behind a cache breakpoint); put the specific app request AFTER it.\n"
     )
 
-    authoring = root / "docs" / "ai" / "AUTHORING_FOR_AI.md"
-    add("Authoring contract", authoring, read_text(authoring))
+    authoring_content = root / "content" / "authoring-for-ai.yml"
+    add("Authoring contract", authoring_content, render_authoring_contract(authoring_content))
 
     for name in SCHEMAS:
         schema_path = root / "schemas" / "ai" / f"{name}.schema.json"

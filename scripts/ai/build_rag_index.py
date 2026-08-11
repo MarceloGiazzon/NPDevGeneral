@@ -3,7 +3,9 @@
 
 Chunks by OBJECT / SECTION (not arbitrary token windows), so retrieval returns a whole concept,
 flow, or doc section:
-  - markdown docs  -> one chunk per `##`/`###` heading section,
+  - prose docs     -> one chunk per `##`/`###` heading section, read from content/*.yml (never a
+    .md -- md-zero-2026-08-11 PLAN.md Phase 4; the three docs this used to read are GENERATED from
+    the same YAML by scripts/docs/generate_group_e_docs.py),
   - sample models  -> one chunk per concept / flow / panel / procedure (with the JSON snippet),
     tagged with keywords pulled from field types, reference targets, and onDelete so queries like
     "cascade delete bond" match.
@@ -23,48 +25,37 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from npdev_ai_common import ai_out_dir, repo_root
 
-DOC_FILES = [
-    "docs/NPDEV_CONCEPTS_DEEP_DIVE.md",
-    "docs/NPDEV_USER_MANUAL.md",
-    "docs/ai/AUTHORING_FOR_AI.md",
+CONTENT_FILES = [
+    "content/npdev-concepts-deep-dive.yml",
+    "content/npdev-user-manual.yml",
+    "content/authoring-for-ai.yml",
 ]
 
 SAMPLE_OBJECT_KEYS = ["concepts", "flows", "panels", "procedures", "orchestrations", "events"]
 
-HEADING_RE = re.compile(r"^(#{2,3})\s+(.*)$")
 
-
-def chunk_markdown(rel_path: str, text: str) -> list[dict[str, Any]]:
+def chunk_content_yaml(content_rel: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
+    """One chunk per section already split out in content/*.yml -- the YAML IS pre-chunked by
+    `##`/`###` heading, so this just maps section -> chunk instead of re-parsing markdown."""
     chunks: list[dict[str, Any]] = []
-    current_title: str | None = None
-    current_lines: list[str] = []
-
-    def flush() -> None:
-        if current_title is None:
-            return
-        body = "\n".join(current_lines).strip()
+    source = doc.get("sourceFile", content_rel)
+    for section in doc.get("sections", []):
+        title = section["title"]
+        body = section["body"].strip()
         if not body:
-            return
+            continue
         chunks.append({
-            "id": f"{rel_path}#{current_title}",
-            "title": current_title,
+            "id": f"{source}#{title}",
+            "title": title,
             "objectType": "doc",
-            "source": rel_path,
-            "keywords": _keywords(current_title),
+            "source": source,
+            "keywords": _keywords(title),
             "text": body[:4000],
         })
-
-    for line in text.splitlines():
-        match = HEADING_RE.match(line)
-        if match:
-            flush()
-            current_title = match.group(2).strip()
-            current_lines = []
-        elif current_title is not None:
-            current_lines.append(line)
-    flush()
     return chunks
 
 
@@ -153,10 +144,17 @@ def main(_argv: list[str]) -> int:
     root = repo_root()
     chunks: list[dict[str, Any]] = []
 
-    for rel in DOC_FILES:
+    # No `if path.exists() else skip`: a missing content file used to silently empty this section
+    # of the AI context with the gate still green. A moved/renamed/deleted content file is a build
+    # failure now, not a quiet gap.
+    for rel in CONTENT_FILES:
         path = root / rel
-        if path.exists():
-            chunks.extend(chunk_markdown(rel, path.read_text(encoding="utf-8")))
+        if not path.exists():
+            print(f"FAIL: {rel} does not exist -- the AI context would silently lose this "
+                  f"section's coverage.", file=sys.stderr)
+            return 1
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        chunks.extend(chunk_content_yaml(rel, doc))
 
     chunks.extend(chunk_cards(root))
 
