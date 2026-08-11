@@ -21,13 +21,25 @@ name: Engine support (application level)
 #                             EMITTER asks it is untested, and Tier B's J2 failed for exactly that
 #                             reason one layer down
 #
-# workflow_dispatch for now, deliberately. Unlike the conformance suite, this one generates and
-# compiles a Spring Boot app per engine, which is minutes rather than seconds; promoting it to a push
-# trigger is a decision to make once its runtime is known and its images are pinned -- the same order
-# W1.1 before W1.2 that the conformance workflow followed.
+# workflow_dispatch for ordinary commits, deliberately. Unlike the conformance suite, this one
+# generates and compiles a Spring Boot app per engine, which is minutes rather than seconds;
+# promoting it to a BRANCH push trigger is still a decision to make once its runtime is known -- the
+# same order W1.1 before W1.2 that the conformance workflow followed.
+#
+# TAGS ARE THE EXCEPTION, added 2026-08-10. `release_candidate.py`'s REQUIRED_WORKFLOWS names this
+# workflow FILE, and the RC gate resolves a run AT THE TAG'S EXACT SHA -- "recent on main" does not
+# count, on purpose, because that laxity is what let a red CI sit unnoticed for twelve days. With
+# dispatch as the only trigger there was NOTHING that could produce a run at a tag's sha except a
+# human remembering to press a button within the gate's window. It refused twice on 2026-08-10,
+# ~20 minutes each time, and is the likeliest reason `beta1.13` shipped with no manifest at all.
+#
+# A tag is exactly the moment this workflow's cost is worth paying: it is the one run that proves a
+# generated application boots on MySQL and SQL Server at the sha being published.
 # ---------------------------------------------------------------------------------------------
 
 on:
+  push:
+    tags: ['*']
   workflow_dispatch:
     inputs:
       engine:
