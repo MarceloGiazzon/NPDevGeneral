@@ -195,6 +195,9 @@
     "scripts/quality/check-ledger-status-reverse-freshness.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-manager-ui-render.mjs": {
+      "invocation": "manual-runbook"
+    },
     "scripts/quality/check-markdown-links.py": {
       "invocation": "ci-gate"
     },

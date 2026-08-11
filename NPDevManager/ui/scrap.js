@@ -21,9 +21,18 @@ const scrapState = {
   createTab: "assistant",
 };
 
+/** Playwright's errors carry ANSI colour codes, and the engine passes them through verbatim into
+ *  `error.message`. Rendered in HTML they show up as literal `[2m` / `[22m` noise in the middle of
+ *  the one sentence a user is trying to read. Stripped at DISPLAY time only -- the run record keeps
+ *  the message exactly as the engine returned it, because a record that has been "cleaned up" is a
+ *  record you cannot compare against the tool's own output. */
+function stripAnsi(text) {
+  return String(text).replace(/\u001b\[[0-9;]*m/g, "");
+}
+
 function sEsc(value) {
   const div = document.createElement("div");
-  div.textContent = value == null ? "" : String(value);
+  div.textContent = value == null ? "" : stripAnsi(value);
   return div.innerHTML;
 }
 
