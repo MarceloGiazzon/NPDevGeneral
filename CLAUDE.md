@@ -193,8 +193,12 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
 ## Where the truth lives (read before filing or editing status)
 
 - **Open items:** `ledger/items/*.yml` is authoritative. `docs/OPEN_ITEMS.md` is GENERATED from it
-  (`scripts/quality/generate_open_items.py`) — never hand-edit. `docs/NPDEV_OPEN_ITEMS_REGISTER.md`
-  is HISTORICAL/archived-in-place: read for narrative (root causes, fix rationale), never for status.
+  (`scripts/quality/generate_open_items.py`) — never hand-edit.
+  `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md` is HISTORICAL/archived-in-place: read
+  for narrative (root causes, fix rationale), never for status.
+- **The gaps ledger too:** `ledger/gaps.yml` is authoritative for `docs/OPEN_GAPS_AND_ROADMAP.md`'s
+  Priority-index and Fixed-engine-bugs tables (`scripts/docs/generate_gaps_roadmap.py`) — same
+  never-hand-edit discipline (docs-decoupling-2026-08-11 PLAN.md Phase 1).
 - **DSL is at 2.0** — retired `flowStep.type` aliases collapsed to their canonical values. See
   `BREAKING.md`. Every breaking change to the DSL, generated code layout, or internal APIs ships its
   `npdev migrate` codemod (`NPDevCli/dsl_v2_migration.py`) in the same commit.
@@ -228,8 +232,10 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
   chain, and `REG-112`'s test-exclusion sibling pair), and fails the gate the moment any of them
   diverges — add a new rule there the next time a "one place updated, its twin forgotten" bug is
   found, rather than letting a fourth instance go unnoticed the way REG-89/104/112 did.
-- **Citing a `REG-nn`/ledger id as a live blocker** in `docs/SCREEN_TAXONOMY.md`, `docs/MOVE*_CHECKLISTS.md`,
-  `docs/MOVE*_FINDINGS.md`, or `docs/MOVE1_PANEL_GAPS.md`? Check the id's own ledger status BEFORE
+- **Citing a `REG-nn`/ledger id as a live blocker** in `docs/SCREEN_TAXONOMY.md` (stays at `docs/`
+  root) or `docs/archive/programme-history/MOVE*_CHECKLISTS.md` /
+  `docs/archive/programme-history/MOVE*_FINDINGS.md` / `docs/archive/programme-history/MOVE1_PANEL_GAPS.md`
+  (archived docs-decoupling-2026-08-11)? Check the id's own ledger status BEFORE
   writing "blocked by REG-nn" or "REG-nn (open ...)" — `scripts/quality/check-blocker-citation-freshness.py`
   (wired in `run-ai-knowledge-gate.ps1`) fails the moment that id's `ledger/items/REG-nn.yml` says
   DONE/PARTIAL while the doc still calls it a live blocker. Move 15 Phase D item D1: five separate
@@ -289,6 +295,10 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
 
 ## Key docs
 
+`docs/README.md` is the full documentation index — start there. Frequently needed:
 `docs/GETTING_STARTED.md`, `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`,
 `docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md`,
 `docs/architecture/INTERNAL_DB_SCHEMA_SOURCE_OF_TRUTH.md`, `docs/MATURITY_CLOSURE_LEDGER.md`.
+`docs/` root holds only current product/engineering truth (docs-decoupling-2026-08-11 PLAN.md);
+closed programme history lives in `docs/archive/` and `docs/beta/`, both classified `historical` in
+`scripts/policy/doc-entrypoint-classification-policy.json` — read for narrative, never for status.

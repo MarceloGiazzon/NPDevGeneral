@@ -250,6 +250,7 @@ before.
 | know what NPDev **won't** do | `docs/ACCEPTED_BOUNDARIES.md` |
 | fix a broken setup | `npdev doctor`, then `docs/GETTING_STARTED.md` |
 | see where the platform is heading | `docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md` |
+| browse everything else | [`docs/README.md`](docs/README.md) — the full documentation index |
 
 ---
 
