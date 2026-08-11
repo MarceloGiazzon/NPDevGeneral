@@ -295,14 +295,15 @@ try {
     }
 
     # [14/42] docs/RECORD_SURFACES_PLAN.md P4: two mechanical record-surface claims that go stale
-    # silently -- how far origin/main has drifted behind this branch, and whether CLAUDE.md's own
-    # "Large files" block still matches the files on disk. Both found real drift on 2026-07-29 (71
-    # commits, three misstated sizes) with nothing previously checking either. Blocking, same
-    # rationale as [5/42]/[6/42]/[7/42]/[9/42]/[10/42]/[11/42].
-    Write-Host "[14/42] Checking branch freshness vs. origin/main and CLAUDE.md's large-file size claims..."
+    # silently -- how far origin/main has drifted behind this branch, and whether
+    # scripts/policy/record-surfaces.json's large-file size claims still match the files on disk
+    # (md-zero-2026-08-11 PLAN.md Phase 3 moved this out of CLAUDE.md's own prose). Both found real
+    # drift on 2026-07-29 (71 commits, three misstated sizes) with nothing previously checking
+    # either. Blocking, same rationale as [5/42]/[6/42]/[7/42]/[9/42]/[10/42]/[11/42].
+    Write-Host "[14/42] Checking branch freshness vs. origin/main and record-surfaces.json's large-file size claims..."
     & $py "scripts/quality/check-record-surfaces.py"
     if ($LASTEXITCODE -ne 0) {
-        $failures += "a record surface has drifted: see scripts/quality/check-record-surfaces.py output above (branch gap vs. origin/main, or a stale CLAUDE.md file-size claim)"
+        $failures += "a record surface has drifted: see scripts/quality/check-record-surfaces.py output above (branch gap vs. origin/main, or a stale record-surfaces.json size claim)"
     }
 
     # [15/42] docs/FAIL_OPEN_PLAN.md R3: three allowlists (corpus-parse, test-task-coverage,
