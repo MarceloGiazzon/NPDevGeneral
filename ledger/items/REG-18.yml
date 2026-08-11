@@ -12,4 +12,4 @@ detail: |
   PasswordHasher.verifyDecoy now runs a real PBKDF2 against a fixed decoy hash on both the
   no-user and no-credential login paths, so response timing no longer discloses whether a username
   exists. RED-first PasswordHasherDecoyTest.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-18
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-18

@@ -23,4 +23,4 @@ detail: |
   methods pre-fix (silently fell back, no denial) and on a hostile-identifier case (a real Postgres
   syntax-error confirmed), GREEN after (all 3 throw naming the table/operation; the hostile field name
   coerces to a syntactically valid but nonexistent column). (c) split out as REG-52.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-50
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-50

@@ -17,4 +17,4 @@ detail: |
   filters/sorts, row-scope filtered, replaces total/hasMore; every other concept's query() is
   unaffected. RED->GREEN: extended an existing test to assert total==1/hasMore==false (not the
   tenant's real count of 2), confirmed RED pre-fix, GREEN after, both adapters.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-42
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-42

@@ -21,4 +21,4 @@ detail: |
   boots, login returns 503) instead of crashing the context. Super-user key env-seeding defaulted to
   WONTFIX (issued-not-supplied model preserved, reversible). Verified: 12/12 StartupValidator unit
   tests + 8/8 verify-only JwtAuthExternalBetaIT live on real Postgres.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-9
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-9

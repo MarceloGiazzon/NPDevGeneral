@@ -13,4 +13,4 @@ detail: |
   signature), not any secret or account state, and materially aid operator/integration debugging.
   Collapsing to a single generic error would trade real diagnosability for negligible disclosure
   reduction.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-26
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-26

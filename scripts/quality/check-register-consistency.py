@@ -721,14 +721,14 @@ def ledger_status_summary(root: Path) -> dict[str, tuple[int, str]]:
 def tree_ledger_agreement_gaps(root: Path) -> list[str]:
     """Rule T1 (docs/REMEDIATION_PLAN.md R-P1: simplified to a YAML field read once the 2.E ledger
     migration completed -- was `parse(NPDEV_OPEN_ITEMS_REGISTER.md, "strikethrough")` until then)."""
-    tree_path = root / "docs" / "EXECUTION_TREES.md"
+    tree_path = root / "docs" / "archive" / "programme-history" / "EXECUTION_TREES.md"
     if not tree_path.exists():
         return []
     summary = ledger_status_summary(root)
     if not summary:
         return []
     lines = tree_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    return tree_ledger_agreement_text(tree_path.name, lines, summary)
+    return tree_ledger_agreement_text(tree_path.relative_to(root).as_posix(), lines, summary)
 
 
 # Rule T2: a struck (closed) row whose own verdict sentence still argues open. Scoped to the row's
@@ -778,11 +778,11 @@ def strikethrough_contradiction_text(doc_name: str, lines: list[str]) -> list[st
 
 
 def strikethrough_contradiction_gaps(root: Path) -> list[str]:
-    register_path = root / "docs" / "NPDEV_OPEN_ITEMS_REGISTER.md"
+    register_path = root / "docs" / "archive" / "programme-history" / "NPDEV_OPEN_ITEMS_REGISTER.md"
     if not register_path.exists():
         return []
     lines = register_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    return strikethrough_contradiction_text(register_path.name, lines)
+    return strikethrough_contradiction_text(register_path.relative_to(root).as_posix(), lines)
 
 
 # ---------------------------------------------------------------------------
@@ -1139,10 +1139,13 @@ def main(argv: list[str]) -> int:
     # generated from ledger/gaps.yml, same as OPEN_ITEMS.md above it in LEDGER_EXCLUSIONS -- a
     # summary-vs-detail contradiction is structurally impossible once both render from one field.
     targets = [
-        (root / "docs" / "NPDEV_OPEN_ITEMS_REGISTER.md", "strikethrough"),
+        # docs-decoupling-2026-08-11 PLAN.md Phase 3c: both archived to docs/archive/programme-history/
+        # (STATUS: HISTORICAL / ARCHIVED-IN-PLACE and all-24-items-DONE respectively) -- still
+        # cross-checked in place, same reasoning as the two glob-scoped checks in Phase 3b.
+        (root / "docs" / "archive" / "programme-history" / "NPDEV_OPEN_ITEMS_REGISTER.md", "strikethrough"),
         # Added 2026-07-25 (blind spot #5): a third ledger with 24 rows and full detail sections that
         # nothing had ever cross-checked. Same status-cell convention as the roadmap.
-        (root / "docs" / "LAUNCH_READINESS_GAPS.md", "status-cell"),
+        (root / "docs" / "archive" / "programme-history" / "LAUNCH_READINESS_GAPS.md", "status-cell"),
     ]
 
     print("Register consistency check (summary rows vs their own detail sections)")

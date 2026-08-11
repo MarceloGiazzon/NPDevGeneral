@@ -17,4 +17,4 @@ detail: |
   lifecycle, and a live additive-change proof on superuser-admin-console showed the boot log
   correctly skipping destructive recreation. 2 apps (lnch1-rehearsal,
   simple-user-registry-h2local-freshdb) are deliberately kept on blanket by documented design.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-1
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-1

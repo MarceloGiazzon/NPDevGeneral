@@ -13,4 +13,4 @@ detail: |
   reserve "default": TenantRegistryService.create rejects it, IdentityProvisioning
   .ensureTenantRegistered skips it, TenantAutoRegistrationRunner's SQL excludes it. No real "default"
   tenant can ever be created, so the isolation collision this finding worried about cannot arise.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-24
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-24

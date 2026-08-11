@@ -18,4 +18,4 @@ detail: |
   default, -Apply, -Force) lowercases tenant_id across the registry + every business table, with a
   collision detector that skips + reports merge-risk tables unless -Force. Proven end-to-end on a
   seeded H2 DB.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-25
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-25

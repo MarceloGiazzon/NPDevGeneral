@@ -18,7 +18,7 @@
 > | **[TREE 3 — BLOCKED](#tree-3--blocked)** | small work, real dependencies | listed with the exact thing that unblocks it |
 >
 > **The detailed, executable plan for TREE 1 lives in
-> [TREE1_LAUNCH_UNBLOCK_PLAN.md](archive/programme-history/TREE1_LAUNCH_UNBLOCK_PLAN.md).** This document is the map;
+> [TREE1_LAUNCH_UNBLOCK_PLAN.md](TREE1_LAUNCH_UNBLOCK_PLAN.md).** This document is the map;
 > that one is the instructions.
 >
 > **Status vocabulary:** ⬜ not started · 🟡 in progress · ✅ done · ⛔ blocked · ⬥ decision required.
@@ -104,9 +104,9 @@ in §2.C/2.D is real; the core is the thing on the other side of the trade that 
 ## Tree 1 — NOW
 
 **✅ ALL 16 TASKS DONE (2026-07-28).** Tree diagram below kept as historical record of the plan as
-written; see [TREE1_LAUNCH_UNBLOCK_PLAN.md](archive/programme-history/TREE1_LAUNCH_UNBLOCK_PLAN.md) for what actually happened.
+written; see [TREE1_LAUNCH_UNBLOCK_PLAN.md](TREE1_LAUNCH_UNBLOCK_PLAN.md) for what actually happened.
 
-Full detail, per-task commands, and acceptance criteria: **[TREE1_LAUNCH_UNBLOCK_PLAN.md](archive/programme-history/TREE1_LAUNCH_UNBLOCK_PLAN.md)**.
+Full detail, per-task commands, and acceptance criteria: **[TREE1_LAUNCH_UNBLOCK_PLAN.md](TREE1_LAUNCH_UNBLOCK_PLAN.md)**.
 
 ```
 TREE 1 — NOW  (~4 days)
@@ -150,7 +150,7 @@ See [§0.1 — The CORE track](#01-the-core-track--read-this-before-the-trees).
 **Multi-week. Real design risk. Do these one at a time, on a branch, with nothing else interleaved.**
 
 **✅ 2.A and 2.B (all five splits, incl. 2.B.5/CORE C-4) are DONE (2026-07-27/28)** — see
-[DSL2_AND_DECOMPOSITION_PLAN.md](archive/programme-history/DSL2_AND_DECOMPOSITION_PLAN.md) for what actually happened,
+[DSL2_AND_DECOMPOSITION_PLAN.md](DSL2_AND_DECOMPOSITION_PLAN.md) for what actually happened,
 including two corrected premises (2.A.0's createConcept/updateConcept sugar, and 2.B.4's
 `SchemaLifecycleExecutor`, whose "build ColumnFacts+SchemaPass from scratch" framing below turned
 out stale — a separate already-complete initiative had solved it). Tree diagram below kept as the
@@ -373,7 +373,7 @@ information that decides everything in TREE 2.
 
 ---
 
-*Companions: [TREE1_LAUNCH_UNBLOCK_PLAN.md](archive/programme-history/TREE1_LAUNCH_UNBLOCK_PLAN.md) (executable detail) ·
+*Companions: [TREE1_LAUNCH_UNBLOCK_PLAN.md](TREE1_LAUNCH_UNBLOCK_PLAN.md) (executable detail) ·
 [NPDEV_OPEN_ITEMS_REGISTER.md](NPDEV_OPEN_ITEMS_REGISTER.md) (bug/gap ledger) ·
-[DECISION_BRIEFS_2026-07.md](archive/programme-history/DECISION_BRIEFS_2026-07.md) (4 open owner verdicts) ·
-[OPEN_GAPS_AND_ROADMAP.md](OPEN_GAPS_AND_ROADMAP.md) (runtime/generator items).*
+[DECISION_BRIEFS_2026-07.md](DECISION_BRIEFS_2026-07.md) (4 open owner verdicts) ·
+[OPEN_GAPS_AND_ROADMAP.md](../../OPEN_GAPS_AND_ROADMAP.md) (runtime/generator items).*

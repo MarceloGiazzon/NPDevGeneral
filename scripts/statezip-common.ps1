@@ -609,7 +609,10 @@ function Copy-WorkspaceDocs {
     )
     $referencedDocFiles = @(
         "RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md",
-        "RELEASE_BLOCKER_EXECUTION_ROADMAP.md",
+        # docs-decoupling-2026-08-11 PLAN.md Phase 3c: moved to docs/archive/programme-history/ (its
+        # own STATUS line reads "Historical evidence only"); Join-Path below handles the embedded
+        # subdirectory segments fine, and Copy-StateZipFile creates the destination dir as needed.
+        "archive/programme-history/RELEASE_BLOCKER_EXECUTION_ROADMAP.md",
         "FRONTEND_GATE_REPRODUCIBILITY.md",
         "SAMPLE_MATRIX_RELEASE_POLICY.md"
     )

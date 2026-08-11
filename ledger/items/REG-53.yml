@@ -23,4 +23,4 @@ detail: |
   different type strings; the bug was entirely upstream. RED->GREEN: a new test drives the REAL
   pipeline end-to-end (not hand-written type strings) -- confirmed RED pre-fix (a 255->10 narrowing
   produced NO diff item at all), GREEN after (correctly classified as a destructive narrowing).
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-53
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-53

@@ -17,4 +17,4 @@ detail: |
   ALTER TABLE ... DROP CONSTRAINT IF EXISTS <name> before the ADD (both verbs supported on H2 and
   Postgres; Postgres path unchanged). RED->GREEN SchemaRealizationEmitterAdditiveColumnsTest; verified
   live -- WmsOffice now boots cleanly against the same existing DB that previously refused.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-38
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-38
