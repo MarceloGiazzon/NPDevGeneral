@@ -192,11 +192,7 @@ def _validate(schema: Any, instance: Any, root: dict, path: str, errors: list, s
                 break
             branch_errors.append((index, sub))
         if not matched:
-            detail = "; ".join(
-                f"[{i}] " + ", ".join(f"{e['path']} {e['message']}" for e in errs[:2])
-                for i, errs in branch_errors[:4]
-            )
-            errors.append(_err(path, "anyOf", f"matched none of the allowed shapes -- {detail}"))
+            errors.append(_branch_failure(path, "anyOf", schema["anyOf"], branch_errors, instance, root))
 
     if "oneOf" in schema:
         matches = []
@@ -210,11 +206,7 @@ def _validate(schema: Any, instance: Any, root: dict, path: str, errors: list, s
                 branch_errors.append((index, sub))
         if len(matches) != 1:
             if not matches:
-                detail = "; ".join(
-                    f"[{i}] " + ", ".join(f"{e['path']} {e['message']}" for e in errs[:2])
-                    for i, errs in branch_errors[:4]
-                )
-                errors.append(_err(path, "oneOf", f"matched none of the allowed shapes -- {detail}"))
+                errors.append(_branch_failure(path, "oneOf", schema["oneOf"], branch_errors, instance, root))
             else:
                 errors.append(_err(path, "oneOf", f"matched more than one allowed shape ({matches})"))
 
@@ -228,6 +220,73 @@ def _validate(schema: Any, instance: Any, root: dict, path: str, errors: list, s
         _validate_array(schema, instance, root, path, errors, seen_formats)
     elif isinstance(instance, dict):
         _validate_object(schema, instance, root, path, errors, seen_formats)
+
+
+def _discriminator_value(branch: Any, root: dict) -> tuple[str, Any] | None:
+    """If a branch pins one property to a `const`, return (property, value).
+
+    Zod emits a step union as ~30 object branches each fixing `action` to a different literal, and
+    that literal is the DISCRIMINATOR a human is using too: they wrote `"action": "waitForSelector"`
+    and want to know what is wrong with THEIR step -- not to read why it is not a `goto`."""
+    if not isinstance(branch, dict):
+        return None
+    if "$ref" in branch:
+        try:
+            branch = _resolve_ref(branch["$ref"], root, "")
+        except UnsupportedSchema:
+            return None
+    properties = branch.get("properties")
+    if not isinstance(properties, dict):
+        return None
+    for name in ("action", "kind", "type"):
+        sub = properties.get(name)
+        if isinstance(sub, dict) and "$ref" in sub:
+            try:
+                sub = _resolve_ref(sub["$ref"], root, "")
+            except UnsupportedSchema:
+                sub = None
+        if isinstance(sub, dict) and "const" in sub:
+            return name, sub["const"]
+    return None
+
+
+def _branch_failure(path: str, keyword: str, branches: list, branch_errors: list,
+                    instance: Any, root: dict) -> dict:
+    """A USABLE message for a large discriminated union.
+
+    The naive version prints the first four branches' complaints, which for a 30-action step union
+    reads: "must equal 'goto'; must equal 'reload'; must equal 'waitForLoadState'..." -- three facts
+    the author already knows and none about the step they actually wrote. MONITOR_PLAN D3 has the UI
+    show these messages VERBATIM, so an unusable message here is an unusable Validate button there.
+
+    So: find the branch whose discriminator matches the instance, and report only that branch."""
+    if isinstance(instance, dict):
+        for index, branch in enumerate(branches):
+            discriminator = _discriminator_value(branch, root)
+            if discriminator and instance.get(discriminator[0]) == discriminator[1]:
+                own = next((errs for i, errs in branch_errors if i == index), [])
+                detail = "; ".join(f"{e['path']} {e['message']}" for e in own[:4]) or "unknown"
+                return _err(
+                    path, keyword,
+                    f"is not a valid `{discriminator[1]}` step: {detail}",
+                    matchedBranch=discriminator[1],
+                )
+        # A discriminator value that matches NO branch: name the vocabulary rather than dumping it.
+        known = sorted({
+            str(d[1]) for d in (_discriminator_value(b, root) for b in branches) if d
+        })
+        for name in ("action", "kind", "type"):
+            if name in instance and known:
+                return _err(
+                    path, keyword,
+                    f"`{name}: {instance[name]!r}` is not one of the {len(known)} the engine defines",
+                    allowedValues=known,
+                )
+    detail = "; ".join(
+        f"[{i}] " + ", ".join(f"{e['path']} {e['message']}" for e in errs[:2])
+        for i, errs in branch_errors[:3]
+    )
+    return _err(path, keyword, f"matched none of the allowed shapes -- {detail}")
 
 
 def _kind_of(value: Any) -> str:

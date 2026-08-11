@@ -8,113 +8,184 @@
     :root { color-scheme: light dark; }
     body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; line-height: 1.4; }
     h1 { margin: 0 0 4px; font-size: 1.4rem; }
-    .subtitle { color: #666; margin: 0 0 24px; }
+    .subtitle { color: #666; margin: 0 0 16px; }
+    .offline { margin: 0 0 16px; padding: 10px 12px; border: 1px solid #b8860b80;
+               background: #b8860b1a; border-radius: 6px; }
+    .controls { margin: 0 0 12px; }
+    .controls input { font: inherit; padding: 4px 8px; min-width: 260px; }
     h2 { font-size: 1rem; margin: 24px 0 8px; border-bottom: 1px solid #8883; padding-bottom: 4px; }
     table { width: 100%; border-collapse: collapse; }
     td { padding: 4px 8px; vertical-align: top; border-bottom: 1px solid #8882; }
     td.prop { white-space: nowrap; color: #666; width: 1%; }
     td.val { font-family: ui-monospace, monospace; word-break: break-all; }
+    td.act { white-space: nowrap; width: 1%; }
     button { font: inherit; font-size: 0.8rem; padding: 2px 8px; margin-left: 6px; cursor: pointer; }
     .empty { color: #888; font-style: italic; }
+    .probed { margin-top: 24px; padding: 10px 12px; border: 1px dashed #8886; border-radius: 6px; color: #666; }
+    code { font-family: ui-monospace, monospace; }
   </style>
 </head>
 <body>
 <h1>{{namespace}}</h1>
-<p class="subtitle">Starter info page -- generated with the app, always present regardless of how it was built.</p>
+<p class="subtitle">Generated with the app. Portable facts only -- nothing here names a path on the machine that built it.</p>
 
-<h2>URLs</h2>
-<table id="urls"></table>
+<div id="offline" class="offline" hidden></div>
+<div class="controls"><input id="filter" placeholder="filter&hellip;" autocomplete="off"></div>
+<div id="sections"></div>
 
-<h2>Monitoring</h2>
-<table id="monitoring"></table>
+<div class="probed">
+  <b>Not here on purpose:</b> the jar, the <code>_ops</code> toolbox, the model file, the database
+  file, the super-user key file, the port, the PID and container state. Those are true of a machine
+  rather than of this app, so they are never written into generated output. Ask for them with
+  <code>npdev monitor probe --app-dir &lt;this app&gt;</code>, or open this app in the NPDev
+  Manager's Monitor, which overlays them onto this page's rows.
+</div>
 
-<h2>Flows</h2>
-<table id="flows"></table>
-
-<h2>Concepts (CRUD)</h2>
-<table id="concepts"></table>
-
-<h2>Database</h2>
-<table>
-  <tr><td class="prop">Engine</td><td class="val">{{dbEngine}}</td><td></td></tr>
-</table>
-
+<!--
+  D2-b: the data is EMBEDDED, not fetched. The ops wrapper copies this page to the output root so it
+  can be opened from file:// while the app is OFF -- and fetch() from a file:// origin is blocked by
+  every browser, so a fetch-based page would render empty in exactly the state a user is diagnosing.
+  `info.json` beside this file carries the same bytes for the CLI and the Monitor.
+-->
+<script type="application/json" id="npdev-info">{{{infoJson}}}</script>
 <script>
 (function () {
-  var base = window.location.origin;
+  var info = JSON.parse(document.getElementById('npdev-info').textContent);
 
-  function row(table, prop, path) {
-    var url = base + path;
-    var tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td class="prop">' + escapeHtml(prop) + '</td>' +
-      '<td class="val">' + escapeHtml(url) + '</td>' +
-      '<td>' +
-      '<button type="button" data-copy="' + escapeHtml(url) + '">Copy</button>' +
-      '<button type="button" data-open="' + escapeHtml(url) + '">Open</button>' +
-      '</td>';
-    table.appendChild(tr);
+  // ONE renderer, two data sources -- which is what D2-a's "one model, one renderer" actually
+  // requires. The emitter NEVER writes this element: it holds facts that are true of a machine
+  // rather than of the app (the jar, the toolbox, the DB file, the key file), and baking those into
+  // generated output is the defect PORT-1 removed from six emitters. A local tool that legitimately
+  // knows them -- the ops wrapper writing `starter.html`, or the Monitor overlaying a probe --
+  // injects them here, and they render in their own clearly-labelled section rather than being mixed
+  // in with facts that travel.
+  var localElement = document.getElementById('npdev-local');
+  if (localElement) {
+    try {
+      var local = JSON.parse(localElement.textContent);
+      (local.records || []).forEach(function (record) { info.records.push(record); });
+    } catch (error) { /* an unreadable overlay must not take the portable page down with it */ }
   }
 
-  function emptyRow(table) {
-    var tr = document.createElement('tr');
-    tr.innerHTML = '<td class="empty" colspan="3">(none declared)</td>';
-    table.appendChild(tr);
+  // Under file:// window.location.origin is the STRING "null", which is how the offline page came
+  // to print `null/api/flows`. A URL that cannot work is worse than an honest absence.
+  var origin = window.location.origin;
+  var live = /^https?:$/.test(window.location.protocol) && origin && origin !== 'null';
+
+  if (!live) {
+    var banner = document.getElementById('offline');
+    banner.hidden = false;
+    banner.innerHTML =
+      '<b>Opened from a file, not from the running app.</b> The URLs below need a live origin, so ' +
+      'only their paths are shown. Start the app and open <code>/info.html</code> to get clickable ' +
+      'links.';
   }
 
   function escapeHtml(value) {
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  var urls = document.getElementById('urls');
-  row(urls, 'Base URL', '/');
-  row(urls, 'Operator UI', '/npdev-ui');
-  row(urls, 'Business UI', '/npdev-business-ui/');
-  row(urls, 'Info page (this page)', '/info.html');
-  row(urls, 'Flows list', '/api/flows');
-  {
-    var tr = document.createElement('tr');
-    tr.innerHTML = '<td class="prop">API key header</td><td class="val">X-Api-Key: dev-key</td><td></td>';
-    urls.appendChild(tr);
+  function displayValue(record) {
+    if (typeof record.value === 'string') { return record.value; }
+    if (typeof record.path === 'string') { return live ? origin + record.path : record.path; }
+    return '';
   }
 
-  var monitoring = document.getElementById('monitoring');
-  row(monitoring, 'Health', '/actuator/health');
-  row(monitoring, 'Audit', '/api/audit');
-  row(monitoring, 'Storage summary', '/api/admin/storage/summary');
+  var container = document.getElementById('sections');
+  var order = [];
+  var bySection = {};
+  info.records.forEach(function (record) {
+    if (!bySection[record.section]) { bySection[record.section] = []; order.push(record.section); }
+    bySection[record.section].push(record);
+  });
 
-  var flowRows = {{{flowsJson}}};
-  var flowsTable = document.getElementById('flows');
-  if (flowRows.length === 0) {
-    emptyRow(flowsTable);
-  } else {
-    flowRows.forEach(function (name) {
-      row(flowsTable, 'Execute ' + name, '/api/flows/' + encodeURIComponent(name) + '/execute');
+  order.forEach(function (section) {
+    var heading = document.createElement('h2');
+    heading.textContent = section;
+    container.appendChild(heading);
+
+    var table = document.createElement('table');
+    var rows = bySection[section];
+    if (rows.length === 0) {
+      var none = document.createElement('tr');
+      none.innerHTML = '<td class="empty" colspan="3">(none declared)</td>';
+      table.appendChild(none);
+    }
+    rows.forEach(function (record) {
+      var value = displayValue(record);
+      var tr = document.createElement('tr');
+      tr.dataset.k = (record.property + ' ' + value).toLowerCase();
+      var openable = record.openable && live;
+      tr.innerHTML =
+        '<td class="prop">' + escapeHtml(record.property) + '</td>' +
+        '<td class="val">' + escapeHtml(value) + '</td>' +
+        '<td class="act">' +
+        '<button type="button" data-copy="' + escapeHtml(value) + '">Copy</button>' +
+        (openable ? '<button type="button" data-open="' + escapeHtml(value) + '">Open</button>' : '') +
+        '</td>';
+      table.appendChild(tr);
     });
-  }
-
-  var conceptRows = {{{conceptsJson}}};
-  var conceptsTable = document.getElementById('concepts');
-  if (conceptRows.length === 0) {
-    emptyRow(conceptsTable);
-  } else {
-    conceptRows.forEach(function (concept) {
-      row(conceptsTable, 'CRUD ' + concept.name, '/api/' + concept.route);
-    });
-  }
+    container.appendChild(table);
+  });
 
   document.body.addEventListener('click', function (event) {
-    var copyUrl = event.target.getAttribute && event.target.getAttribute('data-copy');
-    var openUrl = event.target.getAttribute && event.target.getAttribute('data-open');
-    if (copyUrl && navigator.clipboard) {
-      navigator.clipboard.writeText(copyUrl);
-    } else if (openUrl) {
-      window.open(openUrl, '_blank');
+    var target = event.target;
+    if (!target || !target.getAttribute) { return; }
+    var copyValue = target.getAttribute('data-copy');
+    var openValue = target.getAttribute('data-open');
+    if (copyValue !== null) {
+      copy(copyValue, target);
+    } else if (openValue) {
+      window.open(openValue, '_blank');
     }
+  });
+
+  function copy(value, button) {
+    // navigator.clipboard needs a secure context, which file:// is not -- so the legacy path is not
+    // a nicety here, it is the ONLY path in the offline case this page exists to serve.
+    function flash() {
+      var original = button.dataset.original || button.textContent;
+      button.dataset.original = original;
+      button.textContent = 'copied';
+      setTimeout(function () { button.textContent = original; }, 900);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+      navigator.clipboard.writeText(value).then(flash, function () { legacyCopy(value, flash); });
+    } else {
+      legacyCopy(value, flash);
+    }
+  }
+
+  function legacyCopy(value, done) {
+    try {
+      var area = document.createElement('textarea');
+      area.value = value;
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.focus();
+      area.select();
+      document.execCommand('copy');
+      document.body.removeChild(area);
+      done();
+    } catch (error) { /* nothing useful to say to the user here */ }
+  }
+
+  document.getElementById('filter').addEventListener('input', function (event) {
+    var needle = event.target.value.toLowerCase();
+    document.querySelectorAll('#sections table').forEach(function (table) {
+      var anyVisible = false;
+      table.querySelectorAll('tr').forEach(function (tr) {
+        if (!tr.dataset.k) { return; }
+        var show = tr.dataset.k.indexOf(needle) !== -1;
+        tr.style.display = show ? '' : 'none';
+        if (show) { anyVisible = true; }
+      });
+      var heading = table.previousElementSibling;
+      if (heading && heading.tagName === 'H2') { heading.style.display = anyVisible ? '' : 'none'; }
+      table.style.display = anyVisible ? '' : 'none';
+    });
   });
 })();
 </script>

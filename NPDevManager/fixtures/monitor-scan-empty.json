@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "npdev-monitor-scan.v1",
+  "command": "monitor scan",
+  "ok": true,
+  "scannedAt": "2026-08-11T00:09:21Z",
+  "searched": [
+    {
+      "path": "C:\\Users\\Marcelo\\AppData\\Local\\Temp\\claude\\d--WorkSpace-NPDev-NPDev-General\\00857461-ff1b-4d59-acb3-a284cb9b608f\\scratchpad\\empty",
+      "exists": true
+    }
+  ],
+  "portsEnumerated": true,
+  "apps": []
+}

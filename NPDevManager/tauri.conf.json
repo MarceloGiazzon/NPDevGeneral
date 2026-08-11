@@ -20,7 +20,14 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "**/_ops/exploration-runs/blobs/*",
+          "**/npdev-explorations/**/blobs/*"
+        ]
+      }
     }
   },
   "bundle": {

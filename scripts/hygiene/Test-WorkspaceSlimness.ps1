@@ -16,7 +16,15 @@ param(
     # Do not raise this to make a commit go through. Look at what added the files first: if the
     # answer is "a generated Output/ directory", the fix is
     # scripts/hygiene/clean-workspace-state.ps1, not this number.
-    [int]$MaxFileCount = 3500,
+    #
+    # 3500 -> 3600, 2026-08-10 (MONITOR_PLAN). The check above was applied before touching this: the
+    # additions are 18 tracked files -- 11 captured Manager fixtures, two CLI modules, two schemas,
+    # a UI stylesheet and script pair, and a docs page -- and `clean-workspace-state.ps1` was run
+    # first, which removed the real offenders (a `build/` tree and a stray `.gradle`). Total size
+    # went 26 -> 27 MB of 75, so the limit that actually tracks bloat has not moved. This is the same
+    # case as the 3400 -> 3500 recalibration: small tracked files that are exactly what the repo
+    # should hold, not generated output that should never have been here.
+    [int]$MaxFileCount = 3600,
     [decimal]$MaxSizeMB = 75,
     [int]$MaxScriptsFileCount = 500,
     [decimal]$MaxScriptsSizeMB = 10,

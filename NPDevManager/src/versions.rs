@@ -288,6 +288,13 @@ pub fn chrono_now_iso() -> String {
     humantime_like_iso(secs)
 }
 
+/// The same rendering, for a caller that already has the seconds (the Manager's own log, D10).
+/// Exposed rather than duplicated: two timestamp formats in one product is how a support bundle
+/// becomes hard to read.
+pub fn iso_from_unix_seconds(epoch_secs: u64) -> String {
+    humantime_like_iso(epoch_secs)
+}
+
 fn humantime_like_iso(epoch_secs: u64) -> String {
     // Minimal, dependency-free UTC formatting (days-since-epoch civil calendar, Howard Hinnant's
     // algorithm) -- good enough for a display timestamp in manager.json, not for calendar maths.

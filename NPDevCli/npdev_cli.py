@@ -3070,6 +3070,38 @@ def run_db_operation(args: argparse.Namespace) -> int:
     return completed.returncode
 
 
+def _scrapforai_check() -> dict:
+    """MONITOR_PLAN F1: the browser-exploration engine, reported as a FACT rather than as the
+    presence of a setting.
+
+    F1 originally said "the doctor row reports whether `scrapforai_root` is configured". That is the
+    wrong question, and D9 replaced it: a machine with the engine installed and no setting is fine,
+    and a machine with a setting pointing at a deleted directory is not. So the row reports what the
+    four-step detection ACTUALLY FOUND -- running on :3010, installed but stopped, or not found.
+
+    Always a `warn` at worst, never a `fail`. Browser exploration is an optional capability; a
+    machine without it can still author, generate, build and run apps, and a doctor that goes red
+    over an optional tool teaches people to ignore red."""
+    engine = npdev_monitor.detect_engine(
+        npdev_monitor.DEFAULT_ENGINE_PORT,
+        os.environ.get("SCRAPFORAI_ROOT"),
+        repo_root(),
+    )
+    if engine["state"] == "running":
+        return _check("scrapforai-engine", "Browser exploration engine", "pass",
+                      found=engine["endpoint"], expected="optional",
+                      detail=f"running on {engine['endpoint']} -- `npdev explore run` will reuse it")
+    if engine["state"] == "installed-stopped":
+        return _check("scrapforai-engine", "Browser exploration engine", "pass",
+                      found=engine["root"], expected="optional",
+                      detail=f"installed at {engine['root']} (found via {engine['via']}), not running "
+                             "-- `npdev explore run` starts it when needed")
+    return _check("scrapforai-engine", "Browser exploration engine", "warn", expected="optional",
+                  detail="not found on this machine -- browser explorations are unavailable until it "
+                         "is installed. Everything else works without it.",
+                  fix="install ScrapForAI, or set SCRAPFORAI_ROOT if it lives somewhere unusual")
+
+
 def run_doctor(args: argparse.Namespace) -> int:
     """I5: one screen, no scrolling -- exit non-zero listing only what MUST be fixed, warnings
     separate and never blocking. Every check here exists because this project already hit the
@@ -3376,6 +3408,7 @@ def run_doctor(args: argparse.Namespace) -> int:
         checks.append(_check("pwsh-present", "PowerShell 7", "pass", found=pwsh_path, expected="optional"))
 
     checks.extend(_database_checks(getattr(args, "app", None)))
+    checks.append(_scrapforai_check())
 
     problems = [c["detail"] for c in checks if c["status"] == "fail"]
     warnings = [c["detail"] for c in checks if c["status"] == "warn"]
@@ -4759,11 +4792,70 @@ def run_monitor(args: argparse.Namespace) -> int:
         result["ok"] = True
         _print_result(result, args)
         return 0
+    if args.monitor_command == "engine-start":
+        return _run_monitor_engine_start(args)
     if args.monitor_command == "logs":
         return _run_monitor_logs(args)
     if args.monitor_command == "ops":
         return _run_monitor_ops(args)
-    raise CliError("usage: npdev monitor {scan|probe|engine|logs|ops}")
+    raise CliError("usage: npdev monitor {scan|probe|engine|engine-start|logs|ops}")
+
+
+def _run_monitor_engine_start(args: argparse.Namespace) -> int:
+    """Start the engine and STAY as its parent until it exits.
+
+    Staying is the point (R2). The engine outlives individual requests by design, so something has
+    to own its lifetime; whoever runs this command does. The Manager spawns it inside its job object,
+    so closing the window takes this process and the engine down together instead of leaving a
+    browser-automation server listening on a user's machine.
+    """
+    root = Path(args.root).expanduser()
+    if not npdev_monitor._engine_root_ok(root):
+        raise CliError(
+            f"{root} is not a ScrapForAI engine root. It must contain src/server.ts AND "
+            "node_modules/.bin/tsx* -- checked by CONTENTS, never by directory name. "
+            "Find one with `npdev monitor engine --json`."
+        )
+    api_key = args.api_key or os.environ.get("SCRAPFORAI_API_KEY") or "npdev-scrapforai-localkey-0001"
+    artifact_dir = _ai_build_root() / "scrapforai-artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    def emit(event: dict) -> None:
+        print(json.dumps(event) if args.json else
+              f"[{event.get('kind')}] {event.get('detail') or event.get('endpoint') or ''}", flush=True)
+
+    argv = npdev_monitor.engine_start_command(str(root), args.port, args.allow_origin, api_key,
+                                              str(artifact_dir))
+    if not Path(argv[0]).exists():
+        raise CliError(f"the engine launcher is missing: {argv[0]} -- run `npm install` in {root} once")
+    env = dict(os.environ)
+    env.update(npdev_monitor.engine_start_env(args.port, args.allow_origin, api_key, str(artifact_dir)))
+    emit({"kind": "starting", "root": str(root), "port": args.port,
+          "allowedOrigins": sorted(set(args.allow_origin))})
+    process = subprocess.Popen(argv, cwd=str(artifact_dir), env=env,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    endpoint = f"http://127.0.0.1:{args.port}"
+    try:
+        for _ in range(60):
+            if process.poll() is not None:
+                emit({"kind": "failed", "detail": f"the engine exited immediately (code {process.returncode})"})
+                return 2
+            status, _ = npdev_monitor._http_json(f"{endpoint}/health", timeout=1.0)
+            if status is not None:
+                emit({"kind": "ready", "endpoint": endpoint})
+                break
+            time.sleep(0.5)
+        else:
+            process.terminate()
+            emit({"kind": "failed", "detail": f"the engine did not become ready on {endpoint} within 30s"})
+            return 2
+        process.wait()
+        emit({"kind": "stopped", "exitCode": process.returncode})
+        return 0
+    except KeyboardInterrupt:
+        process.terminate()
+        emit({"kind": "stopped", "exitCode": None, "detail": "interrupted"})
+        return 0
 
 
 def _run_monitor_logs(args: argparse.Namespace) -> int:
@@ -4936,6 +5028,10 @@ def run_explore(args: argparse.Namespace) -> int:
             result = npdev_explore.accept_baseline(Path(args.app_dir), args.run)
         elif args.explore_command == "context":
             result = npdev_explore.build_context_pack(root, Path(args.app_dir), args.exemplars)
+        elif args.explore_command == "repair-payload":
+            result = npdev_explore.build_repair_payload(
+                root, Path(args.app_dir), args.prompt, run_id=args.run,
+                include_page_text=args.include_page_text)
         else:
             raise CliError("usage: npdev explore {list|show|validate|preflight|run|record|prune|pin|accept|context}")
     except npdev_explore.ExploreError as exc:
@@ -4989,6 +5085,127 @@ def _explore_human_summary(command: str, result: dict) -> str:
     else:
         lines.append(json.dumps(result, indent=2, ensure_ascii=False))
     return "\n".join(lines)
+
+
+def run_ai_generate_routine(args: argparse.Namespace) -> int:
+    """E2. Send a COMPOSED payload to the user's own provider.
+
+    NPDev ships no key and no default endpoint, so an unconfigured install cannot silently send
+    anything anywhere. Two provider shapes, both entirely the user's:
+
+      command  their own CLI, invoked with the payload's PATH substituted into the argv template.
+      http     an endpoint they named, with a key they typed.
+
+    The response is parsed leniently -- a provider that returns prose with a fenced JSON block is
+    the common case -- and then VALIDATED against the pinned engine schema before being returned, so
+    a plausible-looking hallucination is rejected here rather than at Play time.
+    """
+    import npdev_explore
+
+    payload_path = Path(args.payload_file).expanduser()
+    if not payload_path.is_file():
+        raise CliError(f"no such payload file: {payload_path}")
+    payload = read_json(payload_path)
+
+    if args.provider == "command":
+        if not args.command:
+            raise CliError(
+                "provider=command needs --command <argv part> (repeatable). Nothing is assumed: "
+                "NPDev does not know which assistant you use and will not guess."
+            )
+        argv = [part.replace("{payload_file}", str(payload_path)) for part in args.command]
+        completed = subprocess.run(argv, capture_output=True, text=True, timeout=args.timeout)
+        if completed.returncode != 0:
+            raise CliError(f"the assistant command exited {completed.returncode}: "
+                           f"{(completed.stderr or completed.stdout).strip()[:600]}")
+        raw = completed.stdout
+    else:
+        if not args.endpoint:
+            raise CliError("provider=http needs --endpoint")
+        import urllib.request
+        body = json.dumps({
+            "model": args.model,
+            "prompt": payload.get("prompt"),
+            "payload": payload,
+        }).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if args.api_key:
+            headers["Authorization"] = f"Bearer {args.api_key}"
+        request = urllib.request.Request(args.endpoint, data=body, method="POST", headers=headers)
+        with urllib.request.urlopen(request, timeout=args.timeout) as response:
+            raw = response.read().decode("utf-8", "replace")
+
+    routine = _extract_json_object(raw)
+    result = {
+        "schemaVersion": "npdev-ai-generate-routine.v1",
+        "command": "ai generate-routine",
+        "ok": routine is not None,
+        "provider": args.provider,
+        "routine": routine,
+        "raw": raw[:20000],
+    }
+    if routine is not None:
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as handle:
+            json.dump(routine, handle)
+            temp_name = handle.name
+        try:
+            validation = npdev_explore.validate_routine(repo_root(), Path(temp_name))
+        finally:
+            with contextlib.suppress(OSError):
+                os.unlink(temp_name)
+        result["validation"] = validation
+        result["ok"] = bool(validation.get("valid"))
+    else:
+        result["error"] = {"message": "the assistant's answer contained no JSON object"}
+
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print("VALID routine returned" if result["ok"] else "the assistant did not return a valid routine")
+    return 0 if result["ok"] else 2
+
+
+def _extract_json_object(text: str) -> dict | None:
+    """The first balanced JSON object in a provider's answer.
+
+    Providers wrap JSON in prose and fences far more often than not, so "parse the whole thing"
+    fails on the common case. Brace-balanced scanning rather than a regex, because a routine
+    contains nested objects and a non-greedy regex truncates at the first inner `}`.
+    """
+    text = text.strip()
+    try:
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        pass
+    depth = 0
+    start = -1
+    in_string = False
+    escaped = False
+    for index, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0 and start >= 0:
+                with contextlib.suppress(json.JSONDecodeError):
+                    candidate = json.loads(text[start:index + 1])
+                    if isinstance(candidate, dict) and "steps" in candidate:
+                        return candidate
+                start = -1
+    return None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -5496,6 +5713,24 @@ def build_parser() -> argparse.ArgumentParser:
                                      "Optional BY DESIGN: detection must work with nothing.")
     monitor_engine.add_argument("--json", action="store_true")
 
+    monitor_engine_start = monitor_sub.add_parser(
+        "engine-start",
+        help="Start a found-but-stopped ScrapForAI engine and stay as its parent, so it dies with "
+             "whoever started it (R2). Streams JSON Lines: starting -> ready -> stopped.",
+    )
+    monitor_engine_start.add_argument("--root", required=True,
+                                      help="An engine root ALREADY FOUND by `npdev monitor engine`. "
+                                           "Verified by contents here too -- a caller that passes a "
+                                           "plausible directory gets a refusal, not a spawn.")
+    monitor_engine_start.add_argument("--port", type=int, default=npdev_monitor.DEFAULT_ENGINE_PORT)
+    monitor_engine_start.add_argument("--allow-origin", action="append", default=[],
+                                      help="Repeatable. R4: the SSRF allowlist is composed HERE, "
+                                           "never by a UI -- two apps explored in one engine session "
+                                           "need the union, and a caller that sends one origin "
+                                           "silently breaks the other.")
+    monitor_engine_start.add_argument("--api-key", default=None)
+    monitor_engine_start.add_argument("--json", action="store_true")
+
     monitor_logs = monitor_sub.add_parser(
         "logs", help="Read (or export) an app's logs: its own runtime output, its ops runs, the Manager's."
     )
@@ -5626,6 +5861,47 @@ def build_parser() -> argparse.ArgumentParser:
     explore_context.add_argument("--exemplars", type=int, default=2)
     explore_context.add_argument("--json", action="store_true")
 
+    explore_payload = explore_sub.add_parser(
+        "repair-payload",
+        help="E3-a: compose the EXACT bytes an assistant request would carry, and send nothing. "
+             "Structure-only by default (no page text), credentials redacted, so it can be read "
+             "before anyone decides to send it.",
+    )
+    explore_payload.add_argument("--app-dir", required=True)
+    explore_payload.add_argument("--prompt", required=True)
+    explore_payload.add_argument("--run", default=None,
+                                 help="A red run to repair. Omit to compose a plain authoring request.")
+    explore_payload.add_argument("--include-page-text", action="store_true",
+                                 help="Opt in, per request, to including page TEXT. Off by default: "
+                                      "on a tester's or a customer's machine that text is their real "
+                                      "data. Recorded on the run either way.")
+    explore_payload.add_argument("--json", action="store_true")
+
+    # ------------------------------------------------------------------------------------------
+    # E2: the provider. The CLI owns the CALL as well as the payload, so a terminal user can do
+    # exactly what the window does -- and so the window stays a pipe (D1).
+    # ------------------------------------------------------------------------------------------
+    ai = subparsers.add_parser("ai", help="Assistant-backed authoring (bring your own provider).")
+    ai_sub = ai.add_subparsers(dest="ai_command")
+    ai_generate = ai_sub.add_parser(
+        "generate-routine",
+        help="Send a composed payload to YOUR provider and return the routine it proposes. "
+             "NPDev ships no API key and no default endpoint.",
+    )
+    ai_generate.add_argument("--payload-file", required=True,
+                             help="The file `npdev explore repair-payload` wrote. A file rather than "
+                                  "an argument on purpose: a DOM excerpt on a command line lands in "
+                                  "shell history and in every process listing.")
+    ai_generate.add_argument("--provider", default="command", choices=["command", "http"])
+    ai_generate.add_argument("--command", action="append", default=[],
+                             help="provider=command: the argv, repeatable. `{payload_file}` is "
+                                  "substituted with the payload's path.")
+    ai_generate.add_argument("--endpoint", default=None, help="provider=http: the URL to POST to.")
+    ai_generate.add_argument("--api-key", default=None)
+    ai_generate.add_argument("--model", default=None)
+    ai_generate.add_argument("--timeout", type=float, default=120.0)
+    ai_generate.add_argument("--json", action="store_true")
+
     review = subparsers.add_parser(
         "review", help="Build a review pack, or ingest a review verdict."
     )
@@ -5755,6 +6031,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_monitor(args)
         if args.command == "explore":
             return run_explore(args)
+        if args.command == "ai" and args.ai_command == "generate-routine":
+            return run_ai_generate_routine(args)
         if args.command == "review" and args.review_command == "pack":
             run_review_pack(args)
             return 0

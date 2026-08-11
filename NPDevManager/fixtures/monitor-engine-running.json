@@ -1,0 +1,12 @@
+{
+  "found": true,
+  "state": "running",
+  "via": "service-probe",
+  "endpoint": "http://127.0.0.1:3000",
+  "port": 3000,
+  "root": null,
+  "detail": "the engine answered /v1/status with HTTP 401. Its location is not needed.",
+  "schemaVersion": "npdev-monitor-engine.v1",
+  "command": "monitor engine",
+  "ok": true
+}

@@ -42,7 +42,85 @@ async fn run_steps() -> Result<(), StepError> {
 
     run_doctor_step(&python_path, &cli_path, java_home.as_deref()).await?;
 
+    run_monitor_steps(&python_path, &cli_path, java_home.as_deref()).await?;
+
     run_database_steps(&python_path, &cli_path, java_home.as_deref()).await
+}
+
+// ------------------------------------------------------------------------------------------------
+// MONITOR_PLAN B6: the Monitor and the Scrap Manager, headless.
+//
+// These are deliberately the paths that need NO app, NO engine and NO network, because those are the
+// paths a container harness can actually run on every change. Everything richer -- a real scan of a
+// real app, a real exploration -- is proven by the Phase B/D acceptance walks on a machine that has
+// them; claiming otherwise here would be the kind of green that means nothing.
+//
+// What each assertion protects is named on it. All three are contract shapes the UI depends on and
+// would render as a blank panel if they changed silently.
+// ------------------------------------------------------------------------------------------------
+
+async fn run_monitor_steps(python: &std::path::Path, cli: &std::path::Path,
+                           java_home: Option<&str>) -> Result<(), StepError> {
+    // The Manager runs whatever NPDev version is INSTALLED, which can be older than this window.
+    // Found here on 2026-08-10: the installed beta1.14 has no `npdev monitor` at all, and the
+    // harness reported it as a Monitor defect. It is not one -- but it is not a pass either, so it
+    // is announced as a SKIP with the reason, never swallowed. (`database_steps_enabled` sets the
+    // precedent: a skip that says why is honest; a silent one is the thing gates exist to prevent.)
+    let missing = std::env::temp_dir().join("npdev-selftest-not-an-app");
+    std::fs::create_dir_all(&missing).map_err(|e| ("6b/9 monitor", e.to_string()))?;
+    match npdev::run_monitor_probe(python, cli, java_home, &missing.to_string_lossy(), false).await {
+        Err(message) if message.contains("has no `npdev monitor`") => {
+            println!("  [6b/9] monitor scan/probe/engine .............. SKIPPED -- {message}");
+            return Ok(());
+        }
+        _ => {}
+    }
+
+    // 1. A scan with no paths must be a well-formed EMPTY answer, not an error and not a scan of the
+    //    whole disk. This is the first thing a fresh Manager does, before anything is configured.
+    let empty = npdev::run_monitor_scan(python, cli, java_home, &[], false)
+        .await
+        .map_err(|e| ("6b/9 monitor scan (no paths)", e))?;
+    if empty.get("apps").and_then(|a| a.as_array()).map(|a| !a.is_empty()).unwrap_or(true) {
+        return Err(("6b/9 monitor scan (no paths)",
+                    "expected an empty app list; a fresh Manager must not invent apps".to_string()));
+    }
+
+    // 2. Probing a directory that is not an app must be a DIAGNOSED refusal carrying a reason -- the
+    //    Monitor renders that reason on the card. An error here instead of a record would leave the
+    //    card blank, which is the failure mode the marker-pair rule exists to make legible.
+    let probe = npdev::run_monitor_probe(python, cli, java_home, &missing.to_string_lossy(), false)
+        .await
+        .map_err(|e| ("6c/9 monitor probe (not an app)", e))?;
+    match probe.get("status").and_then(|s| s.as_str()) {
+        Some("not-an-app") => {}
+        other => {
+            return Err(("6c/9 monitor probe (not an app)",
+                        format!("expected status 'not-an-app', got {other:?}")));
+        }
+    }
+    if probe.get("detail").and_then(|d| d.as_str()).unwrap_or("").is_empty() {
+        return Err(("6c/9 monitor probe (not an app)",
+                    "the refusal carries no `detail`, so the card would say nothing".to_string()));
+    }
+
+    // 3. Engine detection must always ANSWER -- found or not-found, never an exception. D9's whole
+    //    point is that a machine without the engine gets an honest disabled state rather than a
+    //    silent failure, and this is the only assertion that can fail on a machine that has one.
+    let engine = npdev::run_monitor_engine(python, cli, java_home, 3010, None, "")
+        .await
+        .map_err(|e| ("6d/9 monitor engine", e))?;
+    let state = engine.get("state").and_then(|s| s.as_str()).unwrap_or("");
+    if !matches!(state, "running" | "installed-stopped" | "not-found") {
+        return Err(("6d/9 monitor engine", format!("unexpected engine state {state:?}")));
+    }
+    if engine.get("detail").and_then(|d| d.as_str()).unwrap_or("").is_empty() {
+        return Err(("6d/9 monitor engine",
+                    "no `detail` -- the Scrap tab would show a disabled state with no reason".to_string()));
+    }
+
+    println!("  [6b/9] monitor scan/probe/engine driven ....... ok  (engine: {state})");
+    Ok(())
 }
 
 // ------------------------------------------------------------------------------------------------

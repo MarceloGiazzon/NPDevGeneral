@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "npdev-monitor-logs.v1",
+  "command": "monitor logs",
+  "ok": true,
+  "appDir": "D:\\WorkSpace\\NPDev\\Build\\monitor-live",
+  "sources": [
+    {
+      "source": "app",
+      "directory": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\logs",
+      "files": [
+        {
+          "name": "app-20260811T000649Z.log",
+          "path": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\logs\\app-20260811T000649Z.log",
+          "bytes": 37353,
+          "modifiedAt": "2026-08-11T00:14:07Z"
+        }
+      ],
+      "tail": [
+        "2026-08-10T21:11:37.560-03:00 -DEBUG [6570a467-c08f-4e5e-976a-b7f75a747ed2] o.s.web.servlet.DispatcherServlet : GET \"/info.html\", parameters={}",
+        "2026-08-10T21:11:37.566-03:00 -DEBUG [6570a467-c08f-4e5e-976a-b7f75a747ed2] o.s.w.s.handler.SimpleUrlHandlerMapping : Mapped to ResourceHttpRequestHandler [URL [file:D:/WorkSpace/NPDev/Build/monitor-live/npdev-generated/src/main/resources/static/], classpath [META-INF/resources/], classpath [resources/], classpath [static/], classpath [public/]]",
+        "2026-08-10T21:11:37.571-03:00 -DEBUG [6570a467-c08f-4e5e-976a-b7f75a747ed2] o.s.web.servlet.DispatcherServlet : Completed 200 OK",
+        "2026-08-10T21:11:55.738-03:00 -DEBUG [858c9159-e05c-4216-b768-be056f8d1a3c] o.s.web.servlet.DispatcherServlet : GET \"/actuator/health\", parameters={}",
+        "2026-08-10T21:11:55.738-03:00 -DEBUG [858c9159-e05c-4216-b768-be056f8d1a3c] o.s.w.s.m.m.a.RequestResponseBodyMethodProcessor : Read \"application/octet-stream\" to []",
+        "2026-08-10T21:11:55.738-03:00 -DEBUG [858c9159-e05c-4216-b768-be056f8d1a3c] o.s.w.s.m.m.a.HttpEntityMethodProcessor : Using 'application/vnd.spring-boot.actuator.v3+json', given [*/*] and supported [application/vnd.spring-boot.actuator.v3+json, application/vnd.spring-boot.actuator.v2+json, application/json]",
+        "2026-08-10T21:11:55.738-03:00 -DEBUG [858c9159-e05c-4216-b768-be056f8d1a3c] o.s.w.s.m.m.a.HttpEntityMethodProcessor : Writing [org.springframework.boot.actuate.health.SystemHealth@10b47a01]",
+        "2026-08-10T21:11:55.738-03:00 -DEBUG [858c9159-e05c-4216-b768-be056f8d1a3c] o.s.web.servlet.DispatcherServlet : Completed 200 OK",
+        "2026-08-10T21:11:55.913-03:00 -DEBUG [e5fe48e5-952a-4726-ae86-4d72fdfcfa05] o.s.web.servlet.DispatcherServlet : GET \"/info.html\", parameters={}",
+        "2026-08-10T21:11:55.915-03:00 -DEBUG [e5fe48e5-952a-4726-ae86-4d72fdfcfa05] o.s.w.s.handler.SimpleUrlHandlerMapping : Mapped to ResourceHttpRequestHandler [URL [file:D:/WorkSpace/NPDev/Build/monitor-live/npdev-generated/src/main/resources/static/], classpath [META-INF/resources/], classpath [resources/], classpath [static/], classpath [public/]]",
+        "2026-08-10T21:11:55.916-03:00 -DEBUG [e5fe48e5-952a-4726-ae86-4d72fdfcfa05] o.s.web.servlet.DispatcherServlet : Completed 200 OK",
+        "2026-08-10T21:12:09.351-03:00 -DEBUG [cb828d0d-6bb3-46f0-bcfc-aab30b6178e8] o.s.web.servlet.DispatcherServlet : GET \"/actuator/health\", parameters={}",
+        "2026-08-10T21:12:09.351-03:00 -DEBUG [cb828d0d-6bb3-46f0-bcfc-aab30b6178e8] o.s.w.s.m.m.a.RequestResponseBodyMethodProcessor : Read \"application/octet-stream\" to []",
+        "2026-08-10T21:12:09.351-03:00 -DEBUG [cb828d0d-6bb3-46f0-bcfc-aab30b6178e8] o.s.w.s.m.m.a.HttpEntityMethodProcessor : Using 'application/vnd.spring-boot.actuator.v3+json', given [*/*] and supported [application/vnd.spring-boot.actuator.v3+json, application/vnd.spring-boot.actuator.v2+json, application/json]",
+        "2026-08-10T21:12:09.351-03:00 -DEBUG [cb828d0d-6bb3-46f0-bcfc-aab30b6178e8] o.s.w.s.m.m.a.HttpEntityMethodProcessor : Writing [org.springframework.boot.actuate.health.SystemHealth@2d556e61]",
+        "2026-08-10T21:12:09.351-03:00 -DEBUG [cb828d0d-6bb3-46f0-bcfc-aab30b6178e8] o.s.web.servlet.DispatcherServlet : Completed 200 OK",
+        "2026-08-10T21:12:09.525-03:00 -DEBUG [6de99a40-340e-41b9-832f-6386167a3acf] o.s.web.servlet.DispatcherServlet : GET \"/info.html\", parameters={}",
+        "2026-08-10T21:12:09.527-03:00 -DEBUG [6de99a40-340e-41b9-832f-6386167a3acf] o.s.w.s.handler.SimpleUrlHandlerMapping : Mapped to ResourceHttpRequestHandler [URL [file:D:/WorkSpace/NPDev/Build/monitor-live/npdev-generated/src/main/resources/static/], classpath [META-INF/resources/], classpath [resources/], classpath [static/], classpath [public/]]",
+        "2026-08-10T21:12:09.528-03:00 -DEBUG [6de99a40-340e-41b9-832f-6386167a3acf] o.s.web.servlet.DispatcherServlet : Completed 200 OK",
+        "2026-08-10T21:13:40.488-03:00 -DEBUG [de7eb455-d94e-4899-b31e-9a95bce9385b] o.s.web.servlet.DispatcherServlet : GET \"/actuator/health\", parameters={}",
+        "2026-08-10T21:13:40.488-03:00 -DEBUG [de7eb455-d94e-4899-b31e-9a95bce9385b] o.s.w.s.m.m.a.RequestResponseBodyMethodProcessor : Read \"application/octet-stream\" to []",
+        "2026-08-10T21:13:40.488-03:00 -DEBUG [de7eb455-d94e-4899-b31e-9a95bce9385b] o.s.w.s.m.m.a.HttpEntityMethodProcessor : Using 'application/vnd.spring-boot.actuator.v3+json', given [*/*] and supported [application/vnd.spring-boot.actuator.v3+json, application/vnd.spring-boot.actuator.v2+json, application/json]",
+        "2026-08-10T21:13:40.488-03:00 -DEBUG [de7eb455-d94e-4899-b31e-9a95bce9385b] o.s.w.s.m.m.a.HttpEntityMethodProcessor : Writing [org.springframework.boot.actuate.health.SystemHealth@35ce459d]",
+        "2026-08-10T21:13:40.488-03:00 -DEBUG [de7eb455-d94e-4899-b31e-9a95bce9385b] o.s.web.servlet.DispatcherServlet : Completed 200 OK",
+        "2026-08-10T21:13:40.661-03:00 -DEBUG [aa9be2fb-950f-41c8-9c60-c3bfe2bc0131] o.s.web.servlet.DispatcherServlet : GET \"/info.html\", parameters={}",
+        "2026-08-10T21:13:40.663-03:00 -DEBUG [aa9be2fb-950f-41c8-9c60-c3bfe2bc0131] o.s.w.s.handler.SimpleUrlHandlerMapping : Mapped to ResourceHttpRequestHandler [URL [file:D:/WorkSpace/NPDev/Build/monitor-live/npdev-generated/src/main/resources/static/], classpath [META-INF/resources/], classpath [resources/], classpath [static/], classpath [public/]]",
+        "2026-08-10T21:13:40.665-03:00 -DEBUG [aa9be2fb-950f-41c8-9c60-c3bfe2bc0131] o.s.web.servlet.DispatcherServlet : Completed 200 OK",
+        "2026-08-10T21:13:53.011-03:00 -DEBUG [3e8ffb63-4922-47f8-8bc0-da59fa3caaae] o.s.web.servlet.DispatcherServlet : GET \"/actuator/health\", parameters={}",
+        "2026-08-10T21:13:53.011-03:00 -DEBUG [3e8ffb63-4922-47f8-8bc0-da59fa3caaae] o.s.w.s.m.m.a.RequestResponseBodyMethodProcessor : Read \"application/octet-stream\" to []",
+        "2026-08-10T21:13:53.011-03:00 -DEBUG [3e8ffb63-4922-47f8-8bc0-da59fa3caaae] o.s.w.s.m.m.a.HttpEntityMethodProcessor : Using 'application/vnd.spring-boot.actuator.v3+json', given [*/*] and supported [application/vnd.spring-boot.actuator.v3+json, application/vnd.spring-boot.actuator.v2+json, application/json]",
+        "2026-08-10T21:13:53.011-03:00 -DEBUG [3e8ffb63-4922-47f8-8bc0-da59fa3caaae] o.s.w.s.m.m.a.HttpEntityMethodProcessor : Writing [org.springframework.boot.actuate.health.SystemHealth@2ea0ea24]",
+        "2026-08-10T21:13:53.011-03:00 -DEBUG [3e8ffb63-4922-47f8-8bc0-da59fa3caaae] o.s.web.servlet.DispatcherServlet : Completed 200 OK",
+        "2026-08-10T21:13:53.176-03:00 -DEBUG [f4b6ad97-0d8e-4235-9c82-3c0d0cb8bc64] o.s.web.servlet.DispatcherServlet : GET \"/info.html\", parameters={}",
+        "2026-08-10T21:13:53.178-03:00 -DEBUG [f4b6ad97-0d8e-4235-9c82-3c0d0cb8bc64] o.s.w.s.handler.SimpleUrlHandlerMapping : Mapped to ResourceHttpRequestHandler [URL [file:D:/WorkSpace/NPDev/Build/monitor-live/npdev-generated/src/main/resources/static/], classpath [META-INF/resources/], classpath [resources/], classpath [static/], classpath [public/]]",
+        "2026-08-10T21:13:53.179-03:00 -DEBUG [f4b6ad97-0d8e-4235-9c82-3c0d0cb8bc64] o.s.web.servlet.DispatcherServlet : Completed 200 OK",
+        "2026-08-10T21:14:07.929-03:00 -DEBUG [90d0a33a-674e-49aa-96c0-5b3396024957] o.s.web.servlet.DispatcherServlet : GET \"/actuator/health\", parameters={}",
+        "2026-08-10T21:14:07.929-03:00 -DEBUG [90d0a33a-674e-49aa-96c0-5b3396024957] o.s.w.s.m.m.a.RequestResponseBodyMethodProcessor : Read \"application/octet-stream\" to []",
+        "2026-08-10T21:14:07.929-03:00 -DEBUG [90d0a33a-674e-49aa-96c0-5b3396024957] o.s.w.s.m.m.a.HttpEntityMethodProcessor : Using 'application/vnd.spring-boot.actuator.v3+json', given [*/*] and supported [application/vnd.spring-boot.actuator.v3+json, application/vnd.spring-boot.actuator.v2+json, application/json]",
+        "2026-08-10T21:14:07.929-03:00 -DEBUG [90d0a33a-674e-49aa-96c0-5b3396024957] o.s.w.s.m.m.a.HttpEntityMethodProcessor : Writing [org.springframework.boot.actuate.health.SystemHealth@709e5b96]",
+        "2026-08-10T21:14:07.929-03:00 -DEBUG [90d0a33a-674e-49aa-96c0-5b3396024957] o.s.web.servlet.DispatcherServlet : Completed 200 OK"
+      ],
+      "detail": null
+    },
+    {
+      "source": "ops",
+      "directory": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\logs",
+      "files": [],
+      "tail": [],
+      "detail": "no ops script has been run through `npdev` or the Manager for this app yet"
+    },
+    {
+      "source": "manager",
+      "directory": "C:\\Users\\Marcelo\\AppData\\Local\\NPDev\\logs",
+      "files": [],
+      "tail": [],
+      "detail": "the Manager has written no log file here yet (it logs from beta1.15 onward; an older Manager created the directory and never wrote into it)"
+    }
+  ]
+}

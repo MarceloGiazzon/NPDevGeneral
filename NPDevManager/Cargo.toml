@@ -10,7 +10,10 @@ repository = "https://github.com/MarceloGiazzon/NPDevGeneral"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `protocol-asset` is what lets the Scrap Manager's filmstrip render a screenshot straight off disk
+# (convertFileSrc). Its SCOPE is narrowed in tauri.conf.json to exploration blob directories -- the
+# feature flag opens the protocol, the scope decides what it may reach, and both are needed.
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

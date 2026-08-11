@@ -301,13 +301,19 @@ $PlanJsonPath = Join-Path $OutRoot 'migration-plan.json'
 # So the wipe now spares exactly one directory, in place -- never moved to a temp location and moved
 # back, because a generation that fails in between would strand a user's data somewhere they would
 # never think to look.
-$PreservedDataRoot = Join-Path $OutRoot 'App\data'
+#
+# MONITOR_PLAN D10 adds `logs` to the same list, for the same reason one step removed: `logs\`
+# holds the app's own stdout from previous runs, and the single most valuable moment to read it is
+# right after a regeneration that was itself triggered by something going wrong. Wiping the evidence
+# of why the last run failed, as part of the attempt to fix it, is the worst possible timing.
+$SparedInsideApp = @('data', 'logs')
+$PreservedRoots = @($SparedInsideApp | ForEach-Object { Join-Path $OutRoot "App\$_" })
 if (Test-Path -LiteralPath $OutRoot) {
-  if (Test-Path -LiteralPath $PreservedDataRoot) {
-    Write-Step "Removing existing output root (preserving the app's database at App\data): $OutRoot"
+  if ($PreservedRoots | Where-Object { Test-Path -LiteralPath $_ }) {
+    Write-Step ("Removing existing output root (preserving " + (($SparedInsideApp | ForEach-Object { "App\$_" }) -join ', ') + "): $OutRoot")
     Get-ChildItem -LiteralPath $OutRoot -Force | Where-Object { $_.Name -ne 'App' } |
       ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
-    Get-ChildItem -LiteralPath (Join-Path $OutRoot 'App') -Force | Where-Object { $_.Name -ne 'data' } |
+    Get-ChildItem -LiteralPath (Join-Path $OutRoot 'App') -Force | Where-Object { $SparedInsideApp -notcontains $_.Name } |
       ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
   }
   else {

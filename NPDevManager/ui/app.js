@@ -12,7 +12,16 @@ const { listen } = window.__TAURI__.event;
 function showScreen(name) {
   document.querySelectorAll(".screen").forEach((s) => (s.hidden = s.id !== `screen-${name}`));
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.screen === name));
+  // The Scrap Manager's app picker is fed from the Monitor's last scan, so it needs the scan to have
+  // happened. Refreshing on entry rather than on a timer keeps a tab nobody is looking at from
+  // probing the machine every 30 seconds.
+  if (name === "scrap" && window.__npdevRefreshScrap) window.__npdevRefreshScrap();
+  if (name === "monitor" && window.__npdevRefreshMonitor) window.__npdevRefreshMonitor();
 }
+
+// The Monitor's "Explore this app" button crosses screens, which is the one affordance that turns
+// two tools into one flow (D9).
+window.__npdevShowScreen = showScreen;
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => showScreen(tab.dataset.screen));
