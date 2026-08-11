@@ -1252,11 +1252,29 @@ def _scaffold_git_history(target: Path) -> GitScaffold:
         raise CliError(
             f"could not create the first commit in {target}: {stderr.strip() or 'git failed'}")
 
+    # FOUND IN CI, 2026-08-11 (ai-knowledge-gate run 31481184751): `-c user.name=`/`-c user.email=`
+    # alone is not enough. Git resolves author/committer identity from the GIT_AUTHOR_*/
+    # GIT_COMMITTER_* environment variables FIRST when they are explicitly set -- including set to
+    # an empty string, which is different from unset -- and only falls back to `user.name`/
+    # `user.email` config (`-c` included) when those variables are absent. A machine that exports
+    # them empty (some CI runners; anything upstream that sanitizes identity by blanking rather than
+    # unsetting) makes the `-c` overrides silently inert: git reports "empty ident name (for <>) not
+    # allowed" instead of using the fallback. This passed on every local run because Windows
+    # subprocess environments cannot represent "set to empty string" (an empty value is dropped from
+    # the block entirely, which is indistinguishable from unset) -- the bug only reproduces on a
+    # POSIX runner, which is exactly what caught it. Fix: also force the four identity variables in
+    # the retry's own environment, so the fallback wins regardless of what the ambient environment
+    # set them to.
     fallback_name, fallback_email = "NPDev", "npdev@localhost"
+    fallback_env = dict(os.environ)
+    fallback_env["GIT_AUTHOR_NAME"] = fallback_name
+    fallback_env["GIT_AUTHOR_EMAIL"] = fallback_email
+    fallback_env["GIT_COMMITTER_NAME"] = fallback_name
+    fallback_env["GIT_COMMITTER_EMAIL"] = fallback_email
     retried = subprocess.run(
         ["git", "-c", f"user.name={fallback_name}", "-c", f"user.email={fallback_email}",
          "commit", "--quiet", "-m", message],
-        cwd=target, capture_output=True, text=True)
+        cwd=target, capture_output=True, text=True, env=fallback_env)
     if retried.returncode != 0:
         raise CliError(
             f"git has no configured identity and the fallback commit also failed in {target}: "
