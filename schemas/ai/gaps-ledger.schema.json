@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/gaps-ledger.schema.json",
+  "title": "NPDev Gaps & Roadmap Ledger",
+  "description": "docs-decoupling-2026-08-11 PLAN.md Phase 1: single source of truth for the two machine-parsed tables docs/OPEN_GAPS_AND_ROADMAP.md carries (Priority index, Fixed engine bugs). scripts/ai/extract_platform_status.py reads this directly to build knowledge/platform-status.json; scripts/docs/generate_gaps_roadmap.py renders the markdown doc from it. Cell text is kept as raw markdown (not pre-split further) so both consumers can reproduce the exact legacy row-parsing behaviour byte-for-byte -- see extract_platform_status.py's module docstring for why that matters.",
+  "type": "object",
+  "required": ["schemaVersion", "priorityIndex", "fixedEngineBugs"],
+  "properties": {
+    "schemaVersion": { "const": "gaps-ledger.v1" },
+    "priorityIndex": {
+      "type": "array",
+      "description": "One row per docs/OPEN_GAPS_AND_ROADMAP.md Sec 1 'Priority index' table entry, in the document's own display order.",
+      "items": {
+        "type": "object",
+        "required": ["idCell", "title", "category", "statusRaw", "priority"],
+        "properties": {
+          "idCell": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Raw ID column markdown, verbatim (e.g. 'ADR-0009'). extract_platform_status.py derives the true id via its own _id_of() regex, same as it did when parsing the markdown table directly."
+          },
+          "title": { "type": "string", "description": "Raw Title column markdown, verbatim." },
+          "category": { "type": "string", "description": "Raw Category column markdown, verbatim." },
+          "statusRaw": {
+            "type": "string",
+            "description": "Raw Status column markdown, verbatim (e.g. '**DONE — ...**'). Split into status/notes by extract_platform_status.py's _split_status(), unchanged from the markdown-parsing era."
+          },
+          "priority": { "type": "string", "description": "Raw Priority column markdown, verbatim (e.g. 'P2')." },
+          "size": { "type": "string", "default": "", "description": "Raw Est. size column markdown, verbatim. Not read by extract_platform_status.py -- rendering-only." }
+        },
+        "additionalProperties": false
+      }
+    },
+    "fixedEngineBugs": {
+      "type": "array",
+      "description": "One row per docs/OPEN_GAPS_AND_ROADMAP.md Sec 7 'Fixed engine bugs' table entry, in the document's own display order.",
+      "items": {
+        "type": "object",
+        "required": ["idCell", "fix"],
+        "properties": {
+          "idCell": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Raw ID column markdown, verbatim -- may carry a '*(lifted ...)*' annotation (e.g. 'ARCH-6 *(lifted 2026-07-13, LIFT-EXPR-P1-P3)*') or a multi-id shorthand (e.g. '#3/#4')."
+          },
+          "fix": { "type": "string", "description": "Raw Fix column markdown, verbatim." }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
