@@ -114,6 +114,32 @@ class ProbeFacts(unittest.TestCase):
             self.assertEqual(record["probeBaseUrl"], "http://127.0.0.1:8099")
             self.assertEqual(record["baseUrl"], "http://localhost:8099")
 
+    def test_probe_reports_the_apps_real_api_key_not_the_published_default(self):
+        """D-b. info.html publishes `X-Api-Key: dev-key` as a literal, correctly -- the page is
+        unauthenticated. But the real value comes from `trialDefaults.apiKey` via the plan, so an app
+        that configured its own key has a published default that is simply wrong. The probe answers
+        it, and answers `None` rather than guessing when the plan predates the field."""
+        with TemporaryDirectory() as tmp:
+            app = make_app(Path(tmp), name="configured",
+                           plan={**DEFAULT_PLAN, "apiKey": "not-the-default-key"})
+            record = npdev_monitor.probe_app(app)
+            self.assertEqual("X-Api-Key", record["authHeader"])
+            self.assertEqual("not-the-default-key", record["apiKey"])
+
+            legacy = make_app(Path(tmp), name="legacy", plan=DEFAULT_PLAN)
+            self.assertIsNone(npdev_monitor.probe_app(legacy)["apiKey"],
+                              "a plan with no apiKey is unknown, not 'dev-key' -- inventing the "
+                              "default here would recreate the very staleness this fixes")
+
+    def test_exported_bundle_redacts_the_api_key_but_keeps_the_header_name(self):
+        # The probe record goes into the support bundle. The key is a credential; the header name is
+        # not, and is useless on its own -- so redaction must take exactly one of the two.
+        with TemporaryDirectory() as tmp:
+            app = make_app(Path(tmp), plan={**DEFAULT_PLAN, "apiKey": "not-the-default-key"})
+            redacted = npdev_monitor.redact(npdev_monitor.probe_app(app))
+            self.assertEqual("<redacted>", redacted["apiKey"])
+            self.assertEqual("X-Api-Key", redacted["authHeader"])
+
     def test_stopped_app_is_stopped_not_error(self):
         with TemporaryDirectory() as tmp:
             app = make_app(Path(tmp), plan={**DEFAULT_PLAN, "serverPort": 59997})

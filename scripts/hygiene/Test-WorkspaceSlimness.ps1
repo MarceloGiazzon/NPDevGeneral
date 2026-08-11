@@ -24,7 +24,29 @@ param(
     # went 26 -> 27 MB of 75, so the limit that actually tracks bloat has not moved. This is the same
     # case as the 3400 -> 3500 recalibration: small tracked files that are exactly what the repo
     # should hold, not generated output that should never have been here.
-    [int]$MaxFileCount = 3600,
+    #
+    # 3600 -> 4000, 2026-08-11. Owner decision on close-the-gaps-2026-08-10 D-c, which had proposed
+    # retiring the count outright on the grounds that it moved 3400 -> 3500 -> 3600 in three days
+    # while the size limit moved 1 MB. Keep it, with room, was the answer.
+    #
+    # MEASURED BEFORE WRITING THIS, because the obvious justification turned out to be wrong. The
+    # guard blocked two commits during that session and the tempting story -- "it fires at whoever is
+    # running the gates" -- does not survive reading the report: the violations were
+    # `NPDevSamples\simple-contact-intake\Output` (824 files), `dsl-conformance-max\Output` (243),
+    # and three `.gradle` trees. That is a generated sample Output tree sitting in the source
+    # workspace, which is EXACTLY what this check is for (docs/BUILD_OUTPUT_LOCATION_POLICY.md), and
+    # the count was right to fire. `clean-workspace-state.ps1` is the remedy and it worked both times.
+    #
+    # So be clear about what 4000 does and does not buy. Cleaned, the tree measures 3542; mid-gate it
+    # measures 4639. **4000 does not stop a gate run from tripping this** -- nothing short of
+    # retiring the check would, and it should not, because those 1,067 files genuinely do not belong
+    # here. What 4000 buys is ~450 of headroom for legitimately tracked files, so that ordinary work
+    # stops bumping the ceiling every few days and the next trip is more likely to mean something.
+    #
+    # The SIZE limit remains the one that tracks bloat: 28 of 75 MB, untouched across all four
+    # raises. If this needs raising a fifth time, retire it instead and say so in
+    # docs/WORKSPACE_CLEANUP_POLICY.md.
+    [int]$MaxFileCount = 4000,
     [decimal]$MaxSizeMB = 75,
     [int]$MaxScriptsFileCount = 500,
     [decimal]$MaxScriptsSizeMB = 10,

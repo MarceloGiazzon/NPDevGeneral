@@ -35,10 +35,33 @@ pwsh -File scripts\hygiene\Test-WorkspaceSlimness.ps1
 Default limits:
 
 - maximum workspace size, excluding `.git`: `75 MB`
-- maximum workspace file count, excluding `.git`: `3400` (raised from 3000 in Move 12 —
-  Moves 6-11 landed ~180 legitimate new tracked files (typed-surface AST/compiled classes,
-  validation tests, ledger items); the residue causing the original overage was rebuildable
-  trees, not source, and those are cleaned by the commands below, not by raising this number)
+- maximum workspace file count, excluding `.git`: `4000`
+
+  **This number has been raised four times (3000 → 3400 → 3500 → 3600 → 4000) while the size limit
+  has never moved.** Each raise was justified and recorded in `Test-WorkspaceSlimness.ps1`'s own
+  parameter comment, and that is exactly how a limit stops meaning anything, so the history matters
+  more than the current value:
+
+  - `3000 → 3400` (Move 12) — ~180 legitimate new tracked files; the actual overage was rebuildable
+    trees, cleaned by the commands below rather than by the number.
+  - `3400 → 3500` (2026-08-08) and `3500 → 3600` (2026-08-10) — small tracked fixtures and modules.
+  - `3600 → 4000` (2026-08-11, owner decision on close-the-gaps-2026-08-10 D-c, which had proposed
+    retiring the count instead).
+
+  **Be precise about what 4000 buys, because the obvious story is wrong.** The count blocked two
+  commits during that session, and it is tempting to call that a false positive on whoever was
+  running the gates. Reading the report says otherwise: the violations were
+  `NPDevSamples\simple-contact-intake\Output` (824 files), `dsl-conformance-max\Output` (243) and
+  three `.gradle` trees — a generated sample Output tree in the source workspace, which is exactly
+  what this check exists to catch. It was right, and `clean-workspace-state.ps1` fixed it.
+
+  Cleaned, the tree measures **3542**; mid-gate-run it measures **4639**. So 4000 does *not* stop a
+  gate run from tripping this, and it should not — those files do not belong here. What it buys is
+  ~450 of headroom for legitimately tracked files, so ordinary work stops bumping the ceiling every
+  few days and the next trip is more likely to mean something.
+
+  **If it needs raising a fifth time, retire it rather than raise it.** The size limit is the one
+  that has actually tracked bloat (28 of 75 MB through all four raises).
 - maximum `scripts` size: `10 MB`
 - maximum `scripts` file count: `500`
 - maximum `scripts\reports\out` size: `15 MB`

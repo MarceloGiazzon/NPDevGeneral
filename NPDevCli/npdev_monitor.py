@@ -459,6 +459,27 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
         "driverClassName": plan.get("driverClassName") or None,
     }
 
+    # D-b (close-the-gaps-2026-08-10): the API key the app ACTUALLY accepts, read from the plan.
+    #
+    # `InfoPageEmitter` publishes the row "API key header: X-Api-Key: dev-key" as a LITERAL, and that
+    # is the right call for info.html -- the page is served unauthenticated, so it must never carry
+    # an app's real key. But the value is not always `dev-key`: `OperationalRunbookEmitter` reads
+    # `config.json`'s `trialDefaults.apiKey` and only falls back to `dev-key`, then writes the result
+    # into the plan, which is what the app's own `Smoke-Test.ps1` puts in its header. So an app that
+    # configured a different key has a published default that is simply wrong, and the reader has no
+    # way to tell. The probe is the right place to answer it: it is already the surface for "facts
+    # info.json deliberately does not carry".
+    #
+    # Named `apiKey` on purpose -- `redact()`'s key pattern matches it, so the export bundle and the
+    # assistant payload replace it with <redacted> with no extra rule. `authHeader` deliberately does
+    # NOT match that pattern, so the header NAME survives redaction; knowing which header to send is
+    # not a secret and is useless without the value.
+    #
+    # None, never an invented "dev-key", when the plan predates the field: an unresolvable input is
+    # unknown, not a guess (the same X0 rule REG-131/REG-136 apply).
+    record["authHeader"] = "X-Api-Key"
+    record["apiKey"] = plan.get("apiKey") or None
+
     # --- PROBED facts: exactly the rows info.json deliberately does NOT carry (D2-a) ----------
     data_root = _resolve_app_relative(app_root, plan.get("resolvedDataRoot"))
     record["dataRoot"] = data_root

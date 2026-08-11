@@ -506,8 +506,22 @@ function renderInspector(probe) {
 
 function infoRow(record, probe) {
   const live = probe.health === "running" && probe.baseUrl;
-  const value = record.value != null ? record.value
+  let value = record.value != null ? record.value
     : (live ? probe.baseUrl + record.path : record.path);
+
+  // D-b: info.json's "API key header" row is a LITERAL `X-Api-Key: dev-key`, and it has to be --
+  // info.html is served unauthenticated, so it must never bake an app's real key. But the real value
+  // comes from config.json's `trialDefaults.apiKey` via the resolved plan, so an app that configured
+  // its own key has a published default that is quietly wrong. The probe now reads the actual value
+  // (npdev_monitor.probe_app), and this is where the two meet: show the app's own key, and SAY that
+  // the page still advertises the default, rather than silently replacing one string with another.
+  if (probe.apiKey && probe.authHeader && String(record.value || "").startsWith(probe.authHeader + ":")) {
+    const advertised = String(record.value).slice(probe.authHeader.length + 1).trim();
+    if (advertised !== probe.apiKey) {
+      value = `${probe.authHeader}: ${probe.apiKey}   (info.html still advertises "${advertised}")`;
+    }
+  }
+
   const openable = record.openable && live;
   return `
     <div class="irow${record.important ? " imp" : ""}">
