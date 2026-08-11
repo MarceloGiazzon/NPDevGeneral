@@ -25,6 +25,12 @@ entry for the version being released, and HEAD is tagged v<version>. Deliberatel
 does NOT re-run test suites (run-generator-gate.ps1/run-runtimehost-gate.ps1 own that) and cannot
 check trademark clearance (a human step, see docs/adr/ADR-0007-distribution-model.md) -- it only
 refuses an untagged/unchangelogged release, per LNCH-23's own DoD wording.
+
+md-zero-2026-08-11 PLAN.md Phase 3: the CHANGELOG-entry check used to grep CHANGELOG.md's raw text
+for a version heading. It now checks scripts/policy/changelog-versions.json instead -- see that
+file's own `why` for the reasoning (CHANGELOG.md's content is the artifact being verified, so a
+generated-from-JSON changelog would just move the question, not answer it) and for a real,
+pre-existing release-process gap this change surfaced.
 #>
 
 $violations = New-Object System.Collections.Generic.List[string]
@@ -35,16 +41,21 @@ if (-not (Test-Path -LiteralPath $licensePath)) {
 }
 
 $changelogPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "CHANGELOG.md"
+$changelogVersionsPolicyPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\policy\changelog-versions.json"
 $changelogHasEntry = $false
 if (-not (Test-Path -LiteralPath $changelogPath)) {
     $violations.Add("CHANGELOG.md is missing at repo root.") | Out-Null
 } elseif (-not [string]::IsNullOrWhiteSpace($ExpectedVersion)) {
-    $changelogText = Get-Content -LiteralPath $changelogPath -Raw
-    $escapedVersion = [Regex]::Escape($ExpectedVersion)
-    if ($changelogText -match ("(?m)^\s*##\s*\[?v?" + $escapedVersion + "\]?")) {
-        $changelogHasEntry = $true
+    if (-not (Test-Path -LiteralPath $changelogVersionsPolicyPath)) {
+        $violations.Add("scripts/policy/changelog-versions.json is missing.") | Out-Null
     } else {
-        $violations.Add("CHANGELOG.md has no entry for version '$ExpectedVersion' (expected a heading like '## [$ExpectedVersion]').") | Out-Null
+        $changelogVersionsPolicy = Get-Content -Raw -LiteralPath $changelogVersionsPolicyPath | ConvertFrom-Json
+        $knownVersions = @($changelogVersionsPolicy.versions | ForEach-Object { [string]$_ })
+        if ($knownVersions -contains $ExpectedVersion) {
+            $changelogHasEntry = $true
+        } else {
+            $violations.Add("scripts/policy/changelog-versions.json has no entry for version '$ExpectedVersion' -- add it in the same commit CHANGELOG.md gets its new '## [$ExpectedVersion]' heading.") | Out-Null
+        }
     }
 }
 
