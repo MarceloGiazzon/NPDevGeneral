@@ -20,4 +20,4 @@ detail: |
   missing mail-inproc/mail-smtp, missing CI diagnostics, and a ".." in an artifact upload path.
   Caveat noted at closure: the green run was on an older branch line; confirming green on the latest
   line was a scheduled follow-up.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-10
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-10

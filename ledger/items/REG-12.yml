@@ -24,4 +24,4 @@ detail: |
   pack-composing apps), a static controller allowlist silently 404ing the new endpoint, and a missing
   Gradle dependency declaration causing NoClassDefFoundError. Verified green on real Linux GitHub
   Actions (run 29943008077), not just Windows.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-12
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-12

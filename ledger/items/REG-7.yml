@@ -23,4 +23,4 @@ detail: |
   break Flyway's own baseline detection -- a real bug found and fixed via live boot rehearsal).
   Verified: full RuntimeHost suite green after each sub-phase, dedicated test classes for all three,
   live boot rehearsals against a real assembled app found and fixed two real ordering bugs.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-7
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-7

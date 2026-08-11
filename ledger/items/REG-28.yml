@@ -19,4 +19,4 @@ detail: |
   recorded for from=A does not fire when live-stored is Z, and does fire when live-stored is A.
   Verified live: real boot rehearsal against superuser-admin-console confirmed both the non-firing and
   firing cases.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-28
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-28

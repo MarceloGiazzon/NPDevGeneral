@@ -88,7 +88,7 @@ function Get-PathNeutralityExcludedPaths {
         [pscustomobject]@{ path = "docs/ROADMAP_BOUNDARY_POLICY.md"; reason = "Accepted CP0 evidence policy intentionally records local checkpoint path options." },
         [pscustomobject]@{ path = "docs/POST_BETA0_HUMAN_ACTION_REGISTER.md"; reason = "Accepted CP0 human-action evidence records prior local bundle paths." },
         [pscustomobject]@{ path = "docs/OFFICIAL_BETA_RELEASE_RUNBOOK.md"; reason = "Historical Beta0 release runbook is outside CP5 portable quick-start scope." },
-        [pscustomobject]@{ path = "docs/RELEASE_BLOCKER_EXECUTION_ROADMAP.md"; reason = "Historical release-blocker evidence path is outside CP5 portable quick-start scope." },
+        [pscustomobject]@{ path = "docs/archive/programme-history/RELEASE_BLOCKER_EXECUTION_ROADMAP.md"; reason = "Historical release-blocker evidence path is outside CP5 portable quick-start scope." },
         [pscustomobject]@{ path = "**/MIGRATION_DIGEST.md"; reason = "Historical migration digests preserve source-local path provenance." },
         [pscustomobject]@{ path = "scripts/quality/run-controlled-command-runner-tests.ps1"; reason = "Intentional security-test fixture uses drive-letter examples." }
     )

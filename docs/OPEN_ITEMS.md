@@ -2,9 +2,10 @@
 
 > **GENERATED FILE — do not hand-edit.** Source: `ledger/items/*.yml`, the authoritative
 > record for every tracked id. Regenerate with `python scripts/quality/generate_open_items.py`.
-> See `ledger/README.md` for the schema. `docs/NPDEV_OPEN_ITEMS_REGISTER.md` is archived-in-
-> place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
-> no longer hand-edited for status.
+> See `ledger/README.md` for the schema.
+> `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md` is archived-in-place (its
+> prose investigation narrative, linked from each item's `legacyDetailRef`) and is no longer
+> hand-edited for status.
 
 **177 item(s) migrated: 0 open/partial, 177 done.**
 
@@ -600,7 +601,7 @@ lifecycle, and a live additive-change proof on superuser-admin-console showed th
 correctly skipping destructive recreation. 2 apps (lnch1-rehearsal,
 simple-user-registry-h2local-freshdb) are deliberately kept on blanket by documented design.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-1`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-1`
 
 ### REG-10 — LNCH-19: Linux CI observed green for the first time
 
@@ -621,7 +622,7 @@ missing mail-inproc/mail-smtp, missing CI diagnostics, and a ".." in an artifact
 Caveat noted at closure: the green run was on an older branch line; confirming green on the latest
 line was a scheduled follow-up.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-10`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-10`
 
 ### REG-100 — CLOSED -- three silent-answer sites found by the X0 audit, now fixed: a $ref that could not resolve wrote null (while the SAME class threw for id refs), a runQuery step naming an undeclared query returned an UNFILTERED list, and a typo'd $root.<field> visibleWhen predicate went unvalidated
 
@@ -1461,7 +1462,7 @@ copied verbatim by FinalAppAssembler, so a generated app's own gradlew bootJar c
 machine but the original dev box. Removed from the template so generated apps use gradle's portable
 default cache.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-11`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-11`
 
 ### REG-110 — LC-D2 (the acceptance-scenario runner) and LC-D3 (the closed authoring loop) were already fully implemented in NPDevCli/npdev_cli.py -- apparently from an earlier Move 10 session -- but had never been run, tested, or documented anywhere; a closure spec (Move 13) re-described them as needing to be built
 
@@ -2078,7 +2079,7 @@ pack-composing apps), a static controller allowlist silently 404ing the new endp
 Gradle dependency declaration causing NoClassDefFoundError. Verified green on real Linux GitHub
 Actions (run 29943008077), not just Windows.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-12`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-12`
 
 ### REG-120 — A concept whose create is delegated to a declared Flow (input.mode: create) AND is also exposed via the generic CRUD create endpoint gets DOUBLE-PERSISTED on every create -- the flow's own createConcept step writes the row through the kernel persistence capability, then the SAME generated service method immediately writes it AGAIN via saveWithIntegrityMapping -- and the two writes can race, throwing a spurious 500 (or, when they don't race, silently perform a wasted redundant write)
 
@@ -2706,7 +2707,7 @@ first cold run. Real finding filed (not silently fixed): the user manual's own c
 updateConcept examples omit the persistence capability/binding block, producing a model that
 validates cleanly but 500s at runtime with no diagnostic naming the real cause.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-13`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-13`
 
 ### REG-130 — npdev --version's story is only half-resolved: npdev_cli.py's own VERSION constant is 0.9.0, NPDevContract/dsl/build.gradle's is 0.1.0, and the git tag is beta1.4, with no documented relationship between the three -- a user reading any one of them has no way to know it is not the whole picture
 
@@ -3346,7 +3347,7 @@ on an undocumented RuntimeHost-libs staging prerequisite whose own suggested fix
 standalone in a fresh worktree; the doc's claimed 400 status for an invariant violation is actually
 422.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-14`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-14`
 
 ### REG-140 — Every generated app was hard-pinned to Java 17 (build.gradle.template's toolchain literal), with no per-app way to request a newer JDK -- deps-and-java/PLAN.md P2
 
@@ -3699,7 +3700,7 @@ no mark to defend and no trademark sought, so there is nothing to clear and noth
 item is complete, not deferred. Two preliminary name-collision findings on file ("NP DEV Soluções em
 T.I.", NPDEV LIMITED UK #14176093) are informational only and block nothing.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-15`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-15`
 
 ### REG-16 — The other 23 launch items had zero adversarial review
 
@@ -3718,7 +3719,7 @@ row-level authz, export/PDF, etc.) were tracked as a residual programme, REG-16-
 reopening this item's scope -- that programme finished all six rounds 2026-07-25, closing this
 item fully: no launch surface is left at zero adversarial review.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-16`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-16`
 
 ### REG-16-resid — Adversarial review of the other ~21 launch surfaces (6-round programme)
 
@@ -3747,7 +3748,7 @@ fixed anyway). Net: 4 surfaces that stood at zero adversarial review now each ha
 list and findings document; every round's residual MEDIUM findings are individually tracked, not
 silently dropped.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-16-resid`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-16-resid`
 
 ### REG-17 — No third party had ever reproduced any verification
 
@@ -3770,7 +3771,7 @@ filed not fixed: a genuinely clean container's anonymous `git clone` got a 404/c
 the repo was private at the time, so an uninvited third party could not have cloned it regardless of
 CI's green status (repo visibility is an owner call, not an AI decision).
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-17`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-17`
 
 ### REG-18 — Login timing side-channel enables username enumeration
 
@@ -3783,7 +3784,7 @@ PasswordHasher.verifyDecoy now runs a real PBKDF2 against a fixed decoy hash on 
 no-user and no-credential login paths, so response timing no longer discloses whether a username
 exists. RED-first PasswordHasherDecoyTest.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-18`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-18`
 
 ### REG-19 — LoginThrottle.windowsByKey unbounded -- memory-exhaustion DoS via unique-username spray
 
@@ -3795,7 +3796,7 @@ exists. RED-first PasswordHasherDecoyTest.
 Hard cap (100k) added with expired-first + oldest-live eviction and a cutoff tie-break. RED-first
 LoginThrottleBoundedTest sprays 3x the cap.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-19`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-19`
 
 ### REG-2 — IT-EXTPG-1: 10 integration tests unrunnable; root cause re-opened then found
 
@@ -3814,7 +3815,7 @@ npdev.trial.database-override:true). Running the suite surfaced two more real bu
 text=uuid cast in PublicationRollbackE2EIT, and LoginController crashing verify-only JWT (fixed
 under REG-9). 10/10 green on real Postgres.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-2`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-2`
 
 ### REG-20 — No defense against password-spraying (limiter was per-(tenant,username) only)
 
@@ -3827,7 +3828,7 @@ Added a per-source-IP arm to LoginThrottle (default 50/window vs 10/username), w
 through LoginController; a success clears the username window but not the IP window. RED-first
 LoginThrottleIpSprayTest.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-20`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-20`
 
 ### REG-21 — password-reset/request endpoint unthrottled (email-bomb / token-row spam)
 
@@ -3839,7 +3840,7 @@ LoginThrottleIpSprayTest.
 PasswordResetController reuses the same limiter as login (5/user, 20/IP); over-limit returns the
 same generic 200 but sends no email and creates no token. RED-first: the 6th request sends no email.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-21`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-21`
 
 ### REG-22 — ActuatorAdminGuardFilter trusted a JWT claim-role without live re-resolution or tokenVersion check
 
@@ -3852,7 +3853,7 @@ SuperUserCredentialAuthFilter now sets a marker only after a live super-key reso
 actuator gate requires that marker, so a JWT-borne (or revoked) SUPERUSER role no longer opens
 metrics. RED-first: a role-only claim now 403s.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-22`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-22`
 
 ### REG-23 — tv-less (tokenVersion-less) JWTs are never revocation-checked, by backward-compat design
 
@@ -3868,7 +3869,7 @@ instant, default off = today's lenient behavior); once reached, tv-less tokens a
 paths. Bridged Spring->system-property by TvlessTokenCutoverBridge (fails fast on a malformed
 value). Verified: 4/4 IdentityRoleLookupTvlessRevocationTest.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-23`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-23`
 
 ### REG-24 — "default" tenant sentinel collides with a real tenant literally named default
 
@@ -3882,7 +3883,7 @@ reserve "default": TenantRegistryService.create rejects it, IdentityProvisioning
 .ensureTenantRegistered skips it, TenantAutoRegistrationRunner's SQL excludes it. No real "default"
 tenant can ever be created, so the isolation collision this finding worried about cannot arise.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-24`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-24`
 
 ### REG-25 — Tenant match was case-sensitive -- isolation-bucket fragmentation (not a cross-tenant bypass)
 
@@ -3901,7 +3902,7 @@ default, -Apply, -Force) lowercases tenant_id across the registry + every busine
 collision detector that skips + reports merge-risk tables unless -Force. Proven end-to-end on a
 seeded H2 DB.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-25`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-25`
 
 ### REG-26 — Granular JWT error codes disclose why a token failed validation (informational, WONTFIX)
 
@@ -3915,7 +3916,7 @@ signature), not any secret or account state, and materially aid operator/integra
 Collapsing to a single generic error would trade real diagnosability for negligible disclosure
 reduction.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-26`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-26`
 
 ### REG-27 — REG-8 Trigger C false-negative for a fresh-installed build (rollback silently re-added a dropped column)
 
@@ -3935,7 +3936,7 @@ the DB has genuinely been at is visible to Trigger C. RED-first: two new tests i
 SchemaLifecycleExecutorDatabaseMigratedPastBuildTest (a direct fresh-install-records-history
 assertion, and the honest end-to-end with no hand-seeded row).
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-27`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-27`
 
 ### REG-28 — Stale mark-done fast-forward (REG-7.2): a leftover mark could authorize an unrelated future boot
 
@@ -3955,7 +3956,7 @@ recorded for from=A does not fire when live-stored is Z, and does fire when live
 Verified live: real boot rehearsal against superuser-admin-console confirmed both the non-firing and
 firing cases.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-28`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-28`
 
 ### REG-29 — Claim-release-on-refusal was correct but untested (migration collision claim)
 
@@ -3975,7 +3976,7 @@ boot's own claim was acquired, asserts the throw and that the claim store is emp
 RED-first: verified the test fails when the finally's release is neutralized, passes with the real
 code.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-29`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-29`
 
 ### REG-3 — GATE-REL-1: node_modules/slimness conflict was already fixed; the real gap was stale evidence reports
 
@@ -3996,7 +3997,7 @@ distinguishes precondition-unmet (exit 2) from check-failed (exit 1). Found and 
 that could only ever emit passing evidence, plus its stale fixture that had silently disabled the
 model-root additionalProperties guard.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-3`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-3`
 
 ### REG-30 — Duplicate mark-done rows each survive one consume, letting a second future boot fast-forward
 
@@ -4012,7 +4013,7 @@ transition at insert time. Verified live against superuser-admin-console: re-POS
 (from, to) pair via the real ControlPanel API returned 500 and GET /marks still showed exactly one
 row. Unit coverage: duplicateMarkForTheSameTransitionIsRejected.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-30`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-30`
 
 ### REG-31 — run-script-automation-quality's structured-report-contract check was mis-calibrated (helper-name grep, not a behavior test)
 
@@ -4031,7 +4032,7 @@ ANY mechanism). The 3 genuinely non-compliant scripts excluded via a dated backl
 silently dropped and not mass-migrated. Verified locally: exits 0, 65/65 scoped scripts pass (was
 9/68). CI's continue-on-error removed -- blocking again.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-31`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-31`
 
 ### REG-32 — npdev-ci-validation.yml Bootstrap step aggregated ~21 maturity reports its producers never generated
 
@@ -4053,7 +4054,7 @@ prior fix had deliberately retired to false. Verified: errorCount 0 (was 10). CI
 continue-on-error kept intentionally (not removed) since REG-35's Gradle-native residual still
 trips on the same tree.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-32`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-32`
 
 ### REG-33 — CLI's on-demand npm install for the JSON-schema validator failed on Windows from a Python subprocess
 
@@ -4069,7 +4070,7 @@ cwd=validator_root (no --prefix). Verified locally RED->GREEN: removed node_modu
 `npdev migrate`, install ran from the validator dir, exit 0. CI also pre-installs the deps in the
 Windows job as belt-and-suspenders.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-33`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-33`
 
 ### REG-34 — Windows CI job runs Testcontainers (Linux-container) tests that windows-latest can't run
 
@@ -4107,7 +4108,7 @@ reachable from the Windows job's actual commands, or that wires `integrationTest
 permanent gate for that was judged out of scope for this LOW item (matches C10's own "no action
 expected" framing) rather than folded in here.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-34`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-34`
 
 ### REG-35 — Gradle-native postBeta0MaturityCheck had the same missing-vs-invalid conflation REG-32 fixed in PowerShell, plus an overly strict nested artifact schema
 
@@ -4144,7 +4145,7 @@ error kept intentionally: the same shell step also runs 4 other commands
 run-portable-tooling-check.ps1) whose own precondition-unmet-vs-exit-code handling was not
 re-audited here -- flipping the flag for the whole step is a separate decision.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-35`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-35`
 
 ### REG-36 — Oversized idempotency keys could exceed the Postgres btree index-entry size limit
 
@@ -4165,7 +4166,7 @@ PostgreSQL mode, which does not enforce this limit; that gap is why the bug ship
 closed (a real-Postgres PostgresIdempotencyKeyBoundTest added). Tests: IdempotencyKeysTest (6),
 InProcIdempotencyStoreTest (+3).
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-36`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-36`
 
 ### REG-37 — Circuit-breaker failure-count read-decide-write was not a single atomic critical section
 
@@ -4186,7 +4187,7 @@ still pass. Tests: InProcCircuitBreakerStateStoreTest (8 threads x 200),
 JdbcCircuitBreakerStateStoreConcurrencyTest on H2, PostgresCircuitBreakerStateStoreTest on the real
 engine.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-37`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-37`
 
 ### REG-38 — Additive-migration constraints were not idempotent on H2 -- redeploy failed with duplicate constraint
 
@@ -4204,7 +4205,7 @@ ALTER TABLE ... DROP CONSTRAINT IF EXISTS <name> before the ADD (both verbs supp
 Postgres; Postgres path unchanged). RED->GREEN SchemaRealizationEmitterAdditiveColumnsTest; verified
 live -- WmsOffice now boots cleanly against the same existing DB that previously refused.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-38`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-38`
 
 ### REG-39 — Stale built-in identity pack copy caused a silent, unhelpful auth failure -- fixed platform-wide
 
@@ -4227,7 +4228,7 @@ tokenVersion from the platform's own identity pack, regenerated an app against a
 confirmed no false-positive on a healthy pack. A full rebuild-app run against WmsOffice confirmed no
 regression on the originally-affected app.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-39`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-39`
 
 ### REG-4 — T-F1: load-sensitive SandboxedPluginExecutionEngine test flake, root cause fixed
 
@@ -4245,7 +4246,7 @@ Fixed in SandboxedPluginExecutionEngine.execute (read-and-clear a stray caller i
 bounded get(), re-assert it after) -- an engine robustness fix, not a tolerance widening. Removed
 @Tag("load-sensitive") from timesOutSlowPluginExecution; 6/6 green live.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-4`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-4`
 
 ### REG-40 — Additive migration never emitted CREATE TABLE -- a new concept on an existing DB failed to boot
 
@@ -4267,7 +4268,7 @@ scenario): boot with a 1-concept model, insert a row, upgrade to a 2-concept mod
 database -- the new table exists empty, the old row survives, schema history records APPLIED not a
 refusal. Orthogonal to REG-38 (that was constraint idempotency on EXISTING tables).
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-40`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-40`
 
 ### REG-41 — DefaultConceptGateway.save() leaked a row's lifecycle status to an unauthorized caller before authz ran
 
@@ -4286,7 +4287,7 @@ check). RED->GREEN RowLevelAuthorizationAttackTest (both InMemory and JDBC/H2 ad
 RED pre-fix (leaked the status via the lifecycle exception), GREEN after (ROW_SCOPE_DENIED, no
 status disclosed).
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-41`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-41`
 
 ### REG-42 — ConceptGateway.query() leaked a row-scoped count through total/hasMore pagination metadata
 
@@ -4304,7 +4305,7 @@ filters/sorts, row-scope filtered, replaces total/hasMore; every other concept's
 unaffected. RED->GREEN: extended an existing test to assert total==1/hasMore==false (not the
 tenant's real count of 2), confirmed RED pre-fix, GREEN after, both adapters.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-42`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-42`
 
 ### REG-43 — TenantRegistryService.isActive silently fail-opened on any read failure, with no log at any level
 
@@ -4324,7 +4325,7 @@ unchanged behavior; any OTHER SQL error -> fail CLOSED, log ERROR. RED->GREEN
 TenantRegistryServiceTest (+3): exactly one test RED against pre-fix code, missing-table fail-open
 test stays green, proving the fix discriminates rather than flipping everything closed.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-43`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-43`
 
 ### REG-44 — crud.kernelControlled=false silently removed ALL coarse permission/audit checks, not just access.write
 
@@ -4345,7 +4346,7 @@ compiled model and resolved settings meet. Resolved per-concept (overridable at 
 app-level read would miss a targeted opt-out). 5 tests incl. the concept-scoped override and an
 end-to-end check that nothing is emitted when generation is refused.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-44`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-44`
 
 ### REG-45 — Flow resume was tenant-scoped but not actor-scoped -- any same-tenant user could resume another's flow
 
@@ -4364,7 +4365,7 @@ most needs to recover. Verified before tightening that only the HTTP resume endp
 policy -- the kernel's event-driven and scheduler resume paths do not -- so background recovery is
 unaffected. 2 new tests; the pre-existing resume test still passes unchanged.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-45`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-45`
 
 ### REG-46 — Persistence capability port had no tenant parameter -- flow-step persistence writes were unscoped
 
@@ -4387,7 +4388,7 @@ against the interface). Scoping applied only where a tenant_id column actually e
 live catalog). 7 tests incl. delete-is-not-an-existence-oracle and save-stamps-ownership-over-a-
 payload-claim.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-46`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-46`
 
 ### REG-47 — Correlation ids had no length cap -- an oversized caller-chosen id could hit the same btree limit as REG-36
 
@@ -4405,7 +4406,7 @@ look it up again via @PathVariable on timeline/event-query controllers -- digest
 id different from the one the caller holds. 6 tests incl. the exact boundary, trim-before-measure,
 and a guard that the ceiling stays inside the btree limit alongside its composite-index companions.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-47`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-47`
 
 ### REG-48 — DefaultConceptGateway.delete() had the same authz-after-invariant-eval ordering bug REG-41 fixed in save()
 
@@ -4425,7 +4426,7 @@ after (ROW_SCOPE_DENIED, invariant never evaluated). delete() is store-agnostic,
 coverage is the complete adapter matrix for this bug. Re-verified live against the platform source
 directly (never exposed to the REG-49 staleness class).
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-48`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-48`
 
 ### REG-49 — M1-SEC-GENCODE finding withdrawn as a false positive -- the reviewed pack was stale, not the platform
 
@@ -4449,7 +4450,7 @@ delete-mode flow, compiles it for real, and runs it against real (not mocked) ga
 components, asserting the flow's own execute() call never happens when the gateway denies. RED->GREEN
 confirmed twice by temporarily reordering the mustache template.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-49`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-49`
 
 ### REG-5 — GATE-OBS-1a: surface-governance drift checks were advisory and unowned
 
@@ -4468,7 +4469,7 @@ package-convention checks were a redundant proxy that would only duplicate the a
 rewritten. Retired to informational-only (reversible) with a dated rationale in
 run-observability-hardening.ps1, run-runtimehost-gate.ps1, and OPEN_GAPS_AND_ROADMAP.md.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-5`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-5`
 
 ### REG-50 — PostgresPersistenceCapabilityAdapter fell back to UNSCOPED reads/writes on a transient metadata-read failure
 
@@ -4492,7 +4493,7 @@ methods pre-fix (silently fell back, no denial) and on a hostile-identifier case
 syntax-error confirmed), GREEN after (all 3 throw naming the table/operation; the hostile field name
 coerces to a syntactically valid but nonexistent column). (c) split out as REG-52.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-50`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-50`
 
 ### REG-51 — External-AI review packs sliced from generated code carried no provenance -- exactly how REG-49 became a false positive
 
@@ -4515,7 +4516,7 @@ regenerated sample builds cleanly. A secondary defence-in-depth gate (provenance
 check-register-consistency.py) flags EXISTING run records with unresolved provenance when backing
 evidence is still available locally -- never flagging a record whose evidence is simply absent.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-51`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-51`
 
 ### REG-52 — TenantIsolationPolicy.STRICT_EQUALS normalize() only trimmed, never lowercased -- inconsistent with ExecutionContext
 
@@ -4534,7 +4535,7 @@ case-sensitive test-double lambda used elsewhere in the same file): context tena
 to acme), request tenant "ACME" (raw, unnormalized); confirmed RED pre-fix (denied a same-tenant
 read), GREEN after.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-52`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-52`
 
 ### REG-53 — SqlTypeSupport hardcoded VARCHAR(255) for every string/enum field, ignoring a declared maxLength
 
@@ -4558,7 +4559,7 @@ different type strings; the bug was entirely upstream. RED->GREEN: a new test dr
 pipeline end-to-end (not hand-written type strings) -- confirmed RED pre-fix (a 255->10 narrowing
 produced NO diff item at all), GREEN after (correctly classified as a destructive narrowing).
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-53`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-53`
 
 ### REG-54 — Two dead private methods left behind by the T2.B.4 SchemaLifecycleExecutor split
 
@@ -4577,7 +4578,7 @@ dangling {@link #hasTypeChange} javadoc reference and three test files' doc-comm
 referenced hasTypeChange()/classify() as if still live were updated to describe the historical
 pre-SER-P4.8 behavior instead. NPDevRuntimeHost SchemaLifecycleExecutor* suite green after.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-54`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-54`
 
 ### REG-55 — Sandboxed plugin overload resolution matched by arg count only, not type -- "Ambiguous" false positive
 
@@ -4601,7 +4602,7 @@ SandboxedPluginExecutionEngineTest#disambiguatesOverloadsBySameArgCountByActualA
 confirmed RED against the pre-fix code, GREEN after. Full NPDevRuntimeHost suite 404/0, no
 regression.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-55`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-55`
 
 ### REG-56 — Flow resume rebuilds ExecutionContext with the wrong actor/role, three different wrong ways
 
@@ -4627,7 +4628,7 @@ checkout: the notify-approval capabilityCall step re-added to the durable-workfl
 reproduced CAPABILITY_FAILED on a real kill+restart before the fix; 3/3 clean runs after. Plus
 ExecutionContextResumingTest (3/3) and the full NPDevKernel:kernel suite (163/163), no regression.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-56`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-56`
 
 ### REG-57 — H2's default 500ms WRITE_DELAY can lose committed flow-instance checkpoints across a hard kill
 
@@ -4653,7 +4654,7 @@ demo's workaround sleep removed, run-durable-resume-demo.ps1 reproduced the exac
 with the fix restored, 3/3 clean passes. Plus UserDatabaseDefinitionLoaderWriteDelayTest (2/2).
 The 5-second sleep workaround was deleted from run-durable-resume-demo.ps1.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-57`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-57`
 
 ### REG-58 — Narrow-type DROP COLUMN crashed mid-migration on WmsOffice's real database -- composite unique index not dropped first
 
@@ -4685,7 +4686,7 @@ exception byte-for-byte against the real composite-index shape with the fix disa
 (2/2) with it restored. Full NPDevRuntimeHost suite 406/0, no regression. Not yet closed
 end-to-end on WmsOffice itself as of this fix -- see REG-59 for the live-database recovery.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-58`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-58`
 
 ### REG-59 — WmsOffice live database recovery record (REG-58 fix re-verification) -- recovery only, NOT the platform gap
 
@@ -4712,7 +4713,7 @@ identity/user data for its then-existing 6 users/5 roles are now placeholder val
 data -- the destructive DDL had already committed before backfill-refusal was reached, so this was
 already true before the manual recovery; recovery only unblocked the boot.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-59`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-59`
 
 ### REG-6 — ColumnFacts: eight SchemaLifecycleExecutor passes each re-derived column semantics independently
 
@@ -4735,7 +4736,7 @@ strangler-fig with a proven 100% behavior-equivalence shadow-parity gate on H2 +
 each pass switched over. Remaining known limit (separate, documented, not a re-derivation): no
 explicit FK/index diff (P0.2/P5.2, deferred enhancement).
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-6`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-6`
 
 ### REG-60 — Aggregate Workbench post-commit "Saved." confirmation is wiped by the next render before a user can see it
 
@@ -4757,7 +4758,7 @@ regenerated + rebuilt, ExpedicaoWorkbench.html, real browser via ScrapForAI -- l
 trial/admin, opened a real PreExpedicao record, clicked Save, DOM readback + screenshot confirm
 the green "Saved." text is visible next to the Save button after the re-render.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-60`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-60`
 
 ### REG-61 — Narrow-type recreate loses NOT NULL; no per-row-unique default expressible for a required UNIQUE column
 
@@ -4783,7 +4784,7 @@ later. Did NOT invent a per-row-unique default expression language, per the plan
 decision. New BackfillPassUniqueColumnRefusalTest (2/2), RED-first. docs/SCHEMA_EVOLUTION.md
 documents the new refusal case and recipe. Full com.finalexec.db suite 273/273, no regression.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-61`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-61`
 
 ### REG-62 — allowedActions is a typed array and is cross-referenced against the surface's declared actions
 
@@ -4840,7 +4841,7 @@ Proof: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/AllowedAction
 the real actions, and no-autoPanel-at-all rejected naming "(none)") -- all green; full DSL module
 test suite green afterward (no other lifecycle/autoPanel test regressed).
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-62`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-62`
 
 ### REG-63 — 17 of 29 corpus models (not 2) used pre-DSL-2.0 flow-step/orchestration shapes the current schema rejects
 
@@ -4878,7 +4879,7 @@ authored fresh and confirmed live, 0 problems from check-panel-provenance-impact
 app's real bundle). C4 promotes the corpus validator to a permanent blocking gate so this class does
 not recur silently.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-63`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-63`
 
 ### REG-64 — EntityEmitter has no reserved-column collision guard -- a model field named tenantId/version/rowVersion produces uncompilable duplicate-field Java, not a clear message
 
@@ -4970,7 +4971,7 @@ updated.
 **Surface:** `appgen-apps/corpus-structure`
 
 AppGen/apps/reg39-healthy-control (external, non-git Layer 2) was created 2026-07-25 as a
-one-time "healthy pack" live control for REG-39 (see docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-39):
+one-time "healthy pack" live control for REG-39 (see docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-39):
 "app reg39-healthy-control, a clone of the WmsOffice definition" -- proving the layer-1 identity-
 pack-drift detector did not false-positive on a genuinely healthy pack, on a fresh empty database.
 REG-39 has been DONE since 2026-07-25; this app was never meant to be a standing fixture.
@@ -4981,7 +4982,7 @@ inflated the aggregates/autoPanels/guidePages corpus-coverage count from a true 
 to an apparent 2, which is part of why the Aggregate Workbench's real single-point-of-failure went
 unnoticed until the 2026-07-29 corpus measurement that led to NPDevSamples/dsl-conformance-max.
 Searched the whole repo for functional references before deleting: none found. The only mentions
-are historical documentation -- docs/NPDEV_OPEN_ITEMS_REGISTER.md (REG-39's own closure record,
+are historical documentation -- docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md (REG-39's own closure record,
 archived-in-place), docs/archive/programme-history/REG48_50_CLOSURE_PLAN.md, and
 NPDevSamples/dsl-conformance-max/Input/README.md's own corpus-coverage table (a measurement
 snapshot, correctly left as historical record, not updated).
@@ -5002,7 +5003,7 @@ content (model.json) is identical to WmsOffice's own, which remains.
 that revision to still contain the exact 2026-07-28 bug-shaped text (REG-40/REG-4 for T1,
 REG-59 for T2) so `expect_fire=True` proves the rule would have caught the real historical bug.
 `HEAD` is a moving target, not a pinned commit -- and both target documents
-(`docs/EXECUTION_TREES.md`, `docs/NPDEV_OPEN_ITEMS_REGISTER.md`) have been edited again since
+(`docs/EXECUTION_TREES.md`, `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md`) have been edited again since
 2026-07-28 (further closures, REG-59/REG-61 split, register archived-in-place), so the exact
 stale-wording shape the controls look for no longer exists at today's HEAD. Both controls now
 report "silent" instead of "fired", so `--calibrate` FAILS on a clean tree -- confirmed by running
@@ -5128,7 +5129,7 @@ break Flyway's own baseline detection -- a real bug found and fixed via live boo
 Verified: full RuntimeHost suite green after each sub-phase, dedicated test classes for all three,
 live boot rehearsals against a real assembled app found and fixed two real ordering bugs.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-7`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-7`
 
 ### REG-70 — panel.action.binding: "flow" is schema-valid, compiler-accepted, and unimplemented at runtime -- 2 shipping WmsOffice panels already have a dead primary action
 
@@ -5886,7 +5887,7 @@ canonical example (fresh-installed build N, N+1 drops a column, roll back to N) 
 refused until REG-27 made afterMigrate record the initial realization as an APPLIED history point
 too. This item's DONE claim holds only with the REG-27 fix applied.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-8`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-8`
 
 ### REG-80 — field.sensitive is dead wiring -- parsed, compiled, and canonical-JSON round-tripped, but never consumed by anything, including its own documented external-AI-review-pack redaction purpose
 
@@ -6444,7 +6445,7 @@ boots, login returns 503) instead of crashing the context. Super-user key env-se
 WONTFIX (issued-not-supplied model preserved, reversible). Verified: 12/12 StartupValidator unit
 tests + 8/8 verify-only JwtAuthExternalBetaIT live on real Postgres.
 
-*Full historical narrative:* `docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-9`
+*Full historical narrative:* `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-9`
 
 ### REG-90 — Rebuild-And-Restage.ps1 accepted -BuildRoot but never passed it to Build-NpdevApp.ps1 -- the wrapper generated one app and then gated a different one
 

@@ -5,7 +5,7 @@
 > **public**. Written 2026-07-27 against branch `beta1-vision-spine` (`97a2491` + uncommitted
 > working tree). Supersedes nothing; complements the ledgers rather than replacing them.
 >
-> **Map:** [EXECUTION_TREES.md](../../EXECUTION_TREES.md). This document is the executable detail.
+> **Map:** [EXECUTION_TREES.md](EXECUTION_TREES.md). This document is the executable detail.
 >
 > **What this plan is.** Fifteen tasks, ~4 working days, **zero inter-tree dependencies**. Every one
 > is either (a) something the repo currently *claims* that is not true, (b) a verification hole found
@@ -590,7 +590,7 @@ Three specific surface problems, all cheap to fix:
 > **Owner note (2026-07-27).** The core — flows, events, orchestration — is the platform's mechanics,
 > and the first pass of this analysis under-weighted it by measuring surface area (files, LOC,
 > reachable UI) instead of depth. The consolidated core workstream is
-> [EXECUTION_TREES.md §0.1](../../EXECUTION_TREES.md#01-the-core-track--read-this-before-the-trees).
+> [EXECUTION_TREES.md §0.1](EXECUTION_TREES.md#01-the-core-track--read-this-before-the-trees).
 > This task is **C-1**, its highest-value item.
 
 **Files.** New `docs/FLOWS.md`. Link from `README.md`, `CLAUDE.md`, and
@@ -913,5 +913,5 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/quality/run-ai-knowledge-g
 
 ---
 
-*Map: [EXECUTION_TREES.md](../../EXECUTION_TREES.md) · Ledger: [NPDEV_OPEN_ITEMS_REGISTER.md](../../NPDEV_OPEN_ITEMS_REGISTER.md) ·
+*Map: [EXECUTION_TREES.md](EXECUTION_TREES.md) · Ledger: [NPDEV_OPEN_ITEMS_REGISTER.md](NPDEV_OPEN_ITEMS_REGISTER.md) ·
 Decisions: [DECISION_BRIEFS_2026-07.md](DECISION_BRIEFS_2026-07.md)*

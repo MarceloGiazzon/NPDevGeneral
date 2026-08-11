@@ -26,4 +26,4 @@ detail: |
   identity/user data for its then-existing 6 users/5 roles are now placeholder values, not original
   data -- the destructive DDL had already committed before backfill-refusal was reached, so this was
   already true before the manual recovery; recovery only unblocked the boot.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-59
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-59

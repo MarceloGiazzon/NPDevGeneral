@@ -15,7 +15,7 @@ detail: |
   that revision to still contain the exact 2026-07-28 bug-shaped text (REG-40/REG-4 for T1,
   REG-59 for T2) so `expect_fire=True` proves the rule would have caught the real historical bug.
   `HEAD` is a moving target, not a pinned commit -- and both target documents
-  (`docs/EXECUTION_TREES.md`, `docs/NPDEV_OPEN_ITEMS_REGISTER.md`) have been edited again since
+  (`docs/EXECUTION_TREES.md`, `docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md`) have been edited again since
   2026-07-28 (further closures, REG-59/REG-61 split, register archived-in-place), so the exact
   stale-wording shape the controls look for no longer exists at today's HEAD. Both controls now
   report "silent" instead of "fired", so `--calibrate` FAILS on a clean tree -- confirmed by running

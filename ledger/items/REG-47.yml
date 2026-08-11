@@ -17,4 +17,4 @@ detail: |
   look it up again via @PathVariable on timeline/event-query controllers -- digesting would store an
   id different from the one the caller holds. 6 tests incl. the exact boundary, trim-before-measure,
   and a guard that the ceiling stays inside the btree limit alongside its composite-index companions.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-47
+legacyDetailRef: docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md#reg-47
