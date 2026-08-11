@@ -45,6 +45,19 @@ on:
       - 'NPDevKernel/adapters/**'
       - 'NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/**'
       - '.github/workflows/storage-dialect-conformance.yml'
+    # A TAG IS NOT A PATH CHANGE (added 2026-08-10). `release_candidate.py`'s REQUIRED_WORKFLOWS
+    # names this workflow FILE: the RC gate resolves a run AT THE TAG'S EXACT SHA, and "recent on
+    # main" does not count. With only the branch trigger above, a tag whose commit happened to touch
+    # none of those four paths produced no run at that sha at all -- so the gate demanded evidence
+    # nothing was ever going to generate. It refused twice on 2026-08-10, ~20 minutes each time, and
+    # is the likeliest reason `beta1.13` shipped with no manifest.
+    #
+    # THIS SITS INSIDE THE SAME `push:` ENTRY ON PURPOSE, and it is safe to: GitHub's workflow-syntax
+    # reference states plainly that "path filters are not evaluated for pushes of tags". `branches`
+    # AND `paths` still gate branch pushes exactly as before; a tag push skips `paths` and runs. YAML
+    # forbids a second `push:` key in the same mapping, so a "separate, unfiltered" trigger is not
+    # expressible anyway -- and would not be needed if it were.
+    tags: ['*']
   pull_request:
     paths:
       - 'NPDevKernel/kernel/src/**/storage/sql/**'
