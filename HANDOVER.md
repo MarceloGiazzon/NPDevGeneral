@@ -68,7 +68,7 @@ the screen where you fix it rather than fixing it for you. **Re-check** re-runs 
 Apps tab → name it, choose a folder, and pick a **Database**:
 
 - **H2Local** — the default. No server, nothing to install. **Use this first.**
-- **Postgres / MySQL / SQL Server** — need a server running. Fill in host/port/user/password and
+- **Postgres / MySQL / SqlServer** (the picker's own spellings) — need a server running. Fill in host/port/user/password and
   press **Test connection** *before* creating. It answers in seconds and tells you which of
   reachable / credentials / database-exists / privileges / charset is wrong.
 
@@ -104,12 +104,12 @@ destructive change — and NPDev refuses it on purpose. That refusal is §4 terr
 
 **That is the whole product.** If you got here, it works.
 
-### 2.7 Open The Monitor, and send us one file
+### 2.7 One last thing, and it is for us rather than for you
 
-The **The Monitor** tab is a card per app on this machine. Find yours and confirm it says something
-truthful — running, its port, its database.
+Open the **The Monitor** tab. It is one card per app on this machine. Find yours and confirm the
+card says something truthful — running or not, its port, its database.
 
-Then **Actions → Export support bundle**. It writes one zip beside the app: the app's own run logs,
+Then on that card: **☰ ACTIONS → Export support bundle**. It writes one zip beside the app: the app's own run logs,
 the output of any database button you pressed, the Manager's log, and the database plan **with the
 password removed**. Send us that zip whether or not anything went wrong — it is the cheapest
 complete picture of what this machine actually did, and this step exists partly so that someone
