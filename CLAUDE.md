@@ -9,6 +9,20 @@ app definitions and build output live **outside** it (see Layers below).
 - **Build output → `D:\WorkSpace\NPDev\Build`. NEVER write generated/build artifacts inside this
   repo.** (`docs/BUILD_OUTPUT_LOCATION_POLICY.md`)
 - **Evidence / scratch → `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo`**, not the repo.
+- **Process documents are BANNED from this repo — do not write one.** A plan, checklist, findings
+  log, handoff, retrospective, session digest, snapshot or status register is your WORKING STATE,
+  not documentation. It goes to the evidence directory above, or into `ledger/` as structured data.
+  Enforced by `scripts/quality/check-doc-inventory.py` (ai-knowledge gate [45/45]) against
+  `scripts/policy/doc-inventory-policy.json`; the 57 pre-ban files are frozen in a `legacy` list
+  that may only **shrink**. Measured 2026-08-11: of 302 tracked `.md` files / 59,754 lines, **265
+  files / 39,705 lines were read by nothing at all** — 88% of the files. They accumulated one
+  session at a time, because a run with no memory externalises its state as a document, and the next
+  run cannot tell which documents are still true. Then a gate reads one and it can never be deleted
+  (`check-register-consistency.py` parses four; `extract_platform_status.py` parsed a fifth as a
+  database until it was inverted to `ledger/gaps.yml`). **Reorganising does not fix this** — the
+  2026-08-11 pass moved 50 files into subdirectories and the tracked total went 301 → 302. Durable
+  machine truth → `ledger/*.yml` with a schema. Durable human docs → `docs/`, few, curated,
+  generated where possible, and indexed in `docs/README.md`. Everything else → outside the repo.
 - **Source-of-truth layers:** (1) this repo = truth for platform code/scripts/schemas;
   (2) `D:\WorkSpace\NPDev\AppGen\apps` = truth for app *definitions* only (not a git repo);
   (3) `Build` = ephemeral. You may edit layer 2/3 for speed, but propagate any code/script change
