@@ -182,6 +182,13 @@ try {
     & $py "scripts/docs/generate_group_e_docs.py" --check
     if ($LASTEXITCODE -ne 0) { $failures += "a Group E doc (NPDEV_CONCEPTS_DEEP_DIVE.md / NPDEV_USER_MANUAL.md / ai/AUTHORING_FOR_AI.md) is STALE relative to its content/*.yml source: see scripts/docs/generate_group_e_docs.py output above (run without --check to regenerate)" }
 
+    # md-zero-2026-08-11 PLAN.md Phase 5: same freshness check for the four executable docs
+    # (README.md, docs/GETTING_STARTED.md, docs/YOUR_FIRST_APP.md, docs/AUTHORING_WITH_AI.md) and
+    # their content/*.json mirrors -- the first-run harness and extract_commands.py read the JSON,
+    # never the .md, so this is what catches a hand-edited .md that was never regenerated.
+    & $py "scripts/docs/generate_group_d_docs.py" --check
+    if ($LASTEXITCODE -ne 0) { $failures += "a Group D doc or its content/*.json mirror is STALE relative to its content/*.yml source: see scripts/docs/generate_group_d_docs.py output above (run without --check to regenerate)" }
+
     Write-Host "[3/42] Checking failure-signature normalizer..."
     $sig = & $py "scripts/ai/failure_signatures.py" "Panel 'Orders' references unknown entity 'Customer'"
     $expected = "panel <id> references unknown entity <id>"

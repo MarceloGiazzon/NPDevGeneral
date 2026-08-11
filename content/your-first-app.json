@@ -1,0 +1,191 @@
+{
+  "sourceFile": "docs/YOUR_FIRST_APP.md",
+  "preamble": [
+    {
+      "type": "prose",
+      "text": "# Your first app\n\nYou have run the demo. Now build something of your own.\n\nThis takes about 15 minutes and produces a working application — database, REST API, admin\nscreens, login — from a file you can read.\n"
+    }
+  ],
+  "sections": [
+    {
+      "level": 2,
+      "title": "What you are actually building",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nAn NPDev app is described by one file: `model.json`. Everything else is generated from it.\n\n**That file is your application.** The generated code is disposable — you can delete and\nregenerate it any time. The model is the part worth keeping, backing up, and putting in git.\n\nWe will build a small library: **Books** and the **Members** who borrow them.\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "1. Scaffold it",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": ""
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "./npdev init ../my-library"
+        },
+        {
+          "type": "prose",
+          "text": "\nThis one command gives you `model.json` (a small, valid, already-runnable example), `config.json`,\n`db.definition.json`, a `README.md`, a `.gitignore` — and a git history: the directory is already a\nrepository with one commit. **That matters:** your model is the app, and the version you'd most\nwant back if you broke something is the one you never lost.\n\n**Without `db.definition.json`, `generate app` would silently default to an in-memory database\nthat forgets everything the moment the app stops.** `npdev init` gives you a real one (H2Local)\nfrom the start, for exactly the reason step 5 below needs it: proving your data survives a schema\nchange.\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "2. Make it yours",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nOpen `../my-library/model.json`. Replace its `concepts` array — the scaffold's own Patient/\nAppointment example — with two of your own:\n"
+        },
+        {
+          "type": "fence",
+          "lang": "json",
+          "text": "\"concepts\": [\n  {\n    \"name\": \"Book\",\n    \"ui\": { \"label\": \"Book\" },\n    \"fields\": [\n      { \"name\": \"id\", \"type\": \"uuid\", \"id\": true, \"required\": true },\n      { \"name\": \"title\", \"type\": \"string\", \"required\": true, \"ui\": { \"label\": \"Title\" } },\n      { \"name\": \"isbn\", \"type\": \"string\", \"ui\": { \"label\": \"ISBN\" } },\n      { \"name\": \"copies\", \"type\": \"int\", \"ui\": { \"label\": \"Copies\" } }\n    ],\n    \"invariants\": [\n      { \"name\": \"BookIsbnUnique\", \"type\": \"unique\", \"fields\": [\"isbn\"] }\n    ]\n  },\n  {\n    \"name\": \"Member\",\n    \"ui\": { \"label\": \"Member\" },\n    \"fields\": [\n      { \"name\": \"id\", \"type\": \"uuid\", \"id\": true, \"required\": true },\n      { \"name\": \"fullName\", \"type\": \"string\", \"required\": true, \"ui\": { \"label\": \"Full name\" } },\n      { \"name\": \"email\", \"type\": \"string\", \"ui\": { \"label\": \"Email\" } }\n    ]\n  }\n]"
+        },
+        {
+          "type": "prose",
+          "text": "\n**The scaffold's seed is deliberately just concepts — nothing that references them from elsewhere.**\nReplacing the whole array is safe: there is no `domainTypes`/`capabilities`/`flows` block anywhere\nin the scaffold that points back at Patient or Appointment and would break when they disappear.\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "3. Check it before you build it",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": ""
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "cd ../NPDevGeneral\n./npdev validate model ../my-library/model.json"
+        },
+        {
+          "type": "prose",
+          "text": "\nExpect `\"status\": \"passed\"`.\n\n**If it fails, read the `message` and `suggestedFix` on each diagnostic** — they name the exact\npath in your file. Fix and re-run. Getting errors here is normal and cheap; getting them after a\nfive-minute build is not.\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "4. Build and run it",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": ""
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "./npdev generate app --model ../my-library/model.json --config ../my-library/config.json --output ../my-library-app\ncd ../my-library-app\n./gradlew bootJar\njava -jar build/libs/FinalExec-0.1.0.jar --spring.profiles.active=dev"
+        },
+        {
+          "type": "prose",
+          "text": "\nOpen **http://localhost:8080**. The `dev` profile ships a fixed convenience key for exactly this\nmoment — type **`dev-key`** into the API Key field on the page that greets you.\n\n**You should see Book and Member as real screens** — list, create, edit — with a database and a\nREST API behind them. (There is a second, separate key file — `SUPER_USER_KEY.txt` — but that is\nfor the platform ControlPanel, not for using your own app; ignore it for now.)\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "5. Change it and watch it follow",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nThis is the part that matters. Stop the app (**Ctrl+C, and give it a couple of seconds** — on\nWindows especially, regenerating before the old process has fully released its jar file fails with\na file-in-use error), and add a field to `Book` in `model.json`:\n"
+        },
+        {
+          "type": "fence",
+          "lang": "json",
+          "text": "{ \"name\": \"publishedYear\", \"type\": \"int\", \"ui\": { \"label\": \"Published year\" } }"
+        },
+        {
+          "type": "prose",
+          "text": "\nThen validate, regenerate, and restart:\n"
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "cd ../NPDevGeneral\n./npdev validate model ../my-library/model.json\n./npdev generate app --model ../my-library/model.json --config ../my-library/config.json --output ../my-library-app\ncd ../my-library-app && ./gradlew bootJar && java -jar build/libs/FinalExec-0.1.0.jar --spring.profiles.active=dev"
+        },
+        {
+          "type": "prose",
+          "text": "\n**The Book screen now has \"Published year\". The column exists. The API accepts it. Your existing\nbook is still there** (with `publishedYear` blank, since it existed before the field did) — NPDev\nevolves the schema rather than recreating it.\n"
+        }
+      ]
+    },
+    {
+      "level": 3,
+      "title": "Let it do that for you",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nDoing this by hand once is worth it — you have now seen every step. After that, use the watch loop:\n"
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "cd ../NPDevGeneral     # back to the clone -- `npdev` is not on your PATH, it lives here\n./npdev dev --model ../my-library/model.json"
+        },
+        {
+          "type": "prose",
+          "text": "\nIt generates, builds, boots, and then watches your model. **Save a change and it does the whole\nsequence above for you**, printing what it did:\n"
+        },
+        {
+          "type": "fence",
+          "lang": "",
+          "text": "14:09:02  changed: model.json\n14:09:02  validate ......................................... ok\n14:09:47  ready in 45.2s   http://localhost:8080"
+        },
+        {
+          "type": "prose",
+          "text": "\nTwo things worth knowing:\n\n- **A mistake does not cost you the running app.** `npdev dev` validates before it touches\n  anything, so a typo'd field type prints the error and leaves your app serving the last good\n  model. Fix it, save again.\n- **Your data survives**, because `npdev init` gave you a real file-backed database. If you see\n  `data IN-MEMORY` in the banner, your `db.definition.json` says `InMemory` and rows will be lost\n  on every reload.\n\nPress Ctrl+C to stop.\n\nCommit the change:\n"
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "cd ../my-library && git commit -am \"add publishedYear to Book\""
+        },
+        {
+          "type": "prose",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "6. Renaming — read this before you need it",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\n**NPDev cannot guess that a rename is a rename.** If you change `isbn` to `isbnCode`, NPDev sees\none column dropped and another added — a destructive change — and will refuse.\n\nTell it instead:\n"
+        },
+        {
+          "type": "fence",
+          "lang": "json",
+          "text": "{ \"name\": \"isbnCode\", \"renamedFrom\": \"isbn\", \"type\": \"string\" }"
+        },
+        {
+          "type": "prose",
+          "text": "\nYour data moves with the column. See `docs/DATABASES_AND_MIGRATIONS.md` for removals and other\ndestructive changes.\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "Where to go next",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\n- **Connect the two concepts** — a `Loan` linking Book and Member is the natural next step;\n  see `docs/NPDEV_CONCEPTS_DEEP_DIVE.md` on bonds.\n- **Let an AI write the model for you** — `docs/AUTHORING_WITH_AI.md` (MCP setup and the\n  chat-only fallback); `docs/ai/AUTHORING_FOR_AI.md` is the underlying contract either path follows.\n- **Edit in the browser** — the authoring editor lives at `/npdev-ui-react/` on your running app;\n  see `docs/GETTING_STARTED.md`.\n- **Go to production** — `docs/DEPLOYMENT.md` (Postgres, Docker, environment variables).\n- **What NPDev deliberately does not do** — `docs/ACCEPTED_BOUNDARIES.md`.\n"
+        }
+      ]
+    }
+  ]
+}
