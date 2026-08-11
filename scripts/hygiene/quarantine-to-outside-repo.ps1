@@ -107,7 +107,7 @@ $ORPHANS = @(
     "docs/AI_CUSTOM_PANEL_CONTRACT.md",
     "docs/AI_CUSTOM_PROCEDURE_CONTRACT.md",
     "docs/AI_SCENARIO_DIRECTORY_CONTRACT.md",
-    "docs/LEGACY_SCHEMA_MIGRATION.md",
+    "docs/reference/LEGACY_SCHEMA_MIGRATION.md",
     "scripts/quality/run-beta0-final-release-check_v2.ps1"
 )
 

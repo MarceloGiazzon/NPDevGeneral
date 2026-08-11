@@ -23,7 +23,7 @@ Both `read` and `write` are optional and independent — a concept can restrict 
 other. Omitting `access` entirely (or the whole block) means unrestricted row access, same as
 today.
 
-Each rule is a boolean [`ComputedExpression`](EXPRESSIONS.md) evaluated against a scope built from
+Each rule is a boolean [`ComputedExpression`](../EXPRESSIONS.md) evaluated against a scope built from
 the row's own field values plus a set of `$`-prefixed pseudo-variables describing the caller:
 
 | Pseudo-variable | Value |

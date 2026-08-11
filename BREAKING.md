@@ -260,7 +260,7 @@ at the point of choice by `npdev engines` and by the generated `.env.example`):
 
 
 `npdev engines` marks MySQL and SQL Server EXPERIMENTAL and says why **at the point of choice**, in
-the CLI, in the Manager's dropdown and in `docs/USING_MYSQL_AND_SQL_SERVER.md` — all from one
+the CLI, in the Manager's dropdown and in `docs/reference/USING_MYSQL_AND_SQL_SERVER.md` — all from one
 registry, so none of them can drift into claiming otherwise.
 
 ## 2026-08-08 — `build.javaVersion`'s upper enum removed (ROUND2_PLAN.md R1c)

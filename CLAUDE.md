@@ -298,7 +298,7 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
 `docs/README.md` is the full documentation index — start there. Frequently needed:
 `docs/GETTING_STARTED.md`, `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`,
 `docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md`,
-`docs/architecture/INTERNAL_DB_SCHEMA_SOURCE_OF_TRUTH.md`, `docs/MATURITY_CLOSURE_LEDGER.md`.
+`docs/architecture/INTERNAL_DB_SCHEMA_SOURCE_OF_TRUTH.md`, `docs/maintainers/MATURITY_CLOSURE_LEDGER.md`.
 `docs/` root holds only current product/engineering truth (docs-decoupling-2026-08-11 PLAN.md);
 closed programme history lives in `docs/archive/` and `docs/beta/`, both classified `historical` in
 `scripts/policy/doc-entrypoint-classification-policy.json` — read for narrative, never for status.

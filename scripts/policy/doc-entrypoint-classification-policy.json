@@ -32,6 +32,18 @@
       "reason": "Live security documentation."
     },
     {
+      "pathPattern": "docs/reference/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "2026-08-11 docs/ root slimming pass: per-feature reference docs, live and current, relocated out of docs/ root purely to shorten a newcomer's first listing -- not historical."
+    },
+    {
+      "pathPattern": "docs/maintainers/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "2026-08-11 docs/ root slimming pass: internal maintainer / release-governance docs, still live (STATUS: ACTIVE or content-read by a currently-runnable gate script), relocated out of docs/ root because a prospective platform USER has no reason to see them before GETTING_STARTED.md -- not historical, never archive one of these without first re-checking its own STATUS line."
+    },
+    {
       "pathPattern": "docs/archive/**/*.md",
       "classification": "historical",
       "releaseRelevant": false,

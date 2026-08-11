@@ -262,9 +262,10 @@ def check(path: Path, mode: str, verbose: bool) -> list[str]:
 # docs/REMEDIATION_PLAN.md R-P2 (2026-07-29): LNCH1_CLOSEOUT_PLAN.md, LNCH1_PLATFORM_COLUMN_PLAN.md,
 # and REGISTER_CLOSURE_PLAN.md were archived to docs/archive/programme-history/ (this sweep only
 # scans docs/*.md, not subdirectories, so their exclusion entries are now unreachable) -- removed
-# rather than left as dead entries nothing can ever match again.
+# rather than left as dead entries nothing can ever match again. Same reasoning removed
+# FRONTEND_STRATEGY_PLAN.md's entry here (2026-08-11): it moved to docs/maintainers/, also outside
+# this non-recursive docs/*.md scan.
 LEDGER_EXCLUSIONS = {
-    "FRONTEND_STRATEGY_PLAN.md": "Proposed, not-yet-started roadmap (STATUS: ACTIVE, F1-F6 gated on scheduling). Its F1..F6 table is an effort/priority estimate, not a status ledger of tracked open/closed items -- there is nothing yet to cross-check a detail section against.",
     "OPEN_ITEMS.md": "2.E ledger migration COMPLETE (docs/REMEDIATION_PLAN.md R-P1, 2026-07-29; ledger/README.md). The authoritative source-of-truth projection of ledger/items/*.yml, not hand-editable prose -- a summary-vs-detail contradiction is structurally impossible (both come from the SAME single `status` field in the same YAML file, rendered by the same script). Its own drift check is `python scripts/quality/generate_open_items.py --check` (exact-byte comparison against the source YAML), a stronger guarantee than this script's regex-based cross-check. Excluded here, not added to `checked`, permanently -- not a migration-in-progress artifact.",
     "X0_SILENT_EXPRESSION_REGISTER.md": "MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 0.2's silent-expression audit. Its table is a per-evaluator VERDICT (OPEN / **FIXED** -- REG-nn / ACCEPTED / CLEAN), never a tracked open/closed status of its OWN -- the same shape as the `_ADVERSARIAL_REVIEW.md` class this script already excludes by pattern. Every row that names a real fix routes through the ledger (REG-95, REG-96, REG-99, REG-100) or the programme doc (RC-B1, Wave 0.3), which ARE cross-checked; this register's own rows are not a second parallel status source to keep in sync.",
     "OPEN_GAPS_AND_ROADMAP.md": "docs-decoupling-2026-08-11 PLAN.md Phase 1: generated from ledger/gaps.yml (scripts/docs/generate_gaps_roadmap.py), the same OPEN_ITEMS.md discipline immediately above -- a summary-vs-detail contradiction is structurally impossible once both the Priority-index row and any prose citing that id's status render from the SAME `statusRaw` field in the same YAML file. Its own drift check is `python scripts/docs/generate_gaps_roadmap.py --check`. Excluded here, not added to `checked`, permanently -- not a migration-in-progress artifact.",
@@ -451,16 +452,21 @@ def provenance_audit_gaps(root: Path) -> list[str]:
 
 
 def _plan_documents(root: Path) -> list[Path]:
-    """Every `*PLAN*.md`, at docs/ root AND in docs/archive/programme-history/.
+    """Every `*PLAN*.md`, at docs/ root, in docs/archive/programme-history/, and in
+    docs/maintainers/.
 
     docs-decoupling-2026-08-11 PLAN.md Phase 3b: most closed plans moved to the archive, so scanning
     docs/ root alone would eventually starve this check to zero live-tense declarations even though
     the archived ones are exactly where "does this still read as a live backlog" matters most (Rule 1
-    resolution (a), re-point rather than narrow). A handful of still-ACTIVE plans (found via the
-    STATUS check itself, not assumed) remain at docs/ root.
+    resolution (a), re-point rather than narrow). The 5 still-ACTIVE plans (found via the STATUS
+    check itself, not assumed) then moved a second time, docs/ root -> docs/maintainers/ (same day,
+    the newcomer-readability slimming pass) -- so docs/ root alone would ALSO eventually starve to
+    zero; scan all three roots.
     """
-    return sorted((root / "docs").glob("*PLAN*.md")) + sorted(
-        (root / "docs" / "archive" / "programme-history").glob("*PLAN*.md")
+    return (
+        sorted((root / "docs").glob("*PLAN*.md"))
+        + sorted((root / "docs" / "archive" / "programme-history").glob("*PLAN*.md"))
+        + sorted((root / "docs" / "maintainers").glob("*PLAN*.md"))
     )
 
 

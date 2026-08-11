@@ -607,14 +607,17 @@ function Copy-WorkspaceDocs {
         ".npdev-root",
         "NPDev_ExtrucureAndProposal_Clean.txt"
     )
+    # docs-decoupling-2026-08-11: RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md, FRONTEND_GATE_REPRODUCIBILITY.md,
+    # and SAMPLE_MATRIX_RELEASE_POLICY.md moved to docs/maintainers/ (still live, just relocated out of
+    # docs/ root for newcomer readability); RELEASE_BLOCKER_EXECUTION_ROADMAP.md moved to
+    # docs/archive/programme-history/ (its own STATUS line reads "Historical evidence only"). Join-Path
+    # below handles the embedded subdirectory segments fine, and Copy-StateZipFile creates the
+    # destination dir as needed.
     $referencedDocFiles = @(
-        "RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md",
-        # docs-decoupling-2026-08-11 PLAN.md Phase 3c: moved to docs/archive/programme-history/ (its
-        # own STATUS line reads "Historical evidence only"); Join-Path below handles the embedded
-        # subdirectory segments fine, and Copy-StateZipFile creates the destination dir as needed.
+        "maintainers/RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md",
         "archive/programme-history/RELEASE_BLOCKER_EXECUTION_ROADMAP.md",
-        "FRONTEND_GATE_REPRODUCIBILITY.md",
-        "SAMPLE_MATRIX_RELEASE_POLICY.md"
+        "maintainers/FRONTEND_GATE_REPRODUCIBILITY.md",
+        "maintainers/SAMPLE_MATRIX_RELEASE_POLICY.md"
     )
 
     $copyCount = 0

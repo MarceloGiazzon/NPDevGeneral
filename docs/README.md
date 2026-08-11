@@ -3,9 +3,11 @@
 **New here?** [GETTING_STARTED.md](GETTING_STARTED.md) → [YOUR_FIRST_APP.md](YOUR_FIRST_APP.md) →
 [DSL_REFERENCE.md](DSL_REFERENCE.md). That is the whole path.
 
-`docs/` root holds current product and engineering truth — one file, one purpose, no historical
-narrative. Closed programmes, checklists, and superseded plans live in [archive/](archive/) and
-[beta/](beta/) instead; they are not part of this index because they are not current instructions.
+`docs/` root holds current product and engineering truth for someone *using* NPDev — one file, one
+purpose. Feature-by-feature reference lives in [reference/](reference/); internal maintainer and
+release-governance material (still live, just not what a newcomer needs) lives in
+[maintainers/](maintainers/); closed programmes, checklists, and superseded plans live in
+[archive/](archive/) and [beta/](beta/). None of those three are part of this index.
 
 ## Use it
 
@@ -31,15 +33,19 @@ narrative. Closed programmes, checklists, and superseded plans live in [archive/
 [RELEASE_PROCESS.md](RELEASE_PROCESS.md) ·
 [ADAPTER_REGISTRATION_CHECKLIST.md](ADAPTER_REGISTRATION_CHECKLIST.md)
 
-**Feature docs:** [CSV_EXPORT.md](CSV_EXPORT.md) ·
-[EMAIL_NOTIFICATIONS.md](EMAIL_NOTIFICATIONS.md) ·
-[OPTIMISTIC_LOCKING.md](OPTIMISTIC_LOCKING.md) ·
-[PASSWORD_RESET.md](PASSWORD_RESET.md) ·
-[ROW_LEVEL_AUTHORIZATION.md](ROW_LEVEL_AUTHORIZATION.md) ·
-[SCHEDULED_FLOWS.md](SCHEDULED_FLOWS.md) ·
-[BACKUP_RESTORE.md](BACKUP_RESTORE.md) ·
-[USING_MYSQL_AND_SQL_SERVER.md](USING_MYSQL_AND_SQL_SERVER.md) ·
-[LEGACY_SCHEMA_MIGRATION.md](LEGACY_SCHEMA_MIGRATION.md)
+## Feature reference ([reference/](reference/))
+
+One file per built-in feature.
+
+[CSV_EXPORT.md](reference/CSV_EXPORT.md) ·
+[EMAIL_NOTIFICATIONS.md](reference/EMAIL_NOTIFICATIONS.md) ·
+[OPTIMISTIC_LOCKING.md](reference/OPTIMISTIC_LOCKING.md) ·
+[PASSWORD_RESET.md](reference/PASSWORD_RESET.md) ·
+[ROW_LEVEL_AUTHORIZATION.md](reference/ROW_LEVEL_AUTHORIZATION.md) ·
+[SCHEDULED_FLOWS.md](reference/SCHEDULED_FLOWS.md) ·
+[BACKUP_RESTORE.md](reference/BACKUP_RESTORE.md) ·
+[USING_MYSQL_AND_SQL_SERVER.md](reference/USING_MYSQL_AND_SQL_SERVER.md) ·
+[LEGACY_SCHEMA_MIGRATION.md](reference/LEGACY_SCHEMA_MIGRATION.md)
 
 ## Understand it
 
@@ -70,34 +76,35 @@ Never hand-edit these — each has its own regenerate command, checked by `run-a
 [X0_SILENT_EXPRESSION_REGISTER.md](X0_SILENT_EXPRESSION_REGISTER.md) ·
 [SECURITY_PATTERN_SWEEP_2026-07.md](SECURITY_PATTERN_SWEEP_2026-07.md)
 
-## Release & maturity roadmap (live, not historical)
-
-These declare `STATUS: ACTIVE` or are read for their content by a currently-runnable (if
-occasionally-invoked) maturity/release gate script — found live during the 2026-08-11 docs
-decoupling pass, when a first attempt to archive several of them turned out to be exactly the
-mistake [EXTERNAL_SECURITY_REVIEW_BRIEF.md](EXTERNAL_SECURITY_REVIEW_BRIEF.md) itself records
-having suffered once before (2026-07-27: archived, then restored, because it was still active).
-Check a file's own `STATUS:` line before assuming it is safe to move.
-
-[FAIL_OPEN_PLAN.md](FAIL_OPEN_PLAN.md) ·
-[FRONTEND_STRATEGY_PLAN.md](FRONTEND_STRATEGY_PLAN.md) ·
-[INVOCATION_TOPOLOGY_PLAN.md](INVOCATION_TOPOLOGY_PLAN.md) ·
-[NEXT_EXECUTION_PLAN.md](NEXT_EXECUTION_PLAN.md) ·
-[RECORD_SURFACES_PLAN.md](RECORD_SURFACES_PLAN.md) ·
-[MATURITY_CLOSURE_LEDGER.md](MATURITY_CLOSURE_LEDGER.md) ·
-[ROADMAP_BOUNDARY_POLICY.md](ROADMAP_BOUNDARY_POLICY.md) ·
-[POST_BETA0_HUMAN_ACTION_REGISTER.md](POST_BETA0_HUMAN_ACTION_REGISTER.md) ·
-[OFFICIAL_BETA_RELEASE_RUNBOOK.md](OFFICIAL_BETA_RELEASE_RUNBOOK.md) ·
-[SAMPLE_MATRIX_RELEASE_POLICY.md](SAMPLE_MATRIX_RELEASE_POLICY.md) ·
-[RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md](RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md) ·
-[FRONTEND_GATE_REPRODUCIBILITY.md](FRONTEND_GATE_REPRODUCIBILITY.md) ·
-[EXTERNAL_SECURITY_REVIEW_BRIEF.md](EXTERNAL_SECURITY_REVIEW_BRIEF.md) ·
-[HUMAN_VS_AI_VERIFICATION.md](HUMAN_VS_AI_VERIFICATION.md)
-
 ## Front matter
 
 [PITCH.md](PITCH.md) · [PROJECT_POSTURE.md](PROJECT_POSTURE.md) ·
 [EXTERNAL_TESTER_COLDSTART.md](EXTERNAL_TESTER_COLDSTART.md)
+
+## Maintainers ([maintainers/](maintainers/))
+
+Live, not historical — a currently-runnable gate script reads these, or the document itself
+declares `STATUS: ACTIVE`. Relocated out of `docs/` root (2026-08-11) because a prospective *user*
+of the platform has no reason to see a maturity-roadmap boundary policy or a release runbook before
+`GETTING_STARTED.md` — but they are not archived, and moving one back to `docs/` root is always
+safe. Check a file's own `STATUS:` line before ever moving one of these to [archive/](archive/):
+[maintainers/EXTERNAL_SECURITY_REVIEW_BRIEF.md](maintainers/EXTERNAL_SECURITY_REVIEW_BRIEF.md)'s own
+text records having been mistakenly archived once already (2026-07-27), for exactly that mistake.
+
+[FAIL_OPEN_PLAN.md](maintainers/FAIL_OPEN_PLAN.md) ·
+[FRONTEND_STRATEGY_PLAN.md](maintainers/FRONTEND_STRATEGY_PLAN.md) ·
+[INVOCATION_TOPOLOGY_PLAN.md](maintainers/INVOCATION_TOPOLOGY_PLAN.md) ·
+[NEXT_EXECUTION_PLAN.md](maintainers/NEXT_EXECUTION_PLAN.md) ·
+[RECORD_SURFACES_PLAN.md](maintainers/RECORD_SURFACES_PLAN.md) ·
+[MATURITY_CLOSURE_LEDGER.md](maintainers/MATURITY_CLOSURE_LEDGER.md) ·
+[ROADMAP_BOUNDARY_POLICY.md](maintainers/ROADMAP_BOUNDARY_POLICY.md) ·
+[POST_BETA0_HUMAN_ACTION_REGISTER.md](maintainers/POST_BETA0_HUMAN_ACTION_REGISTER.md) ·
+[OFFICIAL_BETA_RELEASE_RUNBOOK.md](maintainers/OFFICIAL_BETA_RELEASE_RUNBOOK.md) ·
+[SAMPLE_MATRIX_RELEASE_POLICY.md](maintainers/SAMPLE_MATRIX_RELEASE_POLICY.md) ·
+[RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md](maintainers/RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md) ·
+[FRONTEND_GATE_REPRODUCIBILITY.md](maintainers/FRONTEND_GATE_REPRODUCIBILITY.md) ·
+[EXTERNAL_SECURITY_REVIEW_BRIEF.md](maintainers/EXTERNAL_SECURITY_REVIEW_BRIEF.md) ·
+[HUMAN_VS_AI_VERIFICATION.md](maintainers/HUMAN_VS_AI_VERIFICATION.md)
 
 ## History
 
