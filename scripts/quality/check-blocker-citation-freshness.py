@@ -59,11 +59,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LEDGER_DIR = REPO_ROOT / "ledger" / "items"
 
+# docs-decoupling-2026-08-11 PLAN.md Phase 3b: the 7 MOVE*.md docs moved to
+# docs/archive/programme-history/ (SCREEN_TAXONOMY.md did not -- it is live product documentation,
+# stays at docs/ root) -- Rule 1 resolution (a), re-point rather than delete: the value of catching a
+# stale blocker citation is highest precisely in archived material a future reader/agent might act on
+# without noticing it is closed.
 SCOPE_GLOBS = (
     "docs/SCREEN_TAXONOMY.md",
-    "docs/MOVE1_PANEL_GAPS.md",
-    "docs/MOVE*_CHECKLISTS.md",
-    "docs/MOVE*_FINDINGS.md",
+    "docs/archive/programme-history/MOVE1_PANEL_GAPS.md",
+    "docs/archive/programme-history/MOVE*_CHECKLISTS.md",
+    "docs/archive/programme-history/MOVE*_FINDINGS.md",
 )
 
 REG_ID = re.compile(r"\bREG-(\d+)\b")
