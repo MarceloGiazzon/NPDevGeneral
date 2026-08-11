@@ -170,7 +170,7 @@ class ScaffoldGitHistoryTest(unittest.TestCase):
             original = os.environ.copy()
             try:
                 os.environ.update(env)
-                note = npdev_cli._scaffold_git_history(target)
+                result = npdev_cli._scaffold_git_history(target)
             finally:
                 os.environ.clear()
                 os.environ.update(original)
@@ -182,11 +182,65 @@ class ScaffoldGitHistoryTest(unittest.TestCase):
             self.assertIn("npdev init: scaffold app", log.stdout,
                           "the promised first commit is missing -- a scaffold with no history is a "
                           "trap, not a convenience")
+            self.assertTrue(result.initialised,
+                            "a repository WAS created here; only the identity was substituted")
             self.assertIsNotNone(
-                note,
+                result.notice,
                 "when an identity is SUBSTITUTED the user must be told; a tool that commits under a "
                 "name nobody chose, silently, is the bigger surprise")
-            self.assertIn("git config --global user.name", note)
+            self.assertIn("git config --global user.name", result.notice)
+
+
+class ScaffoldWithoutGitTest(unittest.TestCase):
+    """`npdev init` on a machine with NO GIT AT ALL -- W1.2, 2026-08-10.
+
+    docs/MANAGER.md advertises "a machine that has nothing on it", and the Manager installs a private
+    JDK and a private Python and never installs git. So `subprocess.run(["git", ...])` raises
+    FileNotFoundError, `main()` catches only CliError/CalledProcessError, and the Create button dies
+    with a raw traceback at the very first step. Invisible from any machine that has git -- which is
+    every machine this repo is developed on.
+
+    PATH is scrubbed rather than git mocked, for the same reason the identity test above reproduces
+    its precondition: a fix verified against a stub can be wrong about the real failure.
+    """
+
+    def _run_init_without_git(self, target: Path):
+        import os
+        import shutil
+
+        import npdev_cli
+
+        kept = [d for d in os.environ.get("PATH", "").split(os.pathsep)
+                if d and not (Path(d) / ("git.exe" if os.name == "nt" else "git")).exists()]
+        original = os.environ.get("PATH", "")
+        try:
+            os.environ["PATH"] = os.pathsep.join(kept)
+            if shutil.which("git") is not None:
+                self.skipTest("git still resolves after scrubbing PATH -- this test would prove "
+                              "nothing (it must not pass by accident)")
+            return npdev_cli._scaffold_git_history(target)
+        finally:
+            os.environ["PATH"] = original
+
+    def test_scaffold_succeeds_and_says_there_is_no_repository(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="npdev-nogit-") as temp:
+            target = Path(temp) / "app"
+            target.mkdir()
+            (target / "model.json").write_text("{}", encoding="utf-8")
+
+            result = self._run_init_without_git(target)
+
+            self.assertFalse(result.initialised,
+                             "there is no git, so there is no repository -- reporting one would be "
+                             "the lie the notice exists to prevent")
+            self.assertIsNotNone(result.notice, "a missing repository must be REPORTED, not silent")
+            self.assertIn("git is not installed", result.notice)
+            self.assertFalse((target / ".git").exists())
+            self.assertTrue((target / "model.json").exists(),
+                            "the scaffold itself never needed git -- every file was written before "
+                            "this ran")
 
 
 def shutil_which(name):

@@ -104,7 +104,9 @@ moves to stderr instead.
   `Jars source:` line in the human output) says which path was actually taken.
 - **`npdev init my-app --json`** emits one object with `created.directory` (always absolute --
   a calling program has no shared working directory to resolve a relative path against),
-  `created.files`, `gitInitialised`, and `nextCommand`.
+  `created.files`, `gitInitialised`, and `nextCommand`. `gitInitialised` is `false` on a machine
+  with no git — the scaffold still succeeds and `gitIdentityNotice` carries the sentence explaining
+  what is missing.
 
 This exists for the same reason `npdev run app`/`npdev verify` already print structured JSON: an
 AI agent driving NPDev through MCP, CI asserting on fields instead of grepping sentences, or a

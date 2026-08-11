@@ -80,6 +80,18 @@ is tracked separately.
   proven by a test."
 
 ### Behavior changes
+- **`npdev doctor`'s `git-present` check is a `warn`, not a `fail`.** Its detail named two reasons
+  that were both false -- git is not needed to clone NPDev on the Manager's path (versions arrive as
+  a zip) and, since the fix above, is not needed by `npdev init` either. A hard failure took the
+  Manager's whole Ready screen red on a machine that works perfectly well, and
+  `_scrapforai_check`'s own docstring already wrote the rule: a doctor that goes red over an
+  optional tool teaches people to ignore red. The check id is unchanged.
+- **`engine-support.yml` and `storage-dialect-conformance.yml` now run on `push: tags`.**
+  `release_candidate.py` requires a run of both AT THE TAG'S EXACT SHA, and nothing produced one --
+  the first is dispatch-only and the second's `paths:` filter matched nothing on a typical release
+  commit. The RC gate refused twice on 2026-08-10, ~20 minutes each time. (GitHub does not apply
+  path filters to tag pushes, which is why the conformance one is a `tags:` key inside the existing
+  `push:` entry rather than a second trigger.) **Unverified until a real tag fires it.**
 - **LNCH-1 T1 (data-integrity fix): an upgrade no longer relaxes `NOT NULL` on the platform-managed
   columns, and repairs databases an earlier build already loosened.** Every fingerprint-changing boot
   used to strip `NOT NULL` from `version`, `row_version` and `tenant_id`, because they appear in the
@@ -138,6 +150,31 @@ is tracked separately.
   refuses the boot with the new expected token printed; no data is at risk).
 
 ### Fixed
+- **The first ten minutes on a machine that is not the author's** (close-the-gaps-2026-08-10 Wave 1).
+  Four defects that only appear on a machine the NPDev Manager was actually built for, none of them
+  reachable by any gate this repo runs, because every gate runs where git and java are already
+  installed:
+  - `npdev init` called `git init` unconditionally. With git absent that raised `FileNotFoundError`,
+    which `main()` catches nowhere, so the Manager's **Create** button died with a raw traceback at
+    the very first step -- on the machine `docs/MANAGER.md` advertised as needing "no git". The
+    scaffold never needed git: every file is written before that call. It now reports the missing
+    repository, corrects the README sentence that promised one, returns `gitInitialised: false`, and
+    exits 0.
+  - The built app was launched with a bare `["java", "-jar", ...]` at both launch sites
+    (`npdev run app`'s BOOT phase and `dev_loop.boot`). The Manager passes its private JDK as
+    `JAVA_HOME` only -- Gradle honours that and a bare `java` cannot see it -- so generate and build
+    succeeded on the private JDK and the app then failed to start with the working JDK sitting
+    unused, printing nothing, because `Popen`'s exception went to a stream the Manager discards. Both
+    sites now use `java_launcher()` (JAVA_HOME first, PATH second, `None` reported as a diagnostic),
+    and `npdev doctor` consumes the same function so the two can no longer disagree.
+  - `HANDOVER.md` 2.6, the step it calls "the whole product", asked the tester to rename a field --
+    the one edit NPDev refuses by design (`ACCEPTED_BOUNDARIES.md` B1). It now asks for an added
+    field and says why.
+  - `docs/INSTALL_ON_A_NEW_MACHINE.md`, `docs/MANAGER.md` and `HANDOVER.md` described controls that
+    do not exist ("Doctor" button, an Apps-screen Run button, **Refresh**/**Start** where the window
+    says **Re-check**/**▶ Run**), invented six database labels none of which is in the picker, and
+    promised a Reset refusal that `STOR-15` shows nothing can switch on. Re-audited row by row
+    against the running UI and CLI; the code half is filed, not papered over.
 - **LNCH-1 T5 (`GATE-OBS-1`): `run-runtimehost-gate.ps1`'s exit code is truthful again.** The gate had
   exited 1 for four consecutive rounds on one check, `runtime-surface-reports-current`, while
   contradicting itself: it already passed `-PendingOk` to the surface-evidence step for exactly those
