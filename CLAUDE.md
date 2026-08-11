@@ -48,9 +48,11 @@ Main package roots: `com.npdev.dsl.v1` / `com.npdev.generator` / `com.npdev.kern
 
 ## Large files — DO NOT full-read (Grep to a line, then Read with offset/limit)
 
-These are the files most often edited; reading any one whole burns 40–100k tokens. Sizes are checked
-against disk by `scripts/quality/check-record-surfaces.py` (±25% tolerance) — if this list drifts, that
-gate fails, so it should stay accurate without needing a manual re-audit:
+These are the files most often edited; reading any one whole burns 40–100k tokens. The authoritative,
+machine-checked list is `scripts/policy/record-surfaces.json` — `scripts/quality/check-record-surfaces.py`
+resolves each entry's path and fails if its size has drifted more than the declared tolerance (±25%).
+This prose list is a human-curated summary of that JSON, not itself read by anything — keep it roughly
+aligned when the JSON changes, but only the JSON is enforced:
 
 - `NPDevGenerator/.../npdev-templates/static-react/assets/app.js` (141 KB; sibling chunks
   `AuthoringApp.js`/`ReactWorkbenchApp.js` in the same `assets/` dir) — **generated bundle, ignore
