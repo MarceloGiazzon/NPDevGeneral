@@ -264,10 +264,12 @@ def check(path: Path, mode: str, verbose: bool) -> list[str]:
 # scans docs/*.md, not subdirectories, so their exclusion entries are now unreachable) -- removed
 # rather than left as dead entries nothing can ever match again. Same reasoning removed
 # FRONTEND_STRATEGY_PLAN.md's entry here (2026-08-11): it moved to docs/maintainers/, also outside
-# this non-recursive docs/*.md scan.
+# this non-recursive docs/*.md scan. md-zero-2026-08-11 PLAN.md Phase 1 removed
+# X0_SILENT_EXPRESSION_REGISTER.md's entry the same way: the doc itself is deleted (inverted into
+# scripts/quality/x0-evaluator-registry.json, which check-x0-evaluator-coverage.py still validates
+# on its own), so there is no docs/*.md file left for this key to ever match.
 LEDGER_EXCLUSIONS = {
     "OPEN_ITEMS.md": "2.E ledger migration COMPLETE (docs/REMEDIATION_PLAN.md R-P1, 2026-07-29; ledger/README.md). The authoritative source-of-truth projection of ledger/items/*.yml, not hand-editable prose -- a summary-vs-detail contradiction is structurally impossible (both come from the SAME single `status` field in the same YAML file, rendered by the same script). Its own drift check is `python scripts/quality/generate_open_items.py --check` (exact-byte comparison against the source YAML), a stronger guarantee than this script's regex-based cross-check. Excluded here, not added to `checked`, permanently -- not a migration-in-progress artifact.",
-    "X0_SILENT_EXPRESSION_REGISTER.md": "MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 0.2's silent-expression audit. Its table is a per-evaluator VERDICT (OPEN / **FIXED** -- REG-nn / ACCEPTED / CLEAN), never a tracked open/closed status of its OWN -- the same shape as the `_ADVERSARIAL_REVIEW.md` class this script already excludes by pattern. Every row that names a real fix routes through the ledger (REG-95, REG-96, REG-99, REG-100) or the programme doc (RC-B1, Wave 0.3), which ARE cross-checked; this register's own rows are not a second parallel status source to keep in sync.",
     "OPEN_GAPS_AND_ROADMAP.md": "docs-decoupling-2026-08-11 PLAN.md Phase 1: generated from ledger/gaps.yml (scripts/docs/generate_gaps_roadmap.py), the same OPEN_ITEMS.md discipline immediately above -- a summary-vs-detail contradiction is structurally impossible once both the Priority-index row and any prose citing that id's status render from the SAME `statusRaw` field in the same YAML file. Its own drift check is `python scripts/docs/generate_gaps_roadmap.py --check`. Excluded here, not added to `checked`, permanently -- not a migration-in-progress artifact.",
 }
 

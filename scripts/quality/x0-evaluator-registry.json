@@ -1,5 +1,7 @@
 {
-  "$comment": "Move 13 P6: machine-checked twin of docs/X0_SILENT_EXPRESSION_REGISTER.md's table. Every X0-n id in that doc's table must have exactly one entry here, and vice versa (check-x0-evaluator-coverage.py enforces both directions). A FIXED or CLEAN entry must name a real class + test + testMarker; the checker verifies the test file exists and contains the marker (a regression-proof, not just an existence check). An entry whose classGlob matches a file that no OTHER entry's classGlob/class already claims is a genuinely new evaluator-shaped class with no X0 audit -- the checker fails on that, which is the concrete 'new evaluator/resolver class has no test' gate the spec asks for.",
+  "why": "The one question, asked of every expression/predicate evaluator in the platform: what does it do with input it cannot handle? The one rule: an input the evaluator cannot handle is an error -- never a default answer. Silently returning everything, nothing, false, or null is the defect. Every instance here is individually small and individually defensible -- 'fail open so nothing disappears', 'an absent query means no filter', 'a missing path is just null'. Together they are a platform in which a declaration that does nothing looks exactly like a declaration that works. That matters more than usual here: the platform's whole direction is an AI author writing this JSON. An author who can see the wrong answer will debug it. An author who is told nothing will ship it. check-x0-evaluator-coverage.py enforces two things against this registry: a FIXED/CLEAN entry's proof test still exists and still asserts the specific behavior, and no evaluator-shaped class (evaluatorShapedGlobs) ships without a registry entry answering this question for it.",
+  "origin": "Wave 0.2 of MASTER_AI_PLATFORM_PROGRAMME_v2.md Sec 2.1, opened 2026-07-31. The audit found five instances against two confirmed plus one predicted at open, and two of the five (X0-6, X0-7) were found by using the feature rather than reading it.",
+  "supersedes": "docs/X0_SILENT_EXPRESSION_REGISTER.md, deleted by md-zero-2026-08-11 PLAN.md Phase 1 (the pilot for that plan): the doc was a markdown table hand-kept in parity with this JSON by a checker that read both. The JSON is the only copy now; its narrative fields below carry what the doc's prose said.",
   "evaluatorShapedGlobs": [
     "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/Default*Executor.java",
     "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/*ConditionEvaluator.java",
@@ -21,7 +23,7 @@
       "verdict": "FIXED",
       "fixedBy": "REG-95",
       "test": null,
-      "testExemptReason": "REG-95's fix (tokenize instead of split) was verified live by an ad hoc node probe, not a committed automated test -- there is no checked-in regression test for evaluateDerived/derivedSegments, the mustache-embedded JS function itself. Recorded here explicitly (not silently passed) as a residual: this class has no regression protection against the exact bug it once shipped. Left open by Move 13 P6 rather than force-built -- a real fix needs a JS test harness for mustache-template-embedded code, which does not exist yet and is a bigger task than this gate."
+      "testExemptReason": "REG-95's fix (tokenize instead of split) was verified live by an ad hoc node probe, not a committed automated test -- there is no checked-in regression test for evaluateDerived/derivedSegments, the mustache-embedded JS function itself. Recorded here explicitly (not silently passed) as a residual: this class has no regression protection against the exact bug it once shipped (filter(...), its own documented syntax, returned 0). Left open by Move 13 P6 rather than force-built -- a real fix needs a JS test harness for mustache-template-embedded code, which does not exist yet and is a bigger task than this gate."
     },
     {
       "id": "X0-3",
@@ -35,7 +37,8 @@
       "verdict": "FIXED",
       "fixedBy": "REG-99",
       "test": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/AutoPanelUiStateValidationTest.java",
-      "testMarker": "bandVisibleWhenReachesTheBandDescriptor"
+      "testMarker": "bandVisibleWhenReachesTheBandDescriptor",
+      "note": "band transaction.visibleWhen: the only spelling the validator accepted had its predicate silently dropped before the evaluator ever saw it."
     },
     {
       "id": "X0-5",
@@ -43,31 +46,34 @@
       "verdict": "FIXED",
       "fixedBy": "REG-104",
       "test": "NPDevKernel/kernel/src/test/java/com/npdev/kernel/auth/RolePermissionsTest.java",
-      "testMarker": "undeclaredRoleIsDeniedNotThrown"
+      "testMarker": "undeclaredRoleIsDeniedNotThrown",
+      "note": "RolePermissions.toRole(): an app-defined role name that toRole() didn't recognize returned null, and the caller's loop just continue'd past it -- the role silently granted nothing, with no error anywhere. Wave 3, RC-B1."
     },
     {
       "id": "X0-6",
       "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java",
       "verdict": "OPEN",
-      "note": "resolve() returns null for an unresolvable $ref path instead of throwing (resolveSetValue's consumers: patchConcept.set/mapList.select/mapValue). Filed in the register itself, no REG id yet."
+      "note": "resolve() returns null for an unresolvable $ref path instead of throwing (resolveSetValue's consumers: patchConcept.set/mapList.select/mapValue). Filed in the register itself, no REG id yet.",
+      "detail": "DefaultProcedureExecutor.resolve(state, ref) walks a dotted path and returns null the moment a segment is missing. It is the resolver behind resolveSetValue, which is what patchConcept.set, mapList.select and mapValue use -- so { \"type\": \"patchConcept\", \"concept\": \"Lote\", \"id\": \"$loteId\", \"set\": { \"quantidade\": \"$item.quantidad\" } } (note the typo: quantidad, not quantidade) writes quantidade: null, with no error anywhere. What makes this a finding rather than a design choice is that the same class already disagrees with itself: requireString and requireMap -- used for idRef and for map-shaped inputs -- call the same resolve and then throw IllegalArgumentException when it comes back null/blank. Id refs are loud; value refs are silent. One of the two is wrong, and nothing records which. Interaction with REG-89's history: patchConcept + createIfMissing builds a brand-new record out of set alone, so a typo'd $ref there creates a record with a null field rather than failing, and a governed gateway then rejects it for a required-field violation naming a field the author never mentioned -- the error surfaces one layer away from its cause. Same fix as X0-7: a filter/ref that cannot be resolved must be an error, never an empty/null one; both should land with LC-P0 in Wave 0.3, not separately."
     },
     {
       "id": "X0-7",
       "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java",
       "verdict": "OPEN",
-      "note": "runQuery with a query name absent from queriesByName returns an unfiltered list. Filed in the register itself, no REG id yet. Same class as X0-6 (DefaultProcedureExecutor) -- listed separately because the register documents them as two distinct methods/findings."
+      "note": "runQuery with a query name absent from queriesByName returns an unfiltered list. Filed in the register itself, no REG id yet. Same class as X0-6 (DefaultProcedureExecutor) -- listed separately because the register documented them as two distinct methods/findings.",
+      "detail": "DefaultProcedureExecutor.runQuery says so in its own comment: the query name is threaded through the (legacy-named) 'operation' slot, and when it's absent from queriesByName the result is unfiltered, same as before that fix landed. This is X0-1's exact shape one layer up: X0-1 is about a declared where that does not filter; this is about a declared query that does not filter, because the name did not resolve. It is already acknowledged in a comment, which is the most dangerous state for this class: known, written down, and not surfaced to the author. PackValidation does check that a runQuery step's query names a declared query, so the model-level door is shut -- but the runtime lookup is keyed by a normalized name and falls back to unfiltered rather than failing, so any drift between the two (pack-provided queries, a rename, a case/normalization mismatch) reopens it silently."
     },
     {
       "id": "X0-8",
       "class": "NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache",
       "verdict": "ACCEPTED",
-      "note": "evaluateVisibleWhen fails OPEN (surface stays visible) deliberately -- reasoned and accepted, not a defect. One accepted gap inside it: $root.<field> predicates aren't validated against the root concept's declared fields the way $ui.<name> now is (Move 11 W6) -- a typo validates clean and silently shows everything. Bounded follow-up, not required by this gate."
+      "note": "evaluateVisibleWhen fails OPEN (surface stays visible) deliberately -- reasoned and accepted, not a defect: a hidden surface whose rows are still committed is worse than a visible one, so worst case something stays visible, it never disappears incorrectly and silently drops data from view. That reasoning holds. One accepted gap inside it: $root.<field> predicates aren't validated against the root concept's declared fields the way $ui.<name> now is (Move 11 W6) -- a typo validates clean and silently shows everything, forever. Bounded follow-up (validate $root.<field> predicates the same way), not required by this gate: it converts the accepted fail-open from a hazard into a genuinely safe default."
     },
     {
       "id": "X0-9",
       "class": "NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache",
       "verdict": "ACCEPTED",
-      "note": "enabledWhen (business-ui evaluateWhen), same grammar/family/rationale as X0-8."
+      "note": "enabledWhen (business-ui evaluateWhen), same grammar/family/rationale as X0-8, including its accepted $root.<field> validation gap."
     },
     {
       "id": "X0-10",
@@ -75,19 +81,19 @@
       "verdict": "CLEAN",
       "test": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ProcedureComputeValueValidationTest.java",
       "testMarker": "unknownOperatorIsRejected",
-      "note": "computeValue refuses an unknown operator at MODEL level (PackValidation) -- the shape every other row should converge on."
+      "note": "computeValue refuses an unknown operator at MODEL level (PackValidation), by name, with the legal set, at authoring time -- no runtime default, no silent answer. This is the shape every other row above should converge on."
     },
     {
       "id": "X0-11",
       "class": "NPDevKernel/adapters/expression-cel/src/main/java",
       "verdict": "NOT_AUDITED",
-      "note": "expression-cel (invariants, access.read/access.write, defaultExpression, derivedExpression) -- the largest evaluator in the platform, not yet audited. Highest-value single item left in X0 per the register's own words (access.* silently defaulting either way is a security-relevant failure mode). Not required by this gate until audited; recorded so it cannot be silently dropped from view."
+      "note": "expression-cel (invariants, access.read/access.write, defaultExpression, derivedExpression) -- the largest evaluator in the platform, and the only one that is a real expression engine rather than a narrow subset. Not yet audited. Highest-value single item left in X0: access.* is an authorization answer, so a silent-true default would be an information disclosure and a silent-false default would be a support ticket. Not required by this gate until audited; recorded so it cannot be silently dropped from view. (Generated CRUD runtime support / GeneratedCrudRuntimeSupport.java, 158 KB, and the frontend evaluateWhen family beyond visibleWhen/enabledWhen were also out of scope for the original audit.)"
     },
     {
       "id": "X0-12",
       "class": null,
       "verdict": "NOT_BUILT",
-      "note": "having (LC-B1), proposed. Must be born loud -- when it is authored, it needs a registry entry with verdict FIXED/CLEAN and a real must-error test in the SAME commit, not added here in advance of the code existing."
+      "note": "having (LC-B1), proposed. Must be born loud -- when it is authored, it needs a registry entry with verdict FIXED/CLEAN and a real must-error test in the SAME commit, not added here in advance of the code existing. Rule for anything added later, not just this one: a new evaluator, subset, or predicate dialect must answer this register's one question before it ships."
     }
   ]
 }

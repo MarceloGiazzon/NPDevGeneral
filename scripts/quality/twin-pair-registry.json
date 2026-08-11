@@ -5,8 +5,8 @@
     "permanent registry+gate. This is that gate for the twin-pair-divergence family. Each rule below",
     "names two or more locations that must move together; check-twin-pair-consistency.py fails when",
     "they diverge. A human adds a new rule here when a new twin-pair is found (mirroring how",
-    "docs/X0_SILENT_EXPRESSION_REGISTER.md is curated) -- this file does not invent new pairs on its",
-    "own."
+    "scripts/quality/x0-evaluator-registry.json is curated) -- this file does not invent new pairs on",
+    "its own."
   ],
   "rules": [
     {

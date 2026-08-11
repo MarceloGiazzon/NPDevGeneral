@@ -1,26 +1,31 @@
 #!/usr/bin/env python3
-r"""Move 13 P6: makes the X0 discipline (docs/X0_SILENT_EXPRESSION_REGISTER.md) a permanent gate
-instead of something that only runs when someone remembers to re-audit.
+r"""Move 13 P6: makes the X0 discipline a permanent gate instead of something that only runs when
+someone remembers to re-audit.
 
 WHY THIS EXISTS
 ---------------
 "An input an evaluator cannot handle is an ERROR, never a default answer" (the X0 rule) has eight
-confirmed members. Seven were found by a deliberate audit; the eighth (REG-108: roles/propertyScopes/
+confirmed members in scripts/quality/x0-evaluator-registry.json (its own `why` field carries the
+full history). Seven were found by a deliberate audit; the eighth (REG-108: roles/propertyScopes/
 properties silently dropped during pack composition) was found BY ACCIDENT, while building on top of
 it for Move 13. A register that only gets read is not a control -- this script is the control.
 
-WHAT IT CHECKS (three things)
-------------------------------
-1. **Doc <-> registry parity.** Every `X0-n` row in docs/X0_SILENT_EXPRESSION_REGISTER.md's table has
-   exactly one entry in x0-evaluator-registry.json, and vice versa. Deleting a row from either side
-   without the other is the cheapest way to lose a finding; this catches it in either direction.
-2. **A FIXED/CLEAN entry's proof still exists.** Its `test` file must exist and must still contain
+md-zero-2026-08-11 PLAN.md Phase 1 (the pilot for the whole plan): this script used to cross-check
+the registry against a parallel markdown table, docs/X0_SILENT_EXPRESSION_REGISTER.md. That doc is
+deleted -- its narrative moved into the registry's `why`/`note`/`detail` fields (see `supersedes`),
+and the checker below no longer reads any `.md` file. The doc<->registry parity check goes with it
+(there is nothing left to disagree with); the two checks that were never about the doc in the first
+place stay: a FIXED/CLEAN entry's proof still exists, and no evaluator-shaped class ships unaudited.
+
+WHAT IT CHECKS (two things)
+----------------------------
+1. **A FIXED/CLEAN entry's proof still exists.** Its `test` file must exist and must still contain
    `testMarker` (a method name, not just a substring in the class under test) -- proving the specific
    regression test that pins the "errors instead of silently defaulting" behavior has not been deleted
    or renamed out from under the registry. A FIXED entry with no committed test at all must instead
    carry a `testExemptReason` naming the gap explicitly (see X0-2) -- this is a visible, named
    exception the next reader has to see, not a silent pass.
-3. **New evaluator-shaped classes are not silently unaudited.** `evaluatorShapedGlobs` names the
+2. **New evaluator-shaped classes are not silently unaudited.** `evaluatorShapedGlobs` names the
    directories/patterns this project's own evaluators have come from so far. Any file matching one of
    those globs that no registry entry's `class` field already claims is a class this audit has never
    looked at -- the exact "new evaluator/resolver class has no test asserting it errors" case the
@@ -38,21 +43,18 @@ USAGE
     python check-x0-evaluator-coverage.py
     python check-x0-evaluator-coverage.py --calibrate
 
-Exit codes: 0 = clean, 1 = at least one problem, 2 = the registry/doc itself could not be read.
+Exit codes: 0 = clean, 1 = at least one problem, 2 = the registry itself could not be read.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-REGISTER_DOC = REPO_ROOT / "docs" / "X0_SILENT_EXPRESSION_REGISTER.md"
 REGISTRY_JSON = REPO_ROOT / "scripts" / "quality" / "x0-evaluator-registry.json"
 
-DOC_ROW_ID = re.compile(r"^\|\s*X0-(\d+)\s*\|")
 VERDICTS_REQUIRING_TEST = {"FIXED", "CLEAN"}
 
 
@@ -63,28 +65,9 @@ def _rel(path: Path) -> str:
         return path.as_posix()
 
 
-def doc_ids(doc_text: str) -> set[str]:
-    ids = set()
-    for line in doc_text.splitlines():
-        match = DOC_ROW_ID.match(line.strip())
-        if match:
-            ids.add(f"X0-{match.group(1)}")
-    return ids
-
-
-def check(registry: dict, doc_text: str, repo_root: Path) -> list[str]:
+def check(registry: dict, repo_root: Path) -> list[str]:
     problems: list[str] = []
     entries = {entry["id"]: entry for entry in registry.get("entries", [])}
-    from_doc = doc_ids(doc_text)
-    from_registry = set(entries.keys())
-
-    for missing in sorted(from_doc - from_registry, key=lambda x: int(x.split("-")[1])):
-        problems.append(f"{missing}: appears in {_rel(REGISTER_DOC)}'s table but has no entry in "
-                         f"{_rel(REGISTRY_JSON)} -- add one (a new finding was documented but not "
-                         f"machine-checked)")
-    for extra in sorted(from_registry - from_doc, key=lambda x: int(x.split("-")[1])):
-        problems.append(f"{extra}: has a registry entry but no row in {_rel(REGISTER_DOC)}'s table "
-                         f"-- either the doc lost a row, or the registry has a stale/invented id")
 
     claimed_files: set[Path] = set()
     for entry_id, entry in entries.items():
@@ -153,9 +136,6 @@ def check(registry: dict, doc_text: str, repo_root: Path) -> list[str]:
 
 
 def run() -> int:
-    if not REGISTER_DOC.is_file():
-        print(f"FAIL: {_rel(REGISTER_DOC)} not found.", file=sys.stderr)
-        return 2
     if not REGISTRY_JSON.is_file():
         print(f"FAIL: {_rel(REGISTRY_JSON)} not found.", file=sys.stderr)
         return 2
@@ -165,35 +145,32 @@ def run() -> int:
         print(f"FAIL: {_rel(REGISTRY_JSON)} is not valid JSON: {exc}", file=sys.stderr)
         return 2
 
-    doc_text = REGISTER_DOC.read_text(encoding="utf-8")
-    problems = check(registry, doc_text, REPO_ROOT)
+    problems = check(registry, REPO_ROOT)
 
     entry_count = len(registry.get("entries", []))
-    print(f"X0 evaluator coverage ({entry_count} registry entries, {_rel(REGISTER_DOC)} cross-checked)")
+    print(f"X0 evaluator coverage ({entry_count} registry entries, {_rel(REGISTRY_JSON)})")
     if problems:
-        print("\nFAIL: the X0 register and its machine-checked twin disagree, or a proof regressed:",
-              file=sys.stderr)
+        print("\nFAIL: a proof regressed or a new evaluator shipped unaudited:", file=sys.stderr)
         for problem in problems:
             print(f"  - {problem}", file=sys.stderr)
         return 1
-    print("OK: registry matches the doc 1:1, every FIXED/CLEAN proof test still carries its marker, "
-          "and no unregistered evaluator-shaped class was found.")
+    print("OK: every FIXED/CLEAN proof test still carries its marker, and no unregistered "
+          "evaluator-shaped class was found.")
     return 0
 
 
 def calibrate() -> int:
     """Required-controls discipline: each control must fire for the reason it claims to, and the
-    real registry/doc pairing must stay silent."""
+    real registry must stay silent."""
     import shutil
     import tempfile
 
     real_registry = json.loads(REGISTRY_JSON.read_text(encoding="utf-8-sig"))
-    real_doc = REGISTER_DOC.read_text(encoding="utf-8")
     ok = True
 
-    def report(label: str, registry: dict, doc_text: str, repo_root: Path, expect_fail: bool) -> None:
+    def report(label: str, registry: dict, repo_root: Path, expect_fail: bool) -> None:
         nonlocal ok
-        problems = check(registry, doc_text, repo_root)
+        problems = check(registry, repo_root)
         fired = bool(problems)
         passed = fired == expect_fail
         ok = ok and passed
@@ -201,18 +178,15 @@ def calibrate() -> int:
         for problem in problems[:2]:
             print(f"           {problem}")
 
-    print("Calibration -- must catch doc/registry drift and a weakened proof, and stay silent on the real state:")
-    report("the real registry vs. the real doc", real_registry, real_doc, REPO_ROOT, expect_fail=False)
+    print("Calibration -- must catch a stale class, a weakened proof, and an unaudited class, and "
+          "stay silent on the real state:")
+    report("the real registry against the real tree", real_registry, REPO_ROOT, expect_fail=False)
 
-    doc_missing_row = "\n".join(
-        line for line in real_doc.splitlines() if not line.strip().startswith("| X0-5 ")
-    )
-    report("doc drops a row the registry still has (X0-5)", real_registry, doc_missing_row, REPO_ROOT,
-           expect_fail=True)
-
-    registry_missing_entry = json.loads(json.dumps(real_registry))
-    registry_missing_entry["entries"] = [e for e in registry_missing_entry["entries"] if e["id"] != "X0-4"]
-    report("registry drops an entry the doc still has (X0-4)", registry_missing_entry, real_doc, REPO_ROOT,
+    registry_stale_class = json.loads(json.dumps(real_registry))
+    for entry in registry_stale_class["entries"]:
+        if entry["id"] == "X0-4":
+            entry["class"] = "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/DoesNotExist.java"
+    report("a registry entry's class no longer exists on disk (X0-4)", registry_stale_class, REPO_ROOT,
            expect_fail=True)
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -224,12 +198,12 @@ def calibrate() -> int:
             weakened_test.read_text(encoding="utf-8").replace("undeclaredRoleIsDeniedNotThrown", "renamedAway"),
             encoding="utf-8",
         )
-        report("a FIXED entry's testMarker is renamed away (X0-5)", real_registry, real_doc, tmp_root,
+        report("a FIXED entry's testMarker is renamed away (X0-5)", real_registry, tmp_root,
                expect_fail=True)
 
         new_evaluator = tmp_root / "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/BrandNewEvaluator.java"
         new_evaluator.write_text("package com.npdev.kernel.procedures;\nclass BrandNewEvaluator {}\n", encoding="utf-8")
-        report("a brand-new evaluator-shaped class with no registry entry", real_registry, real_doc, tmp_root,
+        report("a brand-new evaluator-shaped class with no registry entry", real_registry, tmp_root,
                expect_fail=True)
 
     if not ok:
