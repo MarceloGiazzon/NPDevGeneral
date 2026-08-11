@@ -9,6 +9,17 @@
    Custom properties are kept theme-swappable so alt-1/2/3 remain reachable later without touching
    any rule below. */
 
+/* `main` in app.css is `max-width: 760px`, which is right for a form and wrong for a wall of
+   monitors -- the first render squeezed five cards into a 470px column with grey either side.
+   Escaping it HERE, scoped to these two screens, rather than widening `main` for everybody: the
+   five original screens are forms and read better narrow. Measured against the rendered page, not
+   guessed. */
+main:has(#screen-monitor:not([hidden])),
+main:has(#screen-scrap:not([hidden])) {
+  max-width: none;
+  padding: 16px 24px;
+}
+
 #screen-monitor, #screen-scrap {
   --bg: #0b0d10;
   --bg2: #11151a;
@@ -304,12 +315,18 @@ dl.kv dd small { opacity: .6; }
 .acc .rows { display: none; }
 .acc.open .rows { display: block; }
 .irow {
-  display: grid; grid-template-columns: 118px 1fr auto; gap: 8px;
+  display: grid; grid-template-columns: 118px minmax(0, 1fr) auto; gap: 8px;
   padding: 6px 12px; border-top: 1px solid #161c23; align-items: start; font-size: 11.5px;
 }
 .irow:hover { background: #141b23; }
-.irow .k { color: var(--muted); overflow-wrap: anywhere; }
-.irow .v { color: #cde3f2; overflow-wrap: anywhere; }
+/* `minmax(0, 1fr)` above and `min-width: 0` here are the same fix in two places, and it is not
+   defensive: a grid track's default minimum is `auto`, which means "as wide as the longest
+   unbreakable content" -- and `overflow-wrap` does NOT change track sizing. So an unbroken path like
+   `D:\...\build\libs\FinalExec-0.1.0.jar` widened the row past the panel and pushed the Copy button
+   off-screen, where it could not be clicked. Seen in the rendered page; invisible to any assertion
+   that only reads the DOM. */
+.irow .k { color: var(--muted); overflow-wrap: anywhere; min-width: 0; }
+.irow .v { color: #cde3f2; overflow-wrap: anywhere; min-width: 0; }
 .irow.imp { background: #12241a; }
 .irow.imp .v { color: #7fd88f; font-weight: 600; }
 /* A PROBED row is drawn differently from a GENERATED one, because the difference is real: the
@@ -397,8 +414,12 @@ dl.kv dd small { opacity: .6; }
 .verdict.red { color: var(--err); }
 
 .timeline { display: flex; flex-direction: column; gap: 0; font-family: var(--font-mono); font-size: 12px; }
-.tstep { display: grid; grid-template-columns: 30px 90px 1fr auto; gap: 10px; padding: 6px 8px;
-         border-left: 2px solid #1f242b; align-items: start; }
+/* 90px was too narrow for the longest real action name: `waitForSelector` overlapped the label
+   column and rendered as "waitForSelectoWait for an element". Measured against the rendered page --
+   `min-content` sizes to whatever the engine's longest action actually is, so it cannot go stale
+   when a new action is added. */
+.tstep { display: grid; grid-template-columns: 30px minmax(90px, max-content) 1fr auto; gap: 10px;
+         padding: 6px 8px; border-left: 2px solid #1f242b; align-items: start; }
 .tstep.passed { border-left-color: #2c5236; }
 .tstep.failed { border-left-color: var(--err); background: #1e1312; }
 .tstep.skipped { opacity: .45; }

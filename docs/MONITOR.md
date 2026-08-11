@@ -171,7 +171,26 @@ not installed rather than failing silently. No path literal appears anywhere in 
 
 ---
 
-## 4. Related
+## 4. Checking the screens
+
+Two things cover the two halves, and neither covers the other:
+
+```
+NPDevManager --selftest                              the Tauri commands, headless
+node scripts/quality/check-manager-ui-render.mjs     what the screens actually DRAW
+```
+
+The second renders `monitor.js` and `scrap.js` in a real browser against the captured fixtures and
+asserts 20 things about the result — that a port conflict is drawn as its own state rather than as
+running, that probed rows are visually distinct from generated ones, that the failing step is
+highlighted, that Play stays disabled until the CLI says VALID, and that neither screen logs a
+console error. It found two defects on its first run: the card wall squeezed into a 470px column,
+and Playwright's raw ANSI codes printed through the middle of a failure message.
+
+It needs Playwright, which is not a dependency of this repo; it resolves one from the machine and
+SKIPS with a reason rather than failing when there is none.
+
+## 5. Related
 
 - [MANAGER.md](MANAGER.md) — the Manager as a whole
 - [FLOWS.md](FLOWS.md) — the durable flow engine
