@@ -1,11 +1,16 @@
 # NPDev Manager — Manual
 
 > **New machine, no terminal?** The short path is
-> [`INSTALL_ON_A_NEW_MACHINE.md`](INSTALL_ON_A_NEW_MACHINE.md) — download, install, Setup,
-> Doctor, first app, in six steps. This page is the full manual.
+> [`INSTALL_ON_A_NEW_MACHINE.md`](INSTALL_ON_A_NEW_MACHINE.md) — download, install, the private
+> runtimes, the Ready screen, first app, in six steps. This page is the full manual.
 
-Installs and runs NPDev on a machine that has nothing on it — no Java, no Python, no git — and
-never asks you to open a terminal.
+Installs and runs NPDev on a machine that has nothing on it — no Java, no Python — and never asks
+you to open a terminal.
+
+> **git is optional and the Manager does not install it.** Nothing here needs it: versions download
+> as a zip, apps scaffold, build and run without it. The one thing it affects is your app's own
+> version history — with git absent, `npdev init` says so and creates the app anyway, and the Ready
+> screen's `git-present` check warns rather than fails.
 
 **Windows · Linux · 7 screens · 44 actions · Private runtimes**
 
@@ -21,7 +26,7 @@ never asks you to open a terminal.
 - [6 · The Monitor](#6--the-monitor)
 - [7 · Scrap Manager](#7--scrap-manager)
 - [Files & folders](#files-and-folders)
-- [The ten checks](#the-ten-checks)
+- [The eleven checks](#the-eleven-checks)
 - [Commands it runs](#commands-it-runs-for-you)
 - [Action reference](#action-reference)
 - [Progress events](#progress-events)
@@ -93,64 +98,72 @@ The AppImage carries its own browser engine, so there is nothing to install firs
 
 ### The one prerequisite: Docker, and only for some engines
 
-**H2 (file), H2 (server) and In-memory need nothing.** They are embedded — no server, no container —
-and H2 (file) is the default.
+**H2Local, H2Server and InMemory need nothing.** They are embedded — no server, no container —
+and H2Local is the default. (Those are the names in the picker; there is no "H2 (file)" entry.)
 
-**PostgreSQL, MySQL and SQL Server need Docker.** NPDev starts them as containers
+**Postgres, MySQL and SqlServer need Docker.** NPDev starts them as containers
 (`postgres:16`, `mysql:8.4`, `mcr.microsoft.com/mssql/server:2022-latest`), so `npdev db start` and
 the Start/Stop/Reset buttons cannot work without it.
 
 The doctor reports Docker as **warn / optional**, which is accurate for the embedded engines and
 understated for the other three. Pick an embedded engine and you can ignore Docker entirely.
 
-> **Pointing NPDev at a database server you already run** is supported to the extent that it will
-> connect and work — but the toolbox knows the server is not its own and refuses to Start, Stop or
-> Reset it (STOR-14). It will tell you so rather than acting. In particular `Reset` will not delete
-> your data root.
+> **Pointing NPDev at a database server you already run** connects and works — but read this before
+> pressing anything in the Database group. The refusal to Start, Stop or Reset (STOR-14) fires only
+> when the app's `db.definition.json` declares `"externallyProvisioned": true`, and **nothing in the
+> Manager or in `npdev init` can set that flag yet**. On an app created the normal way the buttons
+> act as if the server were NPDev's own, and `Reset` deletes the data root. Set the flag by hand to
+> get the protection, or simply do not press those three buttons.
 
 **First run creates one folder and touches nothing else.** Windows: `%LOCALAPPDATA%\NPDev`.
 Linux: `~/.local/share/npdev`. Everything the Manager downloads lives there.
 
-### The five screens, in the order you will use them
+### The seven screens, in the order you will use them
 
-The window has five tabs across the top. A first run goes through them left to right: check the
-machine, install NPDev, create an app, run it. **Versions** is for later, when you want to update.
+The window has seven tabs across the top. A first run uses the first four, left to right: check the
+machine, install NPDev, create an app, run it. **Versions** is for later, when you want to update;
+**The Monitor** and **Scrap Manager** are for once you have apps to watch.
 
 ## 1 · Ready
 
-Ten checks that tell you whether this machine can build an NPDev app — before you spend time
+Eleven checks that tell you whether this machine can build an NPDev app — before you spend time
 finding out the hard way.
 
 ```
-  Java 17+           pass    17.0.11   (private JDK)
-  JAVA_HOME          pass    agrees
-  Python 3.9+        pass    3.11.9
-  git                pass    2.44.0
-  Disk space         pass    42 GB free
-  NPDev jars         fail    not staged     [ Run setup ]
-  AI knowledge index warn    not built      [ Run setup ]
-  Docker             warn    not found      optional
-  PowerShell 7       warn    not found      optional
+  ✓ Java 17+             17.0.11   (private JDK)
+  ✓ JAVA_HOME            agrees
+  ✓ Python 3.9+          3.11.9
+  ! git                  not found -- optional, version history only
+  ✓ Disk space           42 GB free
+  ✗ NPDev jars           not staged                    [ Fix this ]
+  ! AI knowledge index   not built
+  ! Docker               not found -- optional
+  ! PowerShell 7         not found -- optional
+  ! Browser exploration  not found -- optional
 ```
 
-### What the three states mean
+### What the marks mean
 
-| State | Meaning | What to do |
-|---|---|---|
-| **pass** | Requirement met. | Nothing. |
-| **fail** | You cannot build an app until this is resolved. | Use the button beside it, or follow the fix text. |
-| **warn** | Optional. Something is missing that only some paths need. | Usually nothing. PowerShell is never required. Docker is required only for the PostgreSQL / MySQL / SQL Server engines — see "The one prerequisite" above. |
+Each row carries a **mark**, not the word: the words below are the names used in this manual and in
+`npdev doctor --json`, and a fourth mark, **–**, means the check did not apply to this app.
+
+| Mark | State | Meaning | What to do |
+|---|---|---|---|
+| **✓** | pass | Requirement met. | Nothing. |
+| **✗** | fail | You cannot build an app until this is resolved. | Follow the fix text on the row; the one **Fix this** button takes you to the Install screen. |
+| **!** | warn | Optional. Something is missing that only some paths need. | Usually nothing. PowerShell and git are never required. Docker is required only for the Postgres / MySQL / SqlServer engines — see "The one prerequisite" above. |
 
 ### Controls
 
-- **Refresh** — Re-runs every check. Use it after installing something.
-- **Fix button** — Appears only on rows the Manager can resolve itself. Runs the command shown on
-  that row.
+- **Re-check** — Re-runs every check. Use it after installing something.
+- **Fix this** — Appears only on a failing row that names a command it can send you to. It
+  **navigates** to the screen where that fix lives; it does not run anything. In practice this is
+  the **NPDev jars** row, which takes you to Install → *Run setup*.
 
 **Passing rows are shown on purpose.** A list that displayed only problems would leave you unable
 to tell a healthy machine from a check that never ran.
 
-The full list of checks, with what makes each one fail, is in [the reference section](#the-ten-checks).
+The full list of checks, with what makes each one fail, is in [the reference section](#the-eleven-checks).
 
 ## 2 · Install
 
@@ -177,7 +190,7 @@ Gets Java, Python, and NPDev itself. Run once per version.
 can download; anything else has to be built on your machine. The log says which happened — look
 for `Jars source: download` or `Jars source: build`. Both end in a working install.
 
-When setup finishes, return to **Ready** and press Refresh. **NPDev jars** should now pass.
+When setup finishes, return to **Ready** and press **Re-check**. **NPDev jars** should now pass.
 
 ## 3 · Apps
 
@@ -203,12 +216,13 @@ Your applications. Each one is a folder with a model file in it — that file is
 
 **The model file is the part worth keeping.** Generated code can be rebuilt from it at any time;
 the model cannot be rebuilt from anything. Create starts a git repository in the folder for
-exactly this reason — commit as you go.
+exactly this reason — commit as you go. (If this machine has no git, Create says so and makes the
+app anyway; there is simply no history until you install git and `git init` the folder.)
 
 ### Controls
 
-- **Open folder** — Opens the app in your file manager.
-- **Run** — Switches to the Run screen with this app selected.
+- **Open folder** — Opens the app in your file manager. It is the only button on an app's row;
+  to run one, go to the **Run** screen and put its folder in **App folder**.
 
 ## 4 · Run
 
@@ -217,7 +231,7 @@ Builds your app, starts it, and watches the model file. Save a change and it reb
 ```
   App folder  C:\Users\ana\Projects\my-library      Port  8080
 
-  [ Start ]   [ Stop ]        →  http://localhost:8080
+  [ ▶ Run ]   [ ■ Stop ]      →  http://localhost:8080
 
   14:09:02  changed: model.json
   14:09:02  validate ................................. ok
@@ -231,8 +245,8 @@ Builds your app, starts it, and watches the model file. Save a change and it reb
 |---|---|
 | **App folder** | Which app to run. |
 | **Port** | Where it will be reachable. Default `8080`. Change it if something else is using that port. |
-| **Start** | Builds, starts, then watches the model for changes. |
-| **Stop** | Stops the app and everything it started. |
+| **▶ Run** | Builds, starts, then watches the model for changes. |
+| **■ Stop** | Stops the app and everything it started. |
 | **Link** | Opens the running app in your browser. |
 
 ### The first start takes longer
@@ -243,8 +257,9 @@ database.
 
 ### Signing in
 
-Open the link. Your key is in a file called `SUPER_USER_KEY.txt`, created in the app folder the
-first time it starts.
+Open the link. Your key is in a file called `SUPER_USER_KEY.txt`, written the first time the app
+starts — into the **generated** folder the app runs from (`<name>-app`), not the model folder beside
+it.
 
 **A mistake will not cost you the running app.** The model is checked before anything is
 rebuilt. If you save something invalid, the log shows the error — naming the exact place — and
@@ -353,7 +368,7 @@ Everything the Manager creates lives in one place.
 Your own apps live wherever you chose when creating them. Nothing outside this folder is
 modified, and no system settings are changed.
 
-## The ten checks
+## The eleven checks
 
 What the Ready screen tests, and what makes each one fail.
 
@@ -363,12 +378,13 @@ What the Ready screen tests, and what makes each one fail.
 | `java-version` | Version 17 or newer | Java is present but older than 17 (a newer major version warns instead of failing — see below) | Install private JDK |
 | `java-home-agreement` | Consistent Java | **warn** Two different Javas in play | Use the private JDK |
 | `python-version` | Python 3.9+ | Older or missing | Install private Python |
-| `git-present` | git installed | Not found | Only needed to start an app's history |
-| `disk-space` | A few GB free | Below the threshold | Free up space |
+| `git-present` | Optional | **warn** Not found | Nothing — only your app's own version history |
+| `disk-space` | 5 GB free | Below 5 GB | Free up space |
 | `runtimehost-jars` | Setup has run | Not yet prepared | **Run setup** |
 | `ai-knowledge-index` | Setup has run | **warn** Not built | Run setup — only needed for AI authoring |
 | `docker-present` | Optional | **warn** Not found | Nothing — an alternative run path only |
 | `pwsh-present` | Optional | **warn** Not found | Nothing — never required |
+| `scrapforai-engine` | Optional | **warn** Not found | Nothing — browser explorations only |
 
 **Wrong-Java used to be the classic failure; the Manager mostly removes it now.** The private JDK
 is passed only to the programs NPDev starts, so whatever Java is on your machine is irrelevant —
@@ -383,10 +399,10 @@ Every button maps to a command that works on its own in a terminal. Nothing here
 
 | Screen | Button | Command |
 |---|---|---|
-| Ready | Refresh | `npdev doctor --json` |
+| Ready | Re-check | `npdev doctor --json` |
 | Install | Run setup | `npdev setup --json` |
 | Apps | Create | `npdev init <folder> --json` |
-| Run | Start | `npdev dev --port <port> --json` |
+| Run | ▶ Run | `npdev dev --port <port> --json` |
 
 Each runs with the private Java and Python supplied through the environment, from the version
 folder you have marked as current. If you ever prefer the terminal, the same commands work
@@ -400,7 +416,7 @@ The complete internal surface — useful when reporting a problem or reading the
 
 | Action | Purpose |
 |---|---|
-| `check_doctor` | Run all ten checks |
+| `check_doctor` | Run all eleven checks |
 | `jdk_status` | Is the private Java installed |
 | `python_status` | Is Python available or installed |
 | `is_fake_mode` | Whether preview mode is on |
@@ -544,7 +560,7 @@ terminal — the error printed there will name what is missing.
 
 ### "NPDev jars — not staged" after running setup
 
-Press **Refresh** on the Ready screen; results are from the last run. If it persists, open
+Press **Re-check** on the Ready screen; results are from the last run. If it persists, open
 **Install** and read the setup log for the first red line.
 
 ### The app will not start on port 8080
@@ -597,4 +613,4 @@ did is a command you could have typed yourself.
 ---
 
 NPDev Manager · Windows and Linux · Pre-1.0, under active development.
-Five screens, twenty-one actions, five progress events, ten checks.
+Seven screens, forty-four actions, five progress events, eleven checks.

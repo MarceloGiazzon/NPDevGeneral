@@ -18,6 +18,7 @@ import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NamedTuple
 
 # W5 (storage/FULL_SUPPORT_PLAN.md): the engine list, its per-engine defaults, and the honesty
 # status for each, in one module. `npdev init --engine`, `npdev engines`, doctor's database
@@ -939,6 +940,18 @@ def _run_with_phase_narration(command: list[str], cwd: Path, markers: list[tuple
         raise subprocess.CalledProcessError(process.returncode, command)
 
 
+# The scaffolded README's one sentence about version history, in both of its truths. It is a pair of
+# constants rather than inline prose because the README is written BEFORE `git init` is attempted and
+# corrected after (see run_init), so a wording edit made in only one of the two places would quietly
+# stop the correction from applying and put the "already a git repository" claim back on a machine
+# that has no git.
+_README_GIT_SENTENCE = ("This directory is already a git repository with one commit for exactly "
+                        "that reason -- keep committing as you change the model.")
+_README_NO_GIT_SENTENCE = ("git is not installed on this machine, so this directory is NOT a git "
+                           "repository yet -- install git, run `git init` here, and commit as you "
+                           "change the model.")
+
+
 def run_init(args: argparse.Namespace) -> int:
     """I3: scaffold a new app directory from a small, corpus-registered seed (NPDevSamples/
     npdev-init-seed -- 2 concepts + 1 bond, derived from canonical-demo's own Patient/Appointment
@@ -1042,8 +1055,7 @@ def run_init(args: argparse.Namespace) -> int:
         f"**`model.json` is this application.** Everything else -- the database schema, the REST "
         f"API, the admin screens -- is generated from it and is disposable: delete it, regenerate "
         f"it, nothing is lost as long as model.json (and db.definition.json, which says how your "
-        f"data persists) survive. This directory is already a git repository with one commit for "
-        f"exactly that reason -- keep committing as you change the model.\n\n"
+        f"data persists) survive. {_README_GIT_SENTENCE}\n\n"
         f"## Run it\n\n"
         f"```sh\n"
         f"cd {target.name}\n"
@@ -1078,7 +1090,20 @@ def run_init(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
 
-    git_note = _scaffold_git_history(target)
+    git = _scaffold_git_history(target)
+    if not git.initialised:
+        # The README written above promised a repository -- it has to, because git only sees files
+        # that already exist, so it is written first and the answer arrives second. Nothing else in
+        # the scaffold is affected, but a file that says "this directory is already a git
+        # repository" sitting in a directory that is not one is exactly the quiet lie the notice
+        # beside it exists to avoid. Both sentences are single constants precisely so that editing
+        # the wording cannot make this substitution silently stop applying.
+        readme_path = target / "README.md"
+        patched = readme_path.read_text(encoding="utf-8").replace(
+            _README_GIT_SENTENCE, _README_NO_GIT_SENTENCE)
+        readme_path.write_text(patched, encoding="utf-8")
+
+    git_note = git.notice
 
     created_files = [name for name in
                      ("model.json", "config.json", "db.definition.json", "README.md", ".gitignore")
@@ -1100,7 +1125,10 @@ def run_init(args: argparse.Namespace) -> int:
             "created": {
                 "directory": str(target),
                 "files": created_files,
-                "gitInitialised": True,
+                # Was a hardcoded `True`, which stopped being true the moment git could be absent
+                # (W1.2). The Manager reads this key; a scaffold that reports a repository it does
+                # not have would make the UI lie on exactly the machine the Manager is built for.
+                "gitInitialised": git.initialised,
                 "nextCommand": "npdev dev",
             },
             # Additive: every key above is byte-identical to before, so the Manager's existing
@@ -1111,9 +1139,11 @@ def run_init(args: argparse.Namespace) -> int:
                 "status": engine["status"],
                 "honestyNotice": notice,
             },
-            # Non-null only when git had no identity and one was substituted for this repo alone.
-            # The Manager can surface it beside "created." -- a substitution nobody is told about is
-            # a worse surprise than the substitution itself.
+            # Non-null when git had no identity and one was substituted for this repo alone, and
+            # (since W1.2) when git is absent and there is no repository at all. The Manager can
+            # surface it beside "created." -- a substitution nobody is told about is a worse
+            # surprise than the substitution itself, and a missing repository nobody is told about
+            # is the same defect with the volume turned up.
             "gitIdentityNotice": git_note,
         }
         print(json.dumps(result, indent=2))
@@ -1125,14 +1155,27 @@ def run_init(args: argparse.Namespace) -> int:
     print(f"\ndatabase: {engine['externalName']} -- {engine['summary']}")
     if notice:
         print(f"\n  ! {notice}")
-    print(f"\ngit: initialized, 1 commit")
+    print("\ngit: initialized, 1 commit" if git.initialised
+          else "\ngit: not installed -- no repository created")
     if git_note:
         print(f"\n  ! {git_note}")
     print(f"\nNext:\n  cd {target.name}\n  npdev run app")
     return 0
 
 
-def _scaffold_git_history(target: Path) -> str | None:
+class GitScaffold(NamedTuple):
+    """What `_scaffold_git_history` actually managed to do, DECLARED rather than inferred.
+
+    The caller needs to know two different things -- "is there a repository?" and "was something
+    substituted that the user must be told about?" -- and they are independent. Reading the answer
+    back off the filesystem (`(target / ".git").exists()`) would work today and would be exactly the
+    kind of guess `_managed_jdk`'s docstring argues against, so the function says so instead.
+    """
+    initialised: bool
+    notice: str | None
+
+
+def _scaffold_git_history(target: Path) -> GitScaffold:
     """`git init` + first commit -- and never fail the whole scaffold because git has no identity.
 
     FOUND IN CI, 2026-08-08 (engine-support run 31272295843), and it is a real third-person defect
@@ -1148,15 +1191,32 @@ def _scaffold_git_history(target: Path) -> str | None:
     the user's global config), and the substitution is REPORTED rather than done quietly. A tool that
     silently commits under a name the user did not choose is a small surprise; one that does it
     without saying so is a bigger one.
-    """
-    subprocess.run(["git", "init", "--quiet"], cwd=target, check=True)
-    subprocess.run(["git", "add", "."], cwd=target, check=True)
-    message = f"npdev init: scaffold {target.name}"
 
-    first = subprocess.run(["git", "commit", "--quiet", "-m", message],
-                           cwd=target, capture_output=True, text=True)
+    GIT ABSENT ENTIRELY is the same defect one level up, found 2026-08-10 by taking git off PATH.
+    The Manager installs a private JDK and a private Python and NEVER installs git, while
+    docs/MANAGER.md advertised "no Java, no Python, no git" -- so on the machine this command exists
+    for, `["git", ...]` raises FileNotFoundError, which `main()` catches nowhere (it handles CliError
+    and CalledProcessError), and the Manager's **Create** button dies with a raw traceback at the
+    first step. The scaffold itself does not need git: every file is already written by the time this
+    runs. So the missing repository is REPORTED and the command succeeds, on the same reasoning as
+    the identity substitution above and the same shape `_platform_release_tag` already uses for
+    `git describe`. It is the history that is missing, not the app.
+    """
+    message = f"npdev init: scaffold {target.name}"
+    try:
+        subprocess.run(["git", "init", "--quiet"], cwd=target, check=True)
+        subprocess.run(["git", "add", "."], cwd=target, check=True)
+        first = subprocess.run(["git", "commit", "--quiet", "-m", message],
+                               cwd=target, capture_output=True, text=True)
+    except FileNotFoundError:
+        return GitScaffold(False, (
+            "git is not installed on this machine, so the scaffold was created without a "
+            "repository. Everything the app needs is here and `npdev run app` works as normal -- "
+            "only the version history is missing. Install git from https://git-scm.com/downloads "
+            "and run `git init && git add . && git commit -m \"scaffold\"` in this folder to get it."))
+
     if first.returncode == 0:
-        return None
+        return GitScaffold(True, None)
 
     stderr = (first.stderr or "") + (first.stdout or "")
     if "ident" not in stderr.lower() and "author identity" not in stderr.lower():
@@ -1177,11 +1237,12 @@ def _scaffold_git_history(target: Path) -> str | None:
             f"Set one and commit by hand:\n"
             f"  git config --global user.name \"Your Name\"\n"
             f"  git config --global user.email \"you@example.com\"")
-    return (f"git has no configured user.name/user.email on this machine, so the first commit was "
-            f"authored as {fallback_name} <{fallback_email}> -- in this repository only, nothing "
-            f"global was changed. Set your own with:\n"
-            f"  git config --global user.name \"Your Name\"\n"
-            f"  git config --global user.email \"you@example.com\"")
+    return GitScaffold(True, (
+        f"git has no configured user.name/user.email on this machine, so the first commit was "
+        f"authored as {fallback_name} <{fallback_email}> -- in this repository only, nothing "
+        f"global was changed. Set your own with:\n"
+        f"  git config --global user.name \"Your Name\"\n"
+        f"  git config --global user.email \"you@example.com\""))
 
 
 def _align_config_database(config_path: Path, engine: dict, database_name: str, *,
@@ -1571,9 +1632,22 @@ def run_app(args: argparse.Namespace) -> dict:
         _write_run_app_progress(final_app_out, result["phase"])
         base_url = f"http://127.0.0.1:{args.port}"
         log_path = final_app_out / "npdev-run-app-boot.log"
+        # W1.3: JAVA_HOME's java, not PATH's. The build above already ran on the Manager's private
+        # JDK (Gradle reads JAVA_HOME); starting the result with a bare `java` would be the one step
+        # that ignores it.
+        java = java_launcher()
+        if java is None:
+            result["diagnostics"].append(_diag(
+                "BOOT", "JAVA_NOT_FOUND",
+                "No Java runtime was found: JAVA_HOME is unset or does not contain bin/java, and "
+                "there is no `java` on PATH.",
+                suggested_fix="Install a JDK 17+, or set JAVA_HOME to one. Run `npdev doctor` to "
+                              "see which Java NPDev can find.",
+            ))
+            return result
         with open(log_path, "w", encoding="utf-8") as log_file:
             boot_proc = subprocess.Popen(
-                ["java", "-jar", str(jar_path), f"--server.port={args.port}",
+                [java, "-jar", str(jar_path), f"--server.port={args.port}",
                  f"--spring.profiles.active={args.profile}"],
                 cwd=str(final_app_out), stdout=log_file, stderr=subprocess.STDOUT,
             )
@@ -2072,6 +2146,32 @@ def run_setup(args: argparse.Namespace) -> int:
 
 def _resolve_java_home_binary(java_home: str) -> Path:
     return Path(java_home) / "bin" / ("java.exe" if os.name == "nt" else "java")
+
+
+def java_launcher() -> str | None:
+    """The `java` an app should actually be STARTED with: JAVA_HOME's binary first, PATH second.
+
+    W1.3, 2026-08-10. Both launch sites (`npdev run app`'s BOOT phase and `dev_loop.boot`) spawned a
+    bare `["java", "-jar", ...]`, which resolves through PATH and nothing else. That defeats the
+    Manager's entire M3 thesis at the last step: its private JDK is handed to child processes as
+    JAVA_HOME ONLY (`NPDevManager/src/npdev.rs`), which Gradle honours and a bare `java` cannot see.
+    On a machine with no system Java -- the machine the Manager exists for -- generate and build
+    succeed with the private JDK and then the app fails to start, with the working JDK sitting right
+    there unused.
+
+    Same precedence `npdev doctor`'s java checks already use, fixed there under Phase 0 I4b for
+    exactly this reason: PATH-only was the wrong question there too.
+
+    Returns None when there is no java anywhere, so a caller can report that as a diagnostic instead
+    of letting `Popen` raise FileNotFoundError into a stderr stream the Manager discards -- the
+    failure shape that kept this invisible.
+    """
+    java_home = os.environ.get("JAVA_HOME", "").strip()
+    if java_home:
+        candidate = _resolve_java_home_binary(java_home)
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which("java")
 
 
 def _managed_jdk() -> bool:
@@ -3102,6 +3202,34 @@ def _scrapforai_check() -> dict:
                   fix="install ScrapForAI, or set SCRAPFORAI_ROOT if it lives somewhere unusual")
 
 
+def _git_present_check() -> dict:
+    """git, reported as OPTIONAL -- a warning at worst, never a failure (W1.2, 2026-08-10).
+
+    Two facts had to be reconciled. docs/MANAGER.md advertises a machine with nothing on it, and the
+    Manager genuinely never installs git -- versions arrive as an HTTPS zip download
+    (`versions.rs::install_version`). Meanwhile this check failed HARD when git was absent, which
+    took the Ready screen red on precisely the machine the Manager exists for, and its detail named
+    two reasons that are both false: nothing in the Manager's path clones anything, and `npdev init`
+    now scaffolds without git and says so (`_scaffold_git_history`).
+
+    `_scrapforai_check` already wrote down the rule this follows -- a doctor that goes red over an
+    optional tool teaches people to ignore red -- and MANAGER.md's own check table has described git
+    as history-only the whole time. This is the code agreeing with the document, not the document
+    being edited down to match a hard failure nobody wanted.
+    """
+    git_path = shutil.which("git")
+    if git_path is not None:
+        return _check("git-present", "git", "pass", found=git_path,
+                      expected="installed and on PATH")
+    return _check(
+        "git-present", "git", "warn", expected="optional -- version history only",
+        detail="git not found on PATH. Nothing NPDev does needs it: apps scaffold, build and run "
+               "without it, and `npdev init` tells you when it could not create a repository. Only "
+               "your app's own version history is affected.",
+        fix="Install git from https://git-scm.com/downloads to get a repository per app",
+    )
+
+
 def run_doctor(args: argparse.Namespace) -> int:
     """I5: one screen, no scrolling -- exit non-zero listing only what MUST be fixed, warnings
     separate and never blocking. Every check here exists because this project already hit the
@@ -3131,12 +3259,13 @@ def run_doctor(args: argparse.Namespace) -> int:
     java_home_bin = _resolve_java_home_binary(java_home) if java_home else None
     path_java = shutil.which("java")
 
-    if java_home_bin is not None and java_home_bin.exists():
-        java_bin = java_home_bin
-    elif path_java is not None:
-        java_bin = Path(path_java)
-    else:
-        java_bin = None
+    # The precedence itself lives in `java_launcher()` (W1.3) so that doctor and the two launch
+    # sites cannot drift apart -- this used to be the only place that expressed it, which is exactly
+    # how `npdev run app` ended up starting apps with a different java than doctor reported on.
+    # java_home_bin/path_java are still read separately just above, because java-home-agreement is
+    # about the DISAGREEMENT between them and needs both.
+    launcher = java_launcher()
+    java_bin = Path(launcher) if launcher else None
 
     if java_bin is None:
         checks.append(_check(
@@ -3266,15 +3395,7 @@ def run_doctor(args: argparse.Namespace) -> int:
         checks.append(_check("python-version", "Python 3.9+", "pass",
                              found=sys.version.split()[0], expected="3.9+"))
 
-    git_path = shutil.which("git")
-    if git_path is None:
-        checks.append(_check(
-            "git-present", "git", "fail", expected="installed and on PATH",
-            detail="git not found on PATH -- required to clone NPDev and for `npdev init`.",
-            fix="Install git from https://git-scm.com/downloads",
-        ))
-    else:
-        checks.append(_check("git-present", "git", "pass", found=git_path, expected="installed and on PATH"))
+    checks.append(_git_present_check())
 
     required_gb = 5
     try:

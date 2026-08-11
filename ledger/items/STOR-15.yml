@@ -1,0 +1,61 @@
+id: STOR-15
+title: >-
+  Nothing a user can reach sets `externallyProvisioned`, so STOR-14's refusal never fires -- point
+  NPDev at a database server you already run and `Reset` still deletes your data root
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-10
+verification: NOT_VERIFIED
+surface: cli/init + manager/apps
+source: >-
+  S1 install-doc audit (2026-08-10) finding F7, re-verified against `e1069226` while closing
+  close-the-gaps-2026-08-10 W1.4. Filed rather than fixed because W1.4's rule is documents-only:
+  anything needing a code change gets an id.
+detail: >-
+  STOR-14 built the refusal and built it well -- every `_ops` operation hard-refuses and returns when
+  the plan says the server is not NPDev's, `Reset` refuses before both halves including the recursive
+  `Remove-Item`, and the engine-parity gate stayed green because every branch reads the plan flag
+  rather than an engine name. None of that is in question.
+
+  What is missing is the other end of the wire. The flag's only source is `database.externallyProvisioned`
+  in `db.definition.json` (`UserDatabaseDefinitionLoader`), and NOTHING a user can reach writes it:
+
+    - `npdev_engines.db_definition_for()` writes engine, databaseName, createInternalTables,
+      createBusinessTables, host, port, username, password -- and never externallyProvisioned.
+    - `npdev init`'s flags are `--engine --db-host --db-port --db-user --db-password`. There is no
+      `--externally-provisioned`.
+    - The Manager's create form sends exactly those five and no more (`ui/app.js`, `main.rs::create_app`).
+
+  So on every app created the normal way the flag is false, and a user who did the thing both install
+  documents explicitly invite -- "point NPDev at the PostgreSQL you already run" -- gets an app whose
+  `db.definition.json` asserts the database is NPDev's own. `Reset` is one button behind a typed
+  token, aimed at a data root they chose.
+
+  THIS IS THE SHAPE THAT MAKES IT HIGH RATHER THAN MEDIUM. The mechanism exists and is correct, the
+  documents promised the protection, and the promise was load-bearing for a destructive operation.
+  A guard that cannot be switched on is indistinguishable from no guard, except that people trust it.
+
+  The documents were corrected in the same pass (`docs/INSTALL_ON_A_NEW_MACHINE.md` step 5,
+  `docs/MANAGER.md` "The one prerequisite", `HANDOVER.md` 2.5): all three now say the refusal fires
+  only when the flag is declared, that no screen can declare it, and that `Reset` deletes data. That
+  removes the false promise. It does not give anyone the protection.
+suggested:
+  - >-
+    `npdev init --externally-provisioned`, threaded into `npdev_engines.db_definition_for()` so the
+    written `db.definition.json` carries it. One flag, one writer.
+  - >-
+    A checkbox on the Manager's create form beside the host/port/user/password group, which is
+    revealed for exactly the engines that connect somewhere -- the same condition already gating
+    `#new-app-connection`.
+  - >-
+    Consider whether the DEFAULT is wrong for a user-supplied host. An app told to connect to
+    `localhost:5432` that NPDev did not start is more likely to be someone else's server than NPDev's;
+    inferring is what STOR-14 deliberately refused to do, so this is a question for the owner, not an
+    obvious yes.
+files:
+  - NPDevCli/npdev_engines.py
+  - NPDevCli/npdev_cli.py
+  - NPDevManager/ui/app.js
+  - NPDevManager/ui/index.html
+  - NPDevManager/src/main.rs

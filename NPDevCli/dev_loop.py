@@ -210,11 +210,28 @@ def _reclaim_orphan(options: DevOptions, out: "Output") -> None:
     pidfile.unlink(missing_ok=True)
 
 
-def boot(options: DevOptions, jar: Path) -> AppProcess | None:
+def boot(options: DevOptions, jar: Path, cli) -> AppProcess | None:
     options.state_dir.mkdir(parents=True, exist_ok=True)
+    # W1.3: `cli.java_launcher()`, never a bare `["java", ...]`. The generate and build phases above
+    # ran under whatever JAVA_HOME this process was given -- the Manager hands its private JDK to
+    # child processes that way and touches nothing else (`NPDevManager/src/npdev.rs`) -- so a launch
+    # that resolves java through PATH is the one step of the loop that cannot see it. `cli` is the
+    # npdev_cli module this loop is already injected with, which keeps the resolution in ONE place
+    # instead of growing a second copy here.
+    java = cli.java_launcher()
+    if java is None:
+        # Written into the app log rather than raised: run_cycle's failure path says "boot failed --
+        # see <log>", and before this the log was EMPTY because Popen raised FileNotFoundError past
+        # it. A pointer to an empty file is how this defect stayed unreported.
+        log = open(options.app_log, "w", encoding="utf-8")  # noqa: SIM115
+        log.write("npdev dev: no Java runtime found -- JAVA_HOME is unset or has no bin/java, and\n"
+                  "there is no `java` on PATH, so the built app cannot be started.\n"
+                  "Install a JDK 17+ or set JAVA_HOME; `npdev doctor` shows what NPDev can find.\n")
+        log.close()
+        return None
     log = open(options.app_log, "w", encoding="utf-8")  # noqa: SIM115  (owned by AppProcess)
     proc = subprocess.Popen(
-        ["java", "-jar", str(jar),
+        [java, "-jar", str(jar),
          f"--server.port={options.port}",
          f"--spring.profiles.active={options.profile}"],
         cwd=str(options.output), stdout=log, stderr=subprocess.STDOUT,
@@ -325,13 +342,13 @@ def run_cycle(options: DevOptions, current: AppProcess | None, out: "Output", cl
     previous_jar = current.jar if current else None
     if current:
         current.stop()
-    app = boot(options, Path(jar))
+    app = boot(options, Path(jar), cli)
     if app is None:
         out.result("FAILED")
         out.note(f"boot failed -- see {options.app_log}")
         if previous_jar and Path(previous_jar).exists():
             out.note("restoring the previous build")
-            app = boot(options, Path(previous_jar))
+            app = boot(options, Path(previous_jar), cli)
         return CycleResult(False, "BOOT", fast, time.monotonic() - started), app
     out.result("ok")
 

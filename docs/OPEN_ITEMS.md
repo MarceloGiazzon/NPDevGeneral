@@ -6,11 +6,41 @@
 > place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is
 > no longer hand-edited for status.
 
-**176 item(s) migrated: 0 open/partial, 176 done.**
+**177 item(s) migrated: 1 open/partial, 176 done.**
 
 ## Open / partial
 
-None currently open.
+| ID | Title | Type | Sev | Status | Opened |
+|---|---|---|---|---|---|
+| STOR-15 | Nothing a user can reach sets `externallyProvisioned`, so STOR-14's refusal never fires -- point NPDev at a database server you already run and `Reset` still deletes your data root | GAP | HIGH | OPEN | 2026-08-10 |
+
+### Detail
+
+### STOR-15 — Nothing a user can reach sets `externallyProvisioned`, so STOR-14's refusal never fires -- point NPDev at a database server you already run and `Reset` still deletes your data root
+
+**Type:** GAP · **Severity:** HIGH · **Status:** OPEN
+**Verification:** NOT_VERIFIED
+**Source:** S1 install-doc audit (2026-08-10) finding F7, re-verified against `e1069226` while closing close-the-gaps-2026-08-10 W1.4. Filed rather than fixed because W1.4's rule is documents-only: anything needing a code change gets an id.
+**Surface:** `cli/init + manager/apps`
+**Files:**
+- `NPDevCli/npdev_engines.py`
+- `NPDevCli/npdev_cli.py`
+- `NPDevManager/ui/app.js`
+- `NPDevManager/ui/index.html`
+- `NPDevManager/src/main.rs`
+
+STOR-14 built the refusal and built it well -- every `_ops` operation hard-refuses and returns when the plan says the server is not NPDev's, `Reset` refuses before both halves including the recursive `Remove-Item`, and the engine-parity gate stayed green because every branch reads the plan flag rather than an engine name. None of that is in question.
+What is missing is the other end of the wire. The flag's only source is `database.externallyProvisioned` in `db.definition.json` (`UserDatabaseDefinitionLoader`), and NOTHING a user can reach writes it:
+
+  - `npdev_engines.db_definition_for()` writes engine, databaseName, createInternalTables,
+    createBusinessTables, host, port, username, password -- and never externallyProvisioned.
+  - `npdev init`'s flags are `--engine --db-host --db-port --db-user --db-password`. There is no
+    `--externally-provisioned`.
+  - The Manager's create form sends exactly those five and no more (`ui/app.js`, `main.rs::create_app`).
+
+So on every app created the normal way the flag is false, and a user who did the thing both install documents explicitly invite -- "point NPDev at the PostgreSQL you already run" -- gets an app whose `db.definition.json` asserts the database is NPDev's own. `Reset` is one button behind a typed token, aimed at a data root they chose.
+THIS IS THE SHAPE THAT MAKES IT HIGH RATHER THAN MEDIUM. The mechanism exists and is correct, the documents promised the protection, and the promise was load-bearing for a destructive operation. A guard that cannot be switched on is indistinguishable from no guard, except that people trust it.
+The documents were corrected in the same pass (`docs/INSTALL_ON_A_NEW_MACHINE.md` step 5, `docs/MANAGER.md` "The one prerequisite", `HANDOVER.md` 2.5): all three now say the refusal fires only when the flag is declared, that no screen can declare it, and that `Reset` deletes data. That removes the false promise. It does not give anyone the protection.
 
 ## Done (176)
 

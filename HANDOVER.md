@@ -46,8 +46,10 @@ running it for real**, which is why §4's row about it is worth reading before y
 
 ### 2.2 Ready
 
-The first screen lists every check, including the ones that pass. Anything red has a **Fix this**
-button or a sentence telling you what to do.
+The first screen lists every check, including the ones that pass. Each row carries a mark rather
+than a word — **✓** pass, **!** warn, **✗** fail, **–** not applicable. Anything red has a sentence
+telling you what to do, and one row (**NPDev jars**) has a **Fix this** button, which takes you to
+the screen where you fix it rather than fixing it for you. **Re-check** re-runs everything.
 
 > Green here means *this machine can build NPDev apps*. It does not yet mean anything has been built.
 
@@ -56,9 +58,10 @@ button or a sentence telling you what to do.
 1. **Java 17** — "Install private JDK". Downloads into the Manager's own folder.
 2. **Python** — only offered if you have none.
 3. **NPDev** — pick the newest version, "Download this version".
-4. **Setup** — "Run setup". **This is the slow one: expect around 10 minutes.** It builds the jars
-   every generated app compiles against. A progress log appears; if it sits with no output for more
-   than ~15 minutes, that is a finding.
+4. **Setup** — "Run setup". It stages the jars every generated app compiles against, either by
+   downloading them from the release (**about a minute**) or by building them locally (**about
+   ten**) if that download is unavailable. A progress log appears and says which path it took; if it
+   sits with no output for more than ~15 minutes, that is a finding.
 
 ### 2.4 Create an app
 
@@ -75,18 +78,44 @@ Press **Create**.
 
 Run tab → point "App folder" at the folder you just created → **▶ Run**.
 
-First run builds the app, so **expect several minutes**. When the log says ready, open
-`http://localhost:8080`.
+First run builds the app, so **expect several minutes**. When the log says ready, open the **App:**
+link on that screen. It is `http://localhost:` plus whatever is in the **Port** field — 8080 unless
+you changed it. Nothing picks a port for you, so if 8080 is taken on your machine, change it here
+and run again.
 
-If you chose a server database, use the **Database** buttons on that same screen — **Start** before
-running the app, **Connection details** if you want to inspect it in a tool like DBeaver.
+If you chose a server database, the **Database** buttons on that same screen drive the app's own
+tooling — which the app does not have until it has been generated once. So the order is: **▶ Run**
+first (let it build; it may fail to start without its database, which is fine), then **Start**, then
+**▶ Run** again. **Connection details** is there if you want to inspect the database in a tool like
+DBeaver.
+
+> **If you pointed NPDev at a database server you already run: do not press Stop or Reset.** NPDev
+> only knows a server is not its own when the app's `db.definition.json` says
+> `"externallyProvisioned": true`, and no screen can set that yet — so **Reset deletes data**.
 
 ### 2.6 Change one thing
 
-In the app folder, open `model.json`, rename a field, save. The app rebuilds and restarts on its
+In the app folder, open `model.json`, add a field, save. The app rebuilds and restarts on its
 own. Confirm the change is visible in the browser.
 
+*(Add, don't rename. A rename with nothing declaring it a rename reads as drop-plus-add — a
+destructive change — and NPDev refuses it on purpose. That refusal is §4 territory, not a bug; see
+`docs/YOUR_FIRST_APP.md` for how to declare one.)*
+
 **That is the whole product.** If you got here, it works.
+
+### 2.7 Open The Monitor, and send us one file
+
+The **The Monitor** tab is a card per app on this machine. Find yours and confirm it says something
+truthful — running, its port, its database.
+
+Then **Actions → Export support bundle**. It writes one zip beside the app: the app's own run logs,
+the output of any database button you pressed, the Manager's log, and the database plan **with the
+password removed**. Send us that zip whether or not anything went wrong — it is the cheapest
+complete picture of what this machine actually did, and this step exists partly so that someone
+other than the author has confirmed the redaction really happens.
+
+*(Terminal equivalent: `npdev monitor logs export --app-dir <the app folder> --out support.zip`.)*
 
 ---
 
@@ -95,10 +124,11 @@ own. Confirm the change is visible in the browser.
 Whatever happened, send:
 
 1. **Which step you reached**, by number.
-2. **Your machine** — OS and version, and whether it already had Java/Python/PowerShell.
+2. **Your machine** — OS and version, and whether it already had Java/Python/PowerShell/git.
 3. **The exact text** of anything red. A screenshot is fine; a photo of a screen is fine.
 4. **How long §2.3 step 4 and §2.5 took.** Minutes is precise enough.
-5. **Anything you had to figure out that this page did not tell you.** ← *This is the most valuable
+5. **The support bundle from §2.7.**
+6. **Anything you had to figure out that this page did not tell you.** ← *This is the most valuable
    thing you can report, and the easiest to forget, because by the time it works you have stopped
    noticing that you solved it.*
 
@@ -116,6 +146,8 @@ Do **not** try to fix anything. A workaround you apply silently is a defect we n
 | MySQL/H2: a failed migration cannot be rolled back | Those engines commit implicitly on DDL. NPDev reports this truthfully instead of claiming a rollback (`STOR-2`) | No |
 | Seven unused internal database methods | Four are answers prepared before any consumer exists, three are exercised by the dialect conformance vectors instead of production code. Deliberate and recorded, no user-visible effect (`STOR-13`) | No |
 | The first build is slow | Gradle is populating a cold cache. Later builds are much faster | No |
+| Ready shows `git-present` as a **warning**, and `npdev init` says it made no repository | The Manager never installs git and nothing needs it — apps scaffold, build and run without it. Only your app's own version history is affected | No |
+| §2.6 asks you to **add** a field, not rename one | A rename with nothing declaring it a rename reads as drop-plus-add, and NPDev refuses destructive schema changes on purpose (`docs/ACCEPTED_BOUNDARIES.md` B1). If you rename one anyway, the refusal is the product working | No |
 
 **Anything not in this table is worth reporting**, including "the wording confused me".
 
