@@ -5,8 +5,9 @@
 .DESCRIPTION
     Fails (non-zero exit) if:
       1. a register/roadmap summary row contradicts its own detail section.
-      2. knowledge/platform-status.json is stale vs a fresh extraction of the gaps ledger
-         (docs/OPEN_GAPS_AND_ROADMAP.md) -- i.e. someone edited the ledger without regenerating.
+      2. docs/OPEN_GAPS_AND_ROADMAP.md is stale vs its source (ledger/gaps.yml), or
+         knowledge/platform-status.json is stale vs a fresh extraction of that same ledger --
+         i.e. someone hand-edited a generated document without regenerating it.
       3. any knowledge/cards/*.json fails knowledge-card validation.
       4. the shared failure-signature normalizer self-check fails.
       5. the security pattern sweep no longer catches the bug shapes it was written for.
@@ -158,12 +159,22 @@ try {
     & $py "scripts/quality/check-register-consistency.py"
     if ($LASTEXITCODE -ne 0) { $failures += "register/roadmap summary rows contradict their own detail sections" }
 
+    # docs-decoupling-2026-08-11 PLAN.md Phase 1: docs/OPEN_GAPS_AND_ROADMAP.md is now ITSELF a
+    # generated projection (of ledger/gaps.yml, scripts/docs/generate_gaps_roadmap.py) one link
+    # upstream of platform-status.json -- folded into this same [2/44] slot rather than minted as a
+    # new numbered check, since renumbering every "[n/44]" banner (many cross-referenced by id in
+    # OTHER checks' comments, e.g. "same rationale as [6/44]") is unrelated churn this fix does not
+    # need to force.
     if ($Fix) {
-        Write-Host "[2/44] Regenerating platform-status projection..." -ForegroundColor Yellow
+        Write-Host "[2/44] Regenerating gaps roadmap + platform-status projection..." -ForegroundColor Yellow
+        & $py "scripts/docs/generate_gaps_roadmap.py"
+        if ($LASTEXITCODE -ne 0) { $failures += "gaps-roadmap regeneration failed" }
         & $py "scripts/ai/extract_platform_status.py"
         if ($LASTEXITCODE -ne 0) { $failures += "platform-status regeneration failed" }
     } else {
-        Write-Host "[2/44] Checking platform-status projection is current..."
+        Write-Host "[2/44] Checking gaps roadmap + platform-status projection are current..."
+        & $py "scripts/docs/generate_gaps_roadmap.py" --check
+        if ($LASTEXITCODE -ne 0) { $failures += "docs/OPEN_GAPS_AND_ROADMAP.md is STALE relative to ledger/gaps.yml (run with -Fix)" }
         & $py "scripts/ai/extract_platform_status.py" --check
         if ($LASTEXITCODE -ne 0) { $failures += "platform-status projection is STALE (run with -Fix)" }
     }

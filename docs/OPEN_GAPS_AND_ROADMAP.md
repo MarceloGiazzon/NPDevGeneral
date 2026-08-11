@@ -1,5 +1,12 @@
 # NPDev — Open Gaps, Bugs & Remediation Roadmap
 
+> **GENERATED FILE — do not hand-edit the Priority index or Fixed engine bugs tables below.**
+> Source: `ledger/gaps.yml`, the single source of truth for those two tables (each item's `id` /
+> `title` / `category` / `status` / `priority`). Regenerate with
+> `python scripts/docs/generate_gaps_roadmap.py`. The rest of this document (this preamble, the
+> per-item detail sections, the changelog) is narrative, edited directly at
+> `scripts/docs/gaps-roadmap-narrative.md`.
+
 > **Generated:** 2026-07-12 · **Branch at capture:** `beta1-vision-spine`
 > **Purpose:** Single authoritative, AI-digestible ledger of every open gap, bug, and unfinished task
 > on the NPDev platform, plus a fully-specified remediation roadmap. Each roadmap item carries a

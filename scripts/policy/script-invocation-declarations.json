@@ -73,6 +73,9 @@
     "scripts/docs/generate_dsl_reference.py": {
       "invocation": "ci-gate"
     },
+    "scripts/docs/generate_gaps_roadmap.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/evidence/write-security-hardening-maturity-report.ps1": {
       "invocation": "ci-gate"
     },
