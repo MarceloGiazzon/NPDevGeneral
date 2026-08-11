@@ -272,6 +272,9 @@ async fn create_app(
     db_port: Option<u16>,
     db_user: Option<String>,
     db_password: Option<String>,
+    // STOR-15. Not Option<bool>: absent and false mean the same thing here, and an Option would
+    // invite a caller to omit it -- which is exactly how this flag came to have no writer at all.
+    externally_provisioned: bool,
 ) -> Result<Value, String> {
     let java_home = resolve_java_home(&state);
     let python = resolve_python_exe(&state).await?;
@@ -287,6 +290,7 @@ async fn create_app(
         db_port,
         db_user.as_deref(),
         db_password.as_deref(),
+        externally_provisioned,
     )
     .await?;
 

@@ -134,7 +134,8 @@ def resolve(key: str) -> dict:
 
 def db_definition_for(key: str, *, database_name: str, host: str | None = None,
                       port: int | None = None, username: str | None = None,
-                      password: str | None = None) -> dict:
+                      password: str | None = None,
+                      externally_provisioned: bool = False) -> dict:
     """A VALID `db.definition.json` for this engine.
 
     "Valid" is meant strictly: user-db-definition.schema.json makes host/port/username/password
@@ -143,14 +144,37 @@ def db_definition_for(key: str, *, database_name: str, host: str | None = None,
     to boot. Defaults are filled for the fields the chosen engine requires and omitted for the ones
     it does not; an unnecessary `host: localhost` on an H2Local app is noise that reads like
     configuration.
+
+    STOR-15: `externally_provisioned` is the ONLY writer of `database.externallyProvisioned`, which
+    is the only thing that switches on STOR-14's refusal. Before this, the refusal was complete,
+    correct, tested -- and unreachable, because nothing a user could run ever wrote the flag. Every
+    app therefore declared the database was NPDev's own, including one pointed at a server the user
+    already ran, and `Reset` deleted their data root. A guard that cannot be switched on is
+    indistinguishable from no guard, except that people trust it.
+
+    Written only when TRUE. `false` is the default the loader already assumes, and an explicit
+    `externallyProvisioned: false` in a scaffold reads like a decision someone made rather than a
+    field they never saw -- the same reason `host: localhost` is omitted for H2Local above.
     """
     record = resolve(key)
+    if externally_provisioned and not record["server"]:
+        # Refused HERE, at the point of choice, not later at generation. The Java loader refuses the
+        # same combination (UserDatabaseDefinitionLoader, STOR-14) -- but by then the user has a
+        # scaffolded app and a stack trace, and the message arrives from a layer they did not invoke.
+        raise ValueError(
+            f"--externally-provisioned is not valid for {record['externalName']}: it is an embedded "
+            "engine, so there is no server for anyone to have provisioned -- the database is a file "
+            "(or memory) belonging to this app alone. Choose a server engine (postgres, mysql, "
+            "sqlserver, h2server) if you mean to connect to a database you already run."
+        )
     database: dict = {
         "engine": record["externalName"],
         "databaseName": database_name,
         "createInternalTables": True,
         "createBusinessTables": True,
     }
+    if externally_provisioned:
+        database["externallyProvisioned"] = True
     if record["server"]:
         database["host"] = host or "localhost"
         database["port"] = int(port) if port else record["port"]

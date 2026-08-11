@@ -4,9 +4,10 @@ title: >-
   NPDev at a database server you already run and `Reset` still deletes your data root
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-10
-verification: NOT_VERIFIED
+closed: 2026-08-11
+verification: VERIFIED_LIVE
 surface: cli/init + manager/apps
 source: >-
   S1 install-doc audit (2026-08-10) finding F7, re-verified against `e1069226` while closing
@@ -59,3 +60,41 @@ files:
   - NPDevManager/ui/app.js
   - NPDevManager/ui/index.html
   - NPDevManager/src/main.rs
+resolution: >-
+  2026-08-11. The flag now has a writer, in both places a user can reach.
+
+  CLI: `npdev init --externally-provisioned`, threaded into `npdev_engines.db_definition_for()`,
+  which is the single writer of `database.externallyProvisioned`. Written ONLY when true -- an
+  explicit `false` in a scaffold reads like a decision the user made rather than a field they never
+  saw, the same reason `host: localhost` is omitted for H2Local.
+
+  Manager: a checkbox inside `#new-app-connection`, so it is revealed by exactly the condition that
+  makes the question meaningful -- an engine that connects somewhere. Sent as a real boolean on
+  every create, never omitted-when-false: `false` IS the answer for an NPDev-provisioned server,
+  and a field that vanished when unticked would make "the user said no" and "the UI never asked"
+  indistinguishable at the CLI, which is the state this item existed to end.
+
+  REFUSED FOR EMBEDDED ENGINES AT THE POINT OF CHOICE. `--externally-provisioned` with H2Local or
+  InMemory is rejected by `run_init` alongside the other preconditions, before anything is written.
+  The first version refused at the `db.definition.json` write instead, and the test caught what that
+  meant: a fully scaffolded directory -- model.json, config.json, a git repo -- left behind with a
+  non-zero exit. The caller is told it failed while the files exist, which is the half-scaffolded
+  state `npdev init` refuses everywhere else. The Java loader still refuses the same combination
+  (STOR-14); this makes the message arrive from the layer the user actually invoked.
+
+  Verified:
+    - `--externally-provisioned` on postgres -> `externallyProvisioned: true` in db.definition.json,
+      exit 0; validates against user-db-definition.schema.json (additionalProperties:false, so the
+      key had to already be declared -- STOR-14 had added it).
+    - on h2local -> refused, exit 1, and NO directory created.
+    - no flag -> the key is absent, not `false`.
+    - the wire end to end: db.definition.json -> UserDatabaseDefinitionLoader ->
+      GeneratedDatabasePlan -> OperationalRunbookEmitter's `out.put("externallyProvisioned", ...)`
+      -> `_ops/resolved-db-plan.json`, which is what every STOR-14 refusal branches on.
+    - `python -m unittest discover -s NPDevCli/tests` 137 passed; `cargo check` clean;
+      `cargo test` 21 passed.
+
+  The three documents corrected on 2026-08-10 said the refusal fires only when the flag is declared
+  and that no screen could declare it. The second half is now false, and they need a follow-up pass
+  to say so -- filed as a note rather than edited here, because W1.4's documents-only rule cuts the
+  other way too.

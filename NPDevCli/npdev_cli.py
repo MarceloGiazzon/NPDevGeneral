@@ -975,6 +975,26 @@ def run_init(args: argparse.Namespace) -> int:
     if target.exists() and any(target.iterdir()):
         raise CliError(f"refusing to scaffold into a non-empty directory: {target}")
 
+    # STOR-15: validate --externally-provisioned against the chosen engine HERE, beside the other
+    # preconditions, not at the db.definition.json write further down. Measured: refusing at the
+    # write site still left a fully scaffolded directory behind (model.json, config.json, the git
+    # repo) with a non-zero exit -- the caller is told it failed while the files exist, which is the
+    # half-scaffolded state `npdev init` refuses everywhere else. Every other precondition in this
+    # function is checked before anything is created; this one belongs with them.
+    if getattr(args, "externally_provisioned", False):
+        try:
+            probe = npdev_engines.resolve(getattr(args, "engine", "h2local"))
+        except ValueError as exc:
+            raise CliError(str(exc)) from exc
+        if not probe["server"]:
+            raise CliError(
+                f"--externally-provisioned is not valid for {probe['externalName']}: it is an "
+                "embedded engine, so there is no server for anyone to have provisioned -- the "
+                "database is a file (or memory) belonging to this app alone. Choose a server engine "
+                "(postgres, mysql, sqlserver, h2server) if you mean to connect to a database you "
+                "already run."
+            )
+
     seed_dir = root / "NPDevSamples" / (args.from_sample or "npdev-init-seed")
     seed_model_path = seed_dir / "model.json"
     seed_config_path = seed_dir / "config.json"
@@ -1008,14 +1028,21 @@ def run_init(args: argparse.Namespace) -> int:
 
     seed_db_def_path = seed_dir / "db.definition.json"
     if seed_db_def_path.exists() or engine["key"] != "h2local":
-        db_def = npdev_engines.db_definition_for(
-            engine["key"],
-            database_name=db_name,
-            host=getattr(args, "db_host", None),
-            port=getattr(args, "db_port", None),
-            username=getattr(args, "db_user", None),
-            password=getattr(args, "db_password", None),
-        )
+        try:
+            db_def = npdev_engines.db_definition_for(
+                engine["key"],
+                database_name=db_name,
+                host=getattr(args, "db_host", None),
+                port=getattr(args, "db_port", None),
+                username=getattr(args, "db_user", None),
+                password=getattr(args, "db_password", None),
+                externally_provisioned=bool(getattr(args, "externally_provisioned", False)),
+            )
+        except ValueError as exc:
+            # STOR-15: --externally-provisioned on an embedded engine. Refused before anything is
+            # written, so the user does not end up with a half-scaffolded app and an error from a
+            # layer they never invoked.
+            raise CliError(str(exc)) from exc
         (target / "db.definition.json").write_text(json.dumps(db_def, indent=2) + "\n", encoding="utf-8")
 
     # QUAL-3: DECLARE this app's identity instead of letting the generator infer it from where the
@@ -5381,6 +5408,12 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Database user for a server engine.")
     init_parser.add_argument("--db-password", default=None,
                              help="Database password for a server engine.")
+    init_parser.add_argument("--externally-provisioned", action="store_true",
+                             help="This database server is YOURS, not NPDev's -- NPDev did not start "
+                                  "it and must never start, stop or reset it. Use it when pointing "
+                                  "at a server you already run. Without this flag the app's toolbox "
+                                  "assumes the server is NPDev's own, and `Reset` DELETES the data "
+                                  "root. Server engines only. (STOR-14/STOR-15)")
 
     engines_parser = subparsers.add_parser(
         "engines", help="List the database engines an app can use, what each needs, and which are "
