@@ -3,7 +3,7 @@
 The **impact report** is NPDev's answer to "what will this upgrade do to my data?" — the equivalent of
 GeneXus's *Impact Analysis Report (IAR)*. Before (or as) a schema change is applied, NPDev computes a
 read-only, per-item view of the blast radius from the ONE canonical desired-vs-current `SchemaDiff` (the
-schema-engine rebuild, see [`DATABASES_AND_MIGRATIONS.md`](DATABASES_AND_MIGRATIONS.md) §16), probes the
+schema-engine rebuild, see [`DATABASES_AND_MIGRATIONS.md`](../../DATABASES_AND_MIGRATIONS.md) §16), probes the
 live database for how many rows each change touches, and renders it two ways.
 
 Everything here is **strictly read-only**: building a report issues zero DDL and zero writes, every probe
@@ -43,7 +43,7 @@ One item can appear in the report that is **not** derived from `SchemaDiff` at a
 `identity::User` concept (i.e. it uses the built-in identity pack, by whatever mechanism) but that
 concept is missing the `tokenVersion` field the platform's identity pack has carried since LNCH-4 — the
 same drift `StartupValidator` fails fast on at boot (see
-[`CONFIGURATION.md`](CONFIGURATION.md#identity-pack-freshness-checked-at-boot)), surfaced here too so an
+[`CONFIGURATION.md`](../../CONFIGURATION.md#identity-pack-freshness-checked-at-boot)), surfaced here too so an
 operator can see it in a pre-deploy `-ImpactOnly` run or the ControlPanel view without needing to boot
 the app first. `rowsAffected` for this item is the `identity_users` row count — how many accounts are
 affected. See `com.finalexec.db.IdentityPackDriftItem`.
@@ -54,7 +54,7 @@ On **every upgrade boot** (whenever the schema fingerprint changed), the executo
 report and prints the human table:
 
 - **JSON** → `runtime-data/impact-reports/<yyyyMMdd-HHmmss-SSS>-<from>-<to>.json`, conforming to
-  [`NPDevContract/schemas/impact-report.schema.json`](../NPDevContract/schemas/impact-report.schema.json).
+  [`NPDevContract/schemas/impact-report.schema.json`](../../../NPDevContract/schemas/impact-report.schema.json).
   The last **10** reports are retained (older ones are pruned), mirroring the pre-drop snapshot writer.
 - **Text** → the aligned table is printed to stdout, one line per item, `DESTRUCTIVE` items prefixed
   `!!`, with a `N safe / N attention / N destructive` footer.
@@ -62,7 +62,7 @@ report and prints the human table:
 When an upgrade is **destructive and unacknowledged**, the boot refuses, and the refusal message now
 **leads with the impact table** so an operator sees the blast radius immediately — followed, as before,
 by the itemized destructive report, the **expected acknowledgment token**, and the pointer to
-[`SCHEMA_EVOLUTION.md#acknowledging-destructive-changes`](SCHEMA_EVOLUTION.md#acknowledging-destructive-changes).
+[`SCHEMA_EVOLUTION.md#acknowledging-destructive-changes`](../../SCHEMA_EVOLUTION.md#acknowledging-destructive-changes).
 The token is unchanged and byte-identical to what it always was (it is computed from the residual diff
 at the decision point); only the message got a friendlier preamble.
 
@@ -155,7 +155,7 @@ report on a running app:
 Both surfaces reuse the same read-only entry point, `com.finalexec.db.SchemaImpactFacade.forLiveDatabase`
 (SER-P6.0), so the CLI and the ControlPanel can never disagree about what an upgrade would do.
 
-Specified in [`archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md`](archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md) Phase 6 (P6.4, P6.5).
+Specified in [`archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md`](SCHEMA_ENGINE_REBUILD_PLAN.md) Phase 6 (P6.4, P6.5).
 
 ## Conversion hooks — sanctioned destruction (implemented, Phase 7)
 
@@ -180,7 +180,7 @@ a token, never widen what's allowed to happen silently.
    - Optional `convert.h2.sql` / `convert.postgres.sql` for engine-specific syntax; `convert.sql` is the
      fallback for whichever engine has no override.
 3. **Regenerate.** `ConversionHookEmitter` validates every `hook.json` against
-   [`conversion-hook.schema.json`](../NPDevContract/schemas/conversion-hook.schema.json) at generation
+   [`conversion-hook.schema.json`](../../../NPDevContract/schemas/conversion-hook.schema.json) at generation
    time — a malformed hook fails the BUILD, never the boot — and copies valid hooks into the FinalApp at
    `src/main/resources/db/conversion-hooks/<id>/`.
 4. **Re-run `-ImpactOnly`.** The claimed item now renders `HOOK: <id>` instead of `!!`, and — if that was
@@ -231,8 +231,8 @@ reorganization experience NPDev didn't have before Phase 7.
 SQL-only. A Java `DataMigrationHook` interface (for conversions too complex for a SQL script) is
 deliberately deferred to the ADR-0003 code-bearing-objects track — not part of this phase.
 
-Specified in [`archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`](archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md)
-Phase 7 (P7.1–P7.5). See also [`DATABASES_AND_MIGRATIONS.md`](DATABASES_AND_MIGRATIONS.md) §12 for the
+Specified in [`archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`](SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md)
+Phase 7 (P7.1–P7.5). See also [`DATABASES_AND_MIGRATIONS.md`](../../DATABASES_AND_MIGRATIONS.md) §12 for the
 operator decision matrix this adds a row to.
 
 ## Proposed conversion SQL — platform drafts, operator decides (implemented, Phase 8)
@@ -275,5 +275,5 @@ the hook IS the acknowledgment" is still true; a *draft* is not authorship). Thi
 contrast with GeneXus, which auto-runs its reorganization conversions: NPDev keeps a human between the
 draft and the execution.
 
-Specified in [`archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`](archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md)
+Specified in [`archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md`](SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md)
 Phase 8 (P8.1–P8.3).

@@ -914,4 +914,4 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/quality/run-ai-knowledge-g
 ---
 
 *Map: [EXECUTION_TREES.md](EXECUTION_TREES.md) · Ledger: [NPDEV_OPEN_ITEMS_REGISTER.md](NPDEV_OPEN_ITEMS_REGISTER.md) ·
-Decisions: [DECISION_BRIEFS_2026-07.md](DECISION_BRIEFS_2026-07.md)*
+Decisions: [DECISION_BRIEFS_2026-07.md](archive/programme-history/DECISION_BRIEFS_2026-07.md)*

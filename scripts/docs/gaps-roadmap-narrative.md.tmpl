@@ -514,7 +514,7 @@ self-check can cross-read it against the summary table (the checker looks for `*
 
 All six of this section's original entries (`ARCH-6`, `ARCH-7`, `ARCH-loop`, `ARCH-upload`,
 `ARCH-compound-unique`, `ARCH-13`) have been lifted into supported platform features via
-[BOUNDARY_LIFT_ROADMAP.md](BOUNDARY_LIFT_ROADMAP.md); see §7 for what each one became. `ARCH-loop`
+[BOUNDARY_LIFT_ROADMAP.md](archive/programme-history/BOUNDARY_LIFT_ROADMAP.md); see §7 for what each one became. `ARCH-loop`
 (Flows had no loop step; Procedures already did) was the last of the six, lifted by LIFT-LOOP-P1–P5.
 
 **LNCH-1 (schema evolution, done 2026-07-19) recorded five deliberate v1 scope boundaries** — see
@@ -551,7 +551,7 @@ All in the working tree at capture; confirm committed. Full root-cause narrative
   gapped). ARCH-upload / ARCH-compound-unique re-verified as still-valid boundaries. FlywayEmitter
   confirmed fully deleted (BOND-B2 moot). Corresponding correction mirrored to the
   `npdev-platform-gaps` memory.
-- **2026-07-13** — LIFT-EXPR-P1–P3 (see [BOUNDARY_LIFT_ROADMAP.md](BOUNDARY_LIFT_ROADMAP.md)) lifted
+- **2026-07-13** — LIFT-EXPR-P1–P3 (see [BOUNDARY_LIFT_ROADMAP.md](archive/programme-history/BOUNDARY_LIFT_ROADMAP.md)) lifted
   **ARCH-6**, moved §6 → §7. `CelInvariantEngine` now delegates to a boolean-complete
   `ComputedExpression` for every invariant expression the unified grammar can parse (parens/`!`/
   arithmetic/dotted paths), falling back to the legacy atom matcher only for its CEL-specific
@@ -578,7 +578,7 @@ All in the working tree at capture; confirm committed. Full root-cause narrative
   own hardcoded build list, so the generated app failed to compile until fixed — genuine live
   verification for RuntimeHost changes, which otherwise have no standalone build in this repo.
 - **2026-07-13** — LIFT-LOOP-P1–P5 lifted **ARCH-loop**, moved §6 → §7 — the sixth and final boundary,
-  closing [BOUNDARY_LIFT_ROADMAP.md](BOUNDARY_LIFT_ROADMAP.md)'s 27-phase objective in full (with the
+  closing [BOUNDARY_LIFT_ROADMAP.md](archive/programme-history/BOUNDARY_LIFT_ROADMAP.md)'s 27-phase objective in full (with the
   two documented LIFT-UPLOAD scope-downs standing as additive follow-ups, not blockers). `forEach`
   flow steps now compile/validate/execute durably: `KernelRunner.executeForEachStep` checkpoints
   iteration progress into flow state without advancing the outer step index, proven by a genuine
