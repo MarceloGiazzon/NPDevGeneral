@@ -73,7 +73,6 @@ Never hand-edit these — each has its own regenerate command, checked by `run-a
 
 [OPEN_ITEMS.md](OPEN_ITEMS.md) (`ledger/items/*.yml` → `python scripts/quality/generate_open_items.py`) ·
 [OPEN_GAPS_AND_ROADMAP.md](OPEN_GAPS_AND_ROADMAP.md) (`ledger/gaps.yml` → `python scripts/docs/generate_gaps_roadmap.py`) ·
-[X0_SILENT_EXPRESSION_REGISTER.md](X0_SILENT_EXPRESSION_REGISTER.md) ·
 [SECURITY_PATTERN_SWEEP_2026-07.md](SECURITY_PATTERN_SWEEP_2026-07.md)
 
 ## Front matter

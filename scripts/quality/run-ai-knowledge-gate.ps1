@@ -388,18 +388,19 @@ try {
         $failures += "a step type has no model-level validation test: see scripts/quality/check-step-type-test-coverage.py output above -- add an example to the conformance test for that step kind"
     }
 
-    # [22/45] Move 13 P6: makes docs/X0_SILENT_EXPRESSION_REGISTER.md's discipline a permanent gate
-    # instead of something that only runs when someone remembers to re-audit. Eight silent-answer
-    # findings are confirmed; the eighth (REG-108) was found BY ACCIDENT while building on top of the
-    # gap it named -- a register nobody is forced to re-check is not a control. Checks: the doc's
-    # table and scripts/quality/x0-evaluator-registry.json agree 1:1 in both directions; every
-    # FIXED/CLEAN entry's named regression test still exists and still contains its marker (a proof
-    # that regressed is caught, not just a proof that once existed); and no evaluator-shaped class
-    # under the registry's own tracked directories is missing an entry entirely.
-    Write-Host "[22/45] Checking the X0 silent-answer register against its machine-checked registry..."
+    # [22/45] Move 13 P6: makes the X0 silent-answer discipline a permanent gate instead of something
+    # that only runs when someone remembers to re-audit. Eight silent-answer findings are confirmed;
+    # the eighth (REG-108) was found BY ACCIDENT while building on top of the gap it named -- a
+    # register nobody is forced to re-check is not a control. md-zero-2026-08-11 PLAN.md Phase 1
+    # deleted docs/X0_SILENT_EXPRESSION_REGISTER.md (the narrative moved into the registry's own
+    # why/note/detail fields) and with it the doc<->registry parity half of this check. What remains:
+    # every FIXED/CLEAN entry's named regression test still exists and still contains its marker (a
+    # proof that regressed is caught, not just a proof that once existed), and no evaluator-shaped
+    # class under the registry's own tracked directories is missing an entry entirely.
+    Write-Host "[22/45] Checking the X0 silent-answer registry..."
     & $py "scripts/quality/check-x0-evaluator-coverage.py"
     if ($LASTEXITCODE -ne 0) {
-        $failures += "the X0 register and scripts/quality/x0-evaluator-registry.json disagree, a FIXED/CLEAN finding's proof test regressed, or a new evaluator-shaped class has no entry: see scripts/quality/check-x0-evaluator-coverage.py output above"
+        $failures += "a FIXED/CLEAN finding's proof test regressed, or a new evaluator-shaped class has no entry: see scripts/quality/check-x0-evaluator-coverage.py output above"
     }
 
     # [23/45] Fast Lane plan Sec.7.4 (2026-08-01): "a check absent from verification-cadence.json

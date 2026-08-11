@@ -74,10 +74,6 @@
       "reason": "GENERATED from ledger/gaps.yml by scripts/docs/generate_gaps_roadmap.py. Machine truth already lives in YAML; this is its rendering."
     },
     {
-      "path": "docs/X0_SILENT_EXPRESSION_REGISTER.md",
-      "reason": "Live register, machine-twinned row-for-row with scripts/quality/x0-evaluator-registry.json and enforced by check-x0-evaluator-coverage.py."
-    },
-    {
       "path": "docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md",
       "reason": "CLAUDE.md cites this as the design reference for the live AI knowledge subsystem (build_knowledge.py + MCP tools), not as a work plan."
     },
