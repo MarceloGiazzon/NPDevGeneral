@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Renders docs/NPDEV_CONCEPTS_DEEP_DIVE.md, docs/NPDEV_USER_MANUAL.md and
-docs/ai/AUTHORING_FOR_AI.md from content/*.yml, and mirrors each content/*.yml as content/*.json
-alongside it.
+"""Renders docs/NPDEV_CONCEPTS_DEEP_DIVE.md, docs/NPDEV_USER_MANUAL.md,
+docs/ai/AUTHORING_FOR_AI.md and docs/ai/UI_GENERATION_PROMPT.md from content/*.yml, and mirrors
+each content/*.yml as content/*.json alongside it.
 
 WHY THIS EXISTS
 ---------------
@@ -26,9 +26,17 @@ build_rag_index.py or build_core_context.py breaks `npdev setup` on every fresh 
 as Group D's content/*.json mirrors: build_rag_index.py and build_core_context.py read the JSON
 (Python stdlib `json`, zero installed packages); content/*.yml stays the authored source.
 
+FOURTH TARGET, ADDED PHASE 7
+-----------------------------
+docs/ai/UI_GENERATION_PROMPT.md joined this group for the same reason, found by
+check-no-markdown-reads.py, not by inspection: `npdev generate screen` (NPDevCli/npdev_cli.py, a
+real end-user command) assembled its AI prompt by `Path.read_text()`-ing this doc directly. Same
+fix, same shape -- content/ui-generation-prompt.yml is the source, npdev_cli.py reads the JSON
+mirror (same PyYAML constraint as build_rag_index.py: this runs on every user's machine).
+
 USAGE
 -----
-    python scripts/docs/generate_group_e_docs.py            # write all 3 docs + json mirrors
+    python scripts/docs/generate_group_e_docs.py            # write all 4 docs + json mirrors
     python scripts/docs/generate_group_e_docs.py --check    # exit 1 if anything is stale
 """
 from __future__ import annotations
@@ -48,6 +56,7 @@ TARGETS = [
     ("content/npdev-concepts-deep-dive.yml", "content/npdev-concepts-deep-dive.json", "docs/NPDEV_CONCEPTS_DEEP_DIVE.md"),
     ("content/npdev-user-manual.yml", "content/npdev-user-manual.json", "docs/NPDEV_USER_MANUAL.md"),
     ("content/authoring-for-ai.yml", "content/authoring-for-ai.json", "docs/ai/AUTHORING_FOR_AI.md"),
+    ("content/ui-generation-prompt.yml", "content/ui-generation-prompt.json", "docs/ai/UI_GENERATION_PROMPT.md"),
 ]
 
 

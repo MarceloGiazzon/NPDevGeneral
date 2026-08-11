@@ -38,6 +38,36 @@ hr()     { printf '%.0s-' {1..78}; echo; }
 
 section() { echo; hr; echo "== $*"; hr; }
 
+# md-zero-2026-08-11 PLAN.md Phase 7: reconstructs a Group D doc's rendered text from its
+# content/*.json mirror -- the exact inverse scripts/docs/generate_group_d_docs.py's own render()
+# uses to write the .md, so this stays byte-identical to what a reader sees without this script
+# ever opening README.md / docs/GETTING_STARTED.md itself.
+render_content_doc() {
+  python3 -c "
+import json, sys
+
+def render_blocks(blocks):
+    parts = []
+    for block in blocks:
+        text = block.get('text') or ''
+        lines = text.split('\n')
+        if block['type'] == 'prose':
+            parts.extend(lines)
+        else:
+            parts.append('\`\`\`' + (block.get('lang') or ''))
+            parts.extend(lines)
+            parts.append('\`\`\`')
+    return parts
+
+doc = json.load(open(sys.argv[1], encoding='utf-8'))
+parts = render_blocks(doc['preamble'])
+for section in doc['sections']:
+    parts.append('#' * section['level'] + ' ' + section['title'])
+    parts.extend(render_blocks(section['blocks']))
+print('\n'.join(parts))
+" "$1"
+}
+
 pass() { CHECKS_RUN=$((CHECKS_RUN+1)); c_grn "  PASS  $1"; }
 
 # Failures listed in accepted-failures.json are still COUNTED and still PRINTED -- they are just
@@ -219,13 +249,20 @@ git config --global user.name "NPDev Harness"
 cd "$SRC" || die "cannot cd $SRC"
 echo "  HEAD: $(git -C "$SRC" log -1 --format='%h %s' 2>/dev/null | cut -c1-60)"
 
+# md-zero-2026-08-11 PLAN.md Phase 7: every prose-content question this harness asks (the
+# prerequisites sentence, "does it document the login key/URL") is answered from the SAME
+# content/*.json mirrors section 2/6 already read -- never from README.md / GETTING_STARTED.md
+# text directly, so this file has no markdown reads left either.
+README_TEXT=$(render_content_doc content/readme.json)
+GETTING_STARTED_TEXT=$(render_content_doc content/getting-started.json)
+
 # ---------------------------------------------------------------- 1. prerequisites
 
 section "1. Install ONLY what README's prerequisites sentence names"
 
 # Pull the sentence that states requirements. We look for the line containing
 # "Requires" inside (or just after) the Quickstart heading.
-PREREQ_LINE=$(grep -m1 -i '^Requires\|^\*\*Requires\|Requires Java' README.md || true)
+PREREQ_LINE=$(printf '%s\n' "$README_TEXT" | grep -m1 -i '^Requires\|^\*\*Requires\|Requires Java' || true)
 
 if [ -z "$PREREQ_LINE" ]; then
   fail "prereqs-declared" \
@@ -514,7 +551,7 @@ section "3. Does the app actually run, on the documented port?"
 # W3: is the login path documented? Pure documentation greps -- they used to sit INSIDE the
 # jar-exists branch below, so a flow that produced no jar took them down with it and the harness
 # stopped asking the question entirely. Nothing about them needs a running app.
-if grep -rq 'SUPER_USER_KEY' README.md docs/GETTING_STARTED.md 2>/dev/null; then
+if printf '%s\n%s\n' "$README_TEXT" "$GETTING_STARTED_TEXT" | grep -q 'SUPER_USER_KEY'; then
   pass "documents-login-key"
 else
   fail "documents-login-key" \
@@ -522,7 +559,7 @@ else
        "print the URL and key location at the end of 'generate app', and document both"
 fi
 
-if grep -rqE 'localhost:[0-9]{4}' README.md docs/GETTING_STARTED.md 2>/dev/null; then
+if printf '%s\n%s\n' "$README_TEXT" "$GETTING_STARTED_TEXT" | grep -qE 'localhost:[0-9]{4}'; then
   pass "documents-app-url"
 else
   fail "documents-app-url" "no localhost URL documented" "state http://localhost:$APP_PORT"

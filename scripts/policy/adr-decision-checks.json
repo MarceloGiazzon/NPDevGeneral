@@ -1,0 +1,41 @@
+{
+  "_comment": [
+    "md-zero-2026-08-11 PLAN.md Phase 7: check-adr-decision-implementation.py used to glob docs/adr/ADR-*.md",
+    "and parse ```decision-check fenced blocks out of the prose -- a real script reading .md content as data,",
+    "the exact class of coupling the rest of this plan removed elsewhere, just never named in the plan's own",
+    "37-coupling audit. Inverted the same way as every other Group F assertion: the claim moves here, the ADR",
+    "stays narrative-only. Each entry's `why` is REQUIRED and non-empty (check-adr-decision-implementation.py's",
+    "own R4-equivalent), same discipline check-doc-inventory.py's exempt entries and the security-pattern-sweep",
+    "allowlist already use for every recorded claim in this repo."
+  ],
+  "decisions": [
+    {
+      "id": "ADR-0011-D1",
+      "adr": "docs/adr/ADR-0011-bounded-contexts.md",
+      "file": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+      "contains": "mergeQualifiedConcepts(\"Context\",",
+      "why": "D1 accepted `context::Concept` qualified-name syntax, reusing the pack-qualification machinery unmodified. This proves the resolver actually qualifies cross-context references that way, not just that the ADR says it should."
+    },
+    {
+      "id": "ADR-0011-D2",
+      "adr": "docs/adr/ADR-0011-bounded-contexts.md",
+      "file": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+      "contains": "loadPackJson(contextFile, state)",
+      "why": "D2 accepted that a context is a file/folder boundary composed via the existing $ref/fragment machinery (loadPackJson), not a bespoke second loader. This proves that reuse is real, not a second, divergent implementation."
+    },
+    {
+      "id": "ADR-0011-D3",
+      "adr": "docs/adr/ADR-0011-bounded-contexts.md",
+      "file": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+      "contains": "imports undeclared context '",
+      "why": "D3 accepted that an undeclared cross-context reference is a named, thrown compile error, never a silent resolve-to-nothing. This proves the named error actually exists in the resolver."
+    },
+    {
+      "id": "ADR-0011-D4",
+      "adr": "docs/adr/ADR-0011-bounded-contexts.md",
+      "file": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+      "contains": "tableNameSource",
+      "why": "D4 accepted no physical table prefixing in v1 -- the original motivating case for this whole checker: ADR-0011 D4 was ratified and ModelCompiler did not do it, undetected until a codemod ran against real content (S3 addendum). tableNameSource is the fix; this keeps it from silently regressing."
+    }
+  ]
+}

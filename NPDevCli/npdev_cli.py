@@ -1076,7 +1076,7 @@ def run_init(args: argparse.Namespace) -> int:
                            username=getattr(args, "db_user", None),
                            password=getattr(args, "db_password", None))
 
-    (target / "README.md").write_text(
+    readme_text = (
         f"# {target.name}\n\n"
         f"An NPDev app, scaffolded by `npdev init`.\n\n"
         f"**`model.json` is this application.** Everything else -- the database schema, the REST "
@@ -1097,9 +1097,9 @@ def run_init(args: argparse.Namespace) -> int:
         f"Edit `model.json` -- add a field, add a concept -- then `npdev run app` again; it "
         f"regenerates the SAME app in place rather than starting over. See docs/YOUR_FIRST_APP.md "
         f"for the full walkthrough, including how to declare a rename so NPDev does not mistake it "
-        f"for a destructive change.\n",
-        encoding="utf-8",
+        f"for a destructive change.\n"
     )
+    (target / "README.md").write_text(readme_text, encoding="utf-8")
 
     (target / ".gitignore").write_text(
         "# Generated app output lives in a SIBLING directory by convention (see README.md) and\n"
@@ -1124,11 +1124,11 @@ def run_init(args: argparse.Namespace) -> int:
         # the scaffold is affected, but a file that says "this directory is already a git
         # repository" sitting in a directory that is not one is exactly the quiet lie the notice
         # beside it exists to avoid. Both sentences are single constants precisely so that editing
-        # the wording cannot make this substitution silently stop applying.
-        readme_path = target / "README.md"
-        patched = readme_path.read_text(encoding="utf-8").replace(
-            _README_GIT_SENTENCE, _README_NO_GIT_SENTENCE)
-        readme_path.write_text(patched, encoding="utf-8")
+        # the wording cannot make this substitution silently stop applying. Patches the in-memory
+        # `readme_text` this process already built above, never reads the file back off disk
+        # (md-zero-2026-08-11 PLAN.md Phase 7).
+        patched = readme_text.replace(_README_GIT_SENTENCE, _README_NO_GIT_SENTENCE)
+        (target / "README.md").write_text(patched, encoding="utf-8")
 
     git_note = git.notice
 
@@ -4115,6 +4115,22 @@ def _load_quality_module(root: Path, module_name: str, filename: str):
     return module
 
 
+def _render_group_e_content_doc(json_path: Path) -> str:
+    """Reconstructs a Group E content/*.json mirror back into its rendered markdown text -- the
+    exact inverse scripts/docs/generate_group_e_docs.py's own render() uses to write the .md,
+    duplicated here (5 lines) rather than cross-imported, since NPDevCli and scripts/docs are
+    siblings with no shared package (same rationale as build_core_context.py's own
+    render_authoring_contract()). Reads the JSON mirror, never the .yml -- this runs via `npdev
+    generate screen` on a real end-user machine, and PyYAML is a repo-dev/CI-only dependency
+    (md-zero-2026-08-11 PLAN.md Phase 7, same fix as build_rag_index.py's own)."""
+    doc = json.loads(json_path.read_text(encoding="utf-8"))
+    parts = doc["preamble"].split("\n")
+    for section in doc["sections"]:
+        parts.append("#" * section["level"] + " " + section["title"])
+        parts.extend(section["body"].split("\n"))
+    return "\n".join(parts)
+
+
 def run_generate_screen(args: argparse.Namespace) -> int:
     """R-P4 (docs/REMEDIATION_PLAN.md, 3.8 'agent-driven frontend generation, productized'): fetch
     the live UI-contract bundle, hand it plus docs/ai/UI_GENERATION_PROMPT.md to an agent, and refuse
@@ -4141,11 +4157,12 @@ def run_generate_screen(args: argparse.Namespace) -> int:
     print(f"npdev: fetching {bundle_url}", file=sys.stderr)
     bundle = _fetch_json(bundle_url, headers)
 
-    prompt_doc_path = root / "docs" / "ai" / "UI_GENERATION_PROMPT.md"
-    if not prompt_doc_path.exists():
-        raise CliError(f"reference prompt not found: {prompt_doc_path}")
+    prompt_content_path = root / "content" / "ui-generation-prompt.json"
+    if not prompt_content_path.exists():
+        raise CliError(f"reference prompt content not found: {prompt_content_path}")
+    prompt_doc_text = _render_group_e_content_doc(prompt_content_path)
     assembled_prompt = (
-        f"{prompt_doc_path.read_text(encoding='utf-8')}\n\n---\n\n"
+        f"{prompt_doc_text}\n\n---\n\n"
         f"## Task\n\nConcept: {concept}\nOutput screen file: {out_path.name}\n\n"
         f"## Live bundle (the ONLY source of truth -- see \"Contract\" above)\n\n"
         f"```json\n{json.dumps(bundle, indent=2)}\n```\n"
