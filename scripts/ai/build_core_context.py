@@ -2,15 +2,22 @@
 """Assemble the prompt-cacheable core-context bundle for AI authoring.
 
 Concatenates, in a STABLE order (so it forms a cacheable prompt prefix):
-  1. the authoring contract (content/authoring-for-ai.yml, rendered back to its original text --
-     never read from docs/ai/AUTHORING_FOR_AI.md, which is GENERATED from that same YAML by
-     scripts/docs/generate_group_e_docs.py -- md-zero-2026-08-11 PLAN.md Phase 4),
+  1. the authoring contract (content/authoring-for-ai.json, rendered back to its original text --
+     never read from docs/ai/AUTHORING_FOR_AI.md, which is GENERATED from content/authoring-for-ai.yml
+     by scripts/docs/generate_group_e_docs.py -- md-zero-2026-08-11 PLAN.md Phase 4),
   2. the authoring object schemas (schemas/ai/<curated>.schema.json),
   3. golden, verified example models (a few official samples).
 
 The volatile per-app request is meant to go AFTER this bundle at prompt-assembly time, behind the
 cache breakpoint. Output -> <Build>/npdev-ai/core-context/ (bundle.md + manifest.json with a
 content hash so callers can tell when the cached prefix changed).
+
+WHY JSON, NOT THE AUTHORED YAML: PyYAML is a repo-dev/CI-only dependency
+(scripts/requirements.txt's own comment: "NOT a dependency of the shipped CLI itself"), and this
+script can run on a real end-user machine same as scripts/ai/build_rag_index.py (found live running
+the first-run harness against Phase 5's own work, when build_rag_index.py's `import yaml` broke
+`npdev setup` on a fresh install -- same fix applied here pre-emptively). content/authoring-for-ai.json
+carries the identical data, stdlib-readable.
 
 Usage: python scripts/ai/build_core_context.py
 """
@@ -21,8 +28,6 @@ import hashlib
 import json
 import sys
 from pathlib import Path
-
-import yaml
 
 from npdev_ai_common import ai_out_dir, repo_root
 
@@ -47,11 +52,12 @@ def read_text(path: Path) -> str:
 
 
 def render_authoring_contract(content_path: Path) -> str:
-    """Reconstructs content/authoring-for-ai.yml back into its original markdown text -- the exact
-    inverse used by scripts/docs/generate_group_e_docs.py's own render(), duplicated here (5 lines)
-    rather than cross-imported from scripts/docs/, since the two directories are siblings with no
-    shared package. Keep both in sync if the split-doc shape ever changes."""
-    doc = yaml.safe_load(content_path.read_text(encoding="utf-8"))
+    """Reconstructs content/authoring-for-ai.json (the JSON mirror of content/authoring-for-ai.yml)
+    back into its original markdown text -- the exact inverse used by
+    scripts/docs/generate_group_e_docs.py's own render(), duplicated here (5 lines) rather than
+    cross-imported from scripts/docs/, since the two directories are siblings with no shared
+    package. Keep both in sync if the split-doc shape ever changes."""
+    doc = json.loads(content_path.read_text(encoding="utf-8"))
     parts = doc["preamble"].split("\n")
     for section in doc["sections"]:
         parts.append("#" * section["level"] + " " + section["title"])
@@ -78,7 +84,7 @@ def build_bundle() -> tuple[str, dict]:
         "prompt (behind a cache breakpoint); put the specific app request AFTER it.\n"
     )
 
-    authoring_content = root / "content" / "authoring-for-ai.yml"
+    authoring_content = root / "content" / "authoring-for-ai.json"
     add("Authoring contract", authoring_content, render_authoring_contract(authoring_content))
 
     for name in SCHEMAS:

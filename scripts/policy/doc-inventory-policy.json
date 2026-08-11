@@ -70,10 +70,6 @@
       "reason": "Durable how-to: the steps to register a new adapter. A reference checklist a reader follows, not a record of one programme's work."
     },
     {
-      "path": "docs/OPEN_GAPS_AND_ROADMAP.md",
-      "reason": "GENERATED from ledger/gaps.yml by scripts/docs/generate_gaps_roadmap.py. Machine truth already lives in YAML; this is its rendering."
-    },
-    {
       "path": "docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md",
       "reason": "CLAUDE.md cites this as the design reference for the live AI knowledge subsystem (build_knowledge.py + MCP tools), not as a work plan."
     },

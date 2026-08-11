@@ -53,7 +53,7 @@
       "invocation": "orchestrated"
     },
     "scripts/appgen/New-AppTreePage.ps1": {
-      "invocation": "manual-runbook"
+      "invocation": "orchestrated"
     },
     "scripts/appgen/New-ControlPanelPage.ps1": {
       "invocation": "orchestrated"
@@ -65,7 +65,7 @@
       "invocation": "manual-runbook"
     },
     "scripts/appgen/Update-AppMetadata.ps1": {
-      "invocation": "manual-runbook"
+      "invocation": "orchestrated"
     },
     "scripts/ci/gh-api.sh": {
       "invocation": "manual-runbook"
@@ -533,7 +533,7 @@
       "invocation": "orchestrated"
     },
     "scripts/quality/run-trusted-source-beta0-proof.ps1": {
-      "invocation": "manual-runbook"
+      "invocation": "orchestrated"
     },
     "scripts/quality/run-trusted-source-security-check.ps1": {
       "invocation": "manual-runbook"

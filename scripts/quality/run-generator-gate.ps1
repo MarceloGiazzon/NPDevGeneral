@@ -148,17 +148,21 @@ $generatorGovernanceEvidence = [pscustomobject]@{
 $gateReport | Add-Member -NotePropertyName deterministicGeneration -NotePropertyValue $deterministicGenerationEvidence -Force
 $gateReport | Add-Member -NotePropertyName generatorGovernance -NotePropertyValue $generatorGovernanceEvidence -Force
 
-# LNCH-1 P8 (task 8.2): docs/DSL_REFERENCE.md is generated from model.schema.json +
-# FieldWidgetDefaults.java (scripts/docs/generate_dsl_reference.py), not hand-written -- this drift
-# gate was written but never wired into any gate (confirmed by grep at the time). Runs --check
-# (read-only, never mutates the committed doc) so a schema change that should have regenerated the
-# reference fails the gate loudly instead of silently rotting.
+# LNCH-1 P8 (task 8.2): the DSL reference is generated from model.schema.json +
+# FieldWidgetDefaults.java (scripts/docs/generate_dsl_reference.py), not hand-written.
+# md-zero-2026-08-11 PLAN.md Phase 6 (Group G): the old --check DRIFT gate (compare a fresh render
+# against the committed doc) is gone along with the committed doc itself -- REG-133's own history
+# is the reason that comparison was never trustworthy anyway (the same commit that broke the
+# renderer also re-committed its bad output, so drift-checking matched perfectly while being
+# wrong; see check-dsl-reference-output-floor.py below, unaffected by this change, for the real
+# content check). What remains here is a smoke test: does the full generator -- schema load,
+# widget-catalog extraction from the Java source, document assembly -- run to completion at all.
 $dslReferenceScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\docs\generate_dsl_reference.py"
 $dslReferenceError = $null
 $dslReferenceExitCode = $null
 $dslReferenceOutput = @()
 try {
-    $dslReferenceOutput = & python $dslReferenceScript "--check" 2>&1 | ForEach-Object { $_.ToString() }
+    $dslReferenceOutput = & python $dslReferenceScript 2>&1 | ForEach-Object { $_.ToString() }
     $dslReferenceExitCode = $LASTEXITCODE
 }
 catch {
@@ -171,7 +175,7 @@ $dslReferenceEvidence = [pscustomobject]@{
     output = @($dslReferenceOutput | Select-Object -Last 20)
     error = $dslReferenceError
 }
-$gateReport | Add-Member -NotePropertyName dslReferenceDrift -NotePropertyValue $dslReferenceEvidence -Force
+$gateReport | Add-Member -NotePropertyName dslReferenceGeneration -NotePropertyValue $dslReferenceEvidence -Force
 
 # REG-133: the drift check above only catches "not regenerated" -- 8cd9860 regenerated AND
 # re-committed the doc in the SAME commit that broke it, so the drift check compared the freshly
@@ -283,7 +287,7 @@ if (
                 "Generator governance report returned status " + [string]$generatorGovernanceReport.overallStatus + "."
             }
             if (-not $dslReferencePassed) {
-                "docs/DSL_REFERENCE.md is stale -- run 'python scripts/docs/generate_dsl_reference.py' and commit the result."
+                "The DSL reference generator (scripts/docs/generate_dsl_reference.py) failed to run -- see its output above."
             }
             if (-not $dslReferenceFloorPassed) {
                 "docs/DSL_REFERENCE.md failed its output floor (REG-133) -- the generator ran but silently produced degenerate content; see scripts/quality/check-dsl-reference-output-floor.py's own output."

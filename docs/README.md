@@ -1,7 +1,8 @@
 # NPDev documentation
 
 **New here?** [GETTING_STARTED.md](GETTING_STARTED.md) → [YOUR_FIRST_APP.md](YOUR_FIRST_APP.md) →
-[DSL_REFERENCE.md](DSL_REFERENCE.md). That is the whole path.
+`DSL_REFERENCE.md` (generated, not committed — `python scripts/docs/generate_dsl_reference.py`).
+That is the whole path.
 
 `docs/` root holds current product and engineering truth for someone *using* NPDev — one file, one
 purpose. Feature-by-feature reference lives in [reference/](reference/); internal maintainer and
@@ -18,7 +19,7 @@ release-governance material (still live, just not what a newcomer needs) lives i
 
 ## Look it up
 
-[DSL_REFERENCE.md](DSL_REFERENCE.md) ·
+`DSL_REFERENCE.md` (generated, see below) ·
 [FEATURES.md](FEATURES.md) ·
 [CONFIGURATION.md](CONFIGURATION.md) ·
 [DEPLOYMENT.md](DEPLOYMENT.md) ·
@@ -63,16 +64,19 @@ One file per built-in feature.
 [AI_SCENARIO_DIRECTORY_CONTRACT.md](AI_SCENARIO_DIRECTORY_CONTRACT.md) ·
 [ai/](ai/) ·
 [ACCEPTED_BOUNDARIES.md](ACCEPTED_BOUNDARIES.md) ·
-[OPEN_ITEMS.md](OPEN_ITEMS.md) ·
+`OPEN_ITEMS.md` (generated, see below) ·
 [BUILD_OUTPUT_LOCATION_POLICY.md](BUILD_OUTPUT_LOCATION_POLICY.md) ·
 [WORKSPACE_CLEANUP_POLICY.md](WORKSPACE_CLEANUP_POLICY.md)
 
 ## Generated / live registers
 
 Never hand-edit these — each has its own regenerate command, checked by `run-ai-knowledge-gate.ps1`.
+`OPEN_ITEMS.md`, `OPEN_GAPS_AND_ROADMAP.md` and `DSL_REFERENCE.md` are no longer committed to the
+repo (md-zero-2026-08-11 PLAN.md Phase 6) — build output, per `BUILD_OUTPUT_LOCATION_POLICY.md`;
+run the commands below to render a local copy into the external Build root.
 
-[OPEN_ITEMS.md](OPEN_ITEMS.md) (`ledger/items/*.yml` → `python scripts/quality/generate_open_items.py`) ·
-[OPEN_GAPS_AND_ROADMAP.md](OPEN_GAPS_AND_ROADMAP.md) (`ledger/gaps.yml` → `python scripts/docs/generate_gaps_roadmap.py`) ·
+`OPEN_ITEMS.md` (`ledger/items/*.yml` → `python scripts/quality/generate_open_items.py`) ·
+`OPEN_GAPS_AND_ROADMAP.md` (`ledger/gaps.yml` → `python scripts/docs/generate_gaps_roadmap.py`) ·
 [SECURITY_PATTERN_SWEEP_2026-07.md](SECURITY_PATTERN_SWEEP_2026-07.md)
 
 ## Front matter

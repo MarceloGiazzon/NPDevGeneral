@@ -44,16 +44,19 @@ same commit that moved that doc out of the repo -- each item's `detail:` field w
 self-sufficient first. `generate_open_items.py` still renders the field if a future item sets it
 (e.g. pointing at something else entirely), but nothing currently does.
 
-## Generating `docs/OPEN_ITEMS.md`
+## Generating OPEN_ITEMS.md
 
 ```
-python scripts/quality/generate_open_items.py           # regenerate
-python scripts/quality/generate_open_items.py --check    # exit 1 if stale (CI form)
+python scripts/quality/generate_open_items.py           # writes <Build>/docs/OPEN_ITEMS.md
 ```
 
-Regenerates `docs/OPEN_ITEMS.md` from every `ledger/items/*.yml`, validating each file's schema
-first (required fields, enum values, `status: DONE` requires `closed`). Never hand-edit that file.
-Wired into `run-ai-knowledge-gate.ps1` (`--check` form), blocking.
+Renders OPEN_ITEMS.md from every `ledger/items/*.yml`, validating each file's schema first
+(required fields, enum values, `status: DONE` requires `closed`). Never hand-edit the generated
+file. `manual-runbook` (not wired into any gate -- confirmed by grep before this note was written;
+the previous version of this line claimed otherwise). md-zero-2026-08-11 PLAN.md Phase 6: the
+rendered doc is no longer committed to the repo at all (build output, per
+`docs/BUILD_OUTPUT_LOCATION_POLICY.md`) -- there is nothing left to `--check` against, so that flag
+is gone.
 
 **Dependency note:** this script needs PyYAML (`import yaml`), same as the other ledger/gaps.yml
 readers (`scripts/docs/generate_gaps_roadmap.py`, `scripts/ai/extract_platform_status.py`) and
@@ -63,9 +66,14 @@ Declared in `scripts/requirements.txt`; `.github/workflows/ai-knowledge-gate.yml
 
 ## What consumes the ledger now
 
-- `scripts/quality/generate_open_items.py` — renders `docs/OPEN_ITEMS.md`.
-- `scripts/external-review/build-review-pack.py` — excludes `docs/OPEN_ITEMS.md` from any
-  external-AI review pack, since it carries the platform's own conclusions about itself.
+- `scripts/quality/generate_open_items.py` — renders OPEN_ITEMS.md.
+- `scripts/external-review/build-review-pack.py`'s `FORBIDDEN_PATH_PATTERNS` names `OPEN_ITEMS\.md$`
+  (excluding it from any external-AI review pack, since it carries the platform's own conclusions
+  about itself) and `NPDEV_OPEN_ITEMS_REGISTER\.md$` (the archived register that pattern was
+  originally written for, moved out of the repo in Phase 2 of the same plan -- that half is now
+  moot, harmless, not cleaned up here). Both patterns scan the working tree a review pack is built
+  from; OPEN_ITEMS.md not being tracked in git any more (Phase 6) makes its own pattern moot too
+  the moment nobody generates a local copy before building a pack.
 
 ## History
 

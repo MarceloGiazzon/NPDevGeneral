@@ -2,11 +2,11 @@
 
 > **Generated:** 2026-07-13 · **Branch at capture:** `beta1-vision-spine`
 > **Objective:** Turn every one of the six **accepted design boundaries** in §6 of
-> [OPEN_GAPS_AND_ROADMAP.md](../../OPEN_GAPS_AND_ROADMAP.md) into a **supported platform feature**. When
+> `OPEN_GAPS_AND_ROADMAP.md` (generated, not committed since md-zero-2026-08-11 PLAN.md Phase 6) into a **supported platform feature**. When
 > this roadmap closes, none of ARCH-6 / ARCH-7 / ARCH-loop / ARCH-upload / ARCH-compound-unique /
 > ARCH-13 is a constraint anymore — each has a first-class, tested, live-verified implementation.
 >
-> Companion to the boundary definitions in [OPEN_GAPS_AND_ROADMAP.md §6](../../OPEN_GAPS_AND_ROADMAP.md).
+> Companion to the boundary definitions in `OPEN_GAPS_AND_ROADMAP.md §6` (generated, not committed since md-zero-2026-08-11 PLAN.md Phase 6).
 > Same authoring contract as that document: every item carries a **stable ID** and the same six
 > fields (What / Where / Why / How / Definition of Done / Verify) so an autonomous agent can pick up
 > any item without re-deriving context.
@@ -160,12 +160,12 @@ hand-rolled DNF matcher in
   referenced DNF (invariants are server/kernel-enforced only, no client-side invariant hint emitted
   today). Fixed: stale comment in `PanelRuntime.applyQueryWhereFilter` that cited "CelInvariantEngine's
   documented DNF-only scope" (unrelated LIFT-QUERY code, comment only). Moved ARCH-6 from
-  [OPEN_GAPS_AND_ROADMAP.md](../../OPEN_GAPS_AND_ROADMAP.md) §6 (boundaries) to §7 (fixed), with a changelog
+  `OPEN_GAPS_AND_ROADMAP.md` (generated, not committed since md-zero-2026-08-11 PLAN.md Phase 6) §6 (boundaries) to §7 (fixed), with a changelog
   entry.
 - **What:** Wherever generation or docs assumed "invariants must be DNF, no arithmetic," update to the
   new grammar; ensure any generator-emitted client-side invariant hint uses the same expression.
 - **Where:** `NPDevGenerator/.../emitters/*` invariant emission; `docs/` references; the ARCH-6 note in
-  [OPEN_GAPS_AND_ROADMAP.md §6](../../OPEN_GAPS_AND_ROADMAP.md).
+  `OPEN_GAPS_AND_ROADMAP.md §6` (generated, not committed since md-zero-2026-08-11 PLAN.md Phase 6).
 - **Why:** Close the loop so authors aren't told to hand-DNF anymore.
 - **How:** grep `DNF`/`De Morgan`/"not supported" in docs+emitters; update; move ARCH-6 from §6
   (boundaries) to §7 (fixed) in the prior roadmap.
