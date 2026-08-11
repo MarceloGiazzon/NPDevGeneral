@@ -19,7 +19,7 @@ If you want the full manual instead — every screen, every setting, troubleshoo
 | **Linux** | Any modern 64-bit desktop |
 | **Disk** | **5 GB free** — `npdev doctor` fails below this (NPDev downloads its own Java) |
 | **Internet** | Needed throughout: the Java and Python downloads, the NPDev version list and download, and the first build of your first app |
-| **Docker** | **Only if you want PostgreSQL, MySQL or SQL Server.** Skip it — see step 5. |
+| **Docker** | **Only if you want a server database** (Postgres, MySQL, SqlServer). Skip it — see step 5. |
 
 Nothing else. If you already have Java installed, it does not matter which version — NPDev does not
 use it.
@@ -75,7 +75,7 @@ Go back to **Ready** and press **Re-check**. Each row shows a mark, not a word:
 |---|---|
 | **✓** | Fine. |
 | **!** | Optional, or could not be checked. Something only some features need — usually ignore it. |
-| **✗** | Must be fixed before you can build an app. The row says what to do, and a few rows have a **Fix this** button that takes you to the screen where you fix it. |
+| **✗** | Must be fixed before you can build an app. The row says what to do. One row (**NPDev jars**) also has a **Fix this** button, which takes you to the Install tab rather than fixing anything itself. |
 
 A **!** next to Docker is expected and fine — see the next step. A **!** next to git is also
 expected: the Manager does not install git and nothing needs it, except your app's own version
