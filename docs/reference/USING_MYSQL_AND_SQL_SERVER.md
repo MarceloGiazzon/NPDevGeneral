@@ -8,9 +8,9 @@ rather than sounding confident.
 > claims, and only the third is one you are entitled to rely on.* MySQL and SQL Server are at the
 > second, moving toward the third.
 
-**Companion docs:** [`DATABASES_AND_MIGRATIONS.md`](DATABASES_AND_MIGRATIONS.md) (how NPDev turns a
-model into a schema), [`SCHEMA_EVOLUTION.md`](SCHEMA_EVOLUTION.md) (what happens when the model
-changes), [`DEPLOYMENT.md`](DEPLOYMENT.md).
+**Companion docs:** [`DATABASES_AND_MIGRATIONS.md`](../DATABASES_AND_MIGRATIONS.md) (how NPDev turns a
+model into a schema), [`SCHEMA_EVOLUTION.md`](../SCHEMA_EVOLUTION.md) (what happens when the model
+changes), [`DEPLOYMENT.md`](../DEPLOYMENT.md).
 
 ---
 

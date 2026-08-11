@@ -7,7 +7,7 @@ param(
     [string]$FinalReleaseReportPath = "scripts/reports/out/beta0-final-release-check-report.json",
     [string]$FinalClosureReportPath = "scripts/reports/out/beta0-final-closure-report.json",
     [string]$BetaReleaseGateReportPath = "scripts/reports/out/beta-release-gate-report.json",
-    [string]$OfficialRunbookPath = "docs/OFFICIAL_BETA_RELEASE_RUNBOOK.md",
+    [string]$OfficialRunbookPath = "docs/maintainers/OFFICIAL_BETA_RELEASE_RUNBOOK.md",
     [string]$ReleaseWorkflowPath = ".github/workflows/npdev-release-gate.yml",
     [string]$AiBetaWorkflowPath = ".github/workflows/ai-beta-gate.yml",
     [string]$DocEntrypointPolicyPath = "scripts/policy/doc-entrypoint-classification-policy.json"

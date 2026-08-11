@@ -74,6 +74,7 @@ function New-ClosureFixtureWorkspace {
     New-Item -ItemType Directory -Force -Path (Join-Path $Root "scripts/policy") | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $Root "scripts/reports/out") | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $Root "docs") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $Root "docs/maintainers") | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $Root ".github/workflows") | Out-Null
     "" | Set-Content -LiteralPath (Join-Path $Root "scripts/quality/run-traceable-local-release.ps1") -Encoding UTF8
     "" | Set-Content -LiteralPath (Join-Path $Root "scripts/quality/run-roadmap-closure-check.ps1") -Encoding UTF8
@@ -86,7 +87,7 @@ function New-ClosureFixtureWorkspace {
   ]
 }
 "@ | Set-Content -LiteralPath (Join-Path $Root "scripts/policy/doc-entrypoint-classification-policy.json") -Encoding UTF8
-    "pwsh ./scripts/quality/run-traceable-local-release.ps1`npwsh ./scripts/quality/run-roadmap-closure-check.ps1" | Set-Content -LiteralPath (Join-Path $Root "docs/OFFICIAL_BETA_RELEASE_RUNBOOK.md") -Encoding UTF8
+    "pwsh ./scripts/quality/run-traceable-local-release.ps1`npwsh ./scripts/quality/run-roadmap-closure-check.ps1" | Set-Content -LiteralPath (Join-Path $Root "docs/maintainers/OFFICIAL_BETA_RELEASE_RUNBOOK.md") -Encoding UTF8
     $workflowCommand = if ($AlignedWorkflow) {
         "pwsh ./scripts/quality/run-traceable-local-release.ps1`npwsh ./scripts/quality/run-roadmap-closure-check.ps1"
     }

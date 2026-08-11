@@ -1,9 +1,9 @@
 param(
     [string]$WorkspaceRoot = ".",
     [string]$PolicyPath = "scripts/policy/maturity-max-roadmap-policy.json",
-    [string]$DocumentationPath = "docs/ROADMAP_BOUNDARY_POLICY.md",
-    [string]$LedgerPath = "docs/MATURITY_CLOSURE_LEDGER.md",
-    [string]$HumanActionRegisterPath = "docs/POST_BETA0_HUMAN_ACTION_REGISTER.md",
+    [string]$DocumentationPath = "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md",
+    [string]$LedgerPath = "docs/maintainers/MATURITY_CLOSURE_LEDGER.md",
+    [string]$HumanActionRegisterPath = "docs/maintainers/POST_BETA0_HUMAN_ACTION_REGISTER.md",
     [string]$SchemaPath = "schemas/ai/maturity-max-roadmap-boundary-report.schema.json",
     [string]$ReportPath = "scripts/reports/out/maturity-max-roadmap-boundary-report.json",
     [string]$Beta0TruthReportPath = "scripts/reports/out/beta0-state-truth-report.json",
