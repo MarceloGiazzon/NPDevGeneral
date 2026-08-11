@@ -341,15 +341,16 @@ command -v python3 >/dev/null 2>&1 \
   || die "python3 is not installed, so the harness cannot extract README's commands. Section 1's \
 prereq-present check above says whether README is at fault; either way this run cannot continue."
 
-CMDS=$(python3 "$EXTRACTOR" --section "$QUICKSTART_HEADING" README.md)
+CMDS=$(python3 "$EXTRACTOR" --section "$QUICKSTART_HEADING" content/readme.json)
 EXTRACT_RC=$?
 if [ "$EXTRACT_RC" -eq 3 ]; then
-  c_red "  HARNESS CANNOT RUN: no runnable section found in README.md."
+  c_red "  HARNESS CANNOT RUN: no runnable section found in content/readme.json."
   echo  "    Looked for a '## Quickstart' or '## See it run' heading and found neither."
   echo  "    This is NOT a product failure -- it means the harness has no commands to follow, and"
   echo  "    every check after this one would fail for that reason alone. Fix QUICKSTART_HEADING in"
   echo  "    this script (and in scripts/quality/check-firstrun-extractor.py, which pins the same"
-  echo  "    regex), or restore the section in README.md."
+  echo  "    regex), or restore the section in content/readme.yml (README.md is GENERATED from it --"
+  echo  "    see scripts/docs/generate_group_d_docs.py)."
   exit 2
 elif [ "$EXTRACT_RC" -ne 0 ]; then
   die "the command extractor failed (exit $EXTRACT_RC) -- see the error above"
@@ -762,7 +763,15 @@ section "6. Execute docs/YOUR_FIRST_APP.md the way a newcomer would (I1/I2)"
 # Quickstart which is one heading and 100% ```sh. Step 6 (renaming) is illustrative only --
 # deliberately excluded, since running it would try to rename a field this app doesn't have a
 # reason to rename.
-YFA_DOC="$SRC/docs/YOUR_FIRST_APP.md"
+#
+# md-zero-2026-08-11 PLAN.md Phase 5: reads content/your-first-app.json (the JSON mirror of
+# content/your-first-app.yml, which also renders docs/YOUR_FIRST_APP.md byte-identically) instead
+# of parsing the .md file's raw text -- this image has no PyYAML (see extract_commands.py's own
+# docstring for why the mirror exists), so this stays a stdlib-only `json` read. The numbered-step
+# extraction (level-2 "N. Title" headings, N <= 5, blocks tagged sh/json) is unchanged in shape;
+# only the source of the section list moved from regex-over-markdown to structured JSON already
+# split into sections by scripts/docs/generate_group_d_docs.py's own conversion.
+YFA_DOC="$SRC/content/your-first-app.json"
 YFA_WORK=/work/my-library
 YFA_APP=/work/my-library-app
 YFA_PORT=8084
@@ -776,14 +785,29 @@ else
 
   python3 - "$YFA_DOC" > /work/yfa-steps.json <<'PYEOF'
 import json, re, sys
-doc = open(sys.argv[1], encoding="utf-8").read()
+content = json.load(open(sys.argv[1], encoding="utf-8"))
+sections = content.get("sections", [])
 steps = []
-for sec in re.split(r"(?m)^## ", doc)[1:]:
-    title, body = sec.split("\n", 1)
+for index, sec in enumerate(sections):
+    if sec.get("level") != 2:
+        continue
+    title = sec["title"]
     m = re.match(r"(\d+)\.", title)
     if not m or int(m.group(1)) > 5:
         continue
-    blocks = [{"lang": lang, "body": b} for lang, b in re.findall(r"```(sh|json)\n(.*?)\n```", body, re.S)]
+    # A `### ` sub-section (e.g. step 5's own "Let it do that for you") stays part of its parent
+    # step's blocks, the same "next ## ends it, ### does not" rule the old regex split applied by
+    # only ever splitting on `^## `.
+    raw_blocks = list(sec.get("blocks", []))
+    for sibling in sections[index + 1:]:
+        if sibling.get("level", 2) <= 2:
+            break
+        raw_blocks.extend(sibling.get("blocks", []))
+    blocks = [
+        {"lang": b["lang"], "body": b["text"]}
+        for b in raw_blocks
+        if b.get("type") == "fence" and b.get("lang") in ("sh", "json")
+    ]
     steps.append({"n": int(m.group(1)), "title": title.strip(), "blocks": blocks})
 json.dump(steps, sys.stdout, indent=2)
 PYEOF
