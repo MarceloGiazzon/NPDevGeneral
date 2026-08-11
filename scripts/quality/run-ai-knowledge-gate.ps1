@@ -4,9 +4,11 @@
 
 .DESCRIPTION
     Fails (non-zero exit) if:
-      1. docs/OPEN_GAPS_AND_ROADMAP.md is stale vs its source (ledger/gaps.yml), or
-         knowledge/platform-status.json is stale vs a fresh extraction of that same ledger --
-         i.e. someone hand-edited a generated document without regenerating it.
+      1. the gaps-roadmap generator (scripts/docs/generate_gaps_roadmap.py) fails to run, or
+         knowledge/platform-status.json is stale vs a fresh extraction of ledger/gaps.yml --
+         i.e. someone hand-edited the committed platform-status projection without regenerating it
+         (md-zero-2026-08-11 PLAN.md Phase 6: the gaps-roadmap doc itself is no longer committed,
+         so there is nothing left to compare it against -- only whether it still generates).
       2. any knowledge/cards/*.json fails knowledge-card validation.
       3. the shared failure-signature normalizer self-check fails.
       4. the security pattern sweep no longer catches the bug shapes it was written for.
@@ -153,18 +155,23 @@ try {
     # it guarded four closed-programme ledgers (NPDEV_OPEN_ITEMS_REGISTER.md, LAUNCH_READINESS_GAPS.md,
     # DSL2_AND_DECOMPOSITION_PLAN.md, EXECUTION_TREES.md), all 177 items DONE, moved to
     # __OutsideRepo/md-zero-2026-08-11/archived-programme-docs/ (git history keeps them at their old
-    # path). docs/OPEN_GAPS_AND_ROADMAP.md remains a generated projection of ledger/gaps.yml, one link
-    # upstream of platform-status.json -- that regenerate-or-check pair is now [1/42] on its own.
+    # path).
+    # md-zero-2026-08-11 PLAN.md Phase 6 (Group G): OPEN_GAPS_AND_ROADMAP.md is no longer committed
+    # to the repo at all -- it always regenerates fresh to the external Build root now, so there is
+    # nothing left to "check" for drift. What remains is a smoke test: does generation still run to
+    # completion (a malformed ledger/gaps.yml or a broken narrative template fails loudly here).
+    # platform-status.json IS still committed (Phase 1, unaffected by Group G) -- its own --check
+    # stays a real drift comparison, unchanged.
     if ($Fix) {
         Write-Host "[1/42] Regenerating gaps roadmap + platform-status projection..." -ForegroundColor Yellow
         & $py "scripts/docs/generate_gaps_roadmap.py"
-        if ($LASTEXITCODE -ne 0) { $failures += "gaps-roadmap regeneration failed" }
+        if ($LASTEXITCODE -ne 0) { $failures += "gaps-roadmap generation failed" }
         & $py "scripts/ai/extract_platform_status.py"
         if ($LASTEXITCODE -ne 0) { $failures += "platform-status regeneration failed" }
     } else {
-        Write-Host "[1/42] Checking gaps roadmap + platform-status projection are current..."
-        & $py "scripts/docs/generate_gaps_roadmap.py" --check
-        if ($LASTEXITCODE -ne 0) { $failures += "docs/OPEN_GAPS_AND_ROADMAP.md is STALE relative to ledger/gaps.yml (run with -Fix)" }
+        Write-Host "[1/42] Checking gaps roadmap generates + platform-status projection is current..."
+        & $py "scripts/docs/generate_gaps_roadmap.py" | Out-Null
+        if ($LASTEXITCODE -ne 0) { $failures += "gaps-roadmap generation failed: see scripts/docs/generate_gaps_roadmap.py output above" }
         & $py "scripts/ai/extract_platform_status.py" --check
         if ($LASTEXITCODE -ne 0) { $failures += "platform-status projection is STALE (run with -Fix)" }
     }

@@ -1,21 +1,29 @@
 #!/usr/bin/env python
-"""LNCH-22: generates docs/DSL_REFERENCE.md from the schema + widget catalog, rather than
+"""LNCH-22: generates the DSL reference from the schema + widget catalog, rather than
 hand-writing it -- the schemas are the truth, this keeps the reference from drifting away from
 them. Run after any change to NPDevContract/schemas/model.schema.json or
-FieldWidgetDefaults.java's SUPPORTED_WIDGETS; re-commit the regenerated doc.
+FieldWidgetDefaults.java's SUPPORTED_WIDGETS.
 
-Usage: python scripts/docs/generate_dsl_reference.py [--check]
+md-zero-2026-08-11 PLAN.md Phase 6 (Group G): no longer committed to the repo -- the doc is build
+output (docs/BUILD_OUTPUT_LOCATION_POLICY.md's existing rule for every other build artifact), and
+its own drift check (compare against committed content) never caught the one real defect that hit
+it (REG-133, a schema-shape change silently rendering "any" -- the SAME commit regenerated and
+re-committed the doc, so the drift check matched perfectly while being wrong). That is what
+scripts/quality/check-dsl-reference-output-floor.py checks instead: real content floors on a fresh
+in-memory render, independent of any committed file -- unaffected by this change, since it never
+read the committed doc to begin with.
 
---check exits non-zero if the regenerated content differs from what's committed (a drift gate,
-wireable into a quality gate script later; not yet wired into one this session).
+Usage: python scripts/docs/generate_dsl_reference.py
 """
 from __future__ import annotations
 
-import argparse
 import json
 import re
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ai"))
+from npdev_ai_common import build_root  # noqa: E402
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = WORKSPACE_ROOT / "NPDevContract" / "schemas" / "model.schema.json"
@@ -24,7 +32,6 @@ WIDGET_DEFAULTS_PATH = (
     / "NPDevContract" / "dsl" / "src" / "main" / "java" / "com" / "npdev" / "dsl" / "v1"
     / "compiled" / "FieldWidgetDefaults.java"
 )
-OUTPUT_PATH = WORKSPACE_ROOT / "docs" / "DSL_REFERENCE.md"
 
 # The $defs worth surfacing in the reference -- the ones an author actually writes by hand.
 # Not exhaustive (the schema has ~80 $defs); these are the shapes a real model.json touches most.
@@ -164,23 +171,14 @@ def render(schema: dict) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true")
-    args = parser.parse_args()
-
     schema = load_schema()
     content = render(schema)
 
-    if args.check:
-        existing = OUTPUT_PATH.read_text(encoding="utf-8") if OUTPUT_PATH.exists() else ""
-        if existing != content:
-            print("docs/DSL_REFERENCE.md is stale -- run without --check to regenerate.", file=sys.stderr)
-            return 1
-        print("docs/DSL_REFERENCE.md is up to date.")
-        return 0
-
-    OUTPUT_PATH.write_text(content, encoding="utf-8")
-    print(f"Wrote {OUTPUT_PATH}")
+    out_dir = build_root() / "docs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "DSL_REFERENCE.md"
+    out_path.write_text(content, encoding="utf-8")
+    print(f"Wrote {out_path}")
     return 0
 
 

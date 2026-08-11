@@ -3,9 +3,9 @@
 
 Chunks by OBJECT / SECTION (not arbitrary token windows), so retrieval returns a whole concept,
 flow, or doc section:
-  - prose docs     -> one chunk per `##`/`###` heading section, read from content/*.yml (never a
+  - prose docs     -> one chunk per `##`/`###` heading section, read from content/*.json (never a
     .md -- md-zero-2026-08-11 PLAN.md Phase 4; the three docs this used to read are GENERATED from
-    the same YAML by scripts/docs/generate_group_e_docs.py),
+    content/*.yml by scripts/docs/generate_group_e_docs.py, which also mirrors it as JSON),
   - sample models  -> one chunk per concept / flow / panel / procedure (with the JSON snippet),
     tagged with keywords pulled from field types, reference targets, and onDelete so queries like
     "cascade delete bond" match.
@@ -13,6 +13,12 @@ flow, or doc section:
 Output -> <Build>/npdev-ai/rag-index.json, which the `npdev_search_examples` MCP tool ranks.
 Retrieval here is keyword/BM25-style and dependency-free; swap in embeddings later by adding a
 "vector" per chunk without changing the consumer.
+
+WHY JSON, NOT THE AUTHORED YAML: `./npdev setup` calls this script on every real machine, not just
+in CI -- and PyYAML is explicitly a repo-dev/CI-only dependency (scripts/requirements.txt's own
+comment: "NOT a dependency of the shipped CLI itself"). Found live running the first-run harness
+(a bare machine, nothing installed beyond what README documents): `import yaml` here broke
+`npdev setup` on a fresh install. content/*.json carries the identical data, stdlib-readable.
 
 Usage: python scripts/ai/build_rag_index.py
 """
@@ -25,22 +31,21 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from npdev_ai_common import ai_out_dir, repo_root
 
 CONTENT_FILES = [
-    "content/npdev-concepts-deep-dive.yml",
-    "content/npdev-user-manual.yml",
-    "content/authoring-for-ai.yml",
+    "content/npdev-concepts-deep-dive.json",
+    "content/npdev-user-manual.json",
+    "content/authoring-for-ai.json",
 ]
 
 SAMPLE_OBJECT_KEYS = ["concepts", "flows", "panels", "procedures", "orchestrations", "events"]
 
 
-def chunk_content_yaml(content_rel: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
-    """One chunk per section already split out in content/*.yml -- the YAML IS pre-chunked by
-    `##`/`###` heading, so this just maps section -> chunk instead of re-parsing markdown."""
+def chunk_content_doc(content_rel: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
+    """One chunk per section already split out in content/*.yml (read here via its content/*.json
+    mirror) -- pre-chunked by `##`/`###` heading, so this just maps section -> chunk instead of
+    re-parsing markdown."""
     chunks: list[dict[str, Any]] = []
     source = doc.get("sourceFile", content_rel)
     for section in doc.get("sections", []):
@@ -153,8 +158,8 @@ def main(_argv: list[str]) -> int:
             print(f"FAIL: {rel} does not exist -- the AI context would silently lose this "
                   f"section's coverage.", file=sys.stderr)
             return 1
-        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
-        chunks.extend(chunk_content_yaml(rel, doc))
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        chunks.extend(chunk_content_doc(rel, doc))
 
     chunks.extend(chunk_cards(root))
 

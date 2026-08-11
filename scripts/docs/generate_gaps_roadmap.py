@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""docs-decoupling-2026-08-11 PLAN.md Phase 1: generates docs/OPEN_GAPS_AND_ROADMAP.md from
+"""docs-decoupling-2026-08-11 PLAN.md Phase 1: generates OPEN_GAPS_AND_ROADMAP.md from
 ledger/gaps.yml, the same "markdown is generated, YAML is truth" discipline
-scripts/quality/generate_open_items.py already applies to docs/OPEN_ITEMS.md.
+scripts/quality/generate_open_items.py already applies to OPEN_ITEMS.md.
 
 WHY THIS EXISTS
 ----------------
@@ -17,22 +17,27 @@ verbatim in `scripts/docs/gaps-roadmap-narrative.md.tmpl`, a template with two s
 (`<!-- GENERATED: priority-index-table -->`, `<!-- GENERATED: fixed-engine-bugs-table -->`) where
 this script splices in the two freshly-rendered tables.
 
+md-zero-2026-08-11 PLAN.md Phase 6 (Group G): the rendered doc is no longer committed to the repo
+at all -- "nothing to drift-check because nothing is stored" (the plan's own words). This always
+writes fresh, to the external Build root (docs/BUILD_OUTPUT_LOCATION_POLICY.md's existing rule for
+every other build artifact), never inside this repo. `--check` is gone with it.
+
 Usage:
-    python scripts/docs/generate_gaps_roadmap.py            # writes docs/OPEN_GAPS_AND_ROADMAP.md
-    python scripts/docs/generate_gaps_roadmap.py --check     # exit 1 if the committed file is stale
+    python scripts/docs/generate_gaps_roadmap.py            # writes <Build>/docs/OPEN_GAPS_AND_ROADMAP.md
 """
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ai"))
+from npdev_ai_common import build_root  # noqa: E402
+
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 LEDGER_PATH = WORKSPACE_ROOT / "ledger" / "gaps.yml"
 NARRATIVE_PATH = WORKSPACE_ROOT / "scripts" / "docs" / "gaps-roadmap-narrative.md.tmpl"
-OUTPUT_PATH = WORKSPACE_ROOT / "docs" / "OPEN_GAPS_AND_ROADMAP.md"
 
 TABLE1_MARKER = "<!-- GENERATED: priority-index-table -->"
 TABLE7_MARKER = "<!-- GENERATED: fixed-engine-bugs-table -->"
@@ -81,33 +86,17 @@ def render(data: dict) -> str:
     return text
 
 
-def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--check", action="store_true", help="exit 1 if docs/OPEN_GAPS_AND_ROADMAP.md is stale")
-    args = parser.parse_args(argv)
-
+def main() -> int:
     data = load_ledger()
     rendered = render(data)
 
-    if args.check:
-        current = OUTPUT_PATH.read_text(encoding="utf-8") if OUTPUT_PATH.exists() else ""
-        if current != rendered:
-            print(
-                "docs/OPEN_GAPS_AND_ROADMAP.md is STALE relative to ledger/gaps.yml -- run "
-                "'python scripts/docs/generate_gaps_roadmap.py' to regenerate.",
-                file=sys.stderr,
-            )
-            return 1
-        print(
-            f"OK: docs/OPEN_GAPS_AND_ROADMAP.md is current ({len(data['priorityIndex'])} priority-index "
-            f"row(s), {len(data['fixedEngineBugs'])} fixed-engine-bug row(s))."
-        )
-        return 0
-
-    OUTPUT_PATH.write_text(rendered, encoding="utf-8")
-    print(f"wrote {OUTPUT_PATH}")
+    out_dir = build_root() / "docs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "OPEN_GAPS_AND_ROADMAP.md"
+    out_path.write_text(rendered, encoding="utf-8")
+    print(f"wrote {out_path}")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(main())
