@@ -53,6 +53,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -143,10 +144,29 @@ def check_document(path: Path, statuses: dict[str, str], root: Path) -> list[str
     return findings
 
 
+# Rule 1 (docs-decoupling-2026-08-11 PLAN.md Phase 0): a check whose glob quietly matches zero files
+# reports PASS having examined nothing -- indistinguishable from a real all-clear. Measured 2026-08-11:
+# SCOPE_GLOBS matches 8 files (MOVE1_PANEL_GAPS.md, SCREEN_TAXONOMY.md, 6 MOVE*_CHECKLISTS/FINDINGS).
+# If a future archival move drops this to 0, that is a silent scope loss, not a clean bill of health --
+# fail loudly instead. Not "< 8": the count is allowed to shrink as docs move, just never to zero
+# without a deliberate Rule 1 (a/b/c) decision recorded for this check.
+class EmptyScopeError(RuntimeError):
+    pass
+
+
 def run(root: Path) -> tuple[int, list[str]]:
+    documents = scoped_documents(root)
+    if not documents:
+        raise EmptyScopeError(
+            "check-blocker-citation-freshness.py: SCOPE_GLOBS matched 0 files under docs/ -- this "
+            "would report a false PASS having checked nothing. Either re-point SCOPE_GLOBS at the new "
+            "location of these documents, or delete this checker outright (script + gate invocation + "
+            "verification-cadence.json entry + script-invocation-declarations.json entry) -- never let "
+            "it silently pass on an empty set (Rule 1, docs-decoupling-2026-08-11 PLAN.md)."
+        )
     statuses = load_ledger_statuses()
     findings: list[str] = []
-    for path in scoped_documents(root):
+    for path in documents:
         findings.extend(check_document(path, statuses, root))
     return len(findings), findings
 
@@ -160,7 +180,7 @@ SYNTHETIC_FIXED = """\
 """
 
 
-def calibrate() -> int:
+def calibrate(root: Path = REPO_ROOT) -> int:
     ok = True
 
     def report(label: str, findings: list[str], expect_fire: bool) -> None:
@@ -206,6 +226,45 @@ def calibrate() -> int:
         expect_fire=False,
     )
 
+    # Rule 1 empty-scope floor (docs-decoupling-2026-08-11 PLAN.md Phase 0): must fire loudly on an
+    # empty SCOPE_GLOBS match rather than silently reporting PASS having checked nothing.
+    print("\nCalibration -- the empty-scope floor must fire on 0 matched files, and stay quiet once")
+    print("the corpus is populated:")
+
+    def empty_scope_fires() -> bool:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            (tmp_root / "docs").mkdir()
+            try:
+                run(tmp_root)
+            except EmptyScopeError:
+                return True
+            return False
+
+    def populated_scope_fires() -> bool:
+        try:
+            run(root)
+        except EmptyScopeError:
+            return True
+        return False
+
+    def report_bool(label: str, fired: bool, expect_fire: bool) -> None:
+        nonlocal ok
+        passed = fired == expect_fire
+        ok = ok and passed
+        print(f"  [{'PASS' if passed else 'FAIL'}] {label} ({'fired' if fired else 'silent'})")
+
+    report_bool(
+        "synthetic empty docs/ tree (SCOPE_GLOBS matches 0 files)",
+        empty_scope_fires(),
+        expect_fire=True,
+    )
+    report_bool(
+        f"real repo root ({root}) -- SCOPE_GLOBS matches its usual, non-empty file set",
+        populated_scope_fires(),
+        expect_fire=False,
+    )
+
     if not ok:
         print("\nFAIL: at least one control did not behave as required -- this detector does not "
               "ship until it does.", file=sys.stderr)
@@ -220,12 +279,16 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--calibrate", action="store_true", help="run the required self-test controls and exit")
     args = parser.parse_args(argv)
 
-    if args.calibrate:
-        return calibrate()
-
     root = Path(args.root).resolve()
+    if args.calibrate:
+        return calibrate(root)
+
     print("Blocker-citation freshness (does a doc still call REG-nnn a blocker after it shipped?)")
-    count, findings = run(root)
+    try:
+        count, findings = run(root)
+    except EmptyScopeError as exc:
+        print(f"\nFAIL: {exc}", file=sys.stderr)
+        return 1
     for f in findings:
         print(f"  {f}")
     if count == 0:

@@ -49,6 +49,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # Only user of PyYAML in this script (load_ledger_items, feeding Rule T1) -- see ledger/README.md
@@ -277,6 +278,10 @@ LEDGER_EXCLUSION_PATTERNS = (
 )
 
 
+class EmptyScopeError(RuntimeError):
+    pass
+
+
 def ledger_coverage_gaps(root: Path) -> list[str]:
     """Is the checked-document list still complete?
 
@@ -288,10 +293,21 @@ def ledger_coverage_gaps(root: Path) -> list[str]:
     So the document list is now an assertion rather than a constant: anything ledger-shaped (>=5 id
     rows AND >=1 detail heading) must be either checked or named in LEDGER_EXCLUSIONS with a reason.
     Add a new ledger and this fails until someone decides which it is.
+
+    Rule 1 (docs-decoupling-2026-08-11 PLAN.md Phase 0): the `docs/*.md` scan itself must find SOME
+    candidates, or this whole function is silently checking nothing -- a false PASS from an emptied
+    docs/ root, not a real all-clear. Measured 2026-08-11: 85 files scanned.
     """
+    all_docs = sorted((root / "docs").glob("*.md"))
+    if not all_docs:
+        raise EmptyScopeError(
+            "ledger_coverage_gaps(): docs/*.md matched 0 files -- this would report a false PASS "
+            "having scanned nothing. Re-point the scan at the new location of these documents, or "
+            "delete this rule outright, before letting it run on an empty set (Rule 1)."
+        )
     checked = {"NPDEV_OPEN_ITEMS_REGISTER.md", "OPEN_GAPS_AND_ROADMAP.md", "LAUNCH_READINESS_GAPS.md"}
     gaps: list[str] = []
-    for path in sorted((root / "docs").glob("*.md")):
+    for path in all_docs:
         if path.name in checked or path.name in LEDGER_EXCLUSIONS:
             continue
         if any(rule.search(path.name) for rule in LEDGER_EXCLUSION_PATTERNS):
@@ -445,9 +461,17 @@ def check_plan_status_banners(root: Path, verbose: bool) -> list[str]:
     the author to SAY, in one line, which of EXECUTED / ACTIVE / HISTORICAL / SUPERSEDED applies.
     Stating the tense costs a sentence; leaving it implicit costs a reader an hour.
     """
+    matched = sorted((root / "docs").glob("*PLAN*.md"))
+    if not matched:
+        raise EmptyScopeError(
+            "check_plan_status_banners(): docs/*PLAN*.md matched 0 files -- this would report a "
+            "false PASS having checked no plan documents. Re-point the scan at the new location of "
+            "these documents, or delete this rule outright, before letting it run on an empty set "
+            "(Rule 1, docs-decoupling-2026-08-11 PLAN.md)."
+        )
     problems: list[str] = []
     checked = 0
-    for path in sorted((root / "docs").glob("*PLAN*.md")):
+    for path in matched:
         head = "\n".join(path.read_text(encoding="utf-8", errors="replace").split("\n")[:8])
         checked += 1
         if "STATUS:" not in head:
@@ -578,10 +602,18 @@ def check_plan_deferral_citations(root: Path, verbose: bool) -> list[str]:
     scope decision, not prose describing work that already addressed an earlier deferral. A reviewed
     residual false positive can be cleared in plan-deferral-citation-allowlist.json.
     """
+    matched = sorted((root / "docs").glob("*PLAN*.md"))
+    if not matched:
+        raise EmptyScopeError(
+            "check_plan_deferral_citations(): docs/*PLAN*.md matched 0 files -- this would report a "
+            "false PASS having scanned no plan documents. Re-point the scan at the new location of "
+            "these documents, or delete this rule outright, before letting it run on an empty set "
+            "(Rule 1, docs-decoupling-2026-08-11 PLAN.md)."
+        )
     problems: list[str] = []
     checked = 0
     allowlist = load_deferral_allowlist()
-    for path in sorted((root / "docs").glob("*PLAN*.md")):
+    for path in matched:
         text = path.read_text(encoding="utf-8", errors="replace")
         doc_problems = plan_deferral_citations_text(f"docs/{path.name}", text, allowlist, verbose)
         head = "\n".join(text.split("\n")[:8])
@@ -851,12 +883,14 @@ def calibrate(root: Path) -> int:
     """
     ok = True
     reported = 0
-    # MEASURED 2026-07-29 (docs/FAIL_OPEN_PLAN.md R1): 15 report() calls below when every guard
-    # passes. Recount by grepping this function for `report(` if this function's controls change --
-    # a hand-maintained count is exactly the kind of claim check-record-surfaces.py exists to distrust
-    # elsewhere, but there is no cheaper source of truth for "how many controls does THIS run intend"
-    # than reading the function that defines them.
-    EXPECTED_CONTROLS = 15
+    # MEASURED 2026-07-29 (docs/FAIL_OPEN_PLAN.md R1): 15 report() calls when every guard passes.
+    # MEASURED 2026-08-11 (docs-decoupling-2026-08-11 PLAN.md Phase 0): +6 report_raises() calls for
+    # the three Rule 1 empty-scope floors (empty-tree + populated-repo control each) -- 21 total.
+    # Recount by grepping this function for `report(` / `report_raises(` if this function's controls
+    # change -- a hand-maintained count is exactly the kind of claim check-record-surfaces.py exists
+    # to distrust elsewhere, but there is no cheaper source of truth for "how many controls does THIS
+    # run intend" than reading the function that defines them.
+    EXPECTED_CONTROLS = 21
 
     def report(label: str, findings: list[str], expect_fire: bool) -> None:
         nonlocal ok, reported
@@ -993,6 +1027,56 @@ def calibrate(root: Path) -> int:
         expect_fire=False,
     )
 
+    # Rule 1 empty-scope floors (docs-decoupling-2026-08-11 PLAN.md Phase 0): ledger_coverage_gaps(),
+    # check_plan_status_banners(), and check_plan_deferral_citations() must each raise EmptyScopeError
+    # on an emptied docs/ root rather than silently reporting PASS having scanned nothing, and must
+    # stay quiet against the real, populated repo.
+    def report_raises(label: str, fn, expect_fire: bool) -> None:
+        nonlocal ok, reported
+        reported += 1
+        fired = False
+        try:
+            fn()
+        except EmptyScopeError:
+            fired = True
+        passed = fired == expect_fire
+        ok = ok and passed
+        print(f"  [{'PASS' if passed else 'FAIL'}] {label} ({'fired' if fired else 'silent'})")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        empty_root = Path(tmp)
+        (empty_root / "docs").mkdir()
+        report_raises(
+            "ledger_coverage_gaps() vs. synthetic empty docs/ tree (docs/*.md matches 0 files)",
+            lambda: ledger_coverage_gaps(empty_root),
+            expect_fire=True,
+        )
+        report_raises(
+            "check_plan_status_banners() vs. synthetic empty docs/ tree (docs/*PLAN*.md matches 0 files)",
+            lambda: check_plan_status_banners(empty_root, verbose=False),
+            expect_fire=True,
+        )
+        report_raises(
+            "check_plan_deferral_citations() vs. synthetic empty docs/ tree (docs/*PLAN*.md matches 0 files)",
+            lambda: check_plan_deferral_citations(empty_root, verbose=False),
+            expect_fire=True,
+        )
+    report_raises(
+        "ledger_coverage_gaps() vs. the real, populated repo",
+        lambda: ledger_coverage_gaps(root),
+        expect_fire=False,
+    )
+    report_raises(
+        "check_plan_status_banners() vs. the real, populated repo",
+        lambda: check_plan_status_banners(root, verbose=False),
+        expect_fire=False,
+    )
+    report_raises(
+        "check_plan_deferral_citations() vs. the real, populated repo",
+        lambda: check_plan_deferral_citations(root, verbose=False),
+        expect_fire=False,
+    )
+
     if reported != EXPECTED_CONTROLS:
         print(f"\nFAIL: expected {EXPECTED_CONTROLS} control(s) to run, only {reported} did -- "
               f"{EXPECTED_CONTROLS - reported} were silently SKIPPED (an unreachable pinned git "
@@ -1036,11 +1120,15 @@ def main(argv: list[str]) -> int:
             print(f"ERROR: missing document: {target}", file=sys.stderr)
             return 2
         all_problems.extend(check(target, mode, args.verbose))
-    all_problems.extend(check_plan_status_banners(root, args.verbose))
-    all_problems.extend(check_plan_deferral_citations(root, args.verbose))
-    # Coverage last so its message is not buried, but it is a HARD gap: a ledger nobody checks is the
-    # same failure as a summary row nobody cross-checks.
-    all_problems.extend(ledger_coverage_gaps(root))
+    try:
+        all_problems.extend(check_plan_status_banners(root, args.verbose))
+        all_problems.extend(check_plan_deferral_citations(root, args.verbose))
+        # Coverage last so its message is not buried, but it is a HARD gap: a ledger nobody checks is
+        # the same failure as a summary row nobody cross-checks.
+        all_problems.extend(ledger_coverage_gaps(root))
+    except EmptyScopeError as exc:
+        print(f"\nFAIL: {exc}", file=sys.stderr)
+        return 1
     all_problems.extend(mission_run_coverage_gaps(root))
     all_problems.extend(provenance_audit_gaps(root))
     # Rules T1+T2 (docs/NEXT_EXECUTION_PLAN.md P2.1): tree-vs-ledger and strikethrough-vs-own-verdict
