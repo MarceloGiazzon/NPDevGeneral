@@ -2,10 +2,46 @@
   "schemaVersion": "npdev-doc-entrypoint-classification-policy.v1",
   "documentClassifications": [
     {
-      "pathPattern": "docs/**/*.md",
+      "pathPattern": "docs/*.md",
       "classification": "classified-doc",
       "releaseRelevant": true,
-      "reason": "Checkpoint 5 requires every docs/**/*.md entrypoint to be explicitly covered by the documentation classification policy."
+      "reason": "Checkpoint 5 requires every docs/**/*.md entrypoint to be explicitly covered by the documentation classification policy. docs-decoupling-2026-08-11 PLAN.md Phase 2: root-level docs are current product/engineering truth."
+    },
+    {
+      "pathPattern": "docs/architecture/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "Live architecture documentation."
+    },
+    {
+      "pathPattern": "docs/adr/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "Live architecture decision records."
+    },
+    {
+      "pathPattern": "docs/ai/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "Live AI-authoring contract documentation."
+    },
+    {
+      "pathPattern": "docs/security/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "Live security documentation."
+    },
+    {
+      "pathPattern": "docs/archive/**/*.md",
+      "classification": "historical",
+      "releaseRelevant": false,
+      "reason": "docs-decoupling-2026-08-11 PLAN.md Phase 2: programme history kept for provenance, not current instructions -- a script reference inside one of these documents that no longer exists is not a release-blocking gap (run-doc-entrypoint-validation.ps1 exempts the 'historical' classification from the release-relevance check, though every document must still be classified)."
+    },
+    {
+      "pathPattern": "docs/beta/**/*.md",
+      "classification": "historical",
+      "releaseRelevant": false,
+      "reason": "docs-decoupling-2026-08-11 PLAN.md Phase 2: Beta0-era runbook material, same historical treatment as docs/archive/ -- see that entry's reason."
     }
   ],
   "defaultScriptClassification": {
