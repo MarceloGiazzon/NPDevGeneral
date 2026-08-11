@@ -8,8 +8,11 @@ keep moving. That said, the conventions below are stable and enforced by CI, not
 
 - Read `CLAUDE.md` — it's the repo guide (module map, where build output goes, large files to avoid
   reading in full, environment notes). It applies to human contributors as much as to an AI agent.
-- Check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` for known open items before filing a new one — it's a
-  machine-parsed contract (see its own header), not just a changelog.
+- Check `docs/OPEN_ITEMS.md` for known open items before filing a new one. It is GENERATED from
+  `ledger/items/*.yml` — the ledger is the source of truth, so file and edit items there, never in
+  the rendered document. (It used to say `docs/NPDEV_OPEN_ITEMS_REGISTER.md`; that register is
+  historical and now lives under `docs/archive/programme-history/` — read it for narrative, never
+  for status.)
 
 ## Build output and evidence never go in the repo
 
@@ -18,6 +21,29 @@ keep moving. That said, the conventions below are stable and enforced by CI, not
 - Scratch files, screenshots, and verification evidence go outside the repo too.
 - A pre-commit hook (`scripts/hooks/pre-commit.ps1` → `Test-WorkspaceSlimness.ps1`) enforces this;
   if it blocks your commit, run `pwsh -File scripts/hygiene/clean-workspace-state.ps1` first.
+
+## Don't add a process document — it will be rejected by CI
+
+A plan, checklist, findings log, handoff, retrospective, session digest, snapshot or status register
+is **working state, not documentation**, and it may not enter this repo. `check-doc-inventory.py`
+(ai-knowledge gate `[45/45]`) fails the build on any new one.
+
+Measured on 2026-08-11: of 302 tracked `.md` files (59,754 lines), **265 files / 39,705 lines were
+read by nothing** — no script, no gate, no reader. They accumulated one work-cycle at a time, and
+several became undeletable once a gate started parsing them. Moving them doesn't help: a
+reorganisation that relocated 50 files left the tracked total at 302.
+
+Where it goes instead:
+
+| What you have | Where it belongs |
+|---|---|
+| Machine-readable state (items, gaps, statuses) | `ledger/*.yml` — schema'd, and render a doc from it if humans need one |
+| Durable human documentation | `docs/`, few and curated, linked from `docs/README.md` |
+| Your notes, plan, evidence, session log | Outside the repo entirely (`NPDev_General__OutsideRepo`) |
+
+If a document really is durable reference material whose *name* just happens to match a banned
+pattern, add it to `exempt` in `scripts/policy/doc-inventory-policy.json` **with a written reason**.
+The 57 pre-ban files are frozen in a `legacy` list that may only shrink.
 
 ## Git hygiene
 
