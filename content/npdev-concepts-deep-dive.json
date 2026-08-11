@@ -1,0 +1,206 @@
+{
+  "sourceFile": "docs/NPDEV_CONCEPTS_DEEP_DIVE.md",
+  "preamble": "# NPDev Concepts Deep Dive — the 8 building blocks, explained in detail\n\n> **Companion to** [`NPDEV_USER_MANUAL.md`](NPDEV_USER_MANUAL.md). That manual introduced these\n> eight words at a glance. This document goes one level deeper into each — what it's *for*,\n> exactly what you're allowed to write, and a real example pulled from an app that has\n> actually been generated and run in this workspace. Read the manual first if you haven't;\n> this document assumes you already know the three-folder layout and the build/run commands.\n\nEvery one of the eight blocks below is just a JSON object inside your `model.json`. None of\nthem require you to write Java or HTML — except the one custom capability example at the end,\nwhich is deliberately the smallest possible Java a person can write.\n\n---\n",
+  "sections": [
+    {
+      "level": 2,
+      "title": "1. Concept — the shape of a \"thing\" your app stores",
+      "body": ""
+    },
+    {
+      "level": 3,
+      "title": "What it is",
+      "body": "\nA Concept is a category of record — the NPDev word for what a database calls a *table* and\nwhat code calls a *class*. `User`, `Invoice`, `Product`, `Note` are all concepts. Every\nconcept is stored, gets a REST CRUD API automatically, and (unless you turn it off) gets a\nweb page automatically too.\n"
+    },
+    {
+      "level": 3,
+      "title": "Anatomy",
+      "body": "\n```jsonc\n{\n  \"name\": \"Product\",                  // REQUIRED. Its name — also the table name.\n  \"extends\": \"BaseEntity\",            // optional — inherit fields from another concept\n  \"fields\": [ /* at least 1, REQUIRED */ ],\n  \"invariants\": [ /* optional validation rules */ ],\n  \"events\": [ /* optional, concept-scoped events */ ],\n  \"lifecycle\": { /* optional state machine, see below */ },\n  \"ui\": { \"label\": \"Product\" }        // optional — how it's labeled in the web UI\n}\n```\n\nA **field** is the smallest unit — one column:\n\n```jsonc\n{\n  \"name\": \"unitPrice\",                // REQUIRED\n  \"type\": \"long\",                     // REQUIRED — see the type list below\n  \"id\": false,                        // true marks this field as the primary key\n  \"required\": true,                   // boolean, or an array of field names for conditional requirement\n  \"unique\": true,                     // no two rows may share this value\n  \"minLength\": 1, \"maxLength\": 200,   // string length bounds\n  \"default\": \"…\",                     // a fixed default value\n  \"defaultExpression\": \"…\",           // a computed default (an expression string)\n  \"derivedExpression\": \"…\",           // always recomputed from other fields, never stored by the user\n  \"ui\": { \"label\": \"Unit price\" }\n}\n```\n\n**Field types you can use:**\n`string`, `uuid`, `int`, `integer`, `long`, `boolean`, `date`, `datetime`, `enum`,\n`reference` (→ see §7), `object` (→ needs `properties`), `array` (→ needs `items`).\n\n- `type: \"enum\"` needs `enumValues: [\"A\", \"B\", ...]`.\n- `type: \"object\"` needs a nested `properties` block — a mini-concept embedded in a field\n  (e.g. an `emergencyContact` field with its own `name`/`phone` sub-fields).\n- `type: \"array\"` needs `items: { \"type\": \"...\" }` — a repeatable list on one record.\n\n**Invariants** are the rules a record must satisfy before it can be saved. Two shapes:\n\n```jsonc\n{ \"name\": \"PositiveUnitPrice\", \"type\": \"expression\", \"expression\": \"unitPrice > 0\" }\n{ \"name\": \"EmailUnique\", \"type\": \"unique\", \"fields\": [\"email\"] }\n```\n\nAn expression invariant is a small boolean formula over the concept's own fields. A\n`unique`-type invariant enforces that no two records share the listed field's value.\n\n**Lifecycle** (optional) turns a field into a state machine — e.g. an `Invoice.status` that\ncan only move `DRAFT → ISSUED → PAID`, never backwards:\n\n```jsonc\n\"lifecycle\": {\n  \"statusField\": \"status\",\n  \"states\": [\n    { \"value\": \"DRAFT\", \"label\": \"Draft\", \"initial\": true },\n    { \"value\": \"ISSUED\", \"label\": \"Issued\" },\n    { \"value\": \"PAID\", \"label\": \"Paid\", \"terminal\": true }\n  ],\n  \"transitions\": [\n    { \"from\": \"DRAFT\", \"to\": \"ISSUED\" },\n    { \"from\": \"ISSUED\", \"to\": \"PAID\" }\n  ]\n}\n```\n"
+    },
+    {
+      "level": 3,
+      "title": "Real example (from `simple-user-registry-inmemory`)",
+      "body": "\n```json\n{\n  \"name\": \"User\",\n  \"ui\": { \"label\": \"User\" },\n  \"fields\": [\n    { \"name\": \"id\", \"type\": \"uuid\", \"id\": true, \"required\": true },\n    { \"name\": \"name\", \"type\": \"string\", \"required\": true, \"ui\": { \"label\": \"Name\" } },\n    { \"name\": \"email\", \"type\": \"string\", \"required\": true, \"ui\": { \"label\": \"Email\" } },\n    { \"name\": \"active\", \"type\": \"boolean\", \"required\": true, \"ui\": { \"label\": \"Active\" } }\n  ],\n  \"invariants\": [\n    { \"name\": \"EmailRequired\", \"expr\": \"email != null && email != ''\" },\n    { \"name\": \"NameRequired\", \"expr\": \"name != null && name != ''\" },\n    { \"name\": \"EmailUnique\", \"type\": \"unique\", \"fields\": [\"email\"] }\n  ]\n}\n```\n"
+    },
+    {
+      "level": 3,
+      "title": "Gotchas",
+      "body": "\n- Every JSON object in NPDev is validated strictly (`additionalProperties: false`) — a typo'd\n  field name fails generation, it doesn't get silently ignored.\n- Exactly one field should be marked `\"id\": true` (or you get the default synthetic `id`\n  behavior most samples use — a plain `uuid` field named `id`).\n\n---\n"
+    },
+    {
+      "level": 2,
+      "title": "2. Flow — an action your app can perform, callable from outside",
+      "body": ""
+    },
+    {
+      "level": 3,
+      "title": "What it is",
+      "body": "\nA Flow is a named sequence of steps that runs when someone calls\n`POST /api/flows/<FlowName>/execute` (with header `X-Api-Key: <your key>`). It's the \"verb\"\nlayer on top of your concepts — \"create a user\", \"issue an invoice\", \"submit a ticket\". Every\nflow is public API automatically; there's no extra wiring to expose it.\n"
+    },
+    {
+      "level": 3,
+      "title": "Anatomy",
+      "body": "\n```jsonc\n{\n  \"name\": \"IssueInvoice\",                        // REQUIRED\n  \"concept\": \"Invoice\",                          // optional — the concept this flow is \"about\"\n  \"input\": { \"concept\": \"Invoice\", \"mode\": \"update\" }, // optional — shapes the expected request body\n  \"steps\": [ /* REQUIRED, at least 1 (unless specializes+hooks) */ ]\n}\n```\n\n**Step types** — each step does one thing, and steps run top to bottom:\n\n| Step `type` | What it does |\n| --- | --- |\n| `validate` / `enforceInvariants` | Checks the invariants you name; stops the flow with an error if any fail. |\n| `capabilityCall` (`cap`+`op`, or `capability`+`operation`) | Calls a capability operation — save something, send a notification, run custom logic. |\n| `createConcept` / `updateConcept` | Persists a concept record (the \"obvious\" built-in way to save data, simpler than calling the `persistence` capability yourself). |\n| `emitEvent` | Broadcasts an event with data taken `from` a variable. |\n| `scheduleEvent` | Same as `emitEvent`, but delayed (`delaySeconds`/`delayMinutes`/`delayMs`). |\n| `if` / `branch` | Conditional: `condition`, then `then: [...]`, optional `else: [...]`. |\n| `waitForEvent` (aka `awaitEvent`) | Pauses the flow until a matching event arrives — see §5/§6. |\n| `generatedAction` | Invokes a specific generated action by name. |\n| `return` | Ends the flow, producing `value` as the result. |\n\nSteps pass data to each other through simple named variables, conventionally prefixed with\n`$`: `$input` is always the incoming request body; a step can write `out: \"$saved\"` and a\nlater step can read `\"$saved\"`.\n"
+    },
+    {
+      "level": 3,
+      "title": "Real example (from `simple-user-registry-inmemory`)",
+      "body": "\n```json\n{\n  \"name\": \"CreateUser\",\n  \"input\": { \"concept\": \"User\", \"mode\": \"create\" },\n  \"steps\": [\n    { \"name\": \"validate-user\", \"type\": \"enforceInvariants\", \"scope\": \"User\",\n      \"invariants\": [\"EmailRequired\", \"NameRequired\", \"EmailUnique\"] },\n    { \"name\": \"save-user\", \"type\": \"capabilityCall\", \"cap\": \"persistence\", \"op\": \"save\",\n      \"args\": [\"$input\"], \"out\": \"$saved\" },\n    { \"name\": \"emit-user-created\", \"type\": \"emitEvent\", \"event\": \"UserCreated\", \"from\": \"$saved\" },\n    { \"name\": \"return-user\", \"type\": \"return\", \"value\": \"$saved\" }\n  ]\n}\n```\n\nRead top to bottom: *validate the incoming data → save it → announce that it happened → hand\nthe saved record back to whoever called the flow.*\n"
+    },
+    {
+      "level": 3,
+      "title": "Gotchas",
+      "body": "\n- The response body wraps your `return` value inside `.output` — expect\n  `{ \"output\": { \"id\": \"...\", \"name\": \"...\", ... } }`, not the bare record.\n- Every call needs the `X-Api-Key` header (default `dev-key`, configurable in `config.json`\n  under `trialDefaults.apiKey`).\n\n**Going deeper:** `waitForEvent` above is the entry point to a full durable workflow engine — a flow\npaused on it survives a JVM restart and resumes exactly where it left off, with event correlation,\ncompensation on failure, and resumable loops. See `docs/FLOWS.md` for the complete mechanics.\n\n---\n"
+    },
+    {
+      "level": 2,
+      "title": "3. Capability — a verb your app needs but doesn't implement itself",
+      "body": ""
+    },
+    {
+      "level": 3,
+      "title": "What it is",
+      "body": "\nA Capability is an abstract operation your flows can call without caring how it's actually\ndone — \"save this\", \"send a notification\", \"score this ticket\". NPDev ships several\ncapabilities for free (you just *bind* them to a ready-made implementation); when the\nbuilt-in ones aren't enough, you can plug in your **own** implementation written in plain\nJava, called a **custom capability**.\n"
+    },
+    {
+      "level": 3,
+      "title": "Anatomy",
+      "body": "\nDeclaring a capability's *interface* (what operations it offers):\n\n```jsonc\n{ \"name\": \"persistence\", \"type\": \"PersistenceCapability\", \"operations\": [\"save\", \"findById\", \"unique\"] }\n```\n\nWiring it to a real implementation (an **adapter**):\n\n```jsonc\n{ \"capability\": \"persistence\", \"adapter\": \"repository\" }\n```\n\n**Common built-in adapters** you'll see in real apps: `repository` (persistence to the\napp's own database), `inproc` (an in-process event bus for `eventBus`), `notification-inproc`\n(an in-process notification sink).\n\n**Custom capability** — when you need logic no built-in adapter provides:\n\n```jsonc\n\"customCapabilities\": [\n  { \"name\": \"triageAssistant\", \"type\": \"TriageAssistantCapability\", \"operations\": [\"score\"] }\n],\n\"bindings\": [\n  { \"capability\": \"triageAssistant\", \"adapter\": \"plugin:java-source\" }\n]\n```\n\nThe `plugin:java-source` adapter means: *\"the implementation is a small Java class I'm\nsupplying myself.\"* You put it under\n`definition\\capabilities\\<name>\\src\\main\\java\\...\\<Name>.java`, plus a\n`capability.plugin.json` descriptor telling the generator which class/method to call:\n\n```json\n{\n  \"capability\": \"triageAssistant\",\n  \"capabilityType\": \"TriageAssistantCapability\",\n  \"adapterId\": \"plugin:java-source\",\n  \"implementation\": {\n    \"kind\": \"javaSource\",\n    \"sourceRoot\": \"capabilities/triageAssistant/src/main/java\",\n    \"mainClass\": \"com.claude.capabilities.triage.TriageAssistantCapability\",\n    \"factory\": { \"kind\": \"defaultConstructor\" }\n  },\n  \"operationBindings\": [\n    { \"operation\": \"score\", \"method\": \"score\",\n      \"input\": { \"mode\": \"firstArgument\", \"expectedType\": \"java.util.Map\" },\n      \"output\": { \"mode\": \"returnValue\", \"expectedType\": \"java.util.Map\" } }\n  ]\n}\n```\n\nAnd the Java itself (this is the *entire* file — no framework boilerplate, no annotations):\n\n```java\npackage com.claude.capabilities.triage;\n\nimport java.util.LinkedHashMap;\nimport java.util.Map;\n\npublic final class TriageAssistantCapability {\n    public Map<String, Object> score(Map<String, Object> ticket) {\n        String subject = String.valueOf(ticket.get(\"subject\"));\n        int urgency = subject.toLowerCase().contains(\"down\") ? 80 : 20;\n        String recommendedPriority = urgency >= 70 ? \"High\" : \"Normal\";\n\n        Map<String, Object> result = new LinkedHashMap<>();\n        result.put(\"triageScore\", urgency);\n        result.put(\"recommendedPriority\", recommendedPriority);\n        return result;\n    }\n}\n```\n\nYour flow then calls it exactly like any built-in capability:\n\n```json\n{ \"name\": \"score-ticket\", \"type\": \"capabilityCall\", \"cap\": \"triageAssistant\", \"op\": \"score\",\n  \"args\": [\"$input\"], \"out\": \"$triage\" }\n```\n"
+    },
+    {
+      "level": 3,
+      "title": "Gotchas",
+      "body": "\n- The generator compiles your Java straight into the generated application — if it doesn't\n  compile, the whole app build fails. Keep custom capabilities small and dependency-free.\n- A capability is an *interface*; the adapter is the *implementation*. You can swap adapters\n  (e.g., move `persistence` from an in-memory adapter to a Postgres-backed one) without\n  touching your flows, because flows only ever call the capability by name.\n\n---\n"
+    },
+    {
+      "level": 2,
+      "title": "4. Panel — a hand-designed screen in the web UI",
+      "body": ""
+    },
+    {
+      "level": 3,
+      "title": "What it is",
+      "body": "\nA Panel is a screen you design yourself: which query feeds it, how it's laid out, which\nfields show, and which buttons do what. **You usually don't need panels at all** — every\nconcept gets a working generic table+form page for free (see the manual, Level 2). Reach for\na Panel only when you want something that doesn't look like a generic grid: a dashboard, a\nqueue with specific columns, a console mixing several data sources.\n"
+    },
+    {
+      "level": 3,
+      "title": "Anatomy",
+      "body": "\n```jsonc\n{\n  \"name\": \"InvoiceConsolePanel\",             // REQUIRED\n  \"route\": \"/invoices/console\",              // REQUIRED — the URL path for this screen\n  \"title\": \"Invoice console\",\n  \"dataSources\": [                           // named queries this panel pulls data from\n    { \"name\": \"pendingInvoices\", \"query\": \"PendingInvoices\" }\n  ],\n  \"layout\": { \"type\": \"table\", \"fields\": [\"invoiceNumber\", \"status\", \"totalAmount\"] },\n  \"fieldBindings\": [                         // maps a displayed column to a data-source field\n    { \"field\": \"invoiceNumber\", \"source\": \"pendingInvoices.invoiceNumber\" }\n  ],\n  \"actions\": [                                // buttons on the panel\n    { \"name\": \"IssueInvoice\", \"binding\": \"flow\", \"flow\": \"IssueInvoice\", \"label\": \"Issue invoice\" }\n  ]\n}\n```\n\n`layout.type` can be `form`, `table`, `detail`, `dashboard`, `stack`, or `grid`. An action's\n`binding` says what happens on click: `flow` (call a Flow), `procedure` (call a Procedure —\nsee §8), `conceptQuery` (re-run a query), or `conceptMutation` (a direct create/update/delete).\n"
+    },
+    {
+      "level": 3,
+      "title": "Real example (from `invoice-bonds-demo`) — two panels, two different action bindings",
+      "body": "\n```json\n{\n  \"name\": \"UserAdminPanel\",\n  \"route\": \"/users/admin\",\n  \"title\": \"User administration\",\n  \"dataSources\": [ { \"name\": \"activeUsers\", \"query\": \"ActiveUsers\" } ],\n  \"layout\": { \"type\": \"table\", \"fields\": [\"email\", \"displayName\", \"status\"] },\n  \"fieldBindings\": [\n    { \"field\": \"email\", \"source\": \"activeUsers.email\" },\n    { \"field\": \"displayName\", \"source\": \"activeUsers.displayName\" },\n    { \"field\": \"status\", \"source\": \"activeUsers.status\" }\n  ],\n  \"actions\": [\n    { \"name\": \"RegisterUser\", \"binding\": \"procedure\", \"procedure\": \"RegisterUserProcedure\", \"label\": \"Register user\" }\n  ]\n}\n```\n\nNote the button calls a **procedure**, not a flow — because `RegisterUserProcedure` is\ntransactional server-side logic that isn't meant to be its own public REST endpoint (see §8).\nThe sibling `InvoiceConsolePanel` above binds its button to a **flow** instead, because\n`IssueInvoice` *is* meant to be independently callable over REST too.\n"
+    },
+    {
+      "level": 3,
+      "title": "Gotchas",
+      "body": "\n- A panel's `route` must be unique across the app.\n- Panels are additive: authoring one doesn't remove the automatic generic page for that\n  concept — you end up with both, at different URLs.\n\n---\n"
+    },
+    {
+      "level": 2,
+      "title": "5. Event — an announcement your app broadcasts",
+      "body": ""
+    },
+    {
+      "level": 3,
+      "title": "What it is",
+      "body": "\nAn Event is a fact that something happened, broadcast for anyone interested to react to.\nNobody \"calls\" an event the way you call a flow — a flow **emits** it, and zero or more\n**orchestration rules** (§6) or paused **flows** (`waitForEvent`, §2) may be listening.\n"
+    },
+    {
+      "level": 3,
+      "title": "Anatomy",
+      "body": "\n```jsonc\n{ \"name\": \"InvoiceIssued\", \"payload\": [\"id\", \"invoiceNumber\"] }\n```\n\n`payload` lists which fields travel with the event — either bare names (copied from whatever\nrecord emitted it) or full field definitions (`{ \"name\": \"id\", \"type\": \"uuid\" }`) when you\nwant to be explicit about type.\n\nA flow step broadcasts one with:\n\n```jsonc\n{ \"name\": \"announce\", \"type\": \"emitEvent\", \"event\": \"InvoiceIssued\", \"from\": \"$issued\" }\n```\n"
+    },
+    {
+      "level": 3,
+      "title": "Real examples",
+      "body": "\n- `UserCreated` (`simple-user-registry-inmemory`) — fired right after a user is saved; nothing\n  currently listens to it in that sample, but it's there for future orchestration or for\n  auditing/trace purposes (every event is recorded).\n- `InvoiceIssued` (`invoice-bonds-demo`) — fired by the `IssueInvoice` flow, and consumed by\n  the `NotifyOnInvoiceIssued` orchestration rule (§6).\n- `TicketResolved` (`Claude` Support Desk) — fired independently, hours after a ticket was\n  submitted, and it's what wakes up the `SubmitTicket` flow's `waitForEvent` step (§2), matched\n  by a correlation id so the *right* paused flow instance resumes.\n"
+    },
+    {
+      "level": 3,
+      "title": "Gotchas",
+      "body": "\n- Declaring an event that nothing ever emits, or emitting one nothing ever listens to, is\n  perfectly valid — it's just inert. NPDev doesn't require a matching listener to exist.\n- Events are the *only* mechanism for one flow to trigger behavior in another part of the app\n  without calling it directly — that indirection is the whole point (§6 explains why).\n\n---\n"
+    },
+    {
+      "level": 2,
+      "title": "6. Orchestration rule — automation with no explicit caller",
+      "body": ""
+    },
+    {
+      "level": 3,
+      "title": "What it is",
+      "body": "\nAn Orchestration rule says: *\"whenever event X happens, automatically do Y.\"* Nobody has to\nremember to trigger it — it's not called, it *reacts*. This is how you model \"and then also\nnotify someone\" or \"and then also create a follow-up record\" without cluttering the original\nflow with unrelated concerns.\n\nContrast with a Flow: a Flow is something a *client* decides to call. An Orchestration rule is\nsomething the *platform* decides to run, because a condition (an event) became true.\n"
+    },
+    {
+      "level": 3,
+      "title": "Anatomy",
+      "body": "\n```jsonc\n{\n  \"name\": \"NotifyOnInvoiceIssued\",\n  \"trigger\": { \"type\": \"event\", \"event\": \"InvoiceIssued\" },\n  \"action\": {\n    \"type\": \"create\",                          // create | callCapability | scheduleEvent\n    \"concept\": \"InvoiceNotification\",\n    \"map\": { \"invoiceId\": \"id\", \"message\": \"invoiceNumber\" }   // target field -> source event field\n  }\n}\n```\n\n`action.type` can be:\n- `create` — make a new record of some concept, populated from the event's payload via `map`\n  (or `fieldMap`).\n- `callCapability` — call a capability operation in reaction to the event.\n- `scheduleEvent` — chain into emitting a further (possibly delayed) event.\n"
+    },
+    {
+      "level": 3,
+      "title": "Real example (from `invoice-bonds-demo`)",
+      "body": "\n```json\n{\n  \"name\": \"NotifyOnInvoiceIssued\",\n  \"trigger\": { \"type\": \"event\", \"event\": \"InvoiceIssued\" },\n  \"action\": {\n    \"type\": \"create\",\n    \"concept\": \"InvoiceNotification\",\n    \"map\": { \"invoiceId\": \"id\", \"message\": \"invoiceNumber\" }\n  }\n}\n```\n\nThe `IssueInvoice` flow (§2) only knows how to mark an invoice issued and emit `InvoiceIssued`\n— it has **no idea** a notification record gets created afterwards. That's deliberate: the\nflow's job stays small and focused, and the \"and also notify\" behavior lives entirely in this\none rule. Delete the rule, and `IssueInvoice` keeps working exactly the same, just without the\nside effect.\n"
+    },
+    {
+      "level": 3,
+      "title": "Gotchas",
+      "body": "\n- One event can have any number of orchestration rules reacting to it — they all fire.\n- Because reactions are implicit, it's worth keeping orchestration rule names very\n  descriptive (`NotifyOnInvoiceIssued`, not `Rule1`) — they're the only place this behavior is\n  documented.\n\n---\n"
+    },
+    {
+      "level": 2,
+      "title": "7. Reference / bond — a pointer from one concept to another",
+      "body": ""
+    },
+    {
+      "level": 3,
+      "title": "What it is",
+      "body": "\nA Reference (NPDev calls the underlying design a **bond**) is a link from a field on one\nconcept to another concept's record — the same idea as a foreign key in a traditional\ndatabase, but declared once in your `model.json` and enforced everywhere: in the database\nschema (a real `FOREIGN KEY` constraint), in validation, and in what happens when the\nreferenced record is deleted.\n"
+    },
+    {
+      "level": 3,
+      "title": "Anatomy",
+      "body": "\n```jsonc\n{\n  \"name\": \"userId\",\n  \"type\": \"reference\",\n  \"required\": true,\n  \"reference\": {\n    \"target\": \"User\",          // REQUIRED — which concept this points at\n    \"via\": \"id\",                // optional, default \"id\" — which field on the target it points at\n    \"onDelete\": \"restrict\"       // restrict (default) | cascade | nullify\n  }\n}\n```\n\n**`onDelete` behavior, in plain terms:**\n\n| `onDelete` | What happens when the target record is deleted |\n| --- | --- |\n| `restrict` (default) | The delete is **blocked** while any record still points at it — the safe default. |\n| `cascade` | The pointing record is **deleted too**, automatically. |\n| `nullify` | The pointing field is **cleared** (set to nothing), the pointing record survives. |\n\nMost of the time you point at the target's own `id`. Sometimes you want to point at a\ndifferent unique field instead — a **natural key**. For that, the *target* concept marks that\nfield as an anchor:\n\n```jsonc\n{ \"name\": \"sku\", \"type\": \"string\", \"unique\": true, \"connectable\": \"anchor\" }\n```\n\n...and the pointing field says `via: \"sku\"` instead of the default `via: \"id\"`.\n"
+    },
+    {
+      "level": 3,
+      "title": "Real example (from `invoice-bonds-demo`) — four references, three different shapes",
+      "body": "\n```json\n{\n  \"name\": \"Product\",\n  \"fields\": [\n    { \"name\": \"id\", \"type\": \"uuid\", \"id\": true, \"required\": true },\n    { \"name\": \"sku\", \"type\": \"string\", \"required\": true, \"unique\": true, \"connectable\": \"anchor\" }\n  ]\n},\n{\n  \"name\": \"Invoice\",\n  \"fields\": [\n    { \"name\": \"userId\", \"type\": \"reference\", \"required\": true,\n      \"reference\": { \"target\": \"User\", \"onDelete\": \"restrict\" } },\n    { \"name\": \"approvedByUserId\", \"type\": \"reference\", \"required\": false,\n      \"reference\": { \"target\": \"User\", \"onDelete\": \"nullify\" } }\n  ]\n},\n{\n  \"name\": \"InvoiceItem\",\n  \"fields\": [\n    { \"name\": \"invoiceId\", \"type\": \"reference\", \"required\": true,\n      \"reference\": { \"target\": \"Invoice\", \"onDelete\": \"cascade\" } },\n    { \"name\": \"productSku\", \"type\": \"reference\", \"required\": true,\n      \"reference\": { \"target\": \"Product\", \"via\": \"sku\", \"onDelete\": \"restrict\" } }\n  ]\n}\n```\n\nReading each one:\n- `Invoice.userId → User` (default `via: id`, `restrict`): you cannot delete a `User` while\n  any `Invoice` still points at them.\n- `Invoice.approvedByUserId → User` (`nullify`): if the approving user is deleted, the\n  invoice survives — its \"approved by\" field is simply cleared.\n- `InvoiceItem.invoiceId → Invoice` (`cascade`): deleting an invoice deletes its line items\n  too — they can't meaningfully exist without their parent.\n- `InvoiceItem.productSku → Product` **via the `sku` natural key**, not `Product.id` — because\n  `Product.sku` was marked `connectable: anchor`.\n"
+    },
+    {
+      "level": 3,
+      "title": "Gotchas",
+      "body": "\n- The target concept's anchor field must be `unique: true` (plus `connectable: anchor` if\n  it's not the plain `id`) — a reference can't point at a field that might repeat.\n- `nullify` is rejected if the referencing field is itself `required` — you can't promise\n  \"always points at something\" and \"gets cleared on delete\" at the same time.\n- References are same-model only in the current version — you can't point at a concept\n  defined in a different app.\n\n---\n"
+    },
+    {
+      "level": 2,
+      "title": "8. Procedure (coda) — server-side logic that isn't its own public endpoint",
+      "body": ""
+    },
+    {
+      "level": 3,
+      "title": "What it is",
+      "body": "\nA Procedure (\"coda\") is a small script of steps, like a Flow, but it is **not** automatically\nexposed as `POST /api/flows/...`. Instead, it's meant to be called from a Panel action\n(`\"binding\": \"procedure\"`), or from another procedure. Reach for a procedure instead of a flow\nwhen the logic is a supporting operation for a screen — \"read this list for the admin page\",\n\"save this record through the full governed path\" — rather than a standalone action you want\nother systems to call directly over REST.\n"
+    },
+    {
+      "level": 3,
+      "title": "Anatomy",
+      "body": "\n```jsonc\n{\n  \"name\": \"RegisterUserProcedure\",\n  \"parameters\": [ { \"name\": \"id\", \"type\": \"uuid\", \"required\": true } ],\n  \"locals\": [ /* optional working variables, alias: \"variables\" */ ],\n  \"steps\": [ /* REQUIRED, at least 1 */ ],\n  \"returns\": { /* optional shape of the result */ },\n  \"tracePolicy\": \"detailed\",     // none | summary | detailed\n  \"auditPolicy\": \"write\"          // none | read | write\n}\n```\n\n**Step types available inside a procedure** (a superset of what a flow can do, oriented\naround data access): `assign`, `mapValue`, `condition`/`if`, `loop`/`forEach`, `conceptQuery`,\n`readConcept`, `listConcepts`, `runQuery`, `conceptCreate`/`conceptUpdate`/`saveConcept`,\n`conceptDelete`/`deleteConcept`, `procedureCall`/`callProcedure`, `capabilityCall`,\n`eventPublish`/`publishEvent`, `return`.\n\n`tracePolicy` controls how much execution detail gets recorded (useful while you're building\nand debugging); `auditPolicy` controls whether reads/writes get logged to the audit trail —\nset `\"write\"` for anything that changes data you'll need to account for later.\n"
+    },
+    {
+      "level": 3,
+      "title": "Real examples (from `invoice-bonds-demo`) — a read procedure and a write procedure",
+      "body": "\nA **read-oriented** procedure, running a governed query:\n\n```json\n{\n  \"name\": \"ListActiveUsersProcedure\",\n  \"description\": \"Read-kind procedure: returns active users via the governed query path.\",\n  \"steps\": [\n    { \"name\": \"run-active-users\", \"type\": \"runQuery\", \"concept\": \"User\", \"query\": \"ActiveUsers\",\n      \"target\": \"activeUsers\", \"trace\": true },\n    { \"name\": \"return-active-users\", \"type\": \"return\", \"value\": \"$activeUsers\", \"trace\": true }\n  ],\n  \"tracePolicy\": \"detailed\",\n  \"auditPolicy\": \"read\"\n}\n```\n\nA **write-oriented** procedure, saving through the full governed path (permissions, tenant\nisolation, audit — the same enforcement a business CRUD write gets):\n\n```json\n{\n  \"name\": \"RegisterUserProcedure\",\n  \"description\": \"Write-kind procedure: saves a User through the Concept Gateway and returns the governed record.\",\n  \"parameters\": [ { \"name\": \"id\", \"type\": \"uuid\", \"required\": true } ],\n  \"steps\": [\n    { \"name\": \"save-user-through-gateway\", \"type\": \"saveConcept\", \"concept\": \"User\", \"id\": \"$id\",\n      \"data\": { \"input\": \"$input\" }, \"target\": \"savedUser\", \"trace\": true, \"audit\": true },\n    { \"name\": \"return-saved-user\", \"type\": \"return\", \"value\": \"$savedUser\", \"trace\": true }\n  ],\n  \"tracePolicy\": \"detailed\",\n  \"auditPolicy\": \"write\"\n}\n```\n\nBoth procedures are wired up as the click-action of a Panel button (§4,\n`UserAdminPanel`/`RegisterUser`) — the person using the web page never sees a REST endpoint,\njust a button that runs this logic.\n"
+    },
+    {
+      "level": 3,
+      "title": "Gotchas",
+      "body": "\n- A procedure has no REST route of its own — if you need something callable directly by an\n  external client, use a Flow instead.\n- `trace`/`audit` can be set per-step (as shown above) in addition to the procedure-level\n  `tracePolicy`/`auditPolicy` — the per-step flags are for singling out the operations that\n  matter most inside an otherwise ordinary procedure.\n\n---\n"
+    },
+    {
+      "level": 2,
+      "title": "How the eight pieces fit together",
+      "body": "\n```\nConcept   — the data (a table + its fields + its rules)\n   │\n   ├── Reference/bond  — links one Concept's field to another Concept\n   │\nFlow       — a public action a client calls, made of steps\n   │\n   ├── Capability (capabilityCall step) — a verb the flow delegates to\n   │\n   └── Event (emitEvent step) — a broadcast the flow makes, with no idea who's listening\n             │\n             └── Orchestration rule — reacts to the event, runs its own action automatically\n\nPanel     — a hand-designed screen; its buttons call either a Flow or a Procedure\nProcedure — server-side logic for a Panel button (or another Procedure) to call,\n            not its own public REST endpoint\n```\n\nEverything above is authored the same way: JSON inside `model.json`, validated strictly,\nregenerated with the same `Build-AppGenApp.ps1` → `_ops\\Build-App.ps1` →\n`_ops\\Start-App.ps1` sequence from the manual. Nothing here requires touching the NPDev\nengine itself.\n"
+    }
+  ]
+}
