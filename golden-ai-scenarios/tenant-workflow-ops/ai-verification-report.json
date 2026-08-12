@@ -64,13 +64,12 @@
         "X-Api-Key": "ai-tenant-workflow-ops-agent-a"
       },
       "body": {
-        "tenantIdRef": "tenant-a",
         "title": "Beta workflow request",
         "status": "open"
       },
       "expectedStatus": 201,
       "expectedJsonContains": {
-        "tenantIdRef": "tenant-a",
+        "tenantId": "tenant-a",
         "title": "Beta workflow request"
       },
       "coversSurfaces": [

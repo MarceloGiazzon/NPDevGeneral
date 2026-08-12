@@ -133,7 +133,7 @@
     { "path": "workflows[].tenantScoped", "classification": "mapped", "dslTarget": "workflow sidecar tenantScoped" },
     { "path": "tenancy", "classification": "mapped", "dslTarget": "tenant field injection, metadata, security sidecar" },
     { "path": "tenancy.mode", "classification": "diagnostic-only", "dslTarget": "tenancy support gate" },
-    { "path": "tenancy.tenantIdField", "classification": "mapped", "dslTarget": "tenant id concept field name" },
+    { "path": "tenancy.tenantIdField", "classification": "mapped", "dslTarget": "security sidecar tenancy metadata (the principal claim carrying the tenant) -- NOT a concept field: the platform puts `tenant_id` on every business table itself, so materializing a second field of the same meaning duplicated it and collided with the reserved column" },
     { "path": "tenancy.testTenants", "classification": "mapped", "dslTarget": "security sidecar test tenancy metadata" },
     { "path": "auth", "classification": "mapped", "dslTarget": "metadata and security sidecar" },
     { "path": "auth.mode", "classification": "diagnostic-only", "dslTarget": "auth support gate" },
