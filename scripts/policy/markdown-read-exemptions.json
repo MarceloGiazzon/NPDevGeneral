@@ -29,6 +29,8 @@
     "twin-pair-registry.json). R3-equivalent: an entry naming a file that no longer exists must be",
     "removed in the same commit that removes the file."
   ],
+  "frozenCount": 5,
+  "frozenCountWhy": "THE CEILING. The owner accepted these 5 markdown linters on 2026-08-11 and ruled the list may never grow. check-no-markdown-reads.py fails if the entry count exceeds this number, and equally fails if it drops below without this number being lowered in the same commit -- so the ceiling ratchets DOWN with the list and can never be silently re-widened. A 6th exemption is an owner decision, never a checker change: the correct response to a new markdown read is to invert it into structured data (md-zero-2026-08-11 PLAN.md), which is how 37 couplings became 0.",
   "exemptFiles": [
     {
       "path": "scripts/quality/check-markdown-links.py",
