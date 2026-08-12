@@ -359,6 +359,32 @@ def load_exemptions(policy_path: Path, root: Path) -> tuple[set[str], list[str]]
     data = json.loads(policy_path.read_text(encoding="utf-8"))
     paths: set[str] = set()
     failures: list[str] = []
+
+    # THE CEILING (a ratchet, not a limit). The owner accepted 5 markdown LINTERS on 2026-08-11 and
+    # ruled the list may never grow. `frozenCount` must EQUAL the number of entries, so:
+    #   more entries  -> fail: a new script started reading markdown and someone reached for the
+    #                    escape hatch instead of inverting the data, which is the whole defect.
+    #   fewer entries -> fail until frozenCount is lowered in the SAME commit, so the ceiling
+    #                    ratchets DOWN with the list and can never be silently re-widened later.
+    # Same shape as check-doc-inventory.py's legacy ratchet, for the same reason: an allowlist
+    # nothing bounds is an allowlist that grows.
+    declared = data.get("frozenCount")
+    actual = len(data.get("exemptFiles", []))
+    if declared is None:
+        failures.append("policy has no 'frozenCount' -- the exemption ceiling is what stops this "
+                        "list growing; it must be declared and equal the number of entries")
+    elif actual > declared:
+        failures.append(
+            f"EXEMPTION CEILING BREACHED: {actual} exemptions but frozenCount is {declared}. This "
+            f"list may never grow. Invert the markdown read into structured data instead -- see "
+            f"md-zero-2026-08-11 PLAN.md. If a new markdown LINTER is genuinely unavoidable, that "
+            f"is an owner decision, not a checker change.")
+    elif actual < declared:
+        failures.append(
+            f"frozenCount is {declared} but only {actual} exemption(s) remain. Lower frozenCount to "
+            f"{actual} in this same commit -- the ceiling ratchets DOWN and must never be left "
+            f"above the real count, or it silently re-authorises the difference.")
+
     for entry in data.get("exemptFiles", []):
         path = entry.get("path", "")
         why = str(entry.get("why", "")).strip()
@@ -517,7 +543,7 @@ def calibrate() -> int:
         (root / "README.md").write_text("# fixture\n", encoding="utf-8")
 
         policy_path = root / "exemptions.json"
-        policy_path.write_text(json.dumps({"exemptFiles": []}), encoding="utf-8")
+        policy_path.write_text(json.dumps({"exemptFiles": [], "frozenCount": 0}), encoding="utf-8")
         subprocess.run(["git", "init", "-q"], cwd=root, check=True)
         subprocess.run(["git", "add", "-A"], cwd=root, check=True)
         findings, failures, _ = run(root, policy_path)
@@ -525,25 +551,54 @@ def calibrate() -> int:
                findings, expect_fire=True)
 
         policy_path.write_text(json.dumps({
-            "exemptFiles": [{"path": "scripts/quality/offender.py", "why": "fixture exemption"}]
+            "exemptFiles": [{"path": "scripts/quality/offender.py", "why": "fixture exemption"}], "frozenCount": 1
         }), encoding="utf-8")
         findings, failures, _ = run(root, policy_path)
         report("same hit, now exempted -- must go silent (the live GREEN)",
                findings, expect_fire=False)
 
         policy_path.write_text(json.dumps({
-            "exemptFiles": [{"path": "scripts/quality/offender.py", "why": "   "}]
+            "exemptFiles": [{"path": "scripts/quality/offender.py", "why": "   "}], "frozenCount": 1
         }), encoding="utf-8")
         _, failures, _ = run(root, policy_path)
         report("exemption with an empty 'why' -- MUST fire as a policy failure",
                failures, expect_fire=True)
 
         policy_path.write_text(json.dumps({
-            "exemptFiles": [{"path": "scripts/quality/does-not-exist.py", "why": "stale"}]
+            "exemptFiles": [{"path": "scripts/quality/does-not-exist.py", "why": "stale"}], "frozenCount": 1
         }), encoding="utf-8")
         _, failures, _ = run(root, policy_path)
         report("exemption naming a file that no longer exists -- MUST fire as a policy failure",
                failures, expect_fire=True)
+
+        # THE CEILING (owner ruling, 2026-08-11: 5 exemptions, may never grow). Three controls --
+        # a ceiling nobody has watched fire is a number in a file, not a control.
+        policy_path.write_text(json.dumps({
+            "exemptFiles": [
+                {"path": "scripts/quality/offender.py", "why": "fixture exemption"},
+                {"path": "scripts/quality/check-no-markdown-reads.py", "why": "second fixture"},
+            ],
+            "frozenCount": 1,
+        }), encoding="utf-8")
+        _, failures, _ = run(root, policy_path)
+        report("a 6th exemption appears (count > frozenCount) -- MUST fire as a policy failure",
+               failures, expect_fire=True)
+
+        policy_path.write_text(json.dumps({
+            "exemptFiles": [{"path": "scripts/quality/offender.py", "why": "fixture exemption"}],
+            "frozenCount": 4,
+        }), encoding="utf-8")
+        _, failures, _ = run(root, policy_path)
+        report("list shrank but frozenCount left high -- MUST fire (the ratchet must go DOWN)",
+               failures, expect_fire=True)
+
+        policy_path.write_text(json.dumps({
+            "exemptFiles": [{"path": "scripts/quality/offender.py", "why": "fixture exemption"}]
+        }), encoding="utf-8")
+        _, failures, _ = run(root, policy_path)
+        report("policy with no frozenCount at all -- MUST fire (the ceiling cannot be optional)",
+               failures, expect_fire=True)
+
 
     if not ok:
         print("\nFAIL: at least one control did not behave as required -- this checker does not ship "

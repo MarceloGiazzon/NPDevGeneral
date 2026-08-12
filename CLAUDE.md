@@ -23,6 +23,19 @@ app definitions and build output live **outside** it (see Layers below).
   2026-08-11 pass moved 50 files into subdirectories and the tracked total went 301 → 302. Durable
   machine truth → `ledger/*.yml` with a schema. Durable human docs → `docs/`, few, curated,
   generated where possible, and indexed in `docs/README.md`. Everything else → outside the repo.
+- **NO SCRIPT MAY READ A `.md` FILE — and the exemption list may never grow.** Markdown is output
+  for humans; facts a script needs live in JSON/YAML. All 37 script↔markdown data couplings were
+  inverted (md-zero-2026-08-11), enforced by `scripts/quality/check-no-markdown-reads.py` (AST
+  taint-tracking for Python, regex for PowerShell/shell) against
+  `scripts/policy/markdown-read-exemptions.json`. **Exactly 5 exemptions remain, all markdown
+  LINTERS** (link integrity, doc-entrypoint classification + its test harness, pinned-download-link
+  drift, hardcoded-path scanning) — scripts whose job IS validating hand-written prose, which is
+  irreducible while 277 of 287 docs are hand-authored. That list is pinned by `frozenCount: 5`: the
+  checker fails if it GROWS, and equally fails if it shrinks without `frozenCount` being lowered in
+  the same commit, so the ceiling ratchets DOWN and can never be silently re-widened. **A 6th
+  exemption is an owner decision, never a checker change** — the correct answer to a new markdown
+  read is to invert it into structured data. Proven by a live RED (a synthetic 6th entry fails the
+  gate) plus 22 `--calibrate` controls.
 - **Source-of-truth layers:** (1) this repo = truth for platform code/scripts/schemas;
   (2) `D:\WorkSpace\NPDev\AppGen\apps` = truth for app *definitions* only (not a git repo);
   (3) `Build` = ephemeral. You may edit layer 2/3 for speed, but propagate any code/script change

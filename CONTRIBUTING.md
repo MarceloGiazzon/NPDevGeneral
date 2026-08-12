@@ -46,6 +46,24 @@ If a document really is durable reference material whose *name* just happens to 
 pattern, add it to `exempt` in `scripts/policy/doc-inventory-policy.json` **with a written reason**.
 The 57 pre-ban files are frozen in a `legacy` list that may only shrink.
 
+## Never make a script read a `.md` file
+
+Markdown is output for humans. Anything a script needs is a fact, and facts live in JSON/YAML.
+`check-no-markdown-reads.py` fails the build on any script that opens a `.md`.
+
+This is not style. Parsing prose as data is what made 265 documents undeletable: a gate started
+reading one, and from that moment the document could not change. Inverting all 37 couplings removed
+14,000 lines of markdown and three whole checkers.
+
+If you need a fact in a script, put it in `ledger/*.yml` or `scripts/policy/*.json` and render the
+document from it — `content/*.yml` → `scripts/docs/generate_*.py` is the worked example.
+
+**The 5 exemptions are capped and may never grow.** They are markdown *linters* — scripts whose job
+is validating hand-written prose (link integrity, doc classification, pinned download links,
+hardcoded paths). `markdown-read-exemptions.json` pins `frozenCount: 5`; the gate fails if the list
+grows, and fails if it shrinks without lowering `frozenCount` in the same commit, so the ceiling
+only ever ratchets down. Adding a 6th is an owner decision, not a checker change.
+
 ## Git hygiene
 
 - Stage files by path. Don't use `git add -A` / `git add .` — it's easy to pull in something that
