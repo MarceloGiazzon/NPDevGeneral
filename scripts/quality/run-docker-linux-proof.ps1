@@ -261,9 +261,13 @@ if ($failures.Count -eq 0) {
     # with nothing to point at. That is the same invisible-drift shape that left this whole gate red
     # for six weeks. Note the repo is deliberately NOT single-version today (RuntimeHost is on
     # 9.5.1, everything else on 8.5), so this must handle a set, not one value.
+    # Convert-ToRepoPath, not Get-NPDevWorkspaceRelativePath: this script is self-contained and
+    # dot-sources npdev-common.ps1 nowhere, so the common helpers do not exist here. Borrowing that
+    # idiom from Test-GradleWrapperConsistency.ps1 (which does dot-source it) cost run 31625821322 --
+    # a parse check cannot catch an unresolved command name, only running it can.
     $wrapperPropertyFiles = @(Get-ChildItem -LiteralPath $workspaceRoot -Recurse -Force -File -Filter "gradle-wrapper.properties" -ErrorAction SilentlyContinue |
             Where-Object {
-                $segments = @((Get-NPDevWorkspaceRelativePath $workspaceRoot $_.FullName) -split "[\\/]")
+                $segments = @((Convert-ToRepoPath -Root $workspaceRoot -PathValue $_.FullName) -split "/")
                 @($segments | Where-Object { $_ -in @(".git", ".gradle", "build", "dist", "node_modules", "out", "target") }).Count -eq 0
             })
     $gradleDistributionUrls = @($wrapperPropertyFiles |
@@ -277,7 +281,7 @@ if ($failures.Count -eq 0) {
         Add-Failure -Code "gradle-distributions-not-resolved" -Message "No Gradle distributionUrl found in any gradle-wrapper.properties; refusing to build an image that would download Gradle at run time." -Path "gradle/wrapper/gradle-wrapper.properties" -Details @{ wrapperFileCount = $wrapperPropertyFiles.Count }
     }
     else {
-        Write-NPDevInfo ("Baking " + $gradleDistributionUrls.Count + " Gradle distribution(s) into the image: " + ($gradleDistributionUrls -join ", "))
+        Write-DockerProofMessage ("Baking " + $gradleDistributionUrls.Count + " Gradle distribution(s) into the image: " + ($gradleDistributionUrls -join ", "))
     }
 }
 
