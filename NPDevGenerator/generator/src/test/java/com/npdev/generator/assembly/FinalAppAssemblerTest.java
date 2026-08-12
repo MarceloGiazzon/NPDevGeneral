@@ -154,6 +154,48 @@ class FinalAppAssemblerTest {
         assertTrue(gradlePropertiesContent.contains("npdevAppJavaVersion=21"));
     }
 
+    /**
+     * The wipe spares exactly the three directories regeneration cannot reproduce, and nothing else.
+     *
+     * <p>Two of the three were unproven before this test. {@code data} was PORT-1's and worked;
+     * {@code logs} was on {@code Build-NpdevApp.ps1}'s spare list from MONITOR_PLAN D10 but NOT on
+     * this class's, so the PowerShell layer spared it and this layer -- running second, in the same
+     * build -- deleted it again, silently. {@code secrets} is new. The `stale.txt` assertion is the
+     * other half of the claim: a spare list that spared everything would pass the first three
+     * assertions and be useless.
+     */
+    @Test
+    void regenerationSparesDataLogsAndSecretsAndDeletesEverythingElse() throws Exception {
+        Path workspace = Files.createTempDirectory("npdev-final-app-assembly-preserve-");
+        Path host = workspace.resolve("RuntimeHost");
+        Path artifact = workspace.resolve("ArtifactNP");
+        Path finalApp = workspace.resolve("FinalExec");
+
+        write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
+        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+
+        // Stand in for a previously generated app that has been RUN: it has a database, a log
+        // archive, an operator-written provider key, and stale emitted output.
+        write(finalApp.resolve("data/npdev-app.mv.db"), "database bytes");
+        write(finalApp.resolve("logs/run-2026-08-12.log"), "previous run stdout");
+        write(finalApp.resolve("secrets/agent-proxy.env"), "NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-test\n");
+        write(finalApp.resolve("stale.txt"), "emitted by the previous generation");
+
+        new FinalAppAssembler().assemble(
+                new FinalAppAssembler.Options(
+                        host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17
+                )
+        );
+
+        assertEquals("database bytes", Files.readString(finalApp.resolve("data/npdev-app.mv.db")));
+        assertEquals("previous run stdout", Files.readString(finalApp.resolve("logs/run-2026-08-12.log")));
+        assertEquals("NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-test\n",
+                Files.readString(finalApp.resolve("secrets/agent-proxy.env")));
+        assertFalse(Files.exists(finalApp.resolve("stale.txt")),
+                "the wipe must still remove regenerable output -- otherwise the spare list proves nothing");
+    }
+
     private static void write(Path path, String content) throws Exception {
         Files.createDirectories(path.getParent());
         Files.writeString(path, content);

@@ -73,6 +73,50 @@ function Get-NpdevDataRoot {
 """;
 
     /**
+     * Load {@code <app>/secrets/agent-proxy.env} into the launcher's own environment, so the app
+     * process it starts inherits it.
+     *
+     * <p>This is how the agent-proxy API key reaches the app WITHOUT being baked into a generated
+     * file: the DB password is written into {@code application-npdev-db.properties} at generation
+     * time, which is acceptable for a value the generator already chose but not for one the operator
+     * typed and can rotate. So the key stays in a file the generator never writes, and only the
+     * launcher reads it.
+     *
+     * <p>Deliberately NOT a Spring {@code spring.config.import}: that would add a boot-time file-read
+     * seam with its own failure modes (missing file, malformed line, wrong working directory) to
+     * every app, including the ones that will never use the proxy. The supported launchers are the
+     * one place that already knows the app root.
+     *
+     * <p>Branch-free on engine, which {@code check-engine-parity.py} requires of anything under this
+     * emitter, and {@code $appRoot}-relative, which the E17 absolute-path scan over every
+     * {@code _ops/*.ps1} requires. It prints the FILE PATH and the variable NAMES only -- printing a
+     * value here would put a provider key into {@code logs/}, which ships verbatim inside
+     * {@code npdev monitor logs export}.
+     */
+    private static final String SECRETS_ENV_LOADER = """
+
+# Agent proxy: optional per-app provider credentials. Absent on every app that has not opted in, and
+# absent is not an error -- the Agent Prompter page falls back to compose-and-copy.
+$secretsEnv = Join-Path $appRoot 'secrets/agent-proxy.env'
+if (Test-Path -LiteralPath $secretsEnv) {
+  $loadedNames = @()
+  foreach ($rawLine in (Get-Content -LiteralPath $secretsEnv)) {
+    $line = $rawLine.Trim()
+    if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
+      $parts = $line.Split('=', 2)
+      $name = $parts[0].Trim()
+      if ($name) {
+        Set-Item -Path ("env:" + $name) -Value $parts[1].Trim()
+        $loadedNames += $name
+      }
+    }
+  }
+  # NAMES only -- never values. This output is teed into logs/, which log bundles copy verbatim.
+  Write-Host ("Loaded " + $loadedNames.Count + " secret(s) from " + $secretsEnv + ": " + ($loadedNames -join ', '))
+}
+""";
+
+    /**
      * PORT-2: the runtimehost-libs jar cache is the ONE absolute path in this plan that is
      * legitimately not part of the app.
      *
@@ -183,7 +227,60 @@ function Test-NpdevServerReachable {
         write(opsRoot.resolve("Print-DbConnectionInfo.ps1"), printDbConnectionInfoScript());
         write(opsRoot.resolve("Reset-Environment.ps1"), resetEnvironmentScript());
         write(opsRoot.resolve("README_RUNBOOK.md"), readme());
+        writeSecretsEnvExample(normalizedFinalAppRoot);
         return opsRoot;
+    }
+
+    /**
+     * Emit {@code <app>/secrets/agent-proxy.env.example} -- never {@code agent-proxy.env} itself.
+     *
+     * <p>The example is the only half of this pair the generator may own. The real file holds a
+     * provider API key the operator typed, which no generation can reproduce, so writing it here at
+     * all -- even "only when absent" -- would put the generator one bug away from overwriting the one
+     * unrecoverable file in the tree. Creating the directory is safe and is what makes the
+     * copy-and-fill instruction actionable on a fresh app.
+     *
+     * <p>Content is fixed text with no timestamp, app id, or path in it, because
+     * {@code check-deterministic-generation.ps1} SHA-256s every emitted file across two runs and a
+     * generation-varying byte here would fail it.
+     */
+    private static void writeSecretsEnvExample(Path finalAppRoot) throws Exception {
+        Path secretsDir = finalAppRoot.resolve("secrets");
+        Files.createDirectories(secretsDir);
+        write(secretsDir.resolve("agent-proxy.env.example"), """
+# agent-proxy.env.example -- copy to `agent-proxy.env` in this directory and fill in ONE provider key.
+#
+# What this enables: the Agent Prompter page (agent-prompter.html) can send its composed prompt to an
+# AI provider through this app's own server, instead of only copying it to your clipboard. The key
+# stays on the server -- the browser never receives it, and POST /api/agent-proxy/generate is
+# SUPERUSER-gated.
+#
+# This file is read by `_ops\\Start-App.ps1` and `_ops\\Run-FinalApp.ps1`, which set each KEY=VALUE
+# line as an environment variable of the app process before starting it. Starting the jar yourself
+# (`java -jar ...`) does NOT read this file -- set the same variables in your shell first.
+#
+# `agent-proxy.env` is never emitted, never overwritten by regeneration, excluded from the Docker
+# build context, and excluded from `npdev monitor logs export`. Leave the real key out of version
+# control; that is what `.gitignore`'s `secrets/` entry is for.
+#
+# Lines are KEY=VALUE. `#` starts a comment. Blank lines are ignored.
+
+# Turns on the real HTTP egress adapter. Without this the app keeps the default `inproc` provider,
+# which writes packs to disk and cannot send anything anywhere.
+NPDEV_EXTERNALAI_PROVIDER=http
+
+# Set exactly the vendors you intend to use. A vendor whose key is unset is reported as
+# `keyPresent: false` by GET /api/agent-proxy/config and refuses to send, naming this variable.
+NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
+# NPDEV_EXTERNALAI_OPENAI_API_KEY=sk-replace-me
+# NPDEV_EXTERNALAI_NVIDIA_API_KEY=nvapi-replace-me
+# NPDEV_EXTERNALAI_GEMINI_API_KEY=replace-me
+
+# Optional: override the default model offered for a vendor. The page can also send any model id you
+# type into it, so this only changes the suggestion.
+# NPDEV_EXTERNALAI_HTTP_ANTHROPIC_MODEL=claude-opus-5
+# NPDEV_EXTERNALAI_HTTP_OPENAI_MODEL=gpt-4o-mini
+""");
     }
 
     private static Map<String, Object> resolvedPlan(
@@ -785,6 +882,7 @@ $logDir = Join-Path $appRoot 'logs'
 if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
 $logFile = Join-Path $logDir ('app-' + (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') + '.log')
 Write-Host "Logging this run to $logFile"
+""" + SECRETS_ENV_LOADER + """
 
 # 2>&1 merges the JVM's stderr into the same stream, because a stack trace on stderr is exactly what
 # the person reading this file is looking for. Tee keeps the console live -- a run that only writes

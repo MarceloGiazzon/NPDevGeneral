@@ -237,6 +237,21 @@
         "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java",
         "NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java"
       ]
+    },
+    {
+      "id": "app-secrets-dir-spared-three-seams",
+      "citedBy": "agent-proxy",
+      "description": "The list of <FinalApp>/App directories that regeneration must NOT delete is decided independently in three places that all run during one build -- Build-NpdevApp.ps1's $SparedInsideApp, Build-ClaudeApp.ps1's copy of it, and FinalAppAssembler.PRESERVED_APP_DIRECTORIES. The Java layer runs LAST, so a directory added to a PowerShell list and not to the Java one is spared and then deleted again, silently, in the same build: exactly what happened to `logs` between MONITOR_PLAN D10 and the agent-proxy work. Anything holding state the generator cannot reproduce -- the database, the log archive, the operator-written secrets/agent-proxy.env -- must appear in all three.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev-app-secrets-spared"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "scripts/appgen/Build-NpdevApp.ps1",
+        "scripts/appgen/Build-ClaudeApp.ps1",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java"
+      ]
     }
   ]
 }

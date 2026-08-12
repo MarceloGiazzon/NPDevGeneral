@@ -123,9 +123,28 @@ Write-Step "Output root      : $OutRoot"
 # ----------------------------------------------------------------------------
 # 2. Stage definition (model + capabilities bundle side by side)
 # ----------------------------------------------------------------------------
+# This wipe used to be unconditional, which meant the Claude builder destroyed the app's database,
+# its log archive and (once the agent proxy existed) its operator-written provider key on every
+# regeneration -- the exact losses Build-NpdevApp.ps1 had already been taught to avoid. It now runs
+# the same two-pass spare list, in place: never moved to a temp location and moved back, because a
+# generation that fails in between would strand a user's data somewhere they would never think to look.
+# Twin-pair `app-secrets-dir-spared-three-seams` (token: npdev-app-secrets-spared). The other two
+# seams are Build-NpdevApp.ps1's identical list and FinalAppAssembler.PRESERVED_APP_DIRECTORIES,
+# which runs second in the same build and would delete anything this pass spared but that one does not.
+$SparedInsideApp = @('data', 'logs', 'secrets')
+$PreservedRoots = @($SparedInsideApp | ForEach-Object { Join-Path $OutRoot "App\$_" })
 if (Test-Path -LiteralPath $OutRoot) {
-  Write-Step "Removing existing output root: $OutRoot"
-  Remove-Item -LiteralPath $OutRoot -Recurse -Force
+  if ($PreservedRoots | Where-Object { Test-Path -LiteralPath $_ }) {
+    Write-Step ("Removing existing output root (preserving " + (($SparedInsideApp | ForEach-Object { "App\$_" }) -join ', ') + "): $OutRoot")
+    Get-ChildItem -LiteralPath $OutRoot -Force | Where-Object { $_.Name -ne 'App' } |
+      ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+    Get-ChildItem -LiteralPath (Join-Path $OutRoot 'App') -Force | Where-Object { $SparedInsideApp -notcontains $_.Name } |
+      ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+  }
+  else {
+    Write-Step "Removing existing output root: $OutRoot"
+    Remove-Item -LiteralPath $OutRoot -Recurse -Force
+  }
 }
 New-Item -ItemType Directory -Force -Path $OutRoot | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $OutRoot '_logs') | Out-Null
@@ -514,8 +533,8 @@ $infoArgs = @{
 & (Join-Path $PSScriptRoot 'New-AppInfoPage.ps1') @infoArgs
 Write-Step "Emitted interactive info page: http://localhost:$ServerPort/info.html"
 
-# info.html links to control-panel.html and app-tree.html unconditionally -- both were
-# missing entirely for this builder, leaving two dead links. Emit them like every other
+# info.html links to control-panel.html, app-tree.html and agent-prompter.html unconditionally --
+# all three were missing entirely for this builder, leaving dead links. Emit them like every other
 # NPDev-built app does (Build-NpdevApp.ps1's equivalent calls).
 & (Join-Path $PSScriptRoot 'New-ControlPanelPage.ps1') `
   -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') `
@@ -525,6 +544,10 @@ Write-Step "Emitted ControlPanel page: http://localhost:$ServerPort/control-pane
 & (Join-Path $PSScriptRoot 'New-AppTreePage.ps1') `
   -AppFolder $AppFolder -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId 'claude-support-desk'
 Write-Step "Emitted app tree page: http://localhost:$ServerPort/app-tree.html"
+
+& (Join-Path $PSScriptRoot 'New-AgentPrompterPage.ps1') `
+  -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId 'claude-support-desk'
+Write-Step "Emitted Agent Prompter page: http://localhost:$ServerPort/agent-prompter.html"
 
 if ($ConsoleMode -ne 'none') {
   & (Join-Path $PSScriptRoot 'New-AppConsole.ps1') -OpsDir $OpsDir -AppId 'claude-support-desk' -ConsolePort $ConsolePort -OutRoot $OutRoot -Mode $ConsoleMode

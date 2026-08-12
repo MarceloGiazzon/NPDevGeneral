@@ -81,6 +81,14 @@ ai-times-workbench/
 # Generated evidence and local script caches
 /scripts/reports/
 
+# Operator-written provider credentials for the agent proxy. Generated apps normally live outside
+# this repo, but a sample's Output/ tree does not always -- and secrets/agent-proxy.env holds a real
+# API key. Only the emitted agent-proxy.env.example is ever meant to be readable, and it carries
+# placeholders.
+secrets/
+*.env
+!*.env.example
+
 # Local Claude Code session state (auto-accumulated permission log, not shared config).
 # Ignore everything under .claude/ EXCEPT shared, tracked project skills.
 .claude/*
