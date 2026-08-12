@@ -18,6 +18,7 @@ honestly, it is listed under "not covered" rather than fabricated.
 | `db-test-connection-ok.json` | `npdev db test-connection --json` against a real Postgres container |
 | `db-test-connection-refused.json` | the same command pointed at port 59999 with nothing listening |
 | `init-result.json` | `npdev init --json` |
+| `engines.json` | `python NPDevCli/npdev_cli.py engines --json` on 2026-08-12 — six engines, all `supported`, two carrying real caveats (MySQL's implicit DDL commit, SQL Server's row-cap/NVARCHAR differences). Feeds the Ready screen's engine panel and the New-app dropdown in stub mode. |
 | `setup-events.jsonl`, `dev-events.jsonl` | the JSON Lines streams of `npdev setup --json` / `npdev dev --json` |
 
 ## The Monitor (MONITOR_PLAN B1), captured 2026-08-10
