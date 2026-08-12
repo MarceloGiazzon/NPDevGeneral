@@ -46,6 +46,38 @@ pub fn logs_dir() -> PathBuf {
     manager_home().join("logs")
 }
 
+/// Where `npdev setup` stages the runtime jars, for THIS Manager: the CLI resolves it as
+/// `NPDEV_BUILD_ROOT/runtimehost-libs` (`npdev_cli.py::_default_runtimehost_libs_dir`) and
+/// `npdev::build_command` pins `NPDEV_BUILD_ROOT` to `manager_home()`. Deliberately never created
+/// here -- see `ensure_dirs`.
+pub fn runtimehost_libs_dir() -> PathBuf {
+    manager_home().join("runtimehost-libs")
+}
+
+/// The file doctor's `ai-knowledge-index` check tests, resolved the same way the CLI resolves it
+/// (`_ai_build_root() / "npdev-ai" / "rag-index.json"`, with `NPDEV_BUILD_ROOT` = `manager_home()`).
+pub fn ai_knowledge_index_path() -> PathBuf {
+    manager_home().join("npdev-ai").join("rag-index.json")
+}
+
+/// How many `*.jar` files sit DIRECTLY in `dir` (never recursive, never creates anything). Returns
+/// 0 for a directory that does not exist, which is the same answer a caller wants for "nothing
+/// staged" -- `jarsStaged` is reported separately from the count so the two cannot be conflated.
+pub fn count_jars_in(dir: &std::path::Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    entries
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext.eq_ignore_ascii_case("jar"))
+                .unwrap_or(false)
+        })
+        .count()
+}
+
 fn manager_json_path() -> PathBuf {
     manager_home().join("manager.json")
 }
@@ -218,5 +250,53 @@ pub fn current_version_dir(state: &ManagerState) -> Option<PathBuf> {
         .current_version
         .as_ref()
         .map(|tag| versions_dir().join(tag))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "npdev-manager-test-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn count_jars_in_counts_only_jars_directly_inside() {
+        let dir = unique_temp_dir("count-jars");
+        std::fs::write(dir.join("kernel-0.1.0.jar"), b"x").unwrap();
+        std::fs::write(dir.join("core-0.1.0.jar"), b"x").unwrap();
+        // Case-insensitively a jar too -- Windows filesystems hand back whatever case was written.
+        std::fs::write(dir.join("dsl-0.1.0.JAR"), b"x").unwrap();
+        std::fs::write(dir.join("runtimehost-libs-manifest.json"), b"{}").unwrap();
+        std::fs::create_dir(dir.join("nested")).unwrap();
+        std::fs::write(dir.join("nested").join("buried.jar"), b"x").unwrap();
+
+        assert_eq!(count_jars_in(&dir), 3);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The whole point of reporting `jarsStaged` separately: an absent directory answers 0 rather
+    /// than exploding, and nothing is created on the way to that answer (`ensure_dirs`'s rule --
+    /// a directory conjured by a status check would make the Ready screen lie).
+    #[test]
+    fn count_jars_in_answers_zero_for_a_missing_directory_without_creating_it() {
+        let dir = unique_temp_dir("count-jars-missing");
+        let absent = dir.join("runtimehost-libs");
+
+        assert_eq!(count_jars_in(&absent), 0);
+        assert!(!absent.exists());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
 
