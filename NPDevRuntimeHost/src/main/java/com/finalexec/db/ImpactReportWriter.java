@@ -1,7 +1,9 @@
 package com.finalexec.db;
 
+import com.finalexec.db.schemastate.ConstraintSurplusReport;
 import com.finalexec.db.schemastate.CurrentSchema;
 import com.finalexec.db.schemastate.CurrentSchemaReader;
+import com.finalexec.db.schemastate.DesiredSchema;
 import com.finalexec.db.schemastate.SchemaDiff;
 import com.finalexec.db.schemastate.SchemaDiffEngine;
 
@@ -49,14 +51,18 @@ final class ImpactReportWriter {
             String fromFingerprint, String ackToken) {
         try {
             CurrentSchema current = new CurrentSchemaReader().read(dataSource);
-            SchemaDiff diff = new SchemaDiffEngine().diff(DesiredSchemaFactory.fromManifest(manifest),
-                    ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
+            CurrentSchema scopedCurrent = ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest);
+            DesiredSchema desired = DesiredSchemaFactory.fromManifest(manifest);
+            SchemaDiffEngine diffEngine = new SchemaDiffEngine();
+            SchemaDiff diff = diffEngine.diff(desired, scopedCurrent);
             ImpactReport report = ImpactReport.generate(diff, dataSource);
+            // B3.2: the reverse (surplus) direction, from the SAME desired/current pair — no extra query.
+            ConstraintSurplusReport surplus = diffEngine.findSurplusConstraints(desired, scopedCurrent);
 
             String generatedAt = Instant.now().toString();
             String toFingerprint = manifest.schemaFingerprint();
-            String json = ImpactReportJson.render(report, generatedAt, fromFingerprint, toFingerprint, ackToken);
-            String text = ImpactReportText.render(report, fromFingerprint, toFingerprint, ackToken);
+            String json = ImpactReportJson.render(report, generatedAt, fromFingerprint, toFingerprint, ackToken, surplus);
+            String text = ImpactReportText.render(report, fromFingerprint, toFingerprint, ackToken, surplus);
 
             System.out.println(text);
             persist(json, fromFingerprint, toFingerprint);

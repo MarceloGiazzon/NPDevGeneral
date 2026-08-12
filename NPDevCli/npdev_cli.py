@@ -658,6 +658,68 @@ def migrate_legacy_model(args: argparse.Namespace) -> None:
     print(str(target))
 
 
+def run_migrate_rename(args: argparse.Namespace) -> int:
+    """B1.2 (docs/ACCEPTED_BOUNDARIES.md B1): declare a field rename for authors editing model.json
+    directly rather than through NPDevEditor's Field Details panel. NPDevEditor already stamps
+    `renamedFrom` automatically at its own single choke point (`updateField` in editorUtils.ts) --
+    this gives the hand-editing path the identical choke point, so a rename is a DECLARED event
+    either way, never a diff the engine has to guess at (docs/ACCEPTED_BOUNDARIES.md B1: a diff alone
+    cannot tell 'renamed a->b' from 'dropped a, added b', and guessing wrong destroys data).
+
+    Mirrors editorUtils.ts's `applyFieldUpdate` exactly: preserves the ORIGINAL pre-rename name across
+    a chain of renames (a field already carrying `renamedFrom` keeps that value, not the immediately
+    prior name), and clears `renamedFrom` if the field is renamed back to that original name -- a name
+    that nets out unchanged is not a rename. Dry-run by default; --write applies and schema-validates.
+    """
+    model_path = Path(args.model).expanduser().resolve()
+    model = read_json(model_path)
+
+    if "." not in args.field:
+        raise CliError(f"expected <Concept>.<oldField>, got: {args.field!r}")
+    concept_name, old_field = args.field.split(".", 1)
+    new_field = args.new_name
+
+    concepts = model.get("concepts", [])
+    concept = next((c for c in concepts if c.get("name") == concept_name), None)
+    if concept is None:
+        available = ", ".join(sorted(c.get("name", "") for c in concepts)) or "(none)"
+        raise CliError(f"no concept named '{concept_name}' in {model_path}. Available: {available}")
+
+    fields = concept.get("fields", [])
+    field = next((f for f in fields if f.get("name") == old_field), None)
+    if field is None:
+        available = ", ".join(sorted(f.get("name", "") for f in fields)) or "(none)"
+        raise CliError(f"concept '{concept_name}' has no field named '{old_field}'. Available: {available}")
+
+    if old_field == new_field:
+        raise CliError("old and new field names are identical -- nothing to rename")
+    collision = next((f for f in fields if f.get("name") == new_field), None)
+    if collision is not None:
+        raise CliError(f"concept '{concept_name}' already has a field named '{new_field}' -- pick a different name")
+
+    original_name = field.get("renamedFrom") or old_field
+    if new_field == original_name:
+        field.pop("renamedFrom", None)
+        summary = f"'{old_field}' -> '{new_field}' (back to its original name -- renamedFrom cleared)"
+    else:
+        field["renamedFrom"] = original_name
+        summary = f"'{old_field}' -> '{new_field}' (renamedFrom: '{original_name}')"
+    field["name"] = new_field
+
+    verb = "CHANGED" if args.write else "WOULD CHANGE"
+    print(f"  [{verb}] {concept_name}.{summary}")
+
+    if not args.write:
+        print("Dry run -- pass --write to apply.")
+        return 0
+
+    validate_json_schema(repo_root() / "NPDevContract" / "schemas" / "model.schema.json",
+                          write_temp_model(model, model_path))
+    model_path.write_text(json.dumps(model, indent=2) + "\n", encoding="utf-8")
+    print(str(model_path))
+    return 0
+
+
 def run_migrate_dsl2(args: argparse.Namespace) -> int:
     """2.A.3 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): rewrite flowStep.type spellings and field
     aliases to their DSL 2.0 canonical form, across one or more files/directories. Dry-run by
@@ -5313,8 +5375,14 @@ def run_ai_generate_routine(args: argparse.Namespace) -> int:
             "payload": payload,
         }).encode("utf-8")
         headers = {"Content-Type": "application/json"}
-        if args.api_key:
-            headers["Authorization"] = f"Bearer {args.api_key}"
+        # NPDEV_AI_API_KEY is the preferred channel, and the same idiom this CLI already uses for
+        # SCRAPFORAI_API_KEY. A key passed as `--api-key <value>` sits in the process's command line,
+        # where any other process on the machine can read it out of the process listing for as long
+        # as this one runs -- which is why the Manager stopped sending it that way. The flag still
+        # works for direct CLI use and still wins when both are set.
+        api_key = args.api_key or os.environ.get("NPDEV_AI_API_KEY")
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         request = urllib.request.Request(args.endpoint, data=body, method="POST", headers=headers)
         with urllib.request.urlopen(request, timeout=args.timeout) as response:
             raw = response.read().decode("utf-8", "replace")
@@ -5625,6 +5693,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="apply changes in place; without this flag, reports what would change and exits",
     )
     migrate_dsl2.add_argument("--report", help="write a JSON report of every file's outcome to this path")
+
+    migrate_rename = migrate_sub.add_parser(
+        "rename", help="Declare a field rename (stamps renamedFrom) for a hand-edited model.json."
+    )
+    migrate_rename.add_argument("--model", required=True, help="path to the model.json to edit")
+    migrate_rename.add_argument(
+        "field", metavar="<Concept>.<oldField>",
+        help="the field to rename, e.g. Order.customerName",
+    )
+    migrate_rename.add_argument("new_name", metavar="<newField>", help="the new field name")
+    migrate_rename.add_argument(
+        "--write", action="store_true",
+        help="apply the edit in place (and schema-validate); without this flag, reports what would "
+             "change and exits",
+    )
 
     migrate_bc = migrate_sub.add_parser("bounded-contexts")
     migrate_bc.add_argument(
@@ -6092,7 +6175,10 @@ def build_parser() -> argparse.ArgumentParser:
                              help="provider=command: the argv, repeatable. `{payload_file}` is "
                                   "substituted with the payload's path.")
     ai_generate.add_argument("--endpoint", default=None, help="provider=http: the URL to POST to.")
-    ai_generate.add_argument("--api-key", default=None)
+    ai_generate.add_argument(
+        "--api-key", default=None,
+        help="provider key for provider=http. Prefer the NPDEV_AI_API_KEY environment variable: a "
+             "key on the argv is readable in the machine's process listing while this runs.")
     ai_generate.add_argument("--model", default=None)
     ai_generate.add_argument("--timeout", type=float, default=120.0)
     ai_generate.add_argument("--json", action="store_true")
@@ -6152,6 +6238,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "migrate" and args.migrate_command == "legacy-model":
             migrate_legacy_model(args)
             return 0
+        if args.command == "migrate" and args.migrate_command == "rename":
+            return run_migrate_rename(args)
         if args.command == "migrate" and args.migrate_command == "dsl-2":
             return run_migrate_dsl2(args)
         if args.command == "migrate" and args.migrate_command == "bounded-contexts":

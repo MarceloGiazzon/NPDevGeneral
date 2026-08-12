@@ -1,7 +1,9 @@
 package com.finalexec.db;
 
+import com.finalexec.db.schemastate.ConstraintSurplusReport;
 import com.finalexec.db.schemastate.CurrentSchema;
 import com.finalexec.db.schemastate.CurrentSchemaReader;
+import com.finalexec.db.schemastate.DesiredSchema;
 import com.finalexec.db.schemastate.SchemaDiff;
 import com.finalexec.db.schemastate.SchemaDiffEngine;
 import com.finalexec.db.schemastate.SchemaDiffItem;
@@ -18,8 +20,11 @@ import java.util.List;
 public final class SchemaImpactFacade {
 
     /** The impact report plus the envelope a renderer needs. {@code ackToken} is non-null only when the
-     *  verdict is DESTRUCTIVE (the token an operator must supply). */
-    public record Result(ImpactReport report, String fromFingerprint, String toFingerprint, String ackToken) {
+     *  verdict is DESTRUCTIVE (the token an operator must supply). {@code surplus} (B3.2) is the
+     *  advisory, never-verdict-affecting FK/index surplus classification — {@link ConstraintSurplusReport#EMPTY}
+     *  whenever there is no physical database to classify against. */
+    public record Result(ImpactReport report, String fromFingerprint, String toFingerprint, String ackToken,
+            ConstraintSurplusReport surplus) {
     }
 
     private SchemaImpactFacade() {
@@ -42,13 +47,17 @@ public final class SchemaImpactFacade {
         if (manifest == null || !manifest.physicalDatabase()) {
             List<SchemaDiffItem> items = driftItem == null ? List.of() : List.of(driftItem);
             return new Result(ImpactReport.generate(new SchemaDiff(items), dataSource),
-                    null, manifest == null ? null : manifest.schemaFingerprint(), null);
+                    null, manifest == null ? null : manifest.schemaFingerprint(), null, ConstraintSurplusReport.EMPTY);
         }
         CurrentSchema current = new CurrentSchemaReader().read(dataSource);
-        SchemaDiff baseDiff = new SchemaDiffEngine().diff(DesiredSchemaFactory.fromManifest(manifest),
-                ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest));
+        CurrentSchema scopedCurrent = ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest);
+        DesiredSchema desired = DesiredSchemaFactory.fromManifest(manifest);
+        SchemaDiffEngine diffEngine = new SchemaDiffEngine();
+        SchemaDiff baseDiff = diffEngine.diff(desired, scopedCurrent);
         SchemaDiff diff = driftItem == null ? baseDiff : withItem(baseDiff, driftItem);
         ImpactReport report = ImpactReport.generate(diff, dataSource);
+        // B3.2: the reverse (surplus) direction, from the SAME desired/current pair — no extra query.
+        ConstraintSurplusReport surplus = diffEngine.findSurplusConstraints(desired, scopedCurrent);
         String from = SchemaLifecycleExecutor.readStoredFingerprintPublic(dataSource);
         String to = manifest.schemaFingerprint();
         String ackToken = null;
@@ -57,7 +66,7 @@ public final class SchemaImpactFacade {
             SchemaDeltaReport deltaReport = SchemaDeltaReport.generate(dataSource, manifest);
             ackToken = DestructiveAckToken.compute(to, deltaReport.stableStrings());
         }
-        return new Result(report, from, to, ackToken);
+        return new Result(report, from, to, ackToken, surplus);
     }
 
     private static SchemaDiff withItem(SchemaDiff diff, SchemaDiffItem extra) {

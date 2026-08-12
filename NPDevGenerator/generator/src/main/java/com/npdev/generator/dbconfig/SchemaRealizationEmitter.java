@@ -1336,6 +1336,12 @@ public final class SchemaRealizationEmitter {
      * `reg129-manifest-index-drift.py`). Both are now folded in here, using the SAME
      * field-eligibility/resolution rules as their DDL-emitting counterparts, so the manifest never
      * drifts from what the DDL above it in this same class actually creates.
+     *
+     * <p>REG-145 (boundaries-2026-08-12 plan, B3.1's own re-measurement): REG-129's LNCH-6 branch
+     * enumerated the right indexes but recorded the wrong COLUMNS -- {@code [column]} instead of the
+     * DDL's actual {@code [tenant_id, column]} -- so {@code ConstraintSurplusClassifier}'s
+     * order-sensitive match still never found them and kept reporting the same 17 findings as
+     * FOREIGN, re-measured live against WmsOffice on current code. Fixed below.
      */
     private static List<IndexDecl> collectIndexes(
             CompiledConcept concept, Map<String, CompiledConcept> conceptsByName,
@@ -1356,6 +1362,15 @@ public final class SchemaRealizationEmitter {
         }
 
         // LNCH-6 secondary indexes (appendSecondaryIndexes): same skip-id/skip-unique/dedupe rule.
+        //
+        // REG-145: appendSecondaryIndexes always creates a TENANT-COMPOSITE index, "(tenant_id,
+        // column)" -- but this branch (added by REG-129 to make these indexes visible to
+        // businessTableIndexes at all) recorded just "[column]", missing the leading tenant_id.
+        // ConstraintSurplusClassifier's column match is order-sensitive, so a live "(tenant_id,
+        // column)" index never matched this single-column declaration -- REG-129 widened the
+        // manifest to ENUMERATE these indexes but got the column list wrong, so B3's classifier
+        // still reported all of them as FOREIGN (re-measured live against WmsOffice, still the
+        // exact same 17 findings post-REG-129). Column order must match the DDL's exactly.
         if (implicitIndexFields != null && !implicitIndexFields.isEmpty()) {
             Set<String> emittedColumns = new LinkedHashSet<>();
             for (String fieldName : implicitIndexFields) {
@@ -1365,7 +1380,7 @@ public final class SchemaRealizationEmitter {
                 }
                 String column = SqlIdentifierSupport.columnName(field);
                 if (emittedColumns.add(column.toLowerCase(Locale.ROOT))) {
-                    indexes.add(new IndexDecl(List.of(column), false));
+                    indexes.add(new IndexDecl(List.of("tenant_id", column), false));
                 }
             }
         }

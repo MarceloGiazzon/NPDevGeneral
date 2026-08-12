@@ -1,5 +1,7 @@
 package com.npdev.generator.dbconfig;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -15,6 +17,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -84,6 +87,56 @@ final class SchemaRealizationEmitterSecondaryIndexTest {
         assertFalse(v1Sql.contains("idx_orders_id "), v1Sql);
         assertFalse(v1Sql.contains("CREATE INDEX IF NOT EXISTS idx_orders_code "), v1Sql);
         assertTrue(v1Sql.contains("ux_orders_code"), "unique field still gets its unique index: " + v1Sql);
+    }
+
+    /**
+     * REG-145: {@code businessTableIndexes} must describe the SAME index this class's DDL actually
+     * creates -- a tenant-composite {@code (tenant_id, column)}, not a bare {@code (column)}. A
+     * manifest entry with the wrong column list is invisible to {@code ConstraintSurplusClassifier}'s
+     * order-sensitive match (never matches the live composite index), which is exactly how REG-129's
+     * fix shipped enumerating these indexes while B3's classifier kept reporting all of them as
+     * FOREIGN anyway -- re-measured live against WmsOffice on current code.
+     */
+    @Test
+    void implicitSecondaryIndexManifestEntryIsTenantCompositeNotBareColumn() throws Exception {
+        CompiledConcept order = new CompiledConcept(
+                "Order", "Order", "orders",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("status", "string", "String", false, true, false)
+                ));
+
+        CompiledQuery openOrders = new CompiledQuery(
+                "openOrders", "Order", "status == 'open'", List.of(),
+                null, List.of(), List.of(), null, null, Map.of(), List.of(), List.of(), null);
+
+        CompiledModel model = new CompiledModel(
+                "test", "1.0.0", "1.0.0", Map.of(order.getName(), order),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(openOrders), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+
+        Path outRoot = tempDir.resolve("app-manifest");
+        new SchemaRealizationEmitter().emit(model, outRoot, plan(), tempDir.resolve("model.json"));
+
+        JsonNode manifest = new ObjectMapper().readTree(Files.readString(
+                outRoot.resolve("src/main/resources/npdev/db/schema-realization-manifest.json")));
+        JsonNode indexes = manifest.path("businessTableIndexes").path("orders");
+        assertTrue(indexes.isArray() && indexes.size() >= 1,
+                "the implicit secondary index must appear in businessTableIndexes: " + manifest.path("businessTableIndexes"));
+
+        JsonNode statusIndex = null;
+        for (JsonNode candidate : indexes) {
+            JsonNode columns = candidate.path("columns");
+            if (columns.size() >= 1 && "status".equals(columns.get(columns.size() - 1).asText())) {
+                statusIndex = candidate;
+            }
+        }
+        assertTrue(statusIndex != null, "no manifest entry named 'status' as a column: " + indexes);
+        assertEquals(2, statusIndex.path("columns").size(),
+                "must be the tenant-composite pair (tenant_id, status), matching the DDL exactly: " + statusIndex);
+        assertEquals("tenant_id", statusIndex.path("columns").get(0).asText(), statusIndex.toString());
+        assertEquals("status", statusIndex.path("columns").get(1).asText(), statusIndex.toString());
+        assertEquals(false, statusIndex.path("unique").asBoolean(), statusIndex.toString());
     }
 
     private GeneratedDatabasePlan plan() {

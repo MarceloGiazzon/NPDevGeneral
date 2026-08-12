@@ -22,6 +22,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import com.npdev.kernel.storage.sql.PartialApplicationTruth;
+import com.npdev.kernel.storage.sql.SqlDialects;
+import com.npdev.kernel.storage.sql.StorageCapability;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -164,16 +166,25 @@ public final class ConversionHookRunner {
                         + "' has no convert SQL for engine '" + engine + "' -- refusing the boot.");
             }
 
-            // SER closure-plan G6: a detection guard for the H2 non-transactional-DDL caveat (already
-            // fixed as far as possible + documented, fce3eb1) -- warn AT THE MOMENT it matters, when a
-            // hook actually mixes DDL with a verifySql on H2, rather than only in a javadoc an operator
-            // may never read.
-            if ("h2".equals(engine) && hook.verifySql() != null && !hook.verifySql().isBlank()
+            // SER closure-plan G6, widened by B11.1 (boundaries-2026-08-12 plan): a detection guard for
+            // the implicit-commit-on-DDL caveat -- warn AT THE MOMENT it matters, when a hook actually
+            // mixes DDL with a verifySql on an engine where a verify failure will NOT roll the DDL back
+            // (docs/ACCEPTED_BOUNDARIES.md B11), rather than only in a javadoc an operator may never
+            // read. Asks the dialect (STOR-2's own precedent, via PartialApplicationTruth) instead of
+            // hardcoding "h2" -- MySQL commits implicitly on DDL too, and the OLD "h2".equals(engine)
+            // check would have missed it while ALSO firing wrongly for SQL Server (detectEngine's own
+            // two-value "postgres"/"h2" fold collapses every non-Postgres engine to "h2" for SQL-variant
+            // selection, which is fine for that purpose but was never a correct signal for THIS warning).
+            if (!SqlDialects.active().supports(StorageCapability.DDL_IN_TRANSACTION)
+                    && hook.verifySql() != null && !hook.verifySql().isBlank()
                     && MIXES_DDL_PATTERN.matcher(sql).matches()) {
+                String activeEngineName = SqlDialects.active().name();
                 System.out.println("NPDev schema lifecycle: WARNING -- conversion hook '" + hook.id()
-                        + "' mixes DDL with a verifySql on H2. H2 has no transactional DDL, so if the "
-                        + "verify fails the DDL will NOT be rolled back (data changes will be). Split DDL "
-                        + "and data movement into separate hooks, or run this conversion on Postgres.");
+                        + "' mixes DDL with a verifySql on '" + activeEngineName + "'. That engine COMMITS "
+                        + "IMPLICITLY ON DDL, so if the verify fails the DDL will NOT be rolled back (data "
+                        + "changes made after it will be). Split destructive DDL and data movement into "
+                        + "separate hooks/boots, or run this conversion on an engine with transactional DDL "
+                        + "(Postgres, SQL Server) -- see docs/ACCEPTED_BOUNDARIES.md B11.");
             }
 
             String sqlHash = sha256Hex(sql);

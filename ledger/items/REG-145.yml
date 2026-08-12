@@ -1,0 +1,88 @@
+id: REG-145
+title: >-
+  REG-129's LNCH-6 branch enumerated the right secondary indexes into businessTableIndexes but
+  recorded the wrong COLUMNS -- [column] instead of the DDL's actual [tenant_id, column] -- so B3's
+  surplus classifier kept reporting the exact same 17 WmsOffice findings as FOREIGN after REG-129
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-12
+closed: 2026-08-12
+verification: UNIT_TESTED
+surface: generator/dbconfig/schema-realization-manifest, runtimehost/db/schemastate
+source: |
+  Found during boundaries-2026-08-12/PLAN.md's B3.1 step: "re-run the WmsOffice calibration, change
+  nothing first." REG-129 (closed 2026-08-04) was believed to have cleared the hard stop -- its own
+  resolution recorded a live verification showing 24/24 secondary indexes matched businessTableIndexes
+  by COLUMN SET (tenant_id-stripped). Re-running the actual classifier (not the tenant_id-stripped
+  comparison) against a freshly-regenerated WmsOffice, on current code including the new B3.2
+  ImpactReport wiring, found ALL 17 of the original phantom FOREIGN findings still present, byte-for-
+  byte identical to the pre-REG-129 evidence file
+  (NPDev_General__OutsideRepo/wave2/b3-wmsoffice-calibration.txt).
+detail: |
+  SchemaRealizationEmitter.appendSecondaryIndexes (LNCH-6) always creates a TENANT-COMPOSITE index:
+
+      CREATE INDEX idx_<table>_<column> ON <table> (tenant_id, <column>);
+
+  REG-129 widened SchemaRealizationEmitter.collectIndexes to enumerate these indexes into
+  businessTableIndexes for the first time -- but its LNCH-6 branch recorded
+
+      indexes.add(new IndexDecl(List.of(column), false));
+
+  -- just the bare column, never tenant_id. ConstraintSurplusClassifier.classifyIndex's
+  PLATFORM_DECLARED match (sameColumnOrder) is an ORDER-SENSITIVE, exact-length list comparison
+  against the live index's actual columns. A live (tenant_id, column) index can never match a
+  declared [column] entry, so every one of these 17 indexes kept falling through to FOREIGN --
+  exactly the pre-REG-129 symptom, for a different precise reason than REG-129's own diagnosis
+  (REG-129 was "never enumerated at all"; this is "enumerated with the wrong shape").
+
+  REG-129's own live verification did not catch this because it deliberately compared "by column set
+  (tenant_id-stripped)" -- a looser check than the real classifier uses, chosen at the time to answer
+  "does the manifest know these indexes exist at all", not "does it describe them exactly right".
+  That looser check passed (24/24) while the actual B3 classifier -- which does not strip tenant_id
+  -- still failed on every one.
+resolution: |
+  DONE (2026-08-12). SchemaRealizationEmitter.collectIndexes's LNCH-6 branch now records
+
+      indexes.add(new IndexDecl(List.of("tenant_id", column), false));
+
+  matching appendSecondaryIndexes's actual DDL column order exactly.
+
+  Verified:
+  1. New regression test, SchemaRealizationEmitterSecondaryIndexTest#implicitSecondaryIndexManifestEntryIsTenantCompositeNotBareColumn --
+     asserts a query-filtered field's businessTableIndexes entry is exactly ["tenant_id", "status"],
+     not ["status"].
+  2. Full `:generator:test` suite green, no regressions (includes the pre-existing
+     SchemaRealizationEmitterForeignKeyIndexManifestTest and SchemaRealizationEmitterSecondaryIndexTest
+     DDL-shape assertions).
+  3. A genuine WmsOffice regeneration (against the real, accumulated app definition, post-fix) was
+     produced and its manifest inspected directly: all 17 originally-affected businessTableIndexes
+     entries now read ["tenant_id", "<field>"] in that exact order, matching -- column for column,
+     order and uniqueness both -- the 17 live index shapes the ORIGINAL b3-wmsoffice-calibration.txt
+     and REG-129's own live read had already established (e.g. idx_expedicaos_estagio is a real,
+     unchanged, non-unique (tenant_id, estagio) index; the manifest now declares exactly that).
+     ConstraintSurplusClassifier.classifyIndex's PLATFORM_DECLARED match is a pure, deterministic
+     function of these two already-real inputs (no code path depends on wall-clock or environment),
+     so this constitutes a full proof of the fix without additionally requiring a clean end-to-end
+     app boot.
+  4. NOT independently achieved: a single clean run of the full live app (boot -> REST call ->
+     read surplusConstraints) fully reflecting this exact fix, in one pass, with no confound. Three
+     attempts were made; each hit real, independently-diagnosed environment friction unrelated to
+     this fix (Build-NpdevApp.ps1 crashing in New-AppInfoPage.ps1 during regeneration -- cosmetic,
+     did not block the essential _ops toolbox; PORT-1's app-relative DB/JWT-key paths requiring a
+     manual copy-in of the real database and keys before every fresh regeneration, since
+     Build-NpdevApp.ps1 wipes the whole output root each time; and at least one run whose captured
+     surplusConstraints output was later confirmed (by inspecting the regenerated manifest directly)
+     to have been read from a build artifact that predated this fix landing in that cycle, not a
+     reversion of the fix itself). See
+     NPDev_General__OutsideRepo/boundaries-2026-08-12/b3-wmsoffice-calibration-rerun*.{txt,json,md}
+     for the full trace of both the pre-fix (still-17-findings) and post-fix (manifest-verified)
+     measurements, and docs/ACCEPTED_BOUNDARIES.md B3 for the resulting boundary-row text.
+
+  Not touched: the sibling bond-FK-lookup branch a few lines above (collectIndexes, ~line 1349) --
+  that index is genuinely single-column by design (appendBusinessTableConstraints's bond FK lookup
+  index is not tenant-composite), so it was already correct and needed no change.
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/SchemaRealizationEmitterSecondaryIndexTest.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/schemastate/ConstraintSurplusClassifier.java

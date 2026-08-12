@@ -147,6 +147,11 @@ public final class SchemaDiffEngine {
      * (a pending/undeclared drop) is skipped here — its own table-level classification is {@link #diff}'s
      * job, not this method's; a table's constraints are only classified once the table itself is known
      * to be desired.
+     *
+     * <p><b>Wired (B3.2):</b> called from {@code SchemaImpactFacade}/{@code ImpactReportWriter} on the
+     * SAME {@code desired}/scoped-{@code current} pair each already builds for {@link #diff}, so this
+     * costs zero extra DB round-trips. The result renders as an informational section of the Impact
+     * Report — never a gate, never a drop.
      */
     public ConstraintSurplusReport findSurplusConstraints(DesiredSchema desired, CurrentSchema current) {
         boolean desiredExpressesConstraints = desired.tables().values().stream()

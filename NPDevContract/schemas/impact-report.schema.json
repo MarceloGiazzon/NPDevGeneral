@@ -70,6 +70,33 @@
           }
         }
       }
+    },
+    "surplusConstraints": {
+      "type": "object",
+      "description": "S8 Wave 2 / B3.2 (docs/ACCEPTED_BOUNDARIES.md B3): advisory-only, structurally-classified FK/index findings the model does not declare. NEVER a drop proposal and never affects verdict. Present only when there is something to report (a FOREIGN finding or an abstention).",
+      "additionalProperties": false,
+      "properties": {
+        "abstained": {
+          "type": ["string", "null"],
+          "description": "Non-null only when the whole desired schema could not be classified at all (X0 rule: an explicit reason, never silence or a default classification)."
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["table", "kind", "columns", "unique"],
+            "properties": {
+              "table": { "type": "string" },
+              "kind": { "type": "string", "enum": ["INDEX", "FOREIGN_KEY"] },
+              "liveName": { "type": ["string", "null"] },
+              "columns": { "type": "array", "items": { "type": "string" } },
+              "unique": { "type": "boolean" },
+              "referencedTable": { "type": ["string", "null"], "description": "Non-null only for a FOREIGN_KEY finding." }
+            }
+          }
+        }
+      }
     }
   }
 }
