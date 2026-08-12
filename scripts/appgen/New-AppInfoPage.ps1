@@ -141,12 +141,17 @@ foreach ($f in $CompanionFiles) {
   Add-LocalRow 'Companion files' ("Companion " + $f) ("http://localhost:$Port/" + $f)
 }
 
+# `@($rows)` (converting the List[object] via the array subexpression operator) hits a PowerShell
+# 7.5/.NET 9 dynamic-binder regression here: `PSToObjectArrayBinder`/`PSEnumerableBinder.MaybeDebase`
+# throws "Argument types do not match" (a LINQ `Expression.Condition` failure inside PowerShell's own
+# runtime, not this script) the moment the list holds `[ordered]` dictionaries. `.ToArray()` on the
+# List[object] produces the identical object[] without going through that binder.
 $overlay = [ordered]@{
   schemaVersion = 'npdev-app-info-local.v1'
   generatedBy   = 'scripts/appgen/New-AppInfoPage.ps1'
   appId         = $AppId
   note          = 'Facts about THIS MACHINE. Deliberately absent from the app''s own info.json, which travels.'
-  records       = @($rows)
+  records       = $rows.ToArray()
 }
 $overlayJson = ($overlay | ConvertTo-Json -Depth 6)
 # Same escape the emitter applies: a value containing a literal </script> must not close the tag.
