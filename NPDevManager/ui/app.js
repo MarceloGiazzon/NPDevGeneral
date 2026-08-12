@@ -1096,14 +1096,18 @@ window.__npdevRefreshInstall = async function refreshInstall() {
   // populating it afterwards would make the first render the one WITHOUT database rows.
   await refreshDoctorAppPicker();
   await loadDoctor();
+  // Everything the FIRST screen shows, before anything the other screens need -- these run in
+  // series, and `refreshTagList` talks to GitHub. Measured on a real machine: with the engine panel
+  // populated after the tag fetch, the answer to "what databases does this support" was still blank
+  // several seconds after the window opened, on the screen that opens first.
+  // (It also fills the New-app dropdown, from the same one call.)
+  await refreshEngineMatrix();
   await refreshJdkStatus();
   await refreshPythonStatus();
   await refreshSetupStatus();
   await refreshAppPaths();
-  await refreshTagList(false);
   await refreshAppList();
   await prefillRunAppDir();
-  // Fills the New-app dropdown AND the Ready screen's engine panel from one call.
-  await refreshEngineMatrix();
+  await refreshTagList(false);
   await refreshVersionsScreen();
 })();

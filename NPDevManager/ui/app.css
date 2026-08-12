@@ -243,6 +243,16 @@ form input {
   color: var(--fg);
 }
 
+/* The Run screen's three inputs, one per line. They are outside a <form>, so `form label` never
+   applied and they had always been inline -- which read fine with two of them and stopped reading
+   at all once the app picker joined: "App [select] [Refresh] App folder" ended up on one line with
+   the folder's own input on the next. Measured in the built window, not guessed. */
+#screen-run > label { display: block; margin: 10px 0; font-size: 13px; }
+#screen-run .run-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+#screen-run .run-row label { margin: 0; font-size: 13px; }
+#run-app-picker { min-width: 380px; max-width: 640px; }
+#run-app-dir { min-width: 380px; }
+
 .run-buttons { display: flex; gap: 10px; margin: 14px 0; }
 .run-banner {
   border: 1px solid var(--fail);
