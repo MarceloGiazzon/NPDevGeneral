@@ -7,7 +7,6 @@ param(
     [string]$SchemaPath = "schemas/ai/maturity-max-roadmap-boundary-report.schema.json",
     [string]$ReportPath = "scripts/reports/out/maturity-max-roadmap-boundary-report.json",
     [string]$Beta0TruthReportPath = "scripts/reports/out/beta0-state-truth-report.json",
-    [string]$RoadmapSourcePath = "C:\Users\Marcelo\Downloads\npdev_full_maturity_closure_roadmap_updated.md",
     [string]$RunId = ""
 )
 
@@ -103,11 +102,17 @@ try {
         Add-Check -Name ("required-file-exists:" + $path) -Passed ([bool]$evidence.exists) -Reason ("Required Checkpoint 0 file exists: " + $path) -Evidence $evidence
     }
 
-    $roadmapExists = Test-Path -LiteralPath $RoadmapSourcePath -PathType Leaf
-    $roadmapHash = if ($roadmapExists) { (Get-FileHash -Algorithm SHA256 -LiteralPath $RoadmapSourcePath).Hash.ToLowerInvariant() } else { $null }
-    $roadmapText = if ($roadmapExists) { Get-Content -Raw -LiteralPath $RoadmapSourcePath } else { "" }
-    $sourceContainsOlderTarget = $roadmapText -match "95\s*[-\u2013]\s*97" -or $roadmapText -match "91\s*[-\u2013]\s*92"
-    Add-Check -Name "authoritative-roadmap-input-present" -Passed $roadmapExists -Reason "The human-provided roadmap input is available for exact bundle preservation." -Evidence ([pscustomobject]@{ path = ($RoadmapSourcePath -replace "\\", "/"); sha256 = $roadmapHash })
+    # PLAN-11-to-4.md Item 4: this block used to default to a machine-local path in one maintainer's
+    # own Downloads folder ($RoadmapSourcePath), read it (Get-Content), and assert two things from
+    # its content: "the authoritative roadmap input is present" (could only ever PASS on that one
+    # machine -- Test-Path was false everywhere else, so the assertion reported FALSE on every other
+    # machine) and "the policy hasn't silently regressed to an older target the source input might
+    # still carry" (a real question, but one this same read answered "no finding" on every machine
+    # BUT the author's -- not a false pass, just zero actual verification anywhere else, the same
+    # "green while checking nothing" shape this repo has been bitten by repeatedly). Both assertions
+    # and the read behind them are removed outright, not narrowed: an external, non-repo, personal
+    # reference file is not a coupling this repo's own docs/policy can fix by conversion, and keeping
+    # a check that only ever verifies on one laptop is worse than not having it.
 
     $policyFullPath = Resolve-WorkspacePath -Root $workspaceRootPath -PathValue $PolicyPath
     $policy = Read-JsonFile $policyFullPath
@@ -120,11 +125,21 @@ try {
     # anymore. What used to be ~20 separate doc-text .Contains()/-match assertions (each a redundant
     # confirmation that the doc still said what the policy already said) is now one freshness check:
     # is each rendered doc byte-identical to what the policy would render today?
+    #
+    # PLAN-11-to-4.md Item 2: this used to run with --check (render in memory, read the CURRENTLY
+    # COMMITTED .md back off disk to compare) -- itself a script reading markdown content. Now it
+    # always regenerates in place, and git (which diffs bytes without this process ever opening the
+    # .md) answers "did that change anything already committed".
     $ErrorActionPreference = "Continue"
-    & $py "scripts/docs/generate_maturity_max_roadmap_docs.py" --check 2>$null | Out-Null
-    $docsUpToDate = ($LASTEXITCODE -eq 0)
+    & $py "scripts/docs/generate_maturity_max_roadmap_docs.py" 2>$null | Out-Null
+    $generatorRan = ($LASTEXITCODE -eq 0)
+    $docsUpToDate = $false
+    if ($generatorRan) {
+        git diff --exit-code -- docs/maintainers/ROADMAP_BOUNDARY_POLICY.md docs/maintainers/MATURITY_CLOSURE_LEDGER.md docs/maintainers/POST_BETA0_HUMAN_ACTION_REGISTER.md 2>$null | Out-Null
+        $docsUpToDate = ($LASTEXITCODE -eq 0)
+    }
     $ErrorActionPreference = "Stop"
-    Add-Check -Name "generated-docs-current" -Passed $docsUpToDate -Reason "ROADMAP_BOUNDARY_POLICY.md, MATURITY_CLOSURE_LEDGER.md and POST_BETA0_HUMAN_ACTION_REGISTER.md are byte-identical to what the policy JSON renders (run 'python scripts/docs/generate_maturity_max_roadmap_docs.py' to regenerate)." -Evidence ([pscustomobject]@{ generator = "scripts/docs/generate_maturity_max_roadmap_docs.py" })
+    Add-Check -Name "generated-docs-current" -Passed $docsUpToDate -Reason "ROADMAP_BOUNDARY_POLICY.md, MATURITY_CLOSURE_LEDGER.md and POST_BETA0_HUMAN_ACTION_REGISTER.md are byte-identical to what the policy JSON renders (run 'python scripts/docs/generate_maturity_max_roadmap_docs.py' and commit the result if this fails)." -Evidence ([pscustomobject]@{ generator = "scripts/docs/generate_maturity_max_roadmap_docs.py" })
 
     $policyCheckpointCount = if ($null -ne $policy) { @($policy.checkpoints).Count } else { 0 }
     $policyCheckpointsSequential = $null -ne $policy -and $policyCheckpointCount -eq [int]$policy.checkpointCount -and
@@ -143,7 +158,6 @@ try {
     Add-Check -Name "policy-human-approval-for-new-checkpoint" -Passed $requiresHumanApproval -Reason "Policy requires human approval before adding or changing checkpoints." -Evidence ([pscustomobject]@{ newCheckpointRequiresHumanApproval = $requiresHumanApproval })
     Add-Check -Name "policy-finding-classifications" -Passed $policyClassificationsPresent -Reason "Policy declares at least one finding classification, and every one has a value, meaning and action." -Evidence ([pscustomobject]@{ classificationCount = if ($null -ne $policy) { @($policy.allowedNewFindingClassifications).Count } else { 0 } })
     Add-Check -Name "normalized-maturity-values" -Passed $normalizedMaturityConsistent -Reason "Policy records current maturity as 7.8/10 (~78%) and target as 9.2-9.5/10 (~92-95%)." -Evidence ([pscustomobject]@{ expected = @{ current = "7.8/10 (~78%)"; target = "9.2-9.5/10 (~92-95%)" } })
-    Add-Check -Name "old-target-not-propagated" -Passed (-not $sourceContainsOlderTarget -or $normalizedMaturityConsistent) -Reason "Even if the source roadmap input carries an older target range, the policy (and everything generated from it) normalizes to the human-approved target." -Evidence ([pscustomobject]@{ normalizedTarget = "9.2-9.5/10 (~92-95%)" })
 
     $ErrorActionPreference = "Continue"
     $beta0PeeledOutput = git rev-parse "beta0^{}" 2>$null
@@ -192,22 +206,12 @@ try {
     $dirtyWorktree = @($dirtyLines).Count -gt 0
     Add-Check -Name "dirty-worktree-recorded-as-evidence-only" -Passed $true -Blocking $false -Reason "Dirty worktree state is recorded as evidence and is not an automatic CP0 blocker." -Evidence ([pscustomobject]@{ dirty = $dirtyWorktree; dirtyLineCount = @($dirtyLines).Count; dirtyPaths = @($dirtyLines) })
 
+    # PLAN-11-to-4.md Item 4: used to populate a CP0-SOURCE-TARGET-INCONSISTENCY finding from the
+    # now-removed external roadmap read above. Always empty now -- kept as fields (not deleted from
+    # the report) since neither is schema-required and other evidence consumers may already key off
+    # their presence.
     $sourceInconsistencies = @()
     $newFindings = @()
-    if ($sourceContainsOlderTarget) {
-        $sourceInconsistencies += [pscustomobject]@{
-            id = "CP0-SOURCE-TARGET-INCONSISTENCY"
-            description = "Authoritative roadmap input contains an older target range; CP0 evidence normalizes to the human-approved target."
-            normalizedCurrent = "7.8/10 (~78%)"
-            normalizedTarget = "9.2-9.5/10 (~92-95%)"
-        }
-        $newFindings += [pscustomobject]@{
-            id = "CP0-SOURCE-TARGET-INCONSISTENCY"
-            description = "Authoritative roadmap input contains an older target range; CP0 evidence normalizes to the human-approved target."
-            classification = "known-risk-accepted"
-            status = "normalized"
-        }
-    }
 
     $beta0TruthReport = [pscustomobject]@{
         schemaVersion = "npdev-beta0-state-truth-report.v1"
@@ -265,12 +269,6 @@ try {
             cursorLocalDefault = $policy.evidencePathPolicy.cursorLocalDefault
             cloudFallbackEnvironmentVariable = $policy.evidencePathPolicy.cloudFallbackEnvironmentVariable
             repoRelativeFallback = $policy.evidencePathPolicy.repoRelativeFallback
-        }
-        authoritativeRoadmapInput = [pscustomobject]@{
-            path = $RoadmapSourcePath
-            exists = $roadmapExists
-            sha256 = $roadmapHash
-            exactCopyRequiredInBundle = $true
         }
         beta0TruthReportPath = $Beta0TruthReportPath
         beta0RepositoryState = $beta0RepoState

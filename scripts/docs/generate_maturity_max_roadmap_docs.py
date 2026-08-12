@@ -10,18 +10,25 @@ right things -- and the right things were ALSO duplicated as hardcoded PowerShel
 that same script, a third copy of data the policy JSON already carried. All three had already drifted
 from each other in wording (see scripts/policy/maturity-max-roadmap-policy.json's own `why` field for
 specifics). This script is the single place that turns the policy JSON into the three documents; nothing
-downstream reads the documents as data anymore -- check-maturity-max-roadmap-boundary.py checks the
-JSON directly and this script's own --check mode is the only thing that ever compares against the
-rendered file, to catch a hand-edit that was never regenerated.
+downstream reads the documents as data anymore -- run-maturity-max-roadmap-boundary-check.ps1 checks
+the JSON directly.
+
+STALENESS DETECTION MOVED TO GIT, NOT --check (Phase 7, PLAN-11-to-4.md Item 2)
+--------------------------------------------------------------------------------
+`--check` used to read each CURRENTLY COMMITTED .md back off disk to catch a hand-edit that was
+never regenerated -- a script reading markdown content, one level removed from the docs themselves
+(found while building check-no-markdown-reads.py). This script now only ever WRITES; staleness
+detection moves to the caller, using git to diff bytes without this process opening the .md itself:
+
+    python scripts/docs/generate_maturity_max_roadmap_docs.py
+    git diff --exit-code -- docs/maintainers/ROADMAP_BOUNDARY_POLICY.md docs/maintainers/MATURITY_CLOSURE_LEDGER.md docs/maintainers/POST_BETA0_HUMAN_ACTION_REGISTER.md
 
 USAGE
 -----
     python scripts/docs/generate_maturity_max_roadmap_docs.py            # write all 3 docs
-    python scripts/docs/generate_maturity_max_roadmap_docs.py --check    # exit 1 if any is stale
 """
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from pathlib import Path
@@ -288,29 +295,8 @@ TARGETS = [
 ]
 
 
-def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--check", action="store_true", help="exit 1 if any rendered doc is stale, write nothing")
-    args = parser.parse_args(argv)
-
+def main(_argv: list[str]) -> int:
     policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
-
-    if args.check:
-        stale = []
-        for path, renderer in TARGETS:
-            rendered = renderer(policy)
-            current = path.read_text(encoding="utf-8") if path.exists() else None
-            if current != rendered:
-                stale.append(path)
-        if stale:
-            for path in stale:
-                print(f"STALE: {path.relative_to(_REPO_ROOT).as_posix()} does not match "
-                      f"scripts/policy/maturity-max-roadmap-policy.json (run without --check to regenerate)",
-                      file=sys.stderr)
-            return 1
-        print("OK: all 3 maturity-max-roadmap docs are current.")
-        return 0
-
     for path, renderer in TARGETS:
         rendered = renderer(policy)
         path.write_text(rendered, encoding="utf-8")
