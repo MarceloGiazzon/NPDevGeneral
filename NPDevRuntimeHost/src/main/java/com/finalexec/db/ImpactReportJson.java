@@ -1,6 +1,10 @@
 package com.finalexec.db;
 
+import com.finalexec.db.schemastate.ConstraintSurplusReport;
 import com.finalexec.db.schemastate.SchemaDiffItem;
+import com.finalexec.db.schemastate.SurplusConstraint;
+
+import java.util.List;
 
 /**
  * The machine-facing rendering of an {@link ImpactReport} (schema-engine rebuild, P6.2), conforming to
@@ -20,6 +24,13 @@ public final class ImpactReportJson {
      * @param ackToken    emitted only when the verdict is DESTRUCTIVE; ignored otherwise
      */
     public static String render(ImpactReport report, String generatedAt, String fromFp, String toFp, String ackToken) {
+        return render(report, generatedAt, fromFp, toFp, ackToken, ConstraintSurplusReport.EMPTY);
+    }
+
+    /** @param surplus B3.2: the advisory FK/index surplus classification. Emitted as {@code
+     *                 surplusConstraints} only when non-empty; never affects {@code verdict}. */
+    public static String render(ImpactReport report, String generatedAt, String fromFp, String toFp, String ackToken,
+            ConstraintSurplusReport surplus) {
         StringBuilder out = new StringBuilder();
         out.append("{\n");
         out.append("  \"generatedAt\": ").append(str(generatedAt)).append(",\n");
@@ -49,9 +60,43 @@ public final class ImpactReportJson {
             out.append("      \"proposedConversionSql\": ").append(str(proposal == null ? null : proposal.sql())).append('\n');
             out.append("    }");
         }
-        out.append(report.items().isEmpty() ? "]\n" : "\n  ]\n");
+        out.append(report.items().isEmpty() ? "]" : "\n  ]");
+        out.append(surplus == null || surplus.isEmpty() ? "\n" : ",\n");
+        appendSurplusConstraints(out, surplus);
         out.append("}\n");
         return out.toString();
+    }
+
+    /** B3.2: {@code surplusConstraints}, conforming to {@code impact-report.schema.json}'s own
+     *  optional property of the same name. Omitted entirely (not even an empty object) when there is
+     *  nothing to report, so an ordinary converged app's JSON is byte-identical to before this shipped. */
+    private static void appendSurplusConstraints(StringBuilder out, ConstraintSurplusReport surplus) {
+        if (surplus == null || surplus.isEmpty()) {
+            return;
+        }
+        out.append("  \"surplusConstraints\": {\n");
+        String abstained = surplus.abstentions().isEmpty() ? null : String.join("; ", surplus.abstentions());
+        out.append("    \"abstained\": ").append(str(abstained)).append(",\n");
+        out.append("    \"items\": [");
+        List<SurplusConstraint> items = surplus.surplus();
+        for (int i = 0; i < items.size(); i++) {
+            SurplusConstraint sc = items.get(i);
+            out.append(i == 0 ? "\n" : ",\n");
+            out.append("      {\n");
+            out.append("        \"table\": ").append(str(sc.table())).append(",\n");
+            out.append("        \"kind\": ").append(str(sc.kind())).append(",\n");
+            out.append("        \"liveName\": ").append(str(sc.liveName())).append(",\n");
+            out.append("        \"columns\": [");
+            for (int c = 0; c < sc.columns().size(); c++) {
+                out.append(c == 0 ? "" : ", ").append(str(sc.columns().get(c)));
+            }
+            out.append("],\n");
+            out.append("        \"unique\": ").append(sc.unique()).append(",\n");
+            out.append("        \"referencedTable\": ").append(str(sc.referencedTable())).append('\n');
+            out.append("      }");
+        }
+        out.append(items.isEmpty() ? "]\n" : "\n    ]\n");
+        out.append("  }\n");
     }
 
     /** JSON string literal (or {@code null}) with strict escaping. */

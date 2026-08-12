@@ -48,10 +48,17 @@ public final class PartialApplicationTruth {
         if (dialect.supports(StorageCapability.DDL_IN_TRANSACTION)) {
             return "the hook's changes were rolled back; nothing persisted";
         }
+        // B11.2 (boundaries-2026-08-12 plan): the remedy docs/ACCEPTED_BOUNDARIES.md B11 has always
+        // named -- "split destructive DDL and data movement into separate hooks/boots" -- used to live
+        // only in that doc and in a pre-run warning an operator could scroll past. It belongs in the
+        // sentence an operator actually reads at the moment of failure, not filed away for later.
         return "engine '" + dialect.name() + "' COMMITS IMPLICITLY ON DDL, so the hook's "
                 + "schema changes (and any data change made before them) are ALREADY COMMITTED and were "
                 + "NOT rolled back -- only data changes made after the last DDL statement were undone. "
-                + "Inspect the schema before re-running";
+                + "Inspect the schema before re-running. Next time, split destructive DDL and data "
+                + "movement into separate hooks/boots (or run this conversion on an engine with "
+                + "transactional DDL, e.g. Postgres/SQL Server) so a verify failure can't leave the "
+                + "schema and data in this state -- see docs/ACCEPTED_BOUNDARIES.md B11";
     }
 
     /**

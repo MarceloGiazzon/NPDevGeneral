@@ -5,12 +5,17 @@ import com.finalexec.db.schemastate.CurrentSchemaReader;
 import com.finalexec.db.schemastate.SchemaDiff;
 import com.finalexec.db.schemastate.SchemaDiffEngine;
 import com.finalexec.db.schemastate.SchemaDiffItem;
+import com.npdev.kernel.storage.sql.H2Dialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -104,6 +109,64 @@ class ConversionHookRunnerH2Test {
         assertTrue(outcomes.contains("HOOK_APPLIED"), outcomes.toString());
         assertTrue(outcomes.contains("RESOLVED"), outcomes.toString());
         assertEquals(0L, singleLongQuery("SELECT COUNT(*) FROM p75_resolve WHERE status IS NULL"));
+    }
+
+    @Test
+    void b11_1_hookMixingDdlWithVerifySqlOnAnImplicitCommitEngineWarnsBeforeRunning() throws SQLException {
+        // docs/ACCEPTED_BOUNDARIES.md B11.1: the warning must fire BEFORE the hook runs, asking the
+        // dialect's DDL_IN_TRANSACTION capability (not a hardcoded "h2" string -- STOR-2's own
+        // precedent) rather than hoping an operator reads a javadoc.
+        SqlDialects.setActive(H2Dialect.INSTANCE);
+        try {
+            exec("CREATE TABLE p75_resolve (id BIGINT PRIMARY KEY)");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p75_resolve", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
+                    List.of("id"), List.of("id", "status"));
+
+            ByteArrayOutputStream capturedOut = new ByteArrayOutputStream();
+            PrintStream originalOut = System.out;
+            try {
+                System.setOut(new PrintStream(capturedOut, true, StandardCharsets.UTF_8));
+                ConversionHookRunner.run(dataSource, manifest, historyWriter);
+            } finally {
+                System.setOut(originalOut);
+            }
+            String logged = capturedOut.toString(StandardCharsets.UTF_8);
+            assertTrue(logged.contains("WARNING"), logged);
+            assertTrue(logged.contains("p75-resolve"), logged);
+            assertTrue(logged.contains("COMMITS IMPLICITLY ON DDL"), logged);
+            assertTrue(logged.contains("separate hooks"), "must carry the B11.2 remedy: " + logged);
+            assertTrue(logged.contains("'" + H2Dialect.INSTANCE.name() + "'"),
+                    "must name the actual active engine (SqlDialect.name() is lower-case by convention): " + logged);
+        } finally {
+            SqlDialects.resetActiveForTesting();
+        }
+    }
+
+    @Test
+    void b11_1_noWarningOnAnEngineWithTransactionalDdl() throws SQLException {
+        // A transactional-DDL engine has nothing to warn about -- a verify failure there really does
+        // roll everything back, so printing the same warning would be noise, not safety.
+        SqlDialects.setActive(com.npdev.kernel.storage.sql.PostgresDialect.INSTANCE);
+        try {
+            exec("CREATE TABLE p75_resolve (id BIGINT PRIMARY KEY)");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p75_resolve", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
+                    List.of("id"), List.of("id", "status"));
+
+            ByteArrayOutputStream capturedOut = new ByteArrayOutputStream();
+            PrintStream originalOut = System.out;
+            try {
+                System.setOut(new PrintStream(capturedOut, true, StandardCharsets.UTF_8));
+                ConversionHookRunner.run(dataSource, manifest, historyWriter);
+            } finally {
+                System.setOut(originalOut);
+            }
+            String logged = capturedOut.toString(StandardCharsets.UTF_8);
+            assertFalse(logged.contains("WARNING"), logged);
+        } finally {
+            SqlDialects.resetActiveForTesting();
+        }
     }
 
     @Test

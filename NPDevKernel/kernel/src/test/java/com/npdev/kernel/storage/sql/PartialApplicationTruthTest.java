@@ -51,6 +51,27 @@ class PartialApplicationTruthTest {
     }
 
     @Test
+    @DisplayName("B11.2: an implicit-commit engine's failure message carries the split-hook remedy, not just the diagnosis")
+    void implicitCommitEngineFailureMessageCarriesTheRemedy() {
+        // docs/ACCEPTED_BOUNDARIES.md B11 has always named the workaround -- "split destructive DDL
+        // and data movement into separate hooks/boots" -- but it used to live only in that doc and in
+        // a PRE-run warning an operator could scroll past. It belongs in the sentence read at the
+        // moment of actual failure too.
+        for (SqlDialect dialect : List.of(MySqlDialect.INSTANCE, H2Dialect.INSTANCE)) {
+            String message = PartialApplicationTruth.afterRollback(dialect);
+            assertTrue(message.contains("separate hooks"), dialect.name() + " must name the remedy: " + message);
+            assertTrue(message.contains("B11"), dialect.name() + " must point at the boundary: " + message);
+        }
+        // A transactional engine has nothing to remediate -- appending unsolicited advice to an
+        // already-safe outcome would just be noise.
+        for (SqlDialect dialect : List.of(PostgresDialect.INSTANCE, SqlServerDialect.INSTANCE)) {
+            String message = PartialApplicationTruth.afterRollback(dialect);
+            assertTrue(!message.contains("separate hooks"),
+                    dialect.name() + " rolls back fully; no remedy is needed: " + message);
+        }
+    }
+
+    @Test
     @DisplayName("a failed multi-step pass names the items that are already permanent")
     void multiStepFailureNamesTheSurvivors() {
         List<String> items = List.of(

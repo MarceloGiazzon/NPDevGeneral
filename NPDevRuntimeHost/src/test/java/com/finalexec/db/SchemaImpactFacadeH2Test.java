@@ -20,6 +20,7 @@ import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * H2 coverage for {@link SchemaImpactFacade} (SER-P6.0). {@code forLiveDatabase} calls {@code
@@ -55,6 +56,8 @@ class SchemaImpactFacadeH2Test {
         assertNotNull(result);
         assertNotNull(result.report());
         assertNull(result.ackToken(), "no manifest -> no diff -> never DESTRUCTIVE -> no token");
+        assertNotNull(result.surplus(), "B3.2: surplus is never null, even with no manifest");
+        assertTrue(result.surplus().isEmpty(), "nothing to classify without a physical-database manifest");
     }
 
     /** REG-39 layer 3: a stale identity-pack copy must surface as NEEDS_ATTENTION here too, not only at

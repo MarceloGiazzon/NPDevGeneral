@@ -10,6 +10,12 @@ import java.util.List;
  * matching, destructive acknowledgment) can ever treat a surplus finding as something to resolve. There
  * is no drop path here, not even a stub.
  *
+ * <p><b>Wired, as of B3.2 (boundaries-2026-08-12 plan):</b> {@code SchemaImpactFacade}/{@code
+ * ImpactReportWriter} compute this alongside the ordinary missing-only diff (same {@code CurrentSchema}/
+ * {@code DesiredSchema} inputs, zero extra DB round-trips) and {@code ImpactReportText}/{@code
+ * ImpactReportJson} render it as a clearly-separated informational section — never affecting {@code
+ * ImpactReport.verdict()} and never emitting DDL. Still exactly as advisory as the day this shipped.
+ *
  * @param surplus     every live FK/index classified
  *                    {@link ConstraintSurplusClassifier.Classification#FOREIGN} — the only class ever
  *                    reported
@@ -18,6 +24,9 @@ import java.util.List;
  *                    whenever classification actually ran
  */
 public record ConstraintSurplusReport(List<SurplusConstraint> surplus, List<String> abstentions) {
+
+    /** The no-op report: no manifest, no physical database, nothing to classify. */
+    public static final ConstraintSurplusReport EMPTY = new ConstraintSurplusReport(List.of(), List.of());
 
     public boolean isEmpty() {
         return surplus.isEmpty() && abstentions.isEmpty();

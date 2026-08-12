@@ -1,10 +1,14 @@
 package com.finalexec.db;
 
+import com.finalexec.db.schemastate.ConstraintSurplusReport;
 import com.finalexec.db.schemastate.Resolution;
+import com.finalexec.db.schemastate.SafetyClass;
 import com.finalexec.db.schemastate.SchemaDiffItem;
+import com.finalexec.db.schemastate.SurplusConstraint;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * The human-facing rendering of an {@link ImpactReport} (schema-engine rebuild, P6.2): an aligned table,
@@ -26,6 +30,13 @@ public final class ImpactReportText {
      *                 or {@code null}
      */
     public static String render(ImpactReport report, String fromFp, String toFp, String ackToken) {
+        return render(report, fromFp, toFp, ackToken, ConstraintSurplusReport.EMPTY);
+    }
+
+    /** @param surplus B3.2: the advisory FK/index surplus classification, rendered as its own section
+     *                 after every other section — never affects {@code verdict}, never a drop proposal. */
+    public static String render(ImpactReport report, String fromFp, String toFp, String ackToken,
+            ConstraintSurplusReport surplus) {
         StringBuilder out = new StringBuilder();
         out.append("NPDev schema impact report\n");
         out.append("  fingerprint: ").append(nullSafe(fromFp)).append(" -> ").append(nullSafe(toFp)).append('\n');
@@ -33,6 +44,7 @@ public final class ImpactReportText {
 
         if (report.items().isEmpty()) {
             out.append("  (no schema changes)\n");
+            appendSurplusConstraints(out, surplus);
             return out.toString();
         }
 
@@ -76,6 +88,8 @@ public final class ImpactReportText {
             out.append("  acknowledgment token: ").append(ackToken).append('\n');
         }
         appendProposedConversions(out, report);
+        appendPossibleRenames(out, report);
+        appendSurplusConstraints(out, surplus);
         return out.toString();
     }
 
@@ -104,6 +118,93 @@ public final class ImpactReportText {
                 out.append("      ").append(line).append('\n');
             }
             out.append("      verifySql: ").append(proposal.verifySql()).append('\n');
+        }
+    }
+
+    /**
+     * B1.1 (docs/ACCEPTED_BOUNDARIES.md B1): a diff cannot tell a rename from a drop-plus-add — that
+     * information is genuinely absent from a pure shape comparison, and guessing it is exactly what B1
+     * refuses to do. What this CAN do without inferring anything: point out every {@code table} where a
+     * column with LIVE DATA is being dropped while another column of the SAME normalized type is being
+     * added, and print the exact {@code renamedFrom} declaration that turns the guess into a fact. NPDev
+     * still refuses either way; a human still declares. Never applies to a HOOK_CLAIMED drop (a hook
+     * already resolves it deliberately) or a column with zero live rows (nothing at stake yet).
+     */
+    private static void appendPossibleRenames(StringBuilder out, ImpactReport report) {
+        List<ImpactReport.Item> drops = report.items().stream()
+                .filter(item -> item.diffItem().safetyClass() == SafetyClass.DESTRUCTIVE_DROP_COLUMN
+                        && item.diffItem().resolution() == Resolution.UNRESOLVED
+                        && item.rowsAffected() > 0)
+                .toList();
+        if (drops.isEmpty()) {
+            return;
+        }
+        List<ImpactReport.Item> adds = report.items().stream()
+                .filter(item -> isAddColumn(item.diffItem()) && item.diffItem().resolution() == Resolution.UNRESOLVED)
+                .toList();
+        StringBuilder section = new StringBuilder();
+        for (ImpactReport.Item drop : drops) {
+            SchemaDiffItem dropItem = drop.diffItem();
+            for (ImpactReport.Item add : adds) {
+                SchemaDiffItem addItem = add.diffItem();
+                if (!nullSafe(dropItem.table()).equals(nullSafe(addItem.table()))
+                        || !sameNormalizedType(dropItem.before(), addItem.after())) {
+                    continue;
+                }
+                section.append("    '").append(nullSafe(dropItem.column())).append("' would be dropped and '")
+                        .append(nullSafe(addItem.column())).append("' added on ").append(nullSafe(dropItem.table()))
+                        .append(" (").append(drop.rowsAffected()).append(" row(s) hold a value today). "
+                                + "If this is a RENAME, declare it and re-run:\n")
+                        .append("        \"").append(nullSafe(addItem.column())).append("\": { ..., \"renamedFrom\": \"")
+                        .append(nullSafe(dropItem.column())).append("\" }\n")
+                        .append("    If it is genuinely a drop plus an add, acknowledge the drop as shown above "
+                                + "(this hint never blocks or auto-applies anything).\n");
+            }
+        }
+        if (section.length() == 0) {
+            return;
+        }
+        out.append("  possible rename(s) -- NPDev cannot tell a rename from a drop+add by shape alone, so it "
+                + "still refuses; this is the fix, not a guess (docs/ACCEPTED_BOUNDARIES.md B1):\n");
+        out.append(section);
+    }
+
+    private static boolean isAddColumn(SchemaDiffItem item) {
+        return item.itemKey().startsWith("ADD_COLUMN:") || item.itemKey().startsWith("ADD_REQUIRED_COLUMN:");
+    }
+
+    private static boolean sameNormalizedType(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        return a.trim().toUpperCase(Locale.ROOT).equals(b.trim().toUpperCase(Locale.ROOT));
+    }
+
+    /** B3.2 (docs/ACCEPTED_BOUNDARIES.md B3): the surplus FK/index classification, rendered as its own
+     *  advisory section. Never influences {@code verdict}; never proposes a drop -- see {@link
+     *  ConstraintSurplusReport}'s own javadoc for why that is true by construction, not just by review. */
+    private static void appendSurplusConstraints(StringBuilder out, ConstraintSurplusReport surplus) {
+        if (surplus == null || surplus.isEmpty()) {
+            return;
+        }
+        if (!surplus.abstentions().isEmpty()) {
+            out.append("  surplus FK/index constraints: cannot classify -- ")
+                    .append(String.join("; ", surplus.abstentions())).append('\n');
+            return;
+        }
+        out.append("  surplus FK/index constraints this model does not declare (advisory only -- never "
+                + "proposed for drop, docs/ACCEPTED_BOUNDARIES.md B3): ").append(surplus.surplus().size())
+                .append(" found\n");
+        for (SurplusConstraint sc : surplus.surplus()) {
+            out.append("    [").append(sc.kind()).append("] ").append(sc.table()).append('.')
+                    .append(String.join(",", sc.columns()));
+            if (sc.liveName() != null) {
+                out.append(" (").append(sc.liveName()).append(')');
+            }
+            if ("FOREIGN_KEY".equals(sc.kind()) && sc.referencedTable() != null) {
+                out.append(" -> ").append(sc.referencedTable());
+            }
+            out.append('\n');
         }
     }
 
