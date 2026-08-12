@@ -15,19 +15,24 @@
     </label>
   </div>
 
+  <!--
+    The Monitor sits third: after the two screens you use once to set the machine up, and before the
+    four you use to work on one app. It is the screen you come back to. Every selection here is by
+    `data-screen`/id and nothing indexes by position, so the order is presentation only.
+  -->
   <nav class="tabs">
     <button class="tab" data-screen="ready">Ready</button>
     <button class="tab" data-screen="install">Install</button>
+    <button class="tab" data-screen="monitor">The Monitor</button>
     <button class="tab" data-screen="apps">Apps</button>
     <button class="tab" data-screen="run">Run</button>
     <button class="tab" data-screen="versions">Versions</button>
-    <button class="tab" data-screen="monitor">The Monitor</button>
     <button class="tab" data-screen="scrap">Scrap Manager</button>
     <button class="tab" data-screen="prompter">Prompter</button>
   </nav>
 
   <main>
-    <!-- 1: Ready -->
+    <!-- Ready. Sections are addressed by id; the tab strip above sets the ORDER they are shown in, which is no longer this file's order. -->
     <section id="screen-ready" class="screen">
       <h1>Ready</h1>
       <p class="subtitle">Checks NPDev's own <code>doctor</code> already runs -- every row, including passes.</p>
@@ -57,7 +62,7 @@
       <div id="engine-matrix" class="check-list"></div>
     </section>
 
-    <!-- 2: Install -->
+    <!-- Install -->
     <section id="screen-install" class="screen" hidden>
       <h1>Install</h1>
       <p class="subtitle">
@@ -128,7 +133,7 @@
       </div>
     </section>
 
-    <!-- 3: Apps -->
+    <!-- Apps -->
     <section id="screen-apps" class="screen" hidden>
       <h1>Apps</h1>
       <div id="app-list" class="app-list"></div>
@@ -188,7 +193,7 @@
       <p id="new-app-status" class="status-line"></p>
     </section>
 
-    <!-- 4: Run -->
+    <!-- Run -->
     <section id="screen-run" class="screen" hidden>
       <h1>Run</h1>
       <!--
@@ -237,13 +242,13 @@
       <div id="run-log" class="log-view"></div>
     </section>
 
-    <!-- 5: Versions -->
+    <!-- Versions -->
     <section id="screen-versions" class="screen" hidden>
       <h1>Versions</h1>
       <div id="version-list" class="version-list"></div>
       <p class="subtitle">Each version is one folder under the Manager's own home. Removing it deletes exactly that folder.</p>
     </section>
-    <!-- 6: The Monitor (MONITOR_PLAN Phase B) -->
+    <!-- The Monitor (MONITOR_PLAN Phase B) -- third in the tab strip -->
     <section id="screen-monitor" class="screen" hidden>
       <h1>▚ THE MONITOR <span class="dim">// every generated app on this machine</span></h1>
       <p class="subtitle">
@@ -284,7 +289,7 @@
       <main class="grid" id="monitor-grid"></main>
     </section>
 
-    <!-- 7: Scrap Manager (MONITOR_PLAN Phase D) -->
+    <!-- Scrap Manager (MONITOR_PLAN Phase D) -->
     <section id="screen-scrap" class="screen" hidden>
       <h1>▚ SCRAP MANAGER <span class="dim">// browser explorations</span></h1>
       <p class="subtitle">
@@ -325,7 +330,7 @@
       </div>
     </section>
 
-    <!-- 8: Prompter (Phase F) -->
+    <!-- Prompter (Phase F) -->
     <section id="screen-prompter" class="screen" hidden>
       <h1>▚ PROMPTER <span class="dim">// ask a model about an app</span></h1>
       <p class="subtitle">
