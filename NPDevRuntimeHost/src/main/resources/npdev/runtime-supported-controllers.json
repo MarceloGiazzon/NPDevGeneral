@@ -4,6 +4,7 @@
   "surfaceProfileProperty": "npdev.runtime.surface-profile",
   "enforcedByProperty": "npdev.runtime.supported-surface-enforced",
   "allowedControllers": [
+    "AgentProxyController",
     "AggregateApiController",
     "ConceptQueryController",
     "PropertyResolverController",

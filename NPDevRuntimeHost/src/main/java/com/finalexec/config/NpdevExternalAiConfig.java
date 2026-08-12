@@ -44,9 +44,18 @@ public class NpdevExternalAiConfig {
             @Value("${npdev.externalai.http.nvidia.apiKeyEnvVar:NPDEV_EXTERNALAI_NVIDIA_API_KEY}") String nvidiaKeyEnvVar,
             @Value("${npdev.externalai.http.nvidia.model:meta/llama-3.3-70b-instruct}") String nvidiaModel,
             @Value("${npdev.externalai.http.gemini.apiKeyEnvVar:NPDEV_EXTERNALAI_GEMINI_API_KEY}") String geminiKeyEnvVar,
-            @Value("${npdev.externalai.http.gemini.model:gemini-3.5-flash}") String geminiModel
+            @Value("${npdev.externalai.http.gemini.model:gemini-3.5-flash}") String geminiModel,
+            @Value("${npdev.externalai.http.anthropic.apiKeyEnvVar:NPDEV_EXTERNALAI_ANTHROPIC_API_KEY}") String anthropicKeyEnvVar,
+            @Value("${npdev.externalai.http.anthropic.model:claude-opus-5}") String anthropicModel,
+            @Value("${npdev.externalai.http.openai.apiKeyEnvVar:NPDEV_EXTERNALAI_OPENAI_API_KEY}") String openaiKeyEnvVar,
+            @Value("${npdev.externalai.http.openai.model:gpt-4o-mini}") String openaiModel
     ) {
+        // All four are always CONFIGURED here; only the ones whose key env var is actually set are
+        // reachable -- the adapter denies the rest with EGRESS_DENIED_NO_API_KEY rather than sending.
+        // So listing a vendor costs nothing and grants nothing; the key is the switch.
         List<ExternalAiVendorProfile> vendors = List.of(
+                ExternalAiVendorProfile.anthropic(anthropicKeyEnvVar, anthropicModel),
+                ExternalAiVendorProfile.openai(openaiKeyEnvVar, openaiModel),
                 ExternalAiVendorProfile.nvidiaBuild(nvidiaKeyEnvVar, nvidiaModel),
                 ExternalAiVendorProfile.gemini(geminiKeyEnvVar, geminiModel)
         );
