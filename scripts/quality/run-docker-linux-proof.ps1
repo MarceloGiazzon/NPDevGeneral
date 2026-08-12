@@ -248,10 +248,44 @@ if ([string]$version.status -ne "passed") {
 }
 
 if ($failures.Count -eq 0) {
+    # Every Gradle distribution this repo's wrappers ask for, DERIVED rather than restated, and
+    # baked into the image so the container never fetches Gradle over the network at run time.
+    #
+    # This gate lost that coin flip twice on 2026-08-12 (runs 31620633059 and 31623132314), each
+    # time on a different distribution, each time with the same
+    # `org.gradle.wrapper.Install.forceFetch` SocketException before any of our code compiled.
+    #
+    # Read from the wrapper files instead of listed in the Dockerfile on purpose: a hardcoded copy
+    # goes stale the first time someone bumps a wrapper, and the failure mode of a stale bake is
+    # SILENT -- the hash no longer matches, the wrapper downloads again, and the flakiness returns
+    # with nothing to point at. That is the same invisible-drift shape that left this whole gate red
+    # for six weeks. Note the repo is deliberately NOT single-version today (RuntimeHost is on
+    # 9.5.1, everything else on 8.5), so this must handle a set, not one value.
+    $wrapperPropertyFiles = @(Get-ChildItem -LiteralPath $workspaceRoot -Recurse -Force -File -Filter "gradle-wrapper.properties" -ErrorAction SilentlyContinue |
+            Where-Object {
+                $segments = @((Get-NPDevWorkspaceRelativePath $workspaceRoot $_.FullName) -split "[\\/]")
+                @($segments | Where-Object { $_ -in @(".git", ".gradle", "build", "dist", "node_modules", "out", "target") }).Count -eq 0
+            })
+    $gradleDistributionUrls = @($wrapperPropertyFiles |
+            ForEach-Object { Get-Content -LiteralPath $_.FullName } |
+            Where-Object { $_ -match "^distributionUrl=" } |
+            ForEach-Object { ($_ -replace "^distributionUrl=", "").Trim().Replace("\:", ":") } |
+            Where-Object { $_ -like "http*" } |
+            Sort-Object -Unique)
+
+    if ($gradleDistributionUrls.Count -eq 0) {
+        Add-Failure -Code "gradle-distributions-not-resolved" -Message "No Gradle distributionUrl found in any gradle-wrapper.properties; refusing to build an image that would download Gradle at run time." -Path "gradle/wrapper/gradle-wrapper.properties" -Details @{ wrapperFileCount = $wrapperPropertyFiles.Count }
+    }
+    else {
+        Write-NPDevInfo ("Baking " + $gradleDistributionUrls.Count + " Gradle distribution(s) into the image: " + ($gradleDistributionUrls -join ", "))
+    }
+}
+
+if ($failures.Count -eq 0) {
     $build = Invoke-LoggedCommand `
         -Name "docker-build" `
         -Executable $DockerExecutable `
-        -Arguments @("build", "-f", (Convert-ToRepoPath -Root $workspaceRoot -PathValue $dockerfileFull), "-t", $imageTag, ".") `
+        -Arguments @("build", "-f", (Convert-ToRepoPath -Root $workspaceRoot -PathValue $dockerfileFull), "--build-arg", ("GRADLE_DISTRIBUTION_URLS=" + ($gradleDistributionUrls -join " ")), "-t", $imageTag, ".") `
         -WorkingDirectory $workspaceRoot `
         -TimeoutSeconds $BuildTimeoutSeconds `
         -StdoutPath (Join-Path $logRoot "docker-build.stdout.log") `
