@@ -210,6 +210,37 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   redacted `resolved-db-plan.json` — **that plan carries a DB password, so anything that copies it
   off the machine must go through `npdev_monitor.redact()`.**
 
+- **Regeneration spares exactly three directories, and the list lives in THREE places that must
+  agree**: `data` (the app's database, PORT-1), `logs` (above), and `secrets` (the operator-written
+  `agent-proxy.env` holding a provider API key). The seams are `Build-NpdevApp.ps1`'s and
+  `Build-ClaudeApp.ps1`'s `$SparedInsideApp` and `FinalAppAssembler.PRESERVED_APP_DIRECTORIES`.
+  **The Java layer runs LAST, in the same build**, so a directory added to a PowerShell list and not
+  to the Java one is spared and then deleted again with no error — which is exactly what happened to
+  `logs` between MONITOR_PLAN D10 and the agent-proxy work. Pinned by twin-pair rule
+  `app-secrets-dir-spared-three-seams` (token `npdev-app-secrets-spared`).
+- **The agent proxy** lets a generated app's `agent-prompter.html` send its composed prompt without
+  the browser ever holding a key: `AgentProxyController` (`com.finalexec.api`) over the existing
+  fail-closed `external-ai-http` adapter, which now speaks Anthropic and OpenAI alongside
+  nvidia/gemini. `GET /api/agent-proxy/config` is open to any authenticated caller;
+  `POST /api/agent-proxy/generate` is **SUPERUSER-gated, not ADMIN** — in an `auth.mode=none` app the
+  generated `RuntimeContextService` grants ADMIN to every anonymous caller, so ADMIN is no gate at
+  all in dev apps. The key comes from `<app>\secrets\agent-proxy.env`, which `_ops\Start-App.ps1` and
+  `_ops\Run-FinalApp.ps1` load into the app process's environment; only `agent-proxy.env.example` is
+  ever emitted. **A new supported controller belongs in `com.finalexec.api` and in
+  `runtime-supported-controllers.json`** — three enforcement points read that manifest and only that
+  package satisfies all three (`build.gradle.template` compile-exclusion,
+  `RuntimeControllerAllowlistConfig` bean removal, and `run-runtime-surface-evidence.ps1`, which
+  fails the RuntimeHost gate for a listed controller whose file is not under `com/finalexec/api`).
+- **RuntimeHost tests that name `com.npdev.generated.` never run in any gate.**
+  `build.gradle.template` excludes every test source containing that string from the `test` task
+  **unconditionally** — not only when the generated-runtime mount is absent, which is the case the
+  neighbouring conditional block handles. Measured 2026-08-12 on the assembled sample app:
+  `com/finalexec/controlpanel/` compiled **zero** test classes and `com/finalexec/api/` compiled 2 of
+  4. So `SchemaImpactControllerTest` and every other controller test that mocks
+  `RuntimeContextService` is dead weight in `run-runtimehost-gate.ps1`. Write such a test if it
+  documents intent, but **do not treat a green RuntimeHost gate as evidence it passed** — prove
+  controller guards against a running app instead.
+
 ## Stability policy
 
 NPDev is pre-1.0 and deliberately unstable (see `README.md`'s "Stability policy" and
