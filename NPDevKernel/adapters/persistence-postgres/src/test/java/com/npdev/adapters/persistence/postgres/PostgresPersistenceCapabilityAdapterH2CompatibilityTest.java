@@ -30,7 +30,11 @@ class PostgresPersistenceCapabilityAdapterH2CompatibilityTest {
 
         adapter.save("contact", input);
 
-        String sql = sqlRef.get();
+        // Lower-cased before matching: these assertions are about which SYNTAX the dialect
+        // chose (MERGE vs ON CONFLICT), never about keyword casing. SqlDialect (STOR-1)
+        // emits uppercase keywords; the lowercase expectations below predate that seam and
+        // failed on case alone once the dialect lookup started working again.
+        String sql = sqlRef.get().toLowerCase(java.util.Locale.ROOT);
         assertTrue(sql.startsWith("merge into contacts"));
         assertTrue(sql.contains("key(id)"));
     }
@@ -46,7 +50,11 @@ class PostgresPersistenceCapabilityAdapterH2CompatibilityTest {
 
         adapter.save("appointment", input);
 
-        String sql = sqlRef.get();
+        // Lower-cased before matching: these assertions are about which SYNTAX the dialect
+        // chose (MERGE vs ON CONFLICT), never about keyword casing. SqlDialect (STOR-1)
+        // emits uppercase keywords; the lowercase expectations below predate that seam and
+        // failed on case alone once the dialect lookup started working again.
+        String sql = sqlRef.get().toLowerCase(java.util.Locale.ROOT);
         assertTrue(sql.startsWith("insert into appointments"));
         assertTrue(sql.contains("on conflict (id) do update set"));
         assertEquals(-1, sql.indexOf("merge into"));
@@ -81,6 +89,7 @@ class PostgresPersistenceCapabilityAdapterH2CompatibilityTest {
                 }
         );
 
+        AtomicReference<Connection> connectionRef = new AtomicReference<>();
         Connection connection = (Connection) Proxy.newProxyInstance(
                 Connection.class.getClassLoader(),
                 new Class[]{Connection.class},
@@ -90,7 +99,7 @@ class PostgresPersistenceCapabilityAdapterH2CompatibilityTest {
                     }
                     if ("prepareStatement".equals(method.getName())) {
                         sqlRef.set((String) args[0]);
-                        return fakePreparedStatement();
+                        return fakePreparedStatement(connectionRef);
                     }
                     if ("close".equals(method.getName())) {
                         return null;
@@ -98,6 +107,7 @@ class PostgresPersistenceCapabilityAdapterH2CompatibilityTest {
                     return defaultValue(method.getReturnType());
                 }
         );
+        connectionRef.set(connection);
 
         return (DataSource) Proxy.newProxyInstance(
                 DataSource.class.getClassLoader(),
@@ -111,11 +121,14 @@ class PostgresPersistenceCapabilityAdapterH2CompatibilityTest {
         );
     }
 
-    private static PreparedStatement fakePreparedStatement() {
+    private static PreparedStatement fakePreparedStatement(AtomicReference<Connection> connectionRef) {
         return (PreparedStatement) Proxy.newProxyInstance(
                 PreparedStatement.class.getClassLoader(),
                 new Class[]{PreparedStatement.class},
                 (proxy, method, args) -> {
+                    if ("getConnection".equals(method.getName())) {
+                        return connectionRef.get();
+                    }
                     if ("setObject".equals(method.getName())) {
                         return null;
                     }

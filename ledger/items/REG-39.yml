@@ -22,4 +22,3 @@ detail: |
   -- reproduced the exact intended failure naming pack/concept/field/fix; clean revert + reboot
   confirmed no false-positive on a healthy pack. A full rebuild-app run against WmsOffice confirmed no
   regression on the originally-affected app.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-39

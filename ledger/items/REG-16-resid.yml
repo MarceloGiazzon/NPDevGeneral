@@ -28,4 +28,3 @@ detail: |
   fixed anyway). Net: 4 surfaces that stood at zero adversarial review now each have their own scope
   list and findings document; every round's residual MEDIUM findings are individually tracked, not
   silently dropped.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-16-resid

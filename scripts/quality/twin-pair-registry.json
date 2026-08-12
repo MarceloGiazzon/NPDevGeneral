@@ -5,8 +5,8 @@
     "permanent registry+gate. This is that gate for the twin-pair-divergence family. Each rule below",
     "names two or more locations that must move together; check-twin-pair-consistency.py fails when",
     "they diverge. A human adds a new rule here when a new twin-pair is found (mirroring how",
-    "docs/X0_SILENT_EXPRESSION_REGISTER.md is curated) -- this file does not invent new pairs on its",
-    "own."
+    "scripts/quality/x0-evaluator-registry.json is curated) -- this file does not invent new pairs on",
+    "its own."
   ],
   "rules": [
     {
@@ -115,7 +115,7 @@
     {
       "id": "readme-portable-tooling-substrings",
       "citedBy": "F7 (FIRST_IMPRESSION_SPEC.md I6, `\u00a70`'s trap)",
-      "description": "run-portable-tooling-check.ps1 asserts README.md contains these three EXACT command substrings verbatim (its own linuxCommandExamplesPresent check, case-sensitive .Contains()). F1/F3/F6's own doc edits to README.md all had to preserve them by hand with no gate telling them so beforehand -- this rule is that gate: an edit that reflows or rewords any of the three now fails loud instead of the check silently going red for a reason that looks unrelated to whatever the edit was actually about.",
+      "description": "run-portable-tooling-check.ps1 asserts README.md contains these three EXACT command substrings verbatim (its own linuxCommandExamplesPresent check, case-sensitive .Contains()). F1/F3/F6's own doc edits to README.md all had to preserve them by hand with no gate telling them so beforehand -- this rule is that gate: an edit that reflows or rewords any of the three now fails loud instead of the check silently going red for a reason that looks unrelated to whatever the edit was actually about. md-zero-2026-08-11 PLAN.md Phase 5: README.md is now GENERATED from content/readme.yml (scripts/docs/generate_group_d_docs.py) -- pinned there instead, the actual place an editor now changes this text.",
       "kind": "field-in-all-files",
       "trackedFields": [
         "./npdev validate model",
@@ -124,14 +124,14 @@
       ],
       "caseSensitive": true,
       "files": [
-        "README.md",
+        "content/readme.yml",
         "scripts/quality/run-portable-tooling-check.ps1"
       ]
     },
     {
       "id": "getting-started-portable-tooling-substrings",
       "citedBy": "F7 (FIRST_IMPRESSION_SPEC.md I6, `\u00a70`'s trap)",
-      "description": "Same trap as readme-portable-tooling-substrings, for docs/GETTING_STARTED.md's two required substrings (run-portable-tooling-check.ps1's linuxCommandExamplesPresent check). F6's full rewrite of this file had to preserve both verbatim with no gate telling it so beforehand.",
+      "description": "Same trap as readme-portable-tooling-substrings, for docs/GETTING_STARTED.md's two required substrings (run-portable-tooling-check.ps1's linuxCommandExamplesPresent check). F6's full rewrite of this file had to preserve both verbatim with no gate telling it so beforehand. md-zero-2026-08-11 PLAN.md Phase 5: docs/GETTING_STARTED.md is now GENERATED from content/getting-started.yml -- pinned there instead.",
       "kind": "field-in-all-files",
       "trackedFields": [
         "Linux and macOS",
@@ -139,7 +139,7 @@
       ],
       "caseSensitive": true,
       "files": [
-        "docs/GETTING_STARTED.md",
+        "content/getting-started.yml",
         "scripts/quality/run-portable-tooling-check.ps1"
       ]
     },

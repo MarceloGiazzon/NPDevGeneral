@@ -245,11 +245,12 @@ before.
 | **see everything it can do** | `docs/FEATURES.md` |
 | understand the concepts | `docs/NPDEV_CONCEPTS_DEEP_DIVE.md` |
 | deploy properly (Postgres, Docker, env vars) | `docs/DEPLOYMENT.md` |
-| use MySQL or SQL Server | `docs/USING_MYSQL_AND_SQL_SERVER.md` — experimental, and it says what that means |
+| use MySQL or SQL Server | `docs/reference/USING_MYSQL_AND_SQL_SERVER.md` — experimental, and it says what that means |
 | know how schema changes work | `docs/DATABASES_AND_MIGRATIONS.md` |
 | know what NPDev **won't** do | `docs/ACCEPTED_BOUNDARIES.md` |
 | fix a broken setup | `npdev doctor`, then `docs/GETTING_STARTED.md` |
 | see where the platform is heading | `docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md` |
+| browse everything else | [`docs/README.md`](docs/README.md) — the full documentation index |
 
 ---
 

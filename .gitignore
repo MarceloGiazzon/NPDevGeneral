@@ -24,6 +24,14 @@
 scripts/reports/out/
 scripts/reports/releases/
 
+# md-zero-2026-08-11 PLAN.md Phase 6 (Group G): these 3 docs are generated (OPEN_ITEMS.md from
+# ledger/items/*.yml, OPEN_GAPS_AND_ROADMAP.md from ledger/gaps.yml, DSL_REFERENCE.md from the
+# model schema) and now render to the external Build root, not here -- listed for the rare case a
+# generator is run with its old repo-relative default and writes locally by mistake.
+docs/OPEN_ITEMS.md
+docs/OPEN_GAPS_AND_ROADMAP.md
+docs/DSL_REFERENCE.md
+
 # Runtime/local process residue
 *.log
 *.pid

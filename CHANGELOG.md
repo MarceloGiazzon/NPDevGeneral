@@ -53,12 +53,12 @@ is tracked separately.
 - LNCH-12: scheduled/background flow execution (`flow.schedule`, cron-triggered, ControlPanel
   visibility at `/api/admin/cron-schedules`).
 - LNCH-16: optimistic locking on concept writes (`row_version`, compare-and-swap through
-  `ConceptGateway`, 409-with-current-record conflict contract). See `docs/OPTIMISTIC_LOCKING.md`.
+  `ConceptGateway`, 409-with-current-record conflict contract). See `docs/reference/OPTIMISTIC_LOCKING.md`.
 - LNCH-17: flow transaction-boundary contract — `onFailure` compensation steps (saga pattern,
   crash-resumable), documented atomicity/durability guarantees. See
   `docs/architecture/FLOW_TRANSACTION_CONTRACT.md`.
 - LNCH-10 slice 1: CSV export (`GET /api/concepts/{concept}/export.csv`, streaming/paged, an
-  Export CSV button on every generated grid). See `docs/CSV_EXPORT.md`.
+  Export CSV button on every generated grid). See `docs/reference/CSV_EXPORT.md`.
 - LNCH-21: `docs/architecture/APP_UPGRADE_CONTRACT.md` — the platform-owned/app-owned boundary in
   a generated FinalApp, written down precisely for the first time.
 - LNCH-22: `docs/DSL_REFERENCE.md` (generated from the schema —

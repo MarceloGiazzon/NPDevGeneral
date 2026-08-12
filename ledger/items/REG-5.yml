@@ -18,4 +18,3 @@ detail: |
   package-convention checks were a redundant proxy that would only duplicate the allowlist if
   rewritten. Retired to informational-only (reversible) with a dated rationale in
   run-observability-hardening.ps1, run-runtimehost-gate.ps1, and OPEN_GAPS_AND_ROADMAP.md.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-5

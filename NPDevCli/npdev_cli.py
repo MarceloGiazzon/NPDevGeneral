@@ -1076,7 +1076,7 @@ def run_init(args: argparse.Namespace) -> int:
                            username=getattr(args, "db_user", None),
                            password=getattr(args, "db_password", None))
 
-    (target / "README.md").write_text(
+    readme_text = (
         f"# {target.name}\n\n"
         f"An NPDev app, scaffolded by `npdev init`.\n\n"
         f"**`model.json` is this application.** Everything else -- the database schema, the REST "
@@ -1097,9 +1097,9 @@ def run_init(args: argparse.Namespace) -> int:
         f"Edit `model.json` -- add a field, add a concept -- then `npdev run app` again; it "
         f"regenerates the SAME app in place rather than starting over. See docs/YOUR_FIRST_APP.md "
         f"for the full walkthrough, including how to declare a rename so NPDev does not mistake it "
-        f"for a destructive change.\n",
-        encoding="utf-8",
+        f"for a destructive change.\n"
     )
+    (target / "README.md").write_text(readme_text, encoding="utf-8")
 
     (target / ".gitignore").write_text(
         "# Generated app output lives in a SIBLING directory by convention (see README.md) and\n"
@@ -1124,11 +1124,11 @@ def run_init(args: argparse.Namespace) -> int:
         # the scaffold is affected, but a file that says "this directory is already a git
         # repository" sitting in a directory that is not one is exactly the quiet lie the notice
         # beside it exists to avoid. Both sentences are single constants precisely so that editing
-        # the wording cannot make this substitution silently stop applying.
-        readme_path = target / "README.md"
-        patched = readme_path.read_text(encoding="utf-8").replace(
-            _README_GIT_SENTENCE, _README_NO_GIT_SENTENCE)
-        readme_path.write_text(patched, encoding="utf-8")
+        # the wording cannot make this substitution silently stop applying. Patches the in-memory
+        # `readme_text` this process already built above, never reads the file back off disk
+        # (md-zero-2026-08-11 PLAN.md Phase 7).
+        patched = readme_text.replace(_README_GIT_SENTENCE, _README_NO_GIT_SENTENCE)
+        (target / "README.md").write_text(patched, encoding="utf-8")
 
     git_note = git.notice
 
@@ -1252,11 +1252,29 @@ def _scaffold_git_history(target: Path) -> GitScaffold:
         raise CliError(
             f"could not create the first commit in {target}: {stderr.strip() or 'git failed'}")
 
+    # FOUND IN CI, 2026-08-11 (ai-knowledge-gate run 31481184751): `-c user.name=`/`-c user.email=`
+    # alone is not enough. Git resolves author/committer identity from the GIT_AUTHOR_*/
+    # GIT_COMMITTER_* environment variables FIRST when they are explicitly set -- including set to
+    # an empty string, which is different from unset -- and only falls back to `user.name`/
+    # `user.email` config (`-c` included) when those variables are absent. A machine that exports
+    # them empty (some CI runners; anything upstream that sanitizes identity by blanking rather than
+    # unsetting) makes the `-c` overrides silently inert: git reports "empty ident name (for <>) not
+    # allowed" instead of using the fallback. This passed on every local run because Windows
+    # subprocess environments cannot represent "set to empty string" (an empty value is dropped from
+    # the block entirely, which is indistinguishable from unset) -- the bug only reproduces on a
+    # POSIX runner, which is exactly what caught it. Fix: also force the four identity variables in
+    # the retry's own environment, so the fallback wins regardless of what the ambient environment
+    # set them to.
     fallback_name, fallback_email = "NPDev", "npdev@localhost"
+    fallback_env = dict(os.environ)
+    fallback_env["GIT_AUTHOR_NAME"] = fallback_name
+    fallback_env["GIT_AUTHOR_EMAIL"] = fallback_email
+    fallback_env["GIT_COMMITTER_NAME"] = fallback_name
+    fallback_env["GIT_COMMITTER_EMAIL"] = fallback_email
     retried = subprocess.run(
         ["git", "-c", f"user.name={fallback_name}", "-c", f"user.email={fallback_email}",
          "commit", "--quiet", "-m", message],
-        cwd=target, capture_output=True, text=True)
+        cwd=target, capture_output=True, text=True, env=fallback_env)
     if retried.returncode != 0:
         raise CliError(
             f"git has no configured identity and the fallback commit also failed in {target}: "
@@ -4097,6 +4115,22 @@ def _load_quality_module(root: Path, module_name: str, filename: str):
     return module
 
 
+def _render_group_e_content_doc(json_path: Path) -> str:
+    """Reconstructs a Group E content/*.json mirror back into its rendered markdown text -- the
+    exact inverse scripts/docs/generate_group_e_docs.py's own render() uses to write the .md,
+    duplicated here (5 lines) rather than cross-imported, since NPDevCli and scripts/docs are
+    siblings with no shared package (same rationale as build_core_context.py's own
+    render_authoring_contract()). Reads the JSON mirror, never the .yml -- this runs via `npdev
+    generate screen` on a real end-user machine, and PyYAML is a repo-dev/CI-only dependency
+    (md-zero-2026-08-11 PLAN.md Phase 7, same fix as build_rag_index.py's own)."""
+    doc = json.loads(json_path.read_text(encoding="utf-8"))
+    parts = doc["preamble"].split("\n")
+    for section in doc["sections"]:
+        parts.append("#" * section["level"] + " " + section["title"])
+        parts.extend(section["body"].split("\n"))
+    return "\n".join(parts)
+
+
 def run_generate_screen(args: argparse.Namespace) -> int:
     """R-P4 (docs/REMEDIATION_PLAN.md, 3.8 'agent-driven frontend generation, productized'): fetch
     the live UI-contract bundle, hand it plus docs/ai/UI_GENERATION_PROMPT.md to an agent, and refuse
@@ -4123,11 +4157,12 @@ def run_generate_screen(args: argparse.Namespace) -> int:
     print(f"npdev: fetching {bundle_url}", file=sys.stderr)
     bundle = _fetch_json(bundle_url, headers)
 
-    prompt_doc_path = root / "docs" / "ai" / "UI_GENERATION_PROMPT.md"
-    if not prompt_doc_path.exists():
-        raise CliError(f"reference prompt not found: {prompt_doc_path}")
+    prompt_content_path = root / "content" / "ui-generation-prompt.json"
+    if not prompt_content_path.exists():
+        raise CliError(f"reference prompt content not found: {prompt_content_path}")
+    prompt_doc_text = _render_group_e_content_doc(prompt_content_path)
     assembled_prompt = (
-        f"{prompt_doc_path.read_text(encoding='utf-8')}\n\n---\n\n"
+        f"{prompt_doc_text}\n\n---\n\n"
         f"## Task\n\nConcept: {concept}\nOutput screen file: {out_path.name}\n\n"
         f"## Live bundle (the ONLY source of truth -- see \"Contract\" above)\n\n"
         f"```json\n{json.dumps(bundle, indent=2)}\n```\n"

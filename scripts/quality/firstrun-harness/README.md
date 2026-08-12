@@ -76,12 +76,17 @@ docker run --rm -e LOCAL_SRC=1 -v /d/WorkSpace/NPDev/NPDev_General:/work/src:ro 
    `200/301/302/401/403` (an auth redirect is a live app), and checks that the URL and the login-key
    location are documented (W3).
 
-### `extract_commands.py` — markdown in, commands out
+### `extract_commands.py` — content JSON in, commands out
 
 **Everything about how a documented command becomes a runnable one lives in one module, and that
 module has its own unit tests** (`scripts/quality/check-firstrun-extractor.py`, in
-`run-ai-knowledge-gate.ps1`). It knows about fence languages, backslash continuations, `$` prompts,
-`&&`, CRLF, and a trailing ` # comment` that must be dropped without corrupting a quoted `#`.
+`run-ai-knowledge-gate.ps1`). It knows about backslash continuations, `$` prompts, `&&`, CRLF, and
+a trailing ` # comment` that must be dropped without corrupting a quoted `#`. It reads
+`content/readme.json` (md-zero-2026-08-11 PLAN.md Phase 5) rather than parsing README.md's raw
+text — that JSON is generated from `content/readme.yml`, the same source README.md itself is
+rendered from (`scripts/docs/generate_group_d_docs.py`), and is the only format this deliberately
+bare container (no pip, so no PyYAML) can read with zero installed packages. Fence-language
+detection no longer happens here at all: the JSON already tags each block's language explicitly.
 
 That is not tidiness. The extraction has been wrong **three separate times**, each found only by a
 ~30-minute run of this container, and each reported as a *product* failure:
@@ -130,8 +135,10 @@ keep running whatever flow README documents this month.
 
 - every **tag / release** — the version a newcomer actually gets
 - **nightly**
-- any change to `README.md`, `docs/GETTING_STARTED.md`, `NPDevCli/npdev_cli.py`, or the generated
-  `build.gradle` / `Dockerfile` templates
+- any change to `content/readme.yml`, `content/getting-started.yml`, `content/your-first-app.yml`
+  (README.md / docs/GETTING_STARTED.md / docs/YOUR_FIRST_APP.md are GENERATED from these --
+  md-zero-2026-08-11 PLAN.md Phase 5, `scripts/docs/generate_group_d_docs.py`), `NPDevCli/npdev_cli.py`,
+  or the generated `build.gradle` / `Dockerfile` templates
 
 **Required registrations** (both, or `run-script-inventory-check.ps1` fails):
 
@@ -148,8 +155,9 @@ on:
   schedule: [{ cron: '0 4 * * *' }]
   pull_request:
     paths:
-      - 'README.md'
-      - 'docs/GETTING_STARTED.md'
+      - 'content/readme.yml'
+      - 'content/getting-started.yml'
+      - 'content/your-first-app.yml'
       - 'NPDevCli/npdev_cli.py'
       - 'NPDevRuntimeHost/build.gradle*'
 jobs:

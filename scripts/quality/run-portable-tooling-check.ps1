@@ -17,6 +17,38 @@ function Convert-ToRepoPath {
     return ($resolvedPath -replace "\\", "/")
 }
 
+# md-zero-2026-08-11 PLAN.md Phase 5: reconstructs a Group D doc's rendered text from its
+# content/*.json mirror -- the same data scripts/docs/generate_group_d_docs.py renders into the
+# actual .md file, so this stays byte-identical to what a reader sees without this script ever
+# opening README.md / docs/GETTING_STARTED.md itself.
+function Get-RenderedContentDoc {
+    param([string]$Root, [string]$ContentJsonRelativePath)
+    $jsonPath = Join-Path $Root $ContentJsonRelativePath
+    $doc = Get-Content -Raw -LiteralPath $jsonPath | ConvertFrom-Json
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $renderBlocks = {
+        param($blocks)
+        foreach ($block in $blocks) {
+            $text = [string]$block.text
+            $blockLines = if ($text -eq "") { @("") } else { $text -split "`n" }
+            if ($block.type -eq "prose") {
+                foreach ($l in $blockLines) { $lines.Add($l) }
+            }
+            else {
+                $lines.Add('```' + [string]$block.lang)
+                foreach ($l in $blockLines) { $lines.Add($l) }
+                $lines.Add('```')
+            }
+        }
+    }
+    & $renderBlocks $doc.preamble
+    foreach ($section in $doc.sections) {
+        $lines.Add(("#" * [int]$section.level) + " " + [string]$section.title)
+        & $renderBlocks $section.blocks
+    }
+    return ($lines -join "`n")
+}
+
 function Get-BashPath {
     $command = Get-Command bash -ErrorAction SilentlyContinue
     if ($null -ne $command) { return $command.Source }
@@ -85,10 +117,10 @@ function Get-PathNeutralityExcludedPaths {
         [pscustomobject]@{ path = "scripts/reports/out/**"; reason = "Generated report output may contain runtime absolute paths and is not source config." },
         [pscustomobject]@{ path = "scripts/reports/tmp/**"; reason = "Temporary validation output may contain runtime absolute paths." },
         [pscustomobject]@{ path = "build/**"; reason = "Generated build output may contain runtime absolute paths." },
-        [pscustomobject]@{ path = "docs/ROADMAP_BOUNDARY_POLICY.md"; reason = "Accepted CP0 evidence policy intentionally records local checkpoint path options." },
-        [pscustomobject]@{ path = "docs/POST_BETA0_HUMAN_ACTION_REGISTER.md"; reason = "Accepted CP0 human-action evidence records prior local bundle paths." },
-        [pscustomobject]@{ path = "docs/OFFICIAL_BETA_RELEASE_RUNBOOK.md"; reason = "Historical Beta0 release runbook is outside CP5 portable quick-start scope." },
-        [pscustomobject]@{ path = "docs/RELEASE_BLOCKER_EXECUTION_ROADMAP.md"; reason = "Historical release-blocker evidence path is outside CP5 portable quick-start scope." },
+        [pscustomobject]@{ path = "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md"; reason = "Accepted CP0 evidence policy intentionally records local checkpoint path options." },
+        [pscustomobject]@{ path = "docs/maintainers/POST_BETA0_HUMAN_ACTION_REGISTER.md"; reason = "Accepted CP0 human-action evidence records prior local bundle paths." },
+        [pscustomobject]@{ path = "docs/maintainers/OFFICIAL_BETA_RELEASE_RUNBOOK.md"; reason = "Historical Beta0 release runbook is outside CP5 portable quick-start scope." },
+        [pscustomobject]@{ path = "docs/archive/programme-history/RELEASE_BLOCKER_EXECUTION_ROADMAP.md"; reason = "Historical release-blocker evidence path is outside CP5 portable quick-start scope." },
         [pscustomobject]@{ path = "**/MIGRATION_DIGEST.md"; reason = "Historical migration digests preserve source-local path provenance." },
         [pscustomobject]@{ path = "scripts/quality/run-controlled-command-runner-tests.ps1"; reason = "Intentional security-test fixture uses drive-letter examples." }
     )
@@ -165,8 +197,24 @@ function Get-HardcodedDriveMatches {
     $pythonPaths = @($scopedFiles | Where-Object { $_.Extension -eq ".py" } | ForEach-Object { $_.FullName })
     $scannable = Get-PythonScannableText -Root $Root -Paths $pythonPaths
     $script:PythonProseStrippedFileCount = @($scannable.Keys).Count
+    # md-zero-2026-08-11 PLAN.md Phase 5: README.md and docs/GETTING_STARTED.md are GENERATED from
+    # content/*.json (scripts/docs/generate_group_d_docs.py) -- read the rendered text back from
+    # that JSON mirror instead of the .md file itself, byte-identical either way.
+    $groupDContentSource = @{
+        "README.md"               = "content/readme.json"
+        "docs/GETTING_STARTED.md" = "content/getting-started.json"
+    }
     foreach ($file in $scopedFiles) {
-        $text = if ($scannable.ContainsKey($file.FullName)) { $scannable[$file.FullName] } else { Get-Content -Raw -LiteralPath $file.FullName }
+        $repoRelative = Convert-ToRepoPath -Root $Root -PathValue $file.FullName
+        $text = if ($scannable.ContainsKey($file.FullName)) {
+            $scannable[$file.FullName]
+        }
+        elseif ($groupDContentSource.ContainsKey($repoRelative)) {
+            Get-RenderedContentDoc -Root $Root -ContentJsonRelativePath $groupDContentSource[$repoRelative]
+        }
+        else {
+            Get-Content -Raw -LiteralPath $file.FullName
+        }
         $regexMatches = [regex]::Matches($text, "(?<![A-Za-z])[A-Za-z]:[\\/]")
         foreach ($match in $regexMatches) {
             $found += [pscustomobject]@{
@@ -225,8 +273,8 @@ try {
     $gradleMatches = Get-GradlePwshCoreTaskMatches -Root $workspaceRootPath
     $pathNeutralityScanScope = Get-PathNeutralityScanScope
     $pathNeutralityExcludedPaths = Get-PathNeutralityExcludedPaths
-    $readmeText = Get-Content -Raw -LiteralPath (Join-Path $workspaceRootPath "README.md")
-    $gettingStartedText = Get-Content -Raw -LiteralPath (Join-Path $workspaceRootPath "docs/GETTING_STARTED.md")
+    $readmeText = Get-RenderedContentDoc -Root $workspaceRootPath -ContentJsonRelativePath "content/readme.json"
+    $gettingStartedText = Get-RenderedContentDoc -Root $workspaceRootPath -ContentJsonRelativePath "content/getting-started.json"
     $linuxExamplesPresent = (
         $readmeText.Contains("./npdev validate model") -and
         $readmeText.Contains("./npdev normalize ai-model") -and

@@ -37,12 +37,16 @@ class PostgresPersistenceCapabilityAdapterTimestampCoercionTest {
     }
 
     private static DataSource fakeDataSource(AtomicReference<Object> scheduledAtBound) {
+        AtomicReference<Connection> connectionRef = new AtomicReference<>();
         Connection connection = (Connection) Proxy.newProxyInstance(
                 Connection.class.getClassLoader(),
                 new Class[]{Connection.class},
                 (proxy, method, args) -> {
+                    if ("getMetaData".equals(method.getName())) {
+                        return FakeJdbc.metaDataFor("PostgreSQL");
+                    }
                     if ("prepareStatement".equals(method.getName())) {
-                        return fakePreparedStatement(scheduledAtBound);
+                        return fakePreparedStatement(scheduledAtBound, connectionRef);
                     }
                     if ("close".equals(method.getName())) {
                         return null;
@@ -50,6 +54,7 @@ class PostgresPersistenceCapabilityAdapterTimestampCoercionTest {
                     return defaultValue(method.getReturnType());
                 }
         );
+        connectionRef.set(connection);
 
         return (DataSource) Proxy.newProxyInstance(
                 DataSource.class.getClassLoader(),
@@ -63,11 +68,14 @@ class PostgresPersistenceCapabilityAdapterTimestampCoercionTest {
         );
     }
 
-    private static PreparedStatement fakePreparedStatement(AtomicReference<Object> scheduledAtBound) {
+    private static PreparedStatement fakePreparedStatement(AtomicReference<Object> scheduledAtBound, AtomicReference<Connection> connectionRef) {
         return (PreparedStatement) Proxy.newProxyInstance(
                 PreparedStatement.class.getClassLoader(),
                 new Class[]{PreparedStatement.class},
                 (proxy, method, args) -> {
+                    if ("getConnection".equals(method.getName())) {
+                        return connectionRef.get();
+                    }
                     if ("setObject".equals(method.getName())) {
                         int index = (Integer) args[0];
                         Object value = args[1];

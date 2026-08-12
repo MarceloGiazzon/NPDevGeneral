@@ -1,7 +1,7 @@
 param(
     [string]$WorkspaceRoot = ".",
     [string]$PolicyPath = "scripts/policy/post-beta0-maturity-roadmap-policy.json",
-    [string]$DocumentationPath = "docs/ROADMAP_BOUNDARY_POLICY.md",
+    [string]$DocumentationPath = "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md",
     [string]$SchemaPath = "schemas/ai/post-beta0-roadmap-boundary-report.schema.json",
     [string]$ReportPath = "scripts/reports/out/post-beta0-roadmap-boundary-report.json",
     [string]$RunId = ""

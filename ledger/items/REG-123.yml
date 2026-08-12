@@ -87,7 +87,7 @@ resolution: |
           "checkpoint-only-design-report" (mirrors the pre-existing trusted-source-beta0-design-report.json
           precedent).
         - scripts/appgen/generate-sample-app.ps1 / scripts/appgen/run-sample-app.ps1
-          (docs/NPDEV_OPEN_ITEMS_REGISTER.md's historical "Where." line for a past LNCH-19 finding):
+          (docs/archive/programme-history/NPDEV_OPEN_ITEMS_REGISTER.md's historical "Where." line for a past LNCH-19 finding):
           that document is explicitly historical/archived-in-place (CLAUDE.md: "read for narrative,
           never for status") -- left its content untouched rather than mechanically re-pointing a
           frozen historical record, and classified the two exact wrong-but-historical paths as

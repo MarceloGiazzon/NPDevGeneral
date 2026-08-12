@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Project the gaps ledger's machine-readable tables into knowledge/platform-status.json.
+r"""Project the gaps ledger into knowledge/platform-status.json.
 
-The ledger (docs/OPEN_GAPS_AND_ROADMAP.md) is human markdown that changes fast. Rather than
-hand-copy a "what's supported" list into the MCP server (which would rot and lie), we DERIVE a
-machine-readable status projection from the ledger's own stable-ID tables:
+docs-decoupling-2026-08-11 PLAN.md Phase 1 inverted the ledger from markdown-as-database
+(docs/OPEN_GAPS_AND_ROADMAP.md's own "## 1. Priority index" / "## 7. Fixed engine bugs" tables,
+regex-scraped out of hand-written prose) to `ledger/gaps.yml`, machine-read structured data.
+`docs/OPEN_GAPS_AND_ROADMAP.md` is now RENDERED from that YAML
+(scripts/docs/generate_gaps_roadmap.py), not parsed as an input -- editing it by hand no longer
+risks silently drifting this projection.
 
-  - the "## 1. Priority index" table (open/partial/done items, 6 columns), and
-  - the "## 7. Fixed engine bugs" table (closed items + lifted boundaries, 2 columns).
+Each YAML row is resynthesized into the same "| cell | cell | ... |" markdown-row shape the old
+parser consumed, then run through the SAME `_cells()`/`_id_of()`/`_split_status()`/`_strip_md()`
+helpers, byte-for-byte unchanged from the markdown-parsing era -- including their pre-existing
+quirk of not respecting a backslash-escaped `\|` inside a cell as non-delimiting (e.g. the ARCH-6
+row's "top-level `\|\|`/`&&`" truncates its own title at the first `\|`, both before and after this
+change). That quirk is not this migration's to fix; the point of resynthesis-then-reuse is that the
+extraction logic did not change at all, only where the row text comes from -- so the output is
+proven byte-identical, bugs included (see the Phase 1 commit message for the before/after SHA-256).
 
 Output is committed at knowledge/platform-status.json and CI-checked against a fresh extraction, so
 the projection and the ledger can never silently diverge (run-ai-knowledge-gate.ps1).
@@ -27,14 +36,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from npdev_ai_common import repo_root
 
-LEDGER = "docs/OPEN_GAPS_AND_ROADMAP.md"
+LEDGER = "ledger/gaps.yml"
+SOURCE_DOC = "docs/OPEN_GAPS_AND_ROADMAP.md"
 OUTPUT = "knowledge/platform-status.json"
 
 _ID = re.compile(r"^\s*(#\d+|[A-Z][A-Za-z]*-[A-Za-z0-9][A-Za-z0-9-]*)")
 _STATUS_WORD = re.compile(r"^(OPEN|PARTIAL|NEEDS-VERIFY|DONE|BOUNDARY|LIFTED)", re.IGNORECASE)
-_HEADING = re.compile(r"^#{2,3}\s+(.*)$")
 
 
 def _cells(line: str) -> list[str] | None:
@@ -70,51 +81,58 @@ def _strip_md(text: str) -> str:
     return text.strip()
 
 
+def _row_to_markdown(cells: list[str]) -> str:
+    """Resynthesize a YAML row back into the "| cell | cell | ... |" shape `_cells()` expects --
+    the seam that lets this function's caller reuse the markdown-parsing-era extraction logic
+    completely unchanged (see module docstring)."""
+    return "| " + " | ".join(cells) + " |"
+
+
 def extract(root: Path) -> list[dict[str, Any]]:
-    ledger = (root / LEDGER).read_text(encoding="utf-8")
-    section = ""
+    ledger_path = root / LEDGER
+    data = yaml.safe_load(ledger_path.read_text(encoding="utf-8"))
+    if data.get("schemaVersion") != "gaps-ledger.v1":
+        raise ValueError(
+            f"{ledger_path}: unsupported schemaVersion {data.get('schemaVersion')!r}, "
+            f"expected 'gaps-ledger.v1'"
+        )
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
 
-    for line in ledger.splitlines():
-        heading = _HEADING.match(line)
-        if heading:
-            section = heading.group(1)
-            continue
+    for row in data.get("priorityIndex", []):
+        line = _row_to_markdown([row["idCell"], row["title"], row["category"],
+                                  row["statusRaw"], row["priority"], row.get("size", "")])
         cells = _cells(line)
-        if not cells:
-            continue
         item_id = _id_of(cells[0])
-        if not item_id or item_id in ("ID",):
+        if not item_id or item_id in seen:
             continue
-
-        if section.startswith("1.") and len(cells) >= 6:
-            status, notes = _split_status(cells[3])
-            entry = {
-                "id": item_id,
-                "title": _strip_md(cells[1]),
-                "category": _strip_md(cells[2]),
-                "status": status,
-                "priority": _strip_md(cells[4]),
-                "notes": notes,
-            }
-        elif section.startswith("7.") and len(cells) >= 2:
-            lifted = "lifted" in cells[0].lower() or "lifted" in cells[1].lower()
-            entry = {
-                "id": item_id,
-                "title": _strip_md(cells[1])[:200],
-                "category": "lifted-boundary" if lifted else "fixed-bug",
-                "status": "LIFTED" if lifted else "DONE",
-                "priority": "",
-                "notes": _strip_md(cells[1]),
-            }
-        else:
-            continue
-
-        if item_id in seen:  # first occurrence wins (§1 outranks §7 for shared ids)
-            continue
+        status, notes = _split_status(cells[3])
         seen.add(item_id)
-        out.append(entry)
+        out.append({
+            "id": item_id,
+            "title": _strip_md(cells[1]),
+            "category": _strip_md(cells[2]),
+            "status": status,
+            "priority": _strip_md(cells[4]),
+            "notes": notes,
+        })
+
+    for row in data.get("fixedEngineBugs", []):
+        line = _row_to_markdown([row["idCell"], row["fix"]])
+        cells = _cells(line)
+        item_id = _id_of(cells[0])
+        if not item_id or item_id in seen:
+            continue
+        lifted = "lifted" in cells[0].lower() or "lifted" in cells[1].lower()
+        seen.add(item_id)
+        out.append({
+            "id": item_id,
+            "title": _strip_md(cells[1])[:200],
+            "category": "lifted-boundary" if lifted else "fixed-bug",
+            "status": "LIFTED" if lifted else "DONE",
+            "priority": "",
+            "notes": _strip_md(cells[1]),
+        })
 
     return out
 
@@ -122,7 +140,11 @@ def extract(root: Path) -> list[dict[str, Any]]:
 def render(entries: list[dict[str, Any]], root: Path) -> str:
     doc = {
         "schemaVersion": "platform-status.v1",
-        "generatedFrom": LEDGER,
+        # Kept as the human-facing doc (byte-identical output contract, Phase 1's own acceptance
+        # bar) even though the true machine-read input is now LEDGER ("ledger/gaps.yml") --
+        # SOURCE_DOC is still where a reader goes to see this data, just rendered FROM the YAML now
+        # instead of parsed INTO it.
+        "generatedFrom": SOURCE_DOC,
         "note": "DERIVED -- do not hand-edit. Regenerate via scripts/ai/extract_platform_status.py.",
         "count": len(entries),
         "items": entries,

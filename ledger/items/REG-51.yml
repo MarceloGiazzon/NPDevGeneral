@@ -22,4 +22,3 @@ detail: |
   regenerated sample builds cleanly. A secondary defence-in-depth gate (provenance_audit_gaps in
   check-register-consistency.py) flags EXISTING run records with unresolved provenance when backing
   evidence is still available locally -- never flagging a record whose evidence is simply absent.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-51

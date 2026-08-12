@@ -100,7 +100,8 @@ Facts established by reading the code on 2026-07-13. Cited so the implementer ca
   ready-made seed for a "failure signature → fix" index — no new capture plumbing required for v1.
 
 ### 1.3 The gaps ledger is fast-moving and human-shaped
-- [docs/OPEN_GAPS_AND_ROADMAP.md](../../docs/OPEN_GAPS_AND_ROADMAP.md) has a machine-*parseable*
+- `OPEN_GAPS_AND_ROADMAP.md` (generated, not committed since md-zero-2026-08-11 PLAN.md Phase 6 —
+  `python scripts/docs/generate_gaps_roadmap.py`) has a machine-*parseable*
   priority table (§1) with stable IDs (`BUG-*`, `ARCH-*`, `BOND-*`, `AW-*`) and a status vocabulary
   (`OPEN/PARTIAL/NEEDS-VERIFY/DONE/BOUNDARY`). But the *detail* is prose, and it churns: all six design
   boundaries in §6 were lifted to features in a single day (2026-07-13). Any capability list copied by

@@ -23,4 +23,3 @@ detail: |
   delete-mode flow, compiles it for real, and runs it against real (not mocked) gateway/policy/kernel
   components, asserting the flow's own execute() call never happens when the gateway denies. RED->GREEN
   confirmed twice by temporarily reordering the mustache template.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-49

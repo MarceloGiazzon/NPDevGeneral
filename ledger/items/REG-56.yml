@@ -25,4 +25,3 @@ detail: |
   checkout: the notify-approval capabilityCall step re-added to the durable-workflow-demo model
   reproduced CAPABILITY_FAILED on a real kill+restart before the fix; 3/3 clean runs after. Plus
   ExecutionContextResumingTest (3/3) and the full NPDevKernel:kernel suite (163/163), no regression.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-56

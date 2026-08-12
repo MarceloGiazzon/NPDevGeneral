@@ -1,26 +1,37 @@
 #!/usr/bin/env python3
 """2.E ledger migration (docs/REMEDIATION_PLAN.md R-P1, complete 2026-07-29): regenerate
-docs/OPEN_ITEMS.md from ledger/items/*.yml -- the single source of truth for tracked items.
+OPEN_ITEMS.md from ledger/items/*.yml -- the single source of truth for tracked items.
 
-Never hand-edit docs/OPEN_ITEMS.md -- it is a projection, the same discipline
+Never hand-edit the generated file -- it is a projection, the same discipline
 knowledge/platform-status.json already uses relative to the gaps ledger
 (scripts/ai/extract_platform_status.py).
 
 MIGRATION COMPLETE (see ledger/README.md): all 64 tracked ids are migrated.
-docs/NPDEV_OPEN_ITEMS_REGISTER.md is archived-in-place (kept for its `#reg-N` anchors and prose
-investigation narrative, linked from every item's `legacyDetailRef`) and is no longer hand-edited
-for status.
+docs/NPDEV_OPEN_ITEMS_REGISTER.md was archived-in-place, then moved out of the repo entirely by
+md-zero-2026-08-11 PLAN.md Phase 2 (git history keeps it; __OutsideRepo/md-zero-2026-08-11/
+archived-programme-docs/ keeps a working copy) -- every item's `detail:` field in ledger/items/*.yml
+is self-sufficient on its own, and the `legacyDetailRef` pointer each item used to carry (a link
+into that doc's `#reg-N` anchors) was removed in the same commit rather than left pointing at a
+path this repo no longer has.
 
-    python scripts/quality/generate_open_items.py           # writes docs/OPEN_ITEMS.md
-    python scripts/quality/generate_open_items.py --check    # exit 1 if the file is stale
+md-zero-2026-08-11 PLAN.md Phase 6 (Group G): OPEN_ITEMS.md is no longer committed to the repo at
+all -- it was a generated doc whose only reader was `--check`, comparing a fresh render against
+committed content purely to catch a hand-edit. "Nothing to drift-check because nothing is stored"
+(the plan's own words): this now always writes fresh, to the external Build root
+(docs/BUILD_OUTPUT_LOCATION_POLICY.md's existing rule for every other build artifact), never
+inside this repo. `--check` is gone with it -- there is nothing left to compare against.
+
+    python scripts/quality/generate_open_items.py           # writes <Build>/docs/OPEN_ITEMS.md
 """
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ai"))
+from npdev_ai_common import build_root  # noqa: E402
 
 REQUIRED_FIELDS = ("id", "title", "type", "severity", "status", "opened", "source", "surface", "detail")
 VALID_TYPES = {"GAP", "BUG", "PROCESS", "BOUNDARY"}
@@ -118,9 +129,8 @@ def render(items: list[dict]) -> str:
         "",
         "> **GENERATED FILE — do not hand-edit.** Source: `ledger/items/*.yml`, the authoritative",
         "> record for every tracked id. Regenerate with `python scripts/quality/generate_open_items.py`.",
-        "> See `ledger/README.md` for the schema. `docs/NPDEV_OPEN_ITEMS_REGISTER.md` is archived-in-",
-        "> place (its prose investigation narrative, linked from each item's `legacyDetailRef`) and is",
-        "> no longer hand-edited for status.",
+        "> See `ledger/README.md` for the schema. Each item's `detail:` field is self-sufficient; none",
+        "> of these items cite an external doc for their narrative.",
         "",
         f"**{len(items)} item(s) migrated: {len(open_items)} open/partial, {len(done_items)} done.**",
         "",
@@ -157,15 +167,12 @@ def render(items: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", default=".")
-    ap.add_argument("--check", action="store_true", help="exit 1 if docs/OPEN_ITEMS.md is stale")
-    args = ap.parse_args(argv[1:])
-
-    root = Path(args.root).resolve()
-    ledger_dir = root / "ledger"
-    out_path = root / "docs" / "OPEN_ITEMS.md"
+def main() -> int:
+    repo_root = Path(__file__).resolve().parents[2]
+    ledger_dir = repo_root / "ledger"
+    out_dir = build_root() / "docs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "OPEN_ITEMS.md"
 
     try:
         items = load_items(ledger_dir)
@@ -175,18 +182,10 @@ def main(argv: list[str]) -> int:
 
     rendered = render(items)
 
-    if args.check:
-        current = out_path.read_text(encoding="utf-8") if out_path.exists() else ""
-        if current != rendered:
-            print("docs/OPEN_ITEMS.md is STALE -- run without --check to regenerate.", file=sys.stderr)
-            return 1
-        print(f"OK: docs/OPEN_ITEMS.md is current ({len(items)} item(s)).")
-        return 0
-
     out_path.write_text(rendered, encoding="utf-8")
     print(f"wrote {out_path} ({len(items)} item(s))")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv))
+    raise SystemExit(main())

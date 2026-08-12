@@ -19,4 +19,3 @@ detail: |
   the DB has genuinely been at is visible to Trigger C. RED-first: two new tests in
   SchemaLifecycleExecutorDatabaseMigratedPastBuildTest (a direct fresh-install-records-history
   assertion, and the honest end-to-end with no hand-seeded row).
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-27

@@ -20,4 +20,3 @@ detail: |
   compiled model and resolved settings meet. Resolved per-concept (overridable at concept scope; an
   app-level read would miss a targeted opt-out). 5 tests incl. the concept-scoped override and an
   end-to-end check that nothing is emitted when generation is refused.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-44

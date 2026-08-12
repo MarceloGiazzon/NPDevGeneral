@@ -30,35 +30,36 @@ THE TWO CHECKS (deliberately narrow -- see "what this does NOT do" below)
      you never saw). Found live 2026-07-29: `beta1-vision-spine` was 4 commits behind `origin/main`
      immediately after its own PR #7 merged -- the merge commit lands on `main`, never on the source
      branch, so "just merged" and "now behind" are the same moment unless the branch is synced back.
-2. CLAUDE.md size claims: every `` `path` (N KB) `` entry in the "Large files" block is resolved
-   against the file it names (the path may use a `.../` shorthand, e.g.
-   `NPDevKernel/kernel/.../KernelRunner.java`, resolved via glob) and compared to its actual size on
-   disk. FAIL if the claim is off by more than 25%, or if the named path resolves to zero or more
-   than one file.
+2. Large-file size claims: every entry in `scripts/policy/record-surfaces.json` (the path may use a
+   `.../` shorthand, e.g. `NPDevKernel/kernel/.../KernelRunner.java`, resolved via glob) is compared
+   to its actual size on disk. FAIL if the claim is off by more than the declared tolerance, or if
+   the named path resolves to zero or more than one file. md-zero-2026-08-11 PLAN.md Phase 3 moved
+   this list out of CLAUDE.md's own prose and into that JSON -- CLAUDE.md still carries a short
+   narrative pointer to it, but nothing parses CLAUDE.md's text anymore.
 
 WHAT THIS DOES NOT DO
 ----------------------
-It does not verify CLAUDE.md's prose is complete (e.g. that every large file is even *listed*) --
-that is unbounded and belongs to a human editor, not a static check. Only the two claims that go
-stale MECHANICALLY -- a byte count, a commit count -- are checked. This is the same boundary
-check-narrative-status-drift.py drew for prose contradictions vs. the register's own row.
+It does not verify CLAUDE.md's prose mentions every large file, or stays in sync with the JSON's
+entries -- that drift is no longer machine-checked (a deliberate trade-off of the Phase 3 move: JSON
+is machine truth, CLAUDE.md is curated narrative a human keeps roughly aligned with it, per this
+plan's Rule 2). It does not verify CLAUDE.md's prose is complete in general -- that is unbounded and
+belongs to a human editor, not a static check. Only the two claims that go stale MECHANICALLY -- a
+byte count, a commit count -- are checked.
 
 CALIBRATE BEFORE TRUSTING IT
 ------------------------------
     python scripts/quality/check-record-surfaces.py --calibrate
 
 Six controls, all must behave as stated or the script exits 1:
-  - Size-claim check against CLAUDE.md pinned at `27c984d` (the real commit immediately before this
-    plan's P2 fix landed -- confirmed via `git show 27c984d:CLAUDE.md` to still carry the stale
-    197KB/164KB claims for the now-12KB TrustedSourceEmitter/SemanticValidator) -- MUST fire.
-  - Size-claim check against the CLAUDE.md in the working tree (post-P2) -- MUST NOT fire.
+  - Size-claim check against a synthetic policy pinned to the real pre-fix sizes (the 2026-07-29
+    drift this check was built to catch: two now-~12KB files still claimed at 197KB/164KB, a fourth
+    140KB file entry missing tolerance-checkable data) -- MUST fire.
+  - Size-claim check against the real scripts/policy/record-surfaces.json in the working tree --
+    MUST NOT fire.
   - Branch-freshness against a synthetic 51-ahead/0-behind gap -- MUST fire (FAIL-shaped).
   - Branch-freshness against a synthetic 0-ahead/0-behind gap -- MUST NOT fire.
   - Branch-freshness against a synthetic 0-ahead/4-behind gap -- MUST fire (WARN-shaped, never FAILs).
   - Branch-freshness against a synthetic 0-ahead/0-behind gap (behind control) -- MUST NOT fire.
-
-Same discipline as check-narrative-status-drift.py's ADR-0009 control: pin to a fixed SHA, not HEAD,
-so the control keeps proving something after CLAUDE.md is edited again.
 
 USAGE
 -----
@@ -74,21 +75,17 @@ report-only for narrative drift does not apply here.
 from __future__ import annotations
 
 import argparse
-import re
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent.parent
+_POLICY_PATH = _HERE.parent / "policy" / "record-surfaces.json"
 
 BRANCH_WARN = 20
 BRANCH_FAIL = 50
-SIZE_TOLERANCE = 0.25
-
-LARGE_FILES_HEADING = re.compile(r"^##\s+Large files")
-HEADING = re.compile(r"^#{1,6}\s")
-LARGE_FILE_ENTRY = re.compile(r"`([^`]+\.[A-Za-z0-9]+)`\s*\((\d+(?:\.\d+)?)\s*K[Bb]\)")
 
 
 def resolve_abbrev_path(root: Path, abbrev: str) -> list[Path]:
@@ -106,29 +103,19 @@ def resolve_abbrev_path(root: Path, abbrev: str) -> list[Path]:
         return []
 
 
-def check_size_claims(root: Path, claude_md_text: str) -> list[str]:
+def check_size_claims(root: Path, policy: dict) -> list[str]:
     findings: list[str] = []
-    in_block = False
-    for line in claude_md_text.splitlines():
-        if LARGE_FILES_HEADING.match(line):
-            in_block = True
-            continue
-        if in_block and HEADING.match(line):
-            break
-        if not in_block:
-            continue
-        m = LARGE_FILE_ENTRY.search(line)
-        if not m:
-            continue
-        abbrev_path, claimed_kb_str = m.group(1), m.group(2)
-        claimed_kb = float(claimed_kb_str)
+    tolerance = policy.get("sizeToleranceFraction", 0.25)
+    for entry in policy.get("entries", []):
+        abbrev_path = entry["path"]
+        claimed_kb = float(entry["approxSizeKB"])
         matches = resolve_abbrev_path(root, abbrev_path)
         if len(matches) == 0:
-            findings.append(f"CLAUDE.md large-files block: `{abbrev_path}` does not resolve to any file on disk")
+            findings.append(f"record-surfaces.json: `{abbrev_path}` does not resolve to any file on disk")
             continue
         if len(matches) > 1:
             findings.append(
-                f"CLAUDE.md large-files block: `{abbrev_path}` is ambiguous -- resolves to "
+                f"record-surfaces.json: `{abbrev_path}` is ambiguous -- resolves to "
                 f"{len(matches)} files: {', '.join(str(p.relative_to(root)) for p in matches)}"
             )
             continue
@@ -136,10 +123,10 @@ def check_size_claims(root: Path, claude_md_text: str) -> list[str]:
         if claimed_kb <= 0:
             continue
         drift = abs(actual_kb - claimed_kb) / claimed_kb
-        if drift > SIZE_TOLERANCE:
+        if drift > tolerance:
             findings.append(
-                f"CLAUDE.md large-files block: `{abbrev_path}` claimed {claimed_kb:.0f} KB, actual "
-                f"{actual_kb:.0f} KB ({drift:.0%} drift, tolerance {SIZE_TOLERANCE:.0%})"
+                f"record-surfaces.json: `{abbrev_path}` claimed {claimed_kb:.0f} KB, actual "
+                f"{actual_kb:.0f} KB ({drift:.0%} drift, tolerance {tolerance:.0%})"
             )
     return findings
 
@@ -191,21 +178,23 @@ def calibrate(root: Path) -> int:
 
     print("Calibration -- must catch the real 2026-07-29 CLAUDE.md size drift and a synthetic branch gap:")
 
-    PRE_FIX_SHA = "27c984d"
-    try:
-        pre_fix_text = subprocess.run(
-            ["git", "show", f"{PRE_FIX_SHA}:CLAUDE.md"],
-            cwd=root, capture_output=True, text=True, check=True,
-        ).stdout
-    except subprocess.CalledProcessError as exc:
-        print(f"  ERROR: could not read {PRE_FIX_SHA}:CLAUDE.md: {exc.stderr}", file=sys.stderr)
-        return 1
-    report(f"size-claim check vs. CLAUDE.md @ {PRE_FIX_SHA} (real pre-P2 revision)",
-           check_size_claims(root, pre_fix_text), expect_fire=True)
+    # The real 2026-07-29 drift, reproduced as a synthetic policy (git show 27c984d:CLAUDE.md
+    # confirms these were the actual stale claims at the time -- 197KB/164KB for files now split
+    # down to ~12KB by the 2.B decomposition): the drift check must still fire on numbers this far
+    # off, regardless of where the claim now lives.
+    stale_policy = {
+        "sizeToleranceFraction": 0.25,
+        "entries": [
+            {"path": "NPDevGenerator/.../emitters/TrustedSourceEmitter.java", "approxSizeKB": 197},
+            {"path": "NPDevContract/dsl/.../validation/SemanticValidator.java", "approxSizeKB": 164},
+        ],
+    }
+    report("size-claim check vs. a synthetic policy carrying the real pre-fix 197KB/164KB claims",
+           check_size_claims(root, stale_policy), expect_fire=True)
 
-    working_text = (root / "CLAUDE.md").read_text(encoding="utf-8")
-    report("size-claim check vs. CLAUDE.md in the working tree (post-P2)",
-           check_size_claims(root, working_text), expect_fire=False)
+    real_policy = json.loads(_POLICY_PATH.read_text(encoding="utf-8"))
+    report("size-claim check vs. the real scripts/policy/record-surfaces.json",
+           check_size_claims(root, real_policy), expect_fire=False)
 
     report("branch-freshness vs. synthetic 51-ahead/0-behind gap",
            check_branch_freshness(51, 0), expect_fire=True)
@@ -234,11 +223,11 @@ def main(argv: list[str]) -> int:
     if args.calibrate:
         return calibrate(root)
 
-    print("Record-surface staleness (branch freshness + CLAUDE.md size claims)")
+    print("Record-surface staleness (branch freshness + record-surfaces.json size claims)")
     total_blocking = 0
 
-    claude_md = root / "CLAUDE.md"
-    size_findings = check_size_claims(root, claude_md.read_text(encoding="utf-8"))
+    policy = json.loads(_POLICY_PATH.read_text(encoding="utf-8"))
+    size_findings = check_size_claims(root, policy)
     for f in size_findings:
         print(f"  {f}")
     total_blocking += len(size_findings)

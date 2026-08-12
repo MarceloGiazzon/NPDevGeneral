@@ -21,4 +21,3 @@ detail: |
   canonical example (fresh-installed build N, N+1 drops a column, roll back to N) was not actually
   refused until REG-27 made afterMigrate record the initial realization as an APPLIED history point
   too. This item's DONE claim holds only with the REG-27 fix applied.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-8

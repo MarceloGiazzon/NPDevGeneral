@@ -8,8 +8,12 @@ keep moving. That said, the conventions below are stable and enforced by CI, not
 
 - Read `CLAUDE.md` — it's the repo guide (module map, where build output goes, large files to avoid
   reading in full, environment notes). It applies to human contributors as much as to an AI agent.
-- Check `docs/NPDEV_OPEN_ITEMS_REGISTER.md` for known open items before filing a new one — it's a
-  machine-parsed contract (see its own header), not just a changelog.
+- Check `docs/OPEN_ITEMS.md` for known open items before filing a new one. It is GENERATED from
+  `ledger/items/*.yml` — the ledger is the source of truth, so file and edit items there, never in
+  the rendered document. (It used to say `docs/NPDEV_OPEN_ITEMS_REGISTER.md`; that register was
+  historical, then moved out of the repo entirely by md-zero-2026-08-11 PLAN.md Phase 2 once every
+  ledger item's own `detail:` field was confirmed to carry its narrative without it — git history
+  keeps the original.)
 
 ## Build output and evidence never go in the repo
 
@@ -18,6 +22,47 @@ keep moving. That said, the conventions below are stable and enforced by CI, not
 - Scratch files, screenshots, and verification evidence go outside the repo too.
 - A pre-commit hook (`scripts/hooks/pre-commit.ps1` → `Test-WorkspaceSlimness.ps1`) enforces this;
   if it blocks your commit, run `pwsh -File scripts/hygiene/clean-workspace-state.ps1` first.
+
+## Don't add a process document — it will be rejected by CI
+
+A plan, checklist, findings log, handoff, retrospective, session digest, snapshot or status register
+is **working state, not documentation**, and it may not enter this repo. `check-doc-inventory.py`
+(ai-knowledge gate `[45/45]`) fails the build on any new one.
+
+Measured on 2026-08-11: of 302 tracked `.md` files (59,754 lines), **265 files / 39,705 lines were
+read by nothing** — no script, no gate, no reader. They accumulated one work-cycle at a time, and
+several became undeletable once a gate started parsing them. Moving them doesn't help: a
+reorganisation that relocated 50 files left the tracked total at 302.
+
+Where it goes instead:
+
+| What you have | Where it belongs |
+|---|---|
+| Machine-readable state (items, gaps, statuses) | `ledger/*.yml` — schema'd, and render a doc from it if humans need one |
+| Durable human documentation | `docs/`, few and curated, linked from `docs/README.md` |
+| Your notes, plan, evidence, session log | Outside the repo entirely (`NPDev_General__OutsideRepo`) |
+
+If a document really is durable reference material whose *name* just happens to match a banned
+pattern, add it to `exempt` in `scripts/policy/doc-inventory-policy.json` **with a written reason**.
+The 57 pre-ban files are frozen in a `legacy` list that may only shrink.
+
+## Never make a script read a `.md` file
+
+Markdown is output for humans. Anything a script needs is a fact, and facts live in JSON/YAML.
+`check-no-markdown-reads.py` fails the build on any script that opens a `.md`.
+
+This is not style. Parsing prose as data is what made 265 documents undeletable: a gate started
+reading one, and from that moment the document could not change. Inverting all 37 couplings removed
+14,000 lines of markdown and three whole checkers.
+
+If you need a fact in a script, put it in `ledger/*.yml` or `scripts/policy/*.json` and render the
+document from it — `content/*.yml` → `scripts/docs/generate_*.py` is the worked example.
+
+**The 5 exemptions are capped and may never grow.** They are markdown *linters* — scripts whose job
+is validating hand-written prose (link integrity, doc classification, pinned download links,
+hardcoded paths). `markdown-read-exemptions.json` pins `frozenCount: 5`; the gate fails if the list
+grows, and fails if it shrinks without lowering `frozenCount` in the same commit, so the ceiling
+only ever ratchets down. Adding a 6th is an owner decision, not a checker change.
 
 ## Git hygiene
 

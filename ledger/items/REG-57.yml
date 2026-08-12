@@ -25,4 +25,3 @@ detail: |
   demo's workaround sleep removed, run-durable-resume-demo.ps1 reproduced the exact failure fresh;
   with the fix restored, 3/3 clean passes. Plus UserDatabaseDefinitionLoaderWriteDelayTest (2/2).
   The 5-second sleep workaround was deleted from run-durable-resume-demo.ps1.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-57

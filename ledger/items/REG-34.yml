@@ -37,4 +37,3 @@ detail: |
   `-PincludePostgresMatrix` into this workflow, would need the same check re-run by hand. Building a
   permanent gate for that was judged out of scope for this LOW item (matches C10's own "no action
   expected" framing) rather than folded in here.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-34

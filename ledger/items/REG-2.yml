@@ -18,4 +18,3 @@ detail: |
   npdev.trial.database-override:true). Running the suite surfaced two more real bugs, both fixed: a
   text=uuid cast in PublicationRollbackE2EIT, and LoginController crashing verify-only JWT (fixed
   under REG-9). 10/10 green on real Postgres.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-2

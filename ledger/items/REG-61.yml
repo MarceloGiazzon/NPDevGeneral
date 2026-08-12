@@ -25,4 +25,3 @@ detail: |
   later. Did NOT invent a per-row-unique default expression language, per the plan's own scope
   decision. New BackfillPassUniqueColumnRefusalTest (2/2), RED-first. docs/SCHEMA_EVOLUTION.md
   documents the new refusal case and recipe. Full com.finalexec.db suite 273/273, no regression.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-61

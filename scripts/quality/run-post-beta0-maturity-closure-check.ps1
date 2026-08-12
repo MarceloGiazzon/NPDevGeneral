@@ -153,7 +153,7 @@ try {
         }
     }
 
-    $registerPath = "docs/POST_BETA0_HUMAN_ACTION_REGISTER.md"
+    $registerPath = "docs/maintainers/POST_BETA0_HUMAN_ACTION_REGISTER.md"
     $registerFullPath = Resolve-WorkspacePath -Root $workspaceRootPath -PathValue $registerPath
     $humanActions = @(Read-HumanActionRegister -Path $registerFullPath)
     $requiredHumanActions = @(

@@ -23,4 +23,3 @@ detail: |
   SandboxedPluginExecutionEngineTest#disambiguatesOverloadsBySameArgCountByActualArgumentType,
   confirmed RED against the pre-fix code, GREEN after. Full NPDevRuntimeHost suite 404/0, no
   regression.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-55

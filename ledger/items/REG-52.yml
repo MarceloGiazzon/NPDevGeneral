@@ -18,4 +18,3 @@ detail: |
   case-sensitive test-double lambda used elsewhere in the same file): context tenant "Acme" (normalized
   to acme), request tenant "ACME" (raw, unnormalized); confirmed RED pre-fix (denied a same-tenant
   read), GREEN after.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-52
