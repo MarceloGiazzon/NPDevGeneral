@@ -42,6 +42,32 @@ section() { echo; hr; echo "== $*"; hr; }
 # content/*.json mirror -- the exact inverse scripts/docs/generate_group_d_docs.py's own render()
 # uses to write the .md, so this stays byte-identical to what a reader sees without this script
 # ever opening README.md / docs/GETTING_STARTED.md itself.
+# Pull ONE prose line out of a content/*.json without python3.
+#
+# WHY THIS EXISTS -- a circular dependency this harness created for itself on 2026-08-11.
+# md-zero Phase 7 moved every prose question here onto content/*.json mirrors, and
+# render_content_doc reads them with python3. But section 1's whole job is to install ONLY what
+# README's prerequisites sentence names, on an image with NOTHING on it -- and Python 3 IS one of
+# the things that sentence names. So the harness needed python3 to read the line telling it to
+# install python3. It came back empty, section 1 reported "README has no recognisable 'Requires ...'
+# sentence" and "README does not name Java 17 / Python 3" -- three FAILs, all false, against a
+# README byte-identical to the one that passed at beta1.15 -- and step 2 then died with
+# "python3 is not installed, so the harness cannot extract README's commands".
+#
+# Reading README.md here instead would be the obvious fix and the wrong one: .sh files are scanned
+# by check-no-markdown-reads.py, the exemption list is frozen at 5, and its own policy says a 6th
+# is an owner decision, never a checker change -- "the correct response to a new markdown read is
+# to invert it into structured data". So this reads the SAME structured data, with tools a bare
+# image has. Not a general renderer: one line, for the one question asked before python3 exists.
+grep_content_line() {
+  # $1 = content json path, $2 = substring to find inside a prose block's "text"
+  grep -o "\"text\": \"[^\"]*$2[^\"]*\"" "$1" 2>/dev/null \
+    | head -1 \
+    | sed 's/^"text": "//; s/"$//' \
+    | sed 's/\\n/\n/g' \
+    | grep -m1 "$2" || true
+}
+
 render_content_doc() {
   python3 -c "
 import json, sys
@@ -263,6 +289,14 @@ section "1. Install ONLY what README's prerequisites sentence names"
 # Pull the sentence that states requirements. We look for the line containing
 # "Requires" inside (or just after) the Quickstart heading.
 PREREQ_LINE=$(printf '%s\n' "$README_TEXT" | grep -m1 -i '^Requires\|^\*\*Requires\|Requires Java' || true)
+
+# $README_TEXT is empty when python3 is absent -- which is the NORMAL state here, because this
+# section runs before anything is installed and Python 3 is one of the things it is about to be
+# told to install. Fall back to the same JSON, read with grep. See grep_content_line's note.
+if [ -z "$PREREQ_LINE" ]; then
+  PREREQ_LINE=$(grep_content_line content/readme.json 'Requires')
+  [ -n "$PREREQ_LINE" ] && echo "  (prerequisites read from content/readme.json directly -- python3 not installed yet)"
+fi
 
 if [ -z "$PREREQ_LINE" ]; then
   fail "prereqs-declared" \
