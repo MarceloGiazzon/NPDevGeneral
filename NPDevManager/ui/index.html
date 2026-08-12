@@ -59,7 +59,7 @@
       -->
       <h2>Database engines</h2>
       <p class="subtitle">Everything this NPDev version supports &mdash; from <code>npdev engines</code>, never hardcoded.</p>
-      <div id="engine-matrix" class="check-list"></div>
+      <div id="engine-matrix" class="check-list"><p class="status-line">reading the engine list&hellip;</p></div>
     </section>
 
     <!-- Install -->
@@ -203,12 +203,14 @@
         it in: typing a folder by hand keeps working exactly as before, which matters for an app the
         scan cannot see.
       -->
-      <label>App
-        <select id="run-app-picker">
-          <option value="">(type a folder below)</option>
-        </select>
-      </label>
-      <button id="run-app-refresh">&#10227; Refresh list</button>
+      <div class="run-row">
+        <label>App
+          <select id="run-app-picker">
+            <option value="">(type a folder below)</option>
+          </select>
+        </label>
+        <button id="run-app-refresh">&#10227; Refresh list</button>
+      </div>
       <label>App folder <input id="run-app-dir" placeholder="D:\Apps\my-app" /></label>
       <label>Port <input id="run-port" type="number" value="8080" /></label>
 
