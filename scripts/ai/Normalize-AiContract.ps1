@@ -144,7 +144,6 @@ function New-OfficialModel {
     $flows = @()
     $procedures = @()
     $panels = @()
-    $tenantIdField = if ($null -ne $Model.tenancy) { [string]$Model.tenancy.tenantIdField } else { "" }
     $modelWorkflows = if ($null -eq $Model.workflows) { @() } else { @($Model.workflows | Where-Object { $null -ne $_ }) }
 
     foreach ($entity in @($Model.entities)) {
@@ -156,13 +155,27 @@ function New-OfficialModel {
                 required = $true
             }
         )
-        if ([bool]$entity.tenantScoped -and -not [string]::IsNullOrWhiteSpace($tenantIdField)) {
-            $fields += [ordered]@{
-                name = $tenantIdField
-                type = "string"
-                required = $true
-            }
-        }
+        # A tenant-scoped entity gets NO tenant-id field of its own. The platform already puts
+        # `tenant_id` on every generated business table -- that column IS the tenant isolation
+        # mechanism (see ReservedColumnNames: "every generated entity gets them implicitly ...
+        # 'tenant_id' for tenant isolation"). Materializing a second, user-level field of the same
+        # meaning produced a duplicate column nothing kept in sync with the real one.
+        #
+        # It also could not generate at all once REG-64/F10 (2026-07-29) taught EntityEmitter to
+        # reject a model field whose column collides with a reserved one. From that day the two
+        # golden scenarios whose AI chose the obvious name -- `tenantId`, column `tenant_id` -- died
+        # in the generator, and `tenant-workflow-ops` survived only because its fixture happened to
+        # say `tenantIdRef`. The AI Beta Gate has been red ever since; it is workflow_dispatch-only,
+        # so nobody saw it for six weeks.
+        #
+        # Renaming the fixtures would have made the gate green while leaving the trap set for the
+        # next model that picks the natural name -- and these fixtures exist precisely to represent
+        # what an AI actually writes. So the duplication is removed at the source instead, which
+        # fixes every value of tenantIdField rather than the two that happened to collide.
+        #
+        # `tenancy.tenantIdField` is still a mapped field: it names the principal claim that carries
+        # the tenant, and the security sidecar below still emits it. It just no longer becomes a
+        # column, because the platform's own column already is one.
         $invariants = @()
         foreach ($field in @($entity.fields)) {
             $officialType = Convert-FieldType ([string]$field.type)
