@@ -15,4 +15,3 @@ detail: |
   transition at insert time. Verified live against superuser-admin-console: re-POSTing an identical
   (from, to) pair via the real ControlPanel API returned 500 and GET /marks still showed exactly one
   row. Unit coverage: duplicateMarkForTheSameTransitionIsRejected.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-30

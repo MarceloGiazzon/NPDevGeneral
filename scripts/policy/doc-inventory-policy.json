@@ -1,0 +1,166 @@
+{
+  "schemaVersion": "npdev-doc-inventory-policy.v1",
+  "rule": "Process/programme markdown is BANNED as a repo artifact. A plan, checklist, findings log, handoff, retrospective, session digest or status register is an agent's or a programme's WORKING STATE, not documentation. Write it to the evidence directory (NPDev_General__OutsideRepo) or record it as structured data under ledger/. Durable machine truth belongs in JSON/YAML; durable human docs belong in docs/ and are few.",
+  "why": "Measured 2026-08-11: 302 tracked .md files / 59,754 lines, of which 265 files / 39,705 lines were read by NOTHING -- 88% of the files served no machine purpose. They accumulated because each session externalised its state as a new document, then gates were written against those documents, and the documents could no longer be deleted.",
+  "processDocPatterns": [
+    {
+      "pattern": "_PLAN\\.md$",
+      "describes": "a plan"
+    },
+    {
+      "pattern": "_CHECKLISTS?\\.md$",
+      "describes": "a work checklist"
+    },
+    {
+      "pattern": "_FINDINGS\\.md$",
+      "describes": "a findings log"
+    },
+    {
+      "pattern": "_HANDOFF\\.md$",
+      "describes": "a session handoff"
+    },
+    {
+      "pattern": "_RETROSPECTIVE\\.md$",
+      "describes": "a retrospective"
+    },
+    {
+      "pattern": "_ADVERSARIAL_REVIEW\\.md$",
+      "describes": "a review-round record"
+    },
+    {
+      "pattern": "_IMPLEMENTATION_NOTES\\.md$",
+      "describes": "implementation notes"
+    },
+    {
+      "pattern": "_REGISTER\\.md$",
+      "describes": "a status register"
+    },
+    {
+      "pattern": "_ROADMAP\\.md$",
+      "describes": "a roadmap"
+    },
+    {
+      "pattern": "_GAPS\\.md$",
+      "describes": "a gaps log"
+    },
+    {
+      "pattern": "_SNAPSHOT\\.md$",
+      "describes": "a point-in-time snapshot"
+    },
+    {
+      "pattern": "(^|/)MOVE\\d+[^/]*\\.md$",
+      "describes": "a numbered programme move"
+    },
+    {
+      "pattern": "(^|/)AI_SESSION_[^/]*\\.md$",
+      "describes": "a session digest"
+    },
+    {
+      "pattern": "_SPEC\\.md$",
+      "describes": "a programme spec"
+    },
+    {
+      "pattern": "_BRIEFS?[^/]*\\.md$",
+      "describes": "a briefing note"
+    }
+  ],
+  "exempt": [
+    {
+      "path": "docs/ADAPTER_REGISTRATION_CHECKLIST.md",
+      "reason": "Durable how-to: the steps to register a new adapter. A reference checklist a reader follows, not a record of one programme's work."
+    },
+    {
+      "path": "docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md",
+      "reason": "CLAUDE.md cites this as the design reference for the live AI knowledge subsystem (build_knowledge.py + MCP tools), not as a work plan."
+    },
+    {
+      "path": "docs/architecture/AGGREGATE_WORKBENCH_PLAN.md",
+      "reason": "The design behind ADR-0004 (accepted). Architecture reference for a shipped feature."
+    },
+    {
+      "path": "docs/maintainers/EXTERNAL_SECURITY_REVIEW_BRIEF.md",
+      "reason": "Declared STATUS: ACTIVE; its own text records having been wrongly archived once already (2026-07-27)."
+    },
+    {
+      "path": "docs/maintainers/FAIL_OPEN_PLAN.md",
+      "reason": "Declared STATUS: ACTIVE governance doc retained by the 2026-08-11 docs split."
+    },
+    {
+      "path": "docs/maintainers/FRONTEND_STRATEGY_PLAN.md",
+      "reason": "Declared STATUS: ACTIVE governance doc retained by the 2026-08-11 docs split."
+    },
+    {
+      "path": "docs/maintainers/INVOCATION_TOPOLOGY_PLAN.md",
+      "reason": "Declared STATUS: ACTIVE governance doc retained by the 2026-08-11 docs split."
+    },
+    {
+      "path": "docs/maintainers/MATURITY_CLOSURE_LEDGER.md",
+      "reason": "GENERATED from scripts/policy/maturity-max-roadmap-policy.json by scripts/docs/generate_maturity_max_roadmap_docs.py (md-zero-2026-08-11 PLAN.md Phase 3) -- nothing reads this rendered file as data, but it stays live governance for a human reader."
+    },
+    {
+      "path": "docs/maintainers/NEXT_EXECUTION_PLAN.md",
+      "reason": "Declared STATUS: ACTIVE governance doc retained by the 2026-08-11 docs split."
+    },
+    {
+      "path": "docs/maintainers/POST_BETA0_HUMAN_ACTION_REGISTER.md",
+      "reason": "GENERATED from scripts/policy/maturity-max-roadmap-policy.json's humanActionRegister by scripts/docs/generate_maturity_max_roadmap_docs.py (md-zero-2026-08-11 PLAN.md Phase 3) -- nothing reads this rendered file as data, but it stays live governance for a human reader."
+    },
+    {
+      "path": "docs/maintainers/RECORD_SURFACES_PLAN.md",
+      "reason": "Declared STATUS: ACTIVE governance doc retained by the 2026-08-11 docs split."
+    }
+  ],
+  "legacy": {
+    "frozenCount": 47,
+    "note": "Pre-ban process documents, FROZEN. This list may only SHRINK. Adding to it is the thing this policy bans; the checker fails if the count grows or if an entry no longer exists.",
+    "files": [
+      "docs/archive/programme-history/AI_SESSION_DIGEST_2026-07-22_LNCH22_CLOSURE.md",
+      "docs/archive/programme-history/BOUNDARY_LIFT_HARDENING_ROADMAP.md",
+      "docs/archive/programme-history/BOUNDARY_LIFT_ROADMAP.md",
+      "docs/archive/programme-history/CLOSEOUT_PLAN.md",
+      "docs/archive/programme-history/CORPUS_INTEGRITY_PLAN.md",
+      "docs/archive/programme-history/DECISION_BRIEFS_2026-07.md",
+      "docs/archive/programme-history/EXTERNAL_AI_DELEGATION_PLAN.md",
+      "docs/archive/programme-history/FINAL_FOUR_CLOSURE_PLAN.md",
+      "docs/archive/programme-history/FINAL_LAUNCH_GAPS_CLOSURE_PLAN.md",
+      "docs/archive/programme-history/FINAL_OPEN_ITEMS_PLAN.md",
+      "docs/archive/programme-history/GROUP_A_CLOSURE_PLAN.md",
+      "docs/archive/programme-history/GROUP_B_IMPLEMENTATION_PLAN.md",
+      "docs/archive/programme-history/LNCH1_CLOSEOUT_PLAN.md",
+      "docs/archive/programme-history/LNCH1_HARDENING_PLAN.md",
+      "docs/archive/programme-history/LNCH1_PLATFORM_COLUMN_PLAN.md",
+      "docs/archive/programme-history/LNCH1_PROGRAMME_RETROSPECTIVE.md",
+      "docs/archive/programme-history/LNCH1_REMEDIATION_PLAN.md",
+      "docs/archive/programme-history/LNCH1_SCHEMA_EVOLUTION_PLAN.md",
+      "docs/archive/programme-history/MOVE1_CROSSDOCKING_CHECKLIST.md",
+      "docs/archive/programme-history/MOVE6_TYPED_SURFACE_PLAN.md",
+      "docs/archive/programme-history/OPEN_ITEMS_SNAPSHOT.md",
+      "docs/archive/programme-history/POST_LNCH22_EXECUTION_PLAN.md",
+      "docs/archive/programme-history/POST_PROGRAMME_AUDIT_PLAN.md",
+      "docs/archive/programme-history/POST_PUBLIC_PLAN.md",
+      "docs/archive/programme-history/POST_REG17_CLOSURE_PLAN.md",
+      "docs/archive/programme-history/REG12_DOCUMENT_EXPORT_PLAN.md",
+      "docs/archive/programme-history/REG16_CODEGEN_OUTPUT_ADVERSARIAL_REVIEW.md",
+      "docs/archive/programme-history/REG16_EXPORT_PDF_ADVERSARIAL_REVIEW.md",
+      "docs/archive/programme-history/REG16_FLOW_ORCHESTRATION_ADVERSARIAL_REVIEW.md",
+      "docs/archive/programme-history/REG16_KERNEL_EXECUTION_ADVERSARIAL_REVIEW.md",
+      "docs/archive/programme-history/REG16_LNCH13_ROWLEVEL_AUTHZ_ADVERSARIAL_REVIEW.md",
+      "docs/archive/programme-history/REG16_POSTGRES_ADAPTER_SQL_ADVERSARIAL_REVIEW.md",
+      "docs/archive/programme-history/REG16_RESID_COMPLETION_PLAN.md",
+      "docs/archive/programme-history/REG16_TENANT_AUTH_ADVERSARIAL_REVIEW.md",
+      "docs/archive/programme-history/REG17_ONION_HARVEST_PLAN.md",
+      "docs/archive/programme-history/REG28_30_REG12S2_CLOSURE_PLAN.md",
+      "docs/archive/programme-history/REG48_50_CLOSURE_PLAN.md",
+      "docs/archive/programme-history/REG7_REG8_EXTERNAL_DB_AND_MIGRATION_MARKING_PLAN.md",
+      "docs/archive/programme-history/REGISTER_CLOSURE_PLAN.md",
+      "docs/archive/programme-history/RELEASE_BLOCKER_EXECUTION_ROADMAP.md",
+      "docs/archive/programme-history/REMAINDER_CLOSURE_PLAN.md",
+      "docs/archive/programme-history/REMEDIATION_PLAN.md",
+      "docs/archive/programme-history/REMEDIATION_PLAN_IMPLEMENTATION_NOTES.md",
+      "docs/archive/programme-history/SCHEMA_ENGINE_REBUILD_PLAN.md",
+      "docs/archive/programme-history/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md",
+      "docs/archive/programme-history/SER_FINAL_CLOSURE_PLAN.md",
+      "docs/archive/programme-history/TREE1_LAUNCH_UNBLOCK_PLAN.md"
+    ]
+  }
+}

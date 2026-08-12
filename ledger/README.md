@@ -2,10 +2,11 @@
 
 **Status: MIGRATION COMPLETE, 2026-07-29 (docs/REMEDIATION_PLAN.md R-P1).** This directory is the
 single source of truth for NPDev's tracked bugs/gaps/boundaries. `docs/NPDEV_OPEN_ITEMS_REGISTER.md`
-is now **archived-in-place**: it stays on disk (its `#reg-N` anchors are linked from every
-`legacyDetailRef` below, and its prose investigation narrative is genuinely valuable history) but is
-no longer hand-edited for status. All 64 tracked ids (REG-1 through REG-63, plus REG-16-resid) are
-migrated. To open a new item, add a `ledger/items/<ID>.yml` file directly.
+was archived-in-place, then moved out of the repo entirely by md-zero-2026-08-11 PLAN.md Phase 2
+(git history keeps it; `__OutsideRepo/md-zero-2026-08-11/archived-programme-docs/` keeps a working
+copy) once every item's `detail:` field below was confirmed self-sufficient on its own. All 64
+tracked ids (REG-1 through REG-63, plus REG-16-resid) are migrated. To open a new item, add a
+`ledger/items/<ID>.yml` file directly.
 
 ## Why
 
@@ -34,47 +35,56 @@ surface: component tag, e.g. runtimehost/schema-lifecycle  # required
 files: [path/one.java, path/two.java]    # optional
 detail: |                        # required -- concise root-cause/fix/verification summary
   Multi-line prose.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-61   # the archived register's full narrative
 ```
 
-`legacyDetailRef` is permanent, not a migration-era scaffold: the full, often multi-thousand-word
-investigation narrative for every entry stays in the archived prose register rather than being
-bulk-copied into `detail` (error-prone, and not what this migration was solving — see "Why" above).
-A genuinely new entry (no register history to point at) may omit this field.
+`legacyDetailRef` (optional) no longer appears on any current item: it used to point into
+`docs/NPDEV_OPEN_ITEMS_REGISTER.md`'s `#reg-N` anchors for the original, often multi-thousand-word
+investigation narrative, and md-zero-2026-08-11 PLAN.md Phase 2 removed it from all 64 items in the
+same commit that moved that doc out of the repo -- each item's `detail:` field was confirmed
+self-sufficient first. `generate_open_items.py` still renders the field if a future item sets it
+(e.g. pointing at something else entirely), but nothing currently does.
 
-## Generating `docs/OPEN_ITEMS.md`
+## Generating OPEN_ITEMS.md
 
 ```
-python scripts/quality/generate_open_items.py           # regenerate
-python scripts/quality/generate_open_items.py --check    # exit 1 if stale (CI form)
+python scripts/quality/generate_open_items.py           # writes <Build>/docs/OPEN_ITEMS.md
 ```
 
-Regenerates `docs/OPEN_ITEMS.md` from every `ledger/items/*.yml`, validating each file's schema
-first (required fields, enum values, `status: DONE` requires `closed`). Never hand-edit that file.
-Wired into `run-ai-knowledge-gate.ps1` (`--check` form), blocking.
+Renders OPEN_ITEMS.md from every `ledger/items/*.yml`, validating each file's schema first
+(required fields, enum values, `status: DONE` requires `closed`). Never hand-edit the generated
+file. `manual-runbook` (not wired into any gate -- confirmed by grep before this note was written;
+the previous version of this line claimed otherwise). md-zero-2026-08-11 PLAN.md Phase 6: the
+rendered doc is no longer committed to the repo at all (build output, per
+`docs/BUILD_OUTPUT_LOCATION_POLICY.md`) -- there is nothing left to `--check` against, so that flag
+is gone.
 
-**Dependency note:** this script needs PyYAML (`import yaml`), same as
-`scripts/quality/check-register-consistency.py`'s `load_ledger_items` (feeds Rule T1) — together the
-only two scripts under `scripts/` that do; everything else here is stdlib-only. Declared in
-`scripts/requirements.txt`; `.github/workflows/ai-knowledge-gate.yml` installs it
-(`pip install -r scripts/requirements.txt`) before running either script.
+**Dependency note:** this script needs PyYAML (`import yaml`), same as the other ledger/gaps.yml
+readers (`scripts/docs/generate_gaps_roadmap.py`, `scripts/ai/extract_platform_status.py`) and
+`scripts/quality/check-workflow-yaml-syntax.py`; everything else under `scripts/` is stdlib-only.
+Declared in `scripts/requirements.txt`; `.github/workflows/ai-knowledge-gate.yml` installs it
+(`pip install -r scripts/requirements.txt`) before running any of them.
 
 ## What consumes the ledger now
 
-- `scripts/quality/generate_open_items.py` — renders `docs/OPEN_ITEMS.md`.
-- `scripts/quality/check-register-consistency.py`'s Rule T1 — cross-checks `docs/EXECUTION_TREES.md`
-  mentions of an id against that id's `status` here (reads the YAML directly, not the archived
-  register).
-- `scripts/external-review/build-review-pack.py` — excludes `docs/OPEN_ITEMS.md` (like the archived
-  register before it) from any external-AI review pack, since it carries the platform's own
-  conclusions about itself.
+- `scripts/quality/generate_open_items.py` — renders OPEN_ITEMS.md.
+- `scripts/external-review/build-review-pack.py`'s `FORBIDDEN_PATH_PATTERNS` names `OPEN_ITEMS\.md$`
+  (excluding it from any external-AI review pack, since it carries the platform's own conclusions
+  about itself) and `NPDEV_OPEN_ITEMS_REGISTER\.md$` (the archived register that pattern was
+  originally written for, moved out of the repo in Phase 2 of the same plan -- that half is now
+  moot, harmless, not cleaned up here). Both patterns scan the working tree a review pack is built
+  from; OPEN_ITEMS.md not being tracked in git any more (Phase 6) makes its own pattern moot too
+  the moment nobody generates a local copy before building a pack.
 
 ## History
 
 Prototyped 2026-07-28 against a 9-item subset (REG-54–REG-62, that session's own work) to prove the
 schema, the generator, and gate-compatibility before committing to a full cutover. Full migration —
 the remaining ~54 ids, the register-archival banner, Rule T1's YAML repoint, and Rule T3's
-retirement — landed 2026-07-29 (docs/REMEDIATION_PLAN.md R-P1). `OPEN_GAPS_AND_ROADMAP.md`'s 19
-items and `LAUNCH_READINESS_GAPS.md`'s 24 items are a separate ledger family, not part of this
-migration's scope, and remain their own prose documents (both still cross-checked by
-`check-register-consistency.py`'s original summary-vs-detail rule).
+retirement — landed 2026-07-29 (docs/REMEDIATION_PLAN.md R-P1). `check-register-consistency.py`
+(the checker that ran Rule T1 against `docs/EXECUTION_TREES.md`, and the original summary-vs-detail
+rule against `OPEN_GAPS_AND_ROADMAP.md`'s 19 items and `LAUNCH_READINESS_GAPS.md`'s 24) was itself
+deleted by md-zero-2026-08-11 PLAN.md Phase 2, along with `EXECUTION_TREES.md`,
+`NPDEV_OPEN_ITEMS_REGISTER.md` and `LAUNCH_READINESS_GAPS.md` -- all 177 items across every ledger
+family it guarded were DONE. `OPEN_GAPS_AND_ROADMAP.md` itself is unaffected: it had already become
+a generated projection of `ledger/gaps.yml` in this same branch's Phase 1, before Phase 2 removed
+the checker that used to cross-check it by parsing its prose.

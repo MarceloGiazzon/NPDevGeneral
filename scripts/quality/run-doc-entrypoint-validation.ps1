@@ -405,6 +405,13 @@ $reportReferences = @()
 foreach ($docFullPath in $documentsToScan) {
     $documentRelative = Get-RepoRelativePath $docFullPath
     $documentNormalized = Normalize-DocValidationPath $documentRelative
+    # docs-decoupling-2026-08-11 PLAN.md Phase 2: a "historical" document (docs/archive/**,
+    # docs/beta/**) is still scanned and must still be classified -- the "$null -eq
+    # $documentClassification" unclassified-is-blocking check below is UNCHANGED -- but a script or
+    # report reference it makes is not held to release-relevance: history is allowed to cite a path
+    # that no longer exists. That is the one change that finally lets history be history without
+    # either deleting it or hand-editing every stale reference inside it.
+    $documentIsHistorical = $false
     if ($documentNormalized.StartsWith("docs/") -and $documentNormalized.EndsWith(".md")) {
         $documentClassification = Get-DocumentClassification $documentNormalized $classificationPolicy
         if ($null -eq $documentClassification) {
@@ -417,6 +424,7 @@ foreach ($docFullPath in $documentsToScan) {
             }
         }
         else {
+            $documentIsHistorical = ([string]$documentClassification.classification -eq "historical")
             $documentClassifications += [pscustomobject]@{
                 document = $documentRelative
                 classification = [string]$documentClassification.classification
@@ -453,8 +461,8 @@ foreach ($docFullPath in $documentsToScan) {
                 }
             }
             $classification = Get-ScriptClassification $normalizedPath $classificationPolicy
-            $blocking = -not $exists -and [bool]$classification.releaseRelevant
-            $reason = if ($exists) { "Referenced script exists." } else { [string]$classification.reason }
+            $blocking = -not $exists -and [bool]$classification.releaseRelevant -and -not $documentIsHistorical
+            $reason = if ($exists) { "Referenced script exists." } elseif ($documentIsHistorical) { "Historical document (" + $documentRelative + ") -- not held to release-relevance. " + [string]$classification.reason } else { [string]$classification.reason }
             if ($blocking) {
                 $failures.Add($documentRelative + ":" + $lineNumber + " references missing release-relevant script " + $normalizedPath) | Out-Null
             }
@@ -471,13 +479,14 @@ foreach ($docFullPath in $documentsToScan) {
             $referencePath = [string]$match.Value
             $normalizedPath = Normalize-DocValidationPath $referencePath
             $classification = Get-ReportReferenceClassification $normalizedPath $reportMappings
-            if ([bool]$classification.blocking) {
+            $reportBlocking = [bool]$classification.blocking -and -not $documentIsHistorical
+            if ($reportBlocking) {
                 $failures.Add($documentRelative + ":" + $lineNumber + " references blocking report with unresolved mapping " + $normalizedPath + ": " + [string]$classification.reason) | Out-Null
             }
             $finding = New-ReferenceFinding $documentRelative $lineNumber $referencePath $normalizedPath
             $finding["mappingStatus"] = [string]$classification.mappingStatus
             $finding["classification"] = [string]$classification.classification
-            $finding["blocking"] = [bool]$classification.blocking
+            $finding["blocking"] = $reportBlocking
             $finding["reason"] = [string]$classification.reason
             $finding["producerScripts"] = @($classification.producerScripts)
             $finding["consumers"] = @($classification.consumers)

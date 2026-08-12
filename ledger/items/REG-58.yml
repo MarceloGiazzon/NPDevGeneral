@@ -31,4 +31,3 @@ detail: |
   exception byte-for-byte against the real composite-index shape with the fix disabled; passes
   (2/2) with it restored. Full NPDevRuntimeHost suite 406/0, no regression. Not yet closed
   end-to-end on WmsOffice itself as of this fix -- see REG-59 for the live-database recovery.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-58

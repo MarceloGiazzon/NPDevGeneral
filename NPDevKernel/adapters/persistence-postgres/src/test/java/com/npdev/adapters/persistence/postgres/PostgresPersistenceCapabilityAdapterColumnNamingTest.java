@@ -37,13 +37,17 @@ class PostgresPersistenceCapabilityAdapterColumnNamingTest {
     }
 
     private static DataSource fakeDataSource(AtomicReference<String> sqlRef) {
+        AtomicReference<Connection> connectionRef = new AtomicReference<>();
         Connection connection = (Connection) Proxy.newProxyInstance(
                 Connection.class.getClassLoader(),
                 new Class[]{Connection.class},
                 (proxy, method, args) -> {
+                    if ("getMetaData".equals(method.getName())) {
+                        return FakeJdbc.metaDataFor("PostgreSQL");
+                    }
                     if ("prepareStatement".equals(method.getName())) {
                         sqlRef.set((String) args[0]);
-                        return fakePreparedStatement();
+                        return fakePreparedStatement(connectionRef);
                     }
                     if ("close".equals(method.getName())) {
                         return null;
@@ -51,6 +55,7 @@ class PostgresPersistenceCapabilityAdapterColumnNamingTest {
                     return defaultValue(method.getReturnType());
                 }
         );
+        connectionRef.set(connection);
 
         return (DataSource) Proxy.newProxyInstance(
                 DataSource.class.getClassLoader(),
@@ -64,11 +69,14 @@ class PostgresPersistenceCapabilityAdapterColumnNamingTest {
         );
     }
 
-    private static PreparedStatement fakePreparedStatement() {
+    private static PreparedStatement fakePreparedStatement(AtomicReference<Connection> connectionRef) {
         return (PreparedStatement) Proxy.newProxyInstance(
                 PreparedStatement.class.getClassLoader(),
                 new Class[]{PreparedStatement.class},
                 (proxy, method, args) -> {
+                    if ("getConnection".equals(method.getName())) {
+                        return connectionRef.get();
+                    }
                     if ("setObject".equals(method.getName())) {
                         return null;
                     }

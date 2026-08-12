@@ -20,4 +20,3 @@ detail: |
   still pass. Tests: InProcCircuitBreakerStateStoreTest (8 threads x 200),
   JdbcCircuitBreakerStateStoreConcurrencyTest on H2, PostgresCircuitBreakerStateStoreTest on the real
   engine.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-37

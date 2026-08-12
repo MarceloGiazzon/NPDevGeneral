@@ -9,6 +9,33 @@ app definitions and build output live **outside** it (see Layers below).
 - **Build output → `D:\WorkSpace\NPDev\Build`. NEVER write generated/build artifacts inside this
   repo.** (`docs/BUILD_OUTPUT_LOCATION_POLICY.md`)
 - **Evidence / scratch → `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo`**, not the repo.
+- **Process documents are BANNED from this repo — do not write one.** A plan, checklist, findings
+  log, handoff, retrospective, session digest, snapshot or status register is your WORKING STATE,
+  not documentation. It goes to the evidence directory above, or into `ledger/` as structured data.
+  Enforced by `scripts/quality/check-doc-inventory.py` (ai-knowledge gate [45/45]) against
+  `scripts/policy/doc-inventory-policy.json`; the 57 pre-ban files are frozen in a `legacy` list
+  that may only **shrink**. Measured 2026-08-11: of 302 tracked `.md` files / 59,754 lines, **265
+  files / 39,705 lines were read by nothing at all** — 88% of the files. They accumulated one
+  session at a time, because a run with no memory externalises its state as a document, and the next
+  run cannot tell which documents are still true. Then a gate reads one and it can never be deleted
+  (`check-register-consistency.py` parses four; `extract_platform_status.py` parsed a fifth as a
+  database until it was inverted to `ledger/gaps.yml`). **Reorganising does not fix this** — the
+  2026-08-11 pass moved 50 files into subdirectories and the tracked total went 301 → 302. Durable
+  machine truth → `ledger/*.yml` with a schema. Durable human docs → `docs/`, few, curated,
+  generated where possible, and indexed in `docs/README.md`. Everything else → outside the repo.
+- **NO SCRIPT MAY READ A `.md` FILE — and the exemption list may never grow.** Markdown is output
+  for humans; facts a script needs live in JSON/YAML. All 37 script↔markdown data couplings were
+  inverted (md-zero-2026-08-11), enforced by `scripts/quality/check-no-markdown-reads.py` (AST
+  taint-tracking for Python, regex for PowerShell/shell) against
+  `scripts/policy/markdown-read-exemptions.json`. **Exactly 5 exemptions remain, all markdown
+  LINTERS** (link integrity, doc-entrypoint classification + its test harness, pinned-download-link
+  drift, hardcoded-path scanning) — scripts whose job IS validating hand-written prose, which is
+  irreducible while 277 of 287 docs are hand-authored. That list is pinned by `frozenCount: 5`: the
+  checker fails if it GROWS, and equally fails if it shrinks without `frozenCount` being lowered in
+  the same commit, so the ceiling ratchets DOWN and can never be silently re-widened. **A 6th
+  exemption is an owner decision, never a checker change** — the correct answer to a new markdown
+  read is to invert it into structured data. Proven by a live RED (a synthetic 6th entry fails the
+  gate) plus 22 `--calibrate` controls.
 - **Source-of-truth layers:** (1) this repo = truth for platform code/scripts/schemas;
   (2) `D:\WorkSpace\NPDev\AppGen\apps` = truth for app *definitions* only (not a git repo);
   (3) `Build` = ephemeral. You may edit layer 2/3 for speed, but propagate any code/script change
@@ -34,9 +61,11 @@ Main package roots: `com.npdev.dsl.v1` / `com.npdev.generator` / `com.npdev.kern
 
 ## Large files — DO NOT full-read (Grep to a line, then Read with offset/limit)
 
-These are the files most often edited; reading any one whole burns 40–100k tokens. Sizes are checked
-against disk by `scripts/quality/check-record-surfaces.py` (±25% tolerance) — if this list drifts, that
-gate fails, so it should stay accurate without needing a manual re-audit:
+These are the files most often edited; reading any one whole burns 40–100k tokens. The authoritative,
+machine-checked list is `scripts/policy/record-surfaces.json` — `scripts/quality/check-record-surfaces.py`
+resolves each entry's path and fails if its size has drifted more than the declared tolerance (±25%).
+This prose list is a human-curated summary of that JSON, not itself read by anything — keep it roughly
+aligned when the JSON changes, but only the JSON is enforced:
 
 - `NPDevGenerator/.../npdev-templates/static-react/assets/app.js` (141 KB; sibling chunks
   `AuthoringApp.js`/`ReactWorkbenchApp.js` in the same `assets/` dir) — **generated bundle, ignore
@@ -118,6 +147,11 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md`.
 - **Maintainer skills** (tracked, un-ignored under `.claude/skills/`): `rebuild-app` (three-cache
   refresh via `scripts/appgen/Rebuild-And-Restage.ps1`) and `verify-in-browser` (ScrapForAI).
+- **Other manual verification scripts, not wired into any gate:** `scripts/quality/run-boundary-lock-check.ps1`
+  (controller/UI-component/deprecated-schema-alias classification vs. reality — run it by hand after
+  adding a controller class or a `NPDevEditor/ui-react/src` component) and
+  `scripts/proofs/run-item20-postgres-proof.ps1` (a one-off real-Postgres repro for a specific closed
+  item; kept for re-running against a suspected regression, not part of any regular cadence).
 - **After changing kernel/adapter Java, restage jars before regenerating an app:**
   `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars`. **The defaults now agree**
   (both resolve to `D:\WorkSpace\NPDev\Build\runtimehost-libs` via `Get-NPDevRuntimeHostLibsDir`,
@@ -193,8 +227,13 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
 ## Where the truth lives (read before filing or editing status)
 
 - **Open items:** `ledger/items/*.yml` is authoritative. `docs/OPEN_ITEMS.md` is GENERATED from it
-  (`scripts/quality/generate_open_items.py`) — never hand-edit. `docs/NPDEV_OPEN_ITEMS_REGISTER.md`
-  is HISTORICAL/archived-in-place: read for narrative (root causes, fix rationale), never for status.
+  (`scripts/quality/generate_open_items.py`) — never hand-edit. `NPDEV_OPEN_ITEMS_REGISTER.md` was
+  HISTORICAL/archived-in-place, then moved out of the repo entirely by md-zero-2026-08-11 PLAN.md
+  Phase 2 (git history keeps it) once every ledger item's `detail:` field was confirmed
+  self-sufficient without it.
+- **The gaps ledger too:** `ledger/gaps.yml` is authoritative for `docs/OPEN_GAPS_AND_ROADMAP.md`'s
+  Priority-index and Fixed-engine-bugs tables (`scripts/docs/generate_gaps_roadmap.py`) — same
+  never-hand-edit discipline (docs-decoupling-2026-08-11 PLAN.md Phase 1).
 - **DSL is at 2.0** — retired `flowStep.type` aliases collapsed to their canonical values. See
   `BREAKING.md`. Every breaking change to the DSL, generated code layout, or internal APIs ships its
   `npdev migrate` codemod (`NPDevCli/dsl_v2_migration.py`) in the same commit.
@@ -228,14 +267,14 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
   chain, and `REG-112`'s test-exclusion sibling pair), and fails the gate the moment any of them
   diverges — add a new rule there the next time a "one place updated, its twin forgotten" bug is
   found, rather than letting a fourth instance go unnoticed the way REG-89/104/112 did.
-- **Citing a `REG-nn`/ledger id as a live blocker** in `docs/SCREEN_TAXONOMY.md`, `docs/MOVE*_CHECKLISTS.md`,
-  `docs/MOVE*_FINDINGS.md`, or `docs/MOVE1_PANEL_GAPS.md`? Check the id's own ledger status BEFORE
-  writing "blocked by REG-nn" or "REG-nn (open ...)" — `scripts/quality/check-blocker-citation-freshness.py`
-  (wired in `run-ai-knowledge-gate.ps1`) fails the moment that id's `ledger/items/REG-nn.yml` says
-  DONE/PARTIAL while the doc still calls it a live blocker. Move 15 Phase D item D1: five separate
-  times a console/screen record said "blocked by X" while X had already been closed in a later move,
-  and `SCREEN_TAXONOMY.md` itself sat four moves stale before a human re-read caught it — this is the
-  mechanical control that was missing (five other defect families already had one).
+- **Citing a `REG-nn`/ledger id as a live blocker** anywhere? Check the id's own ledger status BEFORE
+  writing "blocked by REG-nn" or "REG-nn (open ...)" — a doc calling an id a live blocker after its
+  `ledger/items/REG-nn.yml` says DONE/PARTIAL is stale prose. Move 15 Phase D item D1: five separate
+  times a console/screen record said "blocked by X" while X had already been closed in a later move.
+  (The mechanical gate that caught this, `check-blocker-citation-freshness.py`, was deleted by
+  md-zero-2026-08-11 PLAN.md Phase 2 along with the closed-programme `MOVE*_CHECKLISTS.md`/
+  `MOVE*_FINDINGS.md`/`MOVE1_PANEL_GAPS.md` docs it scanned — 177 items across every ledger family it
+  guarded were DONE. `docs/SCREEN_TAXONOMY.md` stays at `docs/` root and is unaffected.)
 - **Adding a script under `scripts/`?** It needs both a classification (pattern-matched in
   `scripts/policy/script-inventory-policy.json`) and a declared `invocation` in
   `scripts/policy/script-invocation-declarations.json`; `run-script-inventory-check.ps1` enforces
@@ -289,6 +328,10 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
 
 ## Key docs
 
+`docs/README.md` is the full documentation index — start there. Frequently needed:
 `docs/GETTING_STARTED.md`, `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`,
 `docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md`,
-`docs/architecture/INTERNAL_DB_SCHEMA_SOURCE_OF_TRUTH.md`, `docs/MATURITY_CLOSURE_LEDGER.md`.
+`docs/architecture/INTERNAL_DB_SCHEMA_SOURCE_OF_TRUTH.md`, `docs/maintainers/MATURITY_CLOSURE_LEDGER.md`.
+`docs/` root holds only current product/engineering truth (docs-decoupling-2026-08-11 PLAN.md);
+closed programme history lives in `docs/archive/` and `docs/beta/`, both classified `historical` in
+`scripts/policy/doc-entrypoint-classification-policy.json` — read for narrative, never for status.

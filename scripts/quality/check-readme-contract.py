@@ -24,6 +24,13 @@ WHAT IT DELIBERATELY DOES NOT DO
 It does not run anything. It cannot tell you that `npdev setup` works -- only that the docs name a
 command that exists and a path the CLI will accept. The harness remains the only thing that proves
 the steps run.
+
+md-zero-2026-08-11 PLAN.md Phase 5: this used to carry its OWN, third, independent duplicate of
+fenced-command extraction (a second one lives in scripts/quality/firstrun-harness/extract_commands.py,
+a third existed as a purpose-built parser embedded in run-readme.sh, both now also reading
+content/*.json instead of re-parsing markdown). All three now share ONE extraction implementation:
+this imports extract_commands.py directly and reads the same content/*.json mirrors README.md and
+docs/YOUR_FIRST_APP.md are generated from (scripts/docs/generate_group_d_docs.py).
 """
 from __future__ import annotations
 
@@ -34,45 +41,37 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "scripts" / "quality" / "firstrun-harness"))
+import extract_commands  # noqa: E402
 
 # Docs whose fenced sh blocks are meant to be COPIED AND RUN, and where the reader is standing when
-# they do. Adding a doc here is how you put it under contract.
+# they do. Adding a doc here is how you put it under contract. `None` heading -> every sh block in
+# the content file, matching extract_commands.section_blocks' "no filter" case.
 DOCS = [
-    ("README.md", "## See it run"),
-    ("docs/YOUR_FIRST_APP.md", None),  # None -> every sh block in the file
+    ("content/readme.json", "## See it run"),
+    ("content/your-first-app.json", None),
 ]
 
 CLI = REPO / "NPDevCli" / "npdev_cli.py"
 
 
-def fenced_sh_commands(text: str, section_heading: str | None) -> list[str]:
-    """Commands from ```sh/```bash fences, optionally only under one `## ` heading.
-
-    Only sh-tagged fences. An untagged block is illustrative OUTPUT -- the harness once executed
-    README's sample dev-loop log as shell and reported the product broken because of it.
-    """
+def fenced_sh_commands(content_doc: dict, section_heading: str | None) -> list[str]:
+    """Commands from ```sh/```bash fences, optionally only under one `## ` heading (and its `###`
+    sub-sections -- see extract_commands.section_blocks). Only sh-tagged fences: an untagged block
+    is illustrative OUTPUT, the harness once executed README's sample dev-loop log as shell and
+    reported the product broken because of it."""
     if section_heading is not None:
-        lines, keep, out = text.splitlines(), False, []
-        for line in lines:
-            if line.startswith(section_heading):
-                keep = True
-                continue
-            if keep and line.startswith("## "):
-                break
-            if keep:
-                out.append(line)
-        text = "\n".join(out)
+        pattern = "^" + re.escape(section_heading)
+        blocks = extract_commands.section_blocks(content_doc, pattern)
+        if blocks is None:
+            return []
+    else:
+        blocks = [b for section in content_doc.get("sections", []) for b in section.get("blocks", [])]
 
-    commands, in_fence = [], False
-    for line in text.splitlines():
-        if line.startswith("```"):
-            lang = line[3:].strip().lower()
-            in_fence = lang in ("sh", "bash", "shell") if not in_fence else False
-            continue
-        if in_fence:
-            stripped = re.sub(r"\s*#.*$", "", line).strip()
-            if stripped:
-                commands.extend(part.strip() for part in stripped.split("&&") if part.strip())
+    commands: list[str] = []
+    for block in blocks:
+        if block.get("type") == "fence" and (block.get("lang") or "").lower() in ("sh", "bash", "shell"):
+            commands.extend(extract_commands.normalize_block(block.get("text") or ""))
     return commands
 
 
@@ -89,7 +88,8 @@ def check_commands_resolve(failures: list[str]) -> int:
         if not path.is_file():
             failures.append(f"{doc}: listed in DOCS but not present")
             continue
-        for cmd in fenced_sh_commands(path.read_text(encoding="utf-8", errors="replace"), heading):
+        content_doc = json.loads(path.read_text(encoding="utf-8"))
+        for cmd in fenced_sh_commands(content_doc, heading):
             checked += 1
             head = cmd.split()[0]
             if head == "npdev":
@@ -115,7 +115,8 @@ def check_init_target_is_outside_the_clone(failures: list[str]) -> int:
         path = REPO / doc
         if not path.is_file():
             continue
-        for cmd in fenced_sh_commands(path.read_text(encoding="utf-8", errors="replace"), heading):
+        content_doc = json.loads(path.read_text(encoding="utf-8"))
+        for cmd in fenced_sh_commands(content_doc, heading):
             match = re.match(r"^\.?/?npdev\s+init\s+(\S+)", cmd)
             if not match:
                 continue

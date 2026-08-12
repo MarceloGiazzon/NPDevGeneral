@@ -11,4 +11,3 @@ surface: runtimehost/auth
 detail: |
   PasswordResetController reuses the same limiter as login (5/user, 20/IP); over-limit returns the
   same generic 200 but sends no email and creates no token. RED-first: the 6th request sends no email.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-21

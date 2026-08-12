@@ -22,4 +22,3 @@ detail: |
   filed not fixed: a genuinely clean container's anonymous `git clone` got a 404/credential prompt --
   the repo was private at the time, so an uninvited third party could not have cloned it regardless of
   CI's green status (repo visibility is an owner call, not an AI decision).
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-17

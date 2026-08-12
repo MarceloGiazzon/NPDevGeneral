@@ -18,4 +18,3 @@ detail: |
   most needs to recover. Verified before tightening that only the HTTP resume endpoint consults this
   policy -- the kernel's event-driven and scheduler resume paths do not -- so background recovery is
   unaffected. 2 new tests; the pre-existing resume test still passes unchanged.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-45

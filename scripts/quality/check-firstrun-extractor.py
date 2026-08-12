@@ -4,9 +4,10 @@
 WHY THIS EXISTS
 ---------------
 `scripts/quality/firstrun-harness/run-readme.sh` tests NPDev's INSTRUCTIONS by pulling the commands
-out of README.md / docs/YOUR_FIRST_APP.md and running them on a bare machine. Its extraction has
-now been wrong three separate times, and every one of them was found by a ~30-minute container run
-that then blamed the product:
+out of content/readme.json / content/your-first-app.json and running them on a bare machine. Getting
+a documented command from its written form to something safe to execute has now been wrong in three
+separate ways, and every one of them was found by a ~30-minute container run that then blamed the
+product:
 
   1. a bare `npdev` treated as an available command
   2. an example OUTPUT block executed as shell
@@ -18,9 +19,20 @@ Three wrongs in three different ways means the next patch will not be the last. 
 the docs; until now nothing tested the harness. This does, in milliseconds, with no clone, no JDK
 and no Docker -- so a fourth shape is caught before it costs half an hour and a wrong diagnosis.
 
+md-zero-2026-08-11 PLAN.md Phase 5: extract_commands.py no longer parses markdown at all (see its
+own docstring) -- it reads content/*.json, the JSON mirror of content/*.yml that
+scripts/docs/generate_group_d_docs.py also renders back into README.md / docs/YOUR_FIRST_APP.md,
+byte-identical. The corpus below moved from raw markdown strings to constructed content-doc dicts
+(the same `{"sections": [{"level", "title", "blocks": [{"type", "lang", "text"}]}]}` shape the real
+JSON files carry) -- kept, not deleted, because it still exercises real logic: the sub-section
+attachment rule ("### stays inside its ## parent") is genuinely new code in section_blocks(), not a
+leftover from the old regex parser, and it had a real bug (level-3 blocks silently dropped) caught
+only by re-deriving this exact test case during the Phase 5 rewrite and diffing against the old
+extractor's output on the real docs.
+
 TWO KINDS OF CASE, and both matter:
   * CORPUS  -- fixed inputs with expected extractions, one per documented shape.
-  * LIVE    -- the anchors the extractor keys off must still exist in THIS repo's docs. README's
+  * LIVE    -- the anchors the extractor keys off must still exist in THIS repo's content. README's
                `## Quickstart` was renamed to `## See it run` once already; the extractor matched
                nothing, and the harness reported thirteen cascading product failures that were
                really one missing heading. That rename is detectable statically, right here.
@@ -28,6 +40,7 @@ TWO KINDS OF CASE, and both matter:
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -54,6 +67,18 @@ failures: list[str] = []
 def check(name: str, actual, expected) -> None:
     if actual != expected:
         failures.append(f"{name}\n      expected: {expected!r}\n      actual:   {actual!r}")
+
+
+def sh(text: str) -> dict:
+    return {"type": "fence", "lang": "sh", "text": text}
+
+
+def section(level: int, title: str, blocks: list[dict]) -> dict:
+    return {"level": level, "title": title, "blocks": blocks}
+
+
+def doc(*sections: dict) -> dict:
+    return {"sections": list(sections)}
 
 
 # --------------------------------------------------------------------------- corpus: comments
@@ -121,63 +146,64 @@ check("blank lines vanish",
       ex.normalize_block("\n./npdev setup\n\n\n./npdev doctor\n"),
       ["./npdev setup", "./npdev doctor"])
 
-# --------------------------------------------------------------------------- corpus: fences
+# --------------------------------------------------------------------------- corpus: sections
 
-OUTPUT_BLOCK_DOC = """\
-## See it run
-
-```sh
-./npdev doctor
-```
-
-Leave it running and watch:
-
-```
-14:09:02  changed: model.json
-14:09:47  ready in 45.2s   http://localhost:8080
-```
-
-## Next
-```sh
-./npdev never-runs
-```
-"""
+OUTPUT_BLOCK_DOC = doc(
+    section(2, "See it run", [
+        sh("./npdev doctor"),
+        {"type": "prose", "text": "Leave it running and watch:"},
+        {"type": "fence", "lang": "", "text": "14:09:02  changed: model.json\n14:09:47  ready in 45.2s   http://localhost:8080"},
+    ]),
+    section(2, "Next", [sh("./npdev never-runs")]),
+)
 
 check("an unlabelled output block is NOT executed, and the section ends at the next ##",
       ex.extract_section_commands(OUTPUT_BLOCK_DOC, QUICKSTART_HEADING),
       ["./npdev doctor"])
 
 check("a ```json block is content, not commands",
-      ex.fenced_blocks('```json\n{"a": 1}\n```\n```sh\nls\n```'),
+      ex.extract_section_commands(
+          doc(section(2, "See it run", [
+              {"type": "fence", "lang": "json", "text": '{"a": 1}'},
+              sh("ls"),
+          ])),
+          QUICKSTART_HEADING),
       ["ls"])
 
 check("### sub-sections stay inside their ## section",
       ex.extract_section_commands(
-          "## See it run\n```sh\na\n```\n### Let it do that for you\n```sh\nb\n```\n## Next\n```sh\nc\n```",
+          doc(
+              section(2, "See it run", [sh("a")]),
+              section(3, "Let it do that for you", [sh("b")]),
+              section(2, "Next", [sh("c")]),
+          ),
           QUICKSTART_HEADING),
       ["a", "b"])
 
 check("a missing anchor is None, not an empty list",
-      ex.extract_section_commands("## Something Else\n```sh\nls\n```", QUICKSTART_HEADING),
+      ex.extract_section_commands(doc(section(2, "Something Else", [sh("ls")])), QUICKSTART_HEADING),
       None)
 
 check("a section that exists with no sh fence is an empty list, not None",
-      ex.extract_section_commands("## See it run\n\nJust prose.\n", QUICKSTART_HEADING),
+      ex.extract_section_commands(
+          doc(section(2, "See it run", [{"type": "prose", "text": "Just prose."}])),
+          QUICKSTART_HEADING),
       [])
 
 # --------------------------------------------------------------------------- live: the anchors
 
-readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-live = ex.extract_section_commands(readme, QUICKSTART_HEADING)
+readme_content = json.loads((REPO_ROOT / "content" / "readme.json").read_text(encoding="utf-8"))
+live = ex.extract_section_commands(readme_content, QUICKSTART_HEADING)
 if live is None:
     failures.append(
-        "LIVE: README.md has no heading matching " + QUICKSTART_HEADING + " -- the first-run "
-        "harness would extract nothing and report every downstream check as a product failure. "
-        "Restore the heading, or add the new one to run-readme.sh AND to QUICKSTART_HEADING here.")
+        "LIVE: content/readme.json has no heading matching " + QUICKSTART_HEADING + " -- the "
+        "first-run harness would extract nothing and report every downstream check as a product "
+        "failure. Restore the heading in content/readme.yml, or add the new one to run-readme.sh "
+        "AND to QUICKSTART_HEADING here.")
 elif not live:
     failures.append(
-        "LIVE: README.md's quickstart section has no ```sh fence -- the harness would run zero "
-        "commands and every check after it would fail for that reason alone.")
+        "LIVE: content/readme.json's quickstart section has no sh fence -- the harness would run "
+        "zero commands and every check after it would fail for that reason alone.")
 else:
     for command in live:
         if command.startswith("#"):
@@ -185,15 +211,16 @@ else:
         if "\r" in command:
             failures.append(f"LIVE: extracted command carries a stray CR: {command!r}")
 
-yfa = REPO_ROOT / "docs" / "YOUR_FIRST_APP.md"
-if yfa.is_file():
+yfa_content_path = REPO_ROOT / "content" / "your-first-app.json"
+if yfa_content_path.is_file():
     # Section 6 of the harness selects step 5's closing commit block BY CONTENT, because it used to
     # select it by index -- and a `### Let it do that for you` sub-section inserted a fence ahead of
     # it, so the harness ran the dev-loop block, labelled it "step5-commit", and then failed a
     # separate check for the commit that had therefore never happened (FOUR-AND-EXTERNAL.md F4).
-    if "git commit -am" not in yfa.read_text(encoding="utf-8"):
+    yfa_content = yfa_content_path.read_text(encoding="utf-8")
+    if "git commit -am" not in yfa_content:
         failures.append(
-            "LIVE: docs/YOUR_FIRST_APP.md no longer contains a `git commit -am` block -- the "
+            "LIVE: content/your-first-app.json no longer contains a `git commit -am` block -- the "
             "harness's step5-commit check selects that block by content and would find nothing.")
 
 if failures:

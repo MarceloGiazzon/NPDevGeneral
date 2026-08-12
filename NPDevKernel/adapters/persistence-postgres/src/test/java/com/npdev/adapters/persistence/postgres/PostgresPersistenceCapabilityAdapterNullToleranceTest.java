@@ -10,6 +10,7 @@ import javax.sql.DataSource;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -83,12 +84,16 @@ class PostgresPersistenceCapabilityAdapterNullToleranceTest {
     }
 
     private static DataSource fakeDataSource() {
+        AtomicReference<Connection> connectionRef = new AtomicReference<>();
         Connection connection = (Connection) Proxy.newProxyInstance(
                 Connection.class.getClassLoader(),
                 new Class[]{Connection.class},
                 (proxy, method, args) -> {
+                    if ("getMetaData".equals(method.getName())) {
+                        return FakeJdbc.metaDataFor("PostgreSQL");
+                    }
                     if ("prepareStatement".equals(method.getName())) {
-                        return fakePreparedStatement();
+                        return fakePreparedStatement(connectionRef);
                     }
                     if ("close".equals(method.getName())) {
                         return null;
@@ -96,6 +101,7 @@ class PostgresPersistenceCapabilityAdapterNullToleranceTest {
                     return defaultValue(method.getReturnType());
                 }
         );
+        connectionRef.set(connection);
 
         return (DataSource) Proxy.newProxyInstance(
                 DataSource.class.getClassLoader(),
@@ -109,11 +115,14 @@ class PostgresPersistenceCapabilityAdapterNullToleranceTest {
         );
     }
 
-    private static PreparedStatement fakePreparedStatement() {
+    private static PreparedStatement fakePreparedStatement(AtomicReference<Connection> connectionRef) {
         return (PreparedStatement) Proxy.newProxyInstance(
                 PreparedStatement.class.getClassLoader(),
                 new Class[]{PreparedStatement.class},
                 (proxy, method, args) -> {
+                    if ("getConnection".equals(method.getName())) {
+                        return connectionRef.get();
+                    }
                     if ("setObject".equals(method.getName())) {
                         return null;
                     }

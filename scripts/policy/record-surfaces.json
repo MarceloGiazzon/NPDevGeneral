@@ -1,0 +1,31 @@
+{
+  "why": "Large files most often edited, whose full read burns 40-100k tokens of an AI session's context for no benefit -- grep to a line, then Read with offset/limit instead. Sizes are checked against disk by scripts/quality/check-record-surfaces.py (tolerance below); a claim that drifts more than that fails the gate, so the list stays accurate without a manual re-audit. Found stale 2026-07-29 (docs/RECORD_SURFACES_PLAN.md P4): CLAUDE.md's own hand-written prose table was wrong in three directions the same day -- two files it told every session to avoid had shrunk to ~12 KB (split by the 2.B decomposition), a third had grown 25 KB past its stated size, a fourth 140 KB file was missing entirely. CLAUDE.md is loaded into every session's context, so a stale claim there actively misdirects rather than just sitting unread. md-zero-2026-08-11 PLAN.md Phase 3 moved this list here from CLAUDE.md's own prose: CLAUDE.md keeps a short narrative pointer to this file, but this JSON -- not CLAUDE.md's text -- is what the gate reads and what a human edits when a size or path changes.",
+  "sizeToleranceFraction": 0.25,
+  "entries": [
+    {
+      "path": "NPDevGenerator/.../npdev-templates/static-react/assets/app.js",
+      "approxSizeKB": 141,
+      "note": "Sibling chunks AuthoringApp.js/ReactWorkbenchApp.js live in the same assets/ dir. Generated bundle, ignore entirely."
+    },
+    {
+      "path": "NPDevGenerator/.../npdev-templates/business-ui-app.mustache",
+      "approxSizeKB": 169,
+      "note": null
+    },
+    {
+      "path": "NPDevKernel/adapters/expression-cel/.../GeneratedCrudRuntimeSupport.java",
+      "approxSizeKB": 158,
+      "note": null
+    },
+    {
+      "path": "NPDevRuntimeHost/.../db/SchemaLifecycleExecutor.java",
+      "approxSizeKB": 138,
+      "note": null
+    },
+    {
+      "path": "NPDevKernel/kernel/.../KernelRunner.java",
+      "approxSizeKB": 126,
+      "note": null
+    }
+  ]
+}

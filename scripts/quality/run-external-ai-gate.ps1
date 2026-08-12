@@ -5,11 +5,12 @@
 
 .DESCRIPTION
     Fails if:
-      1. any register/roadmap summary row contradicts its own detail section, OR any external-AI
-         mission lacks a run record (RUN or an explicit NOT_RUN reason) -- both now asserted by
-         check-register-consistency.py's mission_run_coverage_gaps(), the P8 "asserts its own scope"
-         requirement: a mission with neither is the same blind-spot shape every other check in that
-         script exists to catch, one programme over.
+      1. any external-AI mission lacks a run record (RUN or an explicit NOT_RUN reason), or a RUN
+         record's backing pack evidence reads stale/unverified -- check-external-ai-mission-coverage.py
+         (extracted from check-register-consistency.py by md-zero-2026-08-11 PLAN.md Phase 2, which
+         deleted that script; these two checks read only JSON, never markdown, so they moved rather
+         than deleted), the P8 "asserts its own scope" requirement: a mission with neither is the
+         same blind-spot shape every other check in this gate exists to catch, one programme over.
       2. any mission in scripts/external-review/missions.json fails external-ai-mission.schema.json.
       3. the pack producer can no longer build a real pack end to end, or its output fails
          external-ai-pack.schema.json -- a smoke-test rebuild of M2-SEC-ROWAUTHZ against the CURRENT
@@ -47,10 +48,10 @@ try {
 
     Write-Host "== External AI delegation gate (ADR-0009) ==" -ForegroundColor Cyan
 
-    Write-Host "[1/3] Checking register consistency (includes mission-run coverage)..."
-    & $py "scripts/quality/check-register-consistency.py"
+    Write-Host "[1/3] Checking external-AI mission run coverage + provenance audit..."
+    & $py "scripts/quality/check-external-ai-mission-coverage.py"
     $registerConsistencyPassed = ($LASTEXITCODE -eq 0)
-    if (-not $registerConsistencyPassed) { $failures += "register consistency check failed (see output above -- may include missing mission run records)" }
+    if (-not $registerConsistencyPassed) { $failures += "external-AI mission coverage check failed (see output above -- missing mission run records, or a stale/unverified pack)" }
 
     Write-Host "[2/3] Validating each mission in missions.json against external-ai-mission.schema.json..."
     $missionsPath = Join-Path $repoRoot "scripts/external-review/missions.json"
@@ -110,7 +111,7 @@ try {
         workspaceRoot = $WorkspaceRoot
         overallStatus = $overallStatus
         checks = @(
-            [pscustomobject]@{ name = "register-consistency"; status = if ($registerConsistencyPassed) { "passed" } else { "failed" } }
+            [pscustomobject]@{ name = "external-ai-mission-coverage"; status = if ($registerConsistencyPassed) { "passed" } else { "failed" } }
             [pscustomobject]@{ name = "mission-schema-validation"; status = if ($missionSchemaFailures.Count -eq 0) { "passed" } else { "failed" }; missionCount = $missionCount; failingMissionIds = @($missionSchemaFailures) }
             [pscustomobject]@{ name = "pack-producer-smoke-test"; status = if ($packProducerPassed -and $packSchemaPassed) { "passed" } else { "failed" } }
         )

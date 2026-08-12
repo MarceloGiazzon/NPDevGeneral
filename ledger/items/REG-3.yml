@@ -20,4 +20,3 @@ detail: |
   distinguishes precondition-unmet (exit 2) from check-failed (exit 1). Found and fixed a producer
   that could only ever emit passing evidence, plus its stale fixture that had silently disabled the
   model-root additionalProperties guard.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-3

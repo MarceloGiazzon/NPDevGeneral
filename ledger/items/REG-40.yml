@@ -21,4 +21,3 @@ detail: |
   scenario): boot with a 1-concept model, insert a row, upgrade to a 2-concept model against the SAME
   database -- the new table exists empty, the old row survives, schema history records APPLIED not a
   refusal. Orthogonal to REG-38 (that was constraint idempotency on EXISTING tables).
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-40

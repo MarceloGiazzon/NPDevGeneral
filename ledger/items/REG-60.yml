@@ -21,4 +21,3 @@ detail: |
   regenerated + rebuilt, ExpedicaoWorkbench.html, real browser via ScrapForAI -- logged in as
   trial/admin, opened a real PreExpedicao record, clicked Save, DOM readback + screenshot confirm
   the green "Saved." text is visible next to the Save button after the re-render.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-60

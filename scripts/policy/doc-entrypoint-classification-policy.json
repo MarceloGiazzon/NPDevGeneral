@@ -2,10 +2,58 @@
   "schemaVersion": "npdev-doc-entrypoint-classification-policy.v1",
   "documentClassifications": [
     {
-      "pathPattern": "docs/**/*.md",
+      "pathPattern": "docs/*.md",
       "classification": "classified-doc",
       "releaseRelevant": true,
-      "reason": "Checkpoint 5 requires every docs/**/*.md entrypoint to be explicitly covered by the documentation classification policy."
+      "reason": "Checkpoint 5 requires every docs/**/*.md entrypoint to be explicitly covered by the documentation classification policy. docs-decoupling-2026-08-11 PLAN.md Phase 2: root-level docs are current product/engineering truth."
+    },
+    {
+      "pathPattern": "docs/architecture/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "Live architecture documentation."
+    },
+    {
+      "pathPattern": "docs/adr/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "Live architecture decision records."
+    },
+    {
+      "pathPattern": "docs/ai/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "Live AI-authoring contract documentation."
+    },
+    {
+      "pathPattern": "docs/security/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "Live security documentation."
+    },
+    {
+      "pathPattern": "docs/reference/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "2026-08-11 docs/ root slimming pass: per-feature reference docs, live and current, relocated out of docs/ root purely to shorten a newcomer's first listing -- not historical."
+    },
+    {
+      "pathPattern": "docs/maintainers/**/*.md",
+      "classification": "classified-doc",
+      "releaseRelevant": true,
+      "reason": "2026-08-11 docs/ root slimming pass: internal maintainer / release-governance docs, still live (STATUS: ACTIVE or content-read by a currently-runnable gate script), relocated out of docs/ root because a prospective platform USER has no reason to see them before GETTING_STARTED.md -- not historical, never archive one of these without first re-checking its own STATUS line."
+    },
+    {
+      "pathPattern": "docs/archive/**/*.md",
+      "classification": "historical",
+      "releaseRelevant": false,
+      "reason": "docs-decoupling-2026-08-11 PLAN.md Phase 2: programme history kept for provenance, not current instructions -- a script reference inside one of these documents that no longer exists is not a release-blocking gap (run-doc-entrypoint-validation.ps1 exempts the 'historical' classification from the release-relevance check, though every document must still be classified)."
+    },
+    {
+      "pathPattern": "docs/beta/**/*.md",
+      "classification": "historical",
+      "releaseRelevant": false,
+      "reason": "docs-decoupling-2026-08-11 PLAN.md Phase 2: Beta0-era runbook material, same historical treatment as docs/archive/ -- see that entry's reason."
     }
   ],
   "defaultScriptClassification": {
@@ -73,18 +121,6 @@
       "classification": "future-non-release",
       "releaseRelevant": false,
       "reason": "REG-125 (Move 16 Phase A3): this script was never built and never will be under this name -- REG-125's own resolution was to remove PROJECT_DIGEST.md's dangling reference to it (done) rather than build it. The path now survives only as literal text inside docs/OPEN_ITEMS.md's permanent, generated historical record of the closed REG-125 ledger item (ledger/items/*.yml entries are never pruned from that doc, even once DONE), not as a real commitment anywhere."
-    },
-    {
-      "path": "scripts/appgen/generate-sample-app.ps1",
-      "classification": "future-non-release",
-      "releaseRelevant": false,
-      "reason": "REG-123 (Move 15 Phase C item C2): docs/NPDEV_OPEN_ITEMS_REGISTER.md's own \"Where.\" line for a historical LNCH-19 finding names this path as it was AT THE TIME -- that document is explicitly historical/archived-in-place (CLAUDE.md: 'read for narrative, never for status'), so its content is left untouched rather than mechanically re-pointed. The script's real current location is NPDevSamples/scripts/generate-sample-app.ps1; this entry only stops the archived doc's historical path mention from blocking the gate, it is not a claim that scripts/appgen/generate-sample-app.ps1 exists today."
-    },
-    {
-      "path": "scripts/appgen/run-sample-app.ps1",
-      "classification": "future-non-release",
-      "releaseRelevant": false,
-      "reason": "REG-123 (Move 15 Phase C item C2): same historical-archived-doc class as scripts/appgen/generate-sample-app.ps1 above -- see that entry's reason. Real current location: NPDevSamples/scripts/run-sample-app.ps1."
     }
   ],
   "reportClassifications": [

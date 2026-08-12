@@ -17,4 +17,3 @@ detail: |
   Fixed in SandboxedPluginExecutionEngine.execute (read-and-clear a stray caller interrupt around the
   bounded get(), re-assert it after) -- an engine robustness fix, not a tolerance widening. Removed
   @Tag("load-sensitive") from timesOutSlowPluginExecution; 6/6 green live.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-4

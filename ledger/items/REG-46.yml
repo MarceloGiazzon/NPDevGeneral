@@ -22,4 +22,3 @@ detail: |
   against the interface). Scoping applied only where a tenant_id column actually exists (read from the
   live catalog). 7 tests incl. delete-is-not-an-existence-oracle and save-stamps-ownership-over-a-
   payload-claim.
-legacyDetailRef: docs/NPDEV_OPEN_ITEMS_REGISTER.md#reg-46
