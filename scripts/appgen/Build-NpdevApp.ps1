@@ -306,7 +306,16 @@ $PlanJsonPath = Join-Path $OutRoot 'migration-plan.json'
 # holds the app's own stdout from previous runs, and the single most valuable moment to read it is
 # right after a regeneration that was itself triggered by something going wrong. Wiping the evidence
 # of why the last run failed, as part of the attempt to fix it, is the worst possible timing.
-$SparedInsideApp = @('data', 'logs')
+#
+# `secrets` joins them for the agent-proxy feature: <App>\secrets\agent-proxy.env holds the operator's
+# provider API key, which the generator cannot reproduce and which nothing else on the machine has a
+# copy of -- losing it on a regeneration is the same class of loss as `data`. Only the .env.example is
+# ever emitted; the real file is written by hand and never overwritten.
+# Twin-pair `app-secrets-dir-spared-three-seams` (token: npdev-app-secrets-spared). The Java twin is
+# FinalAppAssembler.PRESERVED_APP_DIRECTORIES, which runs in the SAME build and spares its own list --
+# a directory added here and not there is deleted anyway, which is exactly how `logs` behaved until now.
+# The third seam is Build-ClaudeApp.ps1, which has its own copy of this wipe.
+$SparedInsideApp = @('data', 'logs', 'secrets')
 $PreservedRoots = @($SparedInsideApp | ForEach-Object { Join-Path $OutRoot "App\$_" })
 if (Test-Path -LiteralPath $OutRoot) {
   if ($PreservedRoots | Where-Object { Test-Path -LiteralPath $_ }) {
@@ -824,6 +833,28 @@ if (Test-Path -LiteralPath $logFile) {
   Add-Content -LiteralPath $historyFile -Value "`n----- run ending $(Get-Date -Format o) -----"
   Get-Content -LiteralPath $logFile -Raw -ErrorAction SilentlyContinue | Add-Content -LiteralPath $historyFile
 }
+# Agent proxy: optional per-app provider credentials, loaded into THIS process so Start-Process's
+# child inherits them. Absent on every app that has not opted in, and absent is not an error -- the
+# Agent Prompter page falls back to compose-and-copy. Kept behaviourally identical to the same block
+# in OperationalRunbookEmitter.runFinalAppScript(); both are launchers for the same app, and an app
+# whose proxy works under one launcher and not the other is worse than one where it never works.
+$secretsEnv = Join-Path $plan.appRoot 'secrets/agent-proxy.env'
+if (Test-Path -LiteralPath $secretsEnv) {
+  $loadedNames = @()
+  foreach ($rawLine in (Get-Content -LiteralPath $secretsEnv)) {
+    $line = $rawLine.Trim()
+    if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
+      $parts = $line.Split('=', 2)
+      $name = $parts[0].Trim()
+      if ($name) {
+        Set-Item -Path ("env:" + $name) -Value $parts[1].Trim()
+        $loadedNames += $name
+      }
+    }
+  }
+  # NAMES only -- never values. app.out.log is archived on restart and collected by log bundles.
+  Write-Host ("Loaded " + $loadedNames.Count + " secret(s) from " + $secretsEnv + ": " + ($loadedNames -join ', '))
+}
 $args = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)")
 $proc = Start-Process -FilePath 'java' -ArgumentList $args -WorkingDirectory $plan.appRoot -PassThru -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $PSScriptRoot 'app.err.log') -WindowStyle Hidden
 $proc.Id | Set-Content -LiteralPath $pidFile -Encoding ascii
@@ -1136,6 +1167,13 @@ Write-Step "Emitted ControlPanel page: http://localhost:$ServerPort/control-pane
 & (Join-Path $PSScriptRoot 'New-AppTreePage.ps1') `
   -AppFolder $AppFolder -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId $AppId
 Write-Step "Emitted app tree page: http://localhost:$ServerPort/app-tree.html"
+
+# info.html links to agent-prompter.html unconditionally too -- same reasoning as app-tree.html
+# above. Cheap: no per-app data at generation time, everything it shows is fetched at page-load
+# from app-tree.json/info.json.
+& (Join-Path $PSScriptRoot 'New-AgentPrompterPage.ps1') `
+  -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId $AppId
+Write-Step "Emitted Agent Prompter page: http://localhost:$ServerPort/agent-prompter.html"
 
 # RC-A5 (Move 14 Phase B item B3): the generated properties admin surface -- one section per
 # scope, one control per property, widget from type, settableAt-gated, effective value + source

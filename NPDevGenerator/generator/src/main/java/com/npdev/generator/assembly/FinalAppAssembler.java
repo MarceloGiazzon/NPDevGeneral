@@ -71,6 +71,23 @@ public final class FinalAppAssembler {
      */
     private static final String PRESERVED_APP_DATA_DIRECTORY = "data";
 
+    /**
+     * Every directory under a FinalApp root that regeneration must not remove. {@code data} is
+     * PORT-1's database (above); {@code logs} is MONITOR_PLAN D10's stdout archive; {@code secrets}
+     * holds the operator-written {@code agent-proxy.env}, whose API key the generator cannot
+     * reproduce and which nothing else on the machine has a copy of.
+     *
+     * <p>Twin-pair {@code app-secrets-dir-spared-three-seams} (token: npdev-app-secrets-spared).
+     * The PowerShell twins are {@code Build-NpdevApp.ps1}'s and {@code Build-ClaudeApp.ps1}'s
+     * {@code $SparedInsideApp}. Those two run in the SAME build as this one, and this list is
+     * applied second -- so a directory spared there and missing here is deleted anyway, with no
+     * error and no sign that the PowerShell spare-list did nothing. That is not hypothetical:
+     * {@code logs} was on the PowerShell list and absent here from D10 until this change, which is
+     * why it is being added now rather than left as a separate item.
+     */
+    private static final Set<String> PRESERVED_APP_DIRECTORIES =
+            Set.of(PRESERVED_APP_DATA_DIRECTORY, "logs", "secrets");
+
     public AssemblyResult assemble(Options options) throws IOException {
         Options normalized = options.normalized();
         validate(normalized);
@@ -174,34 +191,35 @@ public final class FinalAppAssembler {
     }
 
     /**
-     * Delete the FinalApp tree, sparing the app's own database directory.
+     * Delete the FinalApp tree, sparing the directories regeneration cannot reproduce.
      *
      * <p>PORT-1: {@code <FinalApp>/data} is where every generated app keeps its database now that the
-     * path is app-relative rather than an absolute path from the authoring machine. It is the one
-     * thing under this root that regeneration cannot reproduce, so it is the one thing this does not
-     * remove. Everything else here is emitted output.
+     * path is app-relative rather than an absolute path from the authoring machine. {@code logs} and
+     * {@code secrets} joined it for the same reason (see {@link #PRESERVED_APP_DIRECTORIES}).
+     * Everything else here is emitted output.
      *
      * <p>Consequence, stated rather than left to be discovered: this method no longer guarantees the
-     * root is gone, so the "still exists" retry now asks whether anything BUT the spared directory
+     * root is gone, so the "still exists" retry now asks whether anything BUT the spared directories
      * survived.
      */
     private static void deleteTree(Path root) throws IOException {
-        Path preserved = root.resolve(PRESERVED_APP_DATA_DIRECTORY);
+        List<Path> preserved = preservedPaths(root);
         IOException lastFailure = null;
         for (int attempt = 1; attempt <= DELETE_RETRY_ATTEMPTS; attempt++) {
             try (var stream = Files.walk(root)) {
                 var paths = stream
-                        .filter(path -> !path.startsWith(preserved))
+                        .filter(path -> !isPreserved(preserved, path))
                         .sorted((left, right) -> right.compareTo(left))
                         .toList();
+                boolean anyPreservedExists = preserved.stream().anyMatch(Files::exists);
                 for (Path path : paths) {
-                    if (path.equals(root) && Files.exists(preserved)) {
+                    if (path.equals(root) && anyPreservedExists) {
                         continue;
                     }
                     deletePathWithRetry(path);
                 }
             }
-            if (!Files.exists(root) || onlyPreservedDataRemains(root, preserved)) {
+            if (!Files.exists(root) || onlyPreservedDirectoriesRemain(root, preserved)) {
                 return;
             }
 
@@ -214,9 +232,17 @@ public final class FinalAppAssembler {
         throw lastFailure;
     }
 
-    private static boolean onlyPreservedDataRemains(Path root, Path preserved) throws IOException {
+    private static List<Path> preservedPaths(Path root) {
+        return PRESERVED_APP_DIRECTORIES.stream().sorted().map(root::resolve).toList();
+    }
+
+    private static boolean isPreserved(List<Path> preserved, Path candidate) {
+        return preserved.stream().anyMatch(candidate::startsWith);
+    }
+
+    private static boolean onlyPreservedDirectoriesRemain(Path root, List<Path> preserved) throws IOException {
         try (var entries = Files.list(root)) {
-            return entries.allMatch(entry -> entry.equals(preserved));
+            return entries.allMatch(preserved::contains);
         }
     }
 
