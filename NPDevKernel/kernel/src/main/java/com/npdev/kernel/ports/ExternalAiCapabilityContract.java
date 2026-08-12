@@ -25,4 +25,34 @@ public interface ExternalAiCapabilityContract {
      * a concrete adapter must implement it.
      */
     ExternalAiVerdictRecord ingestVerdict(String missionId, String vendorId, String verdictJson);
+
+    /**
+     * Send a free-form prompt to a configured vendor and return its prose answer.
+     *
+     * <p>Fail-closed by the same inverted-default convention as {@link #submitPack}: an app whose
+     * {@code npdev.externalai.provider} is still the default {@code inproc} has no adapter opted in
+     * here, so it denies rather than sending. The agent-proxy surface in a generated app depends on
+     * that: "no provider configured" has to be an honest, reportable state, never an accidental
+     * egress.
+     *
+     * <p>Separate from {@link #submitPack} because that method validates the vendor's reply as an
+     * {@link ExternalAiVerdictRecord} and rejects anything that is not one -- see
+     * {@link ExternalAiGenerationRequest} for why reusing it would fail on every valid answer.
+     */
+    default ExternalAiGenerationResult generateText(ExternalAiGenerationRequest request) {
+        throw new ExternalAiEgressDeniedException(
+                "EGRESS_DENIED",
+                "This ExternalAiCapabilityContract has no adapter opted in to send a prompt; denying "
+                        + "rather than sending unchecked to vendor '" + request.vendorId() + "'.");
+    }
+
+    /**
+     * The vendors this contract can actually reach, for a caller that must render a choice before
+     * sending. Empty by default: an adapter that cannot generate text has no vendors to offer, and
+     * an empty list is what tells a UI to say "not configured" instead of showing an empty dropdown
+     * that fails on use.
+     */
+    default java.util.List<ExternalAiVendorSummary> configuredVendors() {
+        return java.util.List.of();
+    }
 }

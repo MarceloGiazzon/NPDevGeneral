@@ -9,9 +9,12 @@ import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ports.CapabilityAdapter;
 import com.npdev.kernel.ports.ExternalAiCapabilityContract;
 import com.npdev.kernel.ports.ExternalAiEgressDeniedException;
+import com.npdev.kernel.ports.ExternalAiGenerationRequest;
+import com.npdev.kernel.ports.ExternalAiGenerationResult;
 import com.npdev.kernel.ports.ExternalAiPackSubmission;
 import com.npdev.kernel.ports.ExternalAiPayload;
 import com.npdev.kernel.ports.ExternalAiRunResult;
+import com.npdev.kernel.ports.ExternalAiVendorSummary;
 import com.npdev.kernel.ports.ExternalAiVerdictRecord;
 
 import java.io.IOException;
@@ -40,7 +43,26 @@ import java.util.function.Function;
  */
 public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter, ExternalAiCapabilityContract {
 
+    /**
+     * Anthropic's required API-version header. It is a dated contract version, not a model version:
+     * pinning it is how the request keeps meaning the same thing after the API evolves.
+     */
+    private static final String ANTHROPIC_VERSION = "2023-06-01";
+
+    /** See the comment at its use site -- caps thinking + response text together, not just the answer. */
+    private static final int ANTHROPIC_MAX_TOKENS = 16000;
+
     private final Map<String, ExternalAiVendorProfile> vendorsById;
+
+    /**
+     * The same profiles as {@link #vendorsById}, in the order the caller configured them.
+     *
+     * <p>This exists because {@code Map.copyOf} does NOT preserve insertion order -- it randomizes
+     * iteration per JVM instance. Looking a vendor up by id does not care, but
+     * {@link #configuredVendors()} feeds a UI whose first entry is the default selection, so reading
+     * the order off the map would change which provider a page pre-selects on every restart.
+     */
+    private final List<ExternalAiVendorProfile> vendorsInOrder;
     private final HttpClient httpClient;
     private final Function<String, String> apiKeyLookup;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -65,6 +87,7 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
             }
         }
         this.vendorsById = Map.copyOf(byId);
+        this.vendorsInOrder = List.copyOf(byId.values());
     }
 
     @Override
@@ -98,23 +121,76 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
 
     @Override
     public ExternalAiRunResult submitPack(ExternalAiPackSubmission submission) {
-        ExternalAiVendorProfile profile = vendorsById.get(submission.vendorId());
+        String mission = "mission " + submission.missionId();
+        ExternalAiVendorProfile profile = requireConfiguredVendor(submission.vendorId(), mission);
+        String apiKey = requireApiKey(profile, mission);
+
+        HttpResponse<String> response = send(
+                buildGenerationRequest(profile, apiKey, profile.model(), null, submission.packJson()), profile);
+
+        String verdictJson = extractAssistantText(profile.requestFormat(), response.body());
+        ExternalAiVerdictRecord record = validateAndWrap(
+                submission.missionId(), profile.vendorId(), profile.model(), verdictJson);
+        verdictsByMissionId.put(submission.missionId(), record);
+
+        return ExternalAiRunResult.run(submission.missionId(), submission.packManifestSha256(), profile.vendorId());
+    }
+
+    @Override
+    public ExternalAiGenerationResult generateText(ExternalAiGenerationRequest request) {
+        ExternalAiVendorProfile profile = requireConfiguredVendor(request.vendorId(), "prompt");
+        String apiKey = requireApiKey(profile, "prompt");
+        String model = (request.model() == null || request.model().isBlank())
+                ? profile.model()
+                : request.model();
+
+        HttpResponse<String> response = send(
+                buildGenerationRequest(profile, apiKey, model, request.effort(), request.prompt()), profile);
+        return new ExternalAiGenerationResult(
+                profile.vendorId(), model, extractAssistantText(profile.requestFormat(), response.body()),
+                response.body());
+    }
+
+    @Override
+    public List<ExternalAiVendorSummary> configuredVendors() {
+        return vendorsInOrder.stream()
+                .map(profile -> new ExternalAiVendorSummary(
+                        profile.vendorId(),
+                        profile.model(),
+                        profile.apiKeyEnvVar(),
+                        isPresent(apiKeyLookup.apply(profile.apiKeyEnvVar())),
+                        profile.supportsEffort()))
+                .toList();
+    }
+
+    private static boolean isPresent(String apiKey) {
+        return apiKey != null && !apiKey.isBlank();
+    }
+
+    private ExternalAiVendorProfile requireConfiguredVendor(String vendorId, String what) {
+        ExternalAiVendorProfile profile = vendorsById.get(vendorId);
         if (profile == null) {
             throw new ExternalAiEgressDeniedException(
                     "EGRESS_DENIED_NO_VENDOR",
-                    "No configured vendor '" + submission.vendorId() + "' for mission "
-                            + submission.missionId() + "; denying rather than sending unchecked.");
+                    "No configured vendor '" + vendorId + "' for this " + what
+                            + "; denying rather than sending unchecked.");
         }
+        return profile;
+    }
+
+    private String requireApiKey(ExternalAiVendorProfile profile, String what) {
         String apiKey = apiKeyLookup.apply(profile.apiKeyEnvVar());
-        if (apiKey == null || apiKey.isBlank()) {
+        if (!isPresent(apiKey)) {
             throw new ExternalAiEgressDeniedException(
                     "EGRESS_DENIED_NO_API_KEY",
                     "No API key configured (env var " + profile.apiKeyEnvVar() + ") for vendor '"
-                            + profile.vendorId() + "'; denying mission " + submission.missionId()
+                            + profile.vendorId() + "'; denying this " + what
                             + " rather than sending unchecked.");
         }
+        return apiKey;
+    }
 
-        HttpRequest request = buildRequest(profile, apiKey, submission.packJson());
+    private HttpResponse<String> send(HttpRequest request, ExternalAiVendorProfile profile) {
         HttpResponse<String> response;
         try {
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -131,13 +207,7 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
                     "External AI vendor " + profile.vendorId() + " returned HTTP " + response.statusCode()
                             + ": " + response.body());
         }
-
-        String verdictJson = extractVerdictText(profile.requestFormat(), response.body());
-        ExternalAiVerdictRecord record = validateAndWrap(
-                submission.missionId(), profile.vendorId(), profile.model(), verdictJson);
-        verdictsByMissionId.put(submission.missionId(), record);
-
-        return ExternalAiRunResult.run(submission.missionId(), submission.packManifestSha256(), profile.vendorId());
+        return response;
     }
 
     @Override
@@ -177,7 +247,18 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
         return payload;
     }
 
-    private HttpRequest buildRequest(ExternalAiVendorProfile profile, String apiKey, String packJson) {
+    /**
+     * Build one vendor request from a single user prompt. Both callers -- {@code submitPack}'s
+     * review pack and {@code generateText}'s free-form prompt -- are exactly that at the wire level,
+     * so they share this method rather than keeping two copies of the auth/URL/body triple that
+     * could drift when a vendor is added.
+     *
+     * <p>{@code effort} is honoured only where the vendor has a real equivalent (see
+     * {@link ExternalAiVendorProfile#supportsEffort()}); elsewhere it is dropped rather than
+     * translated into a parameter the vendor would reject.
+     */
+    private HttpRequest buildGenerationRequest(
+            ExternalAiVendorProfile profile, String apiKey, String model, String effort, String prompt) {
         HttpRequest.Builder builder = HttpRequest.newBuilder();
         String body;
         try {
@@ -186,16 +267,32 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
                     builder.uri(URI.create(profile.baseUrl()))
                             .header("Authorization", "Bearer " + apiKey);
                     yield objectMapper.writeValueAsString(Map.of(
-                            "model", profile.model(),
-                            "messages", List.of(Map.of("role", "user", "content", packJson))
+                            "model", model,
+                            "messages", List.of(Map.of("role", "user", "content", prompt))
                     ));
                 }
                 case GEMINI_GENERATE_CONTENT -> {
-                    builder.uri(URI.create(profile.baseUrl() + "/models/" + profile.model() + ":generateContent"))
+                    builder.uri(URI.create(profile.baseUrl() + "/models/" + model + ":generateContent"))
                             .header("x-goog-api-key", apiKey);
                     yield objectMapper.writeValueAsString(Map.of(
-                            "contents", List.of(Map.of("parts", List.of(Map.of("text", packJson))))
+                            "contents", List.of(Map.of("parts", List.of(Map.of("text", prompt))))
                     ));
+                }
+                case ANTHROPIC_MESSAGES -> {
+                    builder.uri(URI.create(profile.baseUrl()))
+                            .header("x-api-key", apiKey)
+                            .header("anthropic-version", ANTHROPIC_VERSION);
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("model", model);
+                    // Required by the Messages API, and a hard cap on thinking PLUS response text --
+                    // not just the answer. Sized for a full model-change explanation rather than the
+                    // 4096 a chat reply needs, because truncation here looks like a bad answer.
+                    payload.put("max_tokens", ANTHROPIC_MAX_TOKENS);
+                    payload.put("messages", List.of(Map.of("role", "user", "content", prompt)));
+                    if (effort != null && !effort.isBlank()) {
+                        payload.put("output_config", Map.of("effort", effort));
+                    }
+                    yield objectMapper.writeValueAsString(payload);
                 }
             };
         } catch (JsonProcessingException e) {
@@ -207,12 +304,21 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
                 .build();
     }
 
-    private String extractVerdictText(ExternalAiRequestFormat format, String responseBody) {
+    /**
+     * Pull the assistant's text out of whichever response shape the vendor uses.
+     *
+     * <p>Anthropic returns a content ARRAY whose blocks are not all text -- with thinking on (the
+     * default on current models) {@code content[0]} can be a thinking block whose {@code text} field
+     * is absent, so indexing block 0 blindly finds nothing on a perfectly good response. This walks
+     * to the first {@code type: "text"} block instead.
+     */
+    private String extractAssistantText(ExternalAiRequestFormat format, String responseBody) {
         JsonNode root = readTree(responseBody);
         JsonNode textNode = switch (format) {
             case OPENAI_CHAT -> root.path("choices").path(0).path("message").path("content");
             case GEMINI_GENERATE_CONTENT ->
                     root.path("candidates").path(0).path("content").path("parts").path(0).path("text");
+            case ANTHROPIC_MESSAGES -> firstAnthropicTextBlock(root);
         };
         if (!textNode.isTextual()) {
             throw new IllegalStateException(
@@ -220,6 +326,15 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
                             + format + ": " + responseBody);
         }
         return textNode.asText();
+    }
+
+    private static JsonNode firstAnthropicTextBlock(JsonNode root) {
+        for (JsonNode block : root.path("content")) {
+            if ("text".equals(block.path("type").asText())) {
+                return block.path("text");
+            }
+        }
+        return root.path("content").path(0).path("text");
     }
 
     private ExternalAiVerdictRecord validateAndWrap(String missionId, String vendorId, String model, String verdictJson) {

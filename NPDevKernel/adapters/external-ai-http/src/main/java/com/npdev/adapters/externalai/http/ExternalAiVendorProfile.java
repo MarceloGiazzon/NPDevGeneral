@@ -56,4 +56,35 @@ public record ExternalAiVendorProfile(
                 "gemini", "https://generativelanguage.googleapis.com/v1beta", model, apiKeyEnvVar,
                 ExternalAiRequestFormat.GEMINI_GENERATE_CONTENT);
     }
+
+    /**
+     * Anthropic's Messages API. {@code model} must be a current model id with no date suffix
+     * (e.g. {@code claude-opus-5}); the ids are complete as written and appending a date is a 404.
+     */
+    public static ExternalAiVendorProfile anthropic(String apiKeyEnvVar, String model) {
+        return new ExternalAiVendorProfile(
+                "anthropic", "https://api.anthropic.com/v1/messages", model, apiKeyEnvVar,
+                ExternalAiRequestFormat.ANTHROPIC_MESSAGES);
+    }
+
+    /**
+     * OpenAI's chat-completions API -- the same wire shape as {@link #nvidiaBuild}, pointed at
+     * OpenAI's own host.
+     */
+    public static ExternalAiVendorProfile openai(String apiKeyEnvVar, String model) {
+        return new ExternalAiVendorProfile(
+                "openai", "https://api.openai.com/v1/chat/completions", model, apiKeyEnvVar,
+                ExternalAiRequestFormat.OPENAI_CHAT);
+    }
+
+    /**
+     * Whether this vendor's API has a knob the adapter maps {@code low}/{@code medium}/{@code high}
+     * onto. Anthropic's Messages API does ({@code output_config.effort}, GA, no beta header). The
+     * OpenAI-compatible shape does not, uniformly: {@code reasoning_effort} exists only on reasoning
+     * models and is a 400 on the chat models this adapter defaults to, so claiming support would
+     * turn a UI affordance into a request failure. Gemini has no equivalent field at all.
+     */
+    public boolean supportsEffort() {
+        return requestFormat == ExternalAiRequestFormat.ANTHROPIC_MESSAGES;
+    }
 }
