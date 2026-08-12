@@ -257,12 +257,19 @@ pub async fn install_version(
 /// working exactly the way it already did (a correct, only slower, local build).
 async fn stamp_git_tag_for_setup(dest: &Path, tag: &str) {
     async fn run(dest: &Path, args: &[&str]) -> bool {
-        tokio::process::Command::new("git")
-            .args(args)
+        let mut cmd = tokio::process::Command::new("git");
+        cmd.args(args)
             .current_dir(dest)
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
+            .stderr(std::process::Stdio::null());
+        // Same reasoning as `npdev.rs::build_command` / `runtime::no_window_command`: without
+        // this, each of the 5 git calls below flashes its own console window on Windows.
+        #[cfg(windows)]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        cmd.status()
             .await
             .map(|s| s.success())
             .unwrap_or(false)

@@ -267,19 +267,13 @@ dl.kv dd small { opacity: .6; }
 .insp-head { padding: 14px 18px 10px; display: flex; align-items: center; gap: 10px; }
 .insp-head .led { width: 10px; height: 10px; flex: none; }
 .insp-head h2 { font-size: 15px; letter-spacing: 2px; color: var(--text); flex: 1; margin: 0; }
-.insp-head .close {
+.insp-head .close, .insp-head .copy {
   background: none; border: 1px solid #262c33; color: var(--muted);
   border-radius: 6px; cursor: pointer; padding: 3px 10px; font-size: 12px; font-family: var(--font-mono);
 }
 .insp-head .close:hover { color: var(--err); border-color: var(--err); }
+.insp-head .copy:hover { color: var(--ok); border-color: var(--ok); }
 .insp-sub { padding: 0 18px 10px; font-size: 11px; color: var(--muted); border-bottom: 1px solid #1f242b; }
-.insp-tabs { display: flex; gap: 4px; padding: 8px 14px 0; }
-.insp-tabs button {
-  background: transparent; border: 1px solid transparent; border-bottom: none; color: var(--muted);
-  font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 1px; cursor: pointer;
-  padding: 5px 12px; border-radius: 6px 6px 0 0;
-}
-.insp-tabs button.active { color: var(--ok); border-color: #1f242b; background: #10151b; }
 .insp-tools { display: flex; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #1f242b; align-items: center; }
 .insp-tools input {
   flex: 1; background: #0a0e13; border: 1px solid #262c33; color: var(--text);
@@ -464,7 +458,11 @@ dl.kv dd small { opacity: .6; }
 }
 .modal textarea:focus { border-color: var(--ok); }
 .modal label { display: block; font-size: 11.5px; color: var(--muted); margin: 8px 0 4px; font-family: var(--font-mono); }
-.modal input[type="text"] {
+/* Phase F adds password and select controls to the same modal chrome. Same rule rather than a new
+   one, so the provider editor cannot drift away from the exploration editor's look. */
+.modal input[type="text"],
+.modal input[type="password"],
+.modal select {
   width: 100%; background: #0a0e13; border: 1px solid #262c33; color: var(--text);
   font-family: var(--font-mono); font-size: 12px; padding: 7px 10px; border-radius: 6px; outline: none;
 }

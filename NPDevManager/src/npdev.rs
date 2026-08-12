@@ -56,6 +56,10 @@ const FIXTURE_MONITOR_ENGINE_RUNNING: &str = include_str!("../fixtures/monitor-e
 const FIXTURE_MONITOR_ENGINE_STOPPED: &str = include_str!("../fixtures/monitor-engine-stopped.json");
 const FIXTURE_MONITOR_ENGINE_MISSING: &str = include_str!("../fixtures/monitor-engine-missing.json");
 const FIXTURE_MONITOR_LOGS: &str = include_str!("../fixtures/monitor-logs.json");
+/// Phase F. The one fixture here that is hand-authored rather than captured, and the file says why
+/// in its own `_captured` header: capturing it means paying a third-party provider with a real key.
+/// Same documented-exception shape as the two doctor fixtures above.
+pub const FIXTURE_PROMPTER_GENERATE: &str = include_str!("../fixtures/prompter-generate.json");
 const FIXTURE_EXPLORE_LIST: &str = include_str!("../fixtures/explore-list.json");
 const FIXTURE_EXPLORE_RUN_GREEN: &str = include_str!("../fixtures/explore-run-green.json");
 const FIXTURE_EXPLORE_RUN_RED: &str = include_str!("../fixtures/explore-run-red.json");
@@ -148,7 +152,11 @@ fn build_command(python_exe: &Path, npdev_cli: &Path, args: &[&str], java_home: 
     #[cfg(windows)]
     {
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
+        // Without this, every button press flashes a console window: python.exe is a
+        // console-subsystem binary, and Windows allocates it one by default when a GUI
+        // (no-console) parent like this Tauri app spawns it without CREATE_NO_WINDOW.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
     }
     #[cfg(unix)]
     {
@@ -749,6 +757,23 @@ pub async fn run_explore(
     args: Vec<String>,
     label: &str,
 ) -> Result<Value, String> {
+    run_explore_with_env(python_exe, npdev_cli, java_home, args, label, None).await
+}
+
+/// `run_explore` plus one environment variable for the child process.
+///
+/// It exists so a SECRET can reach the CLI without going on its argv, where every process listing on
+/// the machine can read it. The one caller passes `NPDEV_AI_API_KEY`; the variable name is a
+/// parameter rather than baked in so this stays a general "give the child one env var" and not a
+/// key-shaped hole.
+pub async fn run_explore_with_env(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    args: Vec<String>,
+    label: &str,
+    env: Option<(String, String)>,
+) -> Result<Value, String> {
     if fake_mode() {
         let text = match label {
             "explore list" => FIXTURE_EXPLORE_LIST,
@@ -767,7 +792,16 @@ pub async fn run_explore(
         };
         return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
     }
-    run_json(python_exe, npdev_cli, &args, java_home, label).await
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut command = build_command(python_exe, npdev_cli, &borrowed, java_home, None);
+    if let Some((name, value)) = env {
+        command.env(name, value);
+    }
+    let output = command
+        .output()
+        .await
+        .map_err(|e| format!("could not run {label}: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, label)
 }
 
 /// B5 + D10 source 2: run one `_ops` script, streaming its output as `ops-event` so the window shows

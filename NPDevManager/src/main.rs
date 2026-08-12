@@ -5,6 +5,7 @@
 mod log;
 mod npdev;
 mod runtime;
+mod secrets;
 mod selftest;
 mod state;
 mod versions;
@@ -456,6 +457,24 @@ async fn read_info_json(state: State<'_, AppState>, app_dir: String) -> Result<V
     monitor_probe(state, app_dir, Some(true)).await
 }
 
+/// D7's inspect paths were type-in-a-folder-path-by-hand only -- fine for a terminal user, hostile
+/// for anyone who does not already know the exact string to type. A native multi-select folder
+/// dialog is the same affordance every other Windows app uses for "pick some folders."
+#[tauri::command]
+async fn pick_inspect_folders() -> Vec<String> {
+    let Some(handles) = rfd::AsyncFileDialog::new()
+        .set_title("Add folders to inspect")
+        .pick_folders()
+        .await
+    else {
+        return Vec::new();
+    };
+    handles
+        .into_iter()
+        .map(|h| h.path().to_string_lossy().to_string())
+        .collect()
+}
+
 #[tauri::command]
 fn get_inspect_paths(state: State<'_, AppState>) -> Vec<String> {
     state.manager.lock().expect("lock poisoned").inspect_paths.clone()
@@ -822,17 +841,32 @@ fn manager_home_path() -> String {
 #[tauri::command]
 fn assistant_config(state: State<'_, AppState>) -> Value {
     let manager = state.manager.lock().expect("lock poisoned");
+    // Phase F: the Prompter tab is where a provider gets configured now -- there is no Settings
+    // screen, and this modal is read-only. Reporting the profile COUNT lets the modal say "you have
+    // providers, they are over there" instead of "not configured", which is wrong and unactionable
+    // once the user has set one up in the other tab.
+    let prompter_profiles = manager.prompter_profiles.len();
+    // The legacy key may have moved to the OS credential store (migrate_legacy_assistant_key), so
+    // "is a key set" is no longer answerable from this struct alone.
+    let has_api_key = manager
+        .assistant
+        .as_ref()
+        .and_then(|a| a.api_key.as_ref())
+        .map(|k| !k.is_empty())
+        .unwrap_or(false)
+        || secrets::has_secret(LEGACY_ASSISTANT_PROFILE_ID);
     match &manager.assistant {
-        None => serde_json::json!({"configured": false}),
+        None => serde_json::json!({"configured": false, "prompterProfiles": prompter_profiles}),
         Some(config) => serde_json::json!({
             "configured": true,
             "kind": config.kind,
             "command": config.command,
             "endpoint": config.endpoint,
             "model": config.model,
+            "prompterProfiles": prompter_profiles,
             // The key is never returned to the UI, only whether one is set. A window that can read
             // it back is a window that can leak it into a screenshot.
-            "hasApiKey": config.api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false),
+            "hasApiKey": has_api_key,
         }),
     }
 }
@@ -923,18 +957,431 @@ async fn assistant_generate(state: State<'_, AppState>, payload: Value) -> Resul
         args.push("--endpoint".to_string());
         args.push(endpoint.clone());
     }
-    if let Some(key) = &config.api_key {
-        args.push("--api-key".to_string());
-        args.push(key.clone());
-    }
     if let Some(model) = &config.model {
         args.push("--model".to_string());
         args.push(model.clone());
     }
+
+    // The key travels in the child's ENVIRONMENT, never on its argv.
+    //
+    // `--api-key <key>` put a live credential in the command line of a process, where any other
+    // process on the machine can read it out of the process listing for as long as the child runs --
+    // the same class of leak the payload-file rule above exists to prevent, in the same function.
+    // `npdev ai generate-routine` reads NPDEV_AI_API_KEY when `--api-key` is absent, the idiom the
+    // CLI already uses for SCRAPFORAI_API_KEY. `--api-key` still works for direct CLI use; the
+    // Manager just stops being the thing that uses it.
+    //
+    // Read from the OS credential store first (where migrate_legacy_assistant_key put it), falling
+    // back to whatever is still in manager.json on a machine where that migration could not run.
+    let api_key = secrets::get_secret(LEGACY_ASSISTANT_PROFILE_ID)
+        .ok()
+        .flatten()
+        .filter(|k| !k.is_empty())
+        .or_else(|| config.api_key.clone());
+
     log::info(format!("assistant_generate via provider kind={}", config.kind));
-    let result = npdev::run_explore(&python, &cli, java_home.as_deref(), args, "ai generate-routine").await;
+    let result = npdev::run_explore_with_env(
+        &python,
+        &cli,
+        java_home.as_deref(),
+        args,
+        "ai generate-routine",
+        api_key.map(|key| ("NPDEV_AI_API_KEY".to_string(), key)),
+    )
+    .await;
     let _ = std::fs::remove_file(&payload_path);
     result
+}
+
+// -------------------------------------------------------------------------------------------
+// Phase F: the Prompter.
+//
+// The Manager's half of the agent-prompter feature: compose a prompt about a selected app and send
+// it, with the credential in the OS credential store rather than in manager.json.
+//
+// It keeps Phase E's structural rule -- COMPOSE and SEND are two commands, and Send transmits
+// exactly the text the user was shown. It does NOT reuse `AssistantConfig`, because that type's key
+// field is the thing being moved out; profiles live in `state::PrompterProfile` and their keys in
+// `secrets`.
+//
+// Everything the UI needs comes through these commands. The Manager's UI calls `fetch()` nowhere --
+// an app's HTTP surface is reached from Rust, so a page in a window cannot be talked into making a
+// request the Rust side would not.
+// -------------------------------------------------------------------------------------------
+
+#[tauri::command]
+fn prompter_profiles(state: State<'_, AppState>) -> Value {
+    let profiles = state.manager.lock().expect("lock poisoned").prompter_profiles.clone();
+    let described: Vec<Value> = profiles
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.id,
+                "label": p.label,
+                "kind": p.kind,
+                "command": p.command,
+                "endpoint": p.endpoint,
+                "authStyle": p.auth_style,
+                "models": p.models,
+                "defaultModel": p.default_model,
+                "defaultEffort": p.default_effort,
+                // Whether a credential EXISTS. Never the credential. Same rule as
+                // assistant_config's hasApiKey: a window that can read a key back is a window that
+                // can leak it into a screenshot.
+                "hasCredential": secrets::has_secret(&p.id),
+            })
+        })
+        .collect();
+    serde_json::json!({ "profiles": described })
+}
+
+#[tauri::command]
+fn save_prompter_profile(
+    state: State<'_, AppState>,
+    profile: state::PrompterProfile,
+    api_key: Option<String>,
+) -> Result<(), String> {
+    if profile.id.trim().is_empty() {
+        return Err("a profile needs an id".to_string());
+    }
+    // Store the credential BEFORE mutating the profile list. If the credential store refuses, the
+    // user gets an error and an unchanged configuration, rather than a saved profile that silently
+    // cannot send.
+    if let Some(key) = api_key.filter(|k| !k.is_empty()) {
+        secrets::set_secret(&profile.id, &key)?;
+    }
+
+    let mut manager = state.manager.lock().expect("lock poisoned");
+    match manager.prompter_profiles.iter_mut().find(|p| p.id == profile.id) {
+        Some(existing) => *existing = profile.clone(),
+        None => manager.prompter_profiles.push(profile.clone()),
+    }
+    // Id and kind only -- a label is user text and an endpoint is a URL they typed.
+    log::info(format!("prompter profile saved: id={} kind={}", profile.id, profile.kind));
+    manager.save().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_prompter_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    {
+        let mut manager = state.manager.lock().expect("lock poisoned");
+        manager.prompter_profiles.retain(|p| p.id != id);
+        manager.save().map_err(|e| e.to_string())?;
+    }
+    // After the list is saved: a credential left behind by a failed delete is recoverable (the user
+    // can re-create the profile and overwrite it), whereas a profile left behind by a failed save
+    // would point at a credential that no longer exists.
+    secrets::delete_secret(&id)?;
+    log::info(format!("prompter profile deleted: id={id}"));
+    Ok(())
+}
+
+/// The app model that goes into the prompt as context.
+///
+/// Prefers `app-tree.json` (concepts WITH fields) over the probe's inlined `info.json` (names only),
+/// the same order the generated page uses -- so the Manager and the page describe an app the same
+/// way. `app-tree.json` is emitted on demand and is often absent, which is why `info.json` is not a
+/// fallback for failure but the ordinary case.
+///
+/// The fetch happens HERE, in Rust, rather than in the window: `NPDevManager/ui` calls `fetch()`
+/// nowhere, and this is app data like every other.
+#[tauri::command]
+async fn prompter_app_context(state: State<'_, AppState>, app_dir: String) -> Result<Value, String> {
+    let probe = monitor_probe(state, app_dir, Some(true)).await?;
+    let app_name = probe
+        .get("info")
+        .and_then(|i| i.get("namespace"))
+        .and_then(|n| n.as_str())
+        .or_else(|| probe.get("name").and_then(|n| n.as_str()))
+        .unwrap_or("")
+        .to_string();
+
+    let base_url = probe
+        .get("probeBaseUrl")
+        .or_else(|| probe.get("baseUrl"))
+        .and_then(|u| u.as_str())
+        .unwrap_or("")
+        .trim_end_matches('/')
+        .to_string();
+
+    if !base_url.is_empty() {
+        let url = format!("{base_url}/app-tree.json");
+        if let Ok(response) = reqwest::get(&url).await {
+            if response.status().is_success() {
+                if let Ok(doc) = response.json::<Value>().await {
+                    if let Some(model) = doc.get("sections").and_then(|s| s.get("Model")) {
+                        return Ok(serde_json::json!({
+                            "appName": doc.get("appId").and_then(|a| a.as_str()).unwrap_or(&app_name),
+                            "source": "app-tree.json",
+                            "context": model,
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    match probe.get("info") {
+        Some(info) if !info.is_null() => Ok(serde_json::json!({
+            "appName": app_name,
+            "source": "info.json",
+            "context": {
+                "dbEngine": info.get("dbEngine"),
+                "concepts": info.get("concepts"),
+                "flows": info.get("flows"),
+            },
+        })),
+        // An app that is not running, or one generated before info.json existed. Not an error: the
+        // Prompter still composes, it just has no current-model context to include.
+        _ => Ok(serde_json::json!({ "appName": app_name, "source": "none", "context": Value::Null })),
+    }
+}
+
+/// Sends EXACTLY the prompt it is handed -- the text the user is looking at in the compose box.
+#[tauri::command]
+async fn prompter_generate(
+    state: State<'_, AppState>,
+    profile_id: String,
+    model: String,
+    effort: Option<String>,
+    prompt: String,
+) -> Result<Value, String> {
+    if npdev::fake_mode() {
+        return Ok(serde_json::from_str(npdev::FIXTURE_PROMPTER_GENERATE)
+            .expect("the prompter-generate fixture is valid JSON"));
+    }
+
+    // Scoped so the lock is released before any .await below -- a MutexGuard held across an await
+    // point is the deadlock this codebase already learned about once.
+    let profile = {
+        let manager = state.manager.lock().expect("lock poisoned");
+        manager.prompter_profiles.iter().find(|p| p.id == profile_id).cloned()
+    };
+    let profile = profile.ok_or_else(|| {
+        format!("no provider profile '{profile_id}' -- open the Prompter tab's provider editor and add one")
+    })?;
+
+    let model = if model.trim().is_empty() {
+        profile.default_model.clone().unwrap_or_default()
+    } else {
+        model
+    };
+    // The id and model, never the prompt and never the key.
+    log::info(format!("prompter_generate profile={} model={}", profile.id, model));
+
+    match profile.kind.as_str() {
+        "command" => prompter_generate_via_command(&profile, &prompt).await,
+        "http" => prompter_generate_via_http(&profile, &model, effort.as_deref(), &prompt).await,
+        other => Err(format!("unknown provider kind '{other}' -- expected 'command' or 'http'")),
+    }
+}
+
+async fn prompter_generate_via_command(
+    profile: &state::PrompterProfile,
+    prompt: &str,
+) -> Result<Value, String> {
+    if profile.command.is_empty() {
+        return Err("this profile has no command configured".to_string());
+    }
+    // The prompt goes through a FILE, never a command line -- same rule as assistant_generate's
+    // payload file. An argv lands in shell history and in every process listing on the machine.
+    let dir = std::env::temp_dir().join("npdev-manager-prompter");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let prompt_path = dir.join(format!("prompt-{}.txt", versions::chrono_now_iso().replace(':', "-")));
+    std::fs::write(&prompt_path, prompt).map_err(|e| e.to_string())?;
+    let prompt_arg = prompt_path.to_string_lossy().to_string();
+
+    let argv: Vec<String> = profile
+        .command
+        .iter()
+        .map(|part| part.replace("{prompt_file}", &prompt_arg))
+        .collect();
+
+    let output = tokio::process::Command::new(&argv[0])
+        .args(&argv[1..])
+        .output()
+        .await
+        .map_err(|e| format!("could not run {}: {e}", argv[0]));
+    let _ = std::fs::remove_file(&prompt_path);
+    let output = output?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "{} exited with {}: {}",
+            argv[0],
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(serde_json::json!({ "ok": true, "text": text, "raw": text }))
+}
+
+async fn prompter_generate_via_http(
+    profile: &state::PrompterProfile,
+    model: &str,
+    effort: Option<&str>,
+    prompt: &str,
+) -> Result<Value, String> {
+    let endpoint = profile
+        .endpoint
+        .as_deref()
+        .filter(|e| !e.is_empty())
+        .ok_or_else(|| "this profile has no endpoint configured".to_string())?;
+    let key = secrets::get_secret(&profile.id)?.filter(|k| !k.is_empty()).ok_or_else(|| {
+        format!(
+            "no credential stored for profile '{}' -- open the Prompter tab's provider editor and \
+             paste the key",
+            profile.id
+        )
+    })?;
+
+    let auth_style = profile.auth_style.as_deref().unwrap_or("bearer");
+    let client = reqwest::Client::new();
+    let mut request = client.post(endpoint).header("content-type", "application/json");
+
+    let body = match auth_style {
+        "x-api-key" => {
+            // Anthropic's Messages API. `max_tokens` is required and caps thinking PLUS response
+            // text together, not just the answer. Depth is `output_config.effort`; the old
+            // `thinking.budget_tokens` is removed on current models and returns 400.
+            request = request.header("x-api-key", &key).header("anthropic-version", "2023-06-01");
+            let mut payload = serde_json::json!({
+                "model": model,
+                "max_tokens": 16000,
+                "messages": [{"role": "user", "content": prompt}],
+            });
+            if let Some(level) = effort.filter(|e| !e.is_empty()) {
+                payload["output_config"] = serde_json::json!({ "effort": level });
+            }
+            payload
+        }
+        "x-goog-api-key" => {
+            request = request.header("x-goog-api-key", &key);
+            serde_json::json!({ "contents": [{"parts": [{"text": prompt}]}] })
+        }
+        // "bearer" and anything unrecognised: the OpenAI-compatible shape, which is what most
+        // endpoints a user pastes will speak. `effort` is deliberately NOT sent -- reasoning_effort
+        // exists only on reasoning models and is a 400 on the chat models, so sending it would turn
+        // a UI affordance into a failed request.
+        _ => {
+            request = request.bearer_auth(&key);
+            serde_json::json!({ "model": model, "messages": [{"role": "user", "content": prompt}] })
+        }
+    };
+
+    let response = request
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("provider request failed: {e}"))?;
+    let status = response.status();
+    let text = response.text().await.map_err(|e| format!("could not read the provider reply: {e}"))?;
+    if !status.is_success() {
+        // The provider's own error body, not a paraphrase -- "model not found" and "insufficient
+        // credit" need to reach the person who can act on them.
+        return Err(format!("provider returned HTTP {}: {}", status.as_u16(), truncate_for_ui(&text)));
+    }
+
+    let parsed: Value = serde_json::from_str(&text)
+        .map_err(|e| format!("provider reply was not JSON ({e}): {}", truncate_for_ui(&text)))?;
+    Ok(serde_json::json!({
+        "ok": true,
+        "text": extract_provider_text(auth_style, &parsed).unwrap_or_default(),
+        "raw": truncate_for_ui(&text),
+    }))
+}
+
+/// Pull the assistant text out of whichever response shape the provider used.
+///
+/// The Anthropic branch walks to the first `type: "text"` block rather than reading `content[0]`:
+/// with thinking on -- the default on current models -- block 0 is a thinking block with no `text`
+/// field at all, so indexing it returns nothing on a perfectly good response.
+fn extract_provider_text(auth_style: &str, parsed: &Value) -> Option<String> {
+    match auth_style {
+        "x-api-key" => parsed
+            .get("content")?
+            .as_array()?
+            .iter()
+            .find(|block| block.get("type").and_then(|t| t.as_str()) == Some("text"))
+            .and_then(|block| block.get("text"))
+            .and_then(|t| t.as_str())
+            .map(|s| s.to_string()),
+        "x-goog-api-key" => parsed
+            .get("candidates")?
+            .get(0)?
+            .get("content")?
+            .get("parts")?
+            .get(0)?
+            .get("text")?
+            .as_str()
+            .map(|s| s.to_string()),
+        _ => parsed
+            .get("choices")?
+            .get(0)?
+            .get("message")?
+            .get("content")?
+            .as_str()
+            .map(|s| s.to_string()),
+    }
+}
+
+/// Matches the CLI's cap on echoing a provider body back to a caller.
+fn truncate_for_ui(raw: &str) -> String {
+    const MAX: usize = 20_000;
+    if raw.chars().count() <= MAX {
+        return raw.to_string();
+    }
+    let head: String = raw.chars().take(MAX).collect();
+    format!("{head}... (truncated)")
+}
+
+/// The account the legacy `AssistantConfig.api_key` is migrated to.
+const LEGACY_ASSISTANT_PROFILE_ID: &str = "legacy-assistant";
+
+/// Move a plaintext key out of `manager.json` and into the OS credential store, once, at startup.
+///
+/// `AssistantConfig.api_key` has been stored in plaintext since E2. That file is rewritten on every
+/// settings change and lives in the user's profile, so the key is one "paste your manager.json"
+/// support request away from being shared. This is a one-way move: read it, store it, blank the
+/// field, save.
+///
+/// **A failed keyring write leaves the key exactly where it was.** On a box with no usable
+/// credential store the alternative -- blanking the field anyway -- would destroy a working
+/// configuration to satisfy a hardening step, which is a worse outcome than the thing being fixed.
+/// The migration simply retries on the next start.
+fn migrate_legacy_assistant_key() {
+    let mut manager = state::ManagerState::load();
+    let legacy_key = manager
+        .assistant
+        .as_ref()
+        .and_then(|a| a.api_key.clone())
+        .filter(|k| !k.is_empty());
+    let Some(key) = legacy_key else { return };
+
+    match secrets::set_secret(LEGACY_ASSISTANT_PROFILE_ID, &key) {
+        Ok(()) => {
+            if let Some(assistant) = manager.assistant.as_mut() {
+                assistant.api_key = None;
+            }
+            match manager.save() {
+                // Names the store and the account, never the value.
+                Ok(()) => log::info(
+                    "migrated the assistant API key out of manager.json into the OS credential \
+                     store (account prompter/legacy-assistant)",
+                ),
+                // The credential is now in BOTH places. Not a leak beyond the status quo, and the
+                // next successful save completes the move.
+                Err(e) => log::info(format!(
+                    "stored the assistant API key in the OS credential store but could not rewrite \
+                     manager.json ({e}); it still holds the old copy and will be retried on the next start"
+                )),
+            }
+        }
+        Err(e) => log::info(format!(
+            "leaving the assistant API key in manager.json: the OS credential store is unavailable ({e})"
+        )),
+    }
 }
 
 fn main() {
@@ -952,6 +1399,7 @@ fn main() {
     // written into it -- while HANDOVER.md §5 told testers to send the .log files from there (and
     // named the wrong directory besides). This is the line that makes that instruction true.
     log::startup_banner();
+    migrate_legacy_assistant_key();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -986,6 +1434,7 @@ fn main() {
             monitor_scan,
             monitor_probe,
             read_info_json,
+            pick_inspect_folders,
             get_inspect_paths,
             set_inspect_paths,
             run_ops_script,
@@ -1012,6 +1461,11 @@ fn main() {
             // The Assistant (Phase E)
             assistant_config,
             set_assistant_config,
+            prompter_profiles,
+            save_prompter_profile,
+            delete_prompter_profile,
+            prompter_app_context,
+            prompter_generate,
             assistant_compose,
             assistant_generate,
         ])

@@ -444,9 +444,17 @@ async function openAssistant(runId) {
   document.getElementById("assistant-result").innerHTML = "";
   modal.dataset.runId = runId || "";
   const config = await sInvoke("assistant_config").catch(() => ({ configured: false }));
+  // Phase F: providers are configured in the Prompter tab now -- this modal is read-only, and the
+  // Manager has no Settings screen to send anyone to. Saying "not configured" full stop to someone
+  // who HAS set providers up one tab over is both wrong and unactionable, so the count decides which
+  // sentence they get.
   document.getElementById("assistant-state").textContent = config.configured
     ? `provider: ${config.kind}${config.model ? " · " + config.model : ""}`
-    : "no provider configured — you can still write the routine by hand in the JSON tab";
+    : config.prompterProfiles
+      ? `no routine provider configured here — you have ${config.prompterProfiles} provider(s) in the Prompter tab; ` +
+        "this flow is separate because it validates the returned routine against the pinned engine schema. " +
+        "You can also write the routine by hand in the JSON tab."
+      : "no provider configured — configure one in the Prompter tab, or write the routine by hand in the JSON tab";
   document.getElementById("assistant-send").hidden = !config.configured;
 }
 

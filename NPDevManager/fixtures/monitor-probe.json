@@ -116,6 +116,13 @@
       },
       {
         "section": "URLs",
+        "property": "Agent Prompter",
+        "path": "/agent-prompter.html",
+        "openable": true,
+        "important": false
+      },
+      {
+        "section": "URLs",
         "property": "App tree",
         "path": "/app-tree.html",
         "openable": true,

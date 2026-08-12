@@ -392,7 +392,11 @@ document.getElementById("runbox-close").addEventListener("click", () => {
 // B4 + B7: the inspector (info rows, probed rows, logs)
 // ---------------------------------------------------------------------------------------------
 
-async function openInspector(appDir, tab) {
+// `focus` (currently only "logs", from the card menu's "View logs" shortcut) opens and scrolls to
+// that one section after render, rather than switching a whole separate view -- Logs lives in the
+// same collapsible-sections list as everything else, so "show me the logs" just means "expand and
+// jump to that section."
+async function openInspector(appDir, focus) {
   if (!appDir) return;
   monitorState.selected = appDir;
   const panel = document.getElementById("monitor-inspector");
@@ -401,21 +405,32 @@ async function openInspector(appDir, tab) {
   document.getElementById("insp-title").textContent = appDir;
   const body = document.getElementById("insp-body");
   body.innerHTML = `<p class="insp-empty">reading…</p>`;
-  setInspectorTab(tab || "info");
 
   try {
-    const probe = await mInvoke("read_info_json", { appDir });
+    // Logs/manager-log-path are fetched alongside the probe, not on demand, so the Logs section is
+    // just another entry in the same sections array -- a lazily-filled accordion would need its own
+    // loading state and click wiring for one section out of eight. Failures there are swallowed
+    // (`.catch`) so a logs read failure never blocks the probed/info rows the rest of the panel is
+    // for.
+    const [probe, logs, managerLog] = await Promise.all([
+      mInvoke("read_info_json", { appDir }),
+      mInvoke("monitor_logs", { appDir, source: "all", tail: 300 }).catch(() => null),
+      mInvoke("manager_log_path").catch(() => null),
+    ]);
     monitorState.probe = probe;
+    monitorState.logs = logs;
+    monitorState.managerLog = managerLog;
     renderInspector(probe);
+    if (focus === "logs") {
+      const acc = [...body.querySelectorAll(".acc")].find((a) => a.querySelector(".hd").textContent.includes("Logs"));
+      if (acc) {
+        acc.classList.add("open");
+        acc.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
   } catch (err) {
     body.innerHTML = `<p class="insp-empty">could not read this app: ${esc(err)}</p>`;
   }
-}
-
-function setInspectorTab(tab) {
-  monitorState.inspTab = tab;
-  document.querySelectorAll("#insp-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
-  if (monitorState.probe) renderInspector(monitorState.probe);
 }
 
 function renderInspector(probe) {
@@ -423,11 +438,6 @@ function renderInspector(probe) {
   document.getElementById("insp-sub").textContent =
     `${probe.health || "?"} · ${probe.engine || "?"} · discovered by ${probe.discoveredBy || "?"}`;
   document.getElementById("insp-led").className = "led " + (LED_FOR[statusOf(probe)] || "off");
-
-  if (monitorState.inspTab === "logs") {
-    renderLogsTab(probe);
-    return;
-  }
 
   const sections = [];
 
@@ -500,6 +510,8 @@ function renderInspector(probe) {
       </span>
     </div>`).join(""), scripts.length));
 
+  sections.push(logsSection(probe));
+
   body.innerHTML = sections.join("");
   wireInspector();
 }
@@ -522,14 +534,21 @@ function infoRow(record, probe) {
     }
   }
 
-  const openable = record.openable && live;
+  // `probe.baseUrl` comes from the app's CONFIGURED port (npdev_monitor.py), not from it currently
+  // answering -- it is known whether or not the app is running. So the open button targets an
+  // absolute URL any time we have one, regardless of `live`: clicking it on a stopped app just
+  // fails to load, which is a legitimate way to notice it needs starting. Only `value` (the
+  // DISPLAYED text) stays gated on `live`, so the row itself does not claim to be reachable when
+  // it might not be.
+  const openUrl = record.value != null ? null : (probe.baseUrl ? probe.baseUrl + record.path : null);
+  const openable = record.openable && openUrl;
   return `
     <div class="irow${record.important ? " imp" : ""}">
       <span class="k">${esc(record.property)}</span>
       <span class="v">${esc(value)}</span>
       <span class="ops">
         <button data-copy="${esc(value)}">copy</button>
-        ${openable ? `<button data-open="${esc(value)}">open</button>` : ""}
+        ${openable ? `<button data-open="${esc(openUrl)}" title="open in browser">🌐 open</button>` : ""}
       </span>
     </div>`;
 }
@@ -572,6 +591,10 @@ function wireInspector() {
   body.querySelectorAll("[data-ops]").forEach((btn) =>
     btn.addEventListener("click", () => runOps(btn, btn.dataset.dir, btn.dataset.ops, btn.dataset.destructive === "1"))
   );
+  const exportBtn = document.getElementById("logs-export");
+  if (exportBtn) exportBtn.addEventListener("click", () => exportBundle(exportBtn.dataset.dir));
+  const folderBtn = document.getElementById("logs-folder");
+  if (folderBtn) folderBtn.addEventListener("click", () => mInvoke("open_folder", { path: folderBtn.dataset.dir }));
   const filter = document.getElementById("insp-filter");
   filter.oninput = () => {
     const needle = filter.value.toLowerCase();
@@ -589,46 +612,35 @@ function wireInspector() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// B7: the logs tab
+// B7: logs, as one more collapsible section in the same list as INFO/PROBED/RUNBOOK -- fetched
+// alongside the probe in `openInspector` (`monitorState.logs`/`monitorState.managerLog`) rather
+// than on its own tab switch.
 // ---------------------------------------------------------------------------------------------
 
-async function renderLogsTab(probe) {
-  const body = document.getElementById("insp-body");
-  body.innerHTML = `<p class="insp-empty">reading logs…</p>`;
-  try {
-    const result = await mInvoke("monitor_logs", { appDir: probe.appDir, source: "all", tail: 300 });
-    const managerLog = await mInvoke("manager_log_path").catch(() => null);
-    body.innerHTML = `
-      <div class="insp-note">
-        Three sources, one surface: the app's own stdout, every <code>_ops</code> script run from
-        here, and the Manager's own log. Export produces one file you can send — with the database
-        password redacted, because that is the whole point of an export leaving the machine.
-      </div>
-      <div class="irow" style="grid-template-columns:1fr auto">
-        <span class="k">Manager log</span>
-        <span class="ops"><button data-copy="${esc(managerLog || "")}">copy path</button></span>
-      </div>
-      ${(result.sources || []).map(logSection).join("")}
-      <div style="padding:12px 8px; display:flex; gap:8px; flex-wrap:wrap">
-        <button class="btn" id="logs-export">Export support bundle…</button>
-        <button class="btn ghost" id="logs-folder">Open logs folder</button>
-      </div>`;
-    body.querySelectorAll(".acc > button.hd").forEach((hd) =>
-      hd.addEventListener("click", () => hd.parentElement.classList.toggle("open"))
-    );
-    body.querySelectorAll("[data-copy]").forEach((btn) =>
-      btn.addEventListener("click", () => navigator.clipboard.writeText(btn.dataset.copy).then(() => toast("copied")))
-    );
-    document.getElementById("logs-export").addEventListener("click", () => exportBundle(probe.appDir));
-    document.getElementById("logs-folder").addEventListener("click", () =>
-      mInvoke("open_folder", { path: probe.logsDir || probe.appDir })
-    );
-  } catch (err) {
-    body.innerHTML = `<p class="insp-empty">could not read logs: ${esc(err)}</p>`;
+function logsSection(probe) {
+  const result = monitorState.logs;
+  if (!result) {
+    return accordion("Logs", `<p class="insp-empty">could not read logs.</p>`, 0);
   }
+  const rows = `
+    <div class="insp-note">
+      Three sources, one surface: the app's own stdout, every <code>_ops</code> script run from
+      here, and the Manager's own log. Export produces one file you can send — with the database
+      password redacted, because that is the whole point of an export leaving the machine.
+    </div>
+    <div class="irow" style="grid-template-columns:1fr auto">
+      <span class="k">Manager log</span>
+      <span class="ops"><button data-copy="${esc(monitorState.managerLog || "")}">copy path</button></span>
+    </div>
+    ${(result.sources || []).map(logSourceAccordion).join("")}
+    <div style="padding:12px 8px; display:flex; gap:8px; flex-wrap:wrap">
+      <button class="btn" id="logs-export" data-dir="${esc(probe.appDir)}">Export support bundle…</button>
+      <button class="btn ghost" id="logs-folder" data-dir="${esc(probe.logsDir || probe.appDir)}">Open logs folder</button>
+    </div>`;
+  return accordion("Logs", rows, (result.sources || []).length);
 }
 
-function logSection(source) {
+function logSourceAccordion(source) {
   const files = source.files || [];
   const tail = (source.tail || []).join("\n");
   const inner = source.detail
@@ -663,16 +675,35 @@ function closeInspector() {
 // Wiring
 // ---------------------------------------------------------------------------------------------
 
+// Shared by the type-and-Enter path and the native folder-picker (D7 follow-up): dedupes against
+// what is already there, persists, and re-scans -- so it does not matter which one added a path.
+async function addInspectPaths(paths) {
+  const fresh = paths.filter((p) => p && !monitorState.inspectPaths.includes(p));
+  if (fresh.length === 0) return;
+  monitorState.inspectPaths.push(...fresh);
+  await mInvoke("set_inspect_paths", { paths: monitorState.inspectPaths });
+  renderInspectPaths();
+  await refreshMonitor();
+}
+
 function initMonitor() {
   document.getElementById("inspect-add").addEventListener("keydown", async (event) => {
     if (event.key !== "Enter") return;
     const value = event.target.value.trim();
     if (!value) return;
-    monitorState.inspectPaths.push(value);
-    await mInvoke("set_inspect_paths", { paths: monitorState.inspectPaths });
     event.target.value = "";
-    renderInspectPaths();
-    await refreshMonitor();
+    await addInspectPaths([value]);
+  });
+  document.getElementById("inspect-browse").addEventListener("click", async () => {
+    let picked = [];
+    try {
+      picked = await mInvoke("pick_inspect_folders");
+    } catch (err) {
+      toast(String(err), true);
+      return;
+    }
+    if (picked.length === 0) return; // user cancelled the dialog
+    await addInspectPaths(picked);
   });
   document.getElementById("inspect-scan").addEventListener("click", refreshMonitor);
   document.getElementById("inspect-auto").addEventListener("click", (event) => {
@@ -696,9 +727,14 @@ function initMonitor() {
   );
   document.getElementById("insp-close").addEventListener("click", closeInspector);
   document.getElementById("monitor-backdrop").addEventListener("click", closeInspector);
-  document.querySelectorAll("#insp-tabs button").forEach((btn) =>
-    btn.addEventListener("click", () => setInspectorTab(btn.dataset.tab))
-  );
+  document.getElementById("insp-copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(monitorState.selected || "");
+      toast("copied");
+    } catch {
+      toast("could not copy", true);
+    }
+  });
 
   loadInspectPaths().then(refreshMonitor);
 
