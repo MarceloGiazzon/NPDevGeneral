@@ -788,6 +788,94 @@ async function prefillRunAppDir() {
   input.value = apps[apps.length - 1].directory;
 }
 
+// ---------------------------------------------------------------------------------------------
+// The app selector.
+//
+// Until now this screen offered one bare text field and a one-shot prefill of the last app the
+// Manager itself created -- so running anything else meant typing an absolute path from memory,
+// including every app generated outside the Manager. The list comes from `monitor_scan`, which
+// already searches the union of the Monitored App Paths and every registered app directory (and
+// recognises an app by its contents, not its folder name).
+//
+// `#run-app-dir` remains the ONE value Start/Stop and all five database buttons read. The picker
+// writes into it and never becomes a second source of truth -- which is also why typing resets the
+// picker: two controls that silently disagree about which app you are about to reset is a bad way
+// to find out about a bug.
+// ---------------------------------------------------------------------------------------------
+
+let runScanApps = [];
+
+function folderLeaf(path) {
+  const parts = String(path || "").split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : String(path || "");
+}
+
+async function refreshRunAppPicker() {
+  const picker = document.getElementById("run-app-picker");
+  const manual = `<option value="">(type a folder below)</option>`;
+  let apps = [];
+  try {
+    const result = await invoke("monitor_scan", { includeInfo: false });
+    // `not-an-app` entries are directories the scan looked at and rejected. They belong on the
+    // Monitor's wall (it says what it looked at) and not in a list of things you can run.
+    apps = (result.apps || []).filter((a) => a.status !== "not-an-app");
+  } catch (err) {
+    // A scanner that cannot run must never block this screen: manual entry is the older path and it
+    // still works. Saying why beats an empty dropdown.
+    picker.innerHTML = `${manual}<option value="" disabled>(scan unavailable -- ${escapeHtml(err)})</option>`;
+    picker.value = "";
+    return;
+  }
+  runScanApps = apps;
+  picker.innerHTML =
+    manual +
+    apps
+      .map(
+        (a) =>
+          `<option value="${escapeHtml(a.appDir)}">${escapeHtml(a.name || folderLeaf(a.appDir))} -- ${escapeHtml(a.appDir)}</option>`
+      )
+      .join("");
+  syncRunPickerToField();
+}
+
+// Keeps the two controls honest in the other direction: the picker shows the manual option unless
+// the folder in the field is genuinely one of the discovered apps.
+function syncRunPickerToField() {
+  const picker = document.getElementById("run-app-picker");
+  const current = document.getElementById("run-app-dir").value.trim();
+  picker.value = runScanApps.some((a) => a.appDir === current) ? current : "";
+}
+
+document.getElementById("run-app-picker").addEventListener("change", () => {
+  const picker = document.getElementById("run-app-picker");
+  if (!picker.value) return; // the manual option: leave whatever the user typed alone
+  document.getElementById("run-app-dir").value = picker.value;
+  const app = runScanApps.find((a) => a.appDir === picker.value);
+  // The port the app's own resolved plan declares -- the same number the Monitor's card shows and
+  // the app will actually bind. Guessing 8080 for an app whose plan says 8411 is how "it started
+  // but the link is dead" happens.
+  if (app && app.port) document.getElementById("run-port").value = app.port;
+});
+
+document.getElementById("run-app-dir").addEventListener("input", syncRunPickerToField);
+
+document.getElementById("run-app-refresh").addEventListener("click", async () => {
+  const btn = document.getElementById("run-app-refresh");
+  btn.disabled = true;
+  try {
+    await refreshRunAppPicker();
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Item 0's on-entry refresh for the Run screen. Scanning shells out to the CLI, so it happens on
+// entry and on explicit Refresh only -- never on a timer, on a screen whose job is to run one app.
+window.__npdevRefreshRun = async function refreshRun() {
+  await prefillRunAppDir();
+  await refreshRunAppPicker();
+};
+
 let devRunning = false;
 
 document.getElementById("run-start-btn").addEventListener("click", async () => {

@@ -191,6 +191,19 @@
     <!-- 4: Run -->
     <section id="screen-run" class="screen" hidden>
       <h1>Run</h1>
+      <!--
+        Fed by the same scan the Monitor uses, over the Monitored App Paths from Install step 5 plus
+        every app this Manager created. `#run-app-dir` below stays the single source every button on
+        this screen reads (Start/Stop and all five database operations), so picking here just fills
+        it in: typing a folder by hand keeps working exactly as before, which matters for an app the
+        scan cannot see.
+      -->
+      <label>App
+        <select id="run-app-picker">
+          <option value="">(type a folder below)</option>
+        </select>
+      </label>
+      <button id="run-app-refresh">&#10227; Refresh list</button>
       <label>App folder <input id="run-app-dir" placeholder="D:\Apps\my-app" /></label>
       <label>Port <input id="run-port" type="number" value="8080" /></label>
 
