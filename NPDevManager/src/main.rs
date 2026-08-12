@@ -241,6 +241,44 @@ async fn run_setup(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<
     npdev::run_setup_streaming(app, python, cli, java_home).await
 }
 
+/// Has setup ever actually run, and is its result still there?
+///
+/// The Install screen's "not run yet" was an HTML literal that only the Run-setup click handler
+/// ever rewrote -- so it said "not run yet" on every launch of a fully set-up Manager, and said
+/// "done" after a run whose jars somebody later deleted. There were no criteria; this command is
+/// the criteria, and they are the SAME facts doctor reports rather than a second opinion:
+/// `runtimehost-jars` (the staged libs directory) and `ai-knowledge-index` (`rag-index.json`).
+///
+/// Deliberately does not create either path -- `state::ensure_dirs`'s rule. A status check that
+/// conjures the directory it is checking always reports healthy.
+#[tauri::command]
+fn setup_status(state: State<'_, AppState>) -> Value {
+    if npdev::fake_mode() {
+        // A fixed healthy shape, like every other stub answer: the stub walk exists to exercise
+        // the UI, and a status read off the developer's real machine would make it non-deterministic.
+        return serde_json::json!({
+            "jarsStaged": true,
+            "jarCount": 12,
+            "libsDir": state::runtimehost_libs_dir().to_string_lossy().to_string(),
+            "aiIndexPresent": true,
+            "currentVersion": "beta1.17",
+        });
+    }
+    let libs_dir = state::runtimehost_libs_dir();
+    let jar_count = state::count_jars_in(&libs_dir);
+    let current_version = state.manager.lock().expect("lock poisoned").current_version.clone();
+    serde_json::json!({
+        // Directory existence is doctor's own bar for `runtimehost-jars`, so this agrees with the
+        // Ready screen by construction. The count is reported beside it rather than substituted for
+        // it: an empty staged directory is a real state, and it is not the same as "never ran".
+        "jarsStaged": libs_dir.is_dir(),
+        "jarCount": jar_count,
+        "libsDir": libs_dir.to_string_lossy().to_string(),
+        "aiIndexPresent": state::ai_knowledge_index_path().exists(),
+        "currentVersion": current_version,
+    })
+}
+
 // -------------------------------------------------------------------------------------------
 // M5: Apps
 // -------------------------------------------------------------------------------------------
@@ -1417,6 +1455,7 @@ fn main() {
             list_tags,
             install_npdev_version,
             run_setup,
+            setup_status,
             list_apps,
             list_engines,
             create_app,

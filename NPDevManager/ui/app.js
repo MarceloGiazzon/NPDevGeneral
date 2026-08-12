@@ -20,6 +20,13 @@ function showScreen(name) {
   // Same reasoning as the Scrap Manager: the Prompter's app picker is fed from the Monitor's last
   // scan, and its provider list can be edited from its own modal, so both are re-read on entry.
   if (name === "prompter" && window.__npdevRefreshPrompter) window.__npdevRefreshPrompter();
+  // The five original screens had NO on-entry refresh at all -- everything they showed was whatever
+  // init() found at launch. That is how the Install tab could report "not run yet" after a setup run
+  // and "no Python found" after installing one: the facts changed, the window did not re-ask. These
+  // two screens are the ones whose truth changes WHILE the Manager is open (a setup run, a version
+  // switch, a new monitored path), so they re-ask on entry like the three newer screens do.
+  if (name === "install" && window.__npdevRefreshInstall) window.__npdevRefreshInstall();
+  if (name === "run" && window.__npdevRefreshRun) window.__npdevRefreshRun();
 }
 
 // The Monitor's "Explore this app" button crosses screens, which is the one affordance that turns
@@ -269,6 +276,10 @@ async function refreshTagList(forceRefresh) {
 
 document.getElementById("tag-refresh-btn").addEventListener("click", () => refreshTagList(true));
 
+// The last tag this window downloaded, so the step-3 line can say whether it became the current
+// one. Deliberately not persisted: it is about what just happened in front of the user.
+let lastDownloadedTag = null;
+
 document.getElementById("version-install-btn").addEventListener("click", async () => {
   const picker = document.getElementById("tag-picker");
   const tag = picker.value;
@@ -280,7 +291,10 @@ document.getElementById("version-install-btn").addEventListener("click", async (
   bar.removeAttribute("value");
   try {
     await invoke("install_npdev_version", { tag });
+    lastDownloadedTag = tag;
     await refreshVersionsScreen();
+    // Setup's status names the CURRENT version, which this download may or may not have changed.
+    await refreshSetupStatus();
   } catch (err) {
     alert(`could not install ${tag}: ${err}`);
   } finally {
@@ -300,6 +314,67 @@ listen("version-install-progress", (event) => {
   }
 });
 
+// The honest answer to "has setup run?", asked of the machine rather than remembered by this window.
+//
+// What was here before: an HTML literal reading "not run yet" that ONLY the click handler below ever
+// rewrote. So a Manager whose jars were staged months ago said "not run yet" on every launch, and a
+// Manager whose staged jars had since been deleted still said "done". There were no criteria at all
+// -- these are the criteria, and they are doctor's own two checks (`runtimehost-jars`,
+// `ai-knowledge-index`) rather than a second opinion about the same machine.
+async function refreshSetupStatus() {
+  const statusEl = document.getElementById("setup-status");
+  const btn = document.getElementById("setup-run-btn");
+  let status;
+  try {
+    status = await invoke("setup_status");
+  } catch (err) {
+    statusEl.textContent = `could not read the setup status: ${err}`;
+    return;
+  }
+  renderVersionHint(status.currentVersion);
+  if (!status.currentVersion) {
+    // Pressing Run setup here fails with the CLI resolver's raw string ("no NPDev version installed
+    // -- install one first"). Saying which step to do instead, and disabling the button, is the same
+    // information delivered before the failure rather than after it.
+    statusEl.textContent = "no NPDev version installed -- do step 3 first.";
+    btn.disabled = true;
+    return;
+  }
+  btn.disabled = false;
+  if (status.jarsStaged && status.aiIndexPresent) {
+    statusEl.textContent =
+      `ready -- ${status.jarCount} jar(s) staged for ${status.currentVersion}, in ${status.libsDir} ` +
+      `(shared across versions).`;
+  } else if (status.jarsStaged) {
+    statusEl.textContent =
+      `jars staged (${status.jarCount}) for ${status.currentVersion}; the AI knowledge index is ` +
+      `missing -- Run setup to rebuild it. (It is needed by the MCP tools, not by generate/build/run.)`;
+  } else {
+    statusEl.textContent = `not run yet -- Run setup stages the runtime jars into ${status.libsDir}.`;
+  }
+}
+
+// Step 3's own line. `install_npdev_version` deliberately does not switch `current_version` when one
+// is already set, so downloading a newer tag and then pressing Run setup sets up the OLD version.
+// The Versions tab owns switching; this only stops the difference being invisible.
+function renderVersionHint(currentVersion) {
+  const el = document.getElementById("version-status");
+  if (!el) return;
+  if (!currentVersion) {
+    el.textContent = lastDownloadedTag
+      ? `downloaded ${lastDownloadedTag}.`
+      : "no version installed yet.";
+    return;
+  }
+  if (lastDownloadedTag && lastDownloadedTag !== currentVersion) {
+    el.textContent =
+      `downloaded ${lastDownloadedTag}; the current version is still ${currentVersion} -- ` +
+      `switch on the Versions tab, or setup and every app will use ${currentVersion}.`;
+  } else {
+    el.textContent = `current version: ${currentVersion}.`;
+  }
+}
+
 document.getElementById("setup-run-btn").addEventListener("click", async () => {
   const btn = document.getElementById("setup-run-btn");
   const statusEl = document.getElementById("setup-status");
@@ -312,10 +387,17 @@ document.getElementById("setup-run-btn").addEventListener("click", async () => {
     const result = await invoke("run_setup");
     const source = result.jarsSource === "download" ? "downloaded (fast)" : "built locally (slow)";
     statusEl.textContent = `done -- jars ${source}`;
+    logEl.textContent += `done -- jars ${source}\n`;
   } catch (err) {
     statusEl.textContent = `failed: ${err}`;
+    // The run's own account goes to the log as well as the status line, because the line below is
+    // about to be replaced by what is actually on disk NOW. The two answer different questions --
+    // "what did this run do" and "what is staged" -- and only the second survives a restart, which
+    // is the entire point of this section. Neither is allowed to overwrite the other silently.
+    logEl.textContent += `failed: ${err}\n`;
   } finally {
     btn.disabled = false;
+    await refreshSetupStatus();
   }
 });
 
@@ -727,6 +809,15 @@ async function refreshVersionsScreen() {
 // Boot
 // ---------------------------------------------------------------------------------------------
 
+// Item 0's on-entry refresh for the Install screen. Every status this screen shows can change while
+// the Manager is open -- a JDK installed, a setup run, a version switched on the next tab -- and
+// before this hook existed none of them was ever re-read after launch.
+window.__npdevRefreshInstall = async function refreshInstall() {
+  await refreshJdkStatus();
+  await refreshPythonStatus();
+  await refreshSetupStatus();
+};
+
 (async function init() {
   await initFakeBanner();
   showScreen("ready");
@@ -736,6 +827,7 @@ async function refreshVersionsScreen() {
   await loadDoctor();
   await refreshJdkStatus();
   await refreshPythonStatus();
+  await refreshSetupStatus();
   await refreshTagList(false);
   await refreshAppList();
   await prefillRunAppDir();

@@ -72,11 +72,20 @@
         <button id="tag-refresh-btn">Refresh list</button>
         <progress id="version-progress" value="0" max="100" hidden></progress>
         <button id="version-install-btn">Download this version</button>
+        <!--
+          Downloading a version does NOT make it current when one already is (versions.rs) -- so
+          "Download this version" followed by "Run setup" can set up the OLD one. The Versions tab
+          owns switching; this line's whole job is to stop that difference being silent.
+        -->
+        <div id="version-status" class="status-line"></div>
       </div>
 
       <div class="install-step">
         <h2>4. Setup</h2>
-        <div id="setup-status" class="status-line">not run yet</div>
+        <!-- "not run yet" used to be written HERE, as a literal, and no code ever asked the machine
+             whether it was true. `setup_status` answers that now; this placeholder matches steps 1
+             and 2 and is replaced on every entry to the screen. -->
+        <div id="setup-status" class="status-line">checking&hellip;</div>
         <div id="setup-log" class="log-view" hidden></div>
         <button id="setup-run-btn">Run setup</button>
       </div>
