@@ -17,6 +17,9 @@ function showScreen(name) {
   // probing the machine every 30 seconds.
   if (name === "scrap" && window.__npdevRefreshScrap) window.__npdevRefreshScrap();
   if (name === "monitor" && window.__npdevRefreshMonitor) window.__npdevRefreshMonitor();
+  // Same reasoning as the Scrap Manager: the Prompter's app picker is fed from the Monitor's last
+  // scan, and its provider list can be edited from its own modal, so both are re-read on entry.
+  if (name === "prompter" && window.__npdevRefreshPrompter) window.__npdevRefreshPrompter();
 }
 
 // The Monitor's "Explore this app" button crosses screens, which is the one affordance that turns
@@ -494,6 +497,9 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
     // M15: the new app becomes selectable on Ready immediately -- the moment its database checks
     // are most worth looking at is right after it is created.
     await refreshDoctorAppPicker();
+    // The app someone just created is overwhelmingly the one they are about to run.
+    document.getElementById("run-app-dir").value = "";
+    await prefillRunAppDir();
   } catch (err) {
     statusEl.textContent = `failed: ${err}`;
   }
@@ -502,6 +508,23 @@ document.getElementById("new-app-form").addEventListener("submit", async (event)
 // ---------------------------------------------------------------------------------------------
 // 4: Run screen (M6)
 // ---------------------------------------------------------------------------------------------
+
+// Defaults the app-folder field to the most recently created app, same as the doctor picker
+// (M15) already does -- retyping a path the Manager itself just wrote is pure friction. Only
+// touches the field while it is still empty, so it never clobbers a folder the user typed or
+// picked for an app the Manager did not create.
+async function prefillRunAppDir() {
+  const input = document.getElementById("run-app-dir");
+  if (input.value.trim()) return;
+  let apps = [];
+  try {
+    apps = await invoke("list_apps");
+  } catch {
+    apps = [];
+  }
+  if (apps.length === 0) return;
+  input.value = apps[apps.length - 1].directory;
+}
 
 let devRunning = false;
 
@@ -715,6 +738,7 @@ async function refreshVersionsScreen() {
   await refreshPythonStatus();
   await refreshTagList(false);
   await refreshAppList();
+  await prefillRunAppDir();
   await loadEngines();
   await refreshVersionsScreen();
 })();

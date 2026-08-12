@@ -23,6 +23,7 @@
     <button class="tab" data-screen="versions">Versions</button>
     <button class="tab" data-screen="monitor">The Monitor</button>
     <button class="tab" data-screen="scrap">Scrap Manager</button>
+    <button class="tab" data-screen="prompter">Prompter</button>
   </nav>
 
   <main>
@@ -200,6 +201,7 @@
         <span id="inspect-chips"></span>
         <input id="inspect-add" type="text"
                placeholder="Add a folder to inspect, then press Enter (an app = _ops + .npdev-root or resolved-db-plan.json)…" />
+        <button class="btn ghost" id="inspect-browse">📁 Browse…</button>
         <button class="btn" id="inspect-scan">⟳ INSPECT</button>
         <button class="btn ghost" id="inspect-auto">AUTO 30s</button>
       </section>
@@ -261,7 +263,133 @@
         </div>
       </div>
     </section>
+
+    <!-- 8: Prompter (Phase F) -->
+    <section id="screen-prompter" class="screen" hidden>
+      <h1>▚ PROMPTER <span class="dim">// ask a model about an app</span></h1>
+      <p class="subtitle">
+        Compose a prompt describing one of your apps, then copy it or send it to a provider you
+        configured. Your API key lives in this machine's credential store, never in the Manager's
+        settings file and never in this window.
+      </p>
+
+      <div class="statusbar">
+        <label class="subtitle" style="margin:0">App
+          <select id="prompter-app"></select>
+        </label>
+        <button class="btn ghost" id="prompter-refresh">⟳ REFRESH</button>
+        <span class="subtitle" id="prompter-context">—</span>
+      </div>
+
+      <div class="pane" style="margin-top:14px">
+        <h3>Target app</h3>
+        <label class="subtitle" style="display:block;margin-top:8px">
+          App name used in the prompt (edit if the detected name is wrong)
+          <input type="text" id="prompter-appname" placeholder="my-app" autocomplete="off" style="width:100%">
+        </label>
+        <label class="subtitle" style="display:flex;gap:6px;align-items:center;margin-top:10px">
+          <input type="checkbox" id="prompter-include-context" style="width:auto">
+          Include the current model as context (concepts, fields, flows)
+        </label>
+      </div>
+
+      <div class="pane" style="margin-top:14px">
+        <h3>Provider</h3>
+        <div class="statusbar" style="margin-top:8px">
+          <label class="subtitle" style="margin:0">Profile
+            <select id="prompter-profile"></select>
+          </label>
+          <label class="subtitle" style="margin:0">Model
+            <input type="text" id="prompter-model" list="prompter-model-suggestions" autocomplete="off">
+            <datalist id="prompter-model-suggestions"></datalist>
+          </label>
+          <label class="subtitle" style="margin:0">Effort
+            <select id="prompter-effort">
+              <option value="">default</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+          </label>
+          <button class="btn ghost" id="prompter-providers">⚙ PROVIDERS</button>
+        </div>
+        <p class="subtitle" id="prompter-provider-note" style="margin-top:8px">—</p>
+      </div>
+
+      <div class="pane" style="margin-top:14px">
+        <h3>What do you want to build or change?</h3>
+        <textarea id="prompter-ask" rows="4" style="width:100%"
+          placeholder="e.g. Add a 'Priority' field to the Ticket concept, with values Low/Medium/High, and show it as a column on the Tickets list."></textarea>
+        <div class="statusbar" style="margin-top:10px">
+          <button class="btn" id="prompter-generate">1 · GENERATE PROMPT</button>
+          <button class="btn ghost" id="prompter-copy">📋 COPY</button>
+          <button class="btn" id="prompter-send" disabled>2 · SEND THIS</button>
+          <span class="subtitle" id="prompter-status" style="margin-left:auto">
+            Nothing leaves this machine until you press Send.
+          </span>
+        </div>
+        <pre class="runout" id="prompter-prompt" style="max-height:320px;margin-top:10px"></pre>
+      </div>
+
+      <div class="pane" style="margin-top:14px" id="prompter-answer-pane" hidden>
+        <h3>Response</h3>
+        <pre class="runout" id="prompter-answer" style="max-height:420px"></pre>
+        <button class="btn ghost" id="prompter-copy-answer" style="margin-top:10px">📋 COPY RESPONSE</button>
+      </div>
+    </section>
   </main>
+
+  <!-- Provider editor (Phase F). This tab IS the settings surface for providers -- the Manager has
+       no Settings screen, so the editor lives beside the thing it configures. -->
+  <div class="modal" id="prompter-modal">
+    <div class="box">
+      <div class="mhead">
+        <h3>PROVIDERS</h3>
+        <button class="copy" id="prompter-modal-close">✕ CLOSE</button>
+      </div>
+      <div class="mbody">
+        <div id="prompter-profile-list"></div>
+        <hr>
+        <h3 id="prompter-editor-title">Add a provider</h3>
+        <label class="subtitle" style="display:block">Id (slug, unique)
+          <input type="text" id="pf-id" placeholder="anthropic-work" autocomplete="off" style="width:100%"></label>
+        <label class="subtitle" style="display:block;margin-top:8px">Label
+          <input type="text" id="pf-label" placeholder="Anthropic (work account)" autocomplete="off" style="width:100%"></label>
+        <label class="subtitle" style="display:block;margin-top:8px">Kind
+          <select id="pf-kind">
+            <option value="http">http — an endpoint you name</option>
+            <option value="command">command — your own CLI</option>
+          </select></label>
+        <div id="pf-http-fields">
+          <label class="subtitle" style="display:block;margin-top:8px">Endpoint
+            <input type="text" id="pf-endpoint" placeholder="https://api.anthropic.com/v1/messages"
+                   autocomplete="off" style="width:100%"></label>
+          <label class="subtitle" style="display:block;margin-top:8px">Auth style
+            <select id="pf-auth">
+              <option value="x-api-key">x-api-key (Anthropic)</option>
+              <option value="bearer">Authorization: Bearer (OpenAI-compatible)</option>
+              <option value="x-goog-api-key">x-goog-api-key (Gemini)</option>
+            </select></label>
+          <label class="subtitle" style="display:block;margin-top:8px">API key
+            <input type="password" id="pf-key" placeholder="leave blank to keep the stored key"
+                   autocomplete="off" style="width:100%"></label>
+        </div>
+        <div id="pf-command-fields" hidden>
+          <label class="subtitle" style="display:block;margin-top:8px">Command (one argv part per line; {prompt_file} is substituted with a temp file path)
+            <textarea id="pf-command" rows="4" style="width:100%;min-height:96px"
+                      placeholder="claude&#10;-p&#10;{prompt_file}"></textarea></label>
+        </div>
+        <label class="subtitle" style="display:block;margin-top:8px">Models (comma separated; the first is the default)
+          <input type="text" id="pf-models" placeholder="claude-opus-5, claude-sonnet-5"
+                 autocomplete="off" style="width:100%"></label>
+      </div>
+      <div class="mfoot">
+        <button class="btn" id="pf-save">SAVE PROVIDER</button>
+        <button class="btn ghost" id="pf-clear">CLEAR FORM</button>
+        <span class="subtitle" id="pf-status" style="margin-left:auto"></span>
+      </div>
+    </div>
+  </div>
 
   <!-- The Monitor's inspector (B4/B7) -->
   <div class="backdrop" id="monitor-backdrop"></div>
@@ -269,13 +397,10 @@
     <div class="insp-head">
       <span class="led off" id="insp-led"></span>
       <h2 id="insp-title">—</h2>
+      <button class="copy" id="insp-copy">📋 COPY</button>
       <button class="close" id="insp-close">✕ CLOSE</button>
     </div>
     <div class="insp-sub" id="insp-sub"></div>
-    <div class="insp-tabs" id="insp-tabs">
-      <button data-tab="info" class="active">INFO</button>
-      <button data-tab="logs">LOGS</button>
-    </div>
     <div class="insp-tools">
       <input id="insp-filter" placeholder="filter rows…" autocomplete="off" />
     </div>
@@ -364,12 +489,15 @@
   <script src="app.js"></script>
   <script src="monitor.js"></script>
   <script src="scrap.js"></script>
+  <script src="prompter.js"></script>
   <script>
-    // Boot the two new screens after their files have defined their init hooks. Kept here rather
-    // than inside app.js's own init() so the five original screens are unaffected if either of these
-    // throws -- a Monitor bug must not take the Install tab down with it.
-    window.__npdevInitMonitor();
-    window.__npdevInitScrap();
+    // Boot the added screens after their files have defined their init hooks. Kept here rather
+    // than inside app.js's own init() so the five original screens are unaffected if any of these
+    // throws -- a Monitor bug must not take the Install tab down with it. Each is isolated from its
+    // siblings for the same reason: one broken init must not stop the next from running.
+    try { window.__npdevInitMonitor(); } catch (e) { console.error("Monitor init failed", e); }
+    try { window.__npdevInitScrap(); } catch (e) { console.error("Scrap Manager init failed", e); }
+    try { window.__npdevInitPrompter(); } catch (e) { console.error("Prompter init failed", e); }
   </script>
 </body>
 </html>

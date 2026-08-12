@@ -189,12 +189,25 @@ pub fn portable_python_already_installed() -> bool {
     python_binary_in(&state::python_dir()).exists()
 }
 
+/// `tokio::process::Command::new`, but never flashes a console window on Windows -- these probes
+/// (`python --version`, `where`) run on every Ready/Install screen load, and a console-subsystem
+/// child spawned from this GUI's no-console parent gets its own window unless told not to.
+fn no_window_command(program: &str) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 /// Detect a system Python >= 3.9 -- checked with the SAME command a terminal user would run, no
 /// special-cased logic: `python --version` / `python3 --version`, whichever resolves. Returns the
 /// resolved path only when it also satisfies the version. M4's "download only otherwise" rule.
 pub async fn detect_system_python() -> Option<PathBuf> {
     for candidate in ["python3", "python"] {
-        let Ok(output) = tokio::process::Command::new(candidate).arg("--version").output().await else {
+        let Ok(output) = no_window_command(candidate).arg("--version").output().await else {
             continue;
         };
         if !output.status.success() {
@@ -226,7 +239,7 @@ fn parse_python_version(text: &str) -> Option<(u32, u32)> {
 
 async fn which_command(name: &str) -> Result<PathBuf, String> {
     let program = if cfg!(target_os = "windows") { "where" } else { "which" };
-    let output = tokio::process::Command::new(program)
+    let output = no_window_command(program)
         .arg(name)
         .output()
         .await

@@ -86,6 +86,47 @@ pub struct ManagerState {
     /// E2: the assistant provider, if the user configured one. The Manager never bundles an API key.
     #[serde(default)]
     pub assistant: Option<AssistantConfig>,
+    /// Prompter provider profiles. NON-SECRET fields only: the API key lives in the OS credential
+    /// store under service "NPDev Manager", account "prompter/<id>" -- never here. See `secrets.rs`.
+    #[serde(default)]
+    pub prompter_profiles: Vec<PrompterProfile>,
+}
+
+/// One configured way to reach a model, for the Prompter tab.
+///
+/// Deliberately the same two shapes as `AssistantConfig` (an argv template or an HTTP endpoint),
+/// because they cover the same ground: a user's own CLI, or a provider API. The difference is where
+/// the credential lives -- here it is not a field at all.
+///
+/// `endpoint` being user-supplied is fine in the Manager and would NOT be fine in the generated
+/// app's proxy. The Manager is the user configuring their own machine, so there is no confused
+/// deputy: whoever types the endpoint is whoever owns the key. The in-app proxy takes its endpoint
+/// from a server-side profile precisely because there the caller and the key owner differ.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PrompterProfile {
+    /// Slug, unique within the list, e.g. "anthropic-work". Also the credential-store account key.
+    pub id: String,
+    pub label: String,
+    /// "command" or "http".
+    pub kind: String,
+    /// command kind: the argv template. `{prompt_file}` is substituted with a path to a temp file --
+    /// never with the prompt itself, which on an argv lands in shell history and every process
+    /// listing on the machine.
+    #[serde(default)]
+    pub command: Vec<String>,
+    /// http kind: the full messages/completions URL.
+    #[serde(default)]
+    pub endpoint: Option<String>,
+    /// "bearer" | "x-api-key" | "x-goog-api-key".
+    #[serde(default)]
+    pub auth_style: Option<String>,
+    #[serde(default)]
+    pub models: Vec<String>,
+    #[serde(default)]
+    pub default_model: Option<String>,
+    /// "low" | "medium" | "high", mapped per provider (or ignored where there is no equivalent).
+    #[serde(default)]
+    pub default_effort: Option<String>,
 }
 
 /// E2. Two shapes, both supplied entirely by the user: an external command template (their own
