@@ -79,19 +79,14 @@ async function loadInspectPaths() {
   renderInspectPaths();
 }
 
+// Read-only since the list became Install step 5. Two writable editors of one list is how the two
+// come to disagree, and this screen's job is scanning the folders, not deciding which they are --
+// ✎ EDIT jumps to the one place that owns them.
 function renderInspectPaths() {
   const holder = document.getElementById("inspect-chips");
-  holder.innerHTML = monitorState.inspectPaths
-    .map((p, i) => `<span class="chip">${esc(p)} <span class="x" data-rm="${i}" title="Remove">✕</span></span>`)
-    .join("");
-  holder.querySelectorAll("[data-rm]").forEach((x) =>
-    x.addEventListener("click", async () => {
-      monitorState.inspectPaths.splice(Number(x.dataset.rm), 1);
-      await mInvoke("set_inspect_paths", { paths: monitorState.inspectPaths });
-      renderInspectPaths();
-      await refreshMonitor();
-    })
-  );
+  holder.innerHTML = monitorState.inspectPaths.length
+    ? monitorState.inspectPaths.map((p) => `<span class="chip">${esc(p)}</span>`).join(" ")
+    : `<span class="chip">none — add one in Install ▸ 5</span>`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -103,6 +98,10 @@ async function refreshMonitor() {
   if (!monitorState.apps.length) {
     grid.innerHTML = `<p class="subtitle">scanning…</p>`;
   }
+  // Re-read every time, not once at startup: the list is now owned by Install step 5, so it can
+  // change while this screen is hidden. `__npdevRefreshMonitor` fires on tab entry, which is
+  // exactly when someone who just edited it comes back to look.
+  await loadInspectPaths();
   try {
     const result = await mInvoke("monitor_scan", { includeInfo: false });
     monitorState.apps = result.apps || [];
@@ -675,36 +674,10 @@ function closeInspector() {
 // Wiring
 // ---------------------------------------------------------------------------------------------
 
-// Shared by the type-and-Enter path and the native folder-picker (D7 follow-up): dedupes against
-// what is already there, persists, and re-scans -- so it does not matter which one added a path.
-async function addInspectPaths(paths) {
-  const fresh = paths.filter((p) => p && !monitorState.inspectPaths.includes(p));
-  if (fresh.length === 0) return;
-  monitorState.inspectPaths.push(...fresh);
-  await mInvoke("set_inspect_paths", { paths: monitorState.inspectPaths });
-  renderInspectPaths();
-  await refreshMonitor();
-}
-
 function initMonitor() {
-  document.getElementById("inspect-add").addEventListener("keydown", async (event) => {
-    if (event.key !== "Enter") return;
-    const value = event.target.value.trim();
-    if (!value) return;
-    event.target.value = "";
-    await addInspectPaths([value]);
-  });
-  document.getElementById("inspect-browse").addEventListener("click", async () => {
-    let picked = [];
-    try {
-      picked = await mInvoke("pick_inspect_folders");
-    } catch (err) {
-      toast(String(err), true);
-      return;
-    }
-    if (picked.length === 0) return; // user cancelled the dialog
-    await addInspectPaths(picked);
-  });
+  // The cross-screen jump idiom this window already uses for "Explore this app" (D9). The list is
+  // edited in exactly one place; from here you go there.
+  document.getElementById("inspect-edit").addEventListener("click", () => window.__npdevShowScreen("install"));
   document.getElementById("inspect-scan").addEventListener("click", refreshMonitor);
   document.getElementById("inspect-auto").addEventListener("click", (event) => {
     monitorState.paused = !monitorState.paused;
@@ -736,7 +709,8 @@ function initMonitor() {
     }
   });
 
-  loadInspectPaths().then(refreshMonitor);
+  // refreshMonitor re-reads the paths itself now, so there is one place that does it.
+  refreshMonitor();
 
   // The refresh loop re-derives every card from the machine rather than trusting anything this
   // window remembers -- kill the Manager and restart it and the wall is still correct.

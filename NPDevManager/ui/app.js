@@ -498,6 +498,93 @@ listen("setup-event", (event) => {
 });
 
 // ---------------------------------------------------------------------------------------------
+// Install step 5: Monitored App Paths.
+//
+// One writable editor for a list two other screens consume (the Monitor scans these folders, the
+// Run tab offers the apps they contain). It used to live inside the Monitor only, which made "where
+// do my apps live" -- machine configuration, answered once -- something you had to open a wall of
+// running apps to change.
+//
+// The same three commands the Monitor used: `get_inspect_paths`, `set_inspect_paths`,
+// `pick_inspect_folders`. The stored field keeps its name; renaming it would orphan every existing
+// manager.json for the sake of a label.
+// ---------------------------------------------------------------------------------------------
+
+let monitoredPaths = [];
+
+async function refreshAppPaths() {
+  try {
+    monitoredPaths = await invoke("get_inspect_paths");
+  } catch (err) {
+    document.getElementById("apppaths-status").textContent = `could not read the saved paths: ${err}`;
+    return;
+  }
+  renderAppPaths();
+}
+
+function renderAppPaths() {
+  const holder = document.getElementById("apppaths-chips");
+  holder.innerHTML = monitoredPaths
+    .map(
+      (p, i) =>
+        `<span class="path-chip">${escapeHtml(p)}<button class="path-chip-x" data-rm="${i}" title="Remove">✕</button></span>`
+    )
+    .join("");
+  holder.querySelectorAll("[data-rm]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      monitoredPaths.splice(Number(btn.dataset.rm), 1);
+      await persistAppPaths();
+    });
+  });
+  const status = document.getElementById("apppaths-status");
+  status.textContent = monitoredPaths.length
+    ? `${monitoredPaths.length} folder(s) monitored.`
+    : "none yet -- the Monitor and the Run tab will show only apps this Manager created.";
+}
+
+// Every mutation persists immediately: a list that is only saved on some later action is a list
+// that is one crash away from being wrong, and this one decides what two other screens can see.
+async function persistAppPaths() {
+  try {
+    await invoke("set_inspect_paths", { paths: monitoredPaths });
+  } catch (err) {
+    document.getElementById("apppaths-status").textContent = `could not save: ${err}`;
+    return;
+  }
+  renderAppPaths();
+}
+
+async function addAppPaths(paths) {
+  const fresh = (paths || []).map((p) => (p || "").trim()).filter((p) => p && !monitoredPaths.includes(p));
+  if (fresh.length === 0) return;
+  monitoredPaths.push(...fresh);
+  await persistAppPaths();
+}
+
+document.getElementById("apppaths-add").addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter") return;
+  const value = event.target.value.trim();
+  if (!value) return;
+  event.target.value = "";
+  await addAppPaths([value]);
+});
+
+document.getElementById("apppaths-browse").addEventListener("click", async () => {
+  let picked = [];
+  try {
+    picked = await invoke("pick_inspect_folders");
+  } catch (err) {
+    document.getElementById("apppaths-status").textContent = `could not open the folder picker: ${err}`;
+    return;
+  }
+  // An empty result is the user cancelling the dialog, not an empty selection -- doing nothing is
+  // the only correct response, and clearing the list here would be a data-loss bug wearing a
+  // "helpful" hat.
+  if (picked.length === 0) return;
+  await addAppPaths(picked);
+});
+
+// ---------------------------------------------------------------------------------------------
 // 3: Apps screen (M5)
 // ---------------------------------------------------------------------------------------------
 
@@ -909,6 +996,9 @@ window.__npdevRefreshInstall = async function refreshInstall() {
   await refreshJdkStatus();
   await refreshPythonStatus();
   await refreshSetupStatus();
+  // Also picks up paths added before this step existed: they are the same `inspect_paths` the
+  // Monitor has been writing since D7, read out of the same manager.json.
+  await refreshAppPaths();
 };
 
 (async function init() {
@@ -921,6 +1011,7 @@ window.__npdevRefreshInstall = async function refreshInstall() {
   await refreshJdkStatus();
   await refreshPythonStatus();
   await refreshSetupStatus();
+  await refreshAppPaths();
   await refreshTagList(false);
   await refreshAppList();
   await prefillRunAppDir();

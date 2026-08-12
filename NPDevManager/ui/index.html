@@ -105,6 +105,27 @@
         <div id="setup-log" class="log-view" hidden></div>
         <button id="setup-run-btn">Run setup</button>
       </div>
+
+      <!--
+        The inspect-path list, promoted from a control buried inside the Monitor to an Install step:
+        it is configuration ("where do my apps live"), it is answered once per machine, and TWO
+        screens consume it -- the Monitor scans these folders and the Run tab offers what they
+        contain. The Monitor's own list is read-only from here on, so there is exactly one writable
+        editor of it. The stored field is still `inspect_paths`; renaming it would orphan every
+        existing manager.json for a label change.
+      -->
+      <div class="install-step">
+        <h2>5. Monitored App Paths</h2>
+        <p class="subtitle">
+          Folders where your generated apps live. The Monitor scans them; the Run tab offers the apps
+          it finds. (An app = <code>_ops</code> plus <code>.npdev-root</code> or
+          <code>_ops/resolved-db-plan.json</code> &mdash; never a folder name.)
+        </p>
+        <div id="apppaths-chips" class="path-chips"></div>
+        <input id="apppaths-add" type="text" placeholder="Add a folder, then press Enter&hellip;" />
+        <button id="apppaths-browse">&#128193; Browse&hellip;</button>
+        <div id="apppaths-status" class="status-line"></div>
+      </div>
     </section>
 
     <!-- 3: Apps -->
@@ -221,12 +242,14 @@
         D7: the union of apps this Manager created and apps found under these paths. Empty by
         default: guessing where somebody keeps their apps is how a path literal gets born.
       -->
+      <!--
+        Read-only since the list moved to Install step 5. Editing it in two places is how the two
+        would come to disagree; SCANNING it belongs here, which is why INSPECT and AUTO stay.
+      -->
       <section class="inspect">
-        <label>INSPECT PATHS</label>
+        <label>MONITORED APP PATHS</label>
         <span id="inspect-chips"></span>
-        <input id="inspect-add" type="text"
-               placeholder="Add a folder to inspect, then press Enter (an app = _ops + .npdev-root or resolved-db-plan.json)…" />
-        <button class="btn ghost" id="inspect-browse">📁 Browse…</button>
+        <button class="btn ghost" id="inspect-edit">✎ EDIT IN INSTALL</button>
         <button class="btn" id="inspect-scan">⟳ INSPECT</button>
         <button class="btn ghost" id="inspect-auto">AUTO 30s</button>
       </section>

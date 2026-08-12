@@ -151,6 +151,42 @@ button.fix-btn { color: var(--fail); border-color: var(--fail); }
   margin-bottom: 14px;
 }
 .status-line { color: var(--muted); font-size: 13px; margin: 6px 0; }
+
+/* Install step 5. Deliberately NOT the Monitor's `.chip` class: that rule lives in monitor.css and
+   is one of the few there that is NOT scoped under #screen-monitor, so reusing the name would drop
+   a dark-green CRT chip into this light form -- the later-unguarded-rule cascade trap, which has
+   cost this project a session before. Same affordance, its own class. */
+.path-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.path-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 4px 6px 4px 10px;
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 12px;
+}
+.path-chip-x {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.path-chip-x:hover { color: var(--fail); }
+#apppaths-add {
+  width: 100%;
+  margin: 4px 0 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+}
 progress { width: 100%; margin: 8px 0; }
 
 .log-view {
