@@ -68,6 +68,9 @@
     "scripts/appgen/New-ControlPanelPage.ps1": {
       "invocation": "orchestrated"
     },
+    "scripts/appgen/New-AgentPrompterPage.ps1": {
+      "invocation": "orchestrated"
+    },
     "scripts/appgen/New-PropertiesAdminPage.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"

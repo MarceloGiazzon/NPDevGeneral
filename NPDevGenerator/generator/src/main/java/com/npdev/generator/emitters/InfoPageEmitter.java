@@ -90,6 +90,7 @@ public final class InfoPageEmitter extends AbstractEmitter {
         records.add(url("URLs", "Operator UI", "/npdev-ui"));
         records.add(url("URLs", "Business UI", "/npdev-business-ui/"));
         records.add(url("URLs", "Control Panel", "/control-panel.html"));
+        records.add(url("URLs", "Agent Prompter", "/agent-prompter.html"));
         records.add(url("URLs", "App tree", "/app-tree.html"));
         records.add(url("URLs", "Info page (this page)", "/info.html"));
         // The header NAME plus the development default, which the generated UI manifest already
