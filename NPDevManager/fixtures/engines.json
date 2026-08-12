@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "npdev-engine-list.v1",
+  "statusMeaning": {
+    "supported": "a generated app boots, serves and persists on this engine, proven in CI",
+    "experimental": "the dialect is complete and passes conformance against a real engine, but no generated application has been proven end to end on it. Usable; not yet something to rely on."
+  },
+  "engines": [
+    {
+      "key": "h2local",
+      "externalName": "H2Local",
+      "provider": "h2-local",
+      "defaultPort": 0,
+      "needsServer": false,
+      "containerized": false,
+      "status": "supported",
+      "summary": "File-backed H2 in the app's own process. No server to install. The default.",
+      "caveat": null,
+      "honestyNotice": null
+    },
+    {
+      "key": "h2server",
+      "externalName": "H2Server",
+      "provider": "h2-server",
+      "defaultPort": 9092,
+      "needsServer": true,
+      "containerized": false,
+      "status": "supported",
+      "summary": "H2 in TCP server mode, so more than one process can share the database.",
+      "caveat": null,
+      "honestyNotice": null
+    },
+    {
+      "key": "postgres",
+      "externalName": "Postgres",
+      "provider": "postgres",
+      "defaultPort": 5432,
+      "needsServer": true,
+      "containerized": true,
+      "status": "supported",
+      "summary": "PostgreSQL. The engine NPDev's schema engine was built against.",
+      "caveat": null,
+      "honestyNotice": null
+    },
+    {
+      "key": "mysql",
+      "externalName": "MySQL",
+      "provider": "mysql",
+      "defaultPort": 3306,
+      "needsServer": true,
+      "containerized": true,
+      "status": "supported",
+      "summary": "MySQL 8.4+. Requires utf8mb4 -- the legacy three-byte 'utf8' silently mangles anything outside the BMP.",
+      "caveat": "MySQL COMMITS IMPLICITLY ON DDL, so a migration that fails partway CANNOT be rolled back: earlier steps are already permanent. NPDev reports this truthfully (PartialApplicationTruth) rather than claiming a rollback, but it is a real operational difference from Postgres.",
+      "honestyNotice": null
+    },
+    {
+      "key": "sqlserver",
+      "externalName": "SqlServer",
+      "provider": "sqlserver",
+      "defaultPort": 1433,
+      "needsServer": true,
+      "containerized": true,
+      "status": "supported",
+      "summary": "Microsoft SQL Server 2022+.",
+      "caveat": "SQL Server has no suffix row cap (TOP is a prefix), so a few internal existence probes take a different path. Text columns are mapped to NVARCHAR so unicode survives -- plain VARCHAR is non-Unicode there and loses characters silently.",
+      "honestyNotice": null
+    },
+    {
+      "key": "inmemory",
+      "externalName": "InMemory",
+      "provider": "in-memory",
+      "defaultPort": 0,
+      "needsServer": false,
+      "containerized": false,
+      "status": "supported",
+      "summary": "Nothing is persisted. Everything is lost when the app stops -- tests and demos only.",
+      "caveat": null,
+      "honestyNotice": null
+    }
+  ]
+}

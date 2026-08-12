@@ -114,6 +114,16 @@ h2 { font-size: 15px; margin: 20px 0 8px; }
 .check-row.na { opacity: 0.55; }
 .check-row.na .mark { color: var(--muted); }
 
+/* The supported-engines panel. Reuses .check-row's frame so it reads as native to the Ready screen,
+   but its detail column WRAPS: `.check-row .detail` is one ellipsised line, and an engine caveat
+   ("MySQL commits implicitly on DDL, so a failed migration cannot be rolled back") is the last
+   thing to truncate. Scoped to .engine-row so the doctor rows above keep their single-line look. */
+.check-row.engine-row { align-items: start; }
+.engine-row .engine-summary { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.engine-row .engine-shape { color: var(--muted); font-size: 12px; }
+.engine-row .engine-line { line-height: 1.4; }
+.engine-row .engine-caveat { color: var(--muted); font-size: 12px; line-height: 1.4; }
+
 /* M14: the database toolbox. Reset is set apart visually because it is the one button here that
    destroys something -- the other four are reversible. */
 .db-toolbox { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }

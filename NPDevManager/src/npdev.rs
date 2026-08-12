@@ -60,6 +60,9 @@ const FIXTURE_MONITOR_LOGS: &str = include_str!("../fixtures/monitor-logs.json")
 /// in its own `_captured` header: capturing it means paying a third-party provider with a real key.
 /// Same documented-exception shape as the two doctor fixtures above.
 pub const FIXTURE_PROMPTER_GENERATE: &str = include_str!("../fixtures/prompter-generate.json");
+/// Captured live on 2026-08-12 with `python NPDevCli/npdev_cli.py engines --json > fixtures/engines.json`
+/// -- verbatim, not edited. Re-capture with that exact command when the engine list changes.
+const FIXTURE_ENGINES: &str = include_str!("../fixtures/engines.json");
 const FIXTURE_EXPLORE_LIST: &str = include_str!("../fixtures/explore-list.json");
 const FIXTURE_EXPLORE_RUN_GREEN: &str = include_str!("../fixtures/explore-run-green.json");
 const FIXTURE_EXPLORE_RUN_RED: &str = include_str!("../fixtures/explore-run-red.json");
@@ -311,6 +314,12 @@ pub async fn run_engines(
     npdev_cli: &Path,
     java_home: Option<&str>,
 ) -> Result<Value, String> {
+    if fake_mode() {
+        // Missing until the Ready screen's engine panel made this load-bearing: stub mode showed an
+        // empty engine dropdown and an error line, which reads as "this platform supports no
+        // databases" -- the one claim the panel exists to disprove.
+        return serde_json::from_str(FIXTURE_ENGINES).map_err(|e| format!("fixture engines did not parse: {e}"));
+    }
     let output = build_command(python_exe, npdev_cli, &["engines", "--json"], java_home, None)
         .output()
         .await

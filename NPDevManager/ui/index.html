@@ -37,11 +37,24 @@
         folder -- so the database rows the renderer already knew how to draw could never appear.
       -->
       <label id="doctor-app-label" hidden>
-        Database checks for:
+        Database checks for the selected app:
         <select id="doctor-app-picker"></select>
       </label>
       <div id="doctor-rows" class="check-list"></div>
       <button id="doctor-refresh">Re-check</button>
+
+      <!--
+        The six database rows above are APP-SCOPED: they report the one engine the selected app
+        declares, which is why an H2 app shows five greyed "n/a" rows and nothing about Postgres.
+        That is correct, and it is also the reason nothing in this window ever showed what the
+        PLATFORM supports. This panel does, without an app having to exist first.
+
+        Same rule as the New-app dropdown: every row comes from `npdev engines --json`. A hardcoded
+        copy here would be free to drift the day an engine's status changes.
+      -->
+      <h2>Database engines</h2>
+      <p class="subtitle">Everything this NPDev version supports &mdash; from <code>npdev engines</code>, never hardcoded.</p>
+      <div id="engine-matrix" class="check-list"></div>
     </section>
 
     <!-- 2: Install -->

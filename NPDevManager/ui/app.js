@@ -177,7 +177,68 @@ async function loadDoctor() {
   }
 }
 
-document.getElementById("doctor-refresh").addEventListener("click", loadDoctor);
+// ---------------------------------------------------------------------------------------------
+// The supported-engines panel.
+//
+// Doctor's six database rows are app-scoped -- they report the ONE engine the selected app declares,
+// and for an H2 app the other five read "n/a for an engine with no server". Correct, and the reason
+// a user could ask "why do I only ever see H2 information?": nothing in this window had ever listed
+// what the PLATFORM supports. This panel does, with no app created yet.
+//
+// Every row is `npdev engines --json`, including the caveats -- which the CLI has always returned
+// and this UI ignored until now. A caveat is not a footnote: "MySQL commits implicitly on DDL, so a
+// failed migration cannot be rolled back" is the difference between two engines this screen would
+// otherwise present as interchangeable.
+// ---------------------------------------------------------------------------------------------
+
+function engineShape(engine) {
+  if (engine.needsServer) {
+    return engine.defaultPort ? `server, default port ${engine.defaultPort}` : "server";
+  }
+  return "file/embedded, no server";
+}
+
+async function refreshEngineMatrix() {
+  const container = document.getElementById("engine-matrix");
+  container.innerHTML = `<p class="status-line">reading the engine list&hellip;</p>`;
+  // One call feeds both surfaces: this panel and the New-app dropdown. Asking twice would let them
+  // disagree about the same machine for as long as one answer is newer than the other.
+  await loadEngines();
+  if (engineLoadError) {
+    container.innerHTML = `<p class="status-line">could not list the engines: ${escapeHtml(engineLoadError)}</p>`;
+    return;
+  }
+  if (engineCatalog.length === 0) {
+    container.innerHTML = `<p class="status-line">the installed NPDev version reported no engines.</p>`;
+    return;
+  }
+  container.innerHTML = engineCatalog
+    .map((engine) => {
+      const supported = engine.status === "supported";
+      const since = engine.supportedSince ? ` since ${escapeHtml(engine.supportedSince)}` : "";
+      const caveat = engine.caveat
+        ? `<span class="engine-caveat">${escapeHtml(engine.caveat)}</span>`
+        : "";
+      return `
+      <div class="check-row ${supported ? "pass" : "warn"} engine-row">
+        <span class="mark">${supported ? "✓" : "!"}</span>
+        <span class="name">${escapeHtml(engine.externalName)}</span>
+        <span class="engine-summary">
+          <span class="engine-shape">${escapeHtml(engine.status)}${since} &middot; ${escapeHtml(engineShape(engine))}</span>
+          <span class="engine-line">${escapeHtml(engine.summary || "")}</span>
+          ${caveat}
+        </span>
+      </div>`;
+    })
+    .join("");
+}
+
+document.getElementById("doctor-refresh").addEventListener("click", async () => {
+  await loadDoctor();
+  // Re-check means re-check: the engine list comes from the installed CLI, which the user may have
+  // just changed on the Versions tab.
+  await refreshEngineMatrix();
+});
 document.getElementById("doctor-app-picker").addEventListener("change", loadDoctor);
 
 // ---------------------------------------------------------------------------------------------
@@ -315,6 +376,10 @@ document.getElementById("version-install-btn").addEventListener("click", async (
     await invoke("install_npdev_version", { tag });
     lastDownloadedTag = tag;
     await refreshVersionsScreen();
+    // The engine list is answered by the installed CLI, and `loadEngines()` used to run only from
+    // init() -- so on a fresh machine the New-app dropdown said "(install an NPDev version first)"
+    // forever after a version WAS installed, until the Manager was restarted.
+    await refreshEngineMatrix();
     // Setup's status names the CURRENT version, which this download may or may not have changed.
     await refreshSetupStatus();
   } catch (err) {
@@ -467,15 +532,21 @@ async function refreshAppList() {
 // ---------------------------------------------------------------------------------------------
 
 let engineCatalog = [];
+// Why the last load failed, if it did -- shared by the New-app dropdown and the Ready screen's
+// engine panel so the two cannot describe the same failure differently.
+let engineLoadError = null;
 
 async function loadEngines() {
   const select = document.getElementById("new-app-engine");
   try {
     const listing = await invoke("list_engines");
     engineCatalog = listing.engines || [];
+    engineLoadError = null;
   } catch (err) {
     // No installed NPDev version yet is the ordinary case on a fresh machine. Say so instead of
     // silently offering an empty dropdown, which reads as "this app has no database options".
+    engineCatalog = [];
+    engineLoadError = String(err);
     select.innerHTML = `<option value="">(install an NPDev version first)</option>`;
     document.getElementById("new-app-engine-summary").textContent = String(err);
     return;
@@ -853,6 +924,7 @@ window.__npdevRefreshInstall = async function refreshInstall() {
   await refreshTagList(false);
   await refreshAppList();
   await prefillRunAppDir();
-  await loadEngines();
+  // Fills the New-app dropdown AND the Ready screen's engine panel from one call.
+  await refreshEngineMatrix();
   await refreshVersionsScreen();
 })();
