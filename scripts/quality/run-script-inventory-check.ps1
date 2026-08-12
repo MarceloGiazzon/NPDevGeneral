@@ -15,11 +15,19 @@
       scripts/quality/run-*.ps1 gate runner that is ITSELF named in a workflow (one-hop: gate runner
       -> workflow). A run-*.ps1 that is not itself workflow-reachable does not transitively make
       anything else ci-gate either -- that would just be two orphans citing each other.
-    - manual-runbook: basename or stem must appear in at least one *.md file repo-wide (excluding
-      .git/.gradle/build/node_modules/npdev-generated/dist/target/out).
+    - manual-runbook: the declaration must also carry `documentedIn: "<repo-relative doc path>"`,
+      and that path must exist on disk.
     - orchestrated: basename or stem must appear in some OTHER script under scripts/.
     - retired: must declare a non-empty `reason` and `date`.
     A script with no invocation declaration at all fails, same as an unclassified script always has.
+
+    md-zero-2026-08-11 PLAN-11-to-4.md Item 3: manual-runbook used to be verified by reading every
+    tracked *.md repo-wide and checking whether the script's basename/stem appeared ANYWHERE in any
+    of them -- a script reading markdown content as its whole verification mechanism, and a weak one:
+    a sentence like "we deleted X" satisfied it, and a rename silently lost the evidence. Replaced
+    with an explicit, reviewed `documentedIn` declaration per script (seeded once from the old scan's
+    real output, hand-picked where several docs matched, committed frozen) -- this gate now checks
+    only that the declared path EXISTS, never its content, so nothing here opens a .md again.
 
     This is the same "declare it, then check the declaration against reality" shape as
     scripts/quality/check-test-task-coverage.py, generalized from Gradle Test tasks to every
@@ -100,16 +108,15 @@ function Test-NameIn {
     return $false
 }
 
-$EXCLUDED_MD_DIR_PARTS = @(".git", ".gradle", "build", "node_modules", "npdev-generated", "dist", "target", "out")
+$EXCLUDED_DIR_PARTS = @(".git", ".gradle", "build", "node_modules", "npdev-generated", "dist", "target", "out")
 
-# Move 11 W2: the SAME exclusions must apply to the script enumeration itself, and did not. The
-# markdown scan above skipped node_modules from the start; the script scan walked straight into
+# Move 11 W2: the script enumeration itself must exclude these too. It once walked straight into
 # scripts/quality/json-schema-validator/node_modules and demanded an invocation declaration for
 # every vendored third-party .js file (fast-uri's test suite, json-schema-traverse, ...). That made
 # this gate -- and therefore run-ai-knowledge-gate.ps1's last step -- RED on any machine where
 # `npm ci` had been run, while staying green on a CI checkout where node_modules does not exist.
 # A gate whose result depends on whether someone installed dependencies is not a gate.
-$EXCLUDED_SCRIPT_DIR_PARTS = $EXCLUDED_MD_DIR_PARTS
+$EXCLUDED_SCRIPT_DIR_PARTS = $EXCLUDED_DIR_PARTS
 
 # Move 11 W2 (O4): scripts/quality/check-*.py IS the repo's gate-checker class. Two of them
 # (check-panel-provenance-impact.py, check-dsl-conformance-generates.py) were referenced by no
@@ -145,17 +152,6 @@ function Get-InvocationEvidence {
         $reachableRunnerTextByName[$f.Name] = Get-Content -Raw -LiteralPath $f.FullName
     }
 
-    $mdFiles = @(Get-ChildItem -LiteralPath $WorkspaceRootPath -Recurse -Force -File -Filter "*.md" -ErrorAction SilentlyContinue |
-        Where-Object {
-            $relative = Convert-ToRepoPath -Root $WorkspaceRootPath -PathValue $_.FullName
-            $segments = @($relative -split "/")
-            @($segments | Where-Object { $EXCLUDED_MD_DIR_PARTS -contains $_ }).Count -eq 0
-        })
-    $docTextByFile = @{}
-    foreach ($f in $mdFiles) {
-        $docTextByFile[$f.FullName] = Get-Content -Raw -LiteralPath $f.FullName
-    }
-
     $scriptTextByFile = @{}
     foreach ($f in $AllScriptFiles) {
         $scriptTextByFile[$f.FullName] = Get-Content -Raw -LiteralPath $f.FullName
@@ -164,7 +160,6 @@ function Get-InvocationEvidence {
     return [pscustomobject]@{
         WorkflowText = $workflowText
         ReachableRunnerTextByName = $reachableRunnerTextByName
-        DocTextByFile = $docTextByFile
         ScriptTextByFile = $scriptTextByFile
     }
 }
@@ -175,7 +170,8 @@ function Test-InvocationDeclaration {
         [string]$Basename,
         [string]$FullName,
         [object]$Declaration,
-        [object]$Evidence
+        [object]$Evidence,
+        [string]$WorkspaceRootPath
     )
     if ($null -eq $Declaration) {
         return [pscustomobject]@{ valid = $false; reason = "no invocation declaration in $($InvocationDeclarationsPath)" }
@@ -197,12 +193,15 @@ function Test-InvocationDeclaration {
             return [pscustomobject]@{ valid = $false; reason = "declared ci-gate but not named in any workflow or workflow-reachable gate runner" }
         }
         "manual-runbook" {
-            foreach ($docPath in $Evidence.DocTextByFile.Keys) {
-                if (Test-NameIn -Basename $Basename -Stem $stem -Text $Evidence.DocTextByFile[$docPath]) {
-                    return [pscustomobject]@{ valid = $true; reason = "referenced by at least one doc" }
-                }
+            $documentedIn = [string]$Declaration.documentedIn
+            if ([string]::IsNullOrWhiteSpace($documentedIn)) {
+                return [pscustomobject]@{ valid = $false; reason = "declared manual-runbook but has no documentedIn path in $($InvocationDeclarationsPath)" }
             }
-            return [pscustomobject]@{ valid = $false; reason = "declared manual-runbook but referenced by no *.md file" }
+            $docFullPath = Resolve-WorkspacePath -Root $WorkspaceRootPath -PathValue $documentedIn
+            if (-not (Test-Path -LiteralPath $docFullPath -PathType Leaf)) {
+                return [pscustomobject]@{ valid = $false; reason = "declared manual-runbook, but its documentedIn path '$documentedIn' does not exist" }
+            }
+            return [pscustomobject]@{ valid = $true; reason = "documented in $documentedIn (declared)" }
         }
         "orchestrated" {
             foreach ($scriptPath in $Evidence.ScriptTextByFile.Keys) {
@@ -279,7 +278,7 @@ function Invoke-InventoryScan {
         $declaration = $declByPath[$relative]
         $invocation = if ($declaration) { [string]$declaration.invocation } else { "unknown" }
         $validInvocationValue = $allowedInvocations -contains $invocation
-        $invocationCheck = Test-InvocationDeclaration -RelativePath $relative -Basename $file.Name -FullName $file.FullName -Declaration $declaration -Evidence $evidence
+        $invocationCheck = Test-InvocationDeclaration -RelativePath $relative -Basename $file.Name -FullName $file.FullName -Declaration $declaration -Evidence $evidence -WorkspaceRootPath $WorkspaceRootPath
 
         $isGateChecker = $relative -match $GATE_CHECKER_PATTERN
         $hostedByGateRunner = (-not $isGateChecker) -or $gateRunnerText.Contains($file.Name)
@@ -425,6 +424,24 @@ function Invoke-Calibration {
     $pass1b = $orphanFired -eq $true
     $ok = $ok -and $pass1b
     Write-Host "  [$(if ($pass1b) { 'PASS' } else { 'FAIL' })] synthetic gate checker hosted by no run-*.ps1 (fired: $orphanFired, expected: fired)"
+
+    # md-zero-2026-08-11 PLAN-11-to-4.md Item 3: manual-runbook's own verification logic, called
+    # directly (not through a synthetic report row like the two controls above) -- a declared
+    # documentedIn path that does not exist must fail, and one that does must pass.
+    $evidence = [pscustomobject]@{ WorkflowText = ""; ReachableRunnerTextByName = @{}; ScriptTextByFile = @{} }
+    $missingDocResult = Test-InvocationDeclaration -RelativePath "scripts/fixture.ps1" -Basename "fixture.ps1" -FullName "fixture.ps1" `
+        -Declaration ([pscustomobject]@{ invocation = "manual-runbook"; documentedIn = "docs/DOES_NOT_EXIST_$(Get-Random).md" }) `
+        -Evidence $evidence -WorkspaceRootPath $WorkspaceRootPath
+    $pass3a = ($missingDocResult.valid -eq $false)
+    $ok = $ok -and $pass3a
+    Write-Host "  [$(if ($pass3a) { 'PASS' } else { 'FAIL' })] manual-runbook with a documentedIn path that does not exist (valid: $($missingDocResult.valid), expected: false)"
+
+    $presentDocResult = Test-InvocationDeclaration -RelativePath "scripts/fixture.ps1" -Basename "fixture.ps1" -FullName "fixture.ps1" `
+        -Declaration ([pscustomobject]@{ invocation = "manual-runbook"; documentedIn = "CLAUDE.md" }) `
+        -Evidence $evidence -WorkspaceRootPath $WorkspaceRootPath
+    $pass3b = ($presentDocResult.valid -eq $true)
+    $ok = $ok -and $pass3b
+    Write-Host "  [$(if ($pass3b) { 'PASS' } else { 'FAIL' })] manual-runbook with a documentedIn path that exists (valid: $($presentDocResult.valid), expected: true)"
 
     $realScripts = Invoke-InventoryScan -WorkspaceRootPath $WorkspaceRootPath -Policy $Policy -InvocationDeclarations $InvocationDeclarations
     $realReport = Build-Report -Scripts $realScripts -Policy $Policy -RunId "calibrate-real" -WorkspaceRootPath $WorkspaceRootPath

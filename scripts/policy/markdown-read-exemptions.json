@@ -43,10 +43,6 @@
       "why": "Test harness for run-doc-entrypoint-validation.ps1 above; its fixtures are .md files by necessity, same exemption."
     },
     {
-      "path": "scripts/quality/run-script-inventory-check.ps1",
-      "why": "Its manual-runbook classification's only verification mechanism is checking whether a script's name appears in some tracked .md file's text -- covers 79 of 209 inventoried scripts, all of them documented in hand-authored prose, not a registry."
-    },
-    {
       "path": "scripts/quality/check-pinned-download-links.py",
       "why": "md-zero-2026-08-11 PLAN.md Phase 3 already narrowed this from a 94-file sweep to 3 declared knownLinkSites (scripts/policy/release-download-links.json) -- but verifying a download link has not drifted to a pinned version still means reading those 3 real files' actual text. No registry generates README.md/docs/MANAGER.md/docs/RELEASE_PROCESS.md, so this is the only thing catching a hand-typed pinned link."
     },
