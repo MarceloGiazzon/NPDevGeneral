@@ -21,6 +21,54 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends powershell=7.4.15-1.deb \
     && rm -rf /var/lib/apt/lists/*
 
+# ---------------------------------------------------------------------------------------------
+# Pre-baked Gradle wrapper distributions.
+#
+# Without this the container fetches every Gradle distribution from services.gradle.org at RUN
+# time, on the critical path, before a line of our code compiles -- and a run needs BOTH of the
+# repo's distributions to arrive. That is a coin flip this gate lost twice in a row on 2026-08-12:
+#
+#   run 31620633059  gradle-8.5    (NPDevKernel/gradlew jar)     SocketException, before any compile
+#   run 31623132314  gradle-9.5.1  (generated app build)         SocketException after 566ms
+#
+# Same `org.gradle.wrapper.Install.forceFetch` stack both times, different distribution -- so it is
+# not one bad artefact, it is the dependency on a remote fetch. Baking them into the image removes
+# the network from the run entirely, and makes every run faster besides.
+#
+# The URL LIST IS NOT HARDCODED HERE. run-docker-linux-proof.ps1 reads every
+# gradle-wrapper.properties in the repo and passes their distributionUrl values in as this build
+# arg, so a wrapper bump cannot silently stop being baked -- which is exactly the kind of invisible
+# drift that left this gate red for six weeks. If the arg is empty the build FAILS rather than
+# quietly producing an image that falls back to downloading.
+#
+# Layout is the wrapper's own cache contract (org.gradle.wrapper.PathAssembler):
+#   $GRADLE_USER_HOME/wrapper/dists/<zipName-without-.zip>/<base36(md5(distributionUrl))>/
+#       gradle-<version>/        the unpacked distribution
+#       <zipName>.ok             the marker Install checks before deciding to download
+# The hash is over the FULL URL string, so it changes with the URL -- a stale bake misses and
+# degrades to a download rather than serving the wrong Gradle.
+# ---------------------------------------------------------------------------------------------
+ARG GRADLE_DISTRIBUTION_URLS=""
+ENV GRADLE_USER_HOME=/tmp/npdev-cache/gradle
+RUN set -eu; \
+    if [ -z "${GRADLE_DISTRIBUTION_URLS}" ]; then \
+        echo "GRADLE_DISTRIBUTION_URLS build arg is empty -- refusing to build an image that would" >&2; \
+        echo "fall back to downloading Gradle at run time. Build via run-docker-linux-proof.ps1." >&2; \
+        exit 1; \
+    fi; \
+    for url in ${GRADLE_DISTRIBUTION_URLS}; do \
+        zip_name="$(basename "${url}")"; \
+        dist_name="${zip_name%.zip}"; \
+        hash="$(node -e 'const c=require("crypto");const u=process.argv[1];console.log(BigInt("0x"+c.createHash("md5").update(u,"utf8").digest("hex")).toString(36));' "${url}")"; \
+        dist_dir="${GRADLE_USER_HOME}/wrapper/dists/${dist_name}/${hash}"; \
+        echo "Baking ${zip_name} -> ${dist_dir}"; \
+        mkdir -p "${dist_dir}"; \
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 "${url}" -o "${dist_dir}/${zip_name}"; \
+        unzip -q "${dist_dir}/${zip_name}" -d "${dist_dir}"; \
+        touch "${dist_dir}/${zip_name}.ok"; \
+    done; \
+    ls -1 "${GRADLE_USER_HOME}/wrapper/dists"
+
 WORKDIR /workspace
 
 CMD ["pwsh", "./scripts/quality/run-ai-beta-gate.ps1"]
