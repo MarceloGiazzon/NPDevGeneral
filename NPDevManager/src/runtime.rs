@@ -229,6 +229,98 @@ pub async fn detect_system_python() -> Option<PathBuf> {
     None
 }
 
+/// A Java the machine already has, good enough to run NPDev with.
+#[derive(Debug, Clone)]
+pub struct SystemJava {
+    /// The JDK home (not the binary) -- the shape `JAVA_HOME` and the CLI both want.
+    pub java_home: PathBuf,
+    /// Exactly what `java -version` reported, e.g. "17.0.11".
+    pub version: String,
+}
+
+/// Detect a system Java >= 17, in the SAME order the CLI itself resolves one (`npdev_cli.py`'s
+/// `java_launcher`: JAVA_HOME's binary first, PATH second) -- so what the Install tab reports and
+/// what a spawned child actually gets cannot disagree.
+///
+/// There was no system-Java detection anywhere in the Manager before this: `jdk_status` asked only
+/// whether the PRIVATE JDK existed under the Manager's home, so a machine with a perfect JDK 17
+/// was told "not installed" and offered a download as the only way forward. End to end the system
+/// Java already worked -- with `manager.jdk_home` unset the CLI resolves JAVA_HOME/PATH itself --
+/// the Install tab simply never said so.
+pub async fn detect_system_java() -> Option<SystemJava> {
+    if let Ok(java_home) = std::env::var("JAVA_HOME") {
+        let home = PathBuf::from(java_home.trim());
+        if !java_home.trim().is_empty() {
+            let binary = java_binary_in(&home);
+            if binary.exists() {
+                if let Some(version) = java_version_of(&binary).await {
+                    if parse_java_major(&version).map(|m| m >= 17).unwrap_or(false) {
+                        return Some(SystemJava { java_home: home, version });
+                    }
+                }
+            }
+        }
+    }
+    let resolved = which_command("java").await.ok()?;
+    let version = java_version_of(&resolved).await?;
+    if !parse_java_major(&version).map(|m| m >= 17).unwrap_or(false) {
+        return None;
+    }
+    // `<home>/bin/java` -> `<home>`. A `java` that is not inside a `bin` directory is something
+    // this function has no home to report for, so it reports none rather than inventing one.
+    let java_home = resolved.parent()?.parent()?.to_path_buf();
+    Some(SystemJava { java_home, version })
+}
+
+async fn java_version_of(binary: &Path) -> Option<String> {
+    let output = no_window_command(&binary.to_string_lossy())
+        .arg("-version")
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    // `java -version` prints to STDERR, not stdout -- has done since 1.0, and reading only stdout
+    // is the classic way to conclude a working JDK is absent. Both are joined so a future JDK that
+    // moves it to stdout still parses.
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stdout)
+    );
+    parse_java_version_string(&text)
+}
+
+/// Pulls `17.0.11` out of the first quoted version in `java -version` output, whatever vendor
+/// banner surrounds it: `openjdk version "17.0.11" 2024-04-16`, `java version "1.8.0_401"`, ...
+pub fn parse_java_version_string(text: &str) -> Option<String> {
+    let line = text.lines().find(|l| l.contains('"'))?;
+    let start = line.find('"')? + 1;
+    let rest = &line[start..];
+    let end = rest.find('"')?;
+    let version = rest[..end].trim();
+    if version.is_empty() {
+        None
+    } else {
+        Some(version.to_string())
+    }
+}
+
+/// The major version of a Java version string, both modern (`17.0.11` -> 17) and legacy
+/// (`1.8.0_401` -> 8). The legacy form matters: a machine with Java 8 on PATH must be reported as
+/// NOT usable, and reading its leading `1` as the major would say "1 >= 17 is false" by luck rather
+/// than by understanding -- which stops being luck the day someone runs it against `1.9`.
+pub fn parse_java_major(version: &str) -> Option<u32> {
+    let mut parts = version.split(['.', '_', '-', '+']);
+    let first: u32 = parts.next()?.trim().parse().ok()?;
+    if first == 1 {
+        parts.next()?.trim().parse().ok()
+    } else {
+        Some(first)
+    }
+}
+
 fn parse_python_version(text: &str) -> Option<(u32, u32)> {
     let rest = text.trim().strip_prefix("Python ")?;
     let mut parts = rest.split('.');
@@ -401,6 +493,56 @@ mod tests {
         assert_eq!(parse_python_version("Python abc.def"), None);
         assert_eq!(parse_python_version("not python at all"), None);
         assert_eq!(parse_python_version("command not found: python"), None);
+    }
+
+    // --- java -version parsing -------------------------------------------------------------------
+
+    #[test]
+    fn parse_java_version_string_reads_the_quoted_version_from_real_banners() {
+        // Real `java -version` first lines, one per vendor shape this has to survive.
+        assert_eq!(
+            parse_java_version_string("openjdk version \"17.0.11\" 2024-04-16\nOpenJDK Runtime Environment ...")
+                .as_deref(),
+            Some("17.0.11")
+        );
+        assert_eq!(
+            parse_java_version_string("java version \"21.0.3\" 2024-04-16 LTS").as_deref(),
+            Some("21.0.3")
+        );
+        assert_eq!(
+            parse_java_version_string("java version \"1.8.0_401\"").as_deref(),
+            Some("1.8.0_401")
+        );
+        // The version is on the SECOND line for some wrappers -- the first quoted line wins, not
+        // the first line.
+        assert_eq!(
+            parse_java_version_string("Picked up JAVA_TOOL_OPTIONS: -Xmx1g\nopenjdk version \"17.0.9\" 2023-10-17")
+                .as_deref(),
+            Some("17.0.9")
+        );
+    }
+
+    #[test]
+    fn parse_java_version_string_rejects_output_with_no_version_in_it() {
+        assert_eq!(parse_java_version_string(""), None);
+        assert_eq!(parse_java_version_string("'java' is not recognized as an internal command"), None);
+        assert_eq!(parse_java_version_string("openjdk version 17.0.11"), None); // unquoted
+        assert_eq!(parse_java_version_string("openjdk version \"\""), None);
+    }
+
+    #[test]
+    fn parse_java_major_understands_both_the_modern_and_the_legacy_scheme() {
+        assert_eq!(parse_java_major("17.0.11"), Some(17));
+        assert_eq!(parse_java_major("21.0.3"), Some(21));
+        assert_eq!(parse_java_major("24"), Some(24));
+        assert_eq!(parse_java_major("17.0.11+9"), Some(17));
+        // Legacy `1.x` naming: the major is the SECOND component. A Java 8 must be reported as
+        // unusable for a platform that needs 17.
+        assert_eq!(parse_java_major("1.8.0_401"), Some(8));
+        assert_eq!(parse_java_major("1.7.0_80"), Some(7));
+        assert_eq!(parse_java_major(""), None);
+        assert_eq!(parse_java_major("not-a-version"), None);
+        assert_eq!(parse_java_major("1"), None);
     }
 
     // --- OS/arch resolution --------------------------------------------------------------------

@@ -184,11 +184,28 @@ document.getElementById("doctor-app-picker").addEventListener("change", loadDoct
 // 2: Install screen (M3/M4)
 // ---------------------------------------------------------------------------------------------
 
+// A system Java that already works is reported as what it is, and the private download becomes an
+// OPTION rather than the path. The Manager never records the system Java anywhere: when
+// `manager.jdk_home` is unset the CLI resolves JAVA_HOME/PATH itself, which is the proven fallback
+// -- so this is reporting and button gating, and deliberately nothing else.
 async function refreshJdkStatus() {
   const status = await invoke("jdk_status");
   const el = document.getElementById("jdk-status");
-  el.textContent = status.installed ? `installed at ${status.path}` : "not installed";
-  document.getElementById("jdk-install-btn").disabled = status.installed;
+  const btn = document.getElementById("jdk-install-btn");
+  if (status.resolved === "portable") {
+    el.textContent = `private JDK installed at ${status.path}`;
+    btn.textContent = "Reinstall private JDK";
+  } else if (status.resolved === "system") {
+    el.textContent = `using system Java ${status.systemJavaVersion} at ${status.systemJava}`;
+    // Enabled on purpose: wanting a private copy anyway is a real choice (a pinned JDK the machine's
+    // own Java cannot drift out from under), and the Manager's whole thesis is that it never has to
+    // touch the system one either way.
+    btn.textContent = "Install private JDK anyway (optional)";
+  } else {
+    el.textContent = "not installed -- no Java 17+ found on this machine";
+    btn.textContent = "Install private JDK";
+  }
+  btn.disabled = false;
 }
 
 document.getElementById("jdk-install-btn").addEventListener("click", async () => {
@@ -220,19 +237,24 @@ listen("jdk-progress", (event) => {
   }
 });
 
+// Same rule as Java above: a found system Python is used, and the private download stays available
+// rather than being disabled. Disabling it made the one thing this step can do unreachable for
+// anybody who wanted a pinned copy, and said nothing about why.
 async function refreshPythonStatus() {
   const status = await invoke("python_status");
   const el = document.getElementById("python-status");
+  const btn = document.getElementById("python-install-btn");
   if (status.systemPython) {
     el.textContent = `using system Python: ${status.systemPython}`;
-    document.getElementById("python-install-btn").disabled = true;
+    btn.textContent = "Install private Python anyway (optional)";
   } else if (status.portableInstalled) {
     el.textContent = "private Python installed";
-    document.getElementById("python-install-btn").disabled = true;
+    btn.textContent = "Reinstall private Python";
   } else {
     el.textContent = "no Python found";
-    document.getElementById("python-install-btn").disabled = false;
+    btn.textContent = "Install private Python";
   }
+  btn.disabled = false;
 }
 
 document.getElementById("python-install-btn").addEventListener("click", async () => {

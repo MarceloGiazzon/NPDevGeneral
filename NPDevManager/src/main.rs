@@ -164,12 +164,43 @@ struct DownloadProgress {
     total: Option<u64>,
 }
 
+/// The whole Java picture, not one bool.
+///
+/// This used to answer only "does the private JDK exist under the Manager's home", so a machine
+/// with a perfectly good system JDK 17 was told "not installed" and offered a download as the only
+/// way forward -- while `resolve_java_home` returning None already let the CLI find that same Java
+/// itself, and everything worked. The download was never required; the screen just never said so.
+///
+/// `resolved` is what a child process will ACTUALLY get, in that order: the private JDK if
+/// installed (it is what `resolve_java_home` hands over), else the system one, else nothing.
 #[tauri::command]
-fn jdk_status() -> Value {
-    let installed = runtime::jdk_already_installed();
+async fn jdk_status() -> Value {
+    if npdev::fake_mode() {
+        // A fixed shape so the stub walk is deterministic, matching `python_status` below. Reading
+        // the developer's real machine here would make the same walk render differently per machine.
+        return serde_json::json!({
+            "portableInstalled": false,
+            "systemJava": "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.11",
+            "systemJavaVersion": "17.0.11",
+            "resolved": "system",
+            "path": null,
+        });
+    }
+    let portable_installed = runtime::jdk_already_installed();
+    let system = runtime::detect_system_java().await;
+    let resolved = if portable_installed {
+        "portable"
+    } else if system.is_some() {
+        "system"
+    } else {
+        "none"
+    };
     serde_json::json!({
-        "installed": installed,
-        "path": if installed { Some(state::jdk_dir().to_string_lossy().to_string()) } else { None },
+        "portableInstalled": portable_installed,
+        "systemJava": system.as_ref().map(|j| j.java_home.to_string_lossy().to_string()),
+        "systemJavaVersion": system.as_ref().map(|j| j.version.clone()),
+        "resolved": resolved,
+        "path": if portable_installed { Some(state::jdk_dir().to_string_lossy().to_string()) } else { None },
     })
 }
 
@@ -194,6 +225,16 @@ async fn install_jdk(app: tauri::AppHandle, state: State<'_, AppState>) -> Resul
 
 #[tauri::command]
 async fn python_status(state: State<'_, AppState>) -> Result<Value, String> {
+    if npdev::fake_mode() {
+        // Fixed, for the same reason as `jdk_status`: stub mode must render the same screen on
+        // every machine. Before this it probed the real one, so the stub walk showed whatever
+        // Python the developer happened to have.
+        return Ok(serde_json::json!({
+            "systemPython": "C:\\Python312\\python.exe",
+            "portableInstalled": false,
+            "resolved": "C:\\Python312\\python.exe",
+        }));
+    }
     let system = runtime::detect_system_python().await;
     let portable_installed = runtime::portable_python_already_installed();
     let resolved = state.manager.lock().expect("lock poisoned").python_exe.clone();
