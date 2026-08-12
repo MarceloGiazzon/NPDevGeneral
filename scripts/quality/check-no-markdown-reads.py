@@ -122,9 +122,26 @@ class PythonMarkdownReadScanner:
     def __init__(self, path: Path):
         self.path = path
         self.findings: list[tuple[int, str]] = []
+        # Name -> its List/Tuple-of-Tuples literal, for positional taint in `for a, b in NAME:`
+        # (see _positional_for_taint below). Whole-file, like `tainted` conceptually would be if
+        # names weren't per-scope -- literal-list assignments in this codebase are always
+        # module-level constants (TARGETS = [...]), so this stays deliberately simple.
+        self.list_literals: dict[str, ast.AST] = {}
 
     def scan_module(self, tree: ast.Module) -> None:
+        self._collect_list_literals(tree)
         self._scan_stmts(tree.body, set())
+
+    def _collect_list_literals(self, tree: ast.Module) -> None:
+        """First pass: record every `NAME = [literal, ...]` / `NAME = (literal, ...)` anywhere in
+        the file (a plain ast.walk -- scope precision does not matter here: at worst a wrongly-
+        collected literal only affects the OPTIMISTIC positional refinement below, never suppresses
+        a real finding, since the general conservative taint rule is always the fallback)."""
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and isinstance(node.value, (ast.List, ast.Tuple)):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        self.list_literals[target.id] = node.value
 
     # -- expression-level helpers (expressions never contain a nested statement scope, Lambda's
     # single-expression body included, so a plain ast.walk is safe here) --------------------------
@@ -136,6 +153,35 @@ class PythonMarkdownReadScanner:
             if isinstance(sub, ast.Name) and sub.id in tainted:
                 return True
         return False
+
+    def _positional_for_taint(self, stmt: ast.For | ast.AsyncFor, tainted: set[str]) -> bool:
+        """`for yaml_rel, json_rel, md_rel in TARGETS:` where TARGETS is a resolvable list of
+        fixed-arity tuples: taint ONLY the unpacked names whose OWN position in every element-tuple
+        is .md-tainted, not every name just because the tuple ALSO carries an .md value somewhere
+        else in it. Without this, generate_group_d_docs.py's real `(yaml_rel, json_rel, md_rel)`
+        shape false-positived on yaml_rel/json_rel purely for being unpacked alongside md_rel --
+        found by hand-checking every real hit before trusting it (see the module docstring's own
+        false-positive note). Returns True if it handled the taint (caller should not also apply the
+        general conservative rule); False to fall back when the shape cannot be resolved this way,
+        which still catches the plan's own named tuple-unpacking false-negative in the general case."""
+        if not isinstance(stmt.target, ast.Tuple):
+            return False
+        target_names = stmt.target.elts
+        if not all(isinstance(t, ast.Name) for t in target_names):
+            return False
+        elements: list[ast.AST] | None = None
+        if isinstance(stmt.iter, ast.Name) and stmt.iter.id in self.list_literals:
+            elements = self.list_literals[stmt.iter.id].elts
+        elif isinstance(stmt.iter, (ast.List, ast.Tuple)):
+            elements = stmt.iter.elts
+        if elements is None:
+            return False
+        if not all(isinstance(e, ast.Tuple) and len(e.elts) == len(target_names) for e in elements):
+            return False
+        for i, name_node in enumerate(target_names):
+            if any(self._expr_is_md_tainted(e.elts[i], tainted) for e in elements):
+                tainted.add(name_node.id)
+        return True
 
     def _mark_tainted(self, target: ast.AST, tainted: set[str]) -> None:
         if isinstance(target, ast.Name):
@@ -218,7 +264,7 @@ class PythonMarkdownReadScanner:
             return
         if isinstance(stmt, (ast.For, ast.AsyncFor)):
             self._scan_expr_for_calls(stmt.iter, tainted)
-            if self._expr_is_md_tainted(stmt.iter, tainted):
+            if not self._positional_for_taint(stmt, tainted) and self._expr_is_md_tainted(stmt.iter, tainted):
                 self._mark_tainted(stmt.target, tainted)
             self._scan_stmts(stmt.body, tainted)
             self._scan_stmts(stmt.orelse, tainted)
@@ -406,6 +452,14 @@ def calibrate() -> int:
          'TARGETS = [("content/readme.yml", "README.md")]\n'
          'for yaml_rel, md_rel in TARGETS:\n'
          '    open(md_rel).read()\n', True),
+        ("tuple-unpacked for-loop target, the OTHER (non-.md) position read -- must stay silent "
+         "(the real generate_group_d_docs.py false positive positional tracking was built for: "
+         "TARGETS = [(yaml_rel, json_rel, md_rel), ...], only yaml_path.read_text() was called, "
+         "and whole-tuple tainting flagged it anyway for being unpacked alongside md_rel)",
+         'TARGETS = [("content/readme.yml", "content/readme.json", "README.md")]\n'
+         'for yaml_rel, json_rel, md_rel in TARGETS:\n'
+         '    yaml_path = ROOT / yaml_rel\n'
+         '    open(yaml_path).read()\n', False),
         (".glob() with an .md pattern -- MUST fire",
          'from pathlib import Path\nfor p in Path(".").rglob("*.md"): pass\n', True),
         ("subprocess grep on a .md literal -- MUST fire",

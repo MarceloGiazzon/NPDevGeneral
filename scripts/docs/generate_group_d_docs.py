@@ -29,17 +29,29 @@ no pip, so no PyYAML). extract_commands.py runs INSIDE that container. If it rea
 harness would break on every fresh machine -- silently reintroducing exactly the class of defect
 this whole plan exists to prevent, just one layer down. content/*.json carries the identical data in
 a format Python's stdlib `json` module reads with zero installed packages. content/*.yml stays the
-authored, human-edited, git-diffable source; the .json is generated from it, never hand-edited, and
---check verifies both mirrors together.
+authored, human-edited, git-diffable source; the .json is generated from it, never hand-edited.
+
+STALENESS DETECTION MOVED TO GIT, NOT --check (Phase 7, PLAN-11-to-4.md Item 2)
+--------------------------------------------------------------------------------
+This used to have a `--check` mode that read the CURRENTLY COMMITTED .md/.json back off disk to
+compare against a fresh in-memory render -- itself a script reading markdown content, the exact
+defect class this plan exists to kill, just one level removed from the docs themselves (found while
+building check-no-markdown-reads.py). Fixed the same way item 2 fixes generate_group_e_docs.py and
+generate_maturity_max_roadmap_docs.py: this script now only ever WRITES (render, unconditionally).
+Staleness detection moves to the caller, using the right tool for "did this write change anything
+already committed" -- git, which diffs bytes without this process ever opening the .md itself:
+
+    python scripts/docs/generate_group_d_docs.py
+    git diff --exit-code -- README.md docs/GETTING_STARTED.md docs/YOUR_FIRST_APP.md docs/AUTHORING_WITH_AI.md content/readme.json content/getting-started.json content/your-first-app.json content/authoring-with-ai.json
+
+A non-empty diff means the committed docs (or their JSON mirrors) were stale.
 
 USAGE
 -----
     python scripts/docs/generate_group_d_docs.py            # write all 4 docs + json mirrors
-    python scripts/docs/generate_group_d_docs.py --check    # exit 1 if anything is stale
 """
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from pathlib import Path
@@ -83,12 +95,7 @@ def render(doc: dict) -> str:
     return "\n".join(parts)
 
 
-def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--check", action="store_true", help="exit 1 if anything is stale, write nothing")
-    args = parser.parse_args(argv)
-
-    stale = []
+def main(_argv: list[str]) -> int:
     for yaml_rel, json_rel, md_rel in TARGETS:
         yaml_path = _REPO_ROOT / yaml_rel
         json_path = _REPO_ROOT / json_rel
@@ -97,27 +104,10 @@ def main(argv: list[str]) -> int:
         rendered_md = render(doc)
         rendered_json = json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
 
-        if args.check:
-            current_md = md_path.read_text(encoding="utf-8") if md_path.exists() else None
-            if current_md != rendered_md:
-                stale.append(md_rel)
-            current_json = json_path.read_text(encoding="utf-8") if json_path.exists() else None
-            if current_json != rendered_json:
-                stale.append(json_rel)
-        else:
-            md_path.write_text(rendered_md, encoding="utf-8")
-            print(f"wrote {md_rel}")
-            json_path.write_text(rendered_json, encoding="utf-8")
-            print(f"wrote {json_rel}")
-
-    if args.check:
-        if stale:
-            for rel in stale:
-                print(f"STALE: {rel} does not match its content/*.yml source (run without --check to regenerate)",
-                      file=sys.stderr)
-            return 1
-        print("OK: all 4 Group D docs and their JSON mirrors are current.")
-        return 0
+        md_path.write_text(rendered_md, encoding="utf-8")
+        print(f"wrote {md_rel}")
+        json_path.write_text(rendered_json, encoding="utf-8")
+        print(f"wrote {json_rel}")
     return 0
 
 

@@ -34,14 +34,22 @@ real end-user command) assembled its AI prompt by `Path.read_text()`-ing this do
 fix, same shape -- content/ui-generation-prompt.yml is the source, npdev_cli.py reads the JSON
 mirror (same PyYAML constraint as build_rag_index.py: this runs on every user's machine).
 
+STALENESS DETECTION MOVED TO GIT, NOT --check (Phase 7, PLAN-11-to-4.md Item 2)
+--------------------------------------------------------------------------------
+`--check` used to read the CURRENTLY COMMITTED .md/.json back off disk to compare against a fresh
+in-memory render -- a script reading markdown content, one level removed from the docs themselves
+(found while building check-no-markdown-reads.py). This script now only ever WRITES; staleness
+detection moves to the caller, using git to diff bytes without this process opening the .md itself:
+
+    python scripts/docs/generate_group_e_docs.py
+    git diff --exit-code -- docs/NPDEV_CONCEPTS_DEEP_DIVE.md docs/NPDEV_USER_MANUAL.md docs/ai/AUTHORING_FOR_AI.md docs/ai/UI_GENERATION_PROMPT.md content/npdev-concepts-deep-dive.json content/npdev-user-manual.json content/authoring-for-ai.json content/ui-generation-prompt.json
+
 USAGE
 -----
     python scripts/docs/generate_group_e_docs.py            # write all 4 docs + json mirrors
-    python scripts/docs/generate_group_e_docs.py --check    # exit 1 if anything is stale
 """
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from pathlib import Path
@@ -70,12 +78,7 @@ def render(doc: dict) -> str:
     return "\n".join(parts)
 
 
-def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--check", action="store_true", help="exit 1 if anything is stale, write nothing")
-    args = parser.parse_args(argv)
-
-    stale = []
+def main(_argv: list[str]) -> int:
     for yaml_rel, json_rel, md_rel in TARGETS:
         yaml_path = _REPO_ROOT / yaml_rel
         json_path = _REPO_ROOT / json_rel
@@ -84,27 +87,10 @@ def main(argv: list[str]) -> int:
         rendered_md = render(doc)
         rendered_json = json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
 
-        if args.check:
-            current_md = md_path.read_text(encoding="utf-8") if md_path.exists() else None
-            if current_md != rendered_md:
-                stale.append(md_rel)
-            current_json = json_path.read_text(encoding="utf-8") if json_path.exists() else None
-            if current_json != rendered_json:
-                stale.append(json_rel)
-        else:
-            md_path.write_text(rendered_md, encoding="utf-8")
-            print(f"wrote {md_rel}")
-            json_path.write_text(rendered_json, encoding="utf-8")
-            print(f"wrote {json_rel}")
-
-    if args.check:
-        if stale:
-            for rel in stale:
-                print(f"STALE: {rel} does not match its content/*.yml source (run without --check to regenerate)",
-                      file=sys.stderr)
-            return 1
-        print("OK: all 3 Group E docs and their JSON mirrors are current.")
-        return 0
+        md_path.write_text(rendered_md, encoding="utf-8")
+        print(f"wrote {md_rel}")
+        json_path.write_text(rendered_json, encoding="utf-8")
+        print(f"wrote {json_rel}")
     return 0
 
 

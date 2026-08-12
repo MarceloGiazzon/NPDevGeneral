@@ -182,19 +182,35 @@ try {
 
     # Bundled into the same [2/42] slot (docs-decoupling-2026-08-11 PLAN.md Phase 1's precedent:
     # avoid renumbering every banner for one more freshness check). md-zero-2026-08-11 PLAN.md
-    # Phase 4: docs/NPDEV_CONCEPTS_DEEP_DIVE.md, docs/NPDEV_USER_MANUAL.md and
-    # docs/ai/AUTHORING_FOR_AI.md are GENERATED from content/*.yml, the same prose
+    # Phase 4: docs/NPDEV_CONCEPTS_DEEP_DIVE.md, docs/NPDEV_USER_MANUAL.md, docs/ai/AUTHORING_FOR_AI.md
+    # and docs/ai/UI_GENERATION_PROMPT.md are GENERATED from content/*.yml, the same prose
     # scripts/ai/build_rag_index.py chunks and scripts/ai/build_core_context.py concatenates whole
     # -- if a hand-edit touches the .md without touching its YAML source, this catches it.
-    & $py "scripts/docs/generate_group_e_docs.py" --check
-    if ($LASTEXITCODE -ne 0) { $failures += "a Group E doc (NPDEV_CONCEPTS_DEEP_DIVE.md / NPDEV_USER_MANUAL.md / ai/AUTHORING_FOR_AI.md) is STALE relative to its content/*.yml source: see scripts/docs/generate_group_e_docs.py output above (run without --check to regenerate)" }
+    #
+    # PLAN-11-to-4.md Item 2: this used to run with --check (render in memory, read the CURRENTLY
+    # COMMITTED .md back off disk to compare) -- itself a script reading markdown content. Now it
+    # always regenerates in place, and git (which diffs bytes without this process ever opening the
+    # .md) answers "did that change anything already committed".
+    & $py "scripts/docs/generate_group_e_docs.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "scripts/docs/generate_group_e_docs.py failed to run: see its output above"
+    } else {
+        git diff --exit-code -- docs/NPDEV_CONCEPTS_DEEP_DIVE.md docs/NPDEV_USER_MANUAL.md docs/ai/AUTHORING_FOR_AI.md docs/ai/UI_GENERATION_PROMPT.md content/npdev-concepts-deep-dive.json content/npdev-user-manual.json content/authoring-for-ai.json content/ui-generation-prompt.json
+        if ($LASTEXITCODE -ne 0) { $failures += "a Group E doc or its content/*.json mirror was STALE relative to its content/*.yml source (regenerating changed a committed file, shown above) -- commit the regenerated result" }
+    }
 
     # md-zero-2026-08-11 PLAN.md Phase 5: same freshness check for the four executable docs
     # (README.md, docs/GETTING_STARTED.md, docs/YOUR_FIRST_APP.md, docs/AUTHORING_WITH_AI.md) and
     # their content/*.json mirrors -- the first-run harness and extract_commands.py read the JSON,
     # never the .md, so this is what catches a hand-edited .md that was never regenerated.
-    & $py "scripts/docs/generate_group_d_docs.py" --check
-    if ($LASTEXITCODE -ne 0) { $failures += "a Group D doc or its content/*.json mirror is STALE relative to its content/*.yml source: see scripts/docs/generate_group_d_docs.py output above (run without --check to regenerate)" }
+    # Same PLAN-11-to-4.md Item 2 shape as Group E above: regenerate, then let git diff decide.
+    & $py "scripts/docs/generate_group_d_docs.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "scripts/docs/generate_group_d_docs.py failed to run: see its output above"
+    } else {
+        git diff --exit-code -- README.md docs/GETTING_STARTED.md docs/YOUR_FIRST_APP.md docs/AUTHORING_WITH_AI.md content/readme.json content/getting-started.json content/your-first-app.json content/authoring-with-ai.json
+        if ($LASTEXITCODE -ne 0) { $failures += "a Group D doc or its content/*.json mirror was STALE relative to its content/*.yml source (regenerating changed a committed file, shown above) -- commit the regenerated result" }
+    }
 
     Write-Host "[3/42] Checking failure-signature normalizer..."
     $sig = & $py "scripts/ai/failure_signatures.py" "Panel 'Orders' references unknown entity 'Customer'"

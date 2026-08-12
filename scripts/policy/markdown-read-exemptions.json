@@ -5,8 +5,17 @@
     "resolved in favour of this list after a real risk audit (asked of the user, recorded in the",
     "session) found the plan's premise false: only 10 of 287 tracked .md files are rendered from a",
     "registry, so deleting the scripts that VALIDATE the other 277 (link integrity, doc",
-    "classification, script-mention verification, download-link pinning, hardcoded-path scanning,",
-    "process-doc banning) would remove real, working protection with nothing to replace it.",
+    "classification, script-mention verification, download-link pinning, hardcoded-path scanning)",
+    "would remove real, working protection with nothing to replace it.",
+    "",
+    "PLAN-11-to-4.md (same day) then cut this from 11 to 6: check-doc-inventory.py never actually",
+    "needed the exemption (pure path enumeration, proven by removing it and re-running the scanner);",
+    "the 3 doc generators' --check modes stopped reading their own committed output back (staleness",
+    "detection moved to `git diff --exit-code` in their callers instead); run-script-inventory-check.ps1",
+    "replaced whole-repo prose-scanning with an explicit documentedIn declaration per script; and",
+    "run-maturity-max-roadmap-boundary-check.ps1's entire external-roadmap-file read was deleted",
+    "outright (a machine-local personal path that could only ever verify on one laptop -- a control",
+    "not worth keeping, not a coupling worth converting).",
     "",
     "THE DISTINCTION THIS LIST DRAWS: a script that mines markdown prose as an unstructured DATA",
     "SOURCE feeding program logic or a generated artifact (RAG indexing, CLI command extraction,",
@@ -44,22 +53,6 @@
     {
       "path": "scripts/quality/run-portable-tooling-check.ps1",
       "why": "Scans NPDevCli/**/*.md (among other extensions) for hardcoded drive-letter paths (REG-144). The .md files under NPDevCli are hand-authored, not generated, and a hardcoded path IN the doc's prose is itself the defect this check exists to catch -- there is no registry to move the assertion into."
-    },
-    {
-      "path": "scripts/docs/generate_group_d_docs.py",
-      "why": "Generator's own --check mode reads back the .md files it renders (README.md, docs/GETTING_STARTED.md, docs/YOUR_FIRST_APP.md, docs/AUTHORING_WITH_AI.md) to detect a hand-edit that bypassed content/*.yml. Reading its OWN declared output for round-trip drift verification is a different, narrower thing than mining markdown as an external data source."
-    },
-    {
-      "path": "scripts/docs/generate_group_e_docs.py",
-      "why": "Same self-verification pattern as generate_group_d_docs.py above, for docs/NPDEV_CONCEPTS_DEEP_DIVE.md, docs/NPDEV_USER_MANUAL.md, docs/ai/AUTHORING_FOR_AI.md."
-    },
-    {
-      "path": "scripts/docs/generate_maturity_max_roadmap_docs.py",
-      "why": "Same self-verification pattern, for the 3 docs/maintainers/*.md maturity-roadmap docs."
-    },
-    {
-      "path": "scripts/quality/run-maturity-max-roadmap-boundary-check.ps1",
-      "why": "Reads $RoadmapSourcePath (default C:\\Users\\Marcelo\\Downloads\\npdev_full_maturity_closure_roadmap_updated.md), an EXTERNAL, non-repo, machine-local reference document the maintainer downloaded once, cross-checked against the policy JSON for stale-target drift. Not a repo-tracked coupling this plan's rule targets -- gated on Test-Path and soft-fails to an empty comparison if absent; never shipped, never affects npdev setup or any end-user path."
     }
   ]
 }
