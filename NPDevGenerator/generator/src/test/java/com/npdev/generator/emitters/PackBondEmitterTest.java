@@ -43,10 +43,12 @@ class PackBondEmitterTest {
         String sql = Files.readString(
                 outRoot.resolve("src/main/resources/db/schema-realization/V1__npdev_schema_realization.sql"));
 
-        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS cat_products"), sql);
-        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS cat_variants"), sql);
+        // PK-2: physical table names derive from the pack's own id + major version
+        // ("catalog_v1"), never the importing app's local alias ("cat").
+        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS catalog_v1_products"), sql);
+        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS catalog_v1_variants"), sql);
         assertTrue(sql.contains("product_sku VARCHAR(255)"), sql);
-        assertTrue(sql.contains("REFERENCES cat_products (sku_id)") && sql.contains("ON UPDATE CASCADE"), sql);
+        assertTrue(sql.contains("REFERENCES catalog_v1_products (sku_id)") && sql.contains("ON UPDATE CASCADE"), sql);
         assertTrue(sql.contains("DO $$"), sql);
         assertTrue(sql.contains("INFORMATION_SCHEMA.TABLE_CONSTRAINTS"),
                 "DO $$ guard must query INFORMATION_SCHEMA, not pg_constraint. SQL:\n" + sql);
