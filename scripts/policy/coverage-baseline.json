@@ -1,0 +1,42 @@
+{
+  "$schemaVersion": "npdev-coverage-baseline.v1",
+  "_comment": "R3 (MASTER-ROADMAP.md Step 9 / ledger QUAL-6). Ratchet floor per Java module, read/written by scripts/quality/check-coverage-ratchet.py. Every module starts at coveragePercent 0.0 / measuredOn null so the FIRST real measurement sets the floor rather than blocking a merge -- never hand-edit a coveragePercent upward; let the ratchet script do it from a real JaCoCo report. A DROP below the recorded value for a module that produced a fresh report this run is a gate failure; a module with no fresh report this run is reported as not-measured, never failed.",
+  "metric": "LINE",
+  "modules": {
+    "NPDevContract/dsl": {
+      "coveragePercent": 0.0,
+      "measuredOn": null,
+      "reportGlobs": [
+        "**/gradle/npdev-*/dsl/reports/jacoco/test/jacocoTestReport.xml",
+        "NPDevContract/dsl/build/reports/jacoco/test/jacocoTestReport.xml"
+      ],
+      "note": "dsl has no settings.gradle of its own; it is built as a subproject of the root, NPDevGenerator, or NPDevKernel multi-project builds, so its jacoco report lands under whichever rootProject.name built it last (layout.buildDirectory is redirected to the external Build root -- see each build.gradle's resolveNpdevBuildRoot)."
+    },
+    "NPDevGenerator/generator": {
+      "coveragePercent": 0.0,
+      "measuredOn": null,
+      "reportGlobs": [
+        "**/gradle/npdev-generator/generator/reports/jacoco/test/jacocoTestReport.xml"
+      ],
+      "note": "Produced by :generator:test (run-generator-gate.ps1's generatorQualityGate). local-only tests unless -PincludePackagedProofs or CI=1 -- see NPDevGenerator/generator/build.gradle's packaged-proof exclusion. Custom classloaders used by TrustedSourceEmitterGeneratedActionTest et al. compile+load throwaway classes outside src/main/java, so they are invisible to this report by construction, not a defect in the report."
+    },
+    "NPDevKernel/kernel": {
+      "coveragePercent": 0.0,
+      "measuredOn": null,
+      "aggregate": true,
+      "reportGlobs": [
+        "**/gradle/npdev-kernel/kernel/reports/jacoco/test/jacocoTestReport.xml",
+        "**/gradle/npdev-kernel/adapters/*/reports/jacoco/test/jacocoTestReport.xml"
+      ],
+      "note": "Aggregate across :kernel and every :adapters:* subproject (36 of them), summed by check-coverage-ratchet.py from whichever per-subproject XML reports exist -- there is no dedicated CI gate that runs kernelQualityGate today (a pre-existing gap this card does not close), so this stays at the placeholder until someone runs it (locally: gradlew kernelQualityGate -PenableCoverage is not needed here, kernel never ships into a generated app)."
+    },
+    "NPDevRuntimeHost": {
+      "coveragePercent": 0.0,
+      "measuredOn": null,
+      "reportGlobs": [
+        "scripts/reports/out/runtimehost-jacoco-test-report.xml"
+      ],
+      "note": "Only produced when the assembled sample app is built with -PenableCoverage=true (run-runtimehost-gate.ps1 does this and copies the report to the stable path above before its own build-cache cleanup runs). JaCoCo does NOT ship inside generated FinalApps by default -- see NPDevRuntimeHost/build.gradle.template's own gating comment."
+    }
+  }
+}

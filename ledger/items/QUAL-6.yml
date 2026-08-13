@@ -3,8 +3,10 @@ title: >-
   No execution-based code coverage measured in any language
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-13
+verification: LIVE_VERIFIED
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R3). No JaCoCo on any of
   the 4 Java builds, no @vitest/coverage-v8 for the editor, no coverage.py for NPDevCli, no ratchet
@@ -13,10 +15,78 @@ surface: quality/coverage
 files:
   - scripts/policy/coverage-baseline.json
   - scripts/quality/check-coverage-ratchet.py
+  - NPDevContract/dsl/build.gradle
+  - NPDevGenerator/build.gradle
+  - NPDevKernel/build.gradle
+  - NPDevRuntimeHost/build.gradle.template
+  - scripts/quality/run-runtimehost-gate.ps1
+  - scripts/quality/run-ai-knowledge-gate.ps1
 detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R3 (Wave 1). run-frontend-gate.ps1 hard-fails
   on a "coverage" directory inside ui-react -- vitest output must be pointed outside ui-react or the
-  gate goes red the moment coverage works. Land R1 Stage 1 first (done this session) so the
-  RuntimeHost coverage baseline is honest rather than showing R1's exclusions as data. Start the
-  ratchet at 0.0 with measuredOn: null. MASTER-ROADMAP.md batches this into Step 9 (a hard prerequisite
-  for PK-4, Step 11); not in this session's scope (Steps 1-4).
+  gate goes red the moment coverage works. Land R1 Stage 1 first so the RuntimeHost coverage baseline
+  is honest rather than showing R1's exclusions as data. Start the ratchet at 0.0 with
+  measuredOn: null. MASTER-ROADMAP.md batches this into Step 9 (a hard prerequisite for PK-4,
+  Step 11).
+resolution: |
+  DONE (2026-08-13), Java portion only -- editor (vitest coverage-v8) and NPDevCli (coverage.py) are
+  explicitly deferred to a future Track C follow-up (ROADMAP.md card C8), not silently dropped.
+
+  JaCoCo wired into all 4 Java builds:
+    - NPDevContract/dsl, NPDevGenerator (:generator + :tools:npdev-cli), NPDevKernel (:kernel + all
+      36 :adapters:* subprojects): unconditional `id 'jacoco'` / `apply plugin: 'jacoco'`, since none
+      of these ship into a generated FinalApp -- only compiled jars are staged via
+      npdevRuntimeHostLibsDir.
+    - NPDevRuntimeHost/build.gradle.template (the file FinalAppAssembler.materializeRootTemplate
+      actually copies into every generated app, NOT the plain build.gradle, which is a separately-
+      drifting copy used only for a direct bare-checkout GATE-H2/GATE-PG run): gated behind
+      `project.hasProperty('enableCoverage')` (`-PenableCoverage=true`), so JaCoCo does NOT ship
+      inside generated FinalApps by default. run-runtimehost-gate.ps1 passes the property on its own
+      throwaway verification build and copies the resulting report to
+      scripts/reports/out/runtimehost-jacoco-test-report.xml before its own build-cache cleanup step
+      deletes the assembled app's build/ directory.
+
+  scripts/policy/coverage-baseline.json: one entry per module (NPDevContract/dsl,
+  NPDevGenerator/generator, NPDevKernel/kernel [aggregate: true, summed across :kernel + all 36
+  adapters], NPDevRuntimeHost), each starting at coveragePercent 0.0 / measuredOn null as specified,
+  so the first real CI measurement sets the floor rather than blocking a merge.
+
+  scripts/quality/check-coverage-ratchet.py: static (builds nothing itself), reads whatever fresh
+  JaCoCo XML report an EARLIER step in the same run-all-gates.ps1 invocation already produced,
+  ratchets the recorded floor up on improvement, fails only on a real regression, treats a missing
+  report as not-measured (never a failure). Wired into run-ai-knowledge-gate.ps1 as step [43/43]
+  (renumbered from 42) and declared `ci-gate` in script-invocation-declarations.json. 7-control
+  --calibrate self-test covers regression detection, ratchet-up, not-measured, and the kernel
+  aggregation math (sum of covered/missed across reports, not an average of percentages).
+
+  Two hazards from the card, both verified live rather than assumed:
+    1. run-frontend-gate.ps1's Find-GeneratedResidue "coverage"-directory hard-fail: not triggered --
+       this card adds no frontend/vitest coverage (explicitly out of scope, see above).
+    2. :generator's packaged-proof test exclusion + custom URLClassLoader-based tests
+       (TrustedSourceEmitterGeneratedActionTest et al.): verified live, not just reasoned about.
+       Ran `:generator:test --tests AdapterRegistrationConsistencyTest --tests
+       TrustedSourceEmitterGeneratedActionTest` with JaCoCo enabled -- BUILD SUCCESSFUL,
+       jacocoTestReport produced real, plausible, non-zero, non-100% counters (LINE 393 covered /
+       7304 missed from just 2 test classes). The custom-classloaded throwaway harness classes are
+       invisible to the report (compiled outside src/main/java), exactly as documented -- not a
+       report defect, and not a silent 0%.
+
+  Also live-verified: dsl (`:test` with a single test class, JaCoCo agent confirmed attached via
+  `-javaagent:...jacocoagent.jar`, real XML produced) and a FULL, unfiltered RuntimeHost gate run
+  (`pwsh scripts/quality/run-runtimehost-gate.ps1`, genuinely green end-to-end) which produced a real
+  9.9463% LINE coverage report, auto-discovered by check-coverage-ratchet.py's reportGlobs with no
+  manual path override needed, and correctly ratcheted the (throwaway, not committed) baseline up.
+  coverage-baseline.json itself was reset to the clean 0.0/null starting state before commit, per the
+  card's own explicit instruction -- these runs proved the MECHANISM, they are not meant to be the
+  first official measurement.
+
+  Known, pre-existing gap NOT closed by this card: no CI gate invokes kernelQualityGate at all (it is
+  an orphan Gradle task, unrelated to this card), so NPDevKernel/kernel's baseline stays at
+  0.0/null until either a future gate wires it in or a developer runs it locally.
+guard:
+  kind: manual
+  ref: pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1 (produces
+    scripts/reports/out/runtimehost-jacoco-test-report.xml); python scripts/quality/check-coverage-ratchet.py --calibrate
+  asserts: the RuntimeHost gate run produces a real JaCoCo XML report with a non-zero LINE counter,
+    and the ratchet script's 7 self-test controls all pass
+  provenRed: true
