@@ -6,7 +6,6 @@ import PanelDataSourcesEditor from "./PanelDataSourcesEditor";
 type PanelsEditorSectionProps = {
   panels: AuthoringPanel[];
   conceptNames: string[];
-  queryNames: string[];
   procedureNames: string[];
   flowNames: string[];
   onChange: (panels: AuthoringPanel[]) => void;
@@ -25,7 +24,6 @@ function buildDefaultPanelAction(): AuthoringPanelAction {
 export default function PanelsEditorSection({
   panels,
   conceptNames,
-  queryNames,
   procedureNames,
   flowNames,
   onChange
@@ -48,7 +46,6 @@ export default function PanelsEditorSection({
               {
                 name: `Panel${panels.length + 1}`,
                 route: `/panel-${panels.length + 1}`,
-                concept: conceptNames[0] ?? "",
                 layout: { type: "form" },
                 actions: []
               }
@@ -115,64 +112,6 @@ export default function PanelsEditorSection({
                       )
                     }
                   />
-                </label>
-
-                <label>
-                  Concept
-                  <select
-                    value={panel.concept ?? ""}
-                    onChange={(event) =>
-                      onChange(
-                        panels.map((entry, index) =>
-                          index === panelIndex
-                            ? {
-                                ...entry,
-                                concept: event.target.value || undefined
-                              }
-                            : entry
-                        )
-                      )
-                    }
-                  >
-                    <option value="">Choose concept</option>
-                    {conceptNames.map((conceptName) => (
-                      <option key={conceptName} value={conceptName}>
-                        {conceptName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label>
-                  Query data source
-                  <select
-                    value={panel.dataSource?.query ?? ""}
-                    onChange={(event) =>
-                      onChange(
-                        panels.map((entry, index) =>
-                          index === panelIndex
-                            ? {
-                                ...entry,
-                                dataSource: event.target.value
-                                  ? {
-                                      type: "query",
-                                      name: event.target.value,
-                                      query: event.target.value
-                                    }
-                                  : undefined
-                              }
-                            : entry
-                        )
-                      )
-                    }
-                  >
-                    <option value="">None</option>
-                    {queryNames.map((queryName) => (
-                      <option key={queryName} value={queryName}>
-                        {queryName}
-                      </option>
-                    ))}
-                  </select>
                 </label>
 
                 <label>
