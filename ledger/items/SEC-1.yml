@@ -3,8 +3,10 @@ title: >-
   Every generated app ships two published ADMIN API keys and boots on that profile
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-13
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R7). Cleaning
   application-dev.yml alone changes nothing observable -- the real fix is
@@ -14,6 +16,9 @@ surface: runtimehost/auth
 files:
   - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-api-key-auth-filter.mustache
   - NPDevRuntimeHost/src/main/resources/application-dev.yml
+  - NPDevRuntimeHost/src/main/resources/application.properties
+  - NPDevRuntimeHost/src/main/resources/application-prod.properties
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
 detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R7 (Wave 3, milestone M2) for the 4-stage,
   16-step, 4-session spec: fail closed (auth-filter fallback), profiles (real application-prod,
@@ -111,6 +116,83 @@ detail: |
   send a now-stale key. Not fixed here per this session's "unrelated bugs filed separately"
   discipline; needs its own scoped step.
 
-  Stage B (profiles: stop `dev` being the implicit default, real `application-prod.properties`,
-  `_ops\Run-FinalApp.ps1` profile-explicit) remains OPEN. This item stays OPEN until Stage B closes
-  the full card.
+  **Stage B (profiles) DONE 2026-08-13**, branch `step12-r7-stage-b`, completing MASTER-ROADMAP.md
+  Step 12's A+B+C scope (Stage D -- the migration surface: 22 browser routines, 13 sample
+  `config.json` files, `GeneratorApiVersioningContractTest`'s literals, etc. -- is its own later
+  step per the roadmap's own "Stage D is its own later step, gated on A+B+C" framing, not part of
+  this item's scope).
+
+  Three changes, traced against real config-resolution behavior before touching anything (the same
+  discipline Stage A/C used): (1) `application.properties`'s `spring.profiles.default=dev` is
+  removed -- an un-profiled boot now activates Spring's OWN reserved `default` profile
+  (`application-default.properties`: governed execution mode, no seeded auth keys) instead of
+  silently becoming `dev`. Confirmed by direct code/config reading first: every supported launcher
+  already passed an explicit profile before this change (`Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1`:
+  `--spring.profiles.active=dev,step0,trial`; the two packaged-app proof tests
+  `HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest`/`HardenObjstoreFileUpload...`:
+  same; `FinalAppAssembler`'s generated README: `--spring.profiles.active=dev`; every
+  `@SpringBootTest` in `NPDevRuntimeHost/src/test`: explicit `@ActiveProfiles`) -- `_ops/
+  Run-FinalApp.ps1` (`OperationalRunbookEmitter.runFinalAppScript()`) was the ONLY caller relying on
+  the implicit default, confirmed by grep for `spring.profiles.default`/`spring.profiles.active`
+  repo-wide. (2) `NPDevRuntimeHost/src/main/resources/application-prod.properties` now exists --
+  `DockerDeploymentEmitter` has named `SPRING_PROFILES_ACTIVE=prod`(`,postgres`) in every generated
+  `docker-compose.yml`/`.env.example` since LNCH-7 with no backing file. Deliberately minimal:
+  no storage mode (that stays the `postgres` Spring profile + env vars' job) and no seeded admin
+  key -- `npdev.auth.api-keys` is left unset so `StartupValidator.validateAuth()` fails closed
+  until one is supplied (`NPDEV_AUTH_APIKEYS`/`NPDEV_AUTH_API_KEYS` env var or Stage C's
+  `secrets/api-key.env`), exactly matching what `docker-compose.yml` already enforces
+  (`${NPDEV_AUTH_APIKEYS:?...}`). (3) `_ops/Run-FinalApp.ps1` gained a `-Profile` parameter
+  (default `'dev'`, so today's "just run this generated app locally" workflow is unchanged byte-
+  for-byte) that is now passed through as `--spring.profiles.active=$Profile` -- the java
+  invocation used to pass no profile flag at all.
+
+  **A real, live-caught bug in this session's own first draft, not shipped**: an initial
+  `application-prod.properties` also set `npdev.runtime.deployment-profile=prod` (by analogy with
+  `application-dev.properties`/`application-warning.properties`, which both set it). Live boot
+  crashed instead: `RuntimePluginProfileResolver` resolves that property either by convention
+  (classpath `npdev/bindings/<name>.bindings.json` + `npdev/plugins/<name>.plugin-manifest.json`,
+  how `dev` resolves -- both files are generated per-app) or against a small HARDCODED fallback map
+  containing only `{default, warning}` -- `prod` matches neither, so boot failed with
+  `IllegalStateException: Unknown deployment plugin profile 'prod'`. Fixed by leaving
+  `npdev.runtime.deployment-profile` unset (Java-level default `"default"`, which resolves via the
+  hardcoded fallback map to the same bindings/plugin-manifest pair `application-default.properties`
+  already uses) -- inventing a fourth deployment-plugin-profile variant would be unrelated
+  plugin-package policy, out of scope for this card. `npdev.runtime.execution-environment=prod` is
+  kept: it is a separate, pre-existing, string-only label with no fallback-map coupling --
+  `CapabilityAdapterResolver#activeEnvironment`'s own `preferredOrder` array already lists
+  `{dev, test, stage, prod, default}`.
+
+  Verified LIVE end to end, not assumed, using a freshly generated `npdev-canary` app (this
+  session's own platform worktree, H2Local engine): (1) normal dev boot via
+  `_ops\Run-FinalApp.ps1` (no `-Profile` argument) -- `Active profiles: [dev]` logged, Stage C's
+  `Ensure-NpdevApiKey` banner printed the generated key once, `dev-key`/`api-dev` both 401, the
+  generated key 200, `_ops\Smoke-Test.ps1` run standalone reported PASS -- proving the everyday
+  local workflow is unchanged. (2) `_ops\Run-FinalApp.ps1 -Profile prod` -- `Active profiles:
+  [prod]` logged, health UP, `dev-key`/`api-dev`/the Docker `.env.example` placeholder `change-me`
+  all 401, the SAME `secrets/api-key.env` key 200 -- proving Stage C's key mechanism is correctly
+  reused for a local `prod` boot rather than inventing a second one. (3) `prod` profile launched
+  directly via `java -jar ... --spring.profiles.active=prod` with the `NPDEV_AUTH_API_KEYS`/
+  `NPDEV_AUTH_APIKEYS` env vars explicitly cleared (bypassing `Ensure-NpdevApiKey` entirely) --
+  boot refused with `IllegalStateException: npdev.auth.api-keys must define at least one mapping
+  when auth is enabled`, proving `prod` fails closed rather than falling back to anything
+  insecure. (4) `java -jar ...` with NO `--spring.profiles.active` flag at all -- logged `No active
+  profile set, falling back to 1 default profile: "default"` (proving `dev` is no longer the
+  implicit default, the core Stage B claim) and then failed closed the same way as (3), since
+  `application-default.properties` also seeds no key. Full DSL (1695/1695, 3-way split across this
+  machine's parallel Gradle build-root caches, 0 failures/errors in each) and generator (319/319, 0
+  failures/errors) regression suites green, zero regressions.
+
+  **Two unrelated findings from this session's own live testing, filed separately rather than
+  fixed here or ignored**: `REG-154` (docs/CONFIGURATION.md's `NPDEV_AUTH_APIKEYS` "gotcha" claims
+  the underscored `NPDEV_AUTH_API_KEYS` form -- Stage C's own actual spelling -- silently no-ops;
+  live testing on this session's machine shows BOTH spellings authenticate correctly, so the doc's
+  blanket claim is false at least on Windows) and `REG-155` (`Get-NPDevBuildRoot` resolves to a
+  wrong-but-plausible nested path, `<repo>\.claude\worktrees\Build\runtimehost-libs`, when the
+  workspace root is a git worktree living inside the canonical checkout -- exactly this session's
+  own operating mode -- worked around per-command with `$env:NPDEV_RUNTIMEHOST_LIBS`, not fixed,
+  since it is a pre-existing resolver gap unrelated to R7's auth/profile scope).
+
+  Card CLOSED: with Stage B done, no generated app ships a published ADMIN key that still works
+  (Stage A/C) and no generated app boots on `dev` implicitly (Stage B) -- both halves of this
+  item's title are now false, live-verified. Stage D (the migration surface) remains its own,
+  separately scoped, not-yet-started future step per the roadmap.

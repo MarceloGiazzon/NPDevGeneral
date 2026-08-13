@@ -1,0 +1,63 @@
+id: REG-154
+title: >-
+  docs/CONFIGURATION.md's NPDEV_AUTH_APIKEYS "gotcha" claims the intuitive NPDEV_AUTH_API_KEYS
+  form silently no-ops -- live testing shows both spellings actually work
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-13
+source: >-
+  MASTER-ROADMAP.md Step 12 (R7 Stage B, SEC-1). Found while verifying Stage B's application-prod
+  boot path live: `docs/CONFIGURATION.md`'s "Gotcha: environment-variable name mangling" section
+  states "npdev.auth.api-keys binds from the environment variable NPDEV_AUTH_APIKEYS -- not the
+  more intuitive NPDEV_AUTH_API_KEYS, which silently no-ops." R7 Stage C's own
+  Ensure-NpdevApiKey (OperationalRunbookEmitter) sets exactly the form the doc calls a no-op
+  ($env:NPDEV_AUTH_API_KEYS) and Stage C's own ledger entry records it working, live-verified. Two
+  first-hand sources for the same property directly disagree, so this session tested both against
+  the same running app rather than trusting either.
+surface: docs/configuration
+files:
+  - docs/CONFIGURATION.md
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevAuthConfig.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/NpdevObservabilityConfig.java
+detail: |
+  Booted the same generated npdev-canary app (dev profile) three ways and probed with curl-equivalent
+  `Invoke-WebRequest`, `X-Api-Key` header:
+
+  1. `$env:NPDEV_AUTH_API_KEYS = '<key>=dev:developer:admin'` (Stage C's actual spelling, WITH the
+     underscore before KEYS) -- `<key>` returns 200, `dev-key` returns 401. This is what R7 Stage C
+     shipped and what `_ops/Run-FinalApp.ps1`'s `Ensure-NpdevApiKey` sets on every launch.
+  2. `$env:NPDEV_AUTH_APIKEYS = 'testonly=dev:developer:admin'` (the doc's claimed-correct spelling,
+     NO underscore before KEYS) -- `testonly` returns 200, `dev-key` returns 401.
+
+  Both env-var spellings correctly override `application-dev.yml`'s default. The doc's claim that
+  the underscored form "silently no-ops" is FALSE for this property, at least on Windows/PowerShell
+  with Java 17 -- not independently checked in a Linux container, so a real Windows-vs-Linux gap
+  cannot yet be ruled out, only that the doc's blanket claim doesn't hold on the platform this
+  session tested on.
+
+  Working theory (not fully chased): `npdev.auth.api-keys` is consumed via plain `@Value("${npdev.
+  auth.api-keys:}")` (NpdevAuthConfig, NpdevObservabilityConfig), which resolves through Spring
+  Boot's *layered* property-source stack, not the single canonical relaxed-binding rule the doc
+  describes. Spring Boot's `ConfigurationPropertySources`-attached front source uses the documented
+  "strip hyphens" rule (`NPDEV_AUTH_APIKEYS`), but the underlying raw `SystemEnvironmentPropertySource`
+  further down the source list independently tries several transformations of its own (dots-to-
+  underscore, hyphens-to-underscore, both, each also uppercased) when resolving a plain `Environment.
+  getProperty()`/`@Value` lookup -- one of which produces exactly `NPDEV_AUTH_API_KEYS`. If that
+  reasoning is right, this is specific to plain `@Value` properties, not necessarily true of
+  `@ConfigurationProperties`-bound ones, which may honor only the documented canonical form. Not
+  verified against Spring Framework source in this session -- flagging the discrepancy and the
+  live-tested facts rather than asserting the mechanism.
+
+  Not fixed here: this is a documentation-accuracy question adjacent to, but not part of, R7 Stage
+  B's profile work, and confusing anyone debugging why the *canonical* documented form no-opped
+  would deserve its own careful pass over the doc rather than a one-line edit made in passing.
+guard:
+  kind: manual
+  ref: >-
+    boot a generated app with ONLY NPDEV_AUTH_APIKEYS set (no NPDEV_AUTH_API_KEYS) to a test
+    mapping, curl with that key's X-Api-Key header, then repeat with ONLY NPDEV_AUTH_API_KEYS set
+  asserts: >-
+    both env var spellings authenticate correctly for npdev.auth.api-keys; docs/CONFIGURATION.md
+    is corrected (or the underscored form is proven to fail in some other environment, e.g. Linux)
+  provenRed: false
