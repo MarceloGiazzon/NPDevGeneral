@@ -30,11 +30,52 @@
     },
     "version": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
     },
     "description": {
       "type": "string",
       "minLength": 1
+    },
+    "packs": {
+      "type": "array",
+      "description": "PK-3: transitive pack dependencies -- local files only, resolved via npdev.lock, never a network fetch. `version` is a minimal constraint: an exact version (\"2.0.3\") or a caret constraint (\"^2.0\", compatible-within-major -- same major, minor/patch at least as high).",
+      "items": {
+        "type": "object",
+        "required": ["pack", "version"],
+        "properties": {
+          "pack": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(\\^)?\\d+\\.\\d+(\\.\\d+)?$"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "requires": {
+      "type": "object",
+      "description": "PK-3: what this pack needs from the composing app (or from a transitive importer's own provides). Composition refuses when a requirement is unbound -- see model.schema.json's root `provides`.",
+      "properties": {
+        "roles": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "network": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
     },
     "concepts": {
       "type": "array",

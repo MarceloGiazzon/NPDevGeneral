@@ -181,13 +181,14 @@ public final class ModelCompiler {
         for (ContextAst context : modelAst.getContexts()) {
             contextPhysicallyIsolateByName.put(context.name(), context.physicallyIsolate());
         }
+        Map<String, String> physicalQualifierByConceptName = modelAst.getPhysicalQualifierByConceptName();
 
         List<ConceptAst> orderedConcepts = new ArrayList<>(modelAst.getConcepts());
         orderedConcepts.sort(Comparator.comparing(concept -> normalize(concept.getName())));
         for (ConceptAst concept : orderedConcepts) {
             String className = JavaIdentifierSupport.className(concept.getName());
             String tableName = SqlIdentifierSupport.toSnakePlural(
-                    tableNameSource(concept.getName(), contextPhysicallyIsolateByName));
+                    physicalTableNameSource(concept.getName(), physicalQualifierByConceptName, contextPhysicallyIsolateByName));
 
             EffectiveEntityDef effective = resolveEffective(
                     concept,
@@ -1191,9 +1192,8 @@ public final class ModelCompiler {
      *  ignores the context qualifier BY DEFAULT -- table names are derived exactly as before B20,
      *  from the bare concept name. D4's v1 reasoning stands unchanged: blanket prefixing would turn
      *  a DSL change into a data migration on every existing app's live database for a collision no
-     *  app has. Pack-qualified names ({@code packId::Name}) are untouched by this and keep prefixing
-     *  exactly as they always have; only a prefix matching a name in this model's own declared
-     *  {@code contexts[]} is a candidate for this method at all.
+     *  app has. Only a prefix matching a name in this model's own declared {@code contexts[]} is a
+     *  candidate for this method's context-stripping behavior at all.
      *
      *  <p><b>D4's own named v2 escape (Wave 4): a context declaring {@code physicallyIsolate: true}
      *  opts OUT of the default</b> -- its concepts' table names are context-qualified instead of
@@ -1202,11 +1202,23 @@ public final class ModelCompiler {
      *  context that never declares the key, or any model with no {@code contexts[]} at all, compiles
      *  to byte-identical table names as before this Move.
      *
-     *  <p>Delegates to {@link SqlIdentifierSupport#contextAwareIdentifierSource} -- the SAME
-     *  decision {@code ConceptValidation#validateTableNameCollisions} must make, so both stay one
-     *  deriver, not two that can drift. */
-    private static String tableNameSource(String qualifiedName, Map<String, Boolean> contextPhysicallyIsolateByName) {
-        return SqlIdentifierSupport.contextAwareIdentifierSource(qualifiedName, contextPhysicallyIsolateByName);
+     *  <p><b>PK-2: a PACK-qualified name is no longer untouched.</b> Previously the importing app's
+     *  chosen alias survived verbatim into the physical table name -- two apps importing the same
+     *  pack under different aliases got two incompatible physical schemas for identical data. When
+     *  {@code physicalQualifierByConceptName} has an entry for {@code qualifiedName} (populated by
+     *  {@code ModelSourceResolver} from the pack's own {@code pack} id + major version, never the
+     *  local alias), that entry's value replaces the qualifier instead.
+     *
+     *  <p>Delegates to {@link SqlIdentifierSupport#physicalTableNameSource} -- the SAME decision
+     *  {@code ConceptValidation#validateTableNameCollisions} must make, so both stay one deriver, not
+     *  two that can drift. */
+    private static String physicalTableNameSource(
+            String qualifiedName,
+            Map<String, String> physicalQualifierByConceptName,
+            Map<String, Boolean> contextPhysicallyIsolateByName
+    ) {
+        return SqlIdentifierSupport.physicalTableNameSource(
+                qualifiedName, physicalQualifierByConceptName.get(qualifiedName), contextPhysicallyIsolateByName);
     }
 
     private static CompiledGeneratedActionDescriptorSpec compileGeneratedActionDescriptor(ProcedureAst procedureAst) {

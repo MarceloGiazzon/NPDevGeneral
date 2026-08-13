@@ -111,6 +111,76 @@ tasks.register('validateModel', JavaExec) {
     args cliArgs
 }
 
+// PK-3: npdev pack add|update|list|why -- same JavaExec-wrapping-a-small-Main-class convention as
+// validateModel above. add/update share one Main class (PackAddMain; PackUpdateMain is a 1-line
+// delegate) since they're the same operation under two names.
+tasks.register('packAdd', JavaExec) {
+    group = 'verification'
+    description = 'Resolve a model\'s transitive pack graph and (re)write npdev.lock.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.PackAddMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('modelPath')) {
+        cliArgs << project.getProperty('modelPath')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
+tasks.register('packUpdate', JavaExec) {
+    group = 'verification'
+    description = 'Re-resolve a model\'s transitive pack graph and rewrite npdev.lock.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.PackUpdateMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('modelPath')) {
+        cliArgs << project.getProperty('modelPath')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
+tasks.register('packList', JavaExec) {
+    group = 'verification'
+    description = 'Print the current npdev.lock, or a live dry-run if none exists.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.PackListMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('modelPath')) {
+        cliArgs << project.getProperty('modelPath')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
+tasks.register('packWhy', JavaExec) {
+    group = 'verification'
+    description = 'Explain why a pack resolved to its current version.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.PackWhyMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('modelPath')) {
+        cliArgs << project.getProperty('modelPath')
+    }
+    if (project.hasProperty('packId')) {
+        cliArgs << project.getProperty('packId')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
 // PK-4 Stage A: `npdev pack diff <old> <new>` -- a pure, no-database, no-app-build classification
 // of every difference between two pack.json documents into ADDITIVE/BREAKING/PATCH
 // (com.npdev.dsl.v1.pack.PackDiffEngine). Purely informational: never refuses, unlike packPublish

@@ -254,6 +254,24 @@
       ]
     },
     {
+      "id": "pack-allow-side-by-side-schema-and-enforcement",
+      "citedBy": "PK-3",
+      "description": "allowSideBySide (a direct pack import tolerating a different-file collision with the same real packId resolved elsewhere in the transitive graph) is declared on model.schema.json's packRef $defs entry in all 4 mirrored copies, AND must stay recognized by ModelSourceResolver.validateNoMalformedRef's per-path extra-keys allowlist (a structural guard that runs BEFORE resolution and would otherwise reject the key as malformed before PackDependencyGraphWalker's own enforcement ever ran -- this exact gap shipped once in PK-3's own first draft, caught only by its own test suite), AND must stay enforced in PackDependencyGraphWalker.java, which is where the check/refusal/warning actually live. Losing any one of these leaves the schema accepting a key nothing enforces, or a key nothing can even author past the earlier structural gate.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "allowSideBySide"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevContract/schemas/model.schema.json",
+        "NPDevContract/schemas/authoring/model.schema.json",
+        "NPDevContract/dsl/src/main/resources/schema/model.schema.json",
+        "NPDevContract/dsl/resources/Schemas/model.schema.json",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/PackDependencyGraphWalker.java"
+      ]
+    },
+    {
       "id": "app-secrets-dir-spared-three-seams",
       "citedBy": "agent-proxy",
       "description": "The list of <FinalApp>/App directories that regeneration must NOT delete is decided independently in three places that all run during one build -- Build-NpdevApp.ps1's $SparedInsideApp, Build-ClaudeApp.ps1's copy of it, and FinalAppAssembler.PRESERVED_APP_DIRECTORIES. The Java layer runs LAST, so a directory added to a PowerShell list and not to the Java one is spared and then deleted again, silently, in the same build: exactly what happened to `logs` between MONITOR_PLAN D10 and the agent-proxy work. Anything holding state the generator cannot reproduce -- the database, the log archive, the operator-written secrets/agent-proxy.env -- must appear in all three.",

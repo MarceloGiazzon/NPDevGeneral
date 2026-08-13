@@ -3,6 +3,7 @@ package com.npdev.generator.emitters;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledContext;
 import com.npdev.dsl.v1.compiled.CompiledDocument;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
@@ -71,7 +72,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         ctx.put("controllerPackage", "com.npdev.generated.controllers");
         ctx.put("servicePackage", "com.npdev.generated.services");
         ctx.put("entityPackage", "com.npdev.generated.entities");
-        ctx.put("concepts", conceptTemplateModels(persistedConcepts, conceptsByName, resolver));
+        ctx.put("concepts", conceptTemplateModels(persistedConcepts, conceptsByName, resolver, model.getContexts()));
         ctx.put("superUserRole", superUserRole == null || superUserRole.isBlank() ? "ADMIN" : superUserRole.trim());
         ctx.put("panelRoutes", panelRouteNodes(model));
 
@@ -236,7 +237,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     private static List<Map<String, Object>> conceptTemplateModels(
             List<CompiledConcept> concepts,
             Map<String, CompiledConcept> conceptsByName,
-            SettingResolver settingResolver
+            SettingResolver settingResolver,
+            List<CompiledContext> contexts
     ) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (CompiledConcept concept : concepts) {
@@ -245,11 +247,19 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             view.put("conceptName", javaString(concept.getName()));
             view.put("displayName", javaString(displayName(concept)));
             view.put("tableName", javaString(concept.getTableName()));
+            // PK-2: the generic CRUD controller's REST binding key (business-concept-crud-controller
+            // .mustache's bindings.put(...)) must stay decoupled from the physical table name, same
+            // as every other route -- found live, via the M1-style real generate/build/boot proof:
+            // without this, regenerating an app whose pack gained a physical-qualifier rename (this
+            // card's whole point) silently 404s every existing client of
+            // /api/concepts/{tableName}. "tableName" above is left alone -- ConceptMetadata's own
+            // record of the real physical name, read by other metadata surfaces, not a route.
+            view.put("route", javaString(SqlIdentifierSupport.aliasPreservingTableName(concept, contexts)));
             view.put("idField", javaString(idField.getName()));
-            view.put("endpointBase", javaString(endpointBase(concept)));
+            view.put("endpointBase", javaString(endpointBase(concept, contexts)));
             view.put("className", concept.getClassName());
             view.put("serviceVariable", uncap(concept.getClassName()) + "Service");
-            view.put("fields", fieldTemplateModels(concept, conceptsByName, settingResolver));
+            view.put("fields", fieldTemplateModels(concept, conceptsByName, settingResolver, contexts));
             out.add(view);
         }
         return out;
@@ -258,7 +268,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     private static List<Map<String, Object>> fieldTemplateModels(
             CompiledConcept concept,
             Map<String, CompiledConcept> conceptsByName,
-            SettingResolver settingResolver
+            SettingResolver settingResolver,
+            List<CompiledContext> contexts
     ) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (CompiledField field : concept.getFields()) {
@@ -272,7 +283,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             view.put("readOnly", field.isId());
             view.put("sortable", isSortable(field));
             view.put("filterable", isFilterable(field));
-            view.put("widget", javaString(widget(field, conceptsByName, concept, settingResolver)));
+            view.put("widget", javaString(widget(field, conceptsByName, concept, settingResolver, contexts)));
             view.put("hasEnumValues", field.getEnumValues() != null && !field.getEnumValues().isEmpty());
             view.put("enumValues", enumValuesJava(field));
             view.put("defaultEnumValue", javaString(defaultEnumValue(field)));
@@ -331,6 +342,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             }
         }
 
+        List<CompiledContext> contexts = model == null ? List.of() : model.getContexts();
         List<Map<String, Object>> conceptNodes = new ArrayList<>();
         for (CompiledConcept concept : concepts) {
             CompiledField idField = idField(concept);
@@ -338,16 +350,19 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("conceptName", concept.getName());
             node.put("displayName", displayName(concept));
             node.put("admin", isAdminConcept(concept));
-            node.put("route", "/" + SqlIdentifierSupport.tableName(concept));
+            // PK-2: route stays LOGICAL (alias-preserving), deliberately decoupled from the physical
+            // SQL table name below -- a pack version bump must never silently rename a client's
+            // already-bookmarked REST URL.
+            node.put("route", "/" + SqlIdentifierSupport.aliasPreservingTableName(concept, contexts));
             node.put("tableName", SqlIdentifierSupport.tableName(concept));
             node.put("idField", idField.getName());
-            node.put("endpointBase", endpointBase(concept));
+            node.put("endpointBase", endpointBase(concept, contexts));
             node.put("formColumns", formColumns(concept));
             node.put("displayMode", displayMode(concept));
             node.put("formPresentation", formPresentation(concept));
             node.put("frameMode", resolveFrameMode(concept, settingResolver));
             node.put("guidePage", resolveGuidePage(concept, settingResolver, knownGuidePageNames, guidePages.defaultGuidePage()));
-            node.put("fields", manifestFields(concept, conceptsByName(concepts), settingResolver));
+            node.put("fields", manifestFields(concept, conceptsByName(concepts), settingResolver, contexts));
             node.put("list", manifestList(concept, idField));
             node.put("documents", documentsByConcept.getOrDefault(concept.getName(), List.of()));
             Map<String, Object> actions = new LinkedHashMap<>();
@@ -371,7 +386,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     private static List<Map<String, Object>> manifestFields(
             CompiledConcept concept,
             Map<String, CompiledConcept> conceptsByName,
-            SettingResolver settingResolver
+            SettingResolver settingResolver,
+            List<CompiledContext> contexts
     ) {
         List<Map<String, Object>> fields = new ArrayList<>();
         for (CompiledField field : concept.getFields()) {
@@ -406,8 +422,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                     node.put("objectSchema", buildItemsSchemaNode(schema));
                 }
             }
-            Optional<Map<String, Object>> reference = referenceMetadata(field, conceptsByName, concept);
-            node.put("widget", widget(field, conceptsByName, concept, settingResolver));
+            Optional<Map<String, Object>> reference = referenceMetadata(field, conceptsByName, concept, contexts);
+            node.put("widget", widget(field, conceptsByName, concept, settingResolver, contexts));
             node.put("customWidgetRef", firstNonBlank(field.getUi() == null ? null : field.getUi().getCustomWidgetRef(), ""));
             node.put("enumValues", field.getEnumValues());
             node.put("enumOptions", enumOptionsManifest(field));
@@ -470,8 +486,9 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return found;
     }
 
-    private static String endpointBase(CompiledConcept concept) {
-        return "/api/concepts/" + SqlIdentifierSupport.tableName(concept);
+    private static String endpointBase(CompiledConcept concept, List<CompiledContext> contexts) {
+        // PK-2: stays alias-preserving on purpose -- see the "route" field comment above.
+        return "/api/concepts/" + SqlIdentifierSupport.aliasPreservingTableName(concept, contexts);
     }
 
     private static String displayName(CompiledConcept concept) {
@@ -775,10 +792,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             CompiledField field,
             Map<String, CompiledConcept> conceptsByName,
             CompiledConcept concept,
-            SettingResolver settingResolver
+            SettingResolver settingResolver,
+            List<CompiledContext> contexts
     ) {
         String conceptName = concept == null ? null : concept.getName();
-        boolean isReference = referenceMetadata(field, conceptsByName, concept).isPresent();
+        boolean isReference = referenceMetadata(field, conceptsByName, concept, contexts).isPresent();
         boolean isMultiReference = isReference
                 && field.getReferenceSemantics() != null
                 && field.getReferenceSemantics().isMultiple();
@@ -892,7 +910,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     private static Optional<Map<String, Object>> referenceMetadata(
             CompiledField field,
             Map<String, CompiledConcept> conceptsByName,
-            CompiledConcept sourceConcept
+            CompiledConcept sourceConcept,
+            List<CompiledContext> contexts
     ) {
         String targetName = referenceTarget(field, conceptsByName);
         if (targetName == null || targetName.isBlank()) {
@@ -932,7 +951,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         reference.put("onDelete", onDelete);
         reference.put("anchorField", anchorField.getName());
         reference.put("anchorType", anchorField.getDslType());
-        reference.put("endpointBase", endpointBase(target));
+        reference.put("endpointBase", endpointBase(target, contexts));
         reference.put("displayField", displayField);
         reference.put("displayFields", displayFields);
         reference.put("imageField", firstNonBlank(field.getUi() == null ? null : field.getUi().getImageField(), ""));
@@ -962,7 +981,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             // /api/notes/{id}/tags is the real route. The {id} is a runtime value the generator
             // doesn't have, so this is a base for the frontend to complete itself
             // (bondEndpointBase + "/" + recordId + "/" + bondFieldName).
-            reference.put("bondEndpointBase", "/api/" + SqlIdentifierSupport.tableName(sourceConcept));
+            // PK-2: must match ControllerEmitter.java's own "route" derivation exactly (this base is
+            // documented above as the per-entity controller's real route) -- alias-preserving, not
+            // the physical table name.
+            reference.put("bondEndpointBase", "/api/" + SqlIdentifierSupport.aliasPreservingTableName(sourceConcept, contexts));
             reference.put("bondFieldName", field.getName());
         }
         return Optional.of(reference);

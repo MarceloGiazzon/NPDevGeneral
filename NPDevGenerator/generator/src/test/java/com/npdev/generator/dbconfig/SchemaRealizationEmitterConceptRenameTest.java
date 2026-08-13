@@ -70,6 +70,52 @@ final class SchemaRealizationEmitterConceptRenameTest {
                 "the concept's table must still be the overridden name: " + businessTables);
     }
 
+    /**
+     * PK-2: a SECOND, independent rename trigger -- a pack-derived concept whose physical table
+     * name changed because of the pack's own id/major-version qualifier, NOT because the concept's
+     * authoring name changed ({@code renamedFrom} stays blank; {@code identity::User} never
+     * becomes anything else). {@code conceptTableRename} must still detect this by comparing
+     * against what the pre-PK-2, alias-preserving derivation would have produced.
+     */
+    @Test
+    void packPhysicalQualifierChangeWithNoRenamedFromStillProducesABusinessTableRenamesEntry() throws Exception {
+        CompiledConcept user = renamedConcept("identity::User", "", "identity_v1_users");
+
+        CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", Map.of(user.getName(), user));
+
+        Path outRoot = tempDir.resolve("app");
+        new SchemaRealizationEmitter().emit(model, outRoot, plan(), tempDir.resolve("model.json"));
+
+        JsonNode manifest = readManifest(outRoot);
+        JsonNode renames = manifest.path("businessTableRenames");
+
+        assertTrue(renames.isObject(), "businessTableRenames must be an object: " + renames);
+        assertEquals("identity_users", renames.path("identity_v1_users").asText(null),
+                "expected identity_v1_users -> identity_users in businessTableRenames: " + renames);
+    }
+
+    /**
+     * PK-2 correctness guard: a concept with NO physical qualifier (the ordinary, non-pack case)
+     * must never false-positive a rename just because {@code renamedFrom} is blank -- the
+     * pre-PK-2 alias-preserving derivation and the real table name are computed via the identical
+     * code path for such a concept and are always equal.
+     */
+    @Test
+    void noPackQualifierAndNoRenamedFromProducesNoRenameEntry() throws Exception {
+        CompiledConcept widget = renamedConcept("Widget", "", "");
+
+        CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", Map.of(widget.getName(), widget));
+
+        Path outRoot = tempDir.resolve("app");
+        new SchemaRealizationEmitter().emit(model, outRoot, plan(), tempDir.resolve("model.json"));
+
+        JsonNode manifest = readManifest(outRoot);
+        JsonNode renames = manifest.path("businessTableRenames");
+
+        assertTrue(renames.isMissingNode() || renames.isObject() && !renames.fieldNames().hasNext(),
+                "an unrenamed, non-pack concept must NOT produce a rename entry: " + renames);
+    }
+
     private static boolean containsText(JsonNode array, String value) {
         if (array == null || !array.isArray()) {
             return false;

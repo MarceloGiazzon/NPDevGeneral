@@ -64,11 +64,11 @@ public final class JsonModelParser {
         }
         return parse(source.resolvedRoot(), source.rootModelPath().toString(), source.warnings().stream()
                 .map(ValidationDiagnostic::getMessage)
-                .toList());
+                .toList(), source.physicalQualifierByConceptName());
     }
 
     public ModelAst parse(JsonNode root) throws IOException {
-        return parse(root, "<resolved-model>", List.of());
+        return parse(root, "<resolved-model>", List.of(), Map.of());
     }
 
     /**
@@ -117,10 +117,15 @@ public final class JsonModelParser {
     }
 
     public ModelAst parse(JsonNode root, String sourceLabel) throws IOException {
-        return parse(root, sourceLabel, List.of());
+        return parse(root, sourceLabel, List.of(), Map.of());
     }
 
-    private ModelAst parse(JsonNode root, String sourceLabel, List<String> sourceWarnings) throws IOException {
+    private ModelAst parse(
+            JsonNode root,
+            String sourceLabel,
+            List<String> sourceWarnings,
+            Map<String, String> physicalQualifierByConceptName
+    ) throws IOException {
         if (root == null || !root.isObject()) {
             throw new IOException("model.json root must be an object");
         }
@@ -586,7 +591,8 @@ public final class JsonModelParser {
                 propertyScopes,
                 properties,
                 contexts,
-                conversions
+                conversions,
+                physicalQualifierByConceptName
         );
     }
 

@@ -94,7 +94,12 @@ public final class ModelSourceResolver {
             "pack",
             "namespace",
             "version",
-            "description"
+            "description",
+            // PK-3: identity-level declarations exactly like the six above -- a fragment declaring
+            // its own transitive dependencies or its own requires would be the same authoring
+            // mistake as a fragment declaring its own pack id.
+            "packs",
+            "requires"
     );
     private static final Pattern PACK_ID_PATTERN = Pattern.compile("^[a-z][a-z0-9_-]*$");
 
@@ -161,11 +166,69 @@ public final class ModelSourceResolver {
                     new ArrayList<>(state.includedFiles),
                     state.provenance,
                     state.diagnostics,
-                    state.warnings
+                    state.warnings,
+                    state.physicalQualifierByConceptName
             );
         } catch (UncheckedModelSourceException exception) {
             throw exception.getCause();
         }
+    }
+
+    /** PK-3 CLI-only entry point ({@code npdev pack add|update|list|why}): runs the same
+     *  discovery+MVS pass {@link #resolve} does, but never enforces {@code npdev.lock} (add/update
+     *  are what WRITE it; why is always a fresh live computation) and never merges pack content
+     *  into a model -- just returns the resolved graph. A model with no {@code packs[]} at all
+     *  resolves to an empty result. */
+    public PackCliResolution resolvePackGraphForCli(Path modelJsonPath) throws IOException {
+        if (modelJsonPath == null) {
+            throw new IOException("model.json path is required");
+        }
+        Path rootRealPath = modelJsonPath.toAbsolutePath().normalize().toRealPath();
+        if (!Files.isRegularFile(rootRealPath)) {
+            throw new IOException("model.json not found: " + modelJsonPath);
+        }
+        Path rootDirectory = rootRealPath.getParent();
+        if (rootDirectory == null) {
+            throw new IOException("model.json must have a parent directory: " + rootRealPath);
+        }
+        JsonNode root = readJson(rootRealPath);
+        if (!root.isObject()) {
+            throw error(rootRealPath, "$", "Root model must be a JSON object");
+        }
+        JsonNode packs = root.get("packs");
+        if (packs == null || !packs.isArray() || packs.isEmpty()) {
+            return new PackCliResolution(Map.of(), Map.of(), rootDirectory);
+        }
+
+        ResolutionState state = new ResolutionState(rootRealPath, rootDirectory);
+        ObjectNode resolvedShell = JsonNodeFactory.instance.objectNode();
+        if (root.has("dslVersion")) {
+            resolvedShell.set("dslVersion", root.get("dslVersion").deepCopy());
+        }
+        PackDependencyGraphWalker walker = PackDependencyGraphWalker.resolveForCli(
+                this, (ArrayNode) packs, resolvedShell, rootRealPath, state);
+
+        Map<String, com.npdev.dsl.v1.pack.PackLockFile.LockedPack> lockEntries = walker.toLockEntries();
+        Map<String, List<String>> why = new LinkedHashMap<>();
+        for (String packId : walker.resolvedPackIds()) {
+            List<String> descriptions = new ArrayList<>();
+            for (com.npdev.dsl.v1.pack.MinimalVersionSelector.Requirement requirement : walker.requirementsFor(packId)) {
+                descriptions.add(requirement.requirerPackId() + " needs " + requirement.constraint().rawConstraint()
+                        + " via " + String.join(" -> ", requirement.path()));
+            }
+            why.put(packId, descriptions);
+        }
+        return new PackCliResolution(lockEntries, why, rootDirectory);
+    }
+
+    /** PK-3 CLI-only result: {@code lockEntries} is exactly what {@code npdev pack add/update}
+     *  should write to {@code npdev.lock}; {@code whyDescriptionsByPackId} is every constraint
+     *  that contributed to each packId's selection, for {@code npdev pack why}. */
+    public record PackCliResolution(
+            Map<String, com.npdev.dsl.v1.pack.PackLockFile.LockedPack> lockEntries,
+            Map<String, List<String>> whyDescriptionsByPackId,
+            Path rootDirectory
+    ) {
     }
 
     private ObjectNode resolveRoot(ObjectNode root, Path sourceFile, ResolutionState state) throws IOException {
@@ -213,7 +276,8 @@ public final class ModelSourceResolver {
             if (!packs.isArray()) {
                 throw error(sourceFile, "/packs", "packs must be an array of pack import objects");
             }
-            resolvePacks((ArrayNode) packs, resolved, sourceFile, state);
+            List<PackRequirementEntry> requirements = resolvePacks((ArrayNode) packs, resolved, sourceFile, state);
+            checkPackRequirements(requirements, root.get("provides"), sourceFile);
         }
 
         JsonNode contexts = root.get("contexts");
@@ -458,82 +522,179 @@ public final class ModelSourceResolver {
         Deque<String> pathStack = new ArrayDeque<>();
         for (String start : importGraph.keySet()) {
             if (!visited.contains(start)) {
-                detectImportCycleFrom(start, importGraph, visited, onStack, pathStack, modelFile);
+                detectCycleFrom(start, importGraph, visited, onStack, pathStack, cyclePath ->
+                        error(modelFile, "/contexts", "Import cycle detected: " + String.join(" -> ", cyclePath)
+                                + " -- a context's imports[] graph must be acyclic (a cycle means the boundary "
+                                + "is not a boundary)"));
             }
         }
     }
 
-    private static void detectImportCycleFrom(
+    /** PK-3: the generic DFS-with-onStack cycle detector D8 built for the bounded-context
+     *  {@code imports[]} graph, extracted so {@link PackDependencyGraphWalker}'s packId-keyed
+     *  dependency graph can reuse the SAME algorithm rather than a second hand-rolled one --
+     *  only the error message differs between the two callers, supplied via {@code errorReporter}.
+     *  Package-private: PackDependencyGraphWalker is a sibling class in this package. */
+    static void detectCycleFrom(
             String node,
-            Map<String, Set<String>> importGraph,
+            Map<String, Set<String>> graph,
             Set<String> visited,
             Set<String> onStack,
             Deque<String> pathStack,
-            Path modelFile
+            CycleErrorReporter errorReporter
     ) throws IOException {
         visited.add(node);
         onStack.add(node);
         pathStack.push(node);
-        for (String next : importGraph.getOrDefault(node, Set.of())) {
+        for (String next : graph.getOrDefault(node, Set.of())) {
             if (onStack.contains(next)) {
                 List<String> cyclePath = new ArrayList<>(pathStack);
                 Collections.reverse(cyclePath);
                 int startIndex = cyclePath.indexOf(next);
-                String description = String.join(" -> ", cyclePath.subList(startIndex, cyclePath.size())) + " -> " + next;
-                throw error(modelFile, "/contexts", "Import cycle detected: " + description
-                        + " -- a context's imports[] graph must be acyclic (a cycle means the boundary "
-                        + "is not a boundary)");
+                List<String> cycle = new ArrayList<>(cyclePath.subList(startIndex, cyclePath.size()));
+                cycle.add(next);
+                throw errorReporter.describe(cycle);
             }
             if (!visited.contains(next)) {
-                detectImportCycleFrom(next, importGraph, visited, onStack, pathStack, modelFile);
+                detectCycleFrom(next, graph, visited, onStack, pathStack, errorReporter);
             }
         }
         pathStack.pop();
         onStack.remove(node);
     }
 
-    private void resolvePacks(
+    @FunctionalInterface
+    interface CycleErrorReporter {
+        IOException describe(List<String> cyclePath) throws IOException;
+    }
+
+    /**
+     * PK-3: delegates to {@link PackDependencyGraphWalker}, which reproduces this method's own
+     * pre-PK-3 behavior exactly when no pack in the graph declares its own {@code packs[]} (every
+     * existing pack/app in this repo today) and additionally resolves transitive dependencies,
+     * cycles, and depth/fan-out DoS caps when one does.
+     */
+    private List<PackRequirementEntry> resolvePacks(
             ArrayNode packsNode,
             ObjectNode resolved,
             Path modelFile,
             ResolutionState state
     ) throws IOException {
-        String rootDslVersion = textOrBlank(resolved.get("dslVersion"));
-        Set<String> usedNamespaces = new LinkedHashSet<>();
-        int index = 0;
-        for (JsonNode packRefNode : packsNode) {
-            String path = "/packs/" + index;
-            if (!packRefNode.isObject()) {
-                throw error(modelFile, path, "Pack import must be a JSON object with $ref");
-            }
-            ObjectNode packRef = (ObjectNode) packRefNode;
-            JsonNode refNode = packRef.get("$ref");
-            if (refNode == null || !refNode.isTextual() || refNode.asText("").isBlank()) {
-                throw error(modelFile, path + "/$ref", "Pack $ref must be a non-blank string");
-            }
+        return PackDependencyGraphWalker.resolve(this, packsNode, resolved, modelFile, state);
+    }
 
-            Path packFile = resolvePackPath(refNode.asText(), modelFile, state.rootDirectory);
-            ObjectNode rawPackNode = loadPackJson(packFile, state);
-            String packDslVersion = textOrBlank(rawPackNode.get("dslVersion"));
-            if (!rootDslVersion.isBlank() && !rootDslVersion.equals(packDslVersion)) {
-                throw error(packFile, "/dslVersion", "Pack DSL version mismatch for " + refNode.asText()
-                        + ": root model uses " + rootDslVersion + " but pack uses " + packDslVersion);
-            }
-            ObjectNode packNode = resolvePackRoot(rawPackNode, packFile, state, 1, new ArrayDeque<>());
+    /** PK-3: one pack's own {@code requires} declaration, plus the path that reached it -- for
+     *  naming exactly which pack (and how it was reached) left a requirement unbound. */
+    record PackRequirementEntry(String packId, List<String> path, JsonNode requires) {
+    }
 
-            String packId = resolvePackNamespace(packRef, packNode, modelFile, packFile, path);
-            String namespaceKey = packId.toLowerCase(Locale.ROOT);
-            if (!usedNamespaces.add(namespaceKey)) {
-                throw error(modelFile, path + "/as", "Duplicate pack namespace alias: " + packId);
-            }
-            Map<String, Map<String, String>> rewriteMaps = buildRewriteMaps(packId, packNode);
-            mergePackConcepts(packId, packNode, resolved, packFile, rewriteMaps);
-            mergePackNonConceptArrays(packId, packNode, resolved, packFile, rewriteMaps);
-            index++;
+    /** PK-3: refuses composition the moment any collected {@code requires.roles}/{@code
+     *  capabilities}/{@code network} entry is not present in the app's own root {@code provides}
+     *  -- checked here (resolve time, right after resolvePacks returns) to stay consistent with
+     *  every other pack-composition invariant this method already enforces at this same point
+     *  (dslVersion equality, duplicate-alias/-concept). Only proves presence/binding; rewriting a
+     *  pack's own internal role checks to consume the app's concrete role name is PACK-9, still
+     *  open. */
+    private void checkPackRequirements(List<PackRequirementEntry> requirements, JsonNode provides, Path modelFile) throws IOException {
+        if (requirements.isEmpty()) {
+            return;
+        }
+        Set<String> providedRoles = textSetOf(provides, "roles");
+        Set<String> providedCapabilities = textSetOf(provides, "capabilities");
+        Set<String> providedNetwork = textSetOf(provides, "network");
+        for (PackRequirementEntry entry : requirements) {
+            checkRequirementKind(entry, "roles", providedRoles, modelFile);
+            checkRequirementKind(entry, "capabilities", providedCapabilities, modelFile);
+            checkRequirementKind(entry, "network", providedNetwork, modelFile);
         }
     }
 
-    private static String resolvePackNamespace(
+    private void checkRequirementKind(PackRequirementEntry entry, String kind, Set<String> provided, Path modelFile) throws IOException {
+        JsonNode values = entry.requires().get(kind);
+        if (values == null || !values.isArray()) {
+            return;
+        }
+        for (JsonNode value : values) {
+            if (!value.isTextual()) {
+                continue;
+            }
+            String required = value.asText();
+            if (!provided.contains(required)) {
+                throw error(modelFile, "/packs", "pack '" + entry.packId() + "' (via " + String.join(" -> ", entry.path())
+                        + ") requires " + kind.substring(0, kind.length() - 1) + " '" + required
+                        + "', which the app does not declare in provides." + kind);
+            }
+        }
+    }
+
+    private static Set<String> textSetOf(JsonNode object, String field) {
+        if (object == null || !object.isObject()) {
+            return Set.of();
+        }
+        JsonNode array = object.get(field);
+        if (array == null || !array.isArray()) {
+            return Set.of();
+        }
+        Set<String> out = new LinkedHashSet<>();
+        for (JsonNode value : array) {
+            if (value.isTextual()) {
+                out.add(value.asText());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * PK-2: the physical SQL identity of a pack-derived concept must depend on the pack's own
+     * {@code pack} id + major version, never on the importing app's chosen {@code as} alias -- two
+     * apps importing the same pack under different aliases must still produce identical physical
+     * table names. {@code packId} above (the loop-local qualifier used for logical namespacing,
+     * {@code qualifierId::Name}) stays alias-able and untouched; this records a SEPARATE map, keyed
+     * by the same qualified concept name {@link #namespacePackConcept} just produced, whose value is
+     * derived from the pack's own {@code pack}/{@code version} fields instead of the alias.
+     */
+    static void recordPhysicalQualifiers(
+            String qualifierId,
+            ObjectNode packNode,
+            Path packFile,
+            ResolutionState state
+    ) throws IOException {
+        String realPackId = textOrBlank(packNode.get("pack"));
+        int majorVersion = parsePackMajorVersion(packNode.get("version"), packFile);
+        String physicalQualifier = realPackId + "_v" + majorVersion;
+
+        JsonNode conceptsNode = packNode.get("concepts");
+        if (conceptsNode == null || !conceptsNode.isArray()) {
+            return;
+        }
+        for (JsonNode concept : conceptsNode) {
+            if (concept == null || !concept.isObject() || !concept.has("name")) {
+                continue;
+            }
+            String bareName = textOrBlank(concept.get("name"));
+            if (bareName.isBlank()) {
+                continue;
+            }
+            state.physicalQualifierByConceptName.put(qualifierId + "::" + bareName, physicalQualifier);
+        }
+    }
+
+    private static int parsePackMajorVersion(JsonNode versionNode, Path packFile) throws IOException {
+        String version = versionNode == null ? "" : textOrBlank(versionNode);
+        if (version.isBlank()) {
+            throw error(packFile, "/version", "Pack file must declare a non-blank string 'version'");
+        }
+        int dot = version.indexOf('.');
+        String majorText = dot < 0 ? version : version.substring(0, dot);
+        try {
+            return Integer.parseInt(majorText.trim());
+        } catch (NumberFormatException notNumeric) {
+            throw error(packFile, "/version",
+                    "Pack 'version' must start with an integer major version (e.g. \"1.0.0\"), got: " + version);
+        }
+    }
+
+    static String resolvePackNamespace(
             ObjectNode packRef,
             ObjectNode packNode,
             Path modelFile,
@@ -595,7 +756,7 @@ public final class ModelSourceResolver {
      *  against that kind's own map (e.g. {@code queries}), never a same-named member of a
      *  different kind. {@code capabilities} and {@code customCapabilities} share one merged map --
      *  a {@code capability} reference field does not distinguish which of the two declared it. */
-    private static Map<String, Map<String, String>> buildRewriteMaps(String qualifierId, ObjectNode sourceNode) {
+    static Map<String, Map<String, String>> buildRewriteMaps(String qualifierId, ObjectNode sourceNode) {
         Map<String, Map<String, String>> maps = new LinkedHashMap<>();
         for (String kind : MODEL_ARRAY_KEYS) {
             maps.put(kind, memberRewriteMap(qualifierId, sourceNode, kind));
@@ -680,7 +841,7 @@ public final class ModelSourceResolver {
      * normal duplicate-member error. Without this, pack-defined domain types/capabilities that a
      * pack's concepts depend on would be silently dropped.
      */
-    private static void mergePackNonConceptArrays(
+    static void mergePackNonConceptArrays(
             String packId,
             ObjectNode packNode,
             ObjectNode resolved,
@@ -1038,11 +1199,11 @@ public final class ModelSourceResolver {
         String resolve(String bareName);
     }
 
-    private static Path resolvePackPath(String ref, Path modelFile, Path rootDirectory) throws IOException {
+    static Path resolvePackPath(String ref, Path modelFile, Path rootDirectory) throws IOException {
         return resolveJsonRefUnderRoot(ref, modelFile, rootDirectory, rootDirectory, "Pack $ref");
     }
 
-    private static ObjectNode loadPackJson(Path packFile, ResolutionState state) throws IOException {
+    static ObjectNode loadPackJson(Path packFile, ResolutionState state) throws IOException {
         JsonNode node = readJson(packFile);
         if (!node.isObject()) {
             throw error(packFile, "$", "Pack file must be a JSON object");
@@ -1053,7 +1214,7 @@ public final class ModelSourceResolver {
         return (ObjectNode) node;
     }
 
-    private ObjectNode resolvePackRoot(
+    ObjectNode resolvePackRoot(
             ObjectNode rawPack,
             Path packFile,
             ResolutionState state,
@@ -1078,6 +1239,18 @@ public final class ModelSourceResolver {
         }
         if (rawPack.has("metadata")) {
             resolvedPack.set("metadata", rawPack.get("metadata").deepCopy());
+        }
+        // PK-3: survive packs[]/requires through verbatim, exactly like metadata above -- neither
+        // is in PACK_ROOT_SCALAR_KEYS or MODEL_ARRAY_KEYS, so without this they schema-validate and
+        // then silently vanish (the same "twin forgotten" hazard REG-108 already found for
+        // roles/propertyScopes/properties). resolvePackRoot itself stays non-recursive: nothing here
+        // resolves a dependency's own file -- that recursion is PackDependencyGraphWalker's job, one
+        // layer up, which is also where packs[]/requires actually get consumed.
+        if (rawPack.has("packs")) {
+            resolvedPack.set("packs", rawPack.get("packs").deepCopy());
+        }
+        if (rawPack.has("requires")) {
+            resolvedPack.set("requires", rawPack.get("requires").deepCopy());
         }
         JsonNode fragments = rawPack.get("fragments");
         if (fragments != null) {
@@ -1220,7 +1393,7 @@ public final class ModelSourceResolver {
         }
     }
 
-    private static void mergePackConcepts(
+    static void mergePackConcepts(
             String packId,
             ObjectNode packNode,
             ObjectNode resolved,
@@ -1544,17 +1717,23 @@ public final class ModelSourceResolver {
             JsonNode ref = node.get("$ref");
             if (ref != null) {
                 // A bare include is exactly {"$ref": "..."}; a pack import may additionally carry
-                // an "as" alias ({"$ref": "...", "as": "..."}); a top-level context declaration (B20,
-                // S2) additionally carries a required "name" ({"$ref": "...", "name": "..."}) and,
-                // since S8 Wave 4 (ADR-0011 D4's v2 opt-in), an optional "physicallyIsolate", but
-                // ONLY at /contexts/N -- everywhere else "name"/"physicallyIsolate" alongside a bare
-                // $ref stays malformed, same as any other stray key would.
+                // an "as" alias ({"$ref": "...", "as": "..."}) and, since PK-3, "allowSideBySide"
+                // (ONLY at /packs/N -- see model.schema.json's packRef); a top-level context
+                // declaration (B20, S2) additionally carries a required "name"
+                // ({"$ref": "...", "name": "..."}) and, since S8 Wave 4 (ADR-0011 D4's v2 opt-in),
+                // an optional "physicallyIsolate", but ONLY at /contexts/N -- everywhere else
+                // "name"/"physicallyIsolate"/"allowSideBySide" alongside a bare $ref stays
+                // malformed, same as any other stray key would.
                 boolean isContextDeclaration = path.matches("^\\$/contexts/\\d+$");
+                boolean isPackDeclaration = path.matches("^\\$/packs/\\d+$");
                 boolean onlyRefAndOptionalAlias = node.size() == 1
                         || (node.size() == 2 && node.has("as"))
                         || (isContextDeclaration && node.size() == 2 && node.has("name"))
                         || (isContextDeclaration && node.size() == 3 && node.has("name")
-                                && node.has("physicallyIsolate"));
+                                && node.has("physicallyIsolate"))
+                        || (isPackDeclaration && node.size() == 2 && node.has("allowSideBySide"))
+                        || (isPackDeclaration && node.size() == 3 && node.has("as")
+                                && node.has("allowSideBySide"));
                 if (!onlyRefAndOptionalAlias) {
                     throwUnchecked(new IOException("Malformed model include at " + sourceFile + " " + path
                             + ": $ref object must not contain extra properties"));
@@ -1670,7 +1849,9 @@ public final class ModelSourceResolver {
         }
     }
 
-    private static ValidationDiagnostic diagnostic(
+    // Package-private: PackDependencyGraphWalker (PK-3) emits its own allowSideBySide warning
+    // through the same diagnostic shape every other resolver warning already uses.
+    static ValidationDiagnostic diagnostic(
             ValidationSeverity severity,
             String code,
             String message,
@@ -1687,7 +1868,9 @@ public final class ModelSourceResolver {
         );
     }
 
-    private static IOException error(Path sourceFile, String path, String message) {
+    // Package-private: PackDependencyGraphWalker (PK-3) is a sibling class in this package and
+    // needs the same error-formatting convention every other resolver error uses.
+    static IOException error(Path sourceFile, String path, String message) {
         return new IOException(sourceFile + " " + path + ": " + message);
     }
 
@@ -1695,7 +1878,8 @@ public final class ModelSourceResolver {
         return value == null ? "" : value.replace("~", "~0").replace("/", "~1");
     }
 
-    private static String textOrBlank(JsonNode node) {
+    // Package-private: PackDependencyGraphWalker (PK-3) reads pack scalar fields the same way.
+    static String textOrBlank(JsonNode node) {
         return node != null && node.isTextual() ? node.asText("").trim() : "";
     }
 
@@ -1710,16 +1894,20 @@ public final class ModelSourceResolver {
     private record Ref(String ref) {
     }
 
-    private static final class ResolutionState {
-        private final Path rootRealPath;
-        private final Path rootDirectory;
-        private final List<Path> includedFiles = new ArrayList<>();
-        private final Set<Path> seenIncludedFiles = new LinkedHashSet<>();
-        private final Map<String, Path> provenance = new HashMap<>();
-        private final List<ValidationDiagnostic> diagnostics = new ArrayList<>();
-        private final List<ValidationDiagnostic> warnings = new ArrayList<>();
+    // Package-private (not private): PackDependencyGraphWalker (PK-3) is a sibling class in this
+    // package that shares one resolution pass's state (physicalQualifierByConceptName, warnings,
+    // rootDirectory) with ModelSourceResolver -- same reasoning as error()/textOrBlank() above.
+    static final class ResolutionState {
+        final Path rootRealPath;
+        final Path rootDirectory;
+        final List<Path> includedFiles = new ArrayList<>();
+        final Set<Path> seenIncludedFiles = new LinkedHashSet<>();
+        final Map<String, Path> provenance = new HashMap<>();
+        final List<ValidationDiagnostic> diagnostics = new ArrayList<>();
+        final List<ValidationDiagnostic> warnings = new ArrayList<>();
+        final Map<String, String> physicalQualifierByConceptName = new LinkedHashMap<>();
 
-        private ResolutionState(Path rootRealPath, Path rootDirectory) {
+        ResolutionState(Path rootRealPath, Path rootDirectory) {
             this.rootRealPath = rootRealPath;
             this.rootDirectory = rootDirectory;
         }

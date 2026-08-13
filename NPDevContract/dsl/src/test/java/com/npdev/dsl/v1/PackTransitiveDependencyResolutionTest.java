@@ -1,0 +1,613 @@
+package com.npdev.dsl.v1;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.dsl.v1.pack.PackLockFile;
+import com.npdev.dsl.v1.parser.ModelSourceResolver;
+import com.npdev.dsl.v1.parser.ResolvedModelSource;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * PK-3: a pack may itself declare {@code packs[]} (transitive dependencies). Proves the diamond
+ * shape the card's own proof section names: {@code app -> crm -> user}, {@code app -> billing ->
+ * user} resolves to one merged {@code user} pack, and cross-pack references written using a
+ * dependency's real pack id ({@code user::Something}) resolve correctly with zero rewriting in
+ * this common, no-alias-collision case (see PackDependencyGraphWalker's own qualifier-assignment
+ * doc comment for why).
+ */
+class PackTransitiveDependencyResolutionTest {
+
+    @TempDir
+    Path temp;
+
+    @Test
+    void diamondDependencyMergesOneUserPackAndCrossPackReferencesResolve() throws Exception {
+        write("packs/user/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.5.0",
+                  "concepts": [
+                    { "name": "Account", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true },
+                      { "name": "email", "type": "string", "required": true }
+                    ] }
+                  ]
+                }
+                """);
+        write("packs/crm/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [
+                    { "name": "Lead", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true },
+                      { "name": "ownerAccount", "type": "reference", "ref": "user::Account" }
+                    ] }
+                  ]
+                }
+                """);
+        write("packs/billing/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "billing",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [
+                    { "name": "Invoice", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true },
+                      { "name": "billedAccount", "type": "reference", "ref": "user::Account" }
+                    ] }
+                  ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "diamond.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [
+                    { "$ref": "packs/crm/pack.json" },
+                    { "$ref": "packs/billing/pack.json" }
+                  ]
+                }
+                """);
+        writeValidLock(Map.of(
+                "user", "packs/user/pack.json",
+                "crm", "packs/crm/pack.json",
+                "billing", "packs/billing/pack.json"));
+
+        ResolvedModelSource source = new ModelSourceResolver().resolve(model);
+        JsonNode concepts = source.resolvedRoot().get("concepts");
+
+        boolean sawUserAccount = false;
+        int userAccountCount = 0;
+        for (JsonNode concept : concepts) {
+            String name = concept.get("name").asText();
+            if ("user::Account".equals(name)) {
+                sawUserAccount = true;
+                userAccountCount++;
+            }
+        }
+        assertTrue(sawUserAccount, "user::Account must be merged exactly once from the diamond");
+        assertEquals(1, userAccountCount, "user pack must be merged exactly once, not once per path that reaches it");
+
+        // Both dependents' hardcoded cross-pack references (written using user's real packId,
+        // since neither crm nor billing's author can know an importer's future alias) must resolve
+        // to the SAME qualifier user's own concepts were merged under -- zero rewriting needed in
+        // this common (no direct-alias-collision) case.
+        for (JsonNode concept : concepts) {
+            String name = concept.get("name").asText();
+            if ("crm::Lead".equals(name) || "billing::Invoice".equals(name)) {
+                JsonNode fields = concept.get("fields");
+                boolean foundRef = false;
+                for (JsonNode field : fields) {
+                    if (field.has("ref")) {
+                        assertEquals("user::Account", field.get("ref").asText(),
+                                name + "'s cross-pack reference must resolve to user::Account unchanged");
+                        foundRef = true;
+                    }
+                }
+                assertTrue(foundRef, name + " must have its cross-pack reference field");
+            }
+        }
+    }
+
+    @Test
+    void crossMajorConstraintsOnTheSamePackRefuseNamingBothPaths() throws Exception {
+        write("packs/user/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.5.0",
+                  "concepts": [
+                    { "name": "Account", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+        write("packs/crm/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [
+                    { "name": "Lead", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+        write("packs/billing/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "billing",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^3.0" } ],
+                  "concepts": [
+                    { "name": "Invoice", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "diamond.conflict.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [
+                    { "$ref": "packs/crm/pack.json" },
+                    { "$ref": "packs/billing/pack.json" }
+                  ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        String message = thrown.getMessage();
+        assertTrue(message.contains("crm"), "must name crm, got: " + message);
+        assertTrue(message.contains("billing"), "must name billing, got: " + message);
+        assertTrue(message.contains("app -> crm"), "must name crm's path, got: " + message);
+        assertTrue(message.contains("app -> billing"), "must name billing's path, got: " + message);
+    }
+
+    @Test
+    void packDependencyCycleFailsPrintingThePath() throws Exception {
+        write("packs/a/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "a",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "b", "version": "^1.0" } ]
+                }
+                """);
+        write("packs/b/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "b",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "a", "version": "^1.0" } ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "cycle.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "$ref": "packs/a/pack.json" } ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        // The DFS can legitimately report the cycle starting from either "a" or "b" depending on
+        // discovery order (both "a -> b -> a" and "b -> a -> b" name the same real cycle) -- assert
+        // the shape, not one specific rotation.
+        String message = thrown.getMessage();
+        assertTrue(message.contains("Pack dependency cycle detected"), "must name a pack cycle, got: " + message);
+        assertTrue(message.contains("a -> b -> a") || message.contains("b -> a -> b"),
+                "cycle message must name the actual path (either rotation), got: " + message);
+    }
+
+    @Test
+    void depthCapRefusesNamingTheLimit() throws Exception {
+        // 9 packs chained a0 -> a1 -> ... -> a8, exceeding MAX_PACK_DEPTH (8).
+        for (int i = 0; i < 9; i++) {
+            String selfId = "a" + i;
+            String depsBlock = i < 8
+                    ? "\"packs\": [ { \"pack\": \"a" + (i + 1) + "\", \"version\": \"^1.0\" } ],"
+                    : "";
+            write("packs/" + selfId + "/pack.json", """
+                    {
+                      "dslVersion": "1.0.0",
+                      "pack": "%s",
+                      "version": "1.0.0",
+                      %s
+                      "concepts": [ { "name": "C", "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                      ] } ]
+                    }
+                    """.formatted(selfId, depsBlock));
+        }
+        Path model = write("model.json", """
+                {
+                  "namespace": "depth.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "$ref": "packs/a0/pack.json" } ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(thrown.getMessage().contains("maximum depth"),
+                "must refuse naming the depth cap, got: " + thrown.getMessage());
+    }
+
+    @Test
+    void packWithNoTransitiveDependenciesResolvesExactlyAsBeforePk3() throws Exception {
+        // No-op regression proof: a pack that declares no packs[] at all (every existing pack in
+        // this repo today) must resolve byte-identically to pre-PK-3 behavior.
+        write("packs/simple/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "simple",
+                  "version": "1.0.0",
+                  "concepts": [
+                    { "name": "Widget", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "noop.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "$ref": "packs/simple/pack.json" } ]
+                }
+                """);
+
+        ResolvedModelSource source = new ModelSourceResolver().resolve(model);
+        JsonNode concepts = source.resolvedRoot().get("concepts");
+        assertEquals(1, concepts.size());
+        assertEquals("simple::Widget", concepts.get(0).get("name").asText());
+    }
+
+    @Test
+    void directImportCollidingWithATransitivelyResolvedPackRefusesWithoutAllowSideBySide() throws Exception {
+        writeSideBySideFixtures();
+        Path model = write("model.json", """
+                {
+                  "namespace": "sbs.refuse.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [
+                    { "$ref": "packs/crm/pack.json" },
+                    { "$ref": "packs/user-v3/pack.json", "as": "userv3" }
+                  ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(thrown.getMessage().contains("allowSideBySide"),
+                "must point at the escape hatch, got: " + thrown.getMessage());
+    }
+
+    @Test
+    void allowSideBySideWithoutAnExplicitAliasRefuses() throws Exception {
+        writeSideBySideFixtures();
+        Path model = write("model.json", """
+                {
+                  "namespace": "sbs.noalias.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [
+                    { "$ref": "packs/crm/pack.json" },
+                    { "$ref": "packs/user-v3/pack.json", "allowSideBySide": true }
+                  ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(thrown.getMessage().contains("explicit 'as' alias"),
+                "must require an alias, got: " + thrown.getMessage());
+    }
+
+    @Test
+    void allowSideBySideWithAnAliasLetsBothVersionsCoexist() throws Exception {
+        writeSideBySideFixtures();
+        Path model = write("model.json", """
+                {
+                  "namespace": "sbs.ok.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [
+                    { "$ref": "packs/crm/pack.json" },
+                    { "$ref": "packs/user-v3/pack.json", "as": "userv3", "allowSideBySide": true }
+                  ]
+                }
+                """);
+        writeValidLock(Map.of(
+                "user", "packs/user/pack.json",
+                "crm", "packs/crm/pack.json",
+                "userv3", "packs/user-v3/pack.json"));
+
+        ResolvedModelSource source = new ModelSourceResolver().resolve(model);
+        JsonNode concepts = source.resolvedRoot().get("concepts");
+        boolean sawTransitiveUser = false;
+        boolean sawDirectUserV3 = false;
+        for (JsonNode concept : concepts) {
+            String name = concept.get("name").asText();
+            if ("user::Account".equals(name)) {
+                sawTransitiveUser = true;
+            }
+            if ("userv3::Account".equals(name)) {
+                sawDirectUserV3 = true;
+            }
+        }
+        assertTrue(sawTransitiveUser, "the transitively-resolved user (v2, via crm) must still be present");
+        assertTrue(sawDirectUserV3, "the directly-imported, aliased user (v3) must be present too");
+        assertEquals(1, source.warnings().stream()
+                .filter(w -> "PACK_SIDE_BY_SIDE_MAJOR_VERSIONS".equals(w.getCode()))
+                .count(), "must emit exactly one loud warning naming the side-by-side decision");
+    }
+
+    private void writeSideBySideFixtures() throws Exception {
+        // The default-convention location a transitive dependency on "user" resolves to.
+        write("packs/user/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.0.0",
+                  "concepts": [
+                    { "name": "Account", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+        write("packs/crm/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [
+                    { "name": "Lead", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+        // A DIFFERENT physical file, same real pack id "user", a different major -- what the app
+        // wants to import directly, alongside (not instead of) crm's own transitive dependency.
+        write("packs/user-v3/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "3.0.0",
+                  "concepts": [
+                    { "name": "Account", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+    }
+
+    @Test
+    void transitiveDependencyWithNoLockRefusesNamingTheRemedy() throws Exception {
+        write("packs/user/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.0.0",
+                  "concepts": [ { "name": "Account", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        write("packs/crm/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [ { "name": "Lead", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "no.lock.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "$ref": "packs/crm/pack.json" } ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(thrown.getMessage().contains("no npdev.lock exists"), "got: " + thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("npdev pack add"), "must name the remedy, got: " + thrown.getMessage());
+    }
+
+    @Test
+    void staleLockVersionRefusesNamingTheRemedy() throws Exception {
+        write("packs/user/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.0.0",
+                  "concepts": [ { "name": "Account", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        write("packs/crm/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [ { "name": "Lead", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "stale.lock.version.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "$ref": "packs/crm/pack.json" } ]
+                }
+                """);
+        // Hand-write a lock recording a DIFFERENT version than what's actually on disk now.
+        PackLockFile.of(Map.of(
+                "user", new PackLockFile.LockedPack("2.0.0", PackLockFile.sha256(temp.resolve("packs/user/pack.json")), "packs/user/pack.json"),
+                "crm", new PackLockFile.LockedPack("1.0.0", PackLockFile.sha256(temp.resolve("packs/crm/pack.json")), "packs/crm/pack.json")
+        )).write(temp);
+        // Now bump user's version on disk without updating the lock -- classic drift.
+        Files.writeString(temp.resolve("packs/user/pack.json"), """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.1.0",
+                  "concepts": [ { "name": "Account", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(thrown.getMessage().contains("is stale for"), "got: " + thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("user"), "must name the stale pack, got: " + thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("npdev pack update"), "must name the remedy, got: " + thrown.getMessage());
+    }
+
+    @Test
+    void staleLockDigestRefusesEvenWhenTheVersionStringWasNotBumped() throws Exception {
+        write("packs/user/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.0.0",
+                  "concepts": [ { "name": "Account", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        write("packs/crm/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [ { "name": "Lead", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "stale.lock.digest.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "$ref": "packs/crm/pack.json" } ]
+                }
+                """);
+        writeValidLock(Map.of("user", "packs/user/pack.json", "crm", "packs/crm/pack.json"));
+        // Hand-edit the pack.json's CONTENT (not its version string) without touching the lock --
+        // the digest check must catch this even though resolvedVersion still matches.
+        Files.writeString(temp.resolve("packs/user/pack.json"), """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.0.0",
+                  "concepts": [ { "name": "Account", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true },
+                    { "name": "unexpectedNewField", "type": "string" }
+                  ] } ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(thrown.getMessage().contains("is stale for"), "got: " + thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("user"), "must name the stale pack, got: " + thrown.getMessage());
+    }
+
+    @Test
+    void twoResolutionsOfTheSameModelAndLockAreByteIdentical() throws Exception {
+        write("packs/user/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.0.0",
+                  "concepts": [ { "name": "Account", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        write("packs/crm/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [ { "name": "Lead", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "determinism.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "$ref": "packs/crm/pack.json" } ]
+                }
+                """);
+        writeValidLock(Map.of("user", "packs/user/pack.json", "crm", "packs/crm/pack.json"));
+
+        JsonNode first = new ModelSourceResolver().resolve(model).resolvedRoot();
+        JsonNode second = new ModelSourceResolver().resolve(model).resolvedRoot();
+        assertEquals(first.toString(), second.toString());
+    }
+
+    /** Writes a valid npdev.lock covering the given packId -> relative-source-path pairs, deriving
+     *  each entry's resolvedVersion and digest fresh from the actual fixture file on disk -- the
+     *  same way a real `npdev pack add`/`update` would, not hardcoded hashes. */
+    private void writeValidLock(Map<String, String> packIdToRelativeSourcePath) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, PackLockFile.LockedPack> packs = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : packIdToRelativeSourcePath.entrySet()) {
+            Path file = temp.resolve(entry.getValue());
+            String version = mapper.readTree(file.toFile()).get("version").asText();
+            packs.put(entry.getKey(), new PackLockFile.LockedPack(version, PackLockFile.sha256(file), entry.getValue()));
+        }
+        PackLockFile.of(packs).write(temp);
+    }
+
+    private Path write(String relative, String content) throws Exception {
+        Path path = temp.resolve(relative);
+        Files.createDirectories(path.getParent());
+        Files.writeString(path, content);
+        return path;
+    }
+}

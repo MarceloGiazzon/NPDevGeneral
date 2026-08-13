@@ -34,8 +34,8 @@
       "id": "ADR-0011-D4",
       "adr": "docs/adr/ADR-0011-bounded-contexts.md",
       "file": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
-      "contains": "tableNameSource",
-      "why": "D4 accepted no physical table prefixing in v1 -- the original motivating case for this whole checker: ADR-0011 D4 was ratified and ModelCompiler did not do it, undetected until a codemod ran against real content (S3 addendum). tableNameSource is the fix; this keeps it from silently regressing."
+      "contains": "physicalTableNameSource",
+      "why": "D4 accepted no physical table prefixing from a bounded CONTEXT in v1 -- the original motivating case for this whole checker: ADR-0011 D4 was ratified and ModelCompiler did not do it, undetected until a codemod ran against real content (S3 addendum). The original anchor `tableNameSource` was renamed to `physicalTableNameSource` by PK-2 (pack physical identity, MASTER-ROADMAP.md Step 6, 2026-08-13), which adds a SEPARATE, orthogonal physical qualifier for pack-derived concepts; the method still delegates unchanged to `contextAwareIdentifierSource` for the context case D4 governs, so D4's guarantee is unaffected -- only the anchor name moved."
     }
   ]
 }
