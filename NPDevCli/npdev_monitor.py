@@ -328,6 +328,28 @@ def _read_json(path: Path) -> dict | None:
         return None
 
 
+def _read_live_api_key(final_app_root: Path) -> str | None:
+    """R7 Stage C: `secrets/api-key.env` holds the KEY that actually authenticates today
+    (`Ensure-NpdevApiKey`, generated at first launch), which `resolved-db-plan.json`'s `apiKey` field
+    -- baked in at generation time, before that file exists -- no longer is. Same
+    `NAME=VALUE`-split-on-first-`=` parse the emitted PowerShell provisioner uses; the header value is
+    the part of `VALUE` before its own `=` (the `key=tenantId:actorId:roles` encoding
+    `RuntimeApiKeyAuthFilter` expects)."""
+    key_file = final_app_root / "secrets" / "api-key.env"
+    try:
+        for raw_line in key_file.read_text(encoding="utf-8-sig").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            _, _, mapping = line.partition("=")
+            api_key, _, _claims = mapping.partition("=")
+            if api_key:
+                return api_key
+    except OSError:
+        return None
+    return None
+
+
 def _resolve_app_relative(app_root: Path, raw: str | None) -> str | None:
     """PORT-1: the plan carries APP-RELATIVE paths ('data', '.') so a copied app finds its own
     database. Older plans carry absolute ones. Honour both, exactly as the emitted
@@ -470,6 +492,12 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
     # way to tell. The probe is the right place to answer it: it is already the surface for "facts
     # info.json deliberately does not carry".
     #
+    # R7 Stage C: `plan.apiKey` is now a generation-time-only placeholder -- the real key is generated
+    # at first launch into `secrets/api-key.env` and REPLACES `application-dev.yml`'s default outright
+    # (env-var precedence on a String property, not a merge). `_read_live_api_key` is the actually-
+    # working key once the app has been launched at least once; before that, the plan value is the
+    # best available answer (the app hasn't picked a key yet either).
+    #
     # Named `apiKey` on purpose -- `redact()`'s key pattern matches it, so the export bundle and the
     # assistant payload replace it with <redacted> with no extra rule. `authHeader` deliberately does
     # NOT match that pattern, so the header NAME survives redaction; knowing which header to send is
@@ -478,7 +506,7 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
     # None, never an invented "dev-key", when the plan predates the field: an unresolvable input is
     # unknown, not a guess (the same X0 rule REG-131/REG-136 apply).
     record["authHeader"] = "X-Api-Key"
-    record["apiKey"] = plan.get("apiKey") or None
+    record["apiKey"] = _read_live_api_key(final_app_root) or plan.get("apiKey") or None
 
     # --- PROBED facts: exactly the rows info.json deliberately does NOT carry (D2-a) ----------
     data_root = _resolve_app_relative(app_root, plan.get("resolvedDataRoot"))
