@@ -1,0 +1,32 @@
+id: BUILD-1
+title: >-
+  262 of 311 app-independent RuntimeHost files (38.7k LOC) are recompiled in every app build
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md card BT-1). Measured:
+  NPDevRuntimeHost/src/main/java is 311 files / 48,104 LOC, copied into every generated app and
+  recompiled on every build. 49 files / 9,413 LOC are genuinely app-coupled (name
+  com.npdev.generated.); the remaining 262 files / 38,691 LOC (80%) are jarrable. No standalone
+  classification artifact existed before this session -- the split only ever existed inline as a
+  Groovy text-scan heuristic in build.gradle(.template).
+surface: runtimehost/build-time
+files:
+  - NPDevRuntimeHost/build.gradle.template
+  - scripts/proofs/classify_runtimehost_sources.py
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card BT-1 for the full 6-step spec (classify,
+  split the source tree into runtimehost-core/runtimehost-generated-bridge, publish the core as a
+  jar, FinalAppAssembler copies only the bridge, explicit @ComponentScan/@EntityScan, measure via the
+  scale ladder). Decision PD9 already recorded: one jar to start (runtimehost-core), not several.
+  MASTER-ROADMAP.md F2: this card must not land before a scale baseline exists (R9/SCALE-1), or the
+  before/after measurement is gone permanently. This session (Step 2b) delivers only step 1
+  (classify, pure data); steps 2-6 are MASTER-ROADMAP.md Step 7 (BT-1 b+c, milestone BM1), not in
+  this session's scope.
+guard:
+  kind: script
+  ref: scripts/proofs/classify_runtimehost_sources.py
+  asserts: standalone, re-runnable classification of NPDevRuntimeHost/src/main/java into app-coupled vs app-independent, matching the 49/262 measured split
+  provenRed: false

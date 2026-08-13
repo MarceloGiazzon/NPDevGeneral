@@ -1,0 +1,19 @@
+id: QUAL-7
+title: >-
+  21 gate scripts are reachable from nothing
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R4 Part A). 21
+  scripts/quality/run-*.ps1 confirmed unreachable (18 referenced nowhere at all, 3 only from prose),
+  e.g. run-boundary-lock-check, run-editor-complexity-check (load-bearing for R6's 300-line cap despite
+  being unreachable from any gate), run-trusted-source-security-check.
+surface: quality/gate-inventory
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R4 Part A for the full 18-script list. Default
+  is delete; three deserve a look before deletion (run-boundary-lock-check,
+  run-trusted-source-security-check, run-editor-complexity-check) because they guard real product
+  surface. MASTER-ROADMAP.md batches this into Track C item C5 (with Part C's product/paperwork
+  classification); not in this session's scope (Steps 1-4).

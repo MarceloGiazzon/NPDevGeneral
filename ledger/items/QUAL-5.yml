@@ -1,0 +1,40 @@
+id: QUAL-5
+title: >-
+  36 RuntimeHost test files, incl. all MockMvc tests, never compile in any gate
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R1). One undifferentiated
+  exclusion blob in NPDevRuntimeHost/build.gradle(.template) had three real causes conflated: 4
+  phantom entries naming files deleted at d0bf41b3 (fixed this session, R1 Stage 0); an unconditional
+  generatedRuntimeDependentTestSources exclusion that ran even when the generated-runtime mount was
+  present, silently skipping AgentProxyControllerTest's 9 SUPERUSER-guard tests forever (fixed this
+  session, R1 Stage 1); and Stages 2-5 (10 unblocked entries, 5 full-boot surface tests, integrationTest
+  routing, the 6 genuinely uncompilable tests) not yet done.
+surface: runtimehost/build-config
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R1 for the full 6-stage spec. This session
+  (MASTER-ROADMAP.md Step 1) completed Stage 0 (delete 4 phantom entries) and Stage 1 (move the
+  generatedRuntimeDependentTestSources exclusion inside the generatedRuntimeMountPresent() guard --
+  the actual win, reviving 6 files / 21 @Test). Reviving the 6 files surfaced two genuine,
+  never-before-caught bugs, both fixed in the same commit: (1) ConceptQueryControllerExportCsvVolumeTest
+  had a compile error (unreported IOException/UnsupportedEncodingException) that could never be caught
+  while the file was unconditionally excluded; (2) once compiled, that same test caught a real data
+  leak -- JdbcBusinessConceptStore.toRecord() put tenant_id into ConceptRecord.data() as "tenantId"
+  even though tenant_id already has its own dedicated ConceptRecord component (record.tenantId()),
+  leaking it into REST responses and CSV exports. Fixed with the same exclusion pattern LNCH-16
+  already used for row_version, and independently confirmed correct by an existing test
+  (JdbcBusinessConceptStoreTenantIsolationTest) that already asserted this invariant on the write path.
+  Stages 2-5 remain: MASTER-ROADMAP.md Track C item C3.
+guard:
+  kind: script
+  ref: NPDevSamples/scripts/generate-sample-app.ps1 + gradlew test (RED/GREEN test-result-file counts under com/finalexec/api and com/finalexec/controlpanel)
+  asserts: Stage 1's fix moves the assembled sample app's RuntimeHost test-result counts from 2/0 (RED) to 4/1 (GREEN) with zero failures
+  provenRed: true
+files:
+  - NPDevRuntimeHost/build.gradle
+  - NPDevRuntimeHost/build.gradle.template
+  - NPDevRuntimeHost/src/test/java/com/finalexec/api/ConceptQueryControllerExportCsvVolumeTest.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java

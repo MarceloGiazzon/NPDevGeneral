@@ -1,0 +1,20 @@
+id: PACK-5
+title: >-
+  A pack cannot depend on a pack, so variations cannot build on a base
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md §1 ground truth, card PK-3). pack.schema.json
+  has no `packs` property -- a pack depending on a pack is impossible by schema, confirmed this
+  session (both pack.schema.json copies read in full: $ref remote-scheme patterns are also forbidden).
+surface: dsl/pack-composition
+files:
+  - NPDevContract/dsl/src/main/resources/schema/pack.schema.json
+  - NPDevContract/schemas/pack.schema.json
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-3 for the full spec: `user-hospital@1`
+  declaring `packs: [user@^2.0]`, diamond resolution or named refusal, a committed npdev.lock, local
+  files only (no network in this card). MASTER-ROADMAP.md spine S3 (Step 8, milestone PM2); not in
+  this session's scope (Steps 1-4).

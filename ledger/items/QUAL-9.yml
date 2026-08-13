@@ -1,0 +1,17 @@
+id: QUAL-9
+title: >-
+  Zero checkers boot a generated app
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F3, ROADMAP.md card R12). Zero of 36
+  checkers boot a generated application -- the largest gap in the verification suite.
+surface: quality/checker-coverage
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R12. MASTER-ROADMAP.md F3: R12 is absorbed by
+  PACK-ROADMAP.md's PK-4 Stage D, which needs exactly this check and whose assertion (does a
+  multi-hop pack upgrade preserve a real row?) is the most valuable one in the system -- do not build
+  two artifacts. Lands at MASTER-ROADMAP.md Step 11 (PM3 milestone); not in this session's scope
+  (Steps 1-4).

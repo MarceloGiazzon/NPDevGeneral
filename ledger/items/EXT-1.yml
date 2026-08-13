@@ -1,0 +1,20 @@
+id: EXT-1
+title: >-
+  No supported path to add a REST endpoint or custom screen to a generated app
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F4, ROADMAP.md card R10). No plugin:
+  java-controller kind and no custom-screen mount exist -- an author cannot extend a generated app
+  without editing generated code that regeneration will overwrite.
+surface: generator/extension-points
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R10 (Wave 5, milestone M5). Decision D9
+  already recorded: plugin:java-controller must ENFORCE security.minimumRole with an emitted wrapper,
+  not merely declare it. MASTER-ROADMAP.md F4: R10 is merged with PACK-ROADMAP.md's PK-6 (extension
+  packs) into one campaign, S8, because both touch GeneratedPluginMountPlan, the definition-directory
+  mount, and the three runtime-supported-controllers.json enforcement points -- designing them
+  separately means designing the same extension model twice. Lands at Step 15 (PM5 milestone); not in
+  this session's scope (Steps 1-4).

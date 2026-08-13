@@ -1,0 +1,27 @@
+id: PACK-2
+title: >-
+  The compiled model carries no pack provenance, so a pack's tables cannot be attributed or diffed
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md spine S1, PACK-ROADMAP.md card PK-1 step 5).
+  Confirmed live this session: CompiledConcept and every other Compiled* member type (CompiledQuery,
+  CompiledEvent, CompiledFlow, CompiledCapability, CompiledRole, CompiledPanel, CompiledDomainType)
+  have no pack/version/digest/origin field of any kind.
+surface: dsl/compiled-model
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledConcept.java
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-1 steps 5-7. Fix: add
+  origin: {packId, packVersion, packDigest, sealed} to the AST and to every compiled member carrier,
+  threaded through the four-place canonical chain (JsonModelParser -> ModelCompiler ->
+  CompiledModelCanonicalJson/Reader -> ModelResolver), following the `roles` field's existing
+  precedent for that chain. New twin-pair registry entry pins it. MASTER-ROADMAP.md Step 4 (spine
+  S1), this session's scope.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/compiled/CanonicalJsonRoundTripCompletenessTest.java
+  asserts: origin survives the reflective canonical-JSON round trip for every Compiled* member type
+  provenRed: true

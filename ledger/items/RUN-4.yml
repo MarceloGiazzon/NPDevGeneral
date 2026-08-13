@@ -1,0 +1,22 @@
+id: RUN-4
+title: >-
+  Capability timeout/retry default to off; neither network adapter sets a deadline
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R8d).
+  CapabilityExecutionPolicy.defaults() returns zeros for timeout/retry/idempotency and neither network
+  adapter sets its own -- a capability invocation can hang forever.
+surface: kernel/capability-execution
+files:
+  - NPDevKernel/kernel/.../CapabilityExecutionPolicy.java
+  - NPDevContract/dsl/.../CompiledCapabilityExecutionPolicy.java
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8, sub-item R8d. Flipping the kernel default
+  moves every capability invocation from the synchronous path onto ForkJoinPool.commonPool, which
+  silently drops thread context -- prefer adapter-level deadlines first, treat the kernel default as a
+  separate decision. CapabilityExecutionPolicy is mirrored by CompiledCapabilityExecutionPolicy in the
+  DSL module -- both must move together. MASTER-ROADMAP.md Track C (part of R8); not in this session's
+  scope (Steps 1-4).

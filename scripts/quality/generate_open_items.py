@@ -79,6 +79,24 @@ def validate_item(item: dict, path: Path) -> list[str]:
         errors.append("status: DONE requires a 'closed' date")
     if item.get("verification") not in VALID_VERIFICATION:
         errors.append(f"verification '{item.get('verification')}' not in {sorted(v for v in VALID_VERIFICATION if v)}")
+    if "guard" in item and item["guard"] is not None:
+        errors.extend(validate_guard(item["guard"]))
+    return errors
+
+
+def validate_guard(guard: object) -> list[str]:
+    # F6/R11 (MASTER-ROADMAP.md): optional, but when present must be a real proof pointer, not prose.
+    if not isinstance(guard, dict):
+        return ["'guard' must be a mapping with kind/ref/asserts/provenRed"]
+    errors = []
+    if guard.get("kind") not in {"test", "script", "manual"}:
+        errors.append(f"guard.kind '{guard.get('kind')}' not in ['test', 'script', 'manual']")
+    if not isinstance(guard.get("ref"), str) or not guard.get("ref"):
+        errors.append("guard.ref must be a non-empty string")
+    if not isinstance(guard.get("asserts"), str) or not guard.get("asserts"):
+        errors.append("guard.asserts must be a non-empty string")
+    if not isinstance(guard.get("provenRed"), bool):
+        errors.append("guard.provenRed must be a boolean")
     return errors
 
 
@@ -106,6 +124,10 @@ def render_item_detail(item: dict) -> list[str]:
         lines.append("**Files:**")
         for f in item["files"]:
             lines.append(f"- `{f}`")
+    if item.get("guard"):
+        guard = item["guard"]
+        red = "proven RED first" if guard.get("provenRed") else "no RED capture recorded"
+        lines.append(f"**Guard:** {guard.get('kind')} · `{guard.get('ref')}` — {guard.get('asserts')} ({red})")
     lines.append("")
     lines.append(item["detail"].strip())
     lines.append("")

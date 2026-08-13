@@ -1,0 +1,22 @@
+id: QUAL-6
+title: >-
+  No execution-based code coverage measured in any language
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R3). No JaCoCo on any of
+  the 4 Java builds, no @vitest/coverage-v8 for the editor, no coverage.py for NPDevCli, no ratchet
+  baseline file anywhere.
+surface: quality/coverage
+files:
+  - scripts/policy/coverage-baseline.json
+  - scripts/quality/check-coverage-ratchet.py
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R3 (Wave 1). run-frontend-gate.ps1 hard-fails
+  on a "coverage" directory inside ui-react -- vitest output must be pointed outside ui-react or the
+  gate goes red the moment coverage works. Land R1 Stage 1 first (done this session) so the
+  RuntimeHost coverage baseline is honest rather than showing R1's exclusions as data. Start the
+  ratchet at 0.0 with measuredOn: null. MASTER-ROADMAP.md batches this into Step 9 (a hard prerequisite
+  for PK-4, Step 11); not in this session's scope (Steps 1-4).

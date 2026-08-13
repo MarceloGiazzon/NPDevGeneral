@@ -1,0 +1,26 @@
+id: EDIT-1
+title: >-
+  Editor bundle IO drops 17 of 34 root DSL sections and cannot open a model.json
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F1 -- live hazard, ROADMAP.md card R6).
+  Confirmed live this session: bundleIoService.ts's toCanonicalModelDocument/toInternalModelDocument
+  are hardcoded 16-key object literals with no spread -- packs (and 17 other schema-valid root keys
+  out of model.schema.json's 34) are silently dropped on every export and import. Live today:
+  AppGen/apps/_official/WmsOffice/definition/model.json declares packs and would lose them on save.
+surface: editor/bundle-io
+files:
+  - NPDevEditor/ui-react/src/authoring/io/bundleIoService.ts
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R6 and MASTER-ROADMAP.md prelude card 0.4
+  (cannot be reduced -- the loss-detector test is the whole point). Fix: replace the allowlists with
+  an ordered pass-through mirroring modelDocumentService.ts's normalizeDocument `...document` spread
+  pattern. MASTER-ROADMAP.md Step 3, this session's scope.
+guard:
+  kind: test
+  ref: NPDevEditor/ui-react/src/authoring/io/importExportRoundTrip.test.ts (schema-driven loss-detector test)
+  asserts: every model.schema.json root key present in a real packs-bearing model.json (dsl-conformance-max) survives export+import
+  provenRed: true

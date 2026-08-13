@@ -1,0 +1,19 @@
+id: PACK-4
+title: >-
+  Pack version is declared and read by nothing
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md §1 ground truth, card PK-3). A pack.json's
+  `version` field is schema-valid but only dslVersion equality is actually checked anywhere in the
+  resolution pipeline -- version is inert data today.
+surface: dsl/pack-versioning
+files:
+  - NPDevContract/dsl/src/main/resources/schema/pack.schema.json
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-3 (transitive packs, cycles, MVS,
+  npdev.lock). Pack version becomes load-bearing once transitive `packs: [user@^2.0]` dependencies and
+  minimal-version-selection exist. MASTER-ROADMAP.md spine S3 (Step 8); not in this session's scope
+  (Steps 1-4).

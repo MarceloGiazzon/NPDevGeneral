@@ -1,0 +1,24 @@
+id: EDIT-2
+title: >-
+  Editor "Add panel"/"Add rule profile" emit schema-invalid keys
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R6). Confirmed live this
+  session against the real schema: the panel $def (additionalProperties: false) has no
+  concept/dataSource field, only dataSources (array); the ruleProfile $def (additionalProperties:
+  false) has no concept/permissionRequirements field at all, and its `name` is a controlled enum of
+  profile kinds (always/interactive/headless/...), not a free identifier. PanelsEditorSection.tsx and
+  RuleProfilesEditorSection.tsx write these invalid keys today.
+surface: editor/panels-ruleprofiles
+files:
+  - NPDevEditor/ui-react/src/authoring/editors/panels/PanelsEditorSection.tsx
+  - NPDevEditor/ui-react/src/authoring/editors/ruleProfiles/RuleProfilesEditorSection.tsx
+  - NPDevEditor/ui-react/src/authoring/editors/modelValidation.ts
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R6. Fix: stop writing the invalid keys, retire
+  them from AuthoringModelDocument's panel/ruleProfile authoring types, fix modelValidation.ts's
+  panel.route-or-panel.concept check to match the real schema shape. MASTER-ROADMAP.md Step 3, this
+  session's scope (bundled with EDIT-1's fix, same card).

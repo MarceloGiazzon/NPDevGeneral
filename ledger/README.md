@@ -35,7 +35,17 @@ surface: component tag, e.g. runtimehost/schema-lifecycle  # required
 files: [path/one.java, path/two.java]    # optional
 detail: |                        # required -- concise root-cause/fix/verification summary
   Multi-line prose.
+guard:                           # optional -- present iff this item's DONE claim is falsifiable
+  kind: test | script | manual   # what kind of proof backs the claim
+  ref: path/to/Test.java#method or scripts/proofs/whatever.ps1   # where the proof lives
+  asserts: one-line statement of what the proof actually checks
+  provenRed: true                # whether a RED reproduction was captured before the fix
 ```
+
+`guard` (MASTER-ROADMAP.md F6 / `R11`) exists so a `status: DONE` claim is falsifiable — it names the
+test or script that proves it, not just a sentence asserting it. Filed OPEN items may leave it absent
+(there is no proof yet); closing an item without one is a claim, not a proof. `R11`'s full card (ledger
+restructuring, derived gate numbers) is separate, larger, and not implied by this field's presence.
 
 `legacyDetailRef` (optional) no longer appears on any current item: it used to point into
 `docs/NPDEV_OPEN_ITEMS_REGISTER.md`'s `#reg-N` anchors for the original, often multi-thousand-word

@@ -1,0 +1,20 @@
+id: RUN-2
+title: >-
+  Flow resume has no lease/claim; concurrent resumers can double-execute
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R8c). Two instances running
+  against one database can double-resume a flow -- no claim columns, no index, no SKIP LOCKED
+  capability declared as an engine fact.
+surface: kernel/flow-engine
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8, sub-item R8c. Needs claim columns + index,
+  two new SqlDialect questions, a SKIP LOCKED capability following DDL_IN_TRANSACTION's
+  capability-absence pattern. FlowInstanceStore has 14 anonymous implementations in tests plus
+  NoopHolder -- any non-default interface method is a compile break across three modules.
+  Internal-table indexes have no additive-migration path today -- solve it or scope the claim to a
+  column-only design. MASTER-ROADMAP.md Track C (part of R8, not batched into a numbered step); not
+  in this session's scope (Steps 1-4).
