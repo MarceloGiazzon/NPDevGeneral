@@ -1,0 +1,18 @@
+id: RUN-5
+title: >-
+  expression-cel has no CEL dependency; the name misleads
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R8, "also here" note). The
+  expression-cel adapter module has no CEL dependency anywhere in any build file -- the name is the
+  only thing wrong with it.
+surface: kernel/adapters/expression-cel
+files:
+  - NPDevKernel/adapters/expression-cel
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8. One-line fix: rename the module. Not a
+  rewrite of the engine (that's a separate, unasked-for project, explicitly out of scope per
+  ROADMAP.md §3). MASTER-ROADMAP.md Track C (part of R8); not in this session's scope (Steps 1-4).

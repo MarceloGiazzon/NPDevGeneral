@@ -1,0 +1,23 @@
+id: SEC-1
+title: >-
+  Every generated app ships two published ADMIN API keys and boots on that profile
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R7). Cleaning
+  application-dev.yml alone changes nothing observable -- the real fix is
+  npdev-templates/npdev-runtime-api-key-auth-filter.mustache, whose generated auth filter has an
+  ADMIN fallback. curl -H "X-Api-Key: dev-key" returns 200 against any generated app today.
+surface: runtimehost/auth
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-api-key-auth-filter.mustache
+  - NPDevRuntimeHost/src/main/resources/application-dev.yml
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R7 (Wave 3, milestone M2) for the 4-stage,
+  16-step, 4-session spec: fail closed (auth-filter fallback), profiles (real application-prod,
+  explicit -Pprofile), key generation (per-app random key in secrets/), migration surface (grep
+  api-dev/dev-key repo-wide -- 22 browser routines, 13 sample configs in 3 mirrored trees). Decisions
+  D4/D5 already recorded: one ADMIN key for v1, printed once on first launch. MASTER-ROADMAP.md
+  Track C item C2 -- not in this session's scope (Steps 1-4).

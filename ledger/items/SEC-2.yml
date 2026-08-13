@@ -1,0 +1,23 @@
+id: SEC-2
+title: >-
+  No dependency vulnerability scanning of any kind
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R2). No Dependabot config,
+  no CodeQL workflow, no npm audit consumer -- scripts/policy/frontend-npm-audit-policy.json is an
+  orphan no script reads. 8 of 9 workflows under .github/workflows/ declare no `permissions:` block.
+surface: ci/dependency-scanning
+files:
+  - .github/dependabot.yml
+  - .github/workflows/security-scan.yml
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R2 (Wave 1). Needs a dependabot.yml covering
+  every gradle directory (multiple, no single root build) plus NPDevEditor/ui-react (npm) and
+  github-actions; a CodeQL matrix workflow (java-kotlin, javascript-typescript, python);
+  least-privilege `permissions:` on the 8 workflows lacking one. Two Spring Boot versions exist
+  (build.gradle 3.3.2 vs build.gradle.template 3.5.16) and Dependabot can only see the dead one --
+  document this or the scanning is theatre. MASTER-ROADMAP.md pulls this forward (F7) to sit
+  immediately before PK-5 (Step 9); not in this session's scope (Steps 1-4).

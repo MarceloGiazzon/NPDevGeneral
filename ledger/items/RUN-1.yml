@@ -1,0 +1,22 @@
+id: RUN-1
+title: >-
+  Generated CRUD list endpoints are unbounded on three paths
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R8a). Three paths load an
+  entire tenant's table into the JVM: no hard cap at the ConceptStore port, the generated
+  service-base.mustache list(), and two full-tenant-scan uniqueness pre-checks (uniqueValuesEqual is
+  case-insensitive/whitespace-trimming while the DB unique index and SQL = are neither).
+surface: kernel/concept-store
+files:
+  - NPDevGenerator/.../npdev-templates/service-base.mustache
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8, sub-item R8a (do first, lowest risk,
+  highest value). Add a hard cap at the ConceptStore port, cap the generated list(), signal truncation
+  via a REST header, replace the two full-tenant-scan uniqueness pre-checks with index-backed lookups.
+  MASTER-ROADMAP.md Track C item C4: "the scale ladder will surface these first, do it when it does" --
+  this session's Step 2a scale ladder (2 rungs, 26/100 concepts) may surface this; the fix itself is
+  not in this session's scope (Steps 1-4).

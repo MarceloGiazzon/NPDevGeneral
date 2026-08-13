@@ -1,0 +1,19 @@
+id: PACK-10
+title: >-
+  No variation mechanism; a variant requires forking a pack
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md card PK-6). Today, producing a hospital
+  variant and a store variant of a base pack means forking it twice -- there is no additive-only
+  extension-pack mechanism, and `extends`-on-packs is explicitly rejected (PACK-ROADMAP.md §4) as a
+  second, weaker DSL.
+surface: dsl/pack-extension
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-6 (extension packs: satellites +
+  additive-only enforcement). MASTER-ROADMAP.md F4: merged with ROADMAP.md's R10
+  (plugin:java-controller + custom-screen mount) into one campaign, S8 (Step 15, milestone PM5 --
+  "variation without duplication"), because both touch GeneratedPluginMountPlan and the same three
+  runtime-supported-controllers.json enforcement points. Not in this session's scope (Steps 1-4).

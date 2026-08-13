@@ -1,0 +1,26 @@
+id: PROC-1
+title: >-
+  No ledger status can express not-doing; no DONE claim is falsifiable
+type: PROCESS
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F6, ROADMAP.md card R11). A DONE claim in the
+  ledger is a sentence, not a proof -- nothing forces it to name the test or script that verifies it.
+surface: process/ledger-schema
+files:
+  - ledger/README.md
+  - scripts/quality/generate_open_items.py
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R11 (Wave 5) for the full falsifiable-DONE
+  spec (ledger restructuring, derived gate numbers from knowledge/gate-manifest.json per decision D6).
+  MASTER-ROADMAP.md F6: land just the `guard: {kind, ref, asserts, provenRed}` schema field cheaply
+  and early (done this session, Step 1c) so all 29 items filed alongside this one carry the field
+  from birth instead of a 29-item backfill. The rest of R11 (restructuring, backfill, gaps.yml v2) is
+  Track C item C9; not in this session's scope.
+guard:
+  kind: script
+  ref: scripts/quality/generate_open_items.py (validate_guard)
+  asserts: a ledger item's optional guard block, when present, must be a mapping with kind/ref/asserts/provenRed of the right types
+  provenRed: false

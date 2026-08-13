@@ -1,0 +1,26 @@
+id: PACK-3
+title: >-
+  Physical table identity derives from the local pack alias, so one pack yields different schemas in different apps
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md card PK-2). packRef.as overrides the namespace
+  prefix, and the prefix flows through SqlIdentifierSupport.toSnake into the table name. App A
+  importing `identity` gets identity_users while App B importing the same pack `as: "auth"` gets
+  auth_users -- one pack, two apps, incompatible physical schemas. Confirmed this session: the
+  underlying alias mechanism is real (IdentityPackResolutionTest imports identity `as: "id"` and
+  resolves id::User), though the specific auth_users example is illustrative, not drawn from an
+  existing artifact.
+surface: dsl/pack-physical-identity
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/SqlIdentifierSupport.java
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-2 for the full spec: split logical
+  (alias-able) from physical (packId+major-derived) qualifiers in
+  SqlIdentifierSupport.contextAwareIdentifierSource; version the built-in packs (only 2 exist today --
+  identity, workspace, not the roadmap's assumed 6); ship an `npdev migrate pack-physical-names`
+  codemod per the standing breaking-change convention (owner decisions PD2/PD3/PD5 already answered:
+  yes to major-in-table-name, yes break now, keep alias as authoring-local sugar only).
+  MASTER-ROADMAP.md spine S2 (Step 6); not in this session's scope (Steps 1-4).

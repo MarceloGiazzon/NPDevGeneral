@@ -1,0 +1,19 @@
+id: PACK-9
+title: >-
+  Packs can hardcode app roles; there is no declared-interface/binding mechanism
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md card PK-3, "requires.roles" binding). A pack
+  today has no way to declare "I need a role that means admin" and let the consuming app map its own
+  role onto that interface -- it can only reference concrete role names, which collide or hardcode
+  assumptions about the consuming app.
+surface: dsl/pack-role-binding
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-3's `requires` binding mechanism.
+  Related open question from PK-1 (this session's Step 4): should `roles` be namespaced like other
+  non-concept members, with `requires`/binding as how an app maps a pack role onto its own?
+  Recommendation there was yes. MASTER-ROADMAP.md spine S3 (Step 8); not in this session's scope
+  (Steps 1-4) beyond the namespacing groundwork PK-1 lays.

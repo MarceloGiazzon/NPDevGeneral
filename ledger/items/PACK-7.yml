@@ -1,0 +1,18 @@
+id: PACK-7
+title: >-
+  Nothing mechanically enforces what a pack's version bump promises
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md card PK-4). A pack author can bump a minor
+  version while making a breaking change (or vice versa) and nothing catches it -- semver on a pack
+  is a convention, not a checked contract.
+surface: dsl/pack-versioning
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-4 for the `npdev pack diff` publish
+  gate that classifies a change against the previous published version and refuses a version bump that
+  doesn't match its actual shape. Decision PD8 already recorded: migration-chain granularity is per
+  published version, generated automatically for additive-only changes. MASTER-ROADMAP.md spine S5
+  (Step 10); not in this session's scope (Steps 1-4).

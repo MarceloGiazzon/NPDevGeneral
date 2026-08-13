@@ -1,0 +1,21 @@
+id: RUN-3
+title: >-
+  NULLS FIRST sits outside the dialect package and the dialect gate is blind to it
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R8b). JdbcFlowInstanceStore
+  emits `ORDER BY ... NULLS FIRST` -- the only such site in the Java tree, un-dialected -- and
+  check-dialect-sites.py has no NULLS entry in its CONSTRUCTS map, so the gate built to prevent exactly
+  this class of bug is blind to it.
+surface: kernel/sql-dialect
+files:
+  - NPDevKernel/kernel/.../JdbcFlowInstanceStore.java
+  - scripts/quality/check-dialect-sites.py
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8, sub-item R8b. Fix and gate in one commit
+  (adding the NULLS construct to check-dialect-sites.py's CONSTRUCTS map turns the gate red
+  immediately, proving it now catches this class). MASTER-ROADMAP.md Track C item C7 ("R8b is one
+  commit -- gate + fix together"); not in this session's scope (Steps 1-4).

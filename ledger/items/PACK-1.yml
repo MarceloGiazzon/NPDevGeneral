@@ -1,0 +1,28 @@
+id: PACK-1
+title: >-
+  Non-concept pack members are not namespaced; two packs declaring the same domainType cannot compose
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md spine S1, PACK-ROADMAP.md card PK-1).
+  Confirmed live this session: ModelSourceResolver.packConceptRewriteMap builds Name -> packId::Name
+  for concepts only; mergeQualifiedNonConceptArrays skips `concepts` and throws a case-insensitive
+  duplicate-member error across all 18 MODEL_ARRAY_KEYS' worth of non-concept kinds. With more than a
+  handful of packs, collision is the default outcome, and it is unresolvable without editing a pack
+  you do not own.
+surface: dsl/pack-resolution
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-1 steps 1-4. Fix: generalize
+  packConceptRewriteMap to memberRewriteMap walking all 18 MODEL_ARRAY_KEYS keyed by (kind, name);
+  apply it in mergeQualifiedNonConceptArrays; extend rewritePackLocalConceptReferencesInPlace to
+  rewrite references to any member kind; add unqualified resolution with a named ambiguity error.
+  MASTER-ROADMAP.md Step 4 (spine S1), this session's scope.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1 (two throwaway packs each declaring domainTypes:[{name:"Email"}], composed together)
+  asserts: two packs declaring the same bare domainType name compose without error, resolving to packa::Email and packb::Email
+  provenRed: true

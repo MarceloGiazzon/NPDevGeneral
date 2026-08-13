@@ -1,0 +1,22 @@
+id: GAP-1
+title: >-
+  The DSL has no decimal type, so no model can express a price, tax rate or exchange rate
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R5). field.type is a closed
+  13-value enum with no decimal; ModelCompiler.toJavaType cannot yield BigDecimal;
+  SqlTypeSupport.java's NUMERIC(19,2) branch is unreachable from the authoring path. Every showcase
+  app encodes the workaround in its field names (priceCents, totalCents, unitPrice: long).
+surface: contract/dsl-types
+files:
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/SqlTypeSupport.java
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R5 for the 16-site threading spec (Wave 2,
+  milestone M1). Design decisions D1-D3 already recorded there: precision/scale default 19,4; no
+  separate `currency` companion in v1; validate overflow at compile time, let engine behavior stand
+  at runtime. MASTER-ROADMAP.md batches this as Step 5, not in this session's scope (Steps 1-4).

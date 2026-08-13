@@ -1,0 +1,26 @@
+id: QUAL-8
+title: >-
+  The largest gate triggers on pull_request only; 52 of 60 commits bypass it
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R4 Part B). Confirmed live
+  this session: .github/workflows/ai-knowledge-gate.yml's `on:` block is
+  `{ pull_request: {}, workflow_dispatch: }` -- no `push` trigger, and git history shows the great
+  majority of commits landing directly on main, so the gate never actually gates what ships.
+surface: ci/branch-protection
+files:
+  - .github/workflows/ai-knowledge-gate.yml
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R4 Part B and MASTER-ROADMAP.md prelude card
+  0.2. Fixed this session (Step 1e): branch protection turned on for `main`
+  (MarceloGiazzon/NPDevGeneral) requiring the ai-knowledge-gate status check and a PR before merge,
+  rather than adding a bare `push:` trigger (which would just make every direct push slow without
+  changing the habit).
+guard:
+  kind: manual
+  ref: gh api repos/MarceloGiazzon/NPDevGeneral/branches/main/protection
+  asserts: main rejects a direct push once branch protection is live; a PR must pass ai-knowledge-gate before merge
+  provenRed: true

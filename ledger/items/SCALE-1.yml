@@ -1,0 +1,27 @@
+id: SCALE-1
+title: >-
+  Platform unproven above 26 concepts; CI ceiling is 11
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F2, ROADMAP.md card R9). Today's proven
+  ceiling is 26 concepts, and that model lives outside the repo and outside CI. Everything about
+  NPDev's performance is currently unmeasured. F2: BT-1 must not land before a scale baseline exists,
+  or the pre-change baseline is gone permanently and its build-time win can never be stated.
+surface: proofs/scale
+files:
+  - scripts/proofs/synthesize_scale_model.py
+  - scripts/proofs/run-scale-proof.ps1
+  - scripts/policy/scale-proof-baseline.json
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R9 for the full 5-rung (26/50/100/260/520
+  concepts) nightly ladder spec (latency, DDL count, memory). MASTER-ROADMAP.md prelude card 0.3
+  reduces this to 2 rungs (26, 100) and generate/build/boot timing only -- done this session (Step
+  2a). Full ladder (5 rungs, latency/DDL/memory) is Track C item C6.
+guard:
+  kind: script
+  ref: scripts/proofs/run-scale-proof.ps1
+  asserts: generate+build+boot timing recorded for 26 and 100 concept synthetic models, written to scripts/policy/scale-proof-baseline.json
+  provenRed: false

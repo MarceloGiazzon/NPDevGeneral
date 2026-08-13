@@ -1,0 +1,21 @@
+id: PACK-6
+title: >-
+  A multi-hop pack upgrade skips intermediate renamedFrom declarations and destroys data
+type: BUG
+severity: P0
+status: OPEN
+opened: 2026-08-12
+source: >-
+  Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md card PK-4). Filed at P0 deliberately -- it is
+  the only entry in this batch that can destroy a user's data, and it will look like a successful
+  migration when it does: a 1.0 -> 3.0 pack upgrade that skips replaying the 1.0->2.0 and 2.0->3.0
+  renamedFrom chains produces a drop-and-add instead of a rename, silently losing every row in the
+  affected column.
+surface: dsl/pack-migration
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-4 (npdev pack diff publish gate +
+  migration chains). This absorbs ROADMAP.md's R12 (F3, MASTER-ROADMAP.md): the proof that a
+  multi-hop upgrade replays the chain and preserves a real row IS the first checker that boots a
+  generated app. MASTER-ROADMAP.md spine S5 (Step 11, milestone PM3 -- "a pack upgrade cannot destroy
+  data", the guarantee the whole platform sells). Depends on PK-3 (Step 8) and R3/execution coverage
+  (Step 9). Not in this session's scope (Steps 1-4).
