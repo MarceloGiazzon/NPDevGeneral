@@ -219,7 +219,8 @@ public final class ModelSourceResolver {
             if (!packs.isArray()) {
                 throw error(sourceFile, "/packs", "packs must be an array of pack import objects");
             }
-            resolvePacks((ArrayNode) packs, resolved, sourceFile, state);
+            List<PackRequirementEntry> requirements = resolvePacks((ArrayNode) packs, resolved, sourceFile, state);
+            checkPackRequirements(requirements, root.get("provides"), sourceFile);
         }
 
         JsonNode contexts = root.get("contexts");
@@ -516,13 +517,74 @@ public final class ModelSourceResolver {
      * existing pack/app in this repo today) and additionally resolves transitive dependencies,
      * cycles, and depth/fan-out DoS caps when one does.
      */
-    private void resolvePacks(
+    private List<PackRequirementEntry> resolvePacks(
             ArrayNode packsNode,
             ObjectNode resolved,
             Path modelFile,
             ResolutionState state
     ) throws IOException {
-        PackDependencyGraphWalker.resolve(this, packsNode, resolved, modelFile, state);
+        return PackDependencyGraphWalker.resolve(this, packsNode, resolved, modelFile, state);
+    }
+
+    /** PK-3: one pack's own {@code requires} declaration, plus the path that reached it -- for
+     *  naming exactly which pack (and how it was reached) left a requirement unbound. */
+    record PackRequirementEntry(String packId, List<String> path, JsonNode requires) {
+    }
+
+    /** PK-3: refuses composition the moment any collected {@code requires.roles}/{@code
+     *  capabilities}/{@code network} entry is not present in the app's own root {@code provides}
+     *  -- checked here (resolve time, right after resolvePacks returns) to stay consistent with
+     *  every other pack-composition invariant this method already enforces at this same point
+     *  (dslVersion equality, duplicate-alias/-concept). Only proves presence/binding; rewriting a
+     *  pack's own internal role checks to consume the app's concrete role name is PACK-9, still
+     *  open. */
+    private void checkPackRequirements(List<PackRequirementEntry> requirements, JsonNode provides, Path modelFile) throws IOException {
+        if (requirements.isEmpty()) {
+            return;
+        }
+        Set<String> providedRoles = textSetOf(provides, "roles");
+        Set<String> providedCapabilities = textSetOf(provides, "capabilities");
+        Set<String> providedNetwork = textSetOf(provides, "network");
+        for (PackRequirementEntry entry : requirements) {
+            checkRequirementKind(entry, "roles", providedRoles, modelFile);
+            checkRequirementKind(entry, "capabilities", providedCapabilities, modelFile);
+            checkRequirementKind(entry, "network", providedNetwork, modelFile);
+        }
+    }
+
+    private void checkRequirementKind(PackRequirementEntry entry, String kind, Set<String> provided, Path modelFile) throws IOException {
+        JsonNode values = entry.requires().get(kind);
+        if (values == null || !values.isArray()) {
+            return;
+        }
+        for (JsonNode value : values) {
+            if (!value.isTextual()) {
+                continue;
+            }
+            String required = value.asText();
+            if (!provided.contains(required)) {
+                throw error(modelFile, "/packs", "pack '" + entry.packId() + "' (via " + String.join(" -> ", entry.path())
+                        + ") requires " + kind.substring(0, kind.length() - 1) + " '" + required
+                        + "', which the app does not declare in provides." + kind);
+            }
+        }
+    }
+
+    private static Set<String> textSetOf(JsonNode object, String field) {
+        if (object == null || !object.isObject()) {
+            return Set.of();
+        }
+        JsonNode array = object.get(field);
+        if (array == null || !array.isArray()) {
+            return Set.of();
+        }
+        Set<String> out = new LinkedHashSet<>();
+        for (JsonNode value : array) {
+            if (value.isTextual()) {
+                out.add(value.asText());
+            }
+        }
+        return out;
     }
 
     /**

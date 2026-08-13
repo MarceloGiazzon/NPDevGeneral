@@ -56,6 +56,7 @@ final class PackDependencyGraphWalker {
     private final Map<String, Set<String>> dependencyGraph = new LinkedHashMap<>();
     private final Map<String, String> qualifierById = new LinkedHashMap<>();
     private final Map<String, List<MinimalVersionSelector.Requirement>> requirementsByPackId = new LinkedHashMap<>();
+    private final List<ModelSourceResolver.PackRequirementEntry> packRequirements = new ArrayList<>();
 
     private PackDependencyGraphWalker(ModelSourceResolver resolver, ModelSourceResolver.ResolutionState state, String rootDslVersion) {
         this.resolver = resolver;
@@ -64,7 +65,7 @@ final class PackDependencyGraphWalker {
         this.rootDslVersion = rootDslVersion;
     }
 
-    static void resolve(
+    static List<ModelSourceResolver.PackRequirementEntry> resolve(
             ModelSourceResolver resolver,
             ArrayNode packsNode,
             ObjectNode resolved,
@@ -72,7 +73,9 @@ final class PackDependencyGraphWalker {
             ModelSourceResolver.ResolutionState state
     ) throws IOException {
         String rootDslVersion = ModelSourceResolver.textOrBlank(resolved.get("dslVersion"));
-        new PackDependencyGraphWalker(resolver, state, rootDslVersion).run(packsNode, resolved, modelFile);
+        PackDependencyGraphWalker walker = new PackDependencyGraphWalker(resolver, state, rootDslVersion);
+        walker.run(packsNode, resolved, modelFile);
+        return walker.packRequirements;
     }
 
     private record DirectImport(
@@ -202,6 +205,10 @@ final class PackDependencyGraphWalker {
         if (packNodeById.size() > MAX_RESOLVED_PACKS) {
             throw ModelSourceResolver.error(packFile, "/packs", "Pack dependency graph resolves more than "
                     + MAX_RESOLVED_PACKS + " distinct packs -- this is a denial-of-service guard, not a real limitation");
+        }
+        JsonNode requires = packNode.get("requires");
+        if (requires != null && requires.isObject() && !requires.isEmpty()) {
+            packRequirements.add(new ModelSourceResolver.PackRequirementEntry(packId, pathToThisPack, requires));
         }
 
         Set<String> children = new LinkedHashSet<>();
