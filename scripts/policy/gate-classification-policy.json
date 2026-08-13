@@ -1,6 +1,6 @@
 {
   "$schemaVersion": "npdev-gate-classification-policy.v1",
-  "_comment": "R4 Part C (MASTER-ROADMAP.md Step 9 / ledger QUAL-7). Records, for every scripts/quality/check-*.py, whether it verifies real platform behavior/correctness ('product') or documentation/process hygiene only ('paperwork') -- source of truth for which checks run per-commit (run-ai-knowledge-gate.ps1) vs. weekly (run-weekly-paperwork-checks.ps1 / .github/workflows/weekly-paperwork-checks.yml). Measured at card-authoring time: 22 product / 14 paperwork of the 36 pre-existing checkers (ROADMAP.md card R4 Part C); this card's own new check-coverage-ratchet.py (R3) adds a 23rd product entry, for 23 product / 14 paperwork of 37 total. A 'paperwork' classification with movedToWeekly:false means the checker stays in the per-commit gate despite the classification -- either because it catches a real bug class (the 3 explicitly named in the card: twin-pair-consistency, test-task-coverage, workflow-yaml-syntax) or because it is hosted by a DIFFERENT per-commit gate outside this card's scope (check-dsl-reference-output-floor.py, run-generator-gate.ps1) and moving only its own schedule without touching that gate is a separate, larger change this card does not make.",
+  "_comment": "R4 Part C (MASTER-ROADMAP.md Step 9 / ledger QUAL-7). Records, for every scripts/quality/check-*.py, whether it verifies real platform behavior/correctness ('product') or documentation/process hygiene only ('paperwork') -- source of truth for which checks run per-commit (run-ai-knowledge-gate.ps1) vs. weekly (run-weekly-paperwork-checks.ps1 / .github/workflows/weekly-paperwork-checks.yml). Measured at card-authoring time: 22 product / 14 paperwork of the 36 pre-existing checkers (ROADMAP.md card R4 Part C); this card's own new check-coverage-ratchet.py (R3) adds a 23rd product entry (37 total), and merging origin/main's concurrently-landed PK-4 (#16) added check-pack-diff-gate.py as a 24th product entry (38 total) -- reconciled during this branch's merge with origin/main, not part of either card's own original scope. A 'paperwork' classification with movedToWeekly:false means the checker stays in the per-commit gate despite the classification -- either because it catches a real bug class (the 3 explicitly named in the card: twin-pair-consistency, test-task-coverage, workflow-yaml-syntax) or because it is hosted by a DIFFERENT per-commit gate outside this card's scope (check-dsl-reference-output-floor.py, run-generator-gate.ps1) and moving only its own schedule without touching that gate is a separate, larger change this card does not make.",
   "classifications": {
     "check-adr-decision-implementation.py": {
       "classification": "paperwork",
@@ -133,6 +133,12 @@
       "reason": "Enforces the zero-markdown-reads architectural rule on scripts -- a script-hygiene/process rule (CLAUDE.md's own framing), not a test of product runtime behavior.",
       "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
       "movedToWeekly": true
+    },
+    "check-pack-diff-gate.py": {
+      "classification": "product",
+      "reason": "PK-4 (#16, landed concurrently on main): verifies a branch's own change to a built-in pack carries a version bump the REAL Java classifier (com.npdev.dsl.v1.pack.PackDiffEngine/PackPublishGate) requires -- a real correctness check against product code, not documentation.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
     },
     "check-panel-provenance-impact.py": {
       "classification": "product",
