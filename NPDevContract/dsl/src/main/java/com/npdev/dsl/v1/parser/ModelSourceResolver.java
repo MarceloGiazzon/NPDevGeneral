@@ -161,7 +161,8 @@ public final class ModelSourceResolver {
                     new ArrayList<>(state.includedFiles),
                     state.provenance,
                     state.diagnostics,
-                    state.warnings
+                    state.warnings,
+                    state.physicalQualifierByConceptName
             );
         } catch (UncheckedModelSourceException exception) {
             throw exception.getCause();
@@ -529,7 +530,58 @@ public final class ModelSourceResolver {
             Map<String, Map<String, String>> rewriteMaps = buildRewriteMaps(packId, packNode);
             mergePackConcepts(packId, packNode, resolved, packFile, rewriteMaps);
             mergePackNonConceptArrays(packId, packNode, resolved, packFile, rewriteMaps);
+            recordPhysicalQualifiers(packId, packNode, packFile, state);
             index++;
+        }
+    }
+
+    /**
+     * PK-2: the physical SQL identity of a pack-derived concept must depend on the pack's own
+     * {@code pack} id + major version, never on the importing app's chosen {@code as} alias -- two
+     * apps importing the same pack under different aliases must still produce identical physical
+     * table names. {@code packId} above (the loop-local qualifier used for logical namespacing,
+     * {@code qualifierId::Name}) stays alias-able and untouched; this records a SEPARATE map, keyed
+     * by the same qualified concept name {@link #namespacePackConcept} just produced, whose value is
+     * derived from the pack's own {@code pack}/{@code version} fields instead of the alias.
+     */
+    private static void recordPhysicalQualifiers(
+            String qualifierId,
+            ObjectNode packNode,
+            Path packFile,
+            ResolutionState state
+    ) throws IOException {
+        String realPackId = textOrBlank(packNode.get("pack"));
+        int majorVersion = parsePackMajorVersion(packNode.get("version"), packFile);
+        String physicalQualifier = realPackId + "_v" + majorVersion;
+
+        JsonNode conceptsNode = packNode.get("concepts");
+        if (conceptsNode == null || !conceptsNode.isArray()) {
+            return;
+        }
+        for (JsonNode concept : conceptsNode) {
+            if (concept == null || !concept.isObject() || !concept.has("name")) {
+                continue;
+            }
+            String bareName = textOrBlank(concept.get("name"));
+            if (bareName.isBlank()) {
+                continue;
+            }
+            state.physicalQualifierByConceptName.put(qualifierId + "::" + bareName, physicalQualifier);
+        }
+    }
+
+    private static int parsePackMajorVersion(JsonNode versionNode, Path packFile) throws IOException {
+        String version = versionNode == null ? "" : textOrBlank(versionNode);
+        if (version.isBlank()) {
+            throw error(packFile, "/version", "Pack file must declare a non-blank string 'version'");
+        }
+        int dot = version.indexOf('.');
+        String majorText = dot < 0 ? version : version.substring(0, dot);
+        try {
+            return Integer.parseInt(majorText.trim());
+        } catch (NumberFormatException notNumeric) {
+            throw error(packFile, "/version",
+                    "Pack 'version' must start with an integer major version (e.g. \"1.0.0\"), got: " + version);
         }
     }
 
@@ -1718,6 +1770,7 @@ public final class ModelSourceResolver {
         private final Map<String, Path> provenance = new HashMap<>();
         private final List<ValidationDiagnostic> diagnostics = new ArrayList<>();
         private final List<ValidationDiagnostic> warnings = new ArrayList<>();
+        private final Map<String, String> physicalQualifierByConceptName = new LinkedHashMap<>();
 
         private ResolutionState(Path rootRealPath, Path rootDirectory) {
             this.rootRealPath = rootRealPath;

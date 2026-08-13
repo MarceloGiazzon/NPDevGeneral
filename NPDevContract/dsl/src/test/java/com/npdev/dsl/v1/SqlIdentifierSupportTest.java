@@ -1,11 +1,13 @@
 package com.npdev.dsl.v1;
 
 import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledContext;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -146,5 +148,80 @@ class SqlIdentifierSupportTest {
                 SqlIdentifierSupport.tableName("Widget", "legacy_products"),
                 SqlIdentifierSupport.tableName(withOverride)
         );
+    }
+
+    // PK-2: physicalTableNameSource/aliasPreservingTableName -- the two new naming derivations that
+    // let a pack-derived concept's physical table name depend on the pack's own id + major version,
+    // never the importing app's local alias.
+
+    @Test
+    void physicalTableNameSourceReplacesTheAliasWithThePackPhysicalQualifier() {
+        String source = SqlIdentifierSupport.physicalTableNameSource("auth::User", "identity_v1", Map.of());
+
+        assertEquals("identity_v1::User", source);
+    }
+
+    @Test
+    void physicalTableNameSourceWithNoQualifierDelegatesToContextAwareIdentifierSourceUnchanged() {
+        // A non-pack concept (no physical qualifier entry) must behave EXACTLY as before PK-2 --
+        // the physicallyIsolate bounded-context mechanism is completely unaffected.
+        Map<String, Boolean> contexts = Map.of("billing", false, "shipping", true);
+
+        assertEquals(
+                SqlIdentifierSupport.contextAwareIdentifierSource("billing::Invoice", contexts),
+                SqlIdentifierSupport.physicalTableNameSource("billing::Invoice", null, contexts)
+        );
+        assertEquals(
+                SqlIdentifierSupport.contextAwareIdentifierSource("shipping::Order", contexts),
+                SqlIdentifierSupport.physicalTableNameSource("shipping::Order", null, contexts)
+        );
+    }
+
+    @Test
+    void twoAliasesOfTheSamePackPhysicalQualifierCollapseToTheIdenticalTableName() {
+        CompiledConcept viaAlias1 = new CompiledConcept(
+                "auth::User", "AuthUser", "identity_v1_users",
+                List.of(new CompiledField("id", "uuid", "java.util.UUID", true, true, false)));
+        CompiledConcept viaAlias2 = new CompiledConcept(
+                "id::User", "IdUser", "identity_v1_users",
+                List.of(new CompiledField("id", "uuid", "java.util.UUID", true, true, false)));
+
+        assertEquals(SqlIdentifierSupport.tableName(viaAlias1), SqlIdentifierSupport.tableName(viaAlias2));
+        assertEquals("identity_v1_users", SqlIdentifierSupport.tableName(viaAlias1));
+    }
+
+    @Test
+    void aliasPreservingTableNameRecomputesThePreP2DerivationIgnoringTheStoredTableName() {
+        // The concept's stored tableName already reflects PK-2's physical qualifier
+        // ("identity_v1_users"); aliasPreservingTableName must ignore that field entirely and
+        // recompute fresh from the concept's own (alias-qualified) name -- this is what keeps REST
+        // routes decoupled from a pack version bump.
+        CompiledConcept concept = new CompiledConcept(
+                "auth::User", "AuthUser", "identity_v1_users",
+                List.of(new CompiledField("id", "uuid", "java.util.UUID", true, true, false)));
+
+        assertEquals("auth_users", SqlIdentifierSupport.aliasPreservingTableName(concept, List.of()));
+        assertNotEquals(
+                SqlIdentifierSupport.tableName(concept),
+                SqlIdentifierSupport.aliasPreservingTableName(concept, List.of())
+        );
+    }
+
+    @Test
+    void aliasPreservingTableNameStillHonorsPhysicallyIsolateForNonPackConcepts() {
+        CompiledConcept isolating = new CompiledConcept(
+                "shipping::Order", "ShippingOrder", "shipping_orders",
+                List.of(new CompiledField("id", "uuid", "java.util.UUID", true, true, false)));
+        CompiledConcept nonIsolating = new CompiledConcept(
+                "billing::Invoice", "BillingInvoice", "invoices",
+                List.of(new CompiledField("id", "uuid", "java.util.UUID", true, true, false)));
+
+        List<CompiledContext> contexts = List.of(
+                new CompiledContext("shipping", "contexts/shipping.json", true),
+                new CompiledContext("billing", "contexts/billing.json", false)
+        );
+
+        assertEquals("shipping_orders", SqlIdentifierSupport.aliasPreservingTableName(isolating, contexts));
+        assertEquals("invoices", SqlIdentifierSupport.aliasPreservingTableName(nonIsolating, contexts));
     }
 }
