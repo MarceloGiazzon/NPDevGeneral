@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.dsl.v1.pack.MinimalVersionSelector;
+import com.npdev.dsl.v1.pack.PackLockFile;
 import com.npdev.dsl.v1.pack.PackVersion;
 import com.npdev.dsl.v1.pack.PackVersionConstraint;
 import com.npdev.dsl.v1.validation.ValidationDiagnostic;
@@ -150,6 +151,7 @@ final class PackDependencyGraphWalker {
 
         detectPackCycle(modelFile);
         selectVersions(modelFile);
+        checkLock(modelFile);
 
         for (String packId : topologicalOrder()) {
             String qualifier = qualifierById.computeIfAbsent(packId, id -> id);
@@ -267,6 +269,61 @@ final class PackDependencyGraphWalker {
                 modelFile,
                 direct.path()
         );
+    }
+
+    /**
+     * PK-3: "generation reads the lock, not the constraints". Only enforced when the resolved
+     * graph actually has a transitive dependency (at least one pack declares its own {@code
+     * packs[]}) -- every existing pack/app in this repo today has none, so this is a no-op for
+     * all of them, matching the card's own "still local files only" v1 scope. When enforced: the
+     * live discovery/MVS pass above (never the lock) is what actually picks versions and merges
+     * content -- this method ONLY compares that live result against what's committed, refusing on
+     * any drift rather than silently accepting a stale lock.
+     */
+    private void checkLock(Path modelFile) throws IOException {
+        boolean anyTransitiveDependency = packNodeById.values().stream()
+                .anyMatch(node -> node.get("packs") != null && node.get("packs").isArray() && !node.get("packs").isEmpty());
+        if (!anyTransitiveDependency) {
+            return;
+        }
+        if (!PackLockFile.exists(rootDirectory)) {
+            throw ModelSourceResolver.error(modelFile, "/packs", "this model's pack graph has transitive "
+                    + "dependencies but no " + PackLockFile.FILE_NAME + " exists -- run 'npdev pack add' or "
+                    + "'npdev pack update'");
+        }
+        PackLockFile lock = PackLockFile.read(rootDirectory);
+        if (!lock.packs().keySet().equals(packNodeById.keySet())) {
+            throw ModelSourceResolver.error(modelFile, "/packs", PackLockFile.FILE_NAME + " is stale: its resolved "
+                    + "pack set (" + lock.packs().keySet() + ") does not match the live graph ("
+                    + packNodeById.keySet() + ") -- run 'npdev pack update'");
+        }
+        List<String> stale = new ArrayList<>();
+        for (Map.Entry<String, PackLockFile.LockedPack> entry : lock.packs().entrySet()) {
+            String packId = entry.getKey();
+            PackLockFile.LockedPack locked = entry.getValue();
+            ObjectNode packNode = packNodeById.get(packId);
+            Path packFile = packFileById.get(packId);
+            String liveVersion = ModelSourceResolver.textOrBlank(packNode.get("version"));
+            String liveSourcePath = rootDirectory.relativize(packFile).toString().replace('\\', '/');
+            String liveDigest;
+            try {
+                liveDigest = PackLockFile.sha256(packFile);
+            } catch (IOException unreadable) {
+                stale.add(packId + " (its locked sourcePath " + locked.sourcePath() + " could not be read: "
+                        + unreadable.getMessage() + ")");
+                continue;
+            }
+            if (!locked.resolvedVersion().equals(liveVersion)
+                    || !locked.sourcePath().equals(liveSourcePath)
+                    || !locked.digest().equals(liveDigest)) {
+                stale.add(packId + " (locked " + locked.resolvedVersion() + " @ " + locked.sourcePath()
+                        + ", live " + liveVersion + " @ " + liveSourcePath + ")");
+            }
+        }
+        if (!stale.isEmpty()) {
+            throw ModelSourceResolver.error(modelFile, "/packs", PackLockFile.FILE_NAME + " is stale for: "
+                    + String.join("; ", stale) + " -- run 'npdev pack update'");
+        }
     }
 
     private void detectPackCycle(Path modelFile) throws IOException {

@@ -1,15 +1,18 @@
 package com.npdev.dsl.v1;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.dsl.v1.pack.PackLockFile;
 import com.npdev.dsl.v1.parser.ModelSourceResolver;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
-import com.npdev.dsl.v1.validation.ModelSchemaValidationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -82,6 +85,10 @@ class PackTransitiveDependencyResolutionTest {
                   ]
                 }
                 """);
+        writeValidLock(Map.of(
+                "user", "packs/user/pack.json",
+                "crm", "packs/crm/pack.json",
+                "billing", "packs/billing/pack.json"));
 
         ResolvedModelSource source = new ModelSourceResolver().resolve(model);
         JsonNode concepts = source.resolvedRoot().get("concepts");
@@ -335,6 +342,10 @@ class PackTransitiveDependencyResolutionTest {
                   ]
                 }
                 """);
+        writeValidLock(Map.of(
+                "user", "packs/user/pack.json",
+                "crm", "packs/crm/pack.json",
+                "userv3", "packs/user-v3/pack.json"));
 
         ResolvedModelSource source = new ModelSourceResolver().resolve(model);
         JsonNode concepts = source.resolvedRoot().get("concepts");
@@ -397,6 +408,200 @@ class PackTransitiveDependencyResolutionTest {
                   ]
                 }
                 """);
+    }
+
+    @Test
+    void transitiveDependencyWithNoLockRefusesNamingTheRemedy() throws Exception {
+        write("packs/user/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.0.0",
+                  "concepts": [ { "name": "Account", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        write("packs/crm/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [ { "name": "Lead", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "no.lock.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "$ref": "packs/crm/pack.json" } ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(thrown.getMessage().contains("no npdev.lock exists"), "got: " + thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("npdev pack add"), "must name the remedy, got: " + thrown.getMessage());
+    }
+
+    @Test
+    void staleLockVersionRefusesNamingTheRemedy() throws Exception {
+        write("packs/user/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.0.0",
+                  "concepts": [ { "name": "Account", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        write("packs/crm/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [ { "name": "Lead", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "stale.lock.version.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "$ref": "packs/crm/pack.json" } ]
+                }
+                """);
+        // Hand-write a lock recording a DIFFERENT version than what's actually on disk now.
+        PackLockFile.of(Map.of(
+                "user", new PackLockFile.LockedPack("2.0.0", PackLockFile.sha256(temp.resolve("packs/user/pack.json")), "packs/user/pack.json"),
+                "crm", new PackLockFile.LockedPack("1.0.0", PackLockFile.sha256(temp.resolve("packs/crm/pack.json")), "packs/crm/pack.json")
+        )).write(temp);
+        // Now bump user's version on disk without updating the lock -- classic drift.
+        Files.writeString(temp.resolve("packs/user/pack.json"), """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.1.0",
+                  "concepts": [ { "name": "Account", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(thrown.getMessage().contains("is stale for"), "got: " + thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("user"), "must name the stale pack, got: " + thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("npdev pack update"), "must name the remedy, got: " + thrown.getMessage());
+    }
+
+    @Test
+    void staleLockDigestRefusesEvenWhenTheVersionStringWasNotBumped() throws Exception {
+        write("packs/user/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.0.0",
+                  "concepts": [ { "name": "Account", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        write("packs/crm/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [ { "name": "Lead", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "stale.lock.digest.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "$ref": "packs/crm/pack.json" } ]
+                }
+                """);
+        writeValidLock(Map.of("user", "packs/user/pack.json", "crm", "packs/crm/pack.json"));
+        // Hand-edit the pack.json's CONTENT (not its version string) without touching the lock --
+        // the digest check must catch this even though resolvedVersion still matches.
+        Files.writeString(temp.resolve("packs/user/pack.json"), """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.0.0",
+                  "concepts": [ { "name": "Account", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true },
+                    { "name": "unexpectedNewField", "type": "string" }
+                  ] } ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(thrown.getMessage().contains("is stale for"), "got: " + thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("user"), "must name the stale pack, got: " + thrown.getMessage());
+    }
+
+    @Test
+    void twoResolutionsOfTheSameModelAndLockAreByteIdentical() throws Exception {
+        write("packs/user/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.0.0",
+                  "concepts": [ { "name": "Account", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        write("packs/crm/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [ { "name": "Lead", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] } ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "determinism.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "$ref": "packs/crm/pack.json" } ]
+                }
+                """);
+        writeValidLock(Map.of("user", "packs/user/pack.json", "crm", "packs/crm/pack.json"));
+
+        JsonNode first = new ModelSourceResolver().resolve(model).resolvedRoot();
+        JsonNode second = new ModelSourceResolver().resolve(model).resolvedRoot();
+        assertEquals(first.toString(), second.toString());
+    }
+
+    /** Writes a valid npdev.lock covering the given packId -> relative-source-path pairs, deriving
+     *  each entry's resolvedVersion and digest fresh from the actual fixture file on disk -- the
+     *  same way a real `npdev pack add`/`update` would, not hardcoded hashes. */
+    private void writeValidLock(Map<String, String> packIdToRelativeSourcePath) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, PackLockFile.LockedPack> packs = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : packIdToRelativeSourcePath.entrySet()) {
+            Path file = temp.resolve(entry.getValue());
+            String version = mapper.readTree(file.toFile()).get("version").asText();
+            packs.put(entry.getKey(), new PackLockFile.LockedPack(version, PackLockFile.sha256(file), entry.getValue()));
+        }
+        PackLockFile.of(packs).write(temp);
     }
 
     private Path write(String relative, String content) throws Exception {
