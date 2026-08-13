@@ -434,7 +434,16 @@ final class PackDependencyGraphWalker {
             String migratedVersionRaw = existingLock != null && existingLock.packs().containsKey(packId)
                     ? existingLock.packs().get(packId).migratedVersion()
                     : "";
-            PackVersion fromVersion = migratedVersionRaw.isBlank() ? toVersion : PackVersion.parse(migratedVersionRaw);
+            // Untracked (never generated before, or generated back when this pack had no migrations
+            // key yet) does NOT mean "already current" -- that would silently skip replaying real
+            // history for a pre-existing database sitting at the pack's original version, the exact
+            // failure this card exists to prevent. The only version an untracked database could
+            // possibly be at is the chain's own provably-first-ever version (see
+            // PackMigrationChain.earliestFromVersion's own doc for why this is safe for a fresh
+            // install too).
+            PackVersion fromVersion = migratedVersionRaw.isBlank()
+                    ? chain.earliestFromVersion()
+                    : PackVersion.parse(migratedVersionRaw);
 
             PackMigrationComposer.Result result = PackMigrationComposer.compose(packId, chain, fromVersion, toVersion);
             if (result instanceof PackMigrationComposer.Refused refused) {

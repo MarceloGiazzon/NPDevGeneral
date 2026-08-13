@@ -133,6 +133,25 @@ public final class PackMigrationChain {
         return hops;
     }
 
+    /**
+     * The lowest {@code from} version across every declared hop -- the pack's own provably-first-
+     * ever version, since a hop can only exist between two REAL published versions and {@code
+     * PackPublishGate} never allows a downgrade. {@link PackDependencyGraphWalker} uses this as the
+     * {@code fromVersion} fallback when a packId has no tracked {@code migratedVersion} at all
+     * (never generated before, or generated back when this pack had no migrations key yet): the
+     * ONLY version an untracked live database could possibly be at is this one, so composing from it
+     * is safe whether the database is real (a genuine older install needing the marker) or
+     * nonexistent (a fresh install, where the marker is harmless -- nothing live to explain).
+     * Throws if called with no hops; callers only call this after confirming {@link #hops()} is
+     * non-empty.
+     */
+    public PackVersion earliestFromVersion() {
+        return hops.stream()
+                .map(HopEntry::from)
+                .min(PackVersion::compareTo)
+                .orElseThrow(() -> new IllegalStateException("earliestFromVersion() called on an empty chain"));
+    }
+
     /** Every hop whose declared start version is exactly {@code version} -- more than one means a
      *  branching chain, which {@link PackMigrationComposer} refuses rather than picking arbitrarily. */
     public List<HopEntry> hopsStartingAt(PackVersion version) {

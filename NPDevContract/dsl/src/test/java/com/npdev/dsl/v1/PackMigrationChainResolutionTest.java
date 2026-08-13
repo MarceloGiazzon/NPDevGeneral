@@ -80,16 +80,22 @@ class PackMigrationChainResolutionTest {
     }
 
     @Test
-    void firstEverGenerateWithNoLockAtAllProducesNoSynthesisAtAll() throws Exception {
+    void firstEverGenerateWithNoLockStillSynthesizesFromTheChainsEarliestVersion() throws Exception {
+        // No npdev.lock written at all -- "untracked" must NOT be read as "already current", because
+        // an untracked live database could be a genuinely pre-existing install still sitting at the
+        // pack's ORIGINAL version (this is the exact failure this card exists to prevent: silently
+        // skipping a real rename because there was no recorded baseline). The only version an
+        // untracked database could possibly be at is the chain's own earliest declared version, so
+        // that is what must be composed from -- harmlessly, if this really is a fresh install with
+        // nothing live yet (see PackMigrationChain.earliestFromVersion's own doc for why).
         write("packs/identity/pack.json", IDENTITY_V3_WITH_CHAIN);
         Path model = write("model.json", MODEL_IMPORTING_IDENTITY);
-        // No npdev.lock written at all -- the correct, safe default for "never generated before".
 
         ResolvedModelSource source = new ModelSourceResolver().resolve(model);
 
         JsonNode displayName = fieldNamed(userConcept(source), "displayName");
-        assertNull(displayName.get("renamedFrom"),
-                "a first-ever generate has no prior version to compose from -- must be a no-op");
+        assertEquals("name", displayName.get("renamedFrom").asText(),
+                "an untracked pack with a real chain must compose from the chain's earliest version, not no-op");
     }
 
     @Test
