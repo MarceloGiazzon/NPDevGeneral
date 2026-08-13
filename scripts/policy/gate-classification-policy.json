@@ -1,0 +1,228 @@
+{
+  "$schemaVersion": "npdev-gate-classification-policy.v1",
+  "_comment": "R4 Part C (MASTER-ROADMAP.md Step 9 / ledger QUAL-7). Records, for every scripts/quality/check-*.py, whether it verifies real platform behavior/correctness ('product') or documentation/process hygiene only ('paperwork') -- source of truth for which checks run per-commit (run-ai-knowledge-gate.ps1) vs. weekly (run-weekly-paperwork-checks.ps1 / .github/workflows/weekly-paperwork-checks.yml). Measured at card-authoring time: 22 product / 14 paperwork of the 36 pre-existing checkers (ROADMAP.md card R4 Part C); this card's own new check-coverage-ratchet.py (R3) adds a 23rd product entry, for 23 product / 14 paperwork of 37 total. A 'paperwork' classification with movedToWeekly:false means the checker stays in the per-commit gate despite the classification -- either because it catches a real bug class (the 3 explicitly named in the card: twin-pair-consistency, test-task-coverage, workflow-yaml-syntax) or because it is hosted by a DIFFERENT per-commit gate outside this card's scope (check-dsl-reference-output-floor.py, run-generator-gate.ps1) and moving only its own schedule without touching that gate is a separate, larger change this card does not make.",
+  "classifications": {
+    "check-adr-decision-implementation.py": {
+      "classification": "paperwork",
+      "reason": "Traces an accepted ADR decision to a required substring in a named file -- a decision-record-to-code governance check, not a test of runtime behavior.",
+      "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "movedToWeekly": true
+    },
+    "check-allowlist-citations.py": {
+      "classification": "paperwork",
+      "reason": "Verifies an allowlist entry carries a REG/B citation -- a review-discipline check, not platform behavior.",
+      "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "movedToWeekly": true
+    },
+    "check-cadence-coverage.py": {
+      "classification": "paperwork",
+      "reason": "Verifies every run-all-gates.ps1 gate has a verification-cadence.json entry -- a scheduling-metadata check, not platform behavior.",
+      "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "movedToWeekly": true
+    },
+    "check-closeable-streams.py": {
+      "classification": "product",
+      "reason": "Catches a real Java resource-leak bug class (unclosed Files.list/walk/find/lines streams) that caused a real Windows DELETE-PENDING directory-lock failure (S1).",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-config-schema.py": {
+      "classification": "product",
+      "reason": "Validates real corpus config.json files against the schema the app generator actually reads at generation time.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-container-images-pinned.py": {
+      "classification": "product",
+      "reason": "Supply-chain integrity for the storage conformance suite's real Docker images -- a moving tag silently changes what a push-blocking gate is testing against.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-dialect-methods-are-asked.py": {
+      "classification": "product",
+      "reason": "Finds SqlDialect methods with no production caller -- an answer computed but never consulted is a real correctness gap (the STOR-4/5/6 bug shape).",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-dialect-sites.py": {
+      "classification": "product",
+      "reason": "Finds dialect-bound SQL written outside the dialect package -- the exact REG-class defect that returns wrong pages on SQL Server without erroring.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-doc-inventory.py": {
+      "classification": "paperwork",
+      "reason": "Enforces the process-document ban -- documentation hygiene by definition.",
+      "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "movedToWeekly": true
+    },
+    "check-dsl-conformance-generates.py": {
+      "classification": "product",
+      "reason": "Proves a DSL feature survives actual code GENERATION, not just parsing -- the emit-side twin of check-dsl-coverage.py.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-dsl-coverage.py": {
+      "classification": "product",
+      "reason": "Verifies every DSL feature has at least one corpus model exercising it -- corpus/product coverage, not documentation.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-dsl-reference-output-floor.py": {
+      "classification": "product",
+      "reason": "Asserts an absolute content floor on generated code/docs output (no discriminated field silently renders as the degenerate 'any' fallback) -- a generator-correctness floor, not a documentation-only rule. Matches the roadmap's own 22/14 baseline split.",
+      "hostedIn": "scripts/quality/run-generator-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-emitted-sql-portability.py": {
+      "classification": "product",
+      "reason": "Scans real emitted schema scripts for constructs the target engine cannot run -- output-side portability, not documentation.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-engine-parity.py": {
+      "classification": "product",
+      "reason": "Fails the moment a server engine is special-cased without its siblings in the real environment toolbox -- the E15 defect class.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-engine-variant-families.py": {
+      "classification": "product",
+      "reason": "Asserts byte-identical model bodies stay identical across engine-variant corpus families -- corpus/product integrity.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-executable-line-endings.py": {
+      "classification": "product",
+      "reason": "A CRLF shebang is not untidy, it is UNRUNNABLE -- guards a 'the script literally cannot execute' defect class, not a style preference.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-external-ai-mission-coverage.py": {
+      "classification": "paperwork",
+      "reason": "Audits mission run-record provenance (ADR-0009) -- a registry/audit-trail check, not platform runtime behavior. Reachable from no gate at all after R4 Part A retired its only caller (run-external-ai-gate.ps1, one of the 18 confirmed orphans) -- hosting it in the weekly gate is what keeps it a real, exercised check rather than a second orphan.",
+      "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "movedToWeekly": true
+    },
+    "check-firstrun-extractor.py": {
+      "classification": "product",
+      "reason": "Guards the first-run harness's command-extraction logic against three DIFFERENT real wrong-extraction defects, each of which cost a ~30-minute container run and reported the defect against the wrong layer -- a testing-infrastructure correctness bug class, kept per-commit rather than reclassified alongside its sibling check-readme-contract.py.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-generated-bundle-freshness.py": {
+      "classification": "product",
+      "reason": "Catches a committed generated artefact (e.g. the React bundle) shipping stale content to every generated app -- the PORT-1 defect class.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-ledger-status-reverse-freshness.py": {
+      "classification": "paperwork",
+      "reason": "Flags a ledger item marked OPEN whose fix already landed -- a bookkeeping-accuracy check on ledger/*.yml prose, not platform behavior.",
+      "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "movedToWeekly": true
+    },
+    "check-markdown-links.py": {
+      "classification": "paperwork",
+      "reason": "Checks relative markdown links resolve -- pure documentation hygiene.",
+      "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "movedToWeekly": true
+    },
+    "check-no-markdown-reads.py": {
+      "classification": "paperwork",
+      "reason": "Enforces the zero-markdown-reads architectural rule on scripts -- a script-hygiene/process rule (CLAUDE.md's own framing), not a test of product runtime behavior.",
+      "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "movedToWeekly": true
+    },
+    "check-panel-provenance-impact.py": {
+      "classification": "product",
+      "reason": "Checks a *.panel.json manifest against a built app's CURRENT model for references that no longer exist -- real drift detection against live app state.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-panel-provenance-schema.py": {
+      "classification": "product",
+      "reason": "Structurally validates *.panel.json manifests (required fields, well-formed invokes[] ids) -- a real manifest-contract check.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-pinned-download-links.py": {
+      "classification": "paperwork",
+      "reason": "Checks install-guide download links don't pin a specific release -- documentation hygiene (a newcomer-facing doc-freshness rule).",
+      "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "movedToWeekly": true
+    },
+    "check-readme-contract.py": {
+      "classification": "paperwork",
+      "reason": "Its own docstring frames it as proving documented commands/defaults are followable AS WRITTEN -- verifies the DOCS, not the platform's own runtime behavior (the commands it runs are real, but the question it asks is 'does the doc match reality', the definition of a paperwork check here).",
+      "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "movedToWeekly": true
+    },
+    "check-record-surfaces.py": {
+      "classification": "paperwork",
+      "reason": "Checks branch freshness vs. origin/main and record-surfaces.json's large-file size claims -- repository/documentation bookkeeping, not platform behavior.",
+      "hostedIn": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "movedToWeekly": true
+    },
+    "check-rollback-claims.py": {
+      "classification": "product",
+      "reason": "Catches a storage/schema message FALSELY claiming a rollback on an engine that commits implicitly on DDL -- a real, user-facing false-all-clear defect (STOR-2's class).",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-routine-corpus-conformance.py": {
+      "classification": "product",
+      "reason": "Validates checked-in browser routines against the pinned ScrapForAI engine's own routine schema -- a real runtime-contract conformance check.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-schema-mirror-consistency.py": {
+      "classification": "product",
+      "reason": "Guards the FOUR copies of model.schema.json actually read by different real code paths (JsonModelParser, the authoring UI, the legacy authoring location) -- a drift here silently teaches a stale contract to whichever consumer reads it, a real behavioral divergence risk, not a documentation nicety.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-step-type-test-coverage.py": {
+      "classification": "product",
+      "reason": "Verifies every step type has a MODEL-level validation test reaching SemanticValidator -- the REG-89 defect class (a step undeclarable in any model while all its kernel tests passed).",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-template-resource-shadowing.py": {
+      "classification": "product",
+      "reason": "Catches a runtime-host template resource silently shadowing a generated one -- the REG-142 defect (every generated app served another app's model identity).",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-test-task-coverage.py": {
+      "classification": "paperwork",
+      "reason": "Verifies a custom Gradle Test task is reachable from a CI workflow -- test-infrastructure bookkeeping. Classified paperwork but EXPLICITLY KEPT in the per-commit gate (not moved) because an unreachable Test task is exactly the REG-49 bug shape (a suite that only ran on one laptop) and the card names this checker by name as one of the 3 exceptions.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-twin-pair-consistency.py": {
+      "classification": "paperwork",
+      "reason": "Verifies registered twin-pair rules haven't diverged -- a registry-consistency check. Classified paperwork but EXPLICITLY KEPT in the per-commit gate (not moved) because a diverged twin-pair is exactly the REG-89/104/112 bug family and the card names this checker by name as one of the 3 exceptions.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-workflow-yaml-syntax.py": {
+      "classification": "paperwork",
+      "reason": "Verifies every workflow file is valid YAML -- CI-configuration syntax, not platform runtime behavior. Classified paperwork but EXPLICITLY KEPT in the per-commit gate (not moved) because invalid YAML silently schedules ZERO jobs (found live on a real PR) and the card names this checker by name as one of the 3 exceptions.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-x0-evaluator-coverage.py": {
+      "classification": "product",
+      "reason": "Verifies every FIXED/CLEAN X0 silent-answer finding's named regression test still exists and still contains its marker -- a real regression-detection registry over product code.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
+    "check-coverage-ratchet.py": {
+      "classification": "product",
+      "reason": "R3 (this same Step 9): measures real JaCoCo execution coverage per Java module and fails on a real regression -- added by this card, the 23rd product entry (37 total post-R3).",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    }
+  }
+}

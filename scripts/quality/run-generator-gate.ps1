@@ -255,6 +255,42 @@ $releaseGateEvidence = [pscustomobject]@{
 $gateReport | Add-Member -NotePropertyName releaseGateT2 -NotePropertyValue $releaseGateEvidence -Force
 $gateReport | Add-Member -NotePropertyName outOfTreeGeneration -NotePropertyValue $outOfTreeEvidence -Force
 
+# R4 Part A (MASTER-ROADMAP.md Step 9 / ledger QUAL-7): run-trusted-source-security-check.ps1 was
+# reachable from no gate at all before this card. It does something no check-*.py duplicates -- an
+# AST-validation + bytecode-restriction proof (javac/javap forbidden-opcode scan) for
+# TrustedSourceEmitter's generated code, not just re-running :generator:test (which generatorQualityGate
+# above already does). Wired in HERE rather than a new standalone gate.
+$trustedSourceSecurityScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\quality\run-trusted-source-security-check.ps1"
+$trustedSourceSecurityReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\trusted-source-security-report.json"
+$trustedSourceSecurityError = $null
+$trustedSourceSecurityReport = $null
+try {
+    & $trustedSourceSecurityScript `
+        -WorkspaceRoot $WorkspaceRoot `
+        -RunId ($RunId + "-trusted-source-security") `
+        -ReportPath $trustedSourceSecurityReportPath | Out-Null
+    if (Test-Path -LiteralPath $trustedSourceSecurityReportPath -PathType Leaf) {
+        $trustedSourceSecurityReport = Get-Content -LiteralPath $trustedSourceSecurityReportPath -Raw | ConvertFrom-Json
+    }
+}
+catch {
+    $trustedSourceSecurityError = $_.Exception.Message
+    if (Test-Path -LiteralPath $trustedSourceSecurityReportPath -PathType Leaf) {
+        try {
+            $trustedSourceSecurityReport = Get-Content -LiteralPath $trustedSourceSecurityReportPath -Raw | ConvertFrom-Json
+        }
+        catch {
+            $trustedSourceSecurityReport = $null
+        }
+    }
+}
+$trustedSourceSecurityEvidence = [pscustomobject]@{
+    overallStatus = if ($null -eq $trustedSourceSecurityReport) { "failed" } else { [string]$trustedSourceSecurityReport.overallStatus }
+    reportPath = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $trustedSourceSecurityReportPath
+    error = $trustedSourceSecurityError
+}
+$gateReport | Add-Member -NotePropertyName trustedSourceSecurity -NotePropertyValue $trustedSourceSecurityEvidence -Force
+
 if (
     -not [string]::IsNullOrWhiteSpace($outOfTreeError) -or
     -not [string]::IsNullOrWhiteSpace($deterministicGenerationError) -or
@@ -265,7 +301,10 @@ if (
     ([string]$generatorGovernanceReport.overallStatus -ne "passed") -or
     (-not $dslReferencePassed) -or
     (-not $dslReferenceFloorPassed) -or
-    (-not $releaseGatePassed)
+    (-not $releaseGatePassed) -or
+    (-not [string]::IsNullOrWhiteSpace($trustedSourceSecurityError)) -or
+    ($null -eq $trustedSourceSecurityReport) -or
+    ([string]$trustedSourceSecurityReport.overallStatus -ne "passed")
 ) {
     $gateReport.overallStatus = "failed"
     $gateReport.failureReasons = @(
@@ -299,6 +338,12 @@ if (
                 else {
                     "Release gate (T2, dsl-conformance-max) returned status '" + $releaseGateStatus + "' -- see " + (Get-NPDevWorkspaceRelativePath $WorkspaceRoot $releaseGateReportPath) + "."
                 }
+            }
+            if (-not [string]::IsNullOrWhiteSpace($trustedSourceSecurityError)) {
+                "Trusted-source security check invocation error: " + $trustedSourceSecurityError
+            }
+            elseif ($null -ne $trustedSourceSecurityReport -and [string]$trustedSourceSecurityReport.overallStatus -ne "passed") {
+                "Trusted-source security check (AST validation + bytecode-restriction proof) returned status '" + [string]$trustedSourceSecurityReport.overallStatus + "' -- see " + (Get-NPDevWorkspaceRelativePath $WorkspaceRoot $trustedSourceSecurityReportPath) + "."
             }
         )
     )

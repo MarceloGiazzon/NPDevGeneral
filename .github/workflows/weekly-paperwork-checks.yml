@@ -1,0 +1,50 @@
+name: Weekly paperwork checks
+
+# R4 Part C (MASTER-ROADMAP.md Step 9 / ledger QUAL-7). 11 of the 14 "paperwork" checkers (verify
+# documentation/process hygiene, not platform runtime behavior -- see
+# scripts/policy/gate-classification-policy.json for the full product-vs-paperwork split) used to run
+# on every push/PR inside run-ai-knowledge-gate.ps1. None of them can fail because of the specific
+# code change a reviewer is looking at right now (a stale doc link, an un-cited allowlist entry, a
+# process document sneaking in), so gating every commit on them bought latency without buying safety.
+# Moved here, on a weekly cadence, via scripts/quality/run-weekly-paperwork-checks.ps1 -- the other 3
+# paperwork checkers (twin-pair-consistency, test-task-coverage, workflow-yaml-syntax) STAY in the
+# per-commit ai-knowledge gate because they catch real bug classes despite being process-adjacent.
+#
+# Not wired into branch protection (only "AI knowledge substrate gate" is) -- a finding here is a
+# signal to fix on the next convenient commit, not a merge-blocker for whatever PR happens to be open
+# when the weekly run lands.
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-paperwork-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  weekly-paperwork-checks:
+    name: Weekly paperwork checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run weekly paperwork checks
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/quality/run-weekly-paperwork-checks.ps1
