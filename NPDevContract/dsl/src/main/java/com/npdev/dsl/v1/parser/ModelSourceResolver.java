@@ -174,6 +174,63 @@ public final class ModelSourceResolver {
         }
     }
 
+    /** PK-3 CLI-only entry point ({@code npdev pack add|update|list|why}): runs the same
+     *  discovery+MVS pass {@link #resolve} does, but never enforces {@code npdev.lock} (add/update
+     *  are what WRITE it; why is always a fresh live computation) and never merges pack content
+     *  into a model -- just returns the resolved graph. A model with no {@code packs[]} at all
+     *  resolves to an empty result. */
+    public PackCliResolution resolvePackGraphForCli(Path modelJsonPath) throws IOException {
+        if (modelJsonPath == null) {
+            throw new IOException("model.json path is required");
+        }
+        Path rootRealPath = modelJsonPath.toAbsolutePath().normalize().toRealPath();
+        if (!Files.isRegularFile(rootRealPath)) {
+            throw new IOException("model.json not found: " + modelJsonPath);
+        }
+        Path rootDirectory = rootRealPath.getParent();
+        if (rootDirectory == null) {
+            throw new IOException("model.json must have a parent directory: " + rootRealPath);
+        }
+        JsonNode root = readJson(rootRealPath);
+        if (!root.isObject()) {
+            throw error(rootRealPath, "$", "Root model must be a JSON object");
+        }
+        JsonNode packs = root.get("packs");
+        if (packs == null || !packs.isArray() || packs.isEmpty()) {
+            return new PackCliResolution(Map.of(), Map.of(), rootDirectory);
+        }
+
+        ResolutionState state = new ResolutionState(rootRealPath, rootDirectory);
+        ObjectNode resolvedShell = JsonNodeFactory.instance.objectNode();
+        if (root.has("dslVersion")) {
+            resolvedShell.set("dslVersion", root.get("dslVersion").deepCopy());
+        }
+        PackDependencyGraphWalker walker = PackDependencyGraphWalker.resolveForCli(
+                this, (ArrayNode) packs, resolvedShell, rootRealPath, state);
+
+        Map<String, com.npdev.dsl.v1.pack.PackLockFile.LockedPack> lockEntries = walker.toLockEntries();
+        Map<String, List<String>> why = new LinkedHashMap<>();
+        for (String packId : walker.resolvedPackIds()) {
+            List<String> descriptions = new ArrayList<>();
+            for (com.npdev.dsl.v1.pack.MinimalVersionSelector.Requirement requirement : walker.requirementsFor(packId)) {
+                descriptions.add(requirement.requirerPackId() + " needs " + requirement.constraint().rawConstraint()
+                        + " via " + String.join(" -> ", requirement.path()));
+            }
+            why.put(packId, descriptions);
+        }
+        return new PackCliResolution(lockEntries, why, rootDirectory);
+    }
+
+    /** PK-3 CLI-only result: {@code lockEntries} is exactly what {@code npdev pack add/update}
+     *  should write to {@code npdev.lock}; {@code whyDescriptionsByPackId} is every constraint
+     *  that contributed to each packId's selection, for {@code npdev pack why}. */
+    public record PackCliResolution(
+            Map<String, com.npdev.dsl.v1.pack.PackLockFile.LockedPack> lockEntries,
+            Map<String, List<String>> whyDescriptionsByPackId,
+            Path rootDirectory
+    ) {
+    }
+
     private ObjectNode resolveRoot(ObjectNode root, Path sourceFile, ResolutionState state) throws IOException {
         ObjectNode resolved = JsonNodeFactory.instance.objectNode();
         for (String key : ROOT_SCALAR_KEYS) {

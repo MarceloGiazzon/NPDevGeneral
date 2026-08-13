@@ -72,17 +72,77 @@ final class PackDependencyGraphWalker {
             Path modelFile,
             ModelSourceResolver.ResolutionState state
     ) throws IOException {
+        return resolve(resolver, packsNode, resolved, modelFile, state, true);
+    }
+
+    /**
+     * @param enforceLock false for the CLI's own pack add/update/why commands, which must be able
+     *                    to run discovery+MVS BEFORE a lock exists (that's the whole point of
+     *                    `add`/`update` -- they're what WRITES the lock in the first place) or
+     *                    without caring about lock staleness at all (`why` is always a fresh live
+     *                    computation, per the card's own spec). Every other caller (real model
+     *                    resolution -- generation, validation) always enforces it.
+     */
+    static List<ModelSourceResolver.PackRequirementEntry> resolve(
+            ModelSourceResolver resolver,
+            ArrayNode packsNode,
+            ObjectNode resolved,
+            Path modelFile,
+            ModelSourceResolver.ResolutionState state,
+            boolean enforceLock
+    ) throws IOException {
         String rootDslVersion = ModelSourceResolver.textOrBlank(resolved.get("dslVersion"));
         PackDependencyGraphWalker walker = new PackDependencyGraphWalker(resolver, state, rootDslVersion);
-        walker.run(packsNode, resolved, modelFile);
+        walker.run(packsNode, resolved, modelFile, enforceLock);
         return walker.packRequirements;
+    }
+
+    /** CLI-only entry point (pack add/update/list/why): returns the walker instance itself, so the
+     *  caller can pull lock entries / why-requirements / resolved packIds off it -- never enforces
+     *  the lock (see {@link #resolve(ModelSourceResolver, ArrayNode, ObjectNode, Path, ModelSourceResolver.ResolutionState, boolean)}). */
+    static PackDependencyGraphWalker resolveForCli(
+            ModelSourceResolver resolver,
+            ArrayNode packsNode,
+            ObjectNode resolved,
+            Path modelFile,
+            ModelSourceResolver.ResolutionState state
+    ) throws IOException {
+        String rootDslVersion = ModelSourceResolver.textOrBlank(resolved.get("dslVersion"));
+        PackDependencyGraphWalker walker = new PackDependencyGraphWalker(resolver, state, rootDslVersion);
+        walker.run(packsNode, resolved, modelFile, false);
+        return walker;
+    }
+
+    /** CLI-only accessor (pack add/update/list/why): the graph {@link #run} just resolved, keyed
+     *  by packId. Only meaningful after {@code run} has completed. */
+    Map<String, PackLockFile.LockedPack> toLockEntries() throws IOException {
+        Map<String, PackLockFile.LockedPack> entries = new LinkedHashMap<>();
+        for (String packId : packNodeById.keySet()) {
+            Path packFile = packFileById.get(packId);
+            String version = ModelSourceResolver.textOrBlank(packNodeById.get(packId).get("version"));
+            String sourcePath = rootDirectory.relativize(packFile).toString().replace('\\', '/');
+            entries.put(packId, new PackLockFile.LockedPack(version, PackLockFile.sha256(packFile), sourcePath));
+        }
+        return entries;
+    }
+
+    /** CLI-only accessor ({@code npdev pack why}): every constraint any pack in the graph placed
+     *  on {@code packId}, plus which one determined the final selection (the highest minimum). */
+    List<MinimalVersionSelector.Requirement> requirementsFor(String packId) {
+        return requirementsByPackId.getOrDefault(packId, List.of());
+    }
+
+    /** CLI-only accessor: every packId the graph resolved (for {@code npdev pack list}'s live
+     *  dry-run when no lock exists yet). */
+    Set<String> resolvedPackIds() {
+        return packNodeById.keySet();
     }
 
     private record DirectImport(
             String path, Path packFile, ObjectNode packNode, String realPackId, String qualifier, boolean allowSideBySide, boolean hasAlias) {
     }
 
-    private void run(ArrayNode packsNode, ObjectNode resolved, Path modelFile) throws IOException {
+    private void run(ArrayNode packsNode, ObjectNode resolved, Path modelFile, boolean enforceLock) throws IOException {
         Set<String> usedNamespaces = new LinkedHashSet<>();
         List<DirectImport> directImports = new ArrayList<>();
 
@@ -154,7 +214,9 @@ final class PackDependencyGraphWalker {
 
         detectPackCycle(modelFile);
         selectVersions(modelFile);
-        checkLock(modelFile);
+        if (enforceLock) {
+            checkLock(modelFile);
+        }
 
         for (String packId : topologicalOrder()) {
             String qualifier = qualifierById.computeIfAbsent(packId, id -> id);
