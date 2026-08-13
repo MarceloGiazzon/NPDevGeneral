@@ -1,0 +1,17 @@
+{
+  "id": "p5-migration-chain",
+  "title": "p5-migration-chain-v1",
+  "complexity": "storage-probe",
+  "purpose": "PK-4 Stage C/D proof (PACK-6/PM3): a pack upgrade that skips an intermediate version must still replay that version's renamedFrom -- the guarantee the whole platform sells.",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo -- proves PACK-6 (a multi-hop pack upgrade destroying data) is closed.",
+    "renamechain@1.0.0 -> @3.0.0 directly, never generating at @2.0.0. @2.0.0's chain entry renames Doc.code -> Doc.docCode; @3.0.0 adds an unrelated Doc.notes field.",
+    "The manifest id is shared with the sibling version on purpose (see p3-rename's own note): NPDev keys a file-backed H2 database's directory on this id, so v1 and the v3-direct-jump must resolve to the SAME database for the proof to measure anything."
+  ],
+  "expectedOutcomes": [
+    "A row written with `code` under v1 is readable as `docCode` after regenerating straight to v3.",
+    "No row is lost and no value is blanked.",
+    "Deleting the 1.0.0 -> 2.0.0 chain entry and repeating the v3 regenerate REFUSES rather than silently dropping the column."
+  ]
+}

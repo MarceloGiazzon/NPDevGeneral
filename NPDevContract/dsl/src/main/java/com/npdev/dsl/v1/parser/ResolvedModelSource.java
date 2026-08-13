@@ -1,6 +1,7 @@
 package com.npdev.dsl.v1.parser;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.npdev.dsl.v1.pack.PackLockFile;
 import com.npdev.dsl.v1.validation.ValidationDiagnostic;
 
 import java.nio.file.Path;
@@ -17,6 +18,7 @@ public final class ResolvedModelSource {
     private final List<ValidationDiagnostic> diagnostics;
     private final List<ValidationDiagnostic> warnings;
     private final Map<String, String> physicalQualifierByConceptName;
+    private final Map<String, PackLockFile.LockedPack> migrationTrackedPacks;
 
     public ResolvedModelSource(
             Path rootModelPath,
@@ -26,7 +28,8 @@ public final class ResolvedModelSource {
             Map<String, Path> provenanceByJsonPointer,
             List<ValidationDiagnostic> diagnostics,
             List<ValidationDiagnostic> warnings,
-            Map<String, String> physicalQualifierByConceptName
+            Map<String, String> physicalQualifierByConceptName,
+            Map<String, PackLockFile.LockedPack> migrationTrackedPacks
     ) {
         this.rootModelPath = Objects.requireNonNull(rootModelPath, "rootModelPath");
         this.canonicalRootDirectory = Objects.requireNonNull(canonicalRootDirectory, "canonicalRootDirectory");
@@ -37,6 +40,7 @@ public final class ResolvedModelSource {
         this.warnings = List.copyOf(warnings == null ? List.of() : warnings);
         this.physicalQualifierByConceptName = Map.copyOf(
                 physicalQualifierByConceptName == null ? Map.of() : physicalQualifierByConceptName);
+        this.migrationTrackedPacks = Map.copyOf(migrationTrackedPacks == null ? Map.of() : migrationTrackedPacks);
     }
 
     public Path rootModelPath() {
@@ -69,6 +73,14 @@ public final class ResolvedModelSource {
 
     public Map<String, String> physicalQualifierByConceptName() {
         return physicalQualifierByConceptName;
+    }
+
+    /** PK-4 Stage D: every packId whose pack.json declares a migration chain, with a fresh
+     *  resolvedVersion/digest/sourcePath entry for THIS resolve -- empty unless at least one resolved
+     *  pack actually uses the feature. {@code GeneratorMain} consumes this, after a full successful
+     *  generate, to advance {@code npdev.lock}'s migratedVersion bookkeeping. */
+    public Map<String, PackLockFile.LockedPack> migrationTrackedPacks() {
+        return migrationTrackedPacks;
     }
 
     public String resolvedModelJson() {

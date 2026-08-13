@@ -116,6 +116,35 @@ final class SchemaRealizationEmitterConceptRenameTest {
                 "an unrenamed, non-pack concept must NOT produce a rename entry: " + renames);
     }
 
+    /**
+     * PK-4 Stage D: a THIRD rename trigger, for a migration-chain-synthesized {@code renamedFrom}
+     * that crosses a pack's own major-version qualifier -- e.g. {@code identity@1.0 -> @3.0} across
+     * a chain replay, where {@code User}'s bare authoring name never changes but its physical table
+     * DOES ({@code identity_v1_users -> identity_v3_users}). The synthesized value is always
+     * qualifier-prefixed ({@code "identity_v1::User"}, containing {@code "::"}) -- exactly the
+     * signal that distinguishes it from a hand-authored bare rename (an author never types "::").
+     * Without the fix this pins, the explicit-override heuristic in the ordinary renamedFrom branch
+     * cannot tell PK-2's own qualifier-derived tableName apart from a hand-declared override, and
+     * silently reuses the CURRENT qualified name as the "old" one -- a no-op that destroys the
+     * rename. Found by running the real end-to-end multi-hop pack upgrade proof, not by review.
+     */
+    @Test
+    void migrationChainSynthesizedRenamedFromCrossingAMajorQualifierProducesABusinessTableRenamesEntry() throws Exception {
+        CompiledConcept doc = renamedConcept("renamechain::Doc", "renamechain_v1::Doc", "renamechain_v3_docs");
+
+        CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", Map.of(doc.getName(), doc));
+
+        Path outRoot = tempDir.resolve("app");
+        new SchemaRealizationEmitter().emit(model, outRoot, plan(), tempDir.resolve("model.json"));
+
+        JsonNode manifest = readManifest(outRoot);
+        JsonNode renames = manifest.path("businessTableRenames");
+
+        assertTrue(renames.isObject(), "businessTableRenames must be an object: " + renames);
+        assertEquals("renamechain_v1_docs", renames.path("renamechain_v3_docs").asText(null),
+                "expected renamechain_v3_docs (new) -> renamechain_v1_docs (old) in businessTableRenames: " + renames);
+    }
+
     private static boolean containsText(JsonNode array, String value) {
         if (array == null || !array.isArray()) {
             return false;

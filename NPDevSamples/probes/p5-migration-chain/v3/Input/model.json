@@ -1,0 +1,13 @@
+{
+  "$schema": "..\\..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.probes.p5migrationchain",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "PK-4 Stage C/D proof (PACK-6/PM3): a multi-hop pack upgrade that SKIPS an intermediate version must still replay that intermediate version's renamedFrom -- the guarantee the whole platform sells. Straight upgrade from renamechain@1.0.0 to @3.0.0, never generating at @2.0.0.",
+    "seedPath": "Rows are seeded through the generated app's own CRUD endpoint (see p3-rename's own note for why: inserting over JDBC would prove the row survives, not that the platform wrote it)."
+  },
+  "packs": [
+    { "$ref": "pack.json" }
+  ]
+}

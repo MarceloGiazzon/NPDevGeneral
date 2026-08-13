@@ -1,10 +1,14 @@
 package com.npdev.dsl.v1.pack;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -66,6 +70,16 @@ public final class PackPublishGate {
 
         String oldVersion = textOrEmpty(oldPack, "version");
         String newVersion = textOrEmpty(newPack, "version");
+
+        String chainViolation = checkChainImmutability(oldPack, newPack);
+        if (chainViolation == null) {
+            chainViolation = checkChainDiffConsistency(newPack, oldVersion, newVersion, diffResult);
+        }
+        if (chainViolation != null) {
+            return new Decision(false, requiredBump(diffResult), PackVersionBump.NONE,
+                    diffResult.worstClassification(), diffResult.findings(), chainViolation);
+        }
+
         int[] oldParts = parseVersion(oldVersion, "old pack's version");
         int[] newParts = parseVersion(newVersion, "new pack's version");
 
@@ -77,6 +91,125 @@ public final class PackPublishGate {
         boolean allowed = !downgrade && actual.ordinal() >= required.ordinal();
         String message = buildMessage(allowed, downgrade, required, actual, oldVersion, newVersion, oldParts, diffResult);
         return new Decision(allowed, required, actual, diffResult.worstClassification(), diffResult.findings(), message);
+    }
+
+    /**
+     * PK-4 Stage C "Breaks": "a published version's chain must be immutable -- pin it by digest, and
+     * refuse a publish that alters a released version's migrations." Compares every hop key present
+     * in the OLD pack's {@code migrations} against the new pack: missing entirely, or present with
+     * different content, both refuse. A hop the old pack never had is unaffected -- that is exactly
+     * what THIS publish is allowed to add.
+     */
+    private static String checkChainImmutability(JsonNode oldPack, JsonNode newPack) {
+        JsonNode oldMigrations = oldPack.get("migrations");
+        if (oldMigrations == null || !oldMigrations.isObject()) {
+            return null;
+        }
+        JsonNode newMigrations = newPack.get("migrations");
+        Iterator<String> keys = oldMigrations.fieldNames();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            JsonNode oldHop = oldMigrations.get(key);
+            JsonNode newHop = newMigrations == null ? null : newMigrations.get(key);
+            if (newHop == null) {
+                return "Refusing publish: migrations['" + key + "'] was already published and is missing from "
+                        + "this publish -- a released version's migration chain must never be removed.";
+            }
+            if (!newHop.equals(oldHop)) {
+                return "Refusing publish: migrations['" + key + "'] was already published and is immutable, but "
+                        + "this publish changes its content -- a released version's migration chain must never be "
+                        + "altered after the fact.";
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Cross-checks THIS publish's own new hop ({@code migrations["<oldVersion> -> <newVersion>"]},
+     * if present and non-empty) against what {@link PackDiffEngine} actually observed between the
+     * two documents -- the cheapest point to catch a wrong chain entry, before any consumer ever
+     * replays it. Only checks that every declared op corresponds to a real finding (a fabricated or
+     * mistyped op is refused); does not attempt the reverse (flagging an undeclared rename-shaped
+     * diff), which would require re-implementing {@code ImpactReportText}'s own same-table/same-type
+     * heuristic and risks diverging from it -- left for a future card if this cheaper half proves
+     * insufficient in practice.
+     */
+    private static String checkChainDiffConsistency(
+            JsonNode newPack, String oldVersion, String newVersion, PackDiffResult diffResult) {
+        JsonNode migrations = newPack.get("migrations");
+        if (migrations == null || !migrations.isObject()) {
+            return null;
+        }
+        String hopKey = oldVersion + " -> " + newVersion;
+        JsonNode hopNode = migrations.get(hopKey);
+        if (hopNode == null || !hopNode.isArray() || hopNode.isEmpty()) {
+            return null;
+        }
+
+        PackMigrationChain chain;
+        try {
+            ObjectNode wrapper = JsonNodeFactory.instance.objectNode();
+            wrapper.set(hopKey, hopNode);
+            chain = PackMigrationChain.parse(wrapper);
+        } catch (IllegalArgumentException malformed) {
+            return "Refusing publish: migrations['" + hopKey + "'] is malformed: " + malformed.getMessage();
+        }
+
+        Set<String> findingKeys = new HashSet<>();
+        for (PackDiffFinding finding : diffResult.findings()) {
+            findingKeys.add(finding.classification() + ":" + finding.path());
+        }
+
+        for (PackMigrationOp op : chain.hops().get(0).ops()) {
+            String missing = missingDiffEvidenceFor(op, findingKeys);
+            if (missing != null) {
+                return "Refusing publish: migrations['" + hopKey + "'] declares an op with no matching change "
+                        + "in the actual diff (expected to find: " + missing + ") -- the chain entry does not "
+                        + "describe what this publish actually changed.";
+            }
+        }
+        return null;
+    }
+
+    /** Null if {@code op} has real, matching diff findings; otherwise a description of the missing one.
+     *  Field-level paths carry a {@code .fields.} segment -- {@code PackDiffEngine} reaches a
+     *  concept's fields via a nested {@code diffCollection} over the concept's own {@code fields}
+     *  key, so a field-level finding's path is {@code concepts.<Concept>.fields.<field>}, not
+     *  {@code concepts.<Concept>.<field>}. */
+    private static String missingDiffEvidenceFor(PackMigrationOp op, Set<String> findingKeys) {
+        if (op instanceof PackMigrationOp.RenameField renameField) {
+            String removedPath = "concepts." + renameField.concept() + ".fields." + renameField.from();
+            String addedPath = "concepts." + renameField.concept() + ".fields." + renameField.to();
+            if (!findingKeys.contains("BREAKING:" + removedPath)) {
+                return "field '" + renameField.from() + "' removed on " + renameField.concept();
+            }
+            if (!findingKeys.contains("ADDITIVE:" + addedPath)) {
+                return "new field '" + renameField.to() + "' on " + renameField.concept();
+            }
+            return null;
+        }
+        if (op instanceof PackMigrationOp.RenameConcept renameConcept) {
+            String removedPath = "concepts." + renameConcept.from();
+            String addedPath = "concepts." + renameConcept.to();
+            if (!findingKeys.contains("BREAKING:" + removedPath)) {
+                return "concept '" + renameConcept.from() + "' removed";
+            }
+            if (!findingKeys.contains("ADDITIVE:" + addedPath)) {
+                return "new concept '" + renameConcept.to() + "'";
+            }
+            return null;
+        }
+        if (op instanceof PackMigrationOp.AddField addField) {
+            String addedPath = "concepts." + addField.concept() + ".fields." + addField.field();
+            return findingKeys.contains("ADDITIVE:" + addedPath)
+                    ? null
+                    : "new field '" + addField.field() + "' on " + addField.concept();
+        }
+        PackMigrationOp.DropField dropField = (PackMigrationOp.DropField) op;
+        String removedPath = "concepts." + dropField.concept() + ".fields." + dropField.field();
+        return findingKeys.contains("BREAKING:" + removedPath)
+                ? null
+                : "field '" + dropField.field() + "' removed on " + dropField.concept();
     }
 
     static PackVersionBump requiredBump(PackDiffResult diffResult) {

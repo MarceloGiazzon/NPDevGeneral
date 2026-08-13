@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.dsl.v1.pack.MinimalVersionSelector;
 import com.npdev.dsl.v1.pack.PackLockFile;
+import com.npdev.dsl.v1.pack.PackMigrationChain;
+import com.npdev.dsl.v1.pack.PackMigrationChainSynthesizer;
+import com.npdev.dsl.v1.pack.PackMigrationComposer;
 import com.npdev.dsl.v1.pack.PackVersion;
 import com.npdev.dsl.v1.pack.PackVersionConstraint;
 import com.npdev.dsl.v1.validation.ValidationDiagnostic;
@@ -216,6 +219,7 @@ final class PackDependencyGraphWalker {
         selectVersions(modelFile);
         if (enforceLock) {
             checkLock(modelFile);
+            applyMigrationChains(modelFile);
         }
 
         for (String packId : topologicalOrder()) {
@@ -392,6 +396,81 @@ final class PackDependencyGraphWalker {
         if (!stale.isEmpty()) {
             throw ModelSourceResolver.error(modelFile, "/packs", PackLockFile.FILE_NAME + " is stale for: "
                     + String.join("; ", stale) + " -- run 'npdev pack update'");
+        }
+    }
+
+    /**
+     * PK-4 Stage D: for every resolved pack that declares a non-empty {@code migrations} chain,
+     * composes whatever hops separate its last-generated version ({@code npdev.lock}'s
+     * {@code migratedVersion}, or the pack's own current version if never generated before -- an
+     * empty, correct no-op range) from its current version, and replaces {@link #packNodeById}'s
+     * entry with a copy carrying the synthesized {@code renamedFrom} markers -- BEFORE the merge
+     * loop in {@link #run} reads it. A pack with no migration chain at all (every pack in this repo
+     * today) is completely untouched: {@code chain.hops()} is empty and this method skips it
+     * entirely, matching PK-3's own "no packs[] = untouched" no-op regression discipline.
+     *
+     * <p>Only ever called with {@code enforceLock=true} (the real generate path) -- {@code
+     * resolveForCli}'s own merge output is never consumed by its callers, so there is no reason to
+     * risk a migration-chain refusal aborting a {@code pack add/update/why} invocation that never
+     * needed the merged model in the first place.
+     */
+    private void applyMigrationChains(Path modelFile) throws IOException {
+        PackLockFile existingLock = PackLockFile.exists(rootDirectory) ? PackLockFile.read(rootDirectory) : null;
+        Map<String, PackLockFile.LockedPack> freshEntries = null;
+
+        for (String packId : packNodeById.keySet()) {
+            ObjectNode packNode = packNodeById.get(packId);
+            PackMigrationChain chain = PackMigrationChain.parse(packNode.get("migrations"));
+            if (chain.hops().isEmpty()) {
+                continue;
+            }
+
+            PackVersion toVersion;
+            try {
+                toVersion = PackVersion.parse(ModelSourceResolver.textOrBlank(packNode.get("version")));
+            } catch (IllegalArgumentException malformed) {
+                throw ModelSourceResolver.error(modelFile, "/packs", "Pack '" + packId + "': " + malformed.getMessage());
+            }
+            String migratedVersionRaw = existingLock != null && existingLock.packs().containsKey(packId)
+                    ? existingLock.packs().get(packId).migratedVersion()
+                    : "";
+            // Untracked (never generated before, or generated back when this pack had no migrations
+            // key yet) does NOT mean "already current" -- that would silently skip replaying real
+            // history for a pre-existing database sitting at the pack's original version, the exact
+            // failure this card exists to prevent. The only version an untracked database could
+            // possibly be at is the chain's own provably-first-ever version (see
+            // PackMigrationChain.earliestFromVersion's own doc for why this is safe for a fresh
+            // install too).
+            PackVersion fromVersion = migratedVersionRaw.isBlank()
+                    ? chain.earliestFromVersion()
+                    : PackVersion.parse(migratedVersionRaw);
+
+            PackMigrationComposer.Result result = PackMigrationComposer.compose(packId, chain, fromVersion, toVersion);
+            if (result instanceof PackMigrationComposer.Refused refused) {
+                throw ModelSourceResolver.error(modelFile, "/packs", refused.message());
+            }
+            PackMigrationComposer.ComposedRenames composed = ((PackMigrationComposer.Composed) result).renames();
+            // PK-2 bakes a pack's own major version into every one of its concepts' physical table
+            // names (recordPhysicalQualifiers, below) -- and since a rename is BREAKING (Stage A) and
+            // BREAKING requires at least a major bump (Stage B), every rename-bearing hop ALSO crosses
+            // a major-version boundary, which by itself changes the physical table name regardless of
+            // whether any field/concept was renamed. A field-level renamedFrom alone is invisible to
+            // the schema engine when the TABLE it lives on looks like an entirely different table.
+            String oldPhysicalQualifier = fromVersion.major() != toVersion.major()
+                    ? packId + "_v" + fromVersion.major()
+                    : "";
+            if (!composed.isEmpty() || !oldPhysicalQualifier.isBlank()) {
+                packNodeById.put(packId,
+                        PackMigrationChainSynthesizer.applyComposedRenames(packNode, composed, oldPhysicalQualifier));
+            }
+
+            // Kept current regardless of whether this run's composed range was empty -- a pack with
+            // a chain but nothing new to replay (e.g. a same-version regenerate) still needs its
+            // lock entry present so GeneratorMain's post-generate write has something to update.
+            if (freshEntries == null) {
+                freshEntries = toLockEntries();
+            }
+            state.migrationTrackedPacks.put(packId, freshEntries.get(packId));
         }
     }
 

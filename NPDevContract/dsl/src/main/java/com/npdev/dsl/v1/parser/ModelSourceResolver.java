@@ -167,7 +167,8 @@ public final class ModelSourceResolver {
                     state.provenance,
                     state.diagnostics,
                     state.warnings,
-                    state.physicalQualifierByConceptName
+                    state.physicalQualifierByConceptName,
+                    state.migrationTrackedPacks
             );
         } catch (UncheckedModelSourceException exception) {
             throw exception.getCause();
@@ -1252,6 +1253,14 @@ public final class ModelSourceResolver {
         if (rawPack.has("requires")) {
             resolvedPack.set("requires", rawPack.get("requires").deepCopy());
         }
+        // PK-4 Stage C/D: same hazard, same fix -- migrations is neither a PACK_ROOT_SCALAR_KEYS
+        // scalar nor a MODEL_ARRAY_KEYS collection (it is an object keyed by version-range strings,
+        // not an array), so without this line it schema-validates and then silently vanishes exactly
+        // like packs[]/requires did before the comment above was written. PackDependencyGraphWalker's
+        // applyMigrationChains is the actual consumer, one layer up.
+        if (rawPack.has("migrations")) {
+            resolvedPack.set("migrations", rawPack.get("migrations").deepCopy());
+        }
         JsonNode fragments = rawPack.get("fragments");
         if (fragments != null) {
             if (!fragments.isArray()) {
@@ -1906,6 +1915,16 @@ public final class ModelSourceResolver {
         final List<ValidationDiagnostic> diagnostics = new ArrayList<>();
         final List<ValidationDiagnostic> warnings = new ArrayList<>();
         final Map<String, String> physicalQualifierByConceptName = new LinkedHashMap<>();
+        /** PK-4 Stage D: every packId whose OWN pack.json declares a non-empty {@code migrations}
+         *  chain, populated by {@link PackDependencyGraphWalker#run} with a freshly-built lock entry
+         *  (resolvedVersion/digest/sourcePath already correct for THIS resolve; migratedVersion left
+         *  at whatever was already on disk -- the caller, after a full successful generate, is the
+         *  one that advances it, see {@code GeneratorMain}). Empty for the overwhelming majority of
+         *  models, which never touch a pack with a migration chain -- a real, deliberate scoping
+         *  decision, not an oversight: writing npdev.lock for every pack import regardless of whether
+         *  it ever bumps past its first version would be a visible behavior change to every existing
+         *  app, not just the ones this card's feature actually applies to. */
+        final Map<String, com.npdev.dsl.v1.pack.PackLockFile.LockedPack> migrationTrackedPacks = new LinkedHashMap<>();
 
         ResolutionState(Path rootRealPath, Path rootDirectory) {
             this.rootRealPath = rootRealPath;

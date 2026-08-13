@@ -1,0 +1,16 @@
+{
+  "$schema": "..\\..\\..\\..\\..\\NPDevContract\\schemas\\pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "renamechain",
+  "version": "1.0.0",
+  "concepts": [
+    {
+      "name": "Doc",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "code", "type": "string", "required": true }
+      ],
+      "ui": { "label": "Doc" }
+    }
+  ]
+}
