@@ -235,6 +235,16 @@
         }
       },
       "additionalProperties": false
+    },
+    "migrations": {
+      "type": "object",
+      "description": "PK-4 Stage A/B: the migration-replay chain for this pack's version history, keyed '<oldVersion> -> <newVersion>' (e.g. \"1.0.0 -> 1.1.0\"). `npdev pack publish` auto-populates an empty array here for every non-BREAKING (ADDITIVE/PATCH-only, or no-op) version bump -- see com.npdev.dsl.v1.pack.PackPublishGate. What a non-empty array contains is Stage C's contract, not yet defined here; this field only reserves the shape so a chain link exists to be filled in later, without another schema change.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      }
     }
   },
   "additionalProperties": false

@@ -3,16 +3,68 @@ title: >-
   Nothing mechanically enforces what a pack's version bump promises
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-13
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md card PK-4). A pack author can bump a minor
   version while making a breaking change (or vice versa) and nothing catches it -- semver on a pack
   is a convention, not a checked contract.
 surface: dsl/pack-versioning
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackChangeClassification.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackDiffEngine.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackDiffFinding.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackDiffResult.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackPublishGate.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackVersionBump.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/PackDiffMain.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/PackPublishMain.java
+  - NPDevContract/dsl/build.gradle
+  - NPDevContract/schemas/pack.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/pack.schema.json
+  - NPDevCli/npdev_cli.py
+  - scripts/quality/check-pack-diff-gate.py
+  - scripts/quality/run-ai-knowledge-gate.ps1
+  - scripts/policy/script-invocation-declarations.json
 detail: |
-  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-4 for the `npdev pack diff` publish
-  gate that classifies a change against the previous published version and refuses a version bump that
-  doesn't match its actual shape. Decision PD8 already recorded: migration-chain granularity is per
-  published version, generated automatically for additive-only changes. MASTER-ROADMAP.md spine S5
-  (Step 10); not in this session's scope (Steps 1-4).
+  MASTER-ROADMAP.md spine S5 Step 10, PACK-ROADMAP.md card PK-4 Stages A+B only (Stages C+D --
+  real DB migration replay across a skipped version, needed to make a multi-hop pack upgrade safe --
+  are separate, larger, database-touching work; PACK-6 stays OPEN for exactly that gap and depends
+  on this item).
+
+  Stage A: com.npdev.dsl.v1.pack.PackDiffEngine, a pure function (no database, no filesystem beyond
+  the two given files) that diffs two pack.json documents and classifies every difference as
+  ADDITIVE (a new nullable field, a wholly new concept/panel/query/procedure/etc.), BREAKING (any
+  removal, a field's type changed at all, a field made required that wasn't, or -- unconditionally,
+  since there is no migration-chain mechanism yet to prove otherwise -- any rename, which this engine
+  does not attempt to detect: it sees the old name removed and the new name added, two independent
+  findings whose worse classification is BREAKING), or PATCH (description/metadata-only). Generic
+  over every top-level array section (concepts/panels/queries/procedures/... and any the schema
+  grows later), matched by identity key (name/key/id), not a fixed enumeration.
+
+  Stage B: com.npdev.dsl.v1.pack.PackPublishGate refuses a publish whose version bump is smaller
+  than the diff requires -- BREAKING needs >= major, ADDITIVE needs >= minor (major also satisfies
+  it), PATCH-only needs >= patch (minor/major also satisfy it) -- naming exactly what changed and
+  what bump would have been required. For a non-BREAKING, allowed publish it also stamps an empty
+  migration-chain entry (`{"migrations": {"1.0.0 -> 1.1.0": []}}`, a new purely-additive
+  pack.schema.json field, both copies) -- Stage C's contract, not yet defined, decides what a
+  non-empty entry contains (Decision PD8: migration-chain granularity is per published version,
+  generated automatically for additive-only changes -- implemented here for the additive/patch case
+  only, as PD8 itself scopes).
+
+  Wired two ways: `npdev pack diff`/`npdev pack publish` (new packDiff/packPublish Gradle JavaExec
+  tasks + a `pack` CLI subparser group, same shape as `validate model`), and
+  scripts/quality/check-pack-diff-gate.py, a new run-ai-knowledge-gate.ps1 check [43/43] that runs
+  the real engine against NPDevContract/packs/identity and .../workspace's pack.json, compared at
+  `git merge-base HEAD origin/main` -- not raw commit history, because both packs had already
+  accumulated real ADDITIVE/BREAKING content changes from before this item existed (both still read
+  "version": "1.0.0"); a history-relative comparison would have failed on every run for reasons no
+  branch caused. RED-proven locally: an under-sized bump added to identity/pack.json on this branch
+  was caught and refused by the CI check, then reverted.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/pack/PackPublishGateTest.java
+  asserts: a BREAKING/ADDITIVE change published with only a patch/no version bump is refused, naming what changed and the required bump; a correctly-sized bump is allowed and (when non-BREAKING) gets an empty migrations chain entry; a version downgrade is always refused
+  provenRed: true
