@@ -681,6 +681,9 @@
       "invocation": "manual-runbook",
       "documentedIn": "NPDevSamples/README.md"
     },
+    "scripts/security/check-npm-audit-policy.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/security/Invoke-ControlledCommand.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "NPDevMcp/README.md"

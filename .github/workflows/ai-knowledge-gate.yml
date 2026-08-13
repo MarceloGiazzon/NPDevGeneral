@@ -21,6 +21,11 @@ on:
   pull_request: {}
   workflow_dispatch:
 
+# R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2): least-privilege default -- this job only checks out
+# and runs static checks, never writes to the repo/PR/release.
+permissions:
+  contents: read
+
 concurrency:
   group: ai-knowledge-gate-${{ github.ref }}
   cancel-in-progress: true
