@@ -1,5 +1,11 @@
 // Template only. NPDevGenerator materializes this file as build.gradle in an assembled FinalExec app.
 // Do not build directly from NPDevRuntimeHost; build from the generated final app root.
+//
+// R3 (MASTER-ROADMAP.md Step 9 / ledger QUAL-6): the -PenableCoverage=true JaCoCo gate lives ONLY in
+// the sibling build.gradle.template (the file that actually ships, and the one
+// scripts/quality/run-runtimehost-gate.ps1 exercises via an assembled app) -- not duplicated here.
+// This file is already a separately-drifting copy (Spring Boot 3.3.2 vs .template's 3.5.16, kept only
+// for a direct bare-checkout GATE-H2/GATE-PG run), and no gate builds it directly.
 
 import groovy.json.JsonSlurper
 

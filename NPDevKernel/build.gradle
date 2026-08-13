@@ -43,6 +43,12 @@ allprojects {
 
 subprojects {
     apply plugin: 'java-library'
+    // R3 (MASTER-ROADMAP.md Step 9 / ledger QUAL-6): applies to :core, :kernel, :dsl and every
+    // :adapters:* subproject (36 of them) uniformly. Unconditional -- none of these ship into a
+    // generated FinalApp (see NPDevRuntimeHost/build.gradle.template's own gating comment for the
+    // one build that does); only compiled jars are staged into a generated app via
+    // npdevRuntimeHostLibsDir, never this source or its coverage instrumentation.
+    apply plugin: 'jacoco'
 
     java {
         toolchain {
@@ -103,6 +109,16 @@ subprojects {
             environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'
             systemProperty 'docker.host', 'npipe:////./pipe/dockerDesktopLinuxEngine'
             systemProperty 'docker.client.strategy', 'org.testcontainers.dockerclient.NpipeSocketClientProviderStrategy'
+        }
+
+        // R3: any test run also produces a fresh JaCoCo XML report as a byproduct.
+        finalizedBy tasks.named('jacocoTestReport')
+    }
+
+    tasks.withType(JacocoReport).configureEach {
+        reports {
+            xml.required = true
+            html.required = false
         }
     }
 }
