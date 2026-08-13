@@ -3,8 +3,10 @@ title: >-
   Non-concept pack members are not namespaced; two packs declaring the same domainType cannot compose
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-12
+verification: UNIT_TESTED
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md spine S1, PACK-ROADMAP.md card PK-1).
   Confirmed live this session: ModelSourceResolver.packConceptRewriteMap builds Name -> packId::Name
@@ -16,13 +18,30 @@ surface: dsl/pack-resolution
 files:
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
 detail: |
-  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-1 steps 1-4. Fix: generalize
-  packConceptRewriteMap to memberRewriteMap walking all 18 MODEL_ARRAY_KEYS keyed by (kind, name);
-  apply it in mergeQualifiedNonConceptArrays; extend rewritePackLocalConceptReferencesInPlace to
-  rewrite references to any member kind; add unqualified resolution with a named ambiguity error.
-  MASTER-ROADMAP.md Step 4 (spine S1), this session's scope.
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-1 steps 1-4 (namespacing +
+  reference rewriting + unqualified resolution -- steps 5-8, origin/provenance metadata threaded
+  through the four-place canonical chain, are deliberately NOT done here; see PACK-2, which stays
+  OPEN for exactly that gap). Generalized packConceptRewriteMap into memberRewriteMap/buildRewriteMaps
+  (one map per MODEL_ARRAY_KEYS kind); mergeQualifiedNonConceptArrays now namespaces every non-concept
+  member qualifierId::Name instead of throwing on any cross-pack name clash (the duplicate check now
+  only fires within one pack/context's own contribution); rewriteKnownMemberReferenceFields extends
+  reference rewriting from concepts-only to domainType/query/procedure/flow/capability/event/
+  guidePage/propertyScope, found via a dedicated read-only pass over model.schema.json's $defs;
+  resolveUnqualifiedReferences runs once after all packs/contexts are merged, auto-resolving a bare
+  reference when exactly one pack provides it and throwing a named-candidates error when more than
+  one does. Applies identically to the existing bounded-context (contexts[]) mechanism, which already
+  shared this code path for concepts.
+
+  Two existing golden tests (ModelSourceResolverTest.packNamespacesConceptsAndRewritesIntraPackReferences,
+  packContributedRolesPropertyScopesAndPropertiesAreMergedNotDropped) asserted the old unnamespaced
+  behavior and were updated to the new, correct expectation -- not a regression, an intentional
+  behavior change this card exists to make.
+
+  Verified: 545/545 DSL tests green, check-twin-pair-consistency.py, check-schema-mirror-consistency.py,
+  check-deterministic-generation.ps1 (0 differing), and dsl-conformance-max (the real in-repo
+  'labeling' pack) all still pass unchanged.
 guard:
   kind: test
-  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1 (two throwaway packs each declaring domainTypes:[{name:"Email"}], composed together)
-  asserts: two packs declaring the same bare domainType name compose without error, resolving to packa::Email and packb::Email
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/PackNonConceptNamespacingTest.java
+  asserts: two packs declaring the same bare domainType name compose to packa::Email/packb::Email; an ambiguous unqualified reference fails naming both candidates; an unambiguous one auto-resolves
   provenRed: true

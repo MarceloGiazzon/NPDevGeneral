@@ -216,13 +216,15 @@ class ModelSourceResolverTest {
         assertEquals("RootOnly", concepts.get(0).get("name").asText());
         assertEquals("catalog::Product", concepts.get(1).get("name").asText());
         assertEquals("catalog::Variant", concepts.get(2).get("name").asText());
-        // Intra-pack reference target is namespaced; the domainType ref (by name) is left intact.
+        // Intra-pack reference target is namespaced; PK-1 (PACK-ROADMAP.md) now also namespaces the
+        // domainType reference itself -- before PK-1, non-concept members (and references to them)
+        // were never rewritten, only concepts were.
         assertEquals("catalog::Product",
                 concepts.get(2).get("fields").get(1).get("reference").get("target").asText());
-        assertEquals("Sku", concepts.get(1).get("fields").get(1).get("domainType").asText());
-        // Non-concept pack arrays are merged, not silently dropped.
-        assertEquals("Sku", resolved.get("domainTypes").get(0).get("name").asText());
-        assertEquals("lookup", resolved.get("capabilities").get(0).get("name").asText());
+        assertEquals("catalog::Sku", concepts.get(1).get("fields").get(1).get("domainType").asText());
+        // Non-concept pack arrays are merged AND namespaced (PK-1), not silently dropped.
+        assertEquals("catalog::Sku", resolved.get("domainTypes").get(0).get("name").asText());
+        assertEquals("catalog::lookup", resolved.get("capabilities").get(0).get("name").asText());
     }
 
     @Test
@@ -264,13 +266,19 @@ class ModelSourceResolverTest {
 
         JsonNode resolved = new ModelSourceResolver().resolve(model).resolvedRoot();
 
+        // PK-1 (PACK-ROADMAP.md): pack-contributed roles/propertyScopes/properties are now
+        // namespaced qualifierId::Name exactly like every other non-concept kind -- root-level
+        // declarations of the same kinds are untouched (they carry no pack qualifier at all).
         assertEquals(2, resolved.get("roles").size());
         assertEquals("RootRole", resolved.get("roles").get(0).get("name").asText());
-        assertEquals("PackRole", resolved.get("roles").get(1).get("name").asText());
+        assertEquals("tenancy::PackRole", resolved.get("roles").get(1).get("name").asText());
         assertEquals(2, resolved.get("propertyScopes").size());
-        assertEquals("tenant", resolved.get("propertyScopes").get(1).get("name").asText());
+        assertEquals("tenancy::tenant", resolved.get("propertyScopes").get(1).get("name").asText());
         assertEquals(2, resolved.get("properties").size());
-        assertEquals("pack.pageRows", resolved.get("properties").get(1).get("name").asText());
+        assertEquals("tenancy::pack.pageRows", resolved.get("properties").get(1).get("name").asText());
+        // The property's own settableAt[] names its pack's OWN propertyScope -- an intra-pack
+        // reference, so PK-1 rewrites it too.
+        assertEquals("tenancy::tenant", resolved.get("properties").get(1).get("settableAt").get(0).asText());
     }
 
     @Test
