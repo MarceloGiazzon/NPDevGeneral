@@ -12,7 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -172,12 +171,12 @@ class PackTransitiveDependencyResolutionTest {
                 }
                 """);
 
-        // Sub-step 3 (this test class) proves the graph merges correctly with no version conflict.
-        // MVS's own cross-major refusal (naming both requirer paths) is proven in
-        // MinimalVersionSelectorTest once MVS lands -- this test is left here as a placeholder
-        // documenting the scenario until then and is intentionally not yet a hard refusal assertion.
-        ResolvedModelSource source = new ModelSourceResolver().resolve(model);
-        assertNotNull(source);
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        String message = thrown.getMessage();
+        assertTrue(message.contains("crm"), "must name crm, got: " + message);
+        assertTrue(message.contains("billing"), "must name billing, got: " + message);
+        assertTrue(message.contains("app -> crm"), "must name crm's path, got: " + message);
+        assertTrue(message.contains("app -> billing"), "must name billing's path, got: " + message);
     }
 
     @Test

@@ -3,6 +3,9 @@ package com.npdev.dsl.v1.parser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.npdev.dsl.v1.pack.MinimalVersionSelector;
+import com.npdev.dsl.v1.pack.PackVersion;
+import com.npdev.dsl.v1.pack.PackVersionConstraint;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -49,6 +52,7 @@ final class PackDependencyGraphWalker {
     private final Map<String, Path> packFileById = new LinkedHashMap<>();
     private final Map<String, Set<String>> dependencyGraph = new LinkedHashMap<>();
     private final Map<String, String> qualifierById = new LinkedHashMap<>();
+    private final Map<String, List<MinimalVersionSelector.Requirement>> requirementsByPackId = new LinkedHashMap<>();
 
     private PackDependencyGraphWalker(ModelSourceResolver resolver, ModelSourceResolver.ResolutionState state, String rootDslVersion) {
         this.resolver = resolver;
@@ -93,7 +97,7 @@ final class PackDependencyGraphWalker {
                 throw ModelSourceResolver.error(modelFile, path + "/as", "Duplicate pack namespace alias: " + qualifier);
             }
 
-            discover(realPackId, packNode, packFile, 1);
+            discover(realPackId, packNode, packFile, 1, List.of("app", realPackId));
             // D6: a direct app import's qualifier always wins, whether this pack was already
             // discovered transitively (via an earlier direct import's own dependency graph) or not.
             qualifierById.put(realPackId, qualifier);
@@ -101,6 +105,7 @@ final class PackDependencyGraphWalker {
         }
 
         detectPackCycle(modelFile);
+        selectVersions(modelFile);
 
         for (String packId : topologicalOrder()) {
             String qualifier = qualifierById.computeIfAbsent(packId, id -> id);
@@ -137,7 +142,7 @@ final class PackDependencyGraphWalker {
         return rootDirectory.resolve("packs").resolve(packId).resolve("pack.json");
     }
 
-    private void discover(String packId, ObjectNode packNode, Path packFile, int depth) throws IOException {
+    private void discover(String packId, ObjectNode packNode, Path packFile, int depth, List<String> pathToThisPack) throws IOException {
         if (packNodeById.containsKey(packId)) {
             return; // already discovered via another path -- a diamond, not a cycle by itself
         }
@@ -161,18 +166,50 @@ final class PackDependencyGraphWalker {
                     continue; // schema already enforces shape; defensive only
                 }
                 String childPackId = ModelSourceResolver.textOrBlank(dependency.get("pack"));
+                String constraintText = ModelSourceResolver.textOrBlank(dependency.get("version"));
                 if (childPackId.isBlank()) {
                     continue;
                 }
                 children.add(childPackId);
+                if (!constraintText.isBlank()) {
+                    PackVersionConstraint constraint;
+                    try {
+                        constraint = PackVersionConstraint.parse(constraintText);
+                    } catch (IllegalArgumentException malformed) {
+                        throw ModelSourceResolver.error(packFile, "/packs", malformed.getMessage());
+                    }
+                    requirementsByPackId.computeIfAbsent(childPackId, id -> new ArrayList<>())
+                            .add(new MinimalVersionSelector.Requirement(packId, pathToThisPack, constraint));
+                }
                 if (!packNodeById.containsKey(childPackId)) {
                     Path childFile = defaultPackFile(childPackId);
                     ObjectNode childNode = loadAndResolvePack(childFile, depth + 1);
-                    discover(childPackId, childNode, childFile, depth + 1);
+                    List<String> childPath = new ArrayList<>(pathToThisPack);
+                    childPath.add(childPackId);
+                    discover(childPackId, childNode, childFile, depth + 1, childPath);
                 }
             }
         }
         dependencyGraph.put(packId, children);
+    }
+
+    /** PK-3 MVS: for every packId at least one pack in the graph placed a constraint on, verify the
+     *  one locally-available copy satisfies every such constraint (or refuse, naming every
+     *  contributor). packIds reached only as someone's direct app import (no transitive
+     *  requirement ever named them) have no requirements to check -- trivially fine. */
+    private void selectVersions(Path modelFile) throws IOException {
+        for (Map.Entry<String, List<MinimalVersionSelector.Requirement>> entry : requirementsByPackId.entrySet()) {
+            String packId = entry.getKey();
+            ObjectNode packNode = packNodeById.get(packId);
+            if (packNode == null) {
+                continue; // depth/fan-out cap already refused before this pack was ever recorded
+            }
+            PackVersion localVersion = PackVersion.parse(ModelSourceResolver.textOrBlank(packNode.get("version")));
+            MinimalVersionSelector.Result result = MinimalVersionSelector.select(packId, entry.getValue(), localVersion);
+            if (result instanceof MinimalVersionSelector.Refused refused) {
+                throw ModelSourceResolver.error(modelFile, "/packs", refused.message());
+            }
+        }
     }
 
     private void detectPackCycle(Path modelFile) throws IOException {
