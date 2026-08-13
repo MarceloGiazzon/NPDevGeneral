@@ -5,6 +5,33 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-13 — a pack-derived concept's physical table name depends on the pack's own id + major version, never the importing app's alias (PK-2)
+
+**What changes.** `packRef.as` overrides the LOGICAL namespace prefix only (`packId::Name` ->
+`alias::Name`, unchanged, still alias-able) — it no longer flows into the PHYSICAL SQL table name.
+A pack-derived concept's table now derives from `{realPackId}_v{majorVersion}_{plural}` instead of
+`{aliasOrPackId}_{plural}`. Two apps importing the same pack under different aliases previously got
+two incompatible physical schemas for identical data (`identity_users` vs `auth_users` for the same
+`identity` pack); they now both produce `identity_v1_users`. REST routes are unaffected — they were
+already, and remain, derived from the alias-preserving convention (`ControllerEmitter`/the generated
+business UI), permanently decoupled from a pack's physical table name so a version bump never
+silently breaks a client's bookmarked URL.
+
+**Who is affected.** Every existing generated app that imports any pack (today: `identity`,
+`workspace`, or a third-party pack). `SqlIdentifierSupport` gains two new methods
+(`physicalTableNameSource`, `aliasPreservingTableName`); `ModelAst`'s canonical constructor grows one
+new parameter (`physicalQualifierByConceptName`, a `Map<String,String>`, side-channel only — never
+round-tripped through the compiled model's canonical JSON, since it's consumed once at compile time).
+
+**No manual `npdev migrate` step exists, and none is needed.** `SchemaRealizationEmitter` now
+detects a pack-driven physical-name change automatically (comparing the concept's real table name
+against what the pre-PK-2, alias-preserving derivation would have produced) and emits it into the
+same `businessTableRenames` manifest key `renamedFrom`-driven renames already use — the existing
+schema-lifecycle engine performs an in-place `ALTER TABLE ... RENAME`, not a drop-and-add, proven
+safe and idempotent by `SchemaLifecycleExecutorTableRenameTest`. **Regenerating the app is the
+migration.** Expect `UserDatabaseDefinitionLoader.fingerprintInputs`'s hash to show a mismatch on the
+first post-upgrade boot — that is expected, not a red flag, and resolves via the same rename path.
+
 ## 2026-08-13 — `field.type`/`domainType.baseType`/`schemaObject.type` gain `decimal`; `SchemaAst`/`CompiledSchema` each grow two constructor params (R5)
 
 **What changes.** A new DSL field type, `decimal`, joins the closed enum on `field.type`,
