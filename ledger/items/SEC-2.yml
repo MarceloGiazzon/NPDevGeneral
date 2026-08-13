@@ -3,8 +3,10 @@ title: >-
   No dependency vulnerability scanning of any kind
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-13
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R2). No Dependabot config,
   no CodeQL workflow, no npm audit consumer -- scripts/policy/frontend-npm-audit-policy.json is an
@@ -13,6 +15,7 @@ surface: ci/dependency-scanning
 files:
   - .github/dependabot.yml
   - .github/workflows/security-scan.yml
+  - scripts/security/check-npm-audit-policy.py
 detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R2 (Wave 1). Needs a dependabot.yml covering
   every gradle directory (multiple, no single root build) plus NPDevEditor/ui-react (npm) and
@@ -20,4 +23,61 @@ detail: |
   least-privilege `permissions:` on the 8 workflows lacking one. Two Spring Boot versions exist
   (build.gradle 3.3.2 vs build.gradle.template 3.5.16) and Dependabot can only see the dead one --
   document this or the scanning is theatre. MASTER-ROADMAP.md pulls this forward (F7) to sit
-  immediately before PK-5 (Step 9); not in this session's scope (Steps 1-4).
+  immediately before PK-5 (Step 9).
+resolution: |
+  DONE (2026-08-13).
+
+  .github/dependabot.yml: one `gradle` entry per independently-buildable Gradle root (re-verified
+  live, not assumed -- 7 real roots, each with its own settings.gradle + gradlew: repo root,
+  NPDevContract/dsl, NPDevGenerator, NPDevKernel, NPDevEditor, NPDevRuntimeHost,
+  NPDevRuntimeHost/runtimehost-core), one `npm` entry (NPDevEditor/ui-react), one `github-actions`
+  entry (repo root, scans the `uses:` pins in every workflow file). File-level comment documents the
+  Spring Boot version-drift limitation explicitly: Dependabot can only parse
+  NPDevRuntimeHost/build.gradle (the dead 3.3.2 pin, kept only for a direct bare-checkout run) --
+  never build.gradle.template (3.5.16, what FinalAppAssembler actually ships), since a `.template`
+  file with mustache-adjacent tokens is not valid Gradle syntax Dependabot's parser accepts. A future
+  Spring Boot bump to the template needs a human to re-apply it, or a future card that generates one
+  file from the other.
+
+  .github/workflows/security-scan.yml: CodeQL matrix (java-kotlin, javascript-typescript, python),
+  build-mode: none for all three (this repo's 7-root Gradle build with a custom external
+  build-root resolution + a committed gradle.properties needing a Linux-portability strip is not a
+  build CodeQL's autobuild can be trusted to drive reliably, and a broken autobuild fails the scan
+  silently-red forever) -- documented as a deliberate depth-vs-reliability tradeoff in the workflow's
+  own header. Not wired into branch protection as a required check (only "AI knowledge substrate
+  gate" is, per ledger QUAL-8) -- a finding here is a signal to triage, not a merge-blocker.
+
+  scripts/security/check-npm-audit-policy.py: the first real consumer of
+  scripts/policy/frontend-npm-audit-policy.json (confirmed zero consumers before this card via a
+  repo-wide grep for its own filename). Diffs a full `npm audit --package-lock-only` against an
+  `--omit=dev` one to separate production from dev findings (npm's own JSON has no direct prod/dev
+  label), then applies the policy's three rules: failOnAnyProdVulnerability (any severity, no
+  allowlist), failOnSeverityAtOrAbove (a blanket, non-allowlistable floor), and
+  requireAllowlistForDevSeverities (named severities in dev deps need an explicit
+  allowedDevPackages entry). 5-control --calibrate self-test covers all four rule branches. Wired
+  into security-scan.yml's own job; declared `ci-gate` in script-invocation-declarations.json.
+
+  8 of 9 pre-existing workflows (all except publish-runtimehost-libs.yml, which already had one) now
+  carry a top-level `permissions: contents: read` -- re-verified live via
+  `grep '^permissions:' .github/workflows/*.yml` both before (1 hit) and after (10 hits: the 9
+  pre-existing + this card's own new security-scan.yml) this change, not assumed from a stale count.
+  Every workflow reviewed only checks out, builds/tests, and uploads its own run artifacts or writes
+  $GITHUB_STEP_SUMMARY -- none comments on a PR, pushes, tags, or publishes a release, so
+  contents: read is correct and sufficient for all 8 (publish-runtimehost-libs.yml's existing
+  contents: write, for `gh release create`/`upload`, is untouched).
+
+  Real, pre-existing, unrelated finding surfaced by check-npm-audit-policy.py's first live run
+  against NPDevEditor/ui-react (3 high-severity dev-dependency vulnerabilities: nanoid, postcss,
+  vite) -- confirmed via `git diff --stat main -- NPDevEditor/ui-react/package*.json` (empty) that
+  this branch did not cause it. Filed and fixed as REG-149: `npm audit fix` (no `--force`) resolved
+  all 3 in-range (only package-lock.json changed, no package.json edit), re-verified 0
+  vulnerabilities post-fix plus a clean build and full vitest pass. Fixed rather than left red so
+  security-scan.yml's npm-audit job is actually green on this card's own merge, not merely
+  documented as an expected first-run failure (security-scan.yml is not a required status check
+  either way, so this was not a merge-blocker, but a gate that starts red gives no future signal).
+guard:
+  kind: manual
+  ref: python scripts/security/check-npm-audit-policy.py --calibrate; grep -c '^permissions:'
+    .github/workflows/*.yml | grep -c ':1$'
+  asserts: the 5-control self-test passes; exactly 10 of 10 workflow files carry a top-level permissions block
+  provenRed: true

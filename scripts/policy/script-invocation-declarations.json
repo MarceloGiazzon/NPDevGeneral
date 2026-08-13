@@ -208,6 +208,9 @@
     "scripts/quality/check-container-images-pinned.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-coverage-ratchet.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-dialect-methods-are-asked.py": {
       "invocation": "ci-gate"
     },
@@ -372,10 +375,6 @@
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
     },
-    "scripts/quality/run-app-upgrade-contract-gate.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/architecture/APP_UPGRADE_CONTRACT.md"
-    },
     "scripts/quality/run-beta-release-evidence-orchestration.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/archive/programme-history/POST_REG17_CLOSURE_PLAN.md"
@@ -403,10 +402,6 @@
     "scripts/quality/run-controlled-command-runner-tests.ps1": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/run-custom-ux-extensibility-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md"
-    },
     "scripts/quality/run-direct-evidence-hardening-tests.ps1": {
       "invocation": "orchestrated"
     },
@@ -423,13 +418,8 @@
     "scripts/quality/run-docker-linux-proof.ps1": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/run-dsl-parser-robustness-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md"
-    },
     "scripts/quality/run-editor-complexity-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/archive/programme-history/TREE1_LAUNCH_UNBLOCK_PLAN.md"
+      "invocation": "orchestrated"
     },
     "scripts/quality/run-editor-gate.ps1": {
       "invocation": "ci-gate"
@@ -443,10 +433,6 @@
     "scripts/quality/run-expanded-beta0-evidence.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/beta/ai-only-beta-0-scope.md"
-    },
-    "scripts/quality/run-external-ai-gate.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/adr/ADR-0009-external-ai-delegation.md"
     },
     "scripts/quality/run-fast-gate.ps1": {
       "invocation": "manual-runbook",
@@ -471,16 +457,8 @@
     "scripts/quality/run-generator-governance.ps1": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/run-incremental-migration-testing-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/archive/programme-history/REGISTER_CLOSURE_PLAN.md"
-    },
     "scripts/quality/run-internal-db-schema-source-of-truth-check.ps1": {
       "invocation": "ci-gate"
-    },
-    "scripts/quality/run-json-schema-validation-tests.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/beta/ai-only-beta-0-no-false-green-scope.md"
     },
     "scripts/quality/run-json-schema-validator-tests.ps1": {
       "invocation": "manual-runbook",
@@ -489,35 +467,11 @@
     "scripts/quality/run-library-probe.py": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/run-manager-harness.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "scripts/quality/manager-harness/README.md"
-    },
-    "scripts/quality/run-maturity-max-final-closure-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md"
-    },
-    "scripts/quality/run-maturity-max-roadmap-boundary-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md"
-    },
-    "scripts/quality/run-maturity-score.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md"
-    },
     "scripts/quality/run-observability-hardening.ps1": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/run-phase2-residual-fidelity-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md"
-    },
     "scripts/quality/run-portable-tooling-check.ps1": {
       "invocation": "ci-gate"
-    },
-    "scripts/quality/run-post-beta0-maturity-closure-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/archive/programme-history/REGISTER_CLOSURE_PLAN.md"
     },
     "scripts/quality/run-post-beta0-roadmap-boundary-check.ps1": {
       "invocation": "retired",
@@ -526,10 +480,6 @@
     },
     "scripts/quality/run-publication-runtime-sql-neutrality-check.ps1": {
       "invocation": "ci-gate"
-    },
-    "scripts/quality/run-release-checklist-gate.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/RELEASE_PROCESS.md"
     },
     "scripts/quality/run-report-provenance-tests.ps1": {
       "invocation": "manual-runbook",
@@ -558,10 +508,6 @@
     "scripts/quality/run-runtimehost-gate.ps1": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/run-runtimehost-integration-infrastructure-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md"
-    },
     "scripts/quality/run-runtimehost-staged-jar-preflight-tests.ps1": {
       "invocation": "orchestrated"
     },
@@ -580,14 +526,6 @@
       "invocation": "manual-runbook",
       "documentedIn": "docs/maintainers/SAMPLE_MATRIX_RELEASE_POLICY.md"
     },
-    "scripts/quality/run-scenario-scope-reconciliation-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md"
-    },
-    "scripts/quality/run-schema-consolidation-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md"
-    },
     "scripts/quality/run-scope-policy-enforcement-tests.ps1": {
       "invocation": "orchestrated"
     },
@@ -596,14 +534,6 @@
     },
     "scripts/quality/run-script-inventory-check.ps1": {
       "invocation": "ci-gate"
-    },
-    "scripts/quality/run-shift-left-ai-safety-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md"
-    },
-    "scripts/quality/run-stateful-additive-migrations-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/ROADMAP_BOUNDARY_POLICY.md"
     },
     "scripts/quality/run-structured-command-surface-alignment.ps1": {
       "invocation": "orchestrated"
@@ -621,8 +551,10 @@
       "invocation": "orchestrated"
     },
     "scripts/quality/run-trusted-source-security-check.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/archive/programme-history/REGISTER_CLOSURE_PLAN.md"
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-weekly-paperwork-checks.ps1": {
+      "invocation": "ci-gate"
     },
     "scripts/quality/runtimehost-automation-contract-helper.psm1": {
       "invocation": "ci-gate"
@@ -643,9 +575,6 @@
     },
     "scripts/quality/validate-report-schemas.ps1": {
       "invocation": "ci-gate"
-    },
-    "scripts/quality/validate-scenario-coherence.ps1": {
-      "invocation": "orchestrated"
     },
     "scripts/quality/write-ai-beta-reproducibility-report.ps1": {
       "invocation": "orchestrated"
@@ -677,6 +606,9 @@
     "scripts/samples/verify-sample.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "NPDevSamples/README.md"
+    },
+    "scripts/security/check-npm-audit-policy.py": {
+      "invocation": "ci-gate"
     },
     "scripts/security/Invoke-ControlledCommand.ps1": {
       "invocation": "manual-runbook",

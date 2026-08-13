@@ -3,6 +3,12 @@ name: NPDev Release Gate
 on:
   workflow_dispatch:
 
+# R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2): least-privilege default -- despite the name, this is
+# a readiness CHECK (traceable-local-release + roadmap-closure), not a publisher; it never tags,
+# releases, or pushes. See publish-runtimehost-libs.yml for the workflow that actually needs write.
+permissions:
+  contents: read
+
 concurrency:
   group: npdev-release-gate-${{ github.ref }}
   cancel-in-progress: true

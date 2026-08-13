@@ -6,6 +6,11 @@ name: AI Beta Gate
 on:
   workflow_dispatch:
 
+# R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2): least-privilege default -- every step here reads the
+# repo and uploads its own run artifacts, neither of which needs more than contents: read.
+permissions:
+  contents: read
+
 concurrency:
   group: ai-beta-gate-${{ github.ref }}
   cancel-in-progress: true

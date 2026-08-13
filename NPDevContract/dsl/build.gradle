@@ -1,5 +1,9 @@
 plugins {
     id 'java-library'
+    // R3 (MASTER-ROADMAP.md Step 9 / ledger QUAL-6): unconditional -- dsl never ships into a
+    // generated FinalApp (only NPDevRuntimeHost's build.gradle.template does, see that file's own
+    // JaCoCo gating comment), so there is no "changes every shipped app" hazard here.
+    id 'jacoco'
 }
 
 group = 'com.npdev'
@@ -63,6 +67,17 @@ tasks.withType(Test).configureEach {
     maxHeapSize = '2g'
     maxParallelForks = 4
     jvmArgs '-XX:+UseParallelGC'
+    // R3: any test run also produces a fresh JaCoCo XML report as a byproduct, so no gate script
+    // needs its own extra Gradle task invocation -- scripts/quality/check-coverage-ratchet.py just
+    // looks for whatever report a prior `test` run already left behind.
+    finalizedBy tasks.named('jacocoTestReport')
+}
+
+tasks.withType(JacocoReport).configureEach {
+    reports {
+        xml.required = true
+        html.required = false
+    }
 }
 
 // AI-authoring loop: validate a draft model.json (structural + semantic) without generating.
@@ -300,6 +315,7 @@ tasks.named('check') {
 
 subprojects {
     apply plugin: 'java-library'
+    apply plugin: 'jacoco'
 
     group = 'com.npdev'
     version = '0.1.0'
@@ -330,5 +346,13 @@ subprojects {
         maxHeapSize = '2g'
         maxParallelForks = 4
         jvmArgs '-XX:+UseParallelGC'
+        finalizedBy tasks.named('jacocoTestReport')
+    }
+
+    tasks.withType(JacocoReport).configureEach {
+        reports {
+            xml.required = true
+            html.required = false
+        }
     }
 }

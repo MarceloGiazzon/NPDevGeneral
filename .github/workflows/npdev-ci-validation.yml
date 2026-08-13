@@ -18,6 +18,11 @@ on:
   push:
     branches: [main]
 
+# R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2): least-privilege default -- both jobs build/test and
+# upload their own evidence artifacts, never writing to the repo/PR/release.
+permissions:
+  contents: read
+
 concurrency:
   group: npdev-ci-validation-${{ github.ref }}
   cancel-in-progress: true

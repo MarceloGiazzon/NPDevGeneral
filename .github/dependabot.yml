@@ -1,0 +1,110 @@
+# R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2). This repo has no single root Gradle build -- seven
+# independent Gradle roots (each with its own settings.gradle + gradlew) plus one orphan single-project
+# build with neither -- so dependency scanning needs one `gradle` entry per root, not one for the repo.
+#
+# KNOWN LIMITATION, read before trusting this file's RuntimeHost coverage: two different Spring Boot
+# versions exist in this repo. NPDevRuntimeHost/build.gradle (a real, Dependabot-scannable Gradle file)
+# declares 3.3.2 and is kept ONLY for a direct bare-checkout GATE-H2/GATE-PG run -- see that file's own
+# header comment. NPDevRuntimeHost/build.gradle.template declares 3.5.16 and is what FinalAppAssembler
+# actually copies byte-for-byte into every generated FinalApp (materializeRootTemplate). Dependabot
+# parses `*.gradle` files, not `*.gradle.template` (mustache-adjacent tokens aside, it is not valid
+# Gradle syntax Dependabot's parser would accept), so it can only ever see and bump the DEAD 3.3.2 pin
+# below -- never the 3.5.16 that ships. Do not read a clean Dependabot run against NPDevRuntimeHost/ as
+# coverage of what users actually run; that gap needs a human to re-apply any RuntimeHost Spring Boot
+# bump to build.gradle.template by hand (or a future card that generates one from the other).
+version: 2
+updates:
+  # ---------------------------------------------------------------------------------------------
+  # Gradle roots (7 real, independently-buildable: each has its own settings.gradle + gradlew).
+  # Dependabot's gradle ecosystem follows a root's settings.gradle to its included subprojects, so
+  # one entry per root covers every subproject/adapter it includes -- not one entry per module.
+  # ---------------------------------------------------------------------------------------------
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "gradle"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "gradle"
+    directory: "/NPDevContract/dsl"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "gradle"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "gradle"
+    directory: "/NPDevGenerator"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "gradle"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "gradle"
+    directory: "/NPDevKernel"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "gradle"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "gradle"
+    directory: "/NPDevEditor"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "gradle"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # See the file-level comment above: this scans the DEAD 3.3.2 pin, not the 3.5.16 that ships.
+  - package-ecosystem: "gradle"
+    directory: "/NPDevRuntimeHost"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "gradle"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # BT-1's jar-shippable split -- a fully independent Gradle build (own settings.gradle/gradlew),
+  # not a subproject reachable from any of the roots above.
+  - package-ecosystem: "gradle"
+    directory: "/NPDevRuntimeHost/runtimehost-core"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "gradle"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # ---------------------------------------------------------------------------------------------
+  # npm (the authoring UI)
+  # ---------------------------------------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/NPDevEditor/ui-react"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "npm"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # ---------------------------------------------------------------------------------------------
+  # github-actions (the action/workflow `uses:` pins in .github/workflows/*.yml themselves)
+  # ---------------------------------------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "github-actions"]
+    commit-message:
+      prefix: "chore(deps)"
