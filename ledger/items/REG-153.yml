@@ -1,0 +1,61 @@
+id: REG-153
+title: >-
+  CodeQL default-setup flags 4 high-severity clear-text password logging alerts in npdev_cli.py,
+  unrelated to any change on this branch
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-13
+source: >-
+  Discovered while checking PR #63's (R7 Stage C, SEC-1) CI status. The repo's bare "CodeQL"
+  default-setup check (distinct from the workflow-based CodeQL Actions for java-kotlin/
+  javascript-typescript/python, which all passed) failed with "4 new alerts including 4 high
+  severity security vulnerabilities". Confirmed via `git diff main...step12-r7-stage-c --
+  NPDevCli/npdev_cli.py` that this branch never touched the file -- this is either the first scan
+  against a fresh baseline surfacing pre-existing issues, or default setup was only recently
+  enabled on this repo. Not a regression introduced by Stage C.
+surface: cli/npdev_cli
+files:
+  - NPDevCli/npdev_cli.py
+detail: |
+  CodeQL's dataflow analysis flags 4 sink locations, all instances of the same two generic
+  result-printing helpers:
+    - line 5175: `print(json.dumps(result, indent=2, ensure_ascii=False))` in `_print_result`
+    - line 5177: `print(_human_summary(result))` in `_print_result`
+    - line 5492: `print(json.dumps(result, indent=2, ensure_ascii=False))` in the `explore` command
+      dispatcher
+    - line 5494: `print(_explore_human_summary(args.explore_command, result))`, same dispatcher
+
+  Both are generic "print this subcommand's result dict, as --json or as a human summary" helpers
+  used by many `npdev` subcommands, not specific to one. CodeQL's alert means it traced a dataflow
+  path from SOME source carrying a value it classifies as a password into one of these generic
+  sinks -- not that these lines themselves construct or handle a password.
+
+  A plausible source, found by grepping for `password` in the same file but NOT verified as the
+  actual CodeQL-traced path: `_align_config_database` (line ~1355) builds a `database.password`
+  field for `config.json`, and `db test`/`db status`-family commands (lines ~1100, ~1139, ~3081)
+  thread `args.db_password` through connection-testing helpers whose result dicts could echo the
+  value back for confirmation. `resolved-db-plan.json` (written by
+  `OperationalRunbookEmitter.resolvedPlan`) also carries a real `password` field, and if any CLI
+  command surfaces that plan's contents through `_print_result` unfiltered, that would be a genuine
+  local-stdout exposure -- worth contrasting with `npdev_monitor.py`'s `probe_app()`, which
+  deliberately excludes password from its record for exactly this reason (see that function's own
+  comment, read this session: "Connection SUMMARY only -- never the password").
+
+  Not investigated further or fixed here -- out of scope for R7 Stage C, which never touched this
+  file. Whoever picks this up should start by reading CodeQL's actual traced dataflow path
+  (`https://github.com/MarceloGiazzon/NPDevGeneral/security/code-scanning?query=pr%3A63+tool%3ACodeQL`
+  or the equivalent alert list on `main` after this PR merged) rather than re-deriving it from the
+  sink alone, then decide whether the fix is "don't put password in this particular result dict" or
+  "redact password inside `_print_result`/`_explain_human_summary` generically, the same way
+  `npdev_monitor.redact()` already does for its own surface."
+guard:
+  kind: manual
+  ref: >-
+    read the CodeQL alert list for this repo (code-scanning tab) filtered to npdev_cli.py, or
+    re-run the default-setup CodeQL scan locally against a command whose result dict is suspected
+    to carry a password (e.g. `npdev db test --db-password ...`) and inspect its --json output
+  asserts: >-
+    no `npdev` CLI command's --json or human-summary output includes a database or credential
+    password in clear text
+  provenRed: false
