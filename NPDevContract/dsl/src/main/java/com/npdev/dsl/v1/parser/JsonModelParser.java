@@ -2168,6 +2168,7 @@ public final class JsonModelParser {
         return switch (dslType.trim().toLowerCase(Locale.ROOT)) {
             case "string", "uuid", "enum", "date", "datetime", "reference" -> "string";
             case "int", "integer", "long" -> "integer";
+            case "decimal" -> "number";
             case "boolean" -> "boolean";
             case "object" -> "object";
             case "array" -> "array";
@@ -2364,6 +2365,8 @@ public final class JsonModelParser {
         String description = readText(node, "description");
         Integer minLength = readOptionalInt(node, "minLength");
         Integer maxLength = readOptionalInt(node, "maxLength");
+        Integer precision = readOptionalInt(node, "precision");
+        Integer scale = readOptionalInt(node, "scale");
         Integer minItems = readOptionalInt(node, "minItems");
         Integer maxItems = readOptionalInt(node, "maxItems");
         Boolean uniqueItems = readOptionalBoolean(node, "uniqueItems");
@@ -2422,6 +2425,8 @@ public final class JsonModelParser {
                 description,
                 minLength,
                 maxLength,
+                precision,
+                scale,
                 minItems,
                 maxItems,
                 uniqueItems,

@@ -5,6 +5,32 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-13 — `field.type`/`domainType.baseType`/`schemaObject.type` gain `decimal`; `SchemaAst`/`CompiledSchema` each grow two constructor params (R5)
+
+**What changes.** A new DSL field type, `decimal`, joins the closed enum on `field.type`,
+`domainType.baseType`, `eventPayloadField.type` and `$defs.schemaObject.type` in all four mirrored
+copies of `model.schema.json`. A `decimal` field compiles to `java.math.BigDecimal`, persists as
+`NUMERIC(p,s)` (precision/scale default to 19,4 when not declared; declare them via new `precision`/
+`scale` sibling properties on `field`/`schemaObject`, the same shape as the existing `maxLength`).
+`SchemaAst`'s and `CompiledSchema`'s canonical constructors each grow two new `Integer` parameters
+(`precision`, `scale`), inserted right after `maxLength`.
+
+**Who is affected.** Any code outside this repo constructing `SchemaAst`/`CompiledSchema` via their
+19-parameter canonical constructor directly (rather than one of the shorter delegating overloads,
+which are unchanged) would no longer compile. In this repo, the three call sites that use the
+canonical constructor (`JsonModelParser.parseSchema`, `ModelCompiler.toCompiledSchema`/
+`mergeSchemas`) were updated in the same commit; every other constructor caller found in this repo
+uses a shorter overload and needed no change. No existing model is affected — `decimal` is a new
+enum value and `precision`/`scale` are new optional properties, so every model that validated before
+this change still validates identically.
+
+**Why.** M1 ("it can model a business") needs an exact numeric type — every existing sample worked
+around its absence by encoding money as `priceCents`-style integers, which cannot express a tax rate
+or an exchange rate without inventing a second workaround per use.
+
+**No codemod.** Purely additive: a new enum value and two new optional schema properties. No
+existing model references `decimal`, so there is nothing to rewrite.
+
 ## 2026-08-10 — `SqlDialect.requiresOrderByForPagination()` is removed (STOR-13)
 
 **What changes.** The method is gone from the `SqlDialect` interface and from all four

@@ -1461,6 +1461,16 @@ public final class CompiledModelCanonicalJson {
         } else {
             node.put("maxLength", schema.getMaxLength());
         }
+        if (schema.getPrecision() == null) {
+            node.putNull("precision");
+        } else {
+            node.put("precision", schema.getPrecision());
+        }
+        if (schema.getScale() == null) {
+            node.putNull("scale");
+        } else {
+            node.put("scale", schema.getScale());
+        }
         if (schema.getMinItems() == null) {
             node.putNull("minItems");
         } else {

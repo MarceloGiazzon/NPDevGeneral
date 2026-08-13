@@ -1300,6 +1300,7 @@
             "int",
             "integer",
             "long",
+            "decimal",
             "boolean",
             "date",
             "datetime",
@@ -1454,6 +1455,15 @@
           "minimum": 0
         },
         "maxLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "precision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 38
+        },
+        "scale": {
           "type": "integer",
           "minimum": 0
         },
@@ -1622,6 +1632,7 @@
             "int",
             "integer",
             "long",
+            "decimal",
             "boolean",
             "date",
             "datetime"
@@ -2283,6 +2294,7 @@
             "int",
             "integer",
             "long",
+            "decimal",
             "boolean",
             "date",
             "datetime"
@@ -4231,6 +4243,7 @@
             "int",
             "integer",
             "long",
+            "decimal",
             "boolean",
             "date",
             "datetime",
@@ -4247,6 +4260,15 @@
           "minimum": 0
         },
         "maxLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "precision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 38
+        },
+        "scale": {
           "type": "integer",
           "minimum": 0
         },

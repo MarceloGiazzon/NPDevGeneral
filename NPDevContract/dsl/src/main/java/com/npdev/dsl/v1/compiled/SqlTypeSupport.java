@@ -17,6 +17,7 @@ public final class SqlTypeSupport {
                 case "reference", "uuid" -> "UUID";
                 case "int", "integer" -> "INTEGER";
                 case "long" -> "BIGINT";
+                case "decimal" -> decimalType(field);
                 case "boolean" -> "BOOLEAN";
                 case "date" -> "DATE";
                 case "datetime" -> "TIMESTAMP WITH TIME ZONE";
@@ -40,7 +41,7 @@ public final class SqlTypeSupport {
         if (lower.equals("int") || lower.contains("integer")) return "INTEGER";
         if (lower.equals("long") || lower.contains("long")) return "BIGINT";
         if (lower.contains("boolean")) return "BOOLEAN";
-        if (lower.contains("bigdecimal")) return "NUMERIC(19,2)";
+        if (lower.contains("bigdecimal")) return decimalType(field);
         if (lower.contains("localdate")) return "DATE";
         if (lower.contains("instant") || lower.contains("offsetdatetime")) return "TIMESTAMP WITH TIME ZONE";
         return varcharType(field);
@@ -62,5 +63,19 @@ public final class SqlTypeSupport {
         Integer maxLength = field == null || field.getSchema() == null ? null : field.getSchema().getMaxLength();
         int length = maxLength != null && maxLength > 0 ? maxLength : 255;
         return "VARCHAR(" + length + ")";
+    }
+
+    /**
+     * R5 owner decision D1: precision/scale default to 19,4 when a decimal field doesn't declare
+     * them explicitly -- the default is applied here, at the point of consumption, rather than
+     * baked into the parsed/compiled schema, so a domain-type-declared precision/scale still wins
+     * through {@code ModelCompiler.mergeSchemas}' null-coalescing merge.
+     */
+    private static String decimalType(CompiledField field) {
+        Integer precision = field == null || field.getSchema() == null ? null : field.getSchema().getPrecision();
+        Integer scale = field == null || field.getSchema() == null ? null : field.getSchema().getScale();
+        int p = precision != null && precision > 0 ? precision : 19;
+        int s = scale != null && scale >= 0 ? scale : 4;
+        return "NUMERIC(" + p + "," + s + ")";
     }
 }

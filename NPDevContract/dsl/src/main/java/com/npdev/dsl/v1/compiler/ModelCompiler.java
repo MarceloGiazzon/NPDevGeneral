@@ -1116,6 +1116,7 @@ public final class ModelCompiler {
             case "uuid" -> "java.util.UUID";
             case "int", "integer" -> "Integer";
             case "long" -> "Long";
+            case "decimal" -> "java.math.BigDecimal";
             case "boolean" -> "Boolean";
             case "date" -> "java.time.LocalDate";
             case "datetime" -> "java.time.OffsetDateTime";
@@ -1369,6 +1370,8 @@ public final class ModelCompiler {
                 schemaAst.getDescription(),
                 schemaAst.getMinLength(),
                 schemaAst.getMaxLength(),
+                schemaAst.getPrecision(),
+                schemaAst.getScale(),
                 schemaAst.getMinItems(),
                 schemaAst.getMaxItems(),
                 schemaAst.getUniqueItems(),
@@ -1435,6 +1438,8 @@ public final class ModelCompiler {
                 chooseString(override == null ? null : override.getDescription(), base == null ? null : base.getDescription()),
                 chooseInteger(override == null ? null : override.getMinLength(), base == null ? null : base.getMinLength()),
                 chooseInteger(override == null ? null : override.getMaxLength(), base == null ? null : base.getMaxLength()),
+                chooseInteger(override == null ? null : override.getPrecision(), base == null ? null : base.getPrecision()),
+                chooseInteger(override == null ? null : override.getScale(), base == null ? null : base.getScale()),
                 chooseInteger(override == null ? null : override.getMinItems(), base == null ? null : base.getMinItems()),
                 chooseInteger(override == null ? null : override.getMaxItems(), base == null ? null : base.getMaxItems()),
                 chooseBoolean(override == null ? null : override.getUniqueItems(), base == null ? null : base.getUniqueItems()),

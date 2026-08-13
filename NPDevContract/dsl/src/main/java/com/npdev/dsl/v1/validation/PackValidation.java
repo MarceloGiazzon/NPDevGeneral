@@ -184,7 +184,7 @@ final class PackValidation {
         }
     }
 
-    private static final Set<String> AGGREGATE_NUMERIC_TYPES = Set.of("int", "integer", "long");
+    private static final Set<String> AGGREGATE_NUMERIC_TYPES = Set.of("int", "integer", "long", "decimal");
     private static final Set<String> AGGREGATE_DATE_TYPES = Set.of("date", "datetime");
     private static final Set<String> AGGREGATE_FUNCTIONS = Set.of("count", "sum", "avg", "min", "max");
 

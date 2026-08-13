@@ -74,6 +74,7 @@ import static com.npdev.dsl.v1.validation.ExpressionValidation.FORBIDDEN_TECH_KE
 import static com.npdev.dsl.v1.validation.PackValidation.validateCapabilityPolicy;
 import static com.npdev.dsl.v1.validation.FieldValueValidation.validateObjectFieldSchema;
 import static com.npdev.dsl.v1.validation.FieldValueValidation.validateArrayFieldSchema;
+import static com.npdev.dsl.v1.validation.FieldValueValidation.validateDecimalFieldSchema;
 import static com.npdev.dsl.v1.validation.FieldValueValidation.validateFieldValueBehavior;
 import static com.npdev.dsl.v1.validation.FieldValueValidation.validateFieldValueBehaviorGraph;
 import static com.npdev.dsl.v1.validation.FieldValueValidation.areCompatibleTypes;
@@ -105,6 +106,7 @@ final class ConceptValidation {
             "int",
             "integer",
             "long",
+            "decimal",
             "boolean",
             "date",
             "datetime",
@@ -181,6 +183,8 @@ final class ConceptValidation {
                     validateObjectFieldSchema(e.getName(), f, errors);
                 } else if ("array".equals(normalizedType)) {
                     validateArrayFieldSchema(e.getName(), f, errors);
+                } else if ("decimal".equals(normalizedType)) {
+                    validateDecimalFieldSchema(e.getName(), f, errors);
                 }
 
                 if ("enum".equals(normalizedType)) {
