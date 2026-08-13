@@ -1,0 +1,48 @@
+id: REG-146
+title: >-
+  NPDevEditor/ui-react's package-lock.json carries 3 pre-existing high-severity dev-dependency
+  vulnerabilities (nanoid, postcss, vite), all with a fix available via `npm audit fix`
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-13
+source: >-
+  Found while implementing R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2): the new
+  scripts/security/check-npm-audit-policy.py, run for the first time against the real
+  NPDevEditor/ui-react project, failed on its first real invocation. Confirmed pre-existing and
+  unrelated to this branch's own changes: `git diff --stat main -- NPDevEditor/ui-react/package.json
+  NPDevEditor/ui-react/package-lock.json` on step9-hygiene is empty -- neither file was touched here.
+surface: NPDevEditor/ui-react (dev dependencies only; `npm audit --omit=dev` reports 0 production
+  vulnerabilities)
+files:
+  - NPDevEditor/ui-react/package-lock.json
+detail: |
+  `npm audit --package-lock-only` (run from NPDevEditor/ui-react) reports 3 high-severity findings,
+  all in devDependencies, all with an automated fix already available:
+
+    nanoid  <=3.3.16   (transitive)
+      - GHSA-28wg-ghj8-5hjv: non-secure generators can loop indefinitely with negative size
+      - GHSA-2v37-7h3g-55p8: custom generators can loop indefinitely when size is zero
+    postcss  <=8.5.22  (transitive, likely via vite's own toolchain)
+      - GHSA-6g55-p6wh-862q: arbitrary file read/info disclosure via sourceMappingURL in CSS comments
+      - GHSA-r28c-9q8g-f849: path traversal in sourceMappingURL auto-loading, arbitrary .map read
+      - GHSA-fxqj-rqcc-2cmp: incomplete fix of GHSA-6g55-p6wh-862q
+    vite  8.0.0 - 8.0.15  (direct devDependency, package.json pins ^8.0.9)
+      - GHSA-v6wh-96g9-6wx3: launch-editor NTLMv2 hash disclosure via UNC path handling on Windows
+      - GHSA-fx2h-pf6j-xcff: `server.fs.deny` bypass on Windows alternate paths
+
+  All three are dev-only tooling (vite's own dependency chain + the vite dev server itself) -- the
+  build output shipped to users does not bundle any of them. `npm audit fix` resolves all three
+  without a --force / breaking major-version bump per npm's own report. Per
+  scripts/policy/frontend-npm-audit-policy.json's rules.failOnSeverityAtOrAbove: "high" (not
+  allowlistable regardless of dev/prod), these correctly fail
+  scripts/security/check-npm-audit-policy.py and, once .github/workflows/security-scan.yml starts
+  running on this branch's own schedule, will show that workflow red until fixed -- deliberately not
+  fixed as part of the R2/hygiene PR itself, since it is unrelated dependency-version work, not CI/
+  scanning-infrastructure work. security-scan.yml is not wired into branch protection as a required
+  check (only "AI knowledge substrate gate" is), so this does not block merging step9-hygiene.
+guard:
+  kind: manual
+  ref: cd NPDevEditor/ui-react && npm audit --package-lock-only
+  asserts: 0 vulnerabilities reported (currently 3 high, all dev, all `npm audit fix`-able)
+  provenRed: true

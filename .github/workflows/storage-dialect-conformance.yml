@@ -71,6 +71,12 @@ on:
         required: false
         default: 'all'
 
+# R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2): least-privilege default -- both jobs run conformance
+# tests against Docker-hosted engines and write only to $GITHUB_STEP_SUMMARY + their own run
+# artifacts, never to the repo/PR/release.
+permissions:
+  contents: read
+
 env:
   # ---------------------------------------------------------------------------------------------
   # PINNED IMAGE DIGESTS -- the twin of DialectTestSupport.CONTAINER_IMAGES.
