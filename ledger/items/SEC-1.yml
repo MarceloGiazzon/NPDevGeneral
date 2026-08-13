@@ -20,4 +20,52 @@ detail: |
   explicit -Pprofile), key generation (per-app random key in secrets/), migration surface (grep
   api-dev/dev-key repo-wide -- 22 browser routines, 13 sample configs in 3 mirrored trees). Decisions
   D4/D5 already recorded: one ADMIN key for v1, printed once on first launch. MASTER-ROADMAP.md
-  Track C item C2 -- not in this session's scope (Steps 1-4).
+  Step 12 (Stages A+B+C only; Stage D is its own later step, gated on A+B+C).
+
+  **Stage A (fail closed) DONE 2026-08-13**, branch step12-r7-stage-a. The real vulnerability,
+  confirmed by direct code reading before touching anything: `RuntimeApiKeyAuthFilter`'s
+  `DEFAULT_API_KEY_MAPPINGS` constant silently activated in TWO cases -- no `npdev.auth.api-keys`
+  value at all, OR a value that parsed to zero valid entries (a malformed config, e.g.
+  `"garbage=notarealmapping"`, which passes `StartupValidator.validateAuth()`'s crude
+  `.contains("=")` check but yields nothing usable) -- meaning ANY misconfigured deployment, not
+  just `dev`, silently granted ADMIN via `api-dev`/`dev-key`. `FinalAppAssembler.
+  writeAiBetaLocalProfile` independently hardcoded the identical pair a second time into
+  `application-ai-beta-local.yml`.
+
+  Fixed: the mustache template's fallback (both trigger sites) and `FinalAppAssembler`'s hardcoded
+  seed pair are both removed -- a misconfigured/empty/malformed mapping now correctly parses to an
+  EMPTY map, so every API key request 401s as `invalid_api_key` rather than silently authenticating
+  as an administrator. `application-dev.yml`'s dead `npdev.security.*` duplicate block (nothing in
+  the repo binds that prefix, confirmed by grep) is also removed.
+
+  **Deliberately NOT touched in Stage A**: `application-dev.yml`'s live `npdev.auth.api-keys` value
+  (still `api-dev=dev:developer:admin;dev-key=dev:developer:admin`) -- blanking it now, before
+  Stage C's real per-app key generator exists, would hard-fail EVERY app's boot via
+  `StartupValidator.validateAuth()` (confirmed: `npdev.auth.enabled` defaults to `true`, so this
+  check genuinely runs on every boot including `dev`). The roadmap's own "sequence Stage C before
+  Stage B" warning is read as covering this too -- `dev`'s own known key is an accepted, separately
+  documented risk (CLAUDE.md: "the dev profile ships a known key and is not for their real data"),
+  not what Stage A's "fail closed" goal targets. Stage A's real, complete, self-contained value is
+  closing the CODE-LEVEL backdoor that worked regardless of profile.
+
+  Verified LIVE, not just unit-tested: generated a real app, built it, booted it twice.
+  (1) Normal dev boot: `dev-key` still returns 200 (proving the live YAML value was correctly left
+  alone). (2) Same app rebooted with `--npdev.auth.api-keys=garbage=notarealmapping` (a config that
+  passes StartupValidator but previously triggered the ADMIN fallback): `dev-key` and `api-dev` now
+  both return 401 `invalid_api_key` -- confirmed via curl against a live process, not assumed.
+  `GeneratorApiVersioningContractTest` updated to assert the fallback's absence from generated
+  source (was asserting its presence). Full DSL (1695/1695) and generator (319/319) suites green.
+
+  Two additional exposures found by this stage's research but explicitly out of scope for it,
+  flagged for Stage B/C: (1) a second, independent launcher pipeline (`scripts/appgen/
+  Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1`) defaults BOTH the Spring profile (`dev,step0,trial`)
+  AND the API key (literal `dev-key`) via PowerShell parameter defaults -- a different mechanism
+  from the ones this stage touches; (2) `application-dev.properties` (a sibling, non-conflicting
+  file, confirmed to carry no auth-related keys) and an `optional:classpath:
+  application-npdev-auth.properties` import (confirmed not to exist anywhere in the repo) were
+  checked and ruled out as additional hidden defaults.
+
+  Stage B (profiles) and Stage C (per-app random key generation) remain OPEN, to be picked up as
+  their own step(s) continuing MASTER-ROADMAP.md's ordering. This item stays OPEN until the full
+  card (A+B+C) closes -- Stage A alone does not yet make `dev`'s own known key stop working, only
+  the misconfigured/production-adjacent fallback.

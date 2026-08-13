@@ -17,7 +17,6 @@ import java.util.stream.Collectors;
 
 public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
     public static final String CLAIMS_ATTRIBUTE = "npdev.auth.claims";
-    private static final String DEFAULT_API_KEY_MAPPINGS = "api-dev=dev:developer:ADMIN;dev-key=dev:developer:ADMIN";
 
     private final Map<String, PrincipalClaims> byApiKey;
     private final ApiKeyCredentialResolver credentialResolver;
@@ -82,10 +81,16 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
+    // R7 Stage A (fail closed): no static-mapping default of any kind. A blank, missing, or
+    // malformed encodedMappings value now correctly parses to an EMPTY map -- every API key request
+    // then falls through to unauthorized("invalid_api_key") -- rather than the previous behavior of
+    // silently granting ADMIN via the hardcoded "api-dev"/"dev-key" pair whenever configuration was
+    // absent or broken. A misconfigured deployment refuses every request instead of quietly
+    // authenticating as an administrator.
     private static Map<String, PrincipalClaims> parseMappings(String encodedMappings) {
         String raw = normalize(encodedMappings);
         if (raw == null) {
-            raw = DEFAULT_API_KEY_MAPPINGS;
+            raw = "";
         }
         Map<String, PrincipalClaims> parsed = new LinkedHashMap<>();
         String[] entries = raw.split(";");
@@ -107,10 +112,6 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
             if (apiKey != null && claims != null) {
                 parsed.put(apiKey, claims);
             }
-        }
-        if (parsed.isEmpty()) {
-            parsed.put("api-dev", new PrincipalClaims("dev", "developer", Set.of("ADMIN")));
-            parsed.put("dev-key", new PrincipalClaims("dev", "developer", Set.of("ADMIN")));
         }
         return Map.copyOf(parsed);
     }

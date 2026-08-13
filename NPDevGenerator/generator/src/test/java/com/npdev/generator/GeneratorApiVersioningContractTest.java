@@ -64,8 +64,18 @@ class GeneratorApiVersioningContractTest {
         assertTrue(runtimeConfig.contains("@Configuration"));
         assertTrue(runtimeConfig.contains("class NPDevRuntimeConfig"));
         assertTrue(authFilter.contains("uri.startsWith(\"/api/v1/\")"));
-        assertTrue(authFilter.contains("api-dev=dev:developer:ADMIN;dev-key=dev:developer:ADMIN"));
-        assertTrue(authFilter.contains("parsed.put(\"api-dev\""));
+
+        // R7 Stage A (fail closed, SEC-1): the generated auth filter must NEVER carry a static
+        // ADMIN-fallback mapping of any kind -- a blank/missing/malformed npdev.auth.api-keys value
+        // must parse to an empty map (every request then 401s as invalid_api_key), not silently
+        // grant "api-dev"/"dev-key" administrator access. This pins the actual security property in
+        // the generator gate, not just documents it.
+        assertFalse(authFilter.contains("api-dev=dev:developer:ADMIN;dev-key=dev:developer:ADMIN"),
+                "RuntimeApiKeyAuthFilter must not embed a static ADMIN-fallback mapping (R7 Stage A)");
+        assertFalse(authFilter.contains("parsed.put(\"api-dev\""),
+                "RuntimeApiKeyAuthFilter's parseMappings must never re-seed a default entry when parsing yields nothing (R7 Stage A)");
+        assertFalse(authFilter.contains("DEFAULT_API_KEY_MAPPINGS"),
+                "RuntimeApiKeyAuthFilter must not declare a default-mappings constant at all (R7 Stage A)");
 
         // LNCH-3: the generated api-key filter must never clobber a request that an earlier filter in
         // the chain (e.g. the ControlPanel super-user filter) already authenticated -- neither by
