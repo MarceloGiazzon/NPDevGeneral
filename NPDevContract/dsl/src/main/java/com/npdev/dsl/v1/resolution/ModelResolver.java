@@ -115,7 +115,11 @@ public final class ModelResolver {
                 // included, already survives this untouched; nothing here reconstructs a context
                 // entry field-by-field the way REG-108's bug needed to be caught for.
                 source.getContexts(),
-                source.getConversions()
+                source.getConversions(),
+                // Whole-map pass-through -- keyed by qualified concept name, which specialization
+                // resolution here never renames (extends is field-inheritance, not a rename), so the
+                // keys this map already has still match after resolution.
+                source.getPhysicalQualifierByConceptName()
         );
         return ResolvedModel.from(resolvedAst);
     }

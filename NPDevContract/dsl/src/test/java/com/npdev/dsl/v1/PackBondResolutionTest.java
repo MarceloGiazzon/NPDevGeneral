@@ -93,7 +93,11 @@ class PackBondResolutionTest {
         CompiledConcept order = compiled.findConcept("Order").orElseThrow();
 
         assertEquals("CatProduct", product.getClassName());
-        assertEquals("cat_products", product.getTableName());
+        // PK-2: the physical table name derives from the pack's own id + major version
+        // ("catalog_v1"), never the importing app's local alias ("cat") -- the class name above
+        // stays alias-derived (a purely logical/authoring concern), only the physical SQL identity
+        // changed.
+        assertEquals("catalog_v1_products", product.getTableName());
         assertEquals("cat::Product", field(variant, "productSku").getReferenceSemantics().getTarget());
         assertEquals("skuId", field(variant, "productSku").getReferenceSemantics().getVia());
         assertEquals("cascade", field(variant, "productSku").getReferenceSemantics().getOnDelete());

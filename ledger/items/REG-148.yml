@@ -1,0 +1,42 @@
+id: REG-148
+title: >-
+  check-markdown-links.py scans every .md physically on disk, not just tracked files -- a gitignored
+  worktree with a stale link fails the gate for content nobody committed
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-13
+source: >-
+  Found incidentally during MASTER-ROADMAP.md Step 6 (PK-2) verification, while running the full T2
+  gate suite (run-all-gates.ps1) with a second background agent's `.claude/worktrees/Build` worktree
+  present on disk (working Step 7, BT-1, in parallel). Confirmed unrelated to PK-2: the flagged file
+  is `.claude\worktrees\Build\docs\OPEN_GAPS_AND_ROADMAP.md`, not any file in this repo's own tracked
+  tree, and PK-2 touches zero markdown files with that content.
+surface: scripts/quality/check-markdown-links.py
+files:
+  - scripts/quality/check-markdown-links.py
+detail: |
+  The script's own docstring says "walk every tracked `.md` file" (line 2), but `find_markdown_files`
+  actually does `root.rglob("*.md")` from `REPO_ROOT` -- a raw filesystem walk, not `git ls-files`.
+  `EXCLUDED_DIR_NAMES = {"node_modules", "build", ".git", ".gradle"}` has no entry for `.claude`, even
+  though `.gitignore` line 94 (`.claude/*` then `.claude/worktrees`) confirms `.claude/worktrees` is
+  itself gitignored -- and it is a normal, sanctioned location for parallel background-agent work
+  (git worktrees checked out under `.claude/worktrees/<name>` while a background agent works an
+  isolated branch). Any `.md` file inside such a worktree -- including one
+  on a stale or in-progress commit with a genuinely broken relative link -- gets swept into the scan
+  and fails the gate for content that was never committed to any real branch and that the person
+  running the gate did not touch.
+  Reproduced this run: `.claude\worktrees\Build\docs\OPEN_GAPS_AND_ROADMAP.md` (from an unrelated,
+  older worktree checkout, not the active BT-1 agent's own worktree) cited a relative link to
+  `archive/programme-history/BOUNDARY_LIFT_ROADMAP.md` that does not resolve inside that worktree's
+  checkout. The SAME file at this repo's own real path (`docs/OPEN_GAPS_AND_ROADMAP.md`) has no such
+  broken link -- confirming the failure is scoped entirely to the stray worktree copy, not this
+  branch's or main's actual content.
+  Fix: make `find_markdown_files` enumerate via `git ls-files '*.md'` (matching the docstring's own
+  claim) instead of `Path.rglob`, or at minimum add `.claude` to `EXCLUDED_DIR_NAMES`. Out of scope
+  for PK-2, which does not touch this script and has no markdown surface of its own.
+guard:
+  kind: manual
+  ref: "run scripts/quality/check-markdown-links.py (or run-ai-knowledge-gate.ps1) while a `.claude/worktrees/<name>` git worktree with a stale relative markdown link exists on disk -- it fails the gate citing the worktree's copy, not any file tracked on the branch actually being verified"
+  asserts: check-markdown-links.py only scans git-tracked .md files, matching its own docstring
+  provenRed: true

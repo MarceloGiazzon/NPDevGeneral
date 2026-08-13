@@ -1,0 +1,53 @@
+id: REG-147
+title: >-
+  Composite-unique-constraint guard DDL for a 3+ column unique is missing a semicolon, breaking Postgres boot
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-13
+source: >-
+  Found incidentally during MASTER-ROADMAP.md Step 6 (PK-2) verification, while running the real
+  two-engine (H2 + Postgres) generate->build->boot proof required by that card. The H2 half of the
+  proof succeeded; the identical model failed to boot on real Postgres. Confirmed NOT caused by PK-2's
+  own changes: reproduces identically with PK-2's source changes fully stashed (unmodified main,
+  commit ff2711d6).
+surface: generator/schema-realization-ddl
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
+detail: |
+  A model importing the built-in `identity` pack (NPDevContract/packs/identity/pack.json) and
+  generating for real Postgres fails Flyway migration at boot with:
+    org.postgresql.util.PSQLException: ERROR: syntax error at or near "END"
+  The emitted DO $$ ... END $$; guard block for the identity pack's UserRolePermission concept
+  (composite unique on tenant_id, user_role_id, permission -- 3 columns) is missing a semicolon
+  after its ALTER TABLE statement:
+
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+        WHERE CONSTRAINT_NAME = 'uqx_auth_user_role_permissions_ux_user_role_permission'
+          AND TABLE_NAME = 'auth_user_role_permissions'
+          AND TABLE_SCHEMA = current_schema()
+      ) THEN
+        ALTER TABLE auth_user_role_permissions ADD CONSTRAINT
+          uqx_auth_user_role_permissions_ux_user_role_permission
+          UNIQUE (tenant_id, user_role_id, permission)
+      END IF;              <-- missing ";" on the ALTER TABLE line above this
+    END $$;
+
+  Every other unique-constraint guard emitted in the same file (2-column and single-column uniques)
+  has the semicolon and works correctly -- this is specific to whatever code path builds the ALTER
+  TABLE statement text for a 3+ column composite unique constraint, likely a string-join/template
+  branch in SchemaRealizationEmitter that forgets the trailing terminator only on that arm. Not yet
+  isolated to the exact line (out of scope for the session that found it -- PK-2 does not touch DDL
+  emission at all). Blocks boot entirely on Postgres (Flyway runs the whole migration file as one
+  transaction, so one broken statement fails the whole app) for ANY model using the identity pack's
+  UserRolePermission concept, or any other concept with a 3+ column unique constraint, on Postgres.
+  H2 is unaffected (H2's more permissive statement parser apparently tolerates or the guard shape
+  differs there -- not confirmed which).
+guard:
+  kind: manual
+  ref: "generate a model importing NPDevContract/packs/identity/pack.json for real Postgres, build, boot -- currently fails Flyway migration with a syntax error at V1__npdev_schema_realization.sql's UserRolePermission unique-constraint guard"
+  asserts: the identity pack's UserRolePermission composite-unique guard is valid, executable Postgres DDL
+  provenRed: true
