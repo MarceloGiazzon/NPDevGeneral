@@ -450,8 +450,18 @@ final class PackDependencyGraphWalker {
                 throw ModelSourceResolver.error(modelFile, "/packs", refused.message());
             }
             PackMigrationComposer.ComposedRenames composed = ((PackMigrationComposer.Composed) result).renames();
-            if (!composed.isEmpty()) {
-                packNodeById.put(packId, PackMigrationChainSynthesizer.applyComposedRenames(packNode, composed));
+            // PK-2 bakes a pack's own major version into every one of its concepts' physical table
+            // names (recordPhysicalQualifiers, below) -- and since a rename is BREAKING (Stage A) and
+            // BREAKING requires at least a major bump (Stage B), every rename-bearing hop ALSO crosses
+            // a major-version boundary, which by itself changes the physical table name regardless of
+            // whether any field/concept was renamed. A field-level renamedFrom alone is invisible to
+            // the schema engine when the TABLE it lives on looks like an entirely different table.
+            String oldPhysicalQualifier = fromVersion.major() != toVersion.major()
+                    ? packId + "_v" + fromVersion.major()
+                    : "";
+            if (!composed.isEmpty() || !oldPhysicalQualifier.isBlank()) {
+                packNodeById.put(packId,
+                        PackMigrationChainSynthesizer.applyComposedRenames(packNode, composed, oldPhysicalQualifier));
             }
 
             // Kept current regardless of whether this run's composed range was empty -- a pack with

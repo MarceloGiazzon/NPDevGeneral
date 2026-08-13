@@ -15,17 +15,43 @@ import java.util.Map;
  * either way. {@code renamedFrom} is already schema-legal here -- {@code pack.schema.json}'s
  * {@code concepts[]} entries are the same {@code model.schema.json#/$defs/concept}/{@code #/$defs/
  * field} definitions a model author uses, both of which already declare {@code renamedFrom}.
+ *
+ * <p><b>The physical-qualifier hazard (found by running the real end-to-end proof, not by
+ * design review).</b> PK-2 bakes a pack's own major version into every one of its concepts'
+ * physical table names ({@code ModelSourceResolver.recordPhysicalQualifiers}: {@code
+ * "<packId>_v<major>"}) -- and since a rename is BREAKING (Stage A) and BREAKING requires at
+ * least a major bump (Stage B), EVERY rename-bearing chain hop, by construction, also crosses a
+ * major-version boundary. That means a hop's rename is invisible to the schema engine unless the
+ * TABLE's own physical identity is also declared as renamed, or {@code SchemaLifecycleExecutor}
+ * sees a wholly different table name and treats it as an ordinary drop+create -- exactly the
+ * destructive failure this whole card exists to prevent, just one layer up from the column it
+ * already handles correctly. When the caller supplies a non-blank {@code oldPhysicalQualifier}
+ * (computed from the composed range's {@code fromVersion} whenever its major differs from {@code
+ * toVersion}'s), every concept in the pack gets a QUALIFIED {@code renamedFrom} -- {@code
+ * "<oldQualifier>::<bareName>"} -- regardless of whether that concept's OWN bare name changed.
+ * This reuses {@code SchemaRealizationEmitter.conceptTableRename}'s existing {@code
+ * renamedFrom}-non-blank branch and {@code SqlIdentifierSupport}'s existing {@code toSnake}
+ * (which already turns {@code "::"} into {@code "_"}) unmodified -- no new consumption machinery,
+ * just a value in the shape that machinery already expects.
  */
 public final class PackMigrationChainSynthesizer {
 
     private PackMigrationChainSynthesizer() {
     }
 
-    public static ObjectNode applyComposedRenames(ObjectNode rawPackNode, PackMigrationComposer.ComposedRenames composed) {
+    /**
+     * @param oldPhysicalQualifier the pack's own {@code "<packId>_v<major>"} qualifier as of the
+     *                             composed range's start version, or blank/null if the major
+     *                             version did not change across the range (the common case for a
+     *                             minor/patch-only regenerate, where no table identity shifted).
+     */
+    public static ObjectNode applyComposedRenames(
+            ObjectNode rawPackNode, PackMigrationComposer.ComposedRenames composed, String oldPhysicalQualifier) {
         if (rawPackNode == null) {
             throw new IllegalArgumentException("rawPackNode must not be null");
         }
-        if (composed.isEmpty()) {
+        boolean qualifierShifted = oldPhysicalQualifier != null && !oldPhysicalQualifier.isBlank();
+        if (composed.isEmpty() && !qualifierShifted) {
             return rawPackNode.deepCopy();
         }
 
@@ -45,7 +71,10 @@ public final class PackMigrationChainSynthesizer {
             }
 
             String originalConceptName = composed.conceptRenames().get(conceptName);
-            if (originalConceptName != null) {
+            if (qualifierShifted) {
+                String oldBareName = originalConceptName != null ? originalConceptName : conceptName;
+                applyRenamedFrom(concept, "concepts['" + conceptName + "']", oldPhysicalQualifier + "::" + oldBareName);
+            } else if (originalConceptName != null) {
                 applyRenamedFrom(concept, "concepts['" + conceptName + "']", originalConceptName);
             }
 

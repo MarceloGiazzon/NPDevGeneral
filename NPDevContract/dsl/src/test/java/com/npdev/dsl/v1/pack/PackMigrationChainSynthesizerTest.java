@@ -30,12 +30,12 @@ class PackMigrationChainSynthesizerTest {
     }
 
     @Test
-    void emptyComposedRenamesReturnsAnUnmodifiedCopy() {
+    void emptyComposedRenamesWithNoQualifierShiftReturnsAnUnmodifiedCopy() {
         ObjectNode original = pack("""
                 { "pack": "identity", "version": "3.0.0", "concepts": [ { "name": "User", "fields": [] } ] }
                 """);
         ObjectNode result = PackMigrationChainSynthesizer.applyComposedRenames(
-                original, PackMigrationComposer.ComposedRenames.empty());
+                original, PackMigrationComposer.ComposedRenames.empty(), "");
         assertEquals(original, result);
         assertNotSame(original, result, "must return a copy, not the same instance");
     }
@@ -54,7 +54,7 @@ class PackMigrationChainSynthesizerTest {
         PackMigrationComposer.ComposedRenames composed = new PackMigrationComposer.ComposedRenames(
                 Map.of(), Map.of("User", Map.of("displayName", "name")));
 
-        ObjectNode result = PackMigrationChainSynthesizer.applyComposedRenames(original, composed);
+        ObjectNode result = PackMigrationChainSynthesizer.applyComposedRenames(original, composed, "");
 
         JsonNode displayNameField = result.get("concepts").get(0).get("fields").get(0);
         assertEquals("name", displayNameField.get("renamedFrom").asText());
@@ -70,7 +70,7 @@ class PackMigrationChainSynthesizerTest {
         PackMigrationComposer.ComposedRenames composed =
                 new PackMigrationComposer.ComposedRenames(Map.of("Customer", "Client"), Map.of());
 
-        ObjectNode result = PackMigrationChainSynthesizer.applyComposedRenames(original, composed);
+        ObjectNode result = PackMigrationChainSynthesizer.applyComposedRenames(original, composed, "");
 
         assertEquals("Client", result.get("concepts").get(0).get("renamedFrom").asText());
     }
@@ -88,7 +88,7 @@ class PackMigrationChainSynthesizerTest {
         PackMigrationComposer.ComposedRenames composed = new PackMigrationComposer.ComposedRenames(
                 Map.of(), Map.of("User", Map.of("displayName", "name")));
 
-        ObjectNode result = PackMigrationChainSynthesizer.applyComposedRenames(original, composed);
+        ObjectNode result = PackMigrationChainSynthesizer.applyComposedRenames(original, composed, "");
 
         assertEquals("name", result.get("concepts").get(0).get("fields").get(0).get("renamedFrom").asText());
     }
@@ -107,7 +107,7 @@ class PackMigrationChainSynthesizerTest {
                 Map.of(), Map.of("User", Map.of("displayName", "name")));
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> PackMigrationChainSynthesizer.applyComposedRenames(original, composed));
+                () -> PackMigrationChainSynthesizer.applyComposedRenames(original, composed, ""));
         assertTrue(e.getMessage().contains("somethingElse"), e.getMessage());
         assertTrue(e.getMessage().contains("name"), e.getMessage());
     }
@@ -123,9 +123,67 @@ class PackMigrationChainSynthesizerTest {
         PackMigrationComposer.ComposedRenames composed = new PackMigrationComposer.ComposedRenames(
                 Map.of(), Map.of("User", Map.of("displayName", "name")));
 
-        PackMigrationChainSynthesizer.applyComposedRenames(original, composed);
+        PackMigrationChainSynthesizer.applyComposedRenames(original, composed, "");
 
         assertNull(original.get("concepts").get(0).get("fields").get(0).get("renamedFrom"),
                 "the original node passed in must not be mutated");
+    }
+
+    // ---- physical-qualifier shift (a major bump changes every concept's own table name too) ------
+
+    @Test
+    void qualifierShiftWithNoBareRenameInjectsAQualifiedConceptLevelRenamedFrom() {
+        // The renamechain/Doc proof scenario: no bare concept rename, only field-level renames and
+        // an unrelated add -- but the pack's own major version moved 1 -> 3, so the TABLE itself
+        // needs a renamedFrom even though the concept's authoring name never changed.
+        ObjectNode original = pack("""
+                { "pack": "renamechain", "version": "3.0.0", "concepts": [ { "name": "Doc", "fields": [] } ] }
+                """);
+        PackMigrationComposer.ComposedRenames composed = PackMigrationComposer.ComposedRenames.empty();
+
+        ObjectNode result = PackMigrationChainSynthesizer.applyComposedRenames(original, composed, "renamechain_v1");
+
+        assertEquals("renamechain_v1::Doc", result.get("concepts").get(0).get("renamedFrom").asText());
+    }
+
+    @Test
+    void qualifierShiftCombinesWithABareConceptRename() {
+        ObjectNode original = pack("""
+                { "pack": "identity", "version": "3.0.0", "concepts": [ { "name": "Person", "fields": [] } ] }
+                """);
+        PackMigrationComposer.ComposedRenames composed =
+                new PackMigrationComposer.ComposedRenames(Map.of("Person", "User"), Map.of());
+
+        ObjectNode result = PackMigrationChainSynthesizer.applyComposedRenames(original, composed, "identity_v1");
+
+        assertEquals("identity_v1::User", result.get("concepts").get(0).get("renamedFrom").asText(),
+                "the qualified value must use the OLD bare name (User), not the current one (Person)");
+    }
+
+    @Test
+    void noQualifierShiftLeavesAConceptWithNoComposedRenameUntouched() {
+        ObjectNode original = pack("""
+                { "pack": "renamechain", "version": "1.1.0", "concepts": [ { "name": "Doc", "fields": [] } ] }
+                """);
+        ObjectNode result = PackMigrationChainSynthesizer.applyComposedRenames(
+                original, PackMigrationComposer.ComposedRenames.empty(), "");
+        assertNull(result.get("concepts").get(0).get("renamedFrom"));
+    }
+
+    @Test
+    void qualifierShiftStillInjectsFieldLevelRenamesToo() {
+        ObjectNode original = pack("""
+                {
+                  "pack": "renamechain", "version": "3.0.0",
+                  "concepts": [ { "name": "Doc", "fields": [ { "name": "docCode", "type": "string" } ] } ]
+                }
+                """);
+        PackMigrationComposer.ComposedRenames composed = new PackMigrationComposer.ComposedRenames(
+                Map.of(), Map.of("Doc", Map.of("docCode", "code")));
+
+        ObjectNode result = PackMigrationChainSynthesizer.applyComposedRenames(original, composed, "renamechain_v1");
+
+        assertEquals("renamechain_v1::Doc", result.get("concepts").get(0).get("renamedFrom").asText());
+        assertEquals("code", result.get("concepts").get(0).get("fields").get(0).get("renamedFrom").asText());
     }
 }

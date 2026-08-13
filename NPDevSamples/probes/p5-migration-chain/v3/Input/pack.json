@@ -1,0 +1,25 @@
+{
+  "$schema": "..\\..\\..\\..\\..\\NPDevContract\\schemas\\pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "renamechain",
+  "version": "3.0.0",
+  "migrations": {
+    "1.0.0 -> 2.0.0": [
+      { "op": "renameField", "concept": "Doc", "from": "code", "to": "docCode" }
+    ],
+    "2.0.0 -> 3.0.0": [
+      { "op": "addField", "concept": "Doc", "field": "notes" }
+    ]
+  },
+  "concepts": [
+    {
+      "name": "Doc",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "docCode", "type": "string", "required": true },
+        { "name": "notes", "type": "string" }
+      ],
+      "ui": { "label": "Doc" }
+    }
+  ]
+}
