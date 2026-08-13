@@ -26,11 +26,19 @@ $ReportPath = if ([string]::IsNullOrWhiteSpace($ReportPath)) { Resolve-NPDevWork
 $PolicyPath = if ([string]::IsNullOrWhiteSpace($PolicyPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\policy\security-sensitive-field-inventory.json" } else { Normalize-NPDevPath $PolicyPath }
 $RuntimeSurfaceAllowlistReportPath = if ([string]::IsNullOrWhiteSpace($RuntimeSurfaceAllowlistReportPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\runtime-surface-allowlist-report.json" } else { Normalize-NPDevPath $RuntimeSurfaceAllowlistReportPath }
 $SecurityMaturityReportPath = if ([string]::IsNullOrWhiteSpace($SecurityMaturityReportPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\security-hardening-maturity-report.json" } else { Normalize-NPDevPath $SecurityMaturityReportPath }
-$ObservabilityConfigPath = if ([string]::IsNullOrWhiteSpace($ObservabilityConfigPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main\java\com\finalexec\config\NpdevObservabilityConfig.java" } else { Normalize-NPDevPath $ObservabilityConfigPath }
+# BT-1: NpdevObservabilityConfig.java and NpdevRuntimeModeConfig.java are app-independent (no
+# com.npdev.generated. reference) and now live under runtimehost-core, RuntimeHost's app-independent
+# module (scripts/proofs/classify_runtimehost_sources.py); JwtBearerAuthFilter.java and
+# NpdevAuthConfig.java are app-coupled and stayed in the bridge.
+$ObservabilityConfigPath = if ([string]::IsNullOrWhiteSpace($ObservabilityConfigPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\runtimehost-core\src\main\java\com\finalexec\config\NpdevObservabilityConfig.java" } else { Normalize-NPDevPath $ObservabilityConfigPath }
 $JwtFilterPath = if ([string]::IsNullOrWhiteSpace($JwtFilterPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main\java\com\finalexec\config\JwtBearerAuthFilter.java" } else { Normalize-NPDevPath $JwtFilterPath }
 $AuthConfigPath = if ([string]::IsNullOrWhiteSpace($AuthConfigPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main\java\com\finalexec\config\NpdevAuthConfig.java" } else { Normalize-NPDevPath $AuthConfigPath }
-$RuntimeModeConfigPath = if ([string]::IsNullOrWhiteSpace($RuntimeModeConfigPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main\java\com\finalexec\config\NpdevRuntimeModeConfig.java" } else { Normalize-NPDevPath $RuntimeModeConfigPath }
+$RuntimeModeConfigPath = if ([string]::IsNullOrWhiteSpace($RuntimeModeConfigPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\runtimehost-core\src\main\java\com\finalexec\config\NpdevRuntimeModeConfig.java" } else { Normalize-NPDevPath $RuntimeModeConfigPath }
 $ControllerRoot = if ([string]::IsNullOrWhiteSpace($ControllerRoot)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main\java\com\finalexec\api" } else { Normalize-NPDevPath $ControllerRoot }
+# BT-1: 3 of the allowlisted controllers now live under runtimehost-core instead -- scanned as a
+# second root below (Get-ChildItem -Recurse against BOTH), same convention
+# run-runtime-surface-evidence.ps1 uses.
+$ControllerRootCore = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\runtimehost-core\src\main\java\com\finalexec\api"
 $ExternalBetaPropertiesPath = if ([string]::IsNullOrWhiteSpace($ExternalBetaPropertiesPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main\resources\application-external-beta.properties" } else { Normalize-NPDevPath $ExternalBetaPropertiesPath }
 
 $policy = Read-Bucket2JsonFile $PolicyPath
@@ -39,7 +47,8 @@ $securityMaturityReport = Read-Bucket2JsonFile $SecurityMaturityReportPath
 $externalBetaProperties = Get-Bucket2PropertiesMap $ExternalBetaPropertiesPath
 
 $controllers = @(
-    Get-ChildItem -LiteralPath $ControllerRoot -Recurse -File -Filter "*Controller.java" |
+    @(Get-ChildItem -LiteralPath $ControllerRoot -Recurse -File -Filter "*Controller.java") +
+    @(Get-ChildItem -LiteralPath $ControllerRootCore -Recurse -File -Filter "*Controller.java") |
     Sort-Object FullName
 )
 $annotationPatterns = @(

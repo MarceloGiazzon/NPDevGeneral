@@ -136,7 +136,7 @@ single-node and not durable across container restarts).
 - **Status:** BLOCKED on P1 · **Effort:** 0.5 day · **Risk:** Low
 - **What:** Choose the adapter by config: `npdev.filestore.provider: inproc | objectstore`, with
   endpoint/region/bucket/credentials for the object-store path.
-- **Where:** [`NpdevFileStoreConfig`](../../../NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevFileStoreConfig.java)
+- **Where:** [`NpdevFileStoreConfig`](../../../NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/NpdevFileStoreConfig.java)
   (`@ConditionalOnProperty` bean selection); `application.yml` (defaults `inproc`); credentials from
   env/secret, never committed.
 - **Why:** One binary serves dev (filesystem) and prod (object store) by config only.

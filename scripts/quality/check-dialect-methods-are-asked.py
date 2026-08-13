@@ -60,6 +60,11 @@ SEARCH_ROOTS = [
     "NPDevKernel/adapters",
     "NPDevGenerator/generator/src/main/java",
     "NPDevRuntimeHost/src/main/java",
+    # BT-1: most SqlDialect callers in RuntimeHost (SchemaLifecycleExecutor, JdbcBusinessConceptStore)
+    # are app-independent (no com.npdev.generated. reference) and now live in runtimehost-core, a
+    # separate Gradle module (scripts/proofs/classify_runtimehost_sources.py) -- without this, their
+    # real callers vanish from view and every method they call reads as dead.
+    "NPDevRuntimeHost/runtimehost-core/src/main/java",
     "NPDevContract/dsl/src/main/java",
 ]
 

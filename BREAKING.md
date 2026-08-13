@@ -32,6 +32,48 @@ safe and idempotent by `SchemaLifecycleExecutorTableRenameTest`. **Regenerating 
 migration.** Expect `UserDatabaseDefinitionLoader.fingerprintInputs`'s hash to show a mismatch on the
 first post-upgrade boot — that is expected, not a red flag, and resolves via the same rename path.
 
+## 2026-08-13 — a generated app's own source tree no longer contains most of RuntimeHost (BT-1)
+
+**What changes.** `NPDevRuntimeHost/src/main/java` (311 files) is split: 244 app-independent files
+(no `com.npdev.generated.` reference — `scripts/proofs/classify_runtimehost_sources.py`) move into
+a new, independently-built module, `NPDevRuntimeHost/runtimehost-core`, shipped as a precompiled
+`runtimehost-core-<version>.jar` (+ a `-sources.jar`) staged alongside every other kernel/adapter
+jar (`scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars`, `npdev setup`) and consumed
+via the SAME `implementation fileTree(dir: npdevRuntimeHostLibsDir, ...)` dependency a generated
+app's `build.gradle.template` already declares. The other 67 files (app-coupled, plus
+`FinalExecApplication.java` — Spring Boot's Gradle plugin only auto-detects a `@SpringBootApplication`
+class from the app's own compiled sourceSet, not a dependency jar — and 17 files deliberately
+excluded from compilation today by the manifest-driven allowlist, which would otherwise have shipped
+unconditionally once physically split out) still live in `NPDevRuntimeHost/src/main/java` and are
+still copied into, and recompiled by, every generated app exactly as before.
+
+**Who is affected.** A developer debugging a generated app who is used to finding RuntimeHost's own
+source directly under `<app>/src/main/java/com/finalexec/...` — auth filters, control-panel
+controllers, monitoring, scheduling, publication/source-mutation services, and 241 other files —
+will no longer find it there; that source now lives only in `NPDevRuntimeHost/runtimehost-core`
+(if working from a full platform checkout) or in the staged `runtimehost-core-<version>-sources.jar`
+next to the app's other dependency jars (attach it in an IDE the same way any other sources jar is
+attached). Nothing about a model's own authored files, a generated app's REST surface, or its
+runtime behavior changes — every relocated class keeps its original package
+(`com.finalexec.api`/`com.finalexec.npdev.service`/etc.), so `com.finalexec`-qualified references
+in application code, tests, or documentation are unaffected. The 3 controllers named in
+`runtime-supported-controllers.json`'s `allowedControllers` that are app-independent
+(`RuntimeMetadataValidationController`, `RuntimeSchedulesController`, `StorageSummaryController`)
+moved too; their routes are unchanged and were verified live (booted a real assembled app, hit
+`GET /api/runtime/schedules`, `POST /api/runtime/metadata/validate`, `GET /api/admin/storage/summary`,
+all 200).
+
+**Why.** Every generated app recompiled all 311 files on every build, even though 244 of them never
+vary per model. `scripts/proofs/run-scale-proof.ps1`'s 100-concept rung measured a ~25% faster
+`gradlew build` and ~48% faster boot after this change (see the commit that records the measurement
+for the full before/after table and its caveats) — the number `BT-2` (sealed-pack precompilation, a
+much larger future card) depends on to decide whether it's worth doing at all.
+
+**No codemod.** Nothing in a model, an authored `config.json`/`db.definition.json`, or the shape of
+a generated app's REST API changes — regenerate with `npdev generate app` (after
+`sync-runtimehost-libs.ps1 -BuildLocalJars` or `npdev setup` once, to stage the new jar) and an
+existing model's generated app looks and behaves identically, just with a smaller own source tree.
+
 ## 2026-08-13 — `field.type`/`domainType.baseType`/`schemaObject.type` gain `decimal`; `SchemaAst`/`CompiledSchema` each grow two constructor params (R5)
 
 **What changes.** A new DSL field type, `decimal`, joins the closed enum on `field.type`,

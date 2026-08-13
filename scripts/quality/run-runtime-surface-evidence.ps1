@@ -40,12 +40,25 @@ if ([string]::IsNullOrWhiteSpace($FootprintReportPath)) {
 
 $manifestPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main\resources\npdev\runtime-supported-controllers.json"
 $buildTemplatePath = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\build.gradle.template"
-$allowlistConfigPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main\java\com\finalexec\config\RuntimeControllerAllowlistConfig.java"
+# BT-1: RuntimeControllerAllowlistConfig.java is app-independent (no com.npdev.generated. reference)
+# and now lives under runtimehost-core, RuntimeHost's app-independent module (scripts/proofs/
+# classify_runtimehost_sources.py).
+$allowlistConfigPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\runtimehost-core\src\main\java\com\finalexec\config\RuntimeControllerAllowlistConfig.java"
 $defaultPropertiesPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main\resources\application-default.properties"
 $packagingTestPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\test\java\com\finalexec\SupportedRuntimeSurfacePackagingTest.java"
 $controllerRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main\java\com\finalexec\api"
 $serviceRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main\java\com\finalexec\npdev\service"
 $runtimeSourceRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src"
+# BT-1: 3 of the 29 allowedControllers (RuntimeMetadataValidationController, RuntimeSchedulesController,
+# StorageSummaryController) are app-independent per scripts/proofs/classify_runtimehost_sources.py and
+# now live under runtimehost-core's own module tree instead of the bridge's. Get-RuntimeEntry classifies
+# purely from each file's OWN declared package + name (not from which physical module directory it sits
+# under), so merging file lists from both roots below is enough -- without it, these three would vanish
+# from "controllers-classified"/"supported-controller-files-exist" with no other signal that they moved
+# rather than were deleted.
+$controllerRootCore = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\runtimehost-core\src\main\java\com\finalexec\api"
+$serviceRootCore = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\runtimehost-core\src\main\java\com\finalexec\npdev\service"
+$runtimeSourceRootCore = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\runtimehost-core\src"
 
 Ensure-NPDevFile $manifestPath "Runtime surface manifest"
 Ensure-NPDevFile $buildTemplatePath "RuntimeHost build template"
@@ -55,6 +68,9 @@ Ensure-NPDevFile $packagingTestPath "Runtime surface packaging test"
 Ensure-NPDevDirectory $controllerRoot "RuntimeHost controller source root"
 Ensure-NPDevDirectory $serviceRoot "RuntimeHost service source root"
 Ensure-NPDevDirectory $runtimeSourceRoot "RuntimeHost source root"
+Ensure-NPDevDirectory $controllerRootCore "runtimehost-core controller source root"
+Ensure-NPDevDirectory $serviceRootCore "runtimehost-core service source root"
+Ensure-NPDevDirectory $runtimeSourceRootCore "runtimehost-core source root"
 
 function Get-StringArray([object]$Value) {
     if ($null -eq $Value) {
@@ -295,10 +311,19 @@ $experimentalServicePatterns = Get-ManifestArray $manifest 'experimentalServiceP
 $deferredControllers = Get-ManifestArray $manifest 'deferredControllers'
 $testOnlyControllers = Get-ManifestArray $manifest 'testOnlyControllers'
 
-$controllers = @(Get-ChildItem -LiteralPath $controllerRoot -Recurse -Filter "*Controller.java" -File | Sort-Object FullName)
-$services = @(Get-ChildItem -LiteralPath $serviceRoot -Recurse -Filter "*.java" -File | Sort-Object FullName)
+$controllers = @(
+    @(Get-ChildItem -LiteralPath $controllerRoot -Recurse -Filter "*Controller.java" -File) +
+    @(Get-ChildItem -LiteralPath $controllerRootCore -Recurse -Filter "*Controller.java" -File) |
+    Sort-Object FullName
+)
+$services = @(
+    @(Get-ChildItem -LiteralPath $serviceRoot -Recurse -Filter "*.java" -File) +
+    @(Get-ChildItem -LiteralPath $serviceRootCore -Recurse -Filter "*.java" -File) |
+    Sort-Object FullName
+)
 $runtimeJavaPaths = @(
-    Get-ChildItem -LiteralPath $runtimeSourceRoot -Recurse -File -Filter "*.java" |
+    @(Get-ChildItem -LiteralPath $runtimeSourceRoot -Recurse -File -Filter "*.java") +
+    @(Get-ChildItem -LiteralPath $runtimeSourceRootCore -Recurse -File -Filter "*.java") |
     Sort-Object FullName |
     Select-Object -ExpandProperty FullName
 )

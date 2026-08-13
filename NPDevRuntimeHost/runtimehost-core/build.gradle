@@ -1,0 +1,161 @@
+// BT-1 (PACK-ROADMAP.md "RuntimeHost as a jar" / MASTER-ROADMAP.md Step 7): the 262 app-independent
+// RuntimeHost source files (classified by scripts/proofs/classify_runtimehost_sources.py -- files
+// under NPDevRuntimeHost/src/main/java with no `com.npdev.generated.` reference), split out of the
+// per-app-recompiled template into their own independently buildable module. Built and staged the
+// SAME way every kernel/adapter jar already is (scripts/runtimehost/sync-runtimehost-libs.ps1
+// -BuildLocalJars, NPDevCli/npdev_cli.py's `npdev setup`), then consumed by a generated FinalApp as
+// a plain jar dependency via the existing npdevRuntimeHostLibsDir fileTree mechanism -- see
+// NPDevRuntimeHost/build.gradle.template's own `dependencies { implementation fileTree(dir:
+// npdevRuntimeHostLibsDir, ...) }` for the consumer side.
+//
+// NOT an `include 'adapters:...'` subproject of NPDevKernel's multi-module build: NPDevRuntimeHost
+// itself is a SINGLE-project template (settings.gradle here just names `FinalExec`) that
+// FinalAppAssembler copies wholesale into every generated app's own root -- there is no multi-module
+// settings.gradle to hang a subproject off. So this module is a fully independent Gradle build
+// (its own settings.gradle/build.gradle/gradlew), a sibling of NPDevKernel/NPDevGenerator, physically
+// nested under NPDevRuntimeHost/ so FinalAppAssembler's copyTree can exclude it as one named
+// directory (see EXCLUDED_DIRECTORY_NAMES) rather than assembling it into every generated app's
+// own source tree.
+//
+// Toolchain: pinned Java 17, like every other platform module (kernel/generator/dsl/adapters) --
+// this jar is built ONCE (sync-runtimehost-libs.ps1 -BuildLocalJars) and shared across every
+// generated app regardless of that app's own chosen javaVersion (17 or 21, config.json's
+// build.javaVersion / NPDevRuntimeHost/build.gradle.template's npdevAppJavaVersion). Java bytecode
+// is forward-compatible (a JVM 21 loads classes compiled for 17 fine, not the reverse), so pinning
+// at the floor is the only choice that cannot break an app that later requests a newer JDK.
+//
+// Spring Boot version: 3.5.16, matching NPDevRuntimeHost/build.gradle.template -- the file every
+// generated app actually gets -- NOT NPDevRuntimeHost/build.gradle's own stale 3.3.2 (kept only for
+// running the RuntimeHost gate directly against a bare template checkout). Building this module
+// against 3.3.2 risked exactly the divergence build.gradle.template's own R1c comment already
+// measured live for bootJar/mockito/archunit under Gradle 9. Pinned by twin-pair rule
+// `runtimehost-core-boot-version-pin` in scripts/quality/twin-pair-registry.json.
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management' version '1.1.6'
+}
+
+def resolveNpdevBuildRoot = {
+    def prop = providers.gradleProperty('npdevBuildRoot').getOrNull()
+    if (prop != null && !prop.trim().isEmpty()) {
+        return file(prop)
+    }
+    def configured = System.getenv('NPDEV_BUILD_ROOT')
+    if (configured != null && !configured.trim().isEmpty()) {
+        return file(configured)
+    }
+    // npdev-build-root-resolution: find the repo root by its CONTENTS, not its NAME. A clone named
+    // anything but 'NPDev_General' used to fall through to a fallback that disagreed with
+    // scripts/npdev-common.ps1's Get-NPDevBuildRoot by one directory -- see that function's comment
+    // for the CI failure it caused. Same predicate as WorkspaceRootLocator.java.
+    def sourceRoot = rootDir.parentFile
+    while (sourceRoot != null && !(new File(sourceRoot, 'NPDevContract').isDirectory()
+            && new File(sourceRoot, 'NPDevGenerator').isDirectory()
+            && new File(sourceRoot, 'NPDevKernel').isDirectory())) {
+        sourceRoot = sourceRoot.parentFile
+    }
+    if (sourceRoot != null && sourceRoot.parentFile != null) {
+        return new File(sourceRoot.parentFile, 'Build')
+    }
+    return new File(rootDir.parentFile.parentFile, 'Build')
+}
+
+def npdevExternalBuildRoot = resolveNpdevBuildRoot()
+layout.buildDirectory.set(new File(npdevExternalBuildRoot, "gradle/runtimehost-core/root"))
+
+group = 'com.finalexec'
+version = '0.1.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+    withSourcesJar()
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencyManagement {
+    imports {
+        // runtimehost-core-boot-version-pin (see header comment): must match
+        // NPDevRuntimeHost/build.gradle.template's `org.springframework.boot` plugin version.
+        mavenBom 'org.springframework.boot:spring-boot-dependencies:3.5.16'
+    }
+}
+
+// Same resolution convention build.gradle.template's own resolveNpdevRuntimeLibsDir uses (REG-137's
+// env-var-before-gradle-property ordering), duplicated rather than shared because these are two
+// independent Gradle builds with no common init script today -- exactly the "kernel/generator jar
+// build" precedent this module follows.
+def resolveNpdevRuntimeLibsDir = {
+    def configured = providers.environmentVariable('NPDEV_RUNTIMEHOST_LIBS_DIR')
+            .orElse(providers.gradleProperty('npdevRuntimeHostLibsDir'))
+            .orNull
+    if (configured != null && !configured.toString().trim().isEmpty()) {
+        return file(configured.toString().trim())
+    }
+    return new File(npdevExternalBuildRoot, 'runtimehost-libs')
+}
+
+def npdevRuntimeHostLibsDir = resolveNpdevRuntimeLibsDir()
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.postgresql:postgresql:42.7.4'
+    implementation 'com.networknt:json-schema-validator:1.5.6'
+    implementation platform('software.amazon.awssdk:bom:2.28.11')
+    implementation 'software.amazon.awssdk:s3'
+
+    // Kernel/dsl/adapter classes referenced directly by these app-independent files
+    // (com.npdev.kernel.*, com.npdev.dsl.v1.*, com.npdev.adapters.*) -- staged outside the
+    // workspace by sync-runtimehost-libs.ps1 -BuildLocalJars / `npdev setup`, exactly like the
+    // consuming app's own build.gradle.template stages them. This module's own jar build must run
+    // AFTER those are staged (sync-runtimehost-libs.ps1 orders it that way).
+    implementation fileTree(dir: npdevRuntimeHostLibsDir, include: ['*.jar'])
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testRuntimeOnly 'com.h2database:h2'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    // The org.springframework.boot Gradle plugin adds this automatically for a project that
+    // applies it; this module deliberately does NOT apply that plugin (java-library + a plain
+    // `jar` task, not `bootJar` -- see the header comment), so it must be added by hand or Spring
+    // MVC cannot resolve an unqualified @RequestParam/@PathVariable name from reflection alone.
+    // Found live: RuntimeSchedulesController#listSchedules's `@RequestParam(...) Integer limit`
+    // (no explicit `name=`) 500'd with "Name for argument of type [java.lang.Integer] not
+    // specified, and parameter name information not available via reflection" the first time this
+    // module's jar was booted inside a real assembled app -- every unqualified parameter across
+    // the app-independent 244 files needs this, not just that one call site.
+    options.compilerArgs << '-parameters'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    maxHeapSize = '1g'
+}
+
+tasks.register('verifyNpdevRuntimeHostLibs') {
+    group = 'verification'
+    description = 'Checks that local kernel/dsl/adapter jars were staged outside the workspace before compilation.'
+
+    doLast {
+        if (!npdevRuntimeHostLibsDir.isDirectory() || npdevRuntimeHostLibsDir.listFiles({ f -> f.name.endsWith('.jar') } as FileFilter)?.length == 0) {
+            throw new GradleException(
+                    "No staged jars found in ${npdevRuntimeHostLibsDir}. Run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars (kernel/generator steps) before building runtimehost-core."
+            )
+        }
+    }
+}
+
+tasks.named('compileJava') {
+    dependsOn tasks.named('verifyNpdevRuntimeHostLibs')
+}
