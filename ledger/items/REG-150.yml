@@ -1,4 +1,4 @@
-id: REG-147
+id: REG-150
 title: >-
   run-editor-complexity-check.ps1 has no install step of its own -- fails with "vitest is not
   recognized" the moment node_modules isn't already present
