@@ -117,6 +117,65 @@ if (Test-Path -LiteralPath $secretsEnv) {
 """;
 
     /**
+     * R7 Stage C (SEC-1): give every generated app a real, per-app, randomly-generated admin API
+     * key instead of the universal {@code dev-key}/{@code api-dev} literal Stage A left the {@code
+     * dev} profile shipping.
+     *
+     * <p>{@code secrets/api-key.env} is generator-absent, launcher-written -- the same convention
+     * {@code secrets/agent-proxy.env} already established, but this file the launcher itself may
+     * create (the agent-proxy one deliberately may not, because that key is operator-typed and
+     * unrecoverable; this one the launcher can regenerate the meaning of at any time by deleting the
+     * file). First call for an app: the file does not exist, so a cryptographically random key is
+     * generated (RandomNumberGenerator, not Get-Random, which is not a CSPRNG), written as ONE
+     * {@code NPDEV_AUTH_API_KEYS=<key>=dev:developer:admin} line -- the exact
+     * {@code key=tenantId:actorId:roles} encoding {@code RuntimeApiKeyAuthFilter.PrincipalClaims}
+     * already parses -- and printed once (D4/D5: one ADMIN key for v1, printed once on first
+     * launch). Every call, first or not, loads that line into {@code $env:}, so the function is
+     * idempotent and safe to call from any script that needs the key, in any order.
+     *
+     * <p>Setting {@code $env:NPDEV_AUTH_API_KEYS} before the app starts works via Spring Boot's
+     * standard relaxed env-var binding onto {@code npdev.auth.api-keys} -- bound as a single String,
+     * not a List/Map, so the env var (highest precedence) REPLACES {@code application-dev.yml}'s
+     * value outright rather than merging with it. This is what makes {@code dev-key} stop working
+     * the moment this lands, ahead of Stage B's profile work.
+     *
+     * <p>A sibling of {@code SECRETS_ENV_LOADER}, not a generalization of it: that loader is
+     * agent-proxy-specific and the generator must never write the file it reads. Reusing it here
+     * would either regress that guarantee or require branching it on filename, so this is its own
+     * block instead -- zero risk to the agent-proxy path.
+     */
+    private static final String API_KEY_PROVISIONER = """
+
+function Ensure-NpdevApiKey {
+  param([string]$AppRoot)
+  $secretsDir = Join-Path $AppRoot 'secrets'
+  $keyFile = Join-Path $secretsDir 'api-key.env'
+  if (-not (Test-Path -LiteralPath $keyFile)) {
+    if (-not (Test-Path -LiteralPath $secretsDir)) { New-Item -ItemType Directory -Force -Path $secretsDir | Out-Null }
+    $bytes = New-Object byte[] 24
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    $key = ([Convert]::ToBase64String($bytes) -replace '[^a-zA-Z0-9]', '')
+    Set-Content -LiteralPath $keyFile -Value ('NPDEV_AUTH_API_KEYS=' + $key + '=dev:developer:admin') -Encoding UTF8 -NoNewline
+    Write-Host ''
+    Write-Host '=========================================================================='  -ForegroundColor Yellow
+    Write-Host 'Generated a new admin API key for this app (printed once, saved to:'          -ForegroundColor Yellow
+    Write-Host "  $keyFile"                                                                    -ForegroundColor Yellow
+    Write-Host "X-Api-Key: $key"                                                               -ForegroundColor Yellow
+    Write-Host '=========================================================================='  -ForegroundColor Yellow
+    Write-Host ''
+  }
+  foreach ($rawLine in (Get-Content -LiteralPath $keyFile)) {
+    $line = $rawLine.Trim()
+    if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
+      $parts = $line.Split('=', 2)
+      $name = $parts[0].Trim()
+      if ($name) { Set-Item -Path ("env:" + $name) -Value $parts[1].Trim() }
+    }
+  }
+}
+""";
+
+    /**
      * PORT-2: the runtimehost-libs jar cache is the ONE absolute path in this plan that is
      * legitimately not part of the app.
      *
@@ -882,6 +941,8 @@ $logDir = Join-Path $appRoot 'logs'
 if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
 $logFile = Join-Path $logDir ('app-' + (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') + '.log')
 Write-Host "Logging this run to $logFile"
+""" + API_KEY_PROVISIONER + """
+Ensure-NpdevApiKey -AppRoot $appRoot
 """ + SECRETS_ENV_LOADER + """
 
 # 2>&1 merges the JVM's stderr into the same stream, because a stack trace on stderr is exactly what
@@ -897,8 +958,12 @@ exit $LASTEXITCODE
         return """
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+""" + DATA_ROOT_HELPER + API_KEY_PROVISIONER + """
+$appRoot = Get-NpdevAppRoot -Plan $plan
+Ensure-NpdevApiKey -AppRoot $appRoot
 $baseUrl = "http://localhost:$($plan.serverPort)"
-$headers = @{ 'X-Api-Key' = $plan.apiKey }
+$apiKey = $env:NPDEV_AUTH_API_KEYS.Split('=', 2)[0]
+$headers = @{ 'X-Api-Key' = $apiKey }
 $report = [ordered]@{
   appId = $plan.appId
   engine = $plan.engine
