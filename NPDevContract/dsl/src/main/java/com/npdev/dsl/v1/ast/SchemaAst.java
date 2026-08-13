@@ -18,6 +18,8 @@ public final class SchemaAst {
     private final String description;
     private final Integer minLength;
     private final Integer maxLength;
+    private final Integer precision;
+    private final Integer scale;
     private final Integer minItems;
     private final Integer maxItems;
     private final Boolean uniqueItems;
@@ -50,6 +52,8 @@ public final class SchemaAst {
                 description,
                 minLength,
                 maxLength,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -124,6 +128,8 @@ public final class SchemaAst {
                 description,
                 minLength,
                 maxLength,
+                null,
+                null,
                 minItems,
                 maxItems,
                 uniqueItems,
@@ -168,6 +174,8 @@ public final class SchemaAst {
                 null,
                 null,
                 null,
+                null,
+                null,
                 min,
                 max,
                 regex
@@ -186,6 +194,8 @@ public final class SchemaAst {
             String description,
             Integer minLength,
             Integer maxLength,
+            Integer precision,
+            Integer scale,
             Integer minItems,
             Integer maxItems,
             Boolean uniqueItems,
@@ -212,6 +222,8 @@ public final class SchemaAst {
         this.description = description;
         this.minLength = minLength;
         this.maxLength = maxLength;
+        this.precision = precision;
+        this.scale = scale;
         this.minItems = minItems;
         this.maxItems = maxItems;
         this.uniqueItems = uniqueItems;
@@ -264,6 +276,14 @@ public final class SchemaAst {
 
     public Integer getMaxLength() {
         return maxLength;
+    }
+
+    public Integer getPrecision() {
+        return precision;
+    }
+
+    public Integer getScale() {
+        return scale;
     }
 
     public Integer getMinItems() {

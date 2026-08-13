@@ -438,7 +438,15 @@ public final class ComputedExpression {
         if (l == null || r == null) {
             return l == null && r == null;
         }
-        if (l instanceof Number || r instanceof Number) {
+        // R5: mirrors the "+" operator's own numeric-vs-concat decision (isNumericLike, not a bare
+        // instanceof Number check) and the <, <=, >, >= operators, which already always compare
+        // numerically. Before this, two numeric-LOOKING operands that were both String (as a
+        // decimal field arrives when submitted as a JSON string -- deliberate, to avoid a JS float
+        // round-trip -- and read back out of an untyped request Map rather than a typed BigDecimal
+        // field) fell through to exact string equality: "12.30" != "12.3000" even though they are
+        // the same value at different scales. Found live: a groupBy/aggregate proof app's invariant
+        // rejected two decimal fields holding numerically-equal, differently-scaled values.
+        if (isNumericLike(l) && isNumericLike(r)) {
             return toNumber(l) == toNumber(r);
         }
         return stringify(l).equals(stringify(r));

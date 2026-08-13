@@ -28,9 +28,21 @@ class SqlTypeSupportTest {
 
     @Test
     void fallsBackFromJavaTypeWhenDslTypeIsMissing() {
-        assertEquals("NUMERIC(19,2)", sqlType("amount", null, "java.math.BigDecimal"));
+        // R5: the BigDecimal fallback now shares decimalType()'s 19,4 default with the "decimal"
+        // dslType branch, rather than a stray hardcoded 19,2 that predated the decimal type.
+        assertEquals("NUMERIC(19,4)", sqlType("amount", null, "java.math.BigDecimal"));
         assertEquals("DATE", sqlType("day", null, "java.time.LocalDate"));
         assertEquals("TIMESTAMP WITH TIME ZONE", sqlType("instant", null, "java.time.Instant"));
+    }
+
+    @Test
+    void decimalDslTypeHonorsDeclaredPrecisionAndScale() {
+        assertEquals("NUMERIC(19,4)", sqlType("amount", "decimal", "java.math.BigDecimal"));
+        CompiledSchema schema = new CompiledSchema(
+                "decimal", null, null, null, null, null, null, null, null, null,
+                null, 12, 2, null, null, null, null, null, null, null, null);
+        assertEquals("NUMERIC(12,2)", SqlTypeSupport.sqlType(new CompiledField(
+                "unitPrice", "decimal", "java.math.BigDecimal", false, false, false, List.of(), null, schema)));
     }
 
     /**

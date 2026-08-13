@@ -1297,6 +1297,8 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "description"),
                 optionalIntegerObject(node.get("minLength")),
                 optionalIntegerObject(node.get("maxLength")),
+                optionalIntegerObject(node.get("precision")),
+                optionalIntegerObject(node.get("scale")),
                 optionalIntegerObject(node.get("minItems")),
                 optionalIntegerObject(node.get("maxItems")),
                 optionalBooleanObject(node.get("uniqueItems")),

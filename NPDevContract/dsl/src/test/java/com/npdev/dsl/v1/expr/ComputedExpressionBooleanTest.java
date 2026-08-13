@@ -89,4 +89,34 @@ class ComputedExpressionBooleanTest {
         assertEquals("Rua A", ComputedExpression.evaluate("'Rua ' + code", Map.of("code", "A")));
         assertEquals(-5L, ComputedExpression.evaluate("-5", Map.of()));
     }
+
+    /**
+     * R5 (MASTER-ROADMAP.md Step 5): found live -- a groupBy/aggregate proof app's invariant
+     * ({@code totalAmount == totalAmountAlt}) rejected two decimal fields holding the same value at
+     * different scales, because both arrived at the untyped invariant-check scope as JSON STRINGS
+     * ("12.30" / "12.3000" -- a decimal field submitted as a string on purpose, to avoid a lossy
+     * JS-double round-trip) rather than as {@code Number}. {@code equalsLoose}'s old
+     * {@code l instanceof Number || r instanceof Number} guard only takes the numeric-equality
+     * branch when at least one operand already IS a Number, so two numeric-looking Strings fell
+     * through to exact string equality. Fixed to reuse the same {@code isNumericLike} check the
+     * {@code +} operator already uses to decide arithmetic vs. concatenation, and to match the
+     * unconditionally-numeric {@code <}/{@code <=}/{@code >}/{@code >=} operators just above it.
+     */
+    @Test
+    void numericLookingStringsAtDifferentScalesCompareEqual() {
+        Map<String, Object> row = Map.of("totalAmount", "12.30", "totalAmountAlt", "12.3000");
+        assertTrue(ComputedExpression.evaluateBoolean("totalAmount == totalAmountAlt", row));
+        assertFalse(ComputedExpression.evaluateBoolean("totalAmount != totalAmountAlt", row));
+
+        Map<String, Object> unequal = Map.of("totalAmount", "10.00", "totalAmountAlt", "20.00");
+        assertFalse(ComputedExpression.evaluateBoolean("totalAmount == totalAmountAlt", unequal));
+        assertTrue(ComputedExpression.evaluateBoolean("totalAmount != totalAmountAlt", unequal));
+
+        // Non-numeric strings still compare lexically, not numerically (0 == 0 would be a false
+        // positive if isNumericLike's parse failure silently fell back to treating both as 0).
+        Map<String, Object> nonNumeric = Map.of("a", "abc", "b", "def");
+        assertFalse(ComputedExpression.evaluateBoolean("a == b", nonNumeric));
+        Map<String, Object> sameNonNumeric = Map.of("a", "abc", "b", "abc");
+        assertTrue(ComputedExpression.evaluateBoolean("a == b", sameNonNumeric));
+    }
 }

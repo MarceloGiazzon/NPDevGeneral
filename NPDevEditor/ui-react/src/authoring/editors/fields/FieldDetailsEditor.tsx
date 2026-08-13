@@ -77,7 +77,7 @@ export default function FieldDetailsEditor({
               }))
             }
           >
-            {["string", "int", "integer", "long", "boolean", "uuid", "date", "datetime", "enum", "reference", "object", "array", "file"].map(
+            {["string", "int", "integer", "long", "decimal", "boolean", "uuid", "date", "datetime", "enum", "reference", "object", "array", "file"].map(
               (type) => (
                 <option key={type} value={type}>
                   {type}

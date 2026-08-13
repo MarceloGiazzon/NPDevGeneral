@@ -3,8 +3,10 @@ title: >-
   The DSL has no decimal type, so no model can express a price, tax rate or exchange rate
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-13
+verification: UNIT_TESTED
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R5). field.type is a closed
   13-value enum with no decimal; ModelCompiler.toJavaType cannot yield BigDecimal;
@@ -19,4 +21,58 @@ detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R5 for the 16-site threading spec (Wave 2,
   milestone M1). Design decisions D1-D3 already recorded there: precision/scale default 19,4; no
   separate `currency` companion in v1; validate overflow at compile time, let engine behavior stand
-  at runtime. MASTER-ROADMAP.md batches this as Step 5, not in this session's scope (Steps 1-4).
+  at runtime. MASTER-ROADMAP.md batches this as Step 5.
+
+  All 16 sites threaded: `decimal` added to the 4 enums (field.type/domainType.baseType/
+  eventPayloadField.type/schemaObject.type) across all 4 mirrored model.schema.json copies, plus new
+  `precision`/`scale` sibling properties on `field`/`schemaObject` (mirroring `maxLength`'s shape).
+  Compile-time validation: precision 1..38, scale 0..precision (ConceptValidation/
+  FieldValueValidation.validateDecimalFieldSchema). Parser/AST/Compiled/canonical-JSON round-trip
+  threaded through JsonModelParser, SchemaAst/CompiledSchema (each gained 2 canonical-constructor
+  params), ModelCompiler (toJavaType->BigDecimal, toCompiledSchema, mergeSchemas' chooseInteger).
+  Storage: SqlTypeSupport emits NUMERIC(p,s), defaulting to 19,4 (D1) only at the point of
+  consumption -- not baked into the parsed schema -- so a domain-type-declared precision/scale still
+  wins through mergeSchemas' null-coalescing merge. Widgets/aggregates/metadata: FieldWidgetDefaults,
+  PackValidation's AGGREGATE_NUMERIC_TYPES (sum/avg now accept decimal), CompiledMetadataCanonicalJson.
+  Editor: FieldDetailsEditor.tsx dropdown + regenerated AuthoringApp.js bundle.
+  business-ui-app.mustache: removed "decimal" from the numericTypes array so the generated UI sends
+  the exact decimal string on the wire instead of `parseFloat()`-ing it through a lossy JS double.
+  json-jackson: JacksonJsonCodec gained USE_BIG_DECIMAL_FOR_FLOATS so untyped event/flow payload
+  decoding preserves BigDecimal instead of downgrading to Double.
+
+  Two real equality bugs found and fixed along the way (BigDecimal's `.equals()` is scale-sensitive;
+  `.compareTo()` is not):
+  1. `CelInvariantEngine.compareValues`'s `==`/`!=` branch (NPDevKernel/adapters/expression-cel) used
+     `Objects.equals()` instead of the `>`/`<` branch's own `toBigDecimal(...).compareTo(...)` two
+     lines below it -- fixed to match, but this path is the legacy-matcher fallback, live only for
+     expression shapes `ComputedExpression` can't parse.
+  2. The REAL live bug, found only by the end-to-end generate+build+boot+REST proof (never caught by
+     any unit test, since none existed for this specific interaction): `ComputedExpression.
+     equalsLoose` (NPDevContract/dsl/.../expr/ComputedExpression.java, the primary expression
+     evaluator tried first) only took its numeric-equality branch when at least one operand was
+     ALREADY `instanceof Number` -- two numeric-LOOKING Strings (exactly what a decimal field
+     submitted as a JSON string produces, which the mustache fix above deliberately causes) fell
+     through to exact string equality: "12.30" != "12.3000". Fixed to gate on `isNumericLike(l) &&
+     isNumericLike(r)` instead, matching the `+` operator's own numeric-vs-concat decision and the
+     unconditionally-numeric `<`/`<=`/`>`/`>=` operators immediately below it.
+
+  M1 milestone proof (real generate->build->boot->REST cycle, not simulated): a manual, non-corpus
+  proof app (concept with two decimal fields at different precision/scale, a groupBy/sum query, an
+  invariant comparing the two fields) was generated, built and booted on BOTH H2 and real Postgres
+  (docker). Confirmed on both engines: DDL is NUMERIC(12,2)/NUMERIC(12,4); a written value round-trips
+  through the REST API with its exact declared scale intact (12.30 stays 12.30, 12.3000 stays
+  12.3000, no float drift); groupBy/sum aggregate is exact (12.30+12.30+7.50=32.10 exactly); the
+  cross-scale-equality invariant passes for equal values and correctly still fails for genuinely
+  unequal ones. Proof app and its docker container were torn down after verification, per the
+  no-process-documents-in-repo discipline -- not part of the tracked corpus.
+
+  Verified: 545/545 DSL tests green (RED->GREEN proven live for the equalsLoose fix via
+  ComputedExpressionBooleanTest.numericLookingStringsAtDifferentScalesCompareEqual), 79/79 editor
+  vitest tests, check-schema-mirror-consistency.py, check-dsl-coverage.py (floor 86, `type.decimal`
+  witnessed by NPDevSamples/dsl-conformance-max's WidgetCatalogEntry.unitPrice), and
+  check-deterministic-generation.ps1 (0 differing) all pass unchanged.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/expr/ComputedExpressionBooleanTest.java#numericLookingStringsAtDifferentScalesCompareEqual
+  asserts: two decimal-shaped strings at different scales ("12.30"/"12.3000") compare equal via ==; genuinely different values still compare unequal; non-numeric strings still compare lexically, not as 0==0
+  provenRed: true

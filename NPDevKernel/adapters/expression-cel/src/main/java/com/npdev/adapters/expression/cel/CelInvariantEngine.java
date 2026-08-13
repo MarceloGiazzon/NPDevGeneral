@@ -1566,8 +1566,13 @@ public final class CelInvariantEngine implements InvariantEngine {
 
     private static ExpressionResult compareValues(String fieldName, Object leftValue, String operator, Object rightValue) {
         if ("==".equals(operator) || "!=".equals(operator)) {
-            Object normalizedRight = coerceRightToLeftType(leftValue, rightValue);
-            boolean equals = Objects.equals(leftValue, normalizedRight);
+            // R5: BigDecimal#equals is scale-sensitive (12.30 != 12.3 as objects), so a decimal field
+            // compared via Objects.equals would fail equality on values that are numerically equal
+            // but differently scaled. Route numeric operands through the same toBigDecimal().compareTo()
+            // the >/< branch below already uses; non-numeric operands keep the prior coercion behavior.
+            boolean equals = (leftValue instanceof Number && rightValue instanceof Number)
+                    ? toBigDecimal((Number) leftValue).compareTo(toBigDecimal((Number) rightValue)) == 0
+                    : Objects.equals(leftValue, coerceRightToLeftType(leftValue, rightValue));
             if ("==".equals(operator)) {
                 return equals ? ExpressionResult.success() : ExpressionResult.failure("expected equality");
             }

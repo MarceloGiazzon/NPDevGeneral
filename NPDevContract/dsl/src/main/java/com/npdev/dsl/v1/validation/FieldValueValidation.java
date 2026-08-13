@@ -109,6 +109,24 @@ final class FieldValueValidation {
         validateNestedSchema(entityName, field.getName(), field.getName(), schema, errors);
     }
 
+    static void validateDecimalFieldSchema(String entityName, FieldAst field, List<String> errors) {
+        SchemaAst schema = field.getSchema();
+        Integer precision = schema == null ? null : schema.getPrecision();
+        Integer scale = schema == null ? null : schema.getScale();
+        if (precision != null && (precision < 1 || precision > 38)) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": decimal precision must be between 1 and 38, got " + precision);
+        }
+        if (scale != null && scale < 0) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": decimal scale must be >= 0, got " + scale);
+        }
+        if (precision != null && scale != null && scale > precision) {
+            errors.add("Entity " + entityName + " field " + field.getName()
+                    + ": decimal scale (" + scale + ") must not exceed precision (" + precision + ")");
+        }
+    }
+
     private static void validateNestedSchema(
             String entityName,
             String fieldName,

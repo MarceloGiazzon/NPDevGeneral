@@ -127,6 +127,16 @@ def _has_file_field(model: dict) -> bool:
     return False
 
 
+def _has_decimal_field(model: dict) -> bool:
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for field in (concept.get("fields", None) or []):
+            if isinstance(field, dict) and str(field.get("type", "")).lower() == "decimal":
+                return True
+    return False
+
+
 def _has_flow_start_endpoint(model: dict) -> bool:
     return any(isinstance(f, dict) and f.get("startEndpoint") for f in _flows(model))
 

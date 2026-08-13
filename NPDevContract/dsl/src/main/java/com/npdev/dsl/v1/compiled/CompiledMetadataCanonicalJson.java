@@ -760,6 +760,16 @@ public final class CompiledMetadataCanonicalJson {
             } else {
                 node.put("maxLength", schema.getMaxLength());
             }
+            if (schema == null || schema.getPrecision() == null) {
+                node.putNull("precision");
+            } else {
+                node.put("precision", schema.getPrecision());
+            }
+            if (schema == null || schema.getScale() == null) {
+                node.putNull("scale");
+            } else {
+                node.put("scale", schema.getScale());
+            }
             if (schema == null || schema.getMin() == null) {
                 node.putNull("min");
             } else {

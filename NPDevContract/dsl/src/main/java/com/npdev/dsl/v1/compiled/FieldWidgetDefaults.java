@@ -41,7 +41,7 @@ public final class FieldWidgetDefaults {
             SELECT, AUTOCOMPLETE, LOOKUP, SEARCH_DIALOG, MULTISELECT, IMAGE_SELECT, CUSTOM, GROUP, LIST
     );
 
-    private static final Set<String> NUMERIC_TYPES = Set.of("int", "integer", "long");
+    private static final Set<String> NUMERIC_TYPES = Set.of("int", "integer", "long", "decimal");
 
     private FieldWidgetDefaults() {
     }
@@ -99,7 +99,7 @@ public final class FieldWidgetDefaults {
             case "date" -> DATE;
             case "datetime" -> DATETIME_LOCAL;
             case "boolean" -> CHECKBOX;
-            case "int", "integer", "long" -> NUMBER;
+            case "int", "integer", "long", "decimal" -> NUMBER;
             default -> TEXT;
         };
     }

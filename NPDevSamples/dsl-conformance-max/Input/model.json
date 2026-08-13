@@ -241,6 +241,14 @@
           "type": "boolean",
           "required": true,
           "ui": { "label": "Discontinued" }
+        },
+        {
+          "name": "unitPrice",
+          "type": "decimal",
+          "precision": 12,
+          "scale": 2,
+          "required": true,
+          "ui": { "label": "Unit price" }
         }
       ],
       "invariants": [

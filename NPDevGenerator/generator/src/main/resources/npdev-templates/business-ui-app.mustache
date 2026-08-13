@@ -3651,7 +3651,11 @@
         return;
       }
       if (rawValue !== "" || field.required || control.type === "checkbox") {
-        const numericTypes = ["int", "integer", "long", "double", "float", "short", "byte", "decimal", "number"];
+        // R5: "decimal" is deliberately excluded here -- parseFloat would round-trip an exact
+        // decimal value through a lossy JS double. The raw string falls through to the `else`
+        // branch below and is sent as-is; Jackson's BigDecimal deserializer accepts a JSON string
+        // number natively, so the server-side value stays exact.
+        const numericTypes = ["int", "integer", "long", "double", "float", "short", "byte", "number"];
         if (rawValue !== "" && numericTypes.indexOf(field.type) !== -1) {
           const n = field.type === "int" || field.type === "integer" || field.type === "long" || field.type === "short" || field.type === "byte"
             ? parseInt(rawValue, 10)
