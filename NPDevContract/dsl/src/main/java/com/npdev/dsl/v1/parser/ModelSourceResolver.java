@@ -224,6 +224,8 @@ public final class ModelSourceResolver {
             resolveContexts((ArrayNode) contexts, resolved, sourceFile, state);
         }
 
+        resolveUnqualifiedReferences(resolved, sourceFile);
+
         if (!metadata.isEmpty()) {
             resolved.set("metadata", metadata);
         }
@@ -407,8 +409,8 @@ public final class ModelSourceResolver {
             ObjectNode contextContent = resolvePackRoot(rawContextNode, contextFile, state, 1, new ArrayDeque<>());
             Set<String> allowedImports = importGraph.get(name);
 
-            Map<String, String> conceptRewriteMap = packConceptRewriteMap(name, contextContent);
-            mergeQualifiedConcepts("Context", name, contextContent, resolved, contextFile, conceptRewriteMap);
+            Map<String, Map<String, String>> rewriteMaps = buildRewriteMaps(name, contextContent);
+            mergeQualifiedConcepts("Context", name, contextContent, resolved, contextFile, rewriteMaps);
 
             QualifiedReferenceValidator gate = qualifiedName -> {
                 String prefix = qualifiedName.substring(0, qualifiedName.indexOf("::"));
@@ -422,7 +424,7 @@ public final class ModelSourceResolver {
                         + prefix + "' in its own imports[] (D3: an undeclared cross-context reference is a "
                         + "compile error, never silent)"));
             };
-            mergeQualifiedNonConceptArrays("Context", name, contextContent, resolved, contextFile, conceptRewriteMap, gate);
+            mergeQualifiedNonConceptArrays("Context", name, contextContent, resolved, contextFile, rewriteMaps, Map.of(), gate);
         }
 
         // Preserve the {name, $ref} registry itself for introspection (JsonModelParser reads it back
@@ -524,9 +526,9 @@ public final class ModelSourceResolver {
             if (!usedNamespaces.add(namespaceKey)) {
                 throw error(modelFile, path + "/as", "Duplicate pack namespace alias: " + packId);
             }
-            Map<String, String> conceptRewriteMap = packConceptRewriteMap(packId, packNode);
-            mergePackConcepts(packId, packNode, resolved, packFile, conceptRewriteMap);
-            mergePackNonConceptArrays(packId, packNode, resolved, packFile, conceptRewriteMap);
+            Map<String, Map<String, String>> rewriteMaps = buildRewriteMaps(packId, packNode);
+            mergePackConcepts(packId, packNode, resolved, packFile, rewriteMaps);
+            mergePackNonConceptArrays(packId, packNode, resolved, packFile, rewriteMaps);
             index++;
         }
     }
@@ -567,18 +569,108 @@ public final class ModelSourceResolver {
     }
 
     private static Map<String, String> packConceptRewriteMap(String packId, ObjectNode packNode) {
+        return memberRewriteMap(packId, packNode, "concepts");
+    }
+
+    /** PK-1 (PACK-ROADMAP.md): generalizes {@link #packConceptRewriteMap} to any of the 18
+     *  {@link #MODEL_ARRAY_KEYS} kinds -- a local (bare) member name declared under {@code kind} in
+     *  this pack/context contribution, mapped to its qualified {@code qualifierId::name} form. */
+    private static Map<String, String> memberRewriteMap(String qualifierId, ObjectNode sourceNode, String kind) {
         Map<String, String> out = new LinkedHashMap<>();
-        JsonNode conceptsNode = packNode.get("concepts");
-        if (conceptsNode == null || !conceptsNode.isArray()) {
+        JsonNode membersNode = sourceNode.get(kind);
+        if (membersNode == null || !membersNode.isArray()) {
             return out;
         }
-        for (JsonNode concept : conceptsNode) {
-            if (concept != null && concept.isObject() && concept.has("name") && concept.get("name").isTextual()) {
-                String name = concept.get("name").asText();
-                out.put(name, packId + "::" + name);
+        for (JsonNode member : membersNode) {
+            if (member != null && member.isObject() && member.has("name") && member.get("name").isTextual()) {
+                String name = member.get("name").asText();
+                out.put(name, qualifierId + "::" + name);
             }
         }
         return out;
+    }
+
+    /** PK-1: one rewrite map per {@link #MODEL_ARRAY_KEYS} kind for a single pack/context
+     *  contribution, keyed by kind so a reference field (e.g. {@code query}) only ever resolves
+     *  against that kind's own map (e.g. {@code queries}), never a same-named member of a
+     *  different kind. {@code capabilities} and {@code customCapabilities} share one merged map --
+     *  a {@code capability} reference field does not distinguish which of the two declared it. */
+    private static Map<String, Map<String, String>> buildRewriteMaps(String qualifierId, ObjectNode sourceNode) {
+        Map<String, Map<String, String>> maps = new LinkedHashMap<>();
+        for (String kind : MODEL_ARRAY_KEYS) {
+            maps.put(kind, memberRewriteMap(qualifierId, sourceNode, kind));
+        }
+        Map<String, String> mergedCapabilities = new LinkedHashMap<>(maps.getOrDefault("capabilities", Map.of()));
+        mergedCapabilities.putAll(maps.getOrDefault("customCapabilities", Map.of()));
+        maps.put("capabilities", mergedCapabilities);
+        return maps;
+    }
+
+    /** PK-1 step 4 (PACK-ROADMAP.md card PK-1): runs once, after every pack and context is fully
+     *  merged into {@code resolved} -- an unqualified (bare) reference resolves if EXACTLY ONE
+     *  composed pack/context provides a member with that bare name for the relevant kind; two or
+     *  more candidates is a named, thrown ambiguity error (never a silent pick); zero candidates is
+     *  left completely untouched (not a pack reference at all -- resolves normally downstream, or
+     *  surfaces as the model's own ordinary "not found" error there, unchanged behavior).
+     *
+     *  <p>Reuses {@link #rewriteKnownMemberReferenceFields}'s exact field-dispatch table by walking
+     *  every {@link #MODEL_ARRAY_KEYS} array in the FULLY RESOLVED model (including {@code concepts}
+     *  this time, unlike the per-pack pass, which explicitly skips it) -- this is what lets a
+     *  root-model-authored concept's own {@code field.domainType} resolve against a pack-provided
+     *  domain type without any pack-specific code path: the same walker just runs one more time. */
+    private void resolveUnqualifiedReferences(ObjectNode resolved, Path sourceFile) {
+        Map<String, Map<String, Set<String>>> candidatesByKind = new LinkedHashMap<>();
+        for (String kind : MODEL_ARRAY_KEYS) {
+            JsonNode array = resolved.get(kind);
+            if (array == null || !array.isArray()) {
+                continue;
+            }
+            Map<String, Set<String>> candidates = new LinkedHashMap<>();
+            for (JsonNode member : array) {
+                if (member == null || !member.isObject() || !member.has("name") || !member.get("name").isTextual()) {
+                    continue;
+                }
+                String qualifiedName = member.get("name").asText();
+                int separator = qualifiedName.indexOf("::");
+                if (separator <= 0) {
+                    continue;
+                }
+                String bareName = qualifiedName.substring(separator + 2);
+                candidates.computeIfAbsent(bareName, ignored -> new LinkedHashSet<>()).add(qualifiedName);
+            }
+            candidatesByKind.put(kind, candidates);
+        }
+
+        Map<String, Map<String, String>> globalRewriteMaps = new LinkedHashMap<>();
+        Map<String, Map<String, Set<String>>> ambiguousNames = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, Set<String>>> kindEntry : candidatesByKind.entrySet()) {
+            Map<String, String> unambiguous = new LinkedHashMap<>();
+            Map<String, Set<String>> ambiguous = new LinkedHashMap<>();
+            for (Map.Entry<String, Set<String>> nameEntry : kindEntry.getValue().entrySet()) {
+                if (nameEntry.getValue().size() == 1) {
+                    unambiguous.put(nameEntry.getKey(), nameEntry.getValue().iterator().next());
+                } else {
+                    ambiguous.put(nameEntry.getKey(), nameEntry.getValue());
+                }
+            }
+            globalRewriteMaps.put(kindEntry.getKey(), unambiguous);
+            if (!ambiguous.isEmpty()) {
+                ambiguousNames.put(kindEntry.getKey(), ambiguous);
+            }
+        }
+        Map<String, String> mergedCapabilities = new LinkedHashMap<>(globalRewriteMaps.getOrDefault("capabilities", Map.of()));
+        mergedCapabilities.putAll(globalRewriteMaps.getOrDefault("customCapabilities", Map.of()));
+        globalRewriteMaps.put("capabilities", mergedCapabilities);
+
+        for (String kind : MODEL_ARRAY_KEYS) {
+            JsonNode array = resolved.get(kind);
+            if (array == null || !array.isArray()) {
+                continue;
+            }
+            for (JsonNode member : array) {
+                rewritePackLocalConceptReferencesInPlace(member, globalRewriteMaps, ambiguousNames, kind, QUALIFIED_REF_NOOP);
+            }
+        }
     }
 
     /**
@@ -593,23 +685,35 @@ public final class ModelSourceResolver {
             ObjectNode packNode,
             ObjectNode resolved,
             Path packFile,
-            Map<String, String> conceptRewriteMap
+            Map<String, Map<String, String>> rewriteMaps
     )
             throws IOException {
-        mergeQualifiedNonConceptArrays("Pack", packId, packNode, resolved, packFile, conceptRewriteMap, QUALIFIED_REF_NOOP);
+        // Local per-pack pass: ambiguity is structurally impossible (one pack's own map has at most
+        // one candidate per bare name), so Map.of() -- see resolveUnqualifiedReferences for the
+        // GLOBAL pass, the only one that ever passes a non-empty ambiguousNames.
+        mergeQualifiedNonConceptArrays("Pack", packId, packNode, resolved, packFile, rewriteMaps, Map.of(), QUALIFIED_REF_NOOP);
     }
 
-    /** B20 (S2): generalized over {@link #mergePackNonConceptArrays} -- identical field walk and
+    /** PK-1 (PACK-ROADMAP.md card PK-1): every non-concept member kind is now namespaced
+     *  {@code qualifierId::Name} exactly like concepts already were (via
+     *  {@link #namespacePackConcept}) -- two packs may each declare a {@code domainType} named
+     *  {@code Email} and compose without collision. The duplicate check that used to fire on ANY
+     *  cross-pack name clash now only fires WITHIN this single pack/context's own contribution
+     *  (two items it declares itself with the same local name) -- a genuine authoring error;
+     *  cross-pack collisions are structurally impossible once every name carries its own qualifier.
+     *
+     *  <p>B20 (S2): generalized over {@link #mergePackNonConceptArrays} -- identical field walk and
      *  local-reference rewriting; {@code kindLabel} only changes the duplicate-member error message,
      *  and {@code qualifiedReferenceValidator} is the D3 import-gate hook (a no-op for packs,
-     *  unchanged behavior; the real check for contexts, see {@link #mergeContextNonConceptArrays}). */
+     *  unchanged behavior; the real check for contexts, see {@link #resolveContexts}). */
     private static void mergeQualifiedNonConceptArrays(
             String kindLabel,
             String qualifierId,
             ObjectNode sourceNode,
             ObjectNode resolved,
             Path sourceFile,
-            Map<String, String> conceptRewriteMap,
+            Map<String, Map<String, String>> rewriteMaps,
+            Map<String, Map<String, Set<String>>> ambiguousNames,
             QualifiedReferenceValidator qualifiedReferenceValidator
     )
             throws IOException {
@@ -624,60 +728,45 @@ public final class ModelSourceResolver {
             ArrayNode target = resolved.has(key) && resolved.get(key).isArray()
                     ? (ArrayNode) resolved.get(key)
                     : JsonNodeFactory.instance.arrayNode();
+            Set<String> localNamesSeen = new LinkedHashSet<>();
             for (JsonNode item : array) {
-                if (item != null && item.isObject() && item.has("name") && item.get("name").isTextual()) {
-                    String name = item.get("name").asText();
-                    for (JsonNode existing : target) {
-                        if (existing != null
-                                && existing.isObject()
-                                && existing.has("name")
-                                && existing.get("name").isTextual()
-                                && name.equalsIgnoreCase(existing.get("name").asText())) {
-                            throw error(sourceFile, "/" + key,
-                                    kindLabel + " '" + qualifierId + "' contributes duplicate " + key + " member '" + name + "'");
-                        }
-                    }
-                }
                 JsonNode rewritten = item.deepCopy();
-                rewritePackLocalConceptReferencesInPlace(rewritten, conceptRewriteMap, key, qualifiedReferenceValidator);
+                if (rewritten.isObject() && rewritten.has("name") && rewritten.get("name").isTextual()) {
+                    String localName = rewritten.get("name").asText();
+                    if (!localNamesSeen.add(localName.toLowerCase(Locale.ROOT))) {
+                        throw error(sourceFile, "/" + key,
+                                kindLabel + " '" + qualifierId + "' contributes duplicate " + key + " member '" + localName + "'");
+                    }
+                    ((ObjectNode) rewritten).put("name", qualifierId + "::" + localName);
+                }
+                rewritePackLocalConceptReferencesInPlace(rewritten, rewriteMaps, ambiguousNames, key, qualifiedReferenceValidator);
                 target.add(rewritten);
             }
             resolved.set(key, target);
         }
     }
 
-    private static void rewritePackLocalConceptReferencesInPlace(
-            JsonNode node,
-            Map<String, String> conceptRewriteMap,
-            String rootKey
-    ) {
-        if (node == null || conceptRewriteMap.isEmpty()) {
-            return;
-        }
-        rewritePackLocalConceptReferencesInPlace(node, conceptRewriteMap, rootKey, QUALIFIED_REF_NOOP);
-    }
-
     /** B20 (S2): same field walk, plus a hook invoked for every reference already qualified
      *  ({@code prefix::Name}) rather than rewritten -- packs pass a no-op (unrestricted cross-pack
-     *  reference, existing behavior, unchanged); {@code mergeContextNonConceptArrays} passes D3's
-     *  import-gate check. Unlike the pack-only overload above, this one does NOT short-circuit on an
-     *  empty {@code conceptRewriteMap} -- a context with zero local concepts must still have its
-     *  OTHER-context-qualified references gate-checked. */
+     *  reference, existing behavior, unchanged); {@code resolveContexts} passes D3's import-gate
+     *  check. */
     private static void rewritePackLocalConceptReferencesInPlace(
             JsonNode node,
-            Map<String, String> conceptRewriteMap,
+            Map<String, Map<String, String>> rewriteMaps,
+            Map<String, Map<String, Set<String>>> ambiguousNames,
             String rootKey,
             QualifiedReferenceValidator qualifiedReferenceValidator
     ) {
         if (node == null) {
             return;
         }
-        rewritePackLocalConceptReferencesInPlace(node, conceptRewriteMap, rootKey, "", qualifiedReferenceValidator);
+        rewritePackLocalConceptReferencesInPlace(node, rewriteMaps, ambiguousNames, rootKey, "", qualifiedReferenceValidator);
     }
 
     private static void rewritePackLocalConceptReferencesInPlace(
             JsonNode node,
-            Map<String, String> conceptRewriteMap,
+            Map<String, Map<String, String>> rewriteMaps,
+            Map<String, Map<String, Set<String>>> ambiguousNames,
             String rootKey,
             String parentKey,
             QualifiedReferenceValidator qualifiedReferenceValidator
@@ -687,29 +776,74 @@ public final class ModelSourceResolver {
         }
         if (node.isObject()) {
             ObjectNode object = (ObjectNode) node;
-            rewriteKnownConceptFields(object, conceptRewriteMap, rootKey, parentKey, qualifiedReferenceValidator);
+            rewriteKnownMemberReferenceFields(object, rewriteMaps, ambiguousNames, rootKey, parentKey, qualifiedReferenceValidator);
             List<String> fieldNames = new ArrayList<>();
             object.fieldNames().forEachRemaining(fieldNames::add);
             for (String fieldName : fieldNames) {
                 rewritePackLocalConceptReferencesInPlace(
-                        object.get(fieldName), conceptRewriteMap, rootKey, fieldName, qualifiedReferenceValidator);
+                        object.get(fieldName), rewriteMaps, ambiguousNames, rootKey, fieldName, qualifiedReferenceValidator);
             }
         } else if (node.isArray()) {
             for (JsonNode item : node) {
                 rewritePackLocalConceptReferencesInPlace(
-                        item, conceptRewriteMap, rootKey, parentKey, qualifiedReferenceValidator);
+                        item, rewriteMaps, ambiguousNames, rootKey, parentKey, qualifiedReferenceValidator);
             }
         }
     }
 
-    private static void rewriteKnownConceptFields(
+    private static Map<String, String> mapFor(Map<String, Map<String, String>> rewriteMaps, String kind) {
+        return rewriteMaps.getOrDefault(kind, Map.of());
+    }
+
+    /** PK-1 step 4 (unqualified resolution + named ambiguity): wraps a per-pack direct map as a
+     *  {@link MemberNameResolver}. The LOCAL per-pack/context pass (see {@link #resolvePacks},
+     *  {@link #resolveContexts}) always passes an empty {@code ambiguousNames} -- one pack's own map
+     *  has at most one candidate per bare name, so ambiguity cannot arise there by construction. The
+     *  GLOBAL cross-pack pass ({@link #resolveUnqualifiedReferences}) is the only caller that passes
+     *  a non-empty one, naming both candidates in a thrown error the moment an ambiguous bare name
+     *  is actually referenced (not merely declared twice -- two packs may each harmlessly declare
+     *  the same domainType name forever if nothing ever references it unqualified). */
+    private static MemberNameResolver resolverFor(
+            Map<String, Map<String, String>> rewriteMaps, Map<String, Map<String, Set<String>>> ambiguousNames, String kind) {
+        Map<String, String> map = mapFor(rewriteMaps, kind);
+        Map<String, Set<String>> ambiguous = ambiguousNames.getOrDefault(kind, Map.of());
+        return bareName -> {
+            Set<String> candidates = ambiguous.get(bareName);
+            if (candidates != null) {
+                throwUnchecked(new IOException("Unqualified reference '" + bareName + "' (kind: " + kind
+                        + ") is ambiguous -- " + candidates.size() + " packs each declare a " + kind
+                        + " member named '" + bareName + "': " + String.join(", ", candidates)
+                        + ". Qualify it explicitly, e.g. '" + candidates.iterator().next() + "'."));
+            }
+            return map.getOrDefault(bareName, bareName);
+        };
+    }
+
+    /** PK-1 (PACK-ROADMAP.md card PK-1 step 3): every field across the 17 non-concept kinds that
+     *  names ANOTHER member by bare string, found by a dedicated read-only pass over
+     *  model.schema.json's $defs (not guessed) -- concept references were already handled before
+     *  this card; this adds domainType (concept field.domainType), query (panelDataSource.query,
+     *  guidePageGadget.query), procedure (panelAction/panelDataSource/flowStep/procedureStep/
+     *  autoPanelDataSource.procedure), flow (panelAction.flow), capability
+     *  (binding.capability/orchestrationAction.capability/flowStep.capability/
+     *  procedureStep.capability -- capabilities and customCapabilities share one lookup, see
+     *  {@link #buildRewriteMaps}), event (lifecycleTransition/orchestrationTrigger/
+     *  orchestrationAction/flowStep/procedureStep.event), guidePage (panel.guidePage), and
+     *  propertyScope (property.settableAt[], the one array-of-references field found). Concept
+     *  domainType rewriting on a FIELD lives here too, not only in {@link #namespacePackFieldRefs},
+     *  so it also fires for domainTypes referenced from non-concept contexts (there are none found
+     *  today, but the dispatch is kind-driven exactly like every other field here, not concept-only). */
+    private static void rewriteKnownMemberReferenceFields(
             ObjectNode object,
-            Map<String, String> conceptRewriteMap,
+            Map<String, Map<String, String>> rewriteMaps,
+            Map<String, Map<String, Set<String>>> ambiguousNames,
             String rootKey,
             String parentKey,
             QualifiedReferenceValidator qualifiedReferenceValidator
     ) {
+        MemberNameResolver conceptRewriteMap = resolverFor(rewriteMaps, ambiguousNames, "concepts");
         rewriteTextField(object, "conceptRef", conceptRewriteMap, qualifiedReferenceValidator);
+        rewriteTextField(object, "domainType", resolverFor(rewriteMaps, ambiguousNames, "domainTypes"), qualifiedReferenceValidator);
         if ("queries".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             gateCheckGroupByJoinPaths(object, qualifiedReferenceValidator);
@@ -726,26 +860,58 @@ public final class ModelSourceResolver {
             // rewriting it unconditionally here (not gated to a parentKey, unlike `concept` above,
             // since a step can be nested arbitrarily deep under then/else/steps/onFailure) is safe.
             rewriteTextField(object, "scope", conceptRewriteMap, qualifiedReferenceValidator);
+            // PK-1: flowStep.capability/procedure/event -- same "safe at any depth" reasoning as
+            // scope above, a flow step's own field name, not shared with any other rootKey's shape.
+            rewriteTextField(object, "capability", resolverFor(rewriteMaps, ambiguousNames, "capabilities"), qualifiedReferenceValidator);
+            rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+            rewriteTextField(object, "event", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
         } else if ("procedures".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             if ("actionDescriptor".equals(parentKey)) {
                 rewriteTextField(object, "sideEffectConcept", conceptRewriteMap, qualifiedReferenceValidator);
                 rewriteTextArrayField(object, "affectedConcepts", conceptRewriteMap, qualifiedReferenceValidator);
             }
+            // PK-1: procedureStep.query/procedure/capability/event -- same reasoning as flowStep.
+            rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
+            rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+            rewriteTextField(object, "capability", resolverFor(rewriteMaps, ambiguousNames, "capabilities"), qualifiedReferenceValidator);
+            rewriteTextField(object, "event", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
         } else if ("panels".equals(rootKey)) {
             if ("dataSources".equals(parentKey) || "actions".equals(parentKey)) {
                 rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
+            }
+            if ("dataSources".equals(parentKey)) {
+                rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
+                rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+            } else if ("actions".equals(parentKey)) {
+                rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+                rewriteTextField(object, "flow", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
+            } else if (parentKey.isBlank()) {
+                // The panel object itself (not a nested dataSource/action) -- guidePage names a
+                // guidePages member.
+                rewriteTextField(object, "guidePage", resolverFor(rewriteMaps, ambiguousNames, "guidePages"), qualifiedReferenceValidator);
             }
         } else if ("orchestrations".equals(rootKey) || "orchestrationRules".equals(rootKey)) {
             if ("action".equals(parentKey) || "actions".equals(parentKey)) {
                 rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
                 rewriteTextField(object, "targetConcept", conceptRewriteMap, qualifiedReferenceValidator);
+                rewriteTextField(object, "capability", resolverFor(rewriteMaps, ambiguousNames, "capabilities"), qualifiedReferenceValidator);
+                rewriteTextField(object, "event", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
+            } else if ("trigger".equals(parentKey)) {
+                rewriteTextField(object, "event", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
             }
         } else if ("ruleProfiles".equals(rootKey)) {
             rewriteTextOrArrayField(object, "appliesTo", conceptRewriteMap, qualifiedReferenceValidator);
         } else if ("events".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             rewriteTextField(object, "conceptName", conceptRewriteMap, qualifiedReferenceValidator);
+        } else if ("bindings".equals(rootKey) && parentKey.isBlank()) {
+            rewriteTextField(object, "capability", resolverFor(rewriteMaps, ambiguousNames, "capabilities"), qualifiedReferenceValidator);
+        } else if ("properties".equals(rootKey) && parentKey.isBlank()) {
+            rewriteTextArrayField(object, "settableAt", resolverFor(rewriteMaps, ambiguousNames, "propertyScopes"), qualifiedReferenceValidator);
+        } else if ("concepts".equals(rootKey) && "transitions".equals(parentKey)) {
+            // concept.lifecycle.transitions[].event -- a concept's own lifecycle can name an event.
+            rewriteTextField(object, "event", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
         }
     }
 
@@ -784,7 +950,7 @@ public final class ModelSourceResolver {
     private static void rewriteTextOrArrayField(
             ObjectNode object,
             String fieldName,
-            Map<String, String> conceptRewriteMap,
+            MemberNameResolver resolver,
             QualifiedReferenceValidator qualifiedReferenceValidator
     ) {
         JsonNode value = object.get(fieldName);
@@ -792,16 +958,16 @@ public final class ModelSourceResolver {
             return;
         }
         if (value.isTextual()) {
-            rewriteTextField(object, fieldName, conceptRewriteMap, qualifiedReferenceValidator);
+            rewriteTextField(object, fieldName, resolver, qualifiedReferenceValidator);
         } else if (value.isArray()) {
-            rewriteTextArrayField(object, fieldName, conceptRewriteMap, qualifiedReferenceValidator);
+            rewriteTextArrayField(object, fieldName, resolver, qualifiedReferenceValidator);
         }
     }
 
     private static void rewriteTextArrayField(
             ObjectNode object,
             String fieldName,
-            Map<String, String> conceptRewriteMap,
+            MemberNameResolver resolver,
             QualifiedReferenceValidator qualifiedReferenceValidator
     ) {
         JsonNode value = object.get(fieldName);
@@ -812,7 +978,7 @@ public final class ModelSourceResolver {
         boolean changed = false;
         for (JsonNode item : value) {
             if (item != null && item.isTextual()) {
-                String replacement = rewriteConceptName(item.asText(), conceptRewriteMap, qualifiedReferenceValidator);
+                String replacement = rewriteConceptName(item.asText(), resolver, qualifiedReferenceValidator);
                 rewritten.add(replacement);
                 changed = changed || !replacement.equals(item.asText());
             } else {
@@ -827,21 +993,21 @@ public final class ModelSourceResolver {
     private static void rewriteTextField(
             ObjectNode object,
             String fieldName,
-            Map<String, String> conceptRewriteMap,
+            MemberNameResolver resolver,
             QualifiedReferenceValidator qualifiedReferenceValidator
     ) {
         JsonNode value = object.get(fieldName);
         if (value == null || !value.isTextual()) {
             return;
         }
-        String replacement = rewriteConceptName(value.asText(), conceptRewriteMap, qualifiedReferenceValidator);
+        String replacement = rewriteConceptName(value.asText(), resolver, qualifiedReferenceValidator);
         if (!replacement.equals(value.asText())) {
             object.put(fieldName, replacement);
         }
     }
 
     private static String rewriteConceptName(
-            String authored, Map<String, String> conceptRewriteMap, QualifiedReferenceValidator qualifiedReferenceValidator) {
+            String authored, MemberNameResolver resolver, QualifiedReferenceValidator qualifiedReferenceValidator) {
         if (authored == null) {
             return authored;
         }
@@ -849,7 +1015,7 @@ public final class ModelSourceResolver {
             qualifiedReferenceValidator.validate(authored);
             return authored;
         }
-        return conceptRewriteMap.getOrDefault(authored, authored);
+        return resolver.resolve(authored);
     }
 
     /** B20 (S2): a no-op qualified-reference check -- packs today have no import restriction, so an
@@ -860,6 +1026,16 @@ public final class ModelSourceResolver {
     @FunctionalInterface
     private interface QualifiedReferenceValidator {
         void validate(String qualifiedName);
+    }
+
+    /** PK-1 step 4: resolves a bare (unqualified) member name to its qualified form.
+     *  {@link #resolverFor} wraps a single pack/context's own direct map (unambiguous by
+     *  construction). {@link #resolveUnqualifiedReferences}'s global pass instead builds a resolver
+     *  that can throw a named ambiguity error when two or more packs each provide the same bare
+     *  name and neither is locally in scope. */
+    @FunctionalInterface
+    private interface MemberNameResolver {
+        String resolve(String bareName);
     }
 
     private static Path resolvePackPath(String ref, Path modelFile, Path rootDirectory) throws IOException {
@@ -1049,10 +1225,10 @@ public final class ModelSourceResolver {
             ObjectNode packNode,
             ObjectNode resolved,
             Path packFile,
-            Map<String, String> conceptRewriteMap
+            Map<String, Map<String, String>> rewriteMaps
     )
             throws IOException {
-        mergeQualifiedConcepts("Pack", packId, packNode, resolved, packFile, conceptRewriteMap);
+        mergeQualifiedConcepts("Pack", packId, packNode, resolved, packFile, rewriteMaps);
     }
 
     /** B20 (S2): generalized over {@link #mergePackConcepts} -- identical logic, {@code kindLabel}
@@ -1064,7 +1240,7 @@ public final class ModelSourceResolver {
             ObjectNode sourceNode,
             ObjectNode resolved,
             Path sourceFile,
-            Map<String, String> conceptRewriteMap
+            Map<String, Map<String, String>> rewriteMaps
     )
             throws IOException {
         JsonNode conceptsNode = sourceNode.get("concepts");
@@ -1076,7 +1252,7 @@ public final class ModelSourceResolver {
                 : JsonNodeFactory.instance.arrayNode();
         for (JsonNode concept : conceptsNode) {
             if (concept.isObject()) {
-                ObjectNode namespaced = namespacePackConcept(qualifierId, (ObjectNode) concept, conceptRewriteMap);
+                ObjectNode namespaced = namespacePackConcept(qualifierId, (ObjectNode) concept, rewriteMaps);
                 String namespacedName = textOrBlank(namespaced.get("name"));
                 for (JsonNode existing : targetConcepts) {
                     if (existing != null
@@ -1096,7 +1272,7 @@ public final class ModelSourceResolver {
     private static ObjectNode namespacePackConcept(
             String packId,
             ObjectNode concept,
-            Map<String, String> conceptRewriteMap
+            Map<String, Map<String, String>> rewriteMaps
     ) {
         ObjectNode out = concept.deepCopy();
         if (concept.has("name") && concept.get("name").isTextual()) {
@@ -1107,7 +1283,7 @@ public final class ModelSourceResolver {
             ArrayNode newFields = JsonNodeFactory.instance.arrayNode();
             for (JsonNode field : fields) {
                 newFields.add(field.isObject()
-                        ? namespacePackFieldRefs((ObjectNode) field, conceptRewriteMap)
+                        ? namespacePackFieldRefs((ObjectNode) field, rewriteMaps)
                         : field.deepCopy());
             }
             out.set("fields", newFields);
@@ -1115,10 +1291,15 @@ public final class ModelSourceResolver {
         return out;
     }
 
+    /** PK-1: a concept field's {@code ref}/{@code reference} name another concept (unchanged from
+     *  before this card); {@code domainType} names a domainTypes member -- new in this card, the
+     *  same "a pack's own custom domain type must resolve after namespacing" gap R6's sibling bugs
+     *  came from. */
     private static ObjectNode namespacePackFieldRefs(
             ObjectNode field,
-            Map<String, String> conceptRewriteMap
+            Map<String, Map<String, String>> rewriteMaps
     ) {
+        Map<String, String> conceptRewriteMap = mapFor(rewriteMaps, "concepts");
         ObjectNode out = field.deepCopy();
         if (out.has("ref") && out.get("ref").isTextual()) {
             String target = out.get("ref").asText();
@@ -1139,6 +1320,13 @@ public final class ModelSourceResolver {
                     refObj.put("target", rewritten);
                     out.set("reference", refObj);
                 }
+            }
+        }
+        if (out.has("domainType") && out.get("domainType").isTextual()) {
+            String target = out.get("domainType").asText();
+            String rewritten = mapFor(rewriteMaps, "domainTypes").get(target);
+            if (rewritten != null) {
+                out.put("domainType", rewritten);
             }
         }
         return out;
