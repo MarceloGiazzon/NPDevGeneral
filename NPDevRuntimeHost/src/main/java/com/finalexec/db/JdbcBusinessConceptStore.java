@@ -706,6 +706,13 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                 rowVersion = value == null ? null : ((Number) value).longValue();
                 continue;
             }
+            // Same rule, same reason: tenant_id is already its own ConceptRecord component
+            // (tenantId, threaded through the constructor below) -- it is not a DSL field, so it must
+            // not also land in data(), or it leaks into REST responses/generated entities and (found
+            // live via R1 Stage 1 reviving ConceptQueryControllerExportCsvVolumeTest) CSV exports.
+            if ("tenant_id".equalsIgnoreCase(column)) {
+                continue;
+            }
             if (isJsonColumnType(metaData, index) || isJsonDslField(shape, column)) {
                 value = parseJsonColumnValue(column, value);
             }
