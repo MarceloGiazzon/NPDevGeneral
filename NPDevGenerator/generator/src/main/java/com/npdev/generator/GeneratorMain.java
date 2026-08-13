@@ -7,6 +7,7 @@ import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.paths.CanonicalModelPaths;
+import com.npdev.dsl.v1.pack.PackLockFile;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.parser.ModelSourceResolver;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
@@ -34,7 +35,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class GeneratorMain {
 
@@ -185,6 +188,15 @@ public final class GeneratorMain {
         System.out.println("Generation OK. Output: " + outRoot);
         System.out.println("Schema realization: " + schemaRealizationDir);
 
+        // PK-4 Stage D: only after generation has actually succeeded end to end -- advancing this
+        // any earlier (e.g. right after resolve()) would let a later, unrelated failure in this same
+        // run (compile, emit, disk) leave the lock claiming a version's renamedFrom markers were
+        // composed into a real generated app when no such output exists, which a later regenerate
+        // would then wrongly treat as an already-replayed hop.
+        if (!resolvedModelSource.migrationTrackedPacks().isEmpty()) {
+            advanceMigrationTrackedLock(resolvedModelSource);
+        }
+
         int javaVersion = resolveJavaVersion(config);
         System.out.println("Setting build.javaVersion = " + javaVersion);
 
@@ -291,6 +303,41 @@ public final class GeneratorMain {
         }
         System.out.println("Composed installed packs " + aliases + " (" + installed.size() + " concepts) from " + packsDir);
         return composer.merge(app, installed);
+    }
+
+    /**
+     * PK-4 Stage D: advances {@code npdev.lock}'s {@code migratedVersion} bookkeeping for every
+     * packId that declares a migration chain, now that this generate has produced real output for
+     * it. Merges with any existing lock rather than overwriting it: a packId PK-3's own transitive-
+     * dependency tracking already owns (has a real resolvedVersion/digest/sourcePath from {@code pack
+     * add}/{@code update}) keeps those fields untouched here -- only {@code migratedVersion} is this
+     * method's business. A packId with no prior lock entry at all (a direct import with no
+     * transitive dependency of its own, the common case for a pack that merely uses a migration
+     * chain) gets a fresh entry, creating {@code npdev.lock} for the first time if none existed --
+     * scoped deliberately narrow: only when {@link ResolvedModelSource#migrationTrackedPacks()} is
+     * non-empty, so an app that never touches a pack with a migration chain never gets a lock file
+     * it didn't have before this card.
+     */
+    private static void advanceMigrationTrackedLock(ResolvedModelSource resolvedModelSource) throws IOException {
+        Path rootDirectory = resolvedModelSource.canonicalRootDirectory();
+        Map<String, PackLockFile.LockedPack> merged = new LinkedHashMap<>();
+        if (PackLockFile.exists(rootDirectory)) {
+            merged.putAll(PackLockFile.read(rootDirectory).packs());
+        }
+        for (Map.Entry<String, PackLockFile.LockedPack> entry : resolvedModelSource.migrationTrackedPacks().entrySet()) {
+            String packId = entry.getKey();
+            PackLockFile.LockedPack fresh = entry.getValue();
+            PackLockFile.LockedPack existing = merged.get(packId);
+            PackLockFile.LockedPack updated = existing != null
+                    ? new PackLockFile.LockedPack(
+                            existing.resolvedVersion(), existing.digest(), existing.sourcePath(), fresh.resolvedVersion())
+                    : new PackLockFile.LockedPack(
+                            fresh.resolvedVersion(), fresh.digest(), fresh.sourcePath(), fresh.resolvedVersion());
+            merged.put(packId, updated);
+        }
+        PackLockFile.of(merged).write(rootDirectory);
+        System.out.println("Updated " + PackLockFile.FILE_NAME + " migratedVersion for: "
+                + resolvedModelSource.migrationTrackedPacks().keySet());
     }
 
     /** Reads config.json's optional {@code packs.included} string array (defaults to none). */

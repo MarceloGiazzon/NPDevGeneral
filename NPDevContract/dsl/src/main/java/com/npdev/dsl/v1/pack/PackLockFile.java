@@ -29,7 +29,24 @@ public final class PackLockFile {
     private static final String SCHEMA_VERSION = "npdev-lock.v1";
     public static final String FILE_NAME = "npdev.lock";
 
-    public record LockedPack(String resolvedVersion, String digest, String sourcePath) {
+    /**
+     * @param migratedVersion the version this packId was last actually composed into a GENERATED
+     *                        app, as of the most recent successful {@code npdev generate} -- distinct
+     *                        from {@code resolvedVersion} (what constraint resolution currently
+     *                        selects, updated by {@code pack add}/{@code update}). Owned and written
+     *                        only by the generator (PK-4 Stage D): it is the one durable, committed
+     *                        fact {@code PackMigrationComposer} can use as the migration chain's
+     *                        {@code fromVersion} without guessing at a live database's actual state.
+     *                        Empty string when a packId has never been generated (first-ever generate
+     *                        composes an empty range -- see {@code PackMigrationComposer.compose}'s
+     *                        {@code from.equals(to)} no-op case, reached by treating an empty
+     *                        migratedVersion as equal to resolvedVersion at the call site).
+     */
+    public record LockedPack(String resolvedVersion, String digest, String sourcePath, String migratedVersion) {
+        /** Backward-compatible with every call site written before PK-4 Stage D added this field. */
+        public LockedPack(String resolvedVersion, String digest, String sourcePath) {
+            this(resolvedVersion, digest, sourcePath, "");
+        }
     }
 
     private final Map<String, LockedPack> packs;
@@ -62,7 +79,8 @@ public final class PackLockFile {
             packs.put(entry.getKey(), new LockedPack(
                     textOrEmpty(value.get("resolvedVersion")),
                     textOrEmpty(value.get("digest")),
-                    textOrEmpty(value.get("sourcePath"))));
+                    textOrEmpty(value.get("sourcePath")),
+                    textOrEmpty(value.get("migratedVersion"))));
         });
         return new PackLockFile(packs);
     }
@@ -78,6 +96,9 @@ public final class PackLockFile {
             entryNode.put("resolvedVersion", locked.resolvedVersion());
             entryNode.put("digest", locked.digest());
             entryNode.put("sourcePath", locked.sourcePath());
+            if (!locked.migratedVersion().isEmpty()) {
+                entryNode.put("migratedVersion", locked.migratedVersion());
+            }
         }
         Files.writeString(rootDirectory.resolve(FILE_NAME),
                 MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(root) + System.lineSeparator());

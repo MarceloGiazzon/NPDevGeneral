@@ -55,6 +55,46 @@ class PackLockFileTest {
     }
 
     @Test
+    void threeArgConstructorDefaultsMigratedVersionToEmpty() {
+        var locked = new PackLockFile.LockedPack("2.5.0", "sha256:abc123", "packs/user/pack.json");
+        assertEquals("", locked.migratedVersion());
+    }
+
+    @Test
+    void migratedVersionRoundTrips() throws Exception {
+        PackLockFile lock = PackLockFile.of(Map.of(
+                "user", new PackLockFile.LockedPack("3.0.0", "sha256:abc123", "packs/user/pack.json", "1.0.0")));
+        lock.write(temp);
+
+        PackLockFile reread = PackLockFile.read(temp);
+        assertEquals("1.0.0", reread.packs().get("user").migratedVersion());
+    }
+
+    @Test
+    void absentMigratedVersionDoesNotAppearInTheWrittenFile() throws Exception {
+        PackLockFile.of(Map.of(
+                "user", new PackLockFile.LockedPack("2.5.0", "sha256:abc123", "packs/user/pack.json")))
+                .write(temp);
+        String content = Files.readString(temp.resolve(PackLockFile.FILE_NAME));
+        assertFalse(content.contains("migratedVersion"),
+                "a lock entry with no migratedVersion must round-trip byte-identical to before this field existed");
+    }
+
+    @Test
+    void readingALockWrittenBeforeMigratedVersionExistedDefaultsToEmpty() throws Exception {
+        Files.writeString(temp.resolve(PackLockFile.FILE_NAME), """
+                {
+                  "schemaVersion": "npdev-lock.v1",
+                  "packs": {
+                    "user": { "resolvedVersion": "2.5.0", "digest": "sha256:abc123", "sourcePath": "packs/user/pack.json" }
+                  }
+                }
+                """);
+        PackLockFile reread = PackLockFile.read(temp);
+        assertEquals("", reread.packs().get("user").migratedVersion());
+    }
+
+    @Test
     void sha256IsStableForTheSameBytes() throws Exception {
         Path file = temp.resolve("pack.json");
         Files.writeString(file, "{\"pack\":\"user\"}");

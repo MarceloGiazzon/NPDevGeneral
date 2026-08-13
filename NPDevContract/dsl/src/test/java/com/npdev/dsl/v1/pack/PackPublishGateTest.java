@@ -234,4 +234,150 @@ class PackPublishGateTest {
                 () -> PackPublishGate.evaluate(oldPack, newPack));
         assertTrue(ex.getMessage().toLowerCase().contains("version"));
     }
+
+    // ---- Stage C: chain immutability ------------------------------------------------------------
+
+    @Test
+    void alteringAnAlreadyPublishedHopRefusesRegardlessOfVersionBump() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [
+                    { "op": "renameField", "concept": "Widget", "from": "sku", "to": "code" }
+                  ] },
+                  "concepts": [ { "name": "Widget", "fields": [ { "name": "code", "type": "string" } ] } ] }
+                """);
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "3.0.0",
+                  "migrations": {
+                    "1.0.0 -> 2.0.0": [
+                      { "op": "renameField", "concept": "Widget", "from": "sku", "to": "identifier" }
+                    ],
+                    "2.0.0 -> 3.0.0": []
+                  },
+                  "concepts": [ { "name": "Widget", "fields": [ { "name": "code", "type": "string" } ] } ] }
+                """);
+
+        PackPublishGate.Decision decision = PackPublishGate.evaluate(oldPack, newPack);
+
+        assertFalse(decision.allowed());
+        assertTrue(decision.message().contains("1.0.0 -> 2.0.0"), decision.message());
+        assertTrue(decision.message().toLowerCase().contains("immutable"), decision.message());
+    }
+
+    @Test
+    void removingAnAlreadyPublishedHopRefuses() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [] },
+                  "concepts": [] }
+                """);
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "3.0.0",
+                  "migrations": { "2.0.0 -> 3.0.0": [] },
+                  "concepts": [] }
+                """);
+
+        PackPublishGate.Decision decision = PackPublishGate.evaluate(oldPack, newPack);
+
+        assertFalse(decision.allowed());
+        assertTrue(decision.message().contains("missing"), decision.message());
+    }
+
+    @Test
+    void unchangedHistoryPlusAPatchOnlyChangeIsUnaffectedByTheImmutabilityCheck() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [] },
+                  "concepts": [ { "name": "Widget", "fields": [] } ] }
+                """);
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.1", "description": "updated docs",
+                  "migrations": { "1.0.0 -> 2.0.0": [] },
+                  "concepts": [ { "name": "Widget", "fields": [] } ] }
+                """);
+
+        PackPublishGate.Decision decision = PackPublishGate.evaluate(oldPack, newPack);
+
+        assertTrue(decision.allowed(), decision.message());
+    }
+
+    // ---- Stage C: diff-consistency cross-check --------------------------------------------------
+
+    @Test
+    void declaredRenameFieldWithNoMatchingDiffRefuses() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                  "concepts": [ { "name": "Widget", "fields": [ { "name": "sku", "type": "string" } ] } ] }
+                """);
+        // A fabricated rename op: sku was never removed, code was never added -- nothing actually
+        // changed on Widget in this diff at all.
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [
+                    { "op": "renameField", "concept": "Widget", "from": "sku", "to": "code" }
+                  ] },
+                  "concepts": [ { "name": "Widget", "fields": [ { "name": "sku", "type": "string" } ] } ] }
+                """);
+
+        PackPublishGate.Decision decision = PackPublishGate.evaluate(oldPack, newPack);
+
+        assertFalse(decision.allowed());
+        assertTrue(decision.message().contains("no matching change"), decision.message());
+    }
+
+    @Test
+    void declaredRenameFieldMatchingTheRealDiffIsAllowed() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                  "concepts": [ { "name": "Widget", "fields": [ { "name": "sku", "type": "string" } ] } ] }
+                """);
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [
+                    { "op": "renameField", "concept": "Widget", "from": "sku", "to": "code" }
+                  ] },
+                  "concepts": [ { "name": "Widget", "fields": [ { "name": "code", "type": "string" } ] } ] }
+                """);
+
+        PackPublishGate.Decision decision = PackPublishGate.evaluate(oldPack, newPack);
+
+        assertTrue(decision.allowed(), decision.message());
+    }
+
+    @Test
+    void declaredAddFieldWithNoMatchingDiffRefuses() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                  "concepts": [ { "name": "Widget", "fields": [] } ] }
+                """);
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0",
+                  "migrations": { "1.0.0 -> 1.1.0": [
+                    { "op": "addField", "concept": "Widget", "field": "notes" }
+                  ] },
+                  "concepts": [ { "name": "Widget", "fields": [] } ] }
+                """);
+
+        PackPublishGate.Decision decision = PackPublishGate.evaluate(oldPack, newPack);
+
+        assertFalse(decision.allowed());
+        assertTrue(decision.message().contains("no matching change"), decision.message());
+    }
+
+    @Test
+    void malformedHopArrayIsRefusedRatherThanThrowing() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [] }
+                """);
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [ { "op": "notARealOp" } ] },
+                  "concepts": [] }
+                """);
+
+        PackPublishGate.Decision decision = PackPublishGate.evaluate(oldPack, newPack);
+
+        assertFalse(decision.allowed());
+        assertTrue(decision.message().contains("malformed"), decision.message());
+    }
 }

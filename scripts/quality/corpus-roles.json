@@ -65,6 +65,8 @@
     "NPDevSamples/probes/p3-rename/v1": "probe",
     "NPDevSamples/probes/p3-rename/v2": "probe",
     "NPDevSamples/probes/p4-constraints": "probe",
+    "NPDevSamples/probes/p5-migration-chain/v1": "probe",
+    "NPDevSamples/probes/p5-migration-chain/v3": "probe",
     "NPDevSamples/restaurant-saas-multitenant": "showcase",
     "NPDevSamples/simple-contact-intake": "showcase",
     "NPDevSamples/simple-user-registry": "engine-variant",

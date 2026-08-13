@@ -1023,8 +1023,17 @@ public final class SchemaRealizationEmitter {
      * in-place rename on this regeneration. Deliberately only checked in the {@code renamedFrom}-blank
      * branch: a plain bounded-context concept (the {@code physicallyIsolate} mechanism) computes
      * both values via the identical code path and is always equal, so it can never false-positive
-     * here; a concept using BOTH an author-declared rename AND a pack-version bump in the same
-     * regeneration is a real but out-of-scope edge case for this card (see PK-2's ledger entry).
+     * here.
+     *
+     * <p>PK-4 Stage D: a THIRD trigger, inside the {@code renamedFrom}-non-blank branch, for a
+     * migration-chain-synthesized {@code renamedFrom} value (always containing {@code "::"}, which
+     * a hand-authored one never does). This is exactly the "author-declared rename AND a
+     * pack-version bump in the same regeneration" case the previous revision of this comment called
+     * out as out-of-scope: the {@code explicitOverride} heuristic below cannot tell PK-2's own
+     * qualifier-derived {@code tableName} apart from a hand-declared override (both simply differ
+     * from the plain unqualified convention), so left unmodified it would silently reuse the
+     * CURRENT qualified name as the "old" one and no-op a real cross-major rename -- found by
+     * running the real end-to-end proof (a row surviving a multi-hop pack upgrade), not by review.
      */
     private static Map.Entry<String, String> conceptTableRename(CompiledConcept concept, List<CompiledContext> contexts) {
         String renamedFrom = concept.getRenamedFrom();
@@ -1037,6 +1046,24 @@ public final class SchemaRealizationEmitter {
             return Map.entry(currentTable, preMigrationTable);
         }
         String currentTable = SqlIdentifierSupport.tableName(concept);
+        if (renamedFrom.contains("::")) {
+            // PK-4 Stage D: a synthesized migration-chain marker (PackMigrationChainSynthesizer),
+            // already fully physically qualified as "<oldPackId>_v<oldMajor>::<bareName>" -- never
+            // something a human author would hand-write, since "::" is reserved DSL syntax for pack
+            // qualification (an author-declared rename always names a bare concept, e.g. "User").
+            // The explicit-override heuristic below exists to detect a HAND-declared tableName
+            // override and reapply it to an old bare name; it cannot fire correctly here, because
+            // PK-2's own qualifier-derived tableName looks IDENTICAL to a hand override from this
+            // method's point of view (both differ from the plain unqualified convention), so it
+            // would wrongly reuse the CURRENT qualified name as the "old" one and silently no-op a
+            // real cross-major rename. The qualifier is already baked into renamedFrom itself, so
+            // derive the old table name directly with no override at all.
+            String oldTable = SqlIdentifierSupport.tableName(renamedFrom, null);
+            if (oldTable.equals(currentTable)) {
+                return null;
+            }
+            return Map.entry(currentTable, oldTable);
+        }
         String conventionalCurrentTable = SqlIdentifierSupport.tableName(concept.getName(), null);
         String explicitOverride = currentTable.equals(conventionalCurrentTable) ? null : concept.getTableName();
         String oldTable = SqlIdentifierSupport.tableName(renamedFrom, explicitOverride);
