@@ -81,7 +81,7 @@ resolution: |
   standalone. Worked around AT THE CALL SITE (run-frontend-gate.ps1 now runs `gradlew npmInstall`
   -- deliberately not in cleanUiReactGenerated's finalizedBy list -- immediately before invoking it)
   rather than editing the script itself, since fixing its own self-sufficiency is a larger, separate
-  change; filed as REG-147 (OPEN, not fixed here).
+  change; filed as REG-150 (OPEN, not fixed here).
     - run-editor-complexity-check.ps1: kept and wired, per the card's own explicit instruction (R6's
       300-line component cap, load-bearing). Wired into run-frontend-gate.ps1 as a new step after the
       residue check; declaration changed from manual-runbook to orchestrated. Live-verified: ran the
