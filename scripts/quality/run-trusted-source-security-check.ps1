@@ -5,6 +5,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "..\npdev-common.ps1")
 
 function Convert-ToRepoPath {
     param([string]$Root, [string]$PathValue)
@@ -227,12 +228,31 @@ $testResult = Invoke-CommandCapture "trusted-source-security-hardening-tests" {
     }
 }
 
-$testXmlSource = Join-Path $root "NPDevGenerator/generator/build/test-results/test/TEST-com.npdev.generator.TrustedSourceSecurityHardeningTest.xml"
+# R4 Part A (MASTER-ROADMAP.md Step 9 / ledger QUAL-7): the OLD local-build path below
+# (NPDevGenerator/generator/build/...) has not matched reality since NPDevGenerator/build.gradle's
+# allprojects{} started redirecting layout.buildDirectory to the external build root (see any
+# build.gradle's resolveNpdevBuildRoot) -- this script was simply never run by any gate before this
+# card to notice. `:generator:test`, run from NPDevGenerator's own gradlew (as generatorQualityGate
+# does, and as this script's own Gradle invocation below does), gets rootProject.name
+# 'npdev-generator', so the real path is <buildRoot>/gradle/npdev-generator/generator/test-results/
+# test/... . Tries the real (redirected) location FIRST, falls back to the old local path so a
+# differently-configured invocation still works.
+function Resolve-NPDevGeneratorTestXml {
+    param([string]$FileName)
+    $buildRoot = Get-NPDevBuildRoot $root
+    $redirected = Join-Path $buildRoot "gradle/npdev-generator/generator/test-results/test/$FileName"
+    if (Test-Path -LiteralPath $redirected -PathType Leaf) {
+        return $redirected
+    }
+    return Join-Path $root "NPDevGenerator/generator/build/test-results/test/$FileName"
+}
+
+$testXmlSource = Resolve-NPDevGeneratorTestXml "TEST-com.npdev.generator.TrustedSourceSecurityHardeningTest.xml"
 $testXmlProof = Join-Path $testResultRoot "TEST-com.npdev.generator.TrustedSourceSecurityHardeningTest.xml"
 if (Test-Path -LiteralPath $testXmlSource -PathType Leaf) {
     Copy-Item -LiteralPath $testXmlSource -Destination $testXmlProof -Force
 }
-$compatibilityTestXmlSource = Join-Path $root "NPDevGenerator/generator/build/test-results/test/TEST-com.npdev.generator.TrustedSourceEmitterTest.xml"
+$compatibilityTestXmlSource = Resolve-NPDevGeneratorTestXml "TEST-com.npdev.generator.TrustedSourceEmitterTest.xml"
 $compatibilityTestXmlProof = Join-Path $testResultRoot "TEST-com.npdev.generator.TrustedSourceEmitterTest.xml"
 if (Test-Path -LiteralPath $compatibilityTestXmlSource -PathType Leaf) {
     Copy-Item -LiteralPath $compatibilityTestXmlSource -Destination $compatibilityTestXmlProof -Force

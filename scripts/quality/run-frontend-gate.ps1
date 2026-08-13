@@ -297,6 +297,63 @@ if ($residue.Count -gt 0) {
     Add-Failure -Code "generated-residue-present" -Message "Frontend gate left generated files or directories behind." -Path (Convert-ToRepoPath -Root $workspaceRoot -Path $uiRoot) -Details @{ residue = @($residue) }
 }
 
+# R4 Part A (MASTER-ROADMAP.md Step 9 / ledger QUAL-7): run-editor-complexity-check.ps1 enforces the
+# 300-line cap on every active (ui-boundary.json allowed) editor component -- load-bearing for R6,
+# but it was reachable from no gate at all before this card. Wired in HERE, not a new standalone
+# gate, since it already re-runs `npm test`/`npm run build` itself (the same commands this gate just
+# ran) and its own report is the authoritative evidence for the line-count claim.
+#
+# node_modules is gone by this point: npmTest/npmBuild above are `finalizedBy cleanUiReactGenerated`
+# (NPDevEditor/build.gradle), which deletes it as part of this gate's OWN no-residue policy (the
+# Find-GeneratedResidue check right above this comment exists specifically to enforce that). Verified
+# live: without this re-install, run-editor-complexity-check.ps1's own `npm test` failed with
+# "'vitest' is not recognized" -- a real, pre-existing gap (that script has no install step of its
+# own; it was always meant to be run by a developer with node_modules already present) that only
+# became visible once this card gave it its first real gate to run inside. `npmInstall` is
+# deliberately NOT in cleanUiReactGenerated's finalizedBy list, so calling it standalone here is safe
+# and leaves the existing npmTest/npmBuild block's own dependsOn npmInstall a cheap no-op.
+if ($failures.Count -eq 0 -and $null -ne $gradleExecutable) {
+    $npmInstallProcess = Start-Process -FilePath $gradleExecutable -ArgumentList @("npmInstall", "--no-daemon", "--console=plain") -WorkingDirectory $editorRootFull -NoNewWindow -Wait -PassThru
+    if ($npmInstallProcess.ExitCode -ne 0) {
+        Add-Failure -Code "npm-install-failed" -Message "npmInstall (re-populating node_modules for run-editor-complexity-check.ps1) failed." -Path (Convert-ToRepoPath -Root $workspaceRoot -Path $editorRootFull) -Details @{ exitCode = $npmInstallProcess.ExitCode }
+    }
+}
+
+$editorComplexityScript = Resolve-UnderRoot -Root $workspaceRoot -Path "scripts/quality/run-editor-complexity-check.ps1"
+$editorComplexityReportPath = Resolve-UnderRoot -Root $workspaceRoot -Path "scripts/reports/out/editor-decomplexification-report.json"
+$editorComplexityError = $null
+$editorComplexityReport = $null
+try {
+    Push-Location -LiteralPath $workspaceRoot
+    try {
+        & $editorComplexityScript -ReportPath $editorComplexityReportPath | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            $editorComplexityError = "run-editor-complexity-check.ps1 exited $LASTEXITCODE"
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+catch {
+    $editorComplexityError = $_.Exception.Message
+}
+if (Test-Path -LiteralPath $editorComplexityReportPath -PathType Leaf) {
+    try { $editorComplexityReport = Get-Content -Raw -LiteralPath $editorComplexityReportPath | ConvertFrom-Json } catch { $editorComplexityReport = $null }
+}
+if (-not [string]::IsNullOrWhiteSpace($editorComplexityError) -or $null -eq $editorComplexityReport -or [string]$editorComplexityReport.overallStatus -ne "passed") {
+    Add-Failure -Code "editor-complexity-check-failed" -Message "run-editor-complexity-check.ps1 (300-line component cap + related editor decomplexification checks) did not pass." -Path (Convert-ToRepoPath -Root $workspaceRoot -Path $editorComplexityReportPath) -Details @{
+        error = $editorComplexityError
+        overallStatus = if ($null -ne $editorComplexityReport) { [string]$editorComplexityReport.overallStatus } else { $null }
+        thresholdViolations = if ($null -ne $editorComplexityReport) { @($editorComplexityReport.thresholdViolations) } else { @() }
+    }
+}
+$artifacts += [pscustomobject]@{
+    type = "editor-complexity-report"
+    path = (Convert-ToRepoPath -Root $workspaceRoot -Path $editorComplexityReportPath)
+    exists = (Test-Path -LiteralPath $editorComplexityReportPath -PathType Leaf)
+}
+
 $overallStatus = if ($failures.Count -eq 0) { "passed" } else { "failed" }
 $artifacts += [pscustomobject]@{
     type = "report"

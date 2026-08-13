@@ -3,17 +3,114 @@ title: >-
   21 gate scripts are reachable from nothing
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-13
+verification: LIVE_VERIFIED
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R4 Part A). 21
   scripts/quality/run-*.ps1 confirmed unreachable (18 referenced nowhere at all, 3 only from prose),
   e.g. run-boundary-lock-check, run-editor-complexity-check (load-bearing for R6's 300-line cap despite
   being unreachable from any gate), run-trusted-source-security-check.
 surface: quality/gate-inventory
+files:
+  - scripts/policy/gate-classification-policy.json
+  - scripts/quality/run-weekly-paperwork-checks.ps1
+  - .github/workflows/weekly-paperwork-checks.yml
 detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R4 Part A for the full 18-script list. Default
   is delete; three deserve a look before deletion (run-boundary-lock-check,
   run-trusted-source-security-check, run-editor-complexity-check) because they guard real product
   surface. MASTER-ROADMAP.md batches this into Track C item C5 (with Part C's product/paperwork
-  classification); not in this session's scope (Steps 1-4).
+  classification).
+resolution: |
+  DONE (2026-08-13), Parts A + C (Part B, branch protection, was already done in an earlier session --
+  see ledger QUAL-8).
+
+  Part A -- re-verified the 21-script list live before acting (grepped run-all-gates.ps1 and every
+  .github/workflows/*.yml for each of the 21 names: zero matches, confirming still-orphaned; also
+  grepped every scripts/*.ps1 for cross-references to rule out a non-gate caller). Disposition:
+    - 18 deleted (run-app-upgrade-contract-gate, run-custom-ux-extensibility-check,
+      run-dsl-parser-robustness-check, run-external-ai-gate, run-incremental-migration-testing-check,
+      run-json-schema-validation-tests, run-manager-harness, run-maturity-max-final-closure-check,
+      run-maturity-max-roadmap-boundary-check, run-maturity-score, run-phase2-residual-fidelity-check,
+      run-post-beta0-maturity-closure-check, run-release-checklist-gate,
+      run-runtimehost-integration-infrastructure-check, run-scenario-scope-reconciliation-check,
+      run-schema-consolidation-check, run-shift-left-ai-safety-check,
+      run-stateful-additive-migrations-check) plus their scripts/policy/script-invocation-
+      declarations.json entries.
+    - 1 CASCADING orphan found and deleted during cleanup, not in the original 21:
+      scripts/quality/validate-scenario-coherence.ps1 was referenced by ONLY
+      run-custom-ux-extensibility-check.ps1 (one of the 18 above); deleting that script left it
+      unreferenced by anything. Confirmed genuinely dead (its function is superseded by the native
+      `validateScenarioCoherence` Gradle task, root build.gradle, part of the CP6 Gradle-native
+      migration) before deleting it too.
+    - 1 real, mechanically-detected consequence found and fixed: deleting run-external-ai-gate.ps1
+      (correctly, per the 18-list above) left check-external-ai-mission-coverage.py -- a
+      scripts/quality/check-*.py -- invoked by NO run-*.ps1 at all, which
+      run-script-inventory-check.ps1's own orphaned-gate-checker rule (Move 11 W2/O4) caught
+      immediately on the next run. Fixed by hosting it in the new weekly paperwork gate (see Part C)
+      rather than leaving a second orphan behind.
+    - run-boundary-lock-check.ps1: kept, untouched. CLAUDE.md already documents it as a deliberate
+      manual-verification script; its script-invocation-declarations.json entry (manual-runbook,
+      documented in CLAUDE.md) was already valid and needed no change.
+    - run-trusted-source-security-check.ps1: investigated, NOT redundant with any check-*.py already
+      wired into run-ai-knowledge-gate.ps1 -- it runs a real AST-validation + bytecode-restriction
+      proof (javac/javap forbidden-opcode scan on synthetic safe/unsafe fixtures) for
+      TrustedSourceEmitter's generated code, something no other gate does. Wired into
+      run-generator-gate.ps1 as a new sub-step (same pattern as its existing
+      deterministicGenerationScript/generatorGovernanceScript sub-steps); its own invocation
+      declaration changed from manual-runbook to orchestrated (now literally true).
+      FIXED FOR REAL (not just worked around), because the bug directly blocked this card's own
+      deliverable: the script hardcoded a local build path
+      (NPDevGenerator/generator/build/test-results/test/...) that has not matched reality since
+      NPDevGenerator/build.gradle started redirecting layout.buildDirectory to the external build
+      root -- confirmed via `git diff main` (empty) that this predates this branch, and via a live
+      run that the real XML lands at <BuildRoot>/gradle/npdev-generator/generator/test-results/test/
+      instead. Now resolves the real path first (via the existing Get-NPDevBuildRoot helper,
+      scripts/npdev-common.ps1), falling back to the old local path for any differently-configured
+      invocation. Live-verified: ran the fixed script standalone twice (RED before the fix, real
+      ast-validation-implemented failure; GREEN after).
+
+  Separately, wiring run-editor-complexity-check.ps1 into an automated gate for the first time
+  surfaced ANOTHER real, pre-existing, unrelated bug: it has no `npm ci`/`npm install` step of its
+  own, so it fails ("vitest is not recognized") the moment node_modules isn't already present --
+  which it never is by the time it runs inside run-frontend-gate.ps1 (that gate's own npmTest/
+  npmBuild tasks are finalizedBy cleanUiReactGenerated, which deletes node_modules as part of the
+  gate's no-residue policy). Confirmed pre-existing via `git diff main` (empty) and reproduced
+  standalone. Worked around AT THE CALL SITE (run-frontend-gate.ps1 now runs `gradlew npmInstall`
+  -- deliberately not in cleanUiReactGenerated's finalizedBy list -- immediately before invoking it)
+  rather than editing the script itself, since fixing its own self-sufficiency is a larger, separate
+  change; filed as REG-147 (OPEN, not fixed here).
+    - run-editor-complexity-check.ps1: kept and wired, per the card's own explicit instruction (R6's
+      300-line component cap, load-bearing). Wired into run-frontend-gate.ps1 as a new step after the
+      residue check; declaration changed from manual-runbook to orchestrated. Live-verified: ran the
+      full frontend gate end to end, editor-complexity-check's own report (thresholdViolations: [])
+      correctly surfaced in the gate's report.
+
+  Part C -- scripts/policy/gate-classification-policy.json records the full product-vs-paperwork
+  split for all 37 scripts/quality/check-*.py (23 product / 14 paperwork; the roadmap's own baseline
+  measured 22/14 of the 36 pre-existing checkers, and this session's R3 card added a 23rd product
+  entry, check-coverage-ratchet.py). Re-derived independently rather than trusting the card's given
+  14-name list verbatim -- confirmed all 14 still exist, and spot-checked several borderline
+  candidates (check-schema-mirror-consistency.py, check-executable-line-endings.py,
+  check-firstrun-extractor.py, check-dsl-reference-output-floor.py) against the product/paperwork
+  test before keeping them at "product", documented per-entry in the policy file's own `reason`
+  field.
+
+  Of the 14 paperwork checkers, 11 moved to scripts/quality/run-weekly-paperwork-checks.ps1 (new),
+  invoked by .github/workflows/weekly-paperwork-checks.yml (new, weekly cron + workflow_dispatch, not
+  wired into branch protection). The 3 named exceptions (twin-pair-consistency, test-task-coverage,
+  workflow-yaml-syntax) stay in the per-commit run-ai-knowledge-gate.ps1, unchanged.
+  run-ai-knowledge-gate.ps1 itself renumbered its per-commit steps from 42+1(R3)=43 down to 34 --
+  live-verified: the full gate ran clean end to end post-renumbering (no PowerShell syntax errors, a
+  real green run), and the new weekly script also ran clean end to end standalone (all 11 checks
+  passed against the real repo).
+guard:
+  kind: manual
+  ref: pwsh -NoProfile -File scripts/quality/run-script-inventory-check.ps1; pwsh -NoProfile -File
+    scripts/quality/run-weekly-paperwork-checks.ps1; pwsh -NoProfile -File
+    scripts/quality/run-ai-knowledge-gate.ps1
+  asserts: script inventory check passes with zero orphaned gate checkers; the weekly paperwork
+    script passes all 11 checks standalone; the renumbered per-commit gate passes all 34 steps
+  provenRed: true
