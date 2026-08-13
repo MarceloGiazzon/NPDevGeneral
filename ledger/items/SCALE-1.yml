@@ -19,7 +19,21 @@ detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R9 for the full 5-rung (26/50/100/260/520
   concepts) nightly ladder spec (latency, DDL count, memory). MASTER-ROADMAP.md prelude card 0.3
   reduces this to 2 rungs (26, 100) and generate/build/boot timing only -- done this session (Step
-  2a). Full ladder (5 rungs, latency/DDL/memory) is Track C item C6.
+  2a). Full ladder (5 rungs, latency/DDL/memory) is Track C item C6. Still open: no CI wiring, no
+  latency/DDL/memory rungs, only 2 of the 5 concept counts.
+
+  2026-08-13 (F8 re-baseline, after MASTER-ROADMAP.md Step 6/PK-2 landed): both reduced-ladder rungs
+  re-run against post-PK-2, post-BT-1 code and appended to scripts/policy/scale-proof-baseline.json.
+  The synthesized scale-ladder model declares no `packs[]`, so PK-2's rename path never fires for
+  it -- F8's specific worry (a pre-PK-2 measurement silently including a one-time migration cost)
+  does not literally apply to this synthetic model either way; the re-baseline's value here is
+  simply that the recorded numbers now reflect current code, not a stale pre-PK-2/pre-BT-1 snapshot.
+  One incidental finding while re-running: the shared runtimehost-libs cache
+  (D:\WorkSpace\NPDev\Build\runtimehost-libs) had no runtimehost-core jar staged post-BT-1, so the
+  first re-baseline attempt failed to compile (`cannot find symbol` on types BT-1 moved into the
+  jar) -- not a new bug, the documented "restage jars after RuntimeHost/kernel changes" gotcha
+  (CLAUDE.md), fixed by running sync-runtimehost-libs.ps1 -BuildLocalJars. The failed attempt is
+  preserved in the baseline's ratchet history rather than deleted.
 guard:
   kind: script
   ref: scripts/proofs/run-scale-proof.ps1

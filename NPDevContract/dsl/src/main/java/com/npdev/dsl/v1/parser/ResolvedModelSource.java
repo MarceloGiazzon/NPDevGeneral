@@ -16,6 +16,7 @@ public final class ResolvedModelSource {
     private final Map<String, Path> provenanceByJsonPointer;
     private final List<ValidationDiagnostic> diagnostics;
     private final List<ValidationDiagnostic> warnings;
+    private final Map<String, String> physicalQualifierByConceptName;
 
     public ResolvedModelSource(
             Path rootModelPath,
@@ -24,7 +25,8 @@ public final class ResolvedModelSource {
             List<Path> includedFiles,
             Map<String, Path> provenanceByJsonPointer,
             List<ValidationDiagnostic> diagnostics,
-            List<ValidationDiagnostic> warnings
+            List<ValidationDiagnostic> warnings,
+            Map<String, String> physicalQualifierByConceptName
     ) {
         this.rootModelPath = Objects.requireNonNull(rootModelPath, "rootModelPath");
         this.canonicalRootDirectory = Objects.requireNonNull(canonicalRootDirectory, "canonicalRootDirectory");
@@ -33,6 +35,8 @@ public final class ResolvedModelSource {
         this.provenanceByJsonPointer = Map.copyOf(provenanceByJsonPointer == null ? Map.of() : provenanceByJsonPointer);
         this.diagnostics = List.copyOf(diagnostics == null ? List.of() : diagnostics);
         this.warnings = List.copyOf(warnings == null ? List.of() : warnings);
+        this.physicalQualifierByConceptName = Map.copyOf(
+                physicalQualifierByConceptName == null ? Map.of() : physicalQualifierByConceptName);
     }
 
     public Path rootModelPath() {
@@ -61,6 +65,10 @@ public final class ResolvedModelSource {
 
     public List<ValidationDiagnostic> warnings() {
         return warnings;
+    }
+
+    public Map<String, String> physicalQualifierByConceptName() {
+        return physicalQualifierByConceptName;
     }
 
     public String resolvedModelJson() {

@@ -67,6 +67,72 @@
             "message": "http://127.0.0.1:18226/api/runtime/metadata/ui/panels/ScaleProofPanel -- status 200: {\"endpointVersion\":\"1.0.0\",\"surfaceType\":\"panel-runtime\",\"operation\":\"loadPanel\",\"panelName\":\"ScaleProofPanel\",\"route\":\"/scale-proof/synthetic\",\"title\":\"Scale proof\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"ruleProfile\":\"interactive\",\"governedDataAccess\":\"ConceptGateway\",\"dataSources\":[{\"name\":\"allRows\",\"concept\":\"SyntheticConcept0001\",\"query\":\"AllSyntheticConcept0001\",\"procedure\":\"\",\"parentDataSource\":\"\",\"childField\":\"\",\"rowOps\":[],\"addFormFields\":[],\"recordCount\":0,\"fallback\":false}],\"data\":{\"allRows\":[]},\"fields\":[{\"field\":\"label\"},{\"field\":\"sequence\"}],\"fieldBindings\":[{\"field\":\"label\",\"dataSource\":\"allRows\",\"sourceField\":\"label\",\"editable\":false,\"label\":\"\",\"order\":null},{\"field\":\"sequence\",\"dataSource\":\"allRows\",\"sourceField\":\"sequence\",\"editable\":false,\"label\":\"\",\"order\":null}],\"actions\":[],\"metadata\":{},\"fallbackUi\":false,\"layout\":{\"type\":\"table\",\"fields\":[\"label\",\"sequence\"]},\"gatewayTrace\":[{\"timestampMs\":1786604988603,\"operation\":\"LIST\",\"conceptName\":\"SyntheticConcept0001\",\"id\":\"*\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"outcome\":\"SUCCESS\",\"reasonCode\":\"allowed\",\"ruleProfiles\":[\"always\",\"interactive\",\"query\"],\"defaultsApplied\":[],\"derivedValuesApplied\":[],\"lifecycleTransition\":null,\"explanation\":\"allowed\",\"details\":{\"concept\":\"SyntheticConcept0001\",\"operation\":\"LIST\",\"decisionOutcome\":\"queryRestrictionsExplicit\",\"rulesEvaluated\":[{\"expression\":\"label != null && label != ''\",\"rule\":\"expressionInvariant1\",\"outcome\":\"notAppliedToQueryOperation\",\"allowed\":true},{\"expression\":\"label != null && label != ''\",\"rule\":\"SyntheticConcept0001LabelRequired\",\"outcome\":\"notAppliedToQueryOperation\",\"allowed\":true}]}}]}"
           }
         }
+      },
+      {
+        "schemaVersion": "npdev-scale-proof-report.v1",
+        "generatedAt": "2026-08-13T11:49:46.7295324Z",
+        "concepts": 26,
+        "status": "failed",
+        "phases": {
+          "synthesize": {
+            "status": "passed",
+            "durationMs": 261,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\26\\Input\\model.json"
+          },
+          "generate": {
+            "status": "passed",
+            "durationMs": 21026,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\26\\Output\\App"
+          },
+          "build": {
+            "status": "failed",
+            "durationMs": 35113,
+            "message": "exit 1"
+          },
+          "boot": {
+            "status": "skipped",
+            "durationMs": 0,
+            "message": ""
+          },
+          "firstRequest": {
+            "status": "skipped",
+            "durationMs": 0,
+            "message": ""
+          }
+        }
+      },
+      {
+        "schemaVersion": "npdev-scale-proof-report.v1",
+        "generatedAt": "2026-08-13T11:55:14.8216447Z",
+        "concepts": 26,
+        "status": "passed",
+        "phases": {
+          "synthesize": {
+            "status": "passed",
+            "durationMs": 125,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\26\\Input\\model.json"
+          },
+          "generate": {
+            "status": "passed",
+            "durationMs": 19790,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\26\\Output\\App"
+          },
+          "build": {
+            "status": "passed",
+            "durationMs": 38088,
+            "message": "exit 0"
+          },
+          "boot": {
+            "status": "passed",
+            "durationMs": 28595,
+            "message": "http://127.0.0.1:18226/actuator/health"
+          },
+          "firstRequest": {
+            "status": "passed",
+            "durationMs": 235,
+            "message": "http://127.0.0.1:18226/api/runtime/metadata/ui/panels/ScaleProofPanel -- status 200: {\"endpointVersion\":\"1.0.0\",\"surfaceType\":\"panel-runtime\",\"operation\":\"loadPanel\",\"panelName\":\"ScaleProofPanel\",\"route\":\"/scale-proof/synthetic\",\"title\":\"Scale proof\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"ruleProfile\":\"interactive\",\"governedDataAccess\":\"ConceptGateway\",\"dataSources\":[{\"name\":\"allRows\",\"concept\":\"SyntheticConcept0001\",\"query\":\"AllSyntheticConcept0001\",\"procedure\":\"\",\"parentDataSource\":\"\",\"childField\":\"\",\"rowOps\":[],\"addFormFields\":[],\"recordCount\":0,\"fallback\":false}],\"data\":{\"allRows\":[]},\"fields\":[{\"field\":\"label\"},{\"field\":\"sequence\"}],\"fieldBindings\":[{\"field\":\"label\",\"dataSource\":\"allRows\",\"sourceField\":\"label\",\"editable\":false,\"label\":\"\",\"order\":null},{\"field\":\"sequence\",\"dataSource\":\"allRows\",\"sourceField\":\"sequence\",\"editable\":false,\"label\":\"\",\"order\":null}],\"actions\":[],\"metadata\":{},\"fallbackUi\":false,\"layout\":{\"fields\":[\"label\",\"sequence\"],\"type\":\"table\"},\"gatewayTrace\":[{\"timestampMs\":1786622114168,\"operation\":\"LIST\",\"conceptName\":\"SyntheticConcept0001\",\"id\":\"*\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"outcome\":\"SUCCESS\",\"reasonCode\":\"allowed\",\"ruleProfiles\":[\"always\",\"interactive\",\"query\"],\"defaultsApplied\":[],\"derivedValuesApplied\":[],\"lifecycleTransition\":null,\"explanation\":\"allowed\",\"details\":{\"concept\":\"SyntheticConcept0001\",\"operation\":\"LIST\",\"decisionOutcome\":\"queryRestrictionsExplicit\",\"rulesEvaluated\":[{\"outcome\":\"notAppliedToQueryOperation\",\"allowed\":true,\"expression\":\"label != null && label != ''\",\"rule\":\"expressionInvariant1\"},{\"outcome\":\"notAppliedToQueryOperation\",\"allowed\":true,\"expression\":\"label != null && label != ''\",\"rule\":\"SyntheticConcept0001LabelRequired\"}]}}]}"
+          }
+        }
       }
     ],
     "100": [
@@ -166,6 +232,39 @@
             "status": "passed",
             "durationMs": 116,
             "message": "http://127.0.0.1:18300/api/runtime/metadata/ui/panels/ScaleProofPanel -- status 200: {\"endpointVersion\":\"1.0.0\",\"surfaceType\":\"panel-runtime\",\"operation\":\"loadPanel\",\"panelName\":\"ScaleProofPanel\",\"route\":\"/scale-proof/synthetic\",\"title\":\"Scale proof\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"ruleProfile\":\"interactive\",\"governedDataAccess\":\"ConceptGateway\",\"dataSources\":[{\"name\":\"allRows\",\"concept\":\"SyntheticConcept0001\",\"query\":\"AllSyntheticConcept0001\",\"procedure\":\"\",\"parentDataSource\":\"\",\"childField\":\"\",\"rowOps\":[],\"addFormFields\":[],\"recordCount\":0,\"fallback\":false}],\"data\":{\"allRows\":[]},\"fields\":[{\"field\":\"label\"},{\"field\":\"sequence\"}],\"fieldBindings\":[{\"field\":\"label\",\"dataSource\":\"allRows\",\"sourceField\":\"label\",\"editable\":false,\"label\":\"\",\"order\":null},{\"field\":\"sequence\",\"dataSource\":\"allRows\",\"sourceField\":\"sequence\",\"editable\":false,\"label\":\"\",\"order\":null}],\"actions\":[],\"metadata\":{},\"fallbackUi\":false,\"layout\":{\"fields\":[\"label\",\"sequence\"],\"type\":\"table\"},\"gatewayTrace\":[{\"timestampMs\":1786605556913,\"operation\":\"LIST\",\"conceptName\":\"SyntheticConcept0001\",\"id\":\"*\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"outcome\":\"SUCCESS\",\"reasonCode\":\"allowed\",\"ruleProfiles\":[\"always\",\"interactive\",\"query\"],\"defaultsApplied\":[],\"derivedValuesApplied\":[],\"lifecycleTransition\":null,\"explanation\":\"allowed\",\"details\":{\"decisionOutcome\":\"queryRestrictionsExplicit\",\"operation\":\"LIST\",\"concept\":\"SyntheticConcept0001\",\"rulesEvaluated\":[{\"expression\":\"label != null && label != ''\",\"allowed\":true,\"outcome\":\"notAppliedToQueryOperation\",\"rule\":\"expressionInvariant1\"},{\"expression\":\"label != null && label != ''\",\"allowed\":true,\"outcome\":\"notAppliedToQueryOperation\",\"rule\":\"SyntheticConcept0001LabelRequired\"}]}}]}"
+          }
+        }
+      },
+      {
+        "schemaVersion": "npdev-scale-proof-report.v1",
+        "generatedAt": "2026-08-13T11:56:49.0938404Z",
+        "concepts": 100,
+        "status": "passed",
+        "phases": {
+          "synthesize": {
+            "status": "passed",
+            "durationMs": 130,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\100\\Input\\model.json"
+          },
+          "generate": {
+            "status": "passed",
+            "durationMs": 9217,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\100\\Output\\App"
+          },
+          "build": {
+            "status": "passed",
+            "durationMs": 46086,
+            "message": "exit 0"
+          },
+          "boot": {
+            "status": "passed",
+            "durationMs": 26718,
+            "message": "http://127.0.0.1:18300/actuator/health"
+          },
+          "firstRequest": {
+            "status": "passed",
+            "durationMs": 164,
+            "message": "http://127.0.0.1:18300/api/runtime/metadata/ui/panels/ScaleProofPanel -- status 200: {\"endpointVersion\":\"1.0.0\",\"surfaceType\":\"panel-runtime\",\"operation\":\"loadPanel\",\"panelName\":\"ScaleProofPanel\",\"route\":\"/scale-proof/synthetic\",\"title\":\"Scale proof\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"ruleProfile\":\"interactive\",\"governedDataAccess\":\"ConceptGateway\",\"dataSources\":[{\"name\":\"allRows\",\"concept\":\"SyntheticConcept0001\",\"query\":\"AllSyntheticConcept0001\",\"procedure\":\"\",\"parentDataSource\":\"\",\"childField\":\"\",\"rowOps\":[],\"addFormFields\":[],\"recordCount\":0,\"fallback\":false}],\"data\":{\"allRows\":[]},\"fields\":[{\"field\":\"label\"},{\"field\":\"sequence\"}],\"fieldBindings\":[{\"field\":\"label\",\"dataSource\":\"allRows\",\"sourceField\":\"label\",\"editable\":false,\"label\":\"\",\"order\":null},{\"field\":\"sequence\",\"dataSource\":\"allRows\",\"sourceField\":\"sequence\",\"editable\":false,\"label\":\"\",\"order\":null}],\"actions\":[],\"metadata\":{},\"fallbackUi\":false,\"layout\":{\"type\":\"table\",\"fields\":[\"label\",\"sequence\"]},\"gatewayTrace\":[{\"timestampMs\":1786622208631,\"operation\":\"LIST\",\"conceptName\":\"SyntheticConcept0001\",\"id\":\"*\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"outcome\":\"SUCCESS\",\"reasonCode\":\"allowed\",\"ruleProfiles\":[\"always\",\"interactive\",\"query\"],\"defaultsApplied\":[],\"derivedValuesApplied\":[],\"lifecycleTransition\":null,\"explanation\":\"allowed\",\"details\":{\"concept\":\"SyntheticConcept0001\",\"operation\":\"LIST\",\"decisionOutcome\":\"queryRestrictionsExplicit\",\"rulesEvaluated\":[{\"allowed\":true,\"expression\":\"label != null && label != ''\",\"rule\":\"expressionInvariant1\",\"outcome\":\"notAppliedToQueryOperation\"},{\"allowed\":true,\"expression\":\"label != null && label != ''\",\"rule\":\"SyntheticConcept0001LabelRequired\",\"outcome\":\"notAppliedToQueryOperation\"}]}}]}"
           }
         }
       }

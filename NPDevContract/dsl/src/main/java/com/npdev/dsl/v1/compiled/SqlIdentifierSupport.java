@@ -3,7 +3,9 @@ package com.npdev.dsl.v1.compiled;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -83,6 +85,58 @@ public final class SqlIdentifierSupport {
         }
         // v1 default: the context qualifier is invisible to the physical schema.
         return qualifiedName.substring(split + 2);
+    }
+
+    /**
+     * PK-2: like {@link #contextAwareIdentifierSource}, but for a PACK-derived concept, replaces
+     * whatever qualifier currently prefixes {@code qualifiedName} (the importing app's alias --
+     * {@code auth::User}, say) with the pack's own physical qualifier ({@code identity_v1::User}),
+     * derived from the pack's real {@code pack} id + major version, not the local alias. Two apps
+     * importing the same pack under different aliases must produce the identical physical table
+     * name; only the derivation this method feeds does that -- {@link #contextAwareIdentifierSource}
+     * alone cannot, since a pack alias is never a registered context and so survives untouched.
+     *
+     * <p>When {@code physicalQualifier} is null (a non-pack concept), delegates unchanged to
+     * {@link #contextAwareIdentifierSource} -- the {@code physicallyIsolate} bounded-context
+     * mechanism is completely unaffected by this method's existence.
+     */
+    public static String physicalTableNameSource(
+            String qualifiedName,
+            String physicalQualifier,
+            Map<String, Boolean> contextPhysicallyIsolateByName
+    ) {
+        if (physicalQualifier == null || physicalQualifier.isBlank()) {
+            return contextAwareIdentifierSource(qualifiedName, contextPhysicallyIsolateByName);
+        }
+        if (qualifiedName == null) {
+            return null;
+        }
+        int split = qualifiedName.indexOf("::");
+        String bareName = split <= 0 ? qualifiedName : qualifiedName.substring(split + 2);
+        return physicalQualifier + "::" + bareName;
+    }
+
+    /**
+     * PK-2: recomputes a concept's table name via the PRE-PK-2 derivation (alias-preserving,
+     * ignoring any pack physical qualifier) -- deliberately ignoring {@code entity.getTableName()},
+     * which after PK-2 already reflects the pack-and-version-aware physical name. Two independent
+     * uses: (1) REST routes ({@code ControllerEmitter}/generated UI) stay decoupled from a pack's
+     * physical table name on purpose, so a version bump never silently breaks a client's bookmarked
+     * URL; (2) {@code SchemaRealizationEmitter} diffs this against the real (new) table name to
+     * detect and declare an automatic rename on regeneration.
+     */
+    public static String aliasPreservingTableName(CompiledConcept entity, List<CompiledContext> contexts) {
+        if (entity == null) {
+            return "";
+        }
+        Map<String, Boolean> contextPhysicallyIsolateByName = new HashMap<>();
+        if (contexts != null) {
+            for (CompiledContext context : contexts) {
+                contextPhysicallyIsolateByName.put(context.name(), context.physicallyIsolate());
+            }
+        }
+        String source = contextAwareIdentifierSource(entity.getName(), contextPhysicallyIsolateByName);
+        return tableName(source, null);
     }
 
     public static String toSnakePlural(String value) {

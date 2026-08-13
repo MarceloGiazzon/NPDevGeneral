@@ -359,22 +359,28 @@ final class ConceptValidation {
      * concept name compiled to the SAME real table (D4 v1's whole scenario) went undetected -- the
      * exact "two concepts silently share one table" hazard this check's own javadoc, above, says it
      * exists to catch. Now runs every concept name through {@link
-     * SqlIdentifierSupport#contextAwareIdentifierSource} first, the SAME resolution {@code
-     * ModelCompiler#tableNameSource} performs, so this check and the real compiled name can never
-     * drift apart again. This is also I3's own collision matrix (Wave 4, {@code
+     * SqlIdentifierSupport#physicalTableNameSource} first, the SAME resolution {@code
+     * ModelCompiler#physicalTableNameSource} performs, so this check and the real compiled name can
+     * never drift apart again. This is also I3's own collision matrix (Wave 4, {@code
      * S8_DEFERRED_FIVE_PLAN.md}): two non-isolating contexts (or one isolating, one not) sharing a
      * concept name still collide here exactly as before; two BOTH-isolating contexts no longer do,
      * since their compiled table names now genuinely differ ({@code context_concepts}).
+     *
+     * <p>PK-2: two pack-derived concepts sharing a bare name now collide (or not) based on their
+     * PHYSICAL qualifier ({@code realPackId_v<major>}), not the importing app's chosen alias --
+     * matching exactly what {@code ModelCompiler} actually compiles.
      */
     static void validateTableNameCollisions(ModelAst effectiveModel, List<String> errors) {
         Map<String, Boolean> contextPhysicallyIsolateByName = new LinkedHashMap<>();
         for (com.npdev.dsl.v1.ast.ContextAst context : effectiveModel.getContexts()) {
             contextPhysicallyIsolateByName.put(context.name(), context.physicallyIsolate());
         }
+        Map<String, String> physicalQualifierByConceptName = effectiveModel.getPhysicalQualifierByConceptName();
         Map<String, String> conceptNameByTableName = new LinkedHashMap<>();
         for (ConceptAst concept : effectiveModel.getConcepts()) {
-            String tableNameSource = SqlIdentifierSupport.contextAwareIdentifierSource(
-                    concept.getName(), contextPhysicallyIsolateByName);
+            String tableNameSource = SqlIdentifierSupport.physicalTableNameSource(
+                    concept.getName(), physicalQualifierByConceptName.get(concept.getName()),
+                    contextPhysicallyIsolateByName);
             String tableName = SqlIdentifierSupport.toSnakePlural(tableNameSource);
             String firstConceptName = conceptNameByTableName.putIfAbsent(tableName, concept.getName());
             if (firstConceptName != null && !normalize(firstConceptName).equals(normalize(concept.getName()))) {

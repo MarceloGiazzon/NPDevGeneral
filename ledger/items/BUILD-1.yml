@@ -3,8 +3,10 @@ title: >-
   262 of 311 app-independent RuntimeHost files (38.7k LOC) are recompiled in every app build
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-13
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md card BT-1). Measured:
   NPDevRuntimeHost/src/main/java is 311 files / 48,104 LOC, copied into every generated app and
@@ -17,16 +19,27 @@ files:
   - NPDevRuntimeHost/build.gradle.template
   - scripts/proofs/classify_runtimehost_sources.py
 detail: |
-  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card BT-1 for the full 6-step spec (classify,
-  split the source tree into runtimehost-core/runtimehost-generated-bridge, publish the core as a
-  jar, FinalAppAssembler copies only the bridge, explicit @ComponentScan/@EntityScan, measure via the
-  scale ladder). Decision PD9 already recorded: one jar to start (runtimehost-core), not several.
-  MASTER-ROADMAP.md F2: this card must not land before a scale baseline exists (R9/SCALE-1), or the
-  before/after measurement is gone permanently. This session (Step 2b) delivers only step 1
-  (classify, pure data); steps 2-6 are MASTER-ROADMAP.md Step 7 (BT-1 b+c, milestone BM1), not in
-  this session's scope.
+  Closed by MASTER-ROADMAP.md Step 7 (BT-1 b+c, milestone BM1, PR #14, merged 2026-08-13,
+  4d5b94d8). 244 of the 262 app-independent files moved (via `git mv`, preserving history) into a
+  new, independently-built Gradle module, NPDevRuntimeHost/runtimehost-core, shipped as a
+  precompiled jar (+ sources jar) staged the same way every kernel/adapter jar already is and
+  consumed via the existing npdevRuntimeHostLibsDir fileTree dependency -- no new dependency
+  declaration in a generated app's build.gradle.template. 18 files deliberately stayed in the
+  app-coupled bridge (FinalExecApplication.java -- Boot's Gradle plugin only auto-detects the main
+  class from the app's own sourceSet; HelloController.java -- already excluded from every generated
+  app; 16 deferred/experimental controllers/services runtime-supported-controllers.json's allowlist
+  excludes today).
+  Verified live: a real assembled app builds and boots against the jar, and the 3 relocated
+  supported controllers (RuntimeMetadataValidationController, RuntimeSchedulesController,
+  StorageSummaryController) answer real requests (200s). Measured at 100 concepts (recorded in
+  scripts/policy/scale-proof-baseline.json, pre-PK-2 baseline): build 106.0s -> 79.1s (-25%), boot
+  63.4s -> 32.7s (-48%) -- the number BT-2 (sealed-pack precompilation) needs before it starts.
+  Per F8 (MASTER-ROADMAP.md), this measurement is now stale (PK-2 renames every pack table, adding
+  a one-time migration cost the pre-PK-2 baseline doesn't include) -- see SCALE-1 for the
+  re-baseline, tracked separately since it's a measurement-freshness concern, not a remaining gap
+  in this card's own scope.
 guard:
   kind: script
   ref: scripts/proofs/classify_runtimehost_sources.py
-  asserts: standalone, re-runnable classification of NPDevRuntimeHost/src/main/java into app-coupled vs app-independent, matching the 49/262 measured split
+  asserts: standalone, re-runnable classification of NPDevRuntimeHost/src/main/java into app-coupled vs app-independent; NPDevRuntimeHost/runtimehost-core/src/main/java now holds the app-independent side of that split as a real, separately-built module (244 files)
   provenRed: false

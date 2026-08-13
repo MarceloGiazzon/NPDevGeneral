@@ -17,3 +17,14 @@ detail: |
   non-concept members, with `requires`/binding as how an app maps a pack role onto its own?
   Recommendation there was yes. MASTER-ROADMAP.md spine S3 (Step 8); not in this session's scope
   (Steps 1-4) beyond the namespacing groundwork PK-1 lays.
+
+  2026-08-13 (Step 8, PK-3): the DECLARATION and PRESENCE/BINDING half of this is now done -- a
+  pack can declare `requires: {roles, capabilities, network}`, the composing app declares what it
+  satisfies via a root `provides` object, and composition refuses (naming the pack, its path, and
+  the exact unbound key) when a requirement has no matching provides entry
+  (PackRequiresBindingTest.java). What's still open, and is this item's real remaining scope: a
+  pack's own INTERNAL code (role checks inside its own flows/rules/procedures) still only
+  references concrete role names it hardcodes itself -- there is no mechanism yet for a pack to
+  write "requires role admin" once and have that reference resolve, at the point of use, to
+  WHATEVER concrete role name the composing app actually mapped onto "admin". Rewriting the
+  pack's own internal references to consume the app's binding is the remaining work.
