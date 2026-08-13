@@ -6,19 +6,6 @@ npdev:
   auth:
     mode: apikey
     api-keys: "api-dev=dev:developer:admin;dev-key=dev:developer:admin"
-  security:
-    apiKey:
-      required: true
-    encodedMappings: "api-dev=dev:developer:admin;dev-key=dev:developer:admin"
-    apiKeys:
-      api-dev:
-        actor: developer
-        tenant: dev
-        roles: [admin]
-      dev-key:
-        actor: developer
-        tenant: dev
-        roles: [admin]
 
 logging:
   level:

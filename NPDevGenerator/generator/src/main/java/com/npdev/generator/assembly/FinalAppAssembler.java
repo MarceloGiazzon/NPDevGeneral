@@ -608,9 +608,11 @@ public final class FinalAppAssembler {
         var root = OBJECT_MAPPER.readTree(generatedModel.toFile());
         var metadata = root.path("metadata");
         String scenarioId = text(metadata, "scenarioId");
+        // R7 Stage A (fail closed, SEC-1): this list used to start pre-seeded with the same
+        // "api-dev"/"dev-key" ADMIN pair RuntimeApiKeyAuthFilter's own removed static fallback
+        // granted -- a second, independent copy of the identical hole in a different generated file.
+        // It now only ever encodes genuinely-declared metadata.auth.testUsers[] entries.
         List<ApiKeyMapping> mappings = new ArrayList<>();
-        mappings.add(new ApiKeyMapping("api-dev", "dev", "developer", List.of("admin")));
-        mappings.add(new ApiKeyMapping("dev-key", "dev", "developer", List.of("admin")));
 
         for (var userNode : metadata.path("auth").path("testUsers")) {
             String userId = text(userNode, "userId");
@@ -630,7 +632,7 @@ public final class FinalAppAssembler {
                 mappings.add(new ApiKeyMapping(apiKey, tenantId, userId, List.copyOf(roles)));
             }
         }
-        if (mappings.size() <= 2) {
+        if (mappings.isEmpty()) {
             return;
         }
 
