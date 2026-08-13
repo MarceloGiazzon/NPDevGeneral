@@ -32,7 +32,10 @@ $AllowlistReportPath = if ([string]::IsNullOrWhiteSpace($AllowlistReportPath)) {
 $FootprintReportPath = if ([string]::IsNullOrWhiteSpace($FootprintReportPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\runtime-footprint-report.json" } else { Normalize-NPDevPath $FootprintReportPath }
 $AsyncWaitResumeTestPath = if ([string]::IsNullOrWhiteSpace($AsyncWaitResumeTestPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\test\java\com\finalexec\AsyncWaitResumeE2EIT.java" } else { Normalize-NPDevPath $AsyncWaitResumeTestPath }
 $HealthTestPath = if ([string]::IsNullOrWhiteSpace($HealthTestPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\test\java\com\finalexec\RuntimeHealthEndpointIT.java" } else { Normalize-NPDevPath $HealthTestPath }
-$RuntimeModeConfigPath = if ([string]::IsNullOrWhiteSpace($RuntimeModeConfigPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\main\java\com\finalexec\config\NpdevRuntimeModeConfig.java" } else { Normalize-NPDevPath $RuntimeModeConfigPath }
+# BT-1: NpdevRuntimeModeConfig.java is app-independent (no com.npdev.generated. reference) and now
+# lives under runtimehost-core, RuntimeHost's app-independent module (scripts/proofs/
+# classify_runtimehost_sources.py).
+$RuntimeModeConfigPath = if ([string]::IsNullOrWhiteSpace($RuntimeModeConfigPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\runtimehost-core\src\main\java\com\finalexec\config\NpdevRuntimeModeConfig.java" } else { Normalize-NPDevPath $RuntimeModeConfigPath }
 
 $runtimeHostReport = Read-Bucket2JsonFile $RuntimeHostReportPath
 $classificationReport = Read-Bucket2JsonFile $ClassificationReportPath

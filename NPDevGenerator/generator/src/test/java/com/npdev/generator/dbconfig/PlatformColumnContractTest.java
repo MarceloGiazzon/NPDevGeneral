@@ -44,8 +44,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 final class PlatformColumnContractTest {
 
+    // BT-1: SchemaLifecycleExecutor is app-independent (no com.npdev.generated. reference) and now
+    // lives in runtimehost-core, the app-independent half of RuntimeHost's source tree
+    // (scripts/proofs/classify_runtimehost_sources.py), not the bridge.
     private static final Path EXECUTOR_SOURCE = Path.of(
-            "NPDevRuntimeHost", "src", "main", "java", "com", "finalexec", "db", "SchemaLifecycleExecutor.java");
+            "NPDevRuntimeHost", "runtimehost-core", "src", "main", "java", "com", "finalexec", "db",
+            "SchemaLifecycleExecutor.java");
 
     /** {@code private static final Set<String> PLATFORM_MANAGED_COLUMNS = Set.of("a", "b", ...);} */
     private static final Pattern DECLARATION = Pattern.compile(

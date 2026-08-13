@@ -75,7 +75,10 @@ $checks.Add((New-Check `
     -Data ([pscustomobject]@{ policyPath = $policyRel; fieldCount = $fieldCount }))) | Out-Null
 
 $authConfigRel = 'NPDevRuntimeHost\src\main\java\com\finalexec\config\NpdevAuthConfig.java'
-$runtimeModeConfigRel = 'NPDevRuntimeHost\src\main\java\com\finalexec\config\NpdevRuntimeModeConfig.java'
+# BT-1: NpdevRuntimeModeConfig.java is app-independent (no com.npdev.generated. reference) and now
+# lives under runtimehost-core, RuntimeHost's app-independent module (scripts/proofs/
+# classify_runtimehost_sources.py).
+$runtimeModeConfigRel = 'NPDevRuntimeHost\runtimehost-core\src\main\java\com\finalexec\config\NpdevRuntimeModeConfig.java'
 $externalBetaRel = 'NPDevRuntimeHost\src\main\resources\application-external-beta.properties'
 
 $checks.Add((New-Check `

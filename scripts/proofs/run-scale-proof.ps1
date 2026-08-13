@@ -296,12 +296,20 @@ else {
 }
 if (-not $baseline.Contains("runs")) { $baseline["runs"] = [ordered]@{} }
 $key = [string]$Concepts
-$history = if ($baseline["runs"].Contains($key)) { @($baseline["runs"][$key]) } else { @() }
-# The unary comma is load-bearing: `$array += $orderedDictionary` enumerates the dictionary's
-# entries into the array instead of appending it as one element (a documented PowerShell pitfall
-# once the dictionary is non-trivial/nested) -- `,$report` forces it to be treated as a single item.
-$history += ,$report
-$baseline["runs"][$key] = $history
+# BT-1: found live while recording this card's own required before/after measurement -- a REPEAT
+# run for a $key that already has history (e.g. rerunning 26 or 100) threw "A hash table can only
+# be added to another hash table". `ConvertFrom-Json -AsHashtable` types each existing history entry
+# as a strict [hashtable], but $report above is built with `[ordered]@{}` ([OrderedDictionary]) --
+# PowerShell's `+=` on the resulting strongly-[hashtable]-typed array enforces that element type, so
+# appending an OrderedDictionary (not exactly [hashtable]) fails. A List[object] has no such
+# enforcement -- `,$report`'s single-item-append intent (see the comment this replaces) is preserved
+# by .Add(), which never enumerates its argument's entries the way `+=` on an array can.
+$history = [System.Collections.Generic.List[object]]::new()
+if ($baseline["runs"].Contains($key)) {
+    foreach ($entry in @($baseline["runs"][$key])) { $history.Add($entry) | Out-Null }
+}
+$history.Add($report) | Out-Null
+$baseline["runs"][$key] = @($history)
 ($baseline | ConvertTo-Json -Depth 30) | Set-Content -LiteralPath $BaselinePath -Encoding UTF8
 
 Write-Host ""

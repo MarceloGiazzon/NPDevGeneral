@@ -38,9 +38,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       {@code medium-expense-approval} (declares both a concept and a flow, exercising
  *       {@code business-concept-crud-controller.mustache} and
  *       {@code npdev-runtime-flow-controller.mustache}), scanning every emitted {@code .java} file;</li>
- *   <li>the "template tree" (NOT model-specific -- copied verbatim into every generated app, so no
- *       generation is needed): read directly from this sibling module,
- *       {@code NPDevRuntimeHost/src/main/java/com/finalexec/api/*.java}.</li>
+ *   <li>the "template tree" (NOT model-specific -- present in every generated app either as copied
+ *       source or as a runtimehost-core jar dependency (BT-1), so no generation is needed): read
+ *       directly from {@code NPDevRuntimeHost/src/main/java/com/finalexec/api/*.java} AND
+ *       {@code NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/api/*.java}.</li>
  * </ul>
  * Every {@link RealRoutePatterns#ALL} entry must match at least one extracted route. A pattern with
  * zero matches means the controller it was written against has moved on without it.
@@ -116,17 +117,30 @@ class RoutePatternStalenessTest {
     }
 
     /** Not model-specific -- copied verbatim into every generated app -- so read directly rather than
-     * generating anything. */
+     * generating anything.
+     *
+     * <p>BT-1: some of these controllers are app-independent (no {@code com.npdev.generated.}
+     * reference) and now live in {@code runtimehost-core}, RuntimeHost's app-independent module
+     * (scripts/proofs/classify_runtimehost_sources.py), shipped as a jar dependency rather than
+     * copied into a generated app -- but they are STILL "not model-specific, copied verbatim /
+     * present in every generated app" in the sense this method cares about, so both trees are
+     * scanned here. */
     private List<RealRoute> extractRoutesFromTemplateTree() throws IOException {
-        Path controllersDir = resolvePath(List.of(
+        Path bridgeControllersDir = resolvePath(List.of(
                 Path.of("..", "..", "NPDevRuntimeHost", "src", "main", "java", "com", "finalexec", "api"),
                 Path.of("..", "..", "..", "NPDevRuntimeHost", "src", "main", "java", "com", "finalexec", "api")
         ));
+        Path coreControllersDir = resolvePath(List.of(
+                Path.of("..", "..", "NPDevRuntimeHost", "runtimehost-core", "src", "main", "java", "com", "finalexec", "api"),
+                Path.of("..", "..", "..", "NPDevRuntimeHost", "runtimehost-core", "src", "main", "java", "com", "finalexec", "api")
+        ));
 
         List<RealRoute> routes = new ArrayList<>();
-        try (Stream<Path> files = Files.list(controllersDir)) {
-            for (Path javaFile : files.filter(p -> p.toString().endsWith("Controller.java")).toList()) {
-                routes.addAll(extractRoutesFromSource(Files.readString(javaFile)));
+        for (Path controllersDir : List.of(bridgeControllersDir, coreControllersDir)) {
+            try (Stream<Path> files = Files.list(controllersDir)) {
+                for (Path javaFile : files.filter(p -> p.toString().endsWith("Controller.java")).toList()) {
+                    routes.addAll(extractRoutesFromSource(Files.readString(javaFile)));
+                }
             }
         }
         return routes;

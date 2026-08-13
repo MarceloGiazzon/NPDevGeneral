@@ -36,7 +36,17 @@ public final class FinalAppAssembler {
             "node_modules",
             "runtime-data",
             "npdev-generated",
-            "npdev-meta"
+            "npdev-meta",
+            // BT-1: runtimehost-core is the app-independent half of RuntimeHost's source tree
+            // (scripts/proofs/classify_runtimehost_sources.py), split into its own independently
+            // buildable Gradle project nested under NPDevRuntimeHost/ (see that module's build.gradle
+            // header comment for why it can't be a multi-module subproject instead). It ships as a
+            // precompiled jar (scripts/runtimehost/sync-runtimehost-libs.ps1 stages it beside every
+            // other kernel/adapter jar), consumed via the SAME npdevRuntimeHostLibsDir fileTree
+            // dependency in build.gradle.template -- so its SOURCE must never be copied into a
+            // generated app at all, not merely excluded from compilation the way the manifest-driven
+            // unsupported controller/service sources below are.
+            "runtimehost-core"
     );
     private static final Set<String> EXCLUDED_FILE_NAMES = Set.of(
             ".DS_Store",

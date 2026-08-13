@@ -209,7 +209,7 @@ Nothing has touched a database yet. Generation is pure model → artifacts.
 ## 8. How a schema changes (boot time): the reconciliation engine
 
 On boot, Spring Boot would normally call Flyway's `migrate()`. NPDev intercepts this: it registers
-[`SchemaLifecycleExecutor`](../NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java)
+[`SchemaLifecycleExecutor`](../NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java)
 as the `FlywayMigrationStrategy` bean, so its `migrate(Flyway)` runs **instead of** the default. The
 executor is the declarative brain; it decides *what to do*, then delegates the actual DDL to Flyway's
 generated scripts. The high-level flow:

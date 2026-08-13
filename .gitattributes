@@ -30,6 +30,7 @@
 *.sh            text eol=lf
 *.bash          text eol=lf
 gradlew         text eol=lf
+npdev           text eol=lf
 Dockerfile      text eol=lf
 Dockerfile.*    text eol=lf
 *.dockerfile    text eol=lf

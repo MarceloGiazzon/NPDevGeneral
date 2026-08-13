@@ -49,6 +49,11 @@ from pathlib import Path
 # storage/migration path, not about every "rolled back" in the repo (git talk, docs, REG narratives).
 SCAN_ROOTS = [
     "NPDevRuntimeHost/src/main/java/com/finalexec/db",
+    # BT-1: most of com/finalexec/db is app-independent (no com.npdev.generated. reference) and now
+    # lives in runtimehost-core, a separate Gradle module (scripts/proofs/
+    # classify_runtimehost_sources.py) -- without this, an operator-facing rollback claim added there
+    # would go unaudited.
+    "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db",
     "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage",
     "NPDevKernel/adapters",
 ]

@@ -488,6 +488,51 @@ final class HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest {
                 StandardCharsets.UTF_8);
         assertEquals(0, result.exitCode(), result.output());
         assertTrue(Files.isRegularFile(manifest), "RuntimeHost libs manifest must exist after sync: " + manifest);
+
+        // BT-1: runtimehost-core (NPDevRuntimeHost/runtimehost-core) is a separate, independently
+        // buildable Gradle project -- not one of NPDevKernel's `:adapters:*`, so the hardcoded list
+        // above can't reach it. Its own build depends on the kernel/dsl jars the sync above just
+        // staged into runtimeHostLibs (same npdevRuntimeHostLibsDir fileTree mechanism the
+        // generated app itself uses), so it must build AFTER that sync, then get staged with a
+        // second sync pass -- the same two-phase order scripts/runtimehost/sync-runtimehost-libs.ps1
+        // and npdev_cli.py's run_setup use.
+        Path runtimeHostCoreRoot = WORKSPACE_ROOT.resolve("NPDevRuntimeHost/runtimehost-core");
+        CommandResult runtimeHostCoreJar = runCommand(
+                List.of(
+                        gradlewPath(runtimeHostCoreRoot).toString(),
+                        "jar",
+                        "sourcesJar",
+                        "-PnpdevRuntimeHostLibsDir=" + runtimeHostLibs,
+                        "--no-daemon",
+                        "--console=plain"
+                ),
+                runtimeHostCoreRoot,
+                Map.of(),
+                Duration.ofMinutes(4)
+        );
+        assertEquals(0, runtimeHostCoreJar.exitCode(), runtimeHostCoreJar.output());
+
+        Path secondReport = evidenceRoot.resolve("runtimehost-libs-sync-report-2.json");
+        CommandResult secondSync = runCommand(
+                List.of(
+                        "pwsh",
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        WORKSPACE_ROOT.resolve("scripts/runtimehost/sync-runtimehost-libs.ps1").toString(),
+                        "-WorkspaceRoot",
+                        WORKSPACE_ROOT.toString(),
+                        "-RuntimeHostLibs",
+                        runtimeHostLibs.toString(),
+                        "-ReportPath",
+                        secondReport.toString()
+                ),
+                WORKSPACE_ROOT,
+                Map.of(),
+                Duration.ofMinutes(4)
+        );
+        assertEquals(0, secondSync.exitCode(), secondSync.output());
         return runtimeHostLibs;
     }
 

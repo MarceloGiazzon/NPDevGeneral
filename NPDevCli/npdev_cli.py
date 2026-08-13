@@ -2116,12 +2116,21 @@ def run_setup(args: argparse.Namespace) -> int:
     root = repo_root()
     kernel_root = root / "NPDevKernel"
     generator_root = root / "NPDevGenerator"
+    # BT-1: runtimehost-core is the app-independent half of RuntimeHost's source tree
+    # (scripts/proofs/classify_runtimehost_sources.py), an independent Gradle project nested under
+    # NPDevRuntimeHost/ (see its build.gradle header for why it isn't a kernel-style subproject).
+    # Its own build depends on the kernel/generator/dsl jars staged below, so it must build AFTER
+    # them -- see the two-phase staging below.
+    runtimehost_core_root = root / "NPDevRuntimeHost" / "runtimehost-core"
     kernel_wrapper = gradle_wrapper(kernel_root)
     generator_wrapper = gradle_wrapper(generator_root)
+    runtimehost_core_wrapper = gradle_wrapper(runtimehost_core_root)
     if not kernel_wrapper.exists():
         raise CliError(f"Kernel Gradle wrapper not found: {kernel_wrapper}")
     if not generator_wrapper.exists():
         raise CliError(f"Generator Gradle wrapper not found: {generator_wrapper}")
+    if not runtimehost_core_wrapper.exists():
+        raise CliError(f"runtimehost-core Gradle wrapper not found: {runtimehost_core_wrapper}")
 
     build_root = _ai_build_root()
     os.environ["NPDEV_BUILD_ROOT"] = str(build_root)
@@ -2161,21 +2170,44 @@ def run_setup(args: argparse.Namespace) -> int:
             generator_command = ["cmd.exe", "/c"] + generator_command
         out.run(generator_command, generator_root)
 
+        def _stage_jars(source_jars: dict[str, Path]) -> tuple[list[str], list[str]]:
+            copied, up_to_date = [], []
+            for name, source in sorted(source_jars.items()):
+                target = libs_dir / name
+                if target.exists():
+                    same_size = target.stat().st_size == source.stat().st_size
+                    same_time = abs(target.stat().st_mtime - source.stat().st_mtime) < 1
+                    if same_size and same_time:
+                        up_to_date.append(name)
+                        continue
+                shutil.copy2(source, target)
+                copied.append(name)
+            return copied, up_to_date
+
+        # BT-1: stage kernel/generator/dsl jars NOW, before building runtimehost-core -- its own
+        # build depends on them via the identical npdevRuntimeHostLibsDir fileTree mechanism a
+        # generated app uses, so they must already be in libs_dir before its compileJava runs.
+        _stage_jars(_discover_runtimehost_source_jars(root, build_root))
+
+        out.narrate("npdev setup: [1/3] building runtimehost-core jar (+ sources jar)")
+        runtimehost_core_command = [
+            str(runtimehost_core_wrapper), "jar", "sourcesJar",
+            f"-PnpdevBuildRoot={build_root}", f"-PnpdevRuntimeHostLibsDir={libs_dir}",
+            *gradle_project_cache_args("runtimehost-core"), "--no-daemon", "--console=plain",
+        ]
+        if os.name == "nt" and runtimehost_core_wrapper.suffix.lower() == ".bat":
+            runtimehost_core_command = ["cmd.exe", "/c"] + runtimehost_core_command
+        out.run(runtimehost_core_command, runtimehost_core_root)
+
+        # Re-discover: runtimehost-core's freshly built jar (+ sources jar) is now ALSO visible
+        # under the external Gradle build root (same layout.buildDirectory redirection convention
+        # kernel/generator/dsl already use), so this second pass picks it up too. This IS the
+        # authoritative set the manifest/report below reflects.
         source_jars = _discover_runtimehost_source_jars(root, build_root)
         if not source_jars:
             raise CliError("No RuntimeHost jars were discovered under build/libs after local jar build.")
 
-        copied, up_to_date = [], []
-        for name, source in sorted(source_jars.items()):
-            target = libs_dir / name
-            if target.exists():
-                same_size = target.stat().st_size == source.stat().st_size
-                same_time = abs(target.stat().st_mtime - source.stat().st_mtime) < 1
-                if same_size and same_time:
-                    up_to_date.append(name)
-                    continue
-            shutil.copy2(source, target)
-            copied.append(name)
+        copied, up_to_date = _stage_jars(source_jars)
 
         missing = [name for name in source_jars if not (libs_dir / name).exists()]
         if missing:
@@ -2210,9 +2242,11 @@ def run_setup(args: argparse.Namespace) -> int:
               **driver_results)
 
     # Clean the source builds' own build/ dirs afterward -- build output does not belong inside
-    # the repo tree (this repo's own standing policy); scoped to exactly the three source roots
-    # walked above, nothing else.
-    for source_root_name in ("NPDevContract", "NPDevGenerator", "NPDevKernel"):
+    # the repo tree (this repo's own standing policy); scoped to exactly the four source roots
+    # walked above (runtimehost-core redirects layout.buildDirectory outside the repo like the
+    # other three, so this normally finds nothing there -- it only fires for a stray local build).
+    for source_root_name in ("NPDevContract", "NPDevGenerator", "NPDevKernel",
+                              "NPDevRuntimeHost/runtimehost-core"):
         source_root = root / source_root_name
         if not source_root.is_dir():
             continue

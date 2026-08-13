@@ -37,6 +37,11 @@ class FinalAppAssemblerTest {
         write(host.resolve("src/main/java/com/finalexec/HelloController.java"), "package com.finalexec;\n");
         write(host.resolve("src/main/resources/db/migration/V5001__runtime.sql"), "select 1;\n");
         write(host.resolve("libs/kernel-0.1.0.jar"), "jar");
+        // BT-1: the app-independent runtimehost-core module lives nested under the host root but
+        // must never be copied into a generated app -- it ships as a precompiled jar dependency
+        // instead (see EXCLUDED_DIRECTORY_NAMES's own comment).
+        write(host.resolve("runtimehost-core/build.gradle"), "plugins { id 'java-library' }\n");
+        write(host.resolve("runtimehost-core/src/main/java/com/finalexec/api/RuntimeSchedulesController.java"), "package com.finalexec.api;\n");
         write(host.resolve(".gradle/cache.bin"), "cache");
         write(host.resolve(".idea/workspace.xml"), "idea");
         write(host.resolve("build/classes/Main.class"), "class");
@@ -80,6 +85,8 @@ class FinalAppAssemblerTest {
         assertFalse(Files.exists(finalApp.resolve("src/main/java/com/finalexec/npdev/service/experimental/FlowBuilderService.java")));
         assertFalse(Files.exists(finalApp.resolve("src/main/java/com/finalexec/HelloController.java")));
         assertFalse(Files.exists(finalApp.resolve("libs/kernel-0.1.0.jar")));
+        assertFalse(Files.exists(finalApp.resolve("runtimehost-core/build.gradle")));
+        assertFalse(Files.exists(finalApp.resolve("runtimehost-core/src/main/java/com/finalexec/api/RuntimeSchedulesController.java")));
         assertTrue(Files.exists(finalApp.resolve("npdev-generated/src/main/java/com/npdev/generated/entities/User.java")));
         assertTrue(Files.exists(finalApp.resolve("npdev-generated/src/main/resources/npdev/compiled-model.json")));
         assertTrue(Files.exists(finalApp.resolve("npdev-generated/src/main/resources/npdev/support/generated-folder.signature.properties")));

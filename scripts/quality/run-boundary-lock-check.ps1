@@ -29,8 +29,15 @@ function Add-Failure {
 
 function Get-SourceControllerNames {
     $controllerRoot = Join-Path $script:workspaceRoot "NPDevRuntimeHost\src\main\java\com\finalexec"
+    # BT-1: 3 controllers (RuntimeMetadataValidationController, RuntimeSchedulesController,
+    # StorageSummaryController) are app-independent (no com.npdev.generated. reference) and now live
+    # under runtimehost-core, RuntimeHost's app-independent module (scripts/proofs/
+    # classify_runtimehost_sources.py) -- scanned as a second root so they aren't silently dropped
+    # from classification.
+    $controllerRootCore = Join-Path $script:workspaceRoot "NPDevRuntimeHost\runtimehost-core\src\main\java\com\finalexec"
     return @(
-        Get-ChildItem -LiteralPath $controllerRoot -Recurse -File -Filter "*Controller.java" |
+        @(Get-ChildItem -LiteralPath $controllerRoot -Recurse -File -Filter "*Controller.java") +
+        @(Get-ChildItem -LiteralPath $controllerRootCore -Recurse -File -Filter "*Controller.java") |
             ForEach-Object { $_.BaseName } |
             Sort-Object -Unique
     )
