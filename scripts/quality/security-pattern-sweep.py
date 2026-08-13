@@ -493,6 +493,14 @@ SCAN_ROOTS = [
     # and the schema-evolution primitives -- security-relevant by any reading. A scan root list is a
     # claim about coverage; an incomplete one turns a green check into false comfort.
     "NPDevContract/dsl/src/main/java",
+    # BT-1 (2026-08-13): most of NPDevRuntimeHost/src/main/java (244 files -- SchemaLifecycleExecutor,
+    # JdbcBusinessConceptStore, the schema-realization/db surface, auth-adjacent config) moved into
+    # this new, independently-built module (scripts/proofs/classify_runtimehost_sources.py). Its
+    # allowlist fingerprints are content-based, not path-based (see
+    # security-pattern-sweep-allowlist.json's own `where`-is-informational-only design, P3.1), so
+    # every hit already cleared under the old NPDevRuntimeHost/src/main/java path still clears here
+    # -- but the root itself still has to be listed, or this exact blind spot recurs for the module.
+    "NPDevRuntimeHost/runtimehost-core/src/main/java",
 ]
 
 # Generated bundles and vendored assets: not ours to fix, and huge.

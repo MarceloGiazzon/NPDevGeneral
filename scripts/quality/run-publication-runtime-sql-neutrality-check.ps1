@@ -41,9 +41,11 @@ if (-not (Test-Path -LiteralPath $WorkspaceRoot)) {
   throw "WorkspaceRoot not found: $WorkspaceRoot"
 }
 
+# BT-1: both files are app-independent (no com.npdev.generated. reference) and now live under
+# runtimehost-core, RuntimeHost's app-independent module (scripts/proofs/classify_runtimehost_sources.py).
 $runtimeFiles = @(
-  'NPDevRuntimeHost\src\main\java\com\finalexec\npdev\service\internal\RealPublicationExecutorService.java',
-  'NPDevRuntimeHost\src\main\java\com\finalexec\npdev\service\internal\PublicationStateStore.java'
+  'NPDevRuntimeHost\runtimehost-core\src\main\java\com\finalexec\npdev\service\internal\RealPublicationExecutorService.java',
+  'NPDevRuntimeHost\runtimehost-core\src\main\java\com\finalexec\npdev\service\internal\PublicationStateStore.java'
 )
 
 $forbiddenPatterns = @(

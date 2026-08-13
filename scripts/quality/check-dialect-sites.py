@@ -41,6 +41,13 @@ SCAN_ROOTS = [
     "NPDevKernel/adapters",
     "NPDevRuntimeHost/src/main/java/com/finalexec/db",
     "NPDevRuntimeHost/src/main/java/com/finalexec/npdev",
+    # BT-1: most of com/finalexec/db and com/finalexec/npdev is app-independent (no
+    # com.npdev.generated. reference) and now lives in runtimehost-core, a separate Gradle module
+    # (scripts/proofs/classify_runtimehost_sources.py) -- without these two, a dialect-bound
+    # construct added there would go undetected, the exact silent-regression shape this gate exists
+    # to prevent.
+    "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db",
+    "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev",
     "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig",
 ]
 
