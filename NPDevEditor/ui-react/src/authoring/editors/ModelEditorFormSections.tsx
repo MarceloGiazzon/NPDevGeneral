@@ -193,7 +193,7 @@ export default function ModelEditorFormSections({
       />
 
       <QueriesEditorSection queries={queries} conceptNames={conceptNames} onChange={updateQueries} />
-      <RuleProfilesEditorSection ruleProfiles={ruleProfiles} conceptNames={conceptNames} onChange={updateRuleProfiles} />
+      <RuleProfilesEditorSection ruleProfiles={ruleProfiles} onChange={updateRuleProfiles} />
       <ProceduresEditorSection
         procedures={procedures}
         conceptNames={conceptNames}
@@ -204,7 +204,6 @@ export default function ModelEditorFormSections({
       <PanelsEditorSection
         panels={panels}
         conceptNames={conceptNames}
-        queryNames={queries.map((query) => query.name)}
         procedureNames={procedures.map((procedure) => procedure.name)}
         flowNames={flows.map((flow) => flow.name)}
         onChange={updatePanels}

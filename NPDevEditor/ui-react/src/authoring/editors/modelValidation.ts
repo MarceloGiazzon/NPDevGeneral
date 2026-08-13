@@ -156,11 +156,12 @@ export function validateModelDocument(document: AuthoringModelDocument): JsonVal
         message: "Panel name is required."
       });
     }
-    if (!hasText(panel.route) && !hasText(panel.concept)) {
+    const hasConceptBoundDataSource = (panel.dataSources ?? []).some((dataSource) => hasText(dataSource.concept));
+    if (!hasText(panel.route) && !hasConceptBoundDataSource) {
       issues.push({
         severity: "warning",
         path: `panels[${panelIndex}]`,
-        message: "Panels should declare a route or a concept-oriented anchor."
+        message: "Panels should declare a route or at least one concept-bound data source."
       });
     }
   });
