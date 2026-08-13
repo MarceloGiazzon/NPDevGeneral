@@ -17,7 +17,7 @@ from .constants import FLOW_STEP_TYPES  # noqa: F401 - the table expands one ent
 from .detectors_model import (  # noqa: F401 - every name the table below references
     _all_steps, _flows, _has_aggregate_on_commit, _has_aggregate_on_validate,
     _has_capability_policy, _has_composite_index, _has_concept_access, _has_concept_extends,
-    _has_conversion_op, _has_date_field, _has_file_field, _has_flow_io_schema,
+    _has_conversion_op, _has_date_field, _has_decimal_field, _has_file_field, _has_flow_io_schema,
     _has_flow_start_endpoint, _has_groupby_cross_context_join, _has_groupby_join,
     _has_groupby_multi_hop_join, _has_on_failure, _has_parallel_await_foreach,
     _has_parallel_await_multistep_foreach, _has_post_checkpoint,
@@ -153,6 +153,10 @@ FEATURE_DETECTORS = {
     # Movimento/Recebimento/Romaneio), but they live in $ref'd-out concepts/*.json files this
     # gate's naive model loader can't see; a dsl-conformance-max fixture makes it a real witness.
     "type.date": _has_date_field,
+    # R5 (MASTER-ROADMAP.md Step 5, M1): a field with type:decimal -- the exact-precision numeric
+    # type the DSL previously had no way to express (every existing sample worked around it with a
+    # priceCents-style integer field name).
+    "type.decimal": _has_decimal_field,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): panelAction.binding=conceptQuery -- zero
     # declarations AND zero test coverage anywhere before this (unlike most other Wave 5 items);
     # PanelRuntimeConceptQueryActionTest (RuntimeHost) now proves it end-to-end.
