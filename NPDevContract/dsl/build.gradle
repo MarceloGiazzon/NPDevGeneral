@@ -166,6 +166,56 @@ tasks.register('packWhy', JavaExec) {
     args cliArgs
 }
 
+// PK-4 Stage A: `npdev pack diff <old> <new>` -- a pure, no-database, no-app-build classification
+// of every difference between two pack.json documents into ADDITIVE/BREAKING/PATCH
+// (com.npdev.dsl.v1.pack.PackDiffEngine). Purely informational: never refuses, unlike packPublish
+// below. Same JavaExec-wrapped-by-a-thin-Python-subparser shape as validateModel above.
+tasks.register('packDiff', JavaExec) {
+    group = 'verification'
+    description = 'Diff two pack.json documents and classify every difference as ADDITIVE/BREAKING/PATCH.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.PackDiffMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('oldPack')) {
+        cliArgs << project.getProperty('oldPack')
+    }
+    if (project.hasProperty('newPack')) {
+        cliArgs << project.getProperty('newPack')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
+// PK-4 Stage B: `npdev pack publish <old> <new>` -- wraps packDiff's classification with the
+// version-bump-size refusal rule (com.npdev.dsl.v1.pack.PackPublishGate) and, with -Pwrite, writes
+// an empty migrations chain entry into the new pack.json for a non-BREAKING publish. ignoreExitValue
+// lets a REFUSED publish (exit 2) surface its report instead of failing the Gradle invocation itself
+// -- the caller (npdev_cli.py / check-pack-diff-gate.py) reads the report's own `allowed` field.
+tasks.register('packPublish', JavaExec) {
+    group = 'verification'
+    description = 'Refuse a pack.json publish whose version bump is smaller than PackDiffEngine requires.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.PackPublishMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('oldPack')) {
+        cliArgs << project.getProperty('oldPack')
+    }
+    if (project.hasProperty('newPack')) {
+        cliArgs << project.getProperty('newPack')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    if (project.hasProperty('write')) {
+        cliArgs << '--write'
+    }
+    args cliArgs
+}
+
 tasks.register('checkRuntimeSchemaCopies') {
     description = 'Ensures active canonical schemas are synchronized into DSL runtime resources.'
     group = 'verification'

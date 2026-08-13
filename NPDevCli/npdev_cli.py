@@ -4411,6 +4411,116 @@ def run_migration_diff(args: argparse.Namespace) -> None:
     print(f"migration diff decision report: {decision_report}")
 
 
+def run_pack_diff(args: argparse.Namespace) -> int:
+    """PK-4 Stage A: routes to the :NPDevContract:dsl:packDiff Gradle task (PackDiffMain), which
+    diffs two pack.json documents -- no database, no filesystem beyond the two files given -- and
+    classifies every difference as ADDITIVE/BREAKING/PATCH via com.npdev.dsl.v1.pack.PackDiffEngine.
+    Purely informational, same as the Java CLI it wraps: exit code is always 0 once both files were
+    readable and diffable, whatever the classification turns out to be -- `pack publish` below is
+    what refuses.
+    """
+    root = repo_root()
+    wrapper = gradle_wrapper(root)
+    if not wrapper.exists():
+        raise CliError(f"Gradle wrapper not found: {wrapper}")
+
+    old_pack = Path(args.old_pack).expanduser().resolve()
+    new_pack = Path(args.new_pack).expanduser().resolve()
+    if not old_pack.exists():
+        raise CliError(f"old pack not found: {old_pack}")
+    if not new_pack.exists():
+        raise CliError(f"new pack not found: {new_pack}")
+
+    written_report = Path(args.out).expanduser().resolve() if getattr(args, "out", None) else None
+    with tempfile.TemporaryDirectory(prefix="npdev-pack-diff-") as temp_dir:
+        report_target = written_report or (Path(temp_dir) / "pack-diff-report.json")
+        report_target.parent.mkdir(parents=True, exist_ok=True)
+        gradle_args = [
+            str(wrapper),
+            *gradle_project_cache_args("root"),
+            ":NPDevContract:dsl:packDiff",
+            f"-PoldPack={old_pack}",
+            f"-PnewPack={new_pack}",
+            f"-PreportOut={report_target}",
+            "-q",
+            "--console=plain",
+        ]
+        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+            gradle_args = ["cmd.exe", "/c"] + gradle_args
+        completed = subprocess.run(gradle_args, cwd=root, check=False, capture_output=True, text=True)
+        if not report_target.exists():
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise CliError(
+                "pack diff did not produce a report"
+                + (f" (gradle exit {completed.returncode})" if completed.returncode else "")
+                + (f": {detail[-500:]}" if detail else "")
+            )
+        report = read_json(report_target)
+
+    print(json.dumps(report, indent=2))
+    return 0
+
+
+def run_pack_publish(args: argparse.Namespace) -> int:
+    """PK-4 Stage B: routes to :NPDevContract:dsl:packPublish (PackPublishMain), which wraps Stage
+    A's diff with the version-bump-size refusal rule (com.npdev.dsl.v1.pack.PackPublishGate): a
+    BREAKING finding requires at least a major bump, ADDITIVE at least a minor bump, PATCH-only at
+    least a patch bump. With --write and an allowed, non-BREAKING decision, the Java side also
+    rewrites <newPack.json> in place with an empty `migrations` chain entry
+    (PackPublishGate.Decision#shouldWriteEmptyMigrationEntry) -- the same opt-in shape as
+    `migrate dsl-2 --write` / `migrate rename --write` elsewhere in this file: without --write this
+    only reports what would happen.
+
+    Returns 0 when the publish is allowed, 2 when refused -- read from the report's own `allowed`
+    field. The Gradle task itself always exits 0 (ignoreExitValue, same convention as validateModel
+    and packDiff above), precisely so a refusal surfaces as a report instead of a Gradle build
+    failure with no structured detail.
+    """
+    root = repo_root()
+    wrapper = gradle_wrapper(root)
+    if not wrapper.exists():
+        raise CliError(f"Gradle wrapper not found: {wrapper}")
+
+    old_pack = Path(args.old_pack).expanduser().resolve()
+    new_pack = Path(args.new_pack).expanduser().resolve()
+    if not old_pack.exists():
+        raise CliError(f"old pack not found: {old_pack}")
+    if not new_pack.exists():
+        raise CliError(f"new pack not found: {new_pack}")
+
+    written_report = Path(args.out).expanduser().resolve() if getattr(args, "out", None) else None
+    with tempfile.TemporaryDirectory(prefix="npdev-pack-publish-") as temp_dir:
+        report_target = written_report or (Path(temp_dir) / "pack-publish-report.json")
+        report_target.parent.mkdir(parents=True, exist_ok=True)
+        gradle_args = [
+            str(wrapper),
+            *gradle_project_cache_args("root"),
+            ":NPDevContract:dsl:packPublish",
+            f"-PoldPack={old_pack}",
+            f"-PnewPack={new_pack}",
+            f"-PreportOut={report_target}",
+            "-q",
+            "--console=plain",
+        ]
+        if getattr(args, "write", False):
+            gradle_args.append("-Pwrite")
+        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+            gradle_args = ["cmd.exe", "/c"] + gradle_args
+        completed = subprocess.run(gradle_args, cwd=root, check=False, capture_output=True, text=True)
+        if not report_target.exists():
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise CliError(
+                "pack publish did not produce a report"
+                + (f" (gradle exit {completed.returncode})" if completed.returncode else "")
+                + (f": {detail[-500:]}" if detail else "")
+            )
+        report = read_json(report_target)
+
+    print(json.dumps(report, indent=2))
+    print(report.get("message", ""))
+    return 0 if report.get("allowed") else 2
+
+
 def _add_merge_args(parser: argparse.ArgumentParser) -> None:
     """S5 (element-granularity authoring merge, __OutsideRepo\\s5\\S5_SPEC.md I5): "surface it
     where the diff gate already lives -- do not build a second entry point." Passing --theirs
@@ -5817,8 +5927,13 @@ def build_parser() -> argparse.ArgumentParser:
     # PK-3: transitive pack dependency resolution -- add/update both resolve the live pack graph
     # and (re)write npdev.lock (same operation, two names for UX clarity); list reads the
     # committed lock (or a live dry-run if none exists); why explains a version selection.
+    # PK-4 Stage A/B (same subparser group -- one `pack` command, not two): pack.json diff
+    # classification + publish gate (com.npdev.dsl.v1.pack.PackDiffEngine / PackPublishGate).
+    # Different mechanism from `migration diff` below: that one classifies a model.json schema
+    # change for the DB migration planner (MigrationPlanEmitter); this one classifies a pack.json
+    # content change for PACK VERSIONING, no database involved either way.
     pack = subparsers.add_parser(
-        "pack", help="Resolve, lock, and inspect a model's transitive pack dependency graph."
+        "pack", help="Resolve/lock/inspect a model's transitive pack graph, or diff/publish a pack.json."
     )
     pack_sub = pack.add_subparsers(dest="pack_command")
     pack_add = pack_sub.add_parser("add", help="Resolve the pack graph and write npdev.lock.")
@@ -5830,6 +5945,25 @@ def build_parser() -> argparse.ArgumentParser:
     pack_why = pack_sub.add_parser("why", help="Explain why a pack resolved to its current version.")
     pack_why.add_argument("--model", required=True, help="path to the model.json to resolve")
     pack_why.add_argument("pack_id", metavar="<packId>", help="the pack id to explain")
+
+    pack_diff = pack_sub.add_parser(
+        "diff", help="Classify every difference between two pack.json documents as ADDITIVE/BREAKING/PATCH."
+    )
+    pack_diff.add_argument("old_pack", metavar="<oldPack.json>")
+    pack_diff.add_argument("new_pack", metavar="<newPack.json>")
+    pack_diff.add_argument("--out", help="also write the JSON report to this path")
+
+    pack_publish = pack_sub.add_parser(
+        "publish", help="Refuse a pack.json publish whose version bump is smaller than the diff requires."
+    )
+    pack_publish.add_argument("old_pack", metavar="<oldPack.json>")
+    pack_publish.add_argument("new_pack", metavar="<newPack.json>")
+    pack_publish.add_argument("--out", help="also write the JSON report to this path")
+    pack_publish.add_argument(
+        "--write", action="store_true",
+        help="apply the change: write an empty migrations chain entry into <newPack.json> when the "
+             "publish is allowed and non-breaking; without this flag, only reports what would happen",
+    )
 
     migration = subparsers.add_parser(
         "migration", help="Classify a schema change as safe or destructive; dry-run the migration plan."
@@ -6365,6 +6499,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_pack_list(args)
         if args.command == "pack" and args.pack_command == "why":
             return run_pack_why(args)
+        if args.command == "pack" and args.pack_command == "diff":
+            return run_pack_diff(args)
+        if args.command == "pack" and args.pack_command == "publish":
+            return run_pack_publish(args)
         if args.command == "author" and args.author_command == "diff-gate":
             return run_author_diff_gate(args)
         if args.command == "author" and args.author_command == "submit":
