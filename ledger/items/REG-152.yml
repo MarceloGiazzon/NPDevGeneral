@@ -1,0 +1,60 @@
+id: REG-152
+title: >-
+  Build-NpdevApp.ps1/Build-ClaudeApp.ps1's second launch-script pipeline never wired its own
+  api-key default to real auth config, and now sends a smoke-test key that won't authenticate
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-13
+source: >-
+  MASTER-ROADMAP.md Step 12 (R7 Stage C, SEC-1). Found while scoping Stage C's per-app random
+  admin-key generator: tracing every consumer of `resolved-db-plan.json`'s `apiKey` field before
+  changing its meaning surfaced a second, independent script-generation pipeline this stage's
+  design does not reach.
+surface: appgen/launcher
+files:
+  - scripts/appgen/Build-NpdevApp.ps1
+  - scripts/appgen/Build-ClaudeApp.ps1
+  - scripts/appgen/New-AppConsole.ps1
+detail: |
+  `scripts/appgen/Build-NpdevApp.ps1` writes its own, fully separate `_ops`-equivalent toolbox
+  (`Start-App.ps1`/`Test-App.ps1`/`Status-App.ps1`/`Reissue-SuperUserKey.ps1`, launched via
+  `Start-Process -FilePath 'java'` directly) rather than using `OperationalRunbookEmitter`'s
+  `_ops\Run-FinalApp.ps1`/`_ops\Smoke-Test.ps1` -- a "shim" (~line 1101-1104) only aliases the
+  script *names* for compatibility, it does not delegate to them. `$ApiKey` in this pipeline
+  (`Build-NpdevApp.ps1:192`, default literal `'dev-key'`; `Build-ClaudeApp.ps1:47`, same default,
+  which flows into `config.trialDefaults.apiKey` and from there into the PRIMARY pipeline's
+  `resolved-db-plan.json` too) is written into this pipeline's own `app-plan.json` and read back by
+  `Test-App.ps1` (`Build-NpdevApp.ps1:1005`) and `New-AppConsole.ps1:76` for their `X-Api-Key`
+  headers -- but it was **never actually passed to the app's `--npdev.auth.api-keys` launch
+  argument or environment**, confirmed by grep: zero matches for `npdev.auth.api-keys` in either
+  script. The app has always booted on whatever `application-dev.yml` (or, after R7 Stage C,
+  `Ensure-NpdevApiKey`'s generated `secrets/api-key.env`) actually configures; `$ApiKey` here was
+  only ever a *coincidentally correct* testing credential because `'dev-key'` happened to match the
+  live default.
+
+  R7 Stage C (SEC-1, this same step) makes that coincidence stop holding: once `secrets/api-key.env`
+  exists, its randomly-generated key REPLACES `application-dev.yml`'s value outright (env-var
+  precedence on a String property, not a merge -- see `RuntimeApiKeyAuthFilter.parseMappings`). Any
+  app generated or driven through `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1` will, after its first
+  launch via `_ops\Run-FinalApp.ps1`-equivalent code path, have `Test-App.ps1` and
+  `New-AppConsole.ps1`'s live-status probe sending a key that no longer authenticates -- both will
+  start reporting failure/unreachable against a genuinely healthy app.
+
+  Explicitly deferred out of Stage C's scope (this step targets only the toolbox
+  `OperationalRunbookEmitter` emits, which every generated app gets regardless of launcher, per this
+  session's own "unrelated bugs filed separately, never silently worked around" discipline). A fix
+  needs its own scoped step: most likely, redirect this pipeline's `Test-App.ps1`/
+  `New-AppConsole.ps1` to resolve the key the same way `_ops\Smoke-Test.ps1` now does (read
+  `secrets/api-key.env` if present, falling back to the generation-time `$ApiKey` only before first
+  launch) rather than maintaining a second, disconnected key value.
+guard:
+  kind: manual
+  ref: >-
+    generate an app via Build-NpdevApp.ps1 or Build-ClaudeApp.ps1, launch it once (so
+    Ensure-NpdevApiKey generates secrets/api-key.env), then run that pipeline's own Test-App.ps1 or
+    open New-AppConsole.ps1's console page
+  asserts: >-
+    Test-App.ps1 reports PASS and the console reports "running" against the live app, using the
+    real generated key, not the stale trialDefaults.apiKey default
+  provenRed: false
