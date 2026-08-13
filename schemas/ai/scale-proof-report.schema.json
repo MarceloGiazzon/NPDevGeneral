@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/scale-proof-report.schema.json",
+  "title": "NPDev Scale Proof Report",
+  "description": "One generate/build/boot/first-request timing run of scripts/proofs/run-scale-proof.ps1 against a synthetic model of a given concept count. R9 reduced form (MASTER-ROADMAP.md prelude card 0.3): timing only, no latency/DDL-count/memory phases.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "concepts",
+    "status",
+    "phases"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-scale-proof-report.v1"
+    },
+    "generatedAt": {
+      "type": "string"
+    },
+    "concepts": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "enum": ["passed", "failed"]
+    },
+    "phases": {
+      "type": "object",
+      "required": ["synthesize", "generate", "build", "boot", "firstRequest"],
+      "properties": {
+        "synthesize": { "$ref": "#/$defs/phase" },
+        "generate": { "$ref": "#/$defs/phase" },
+        "build": { "$ref": "#/$defs/phase" },
+        "boot": { "$ref": "#/$defs/phase" },
+        "firstRequest": { "$ref": "#/$defs/phase" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "phase": {
+      "type": "object",
+      "required": ["status", "durationMs"],
+      "properties": {
+        "status": { "enum": ["passed", "failed", "skipped"] },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

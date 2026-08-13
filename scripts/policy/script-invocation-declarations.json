@@ -11,6 +11,18 @@
     "scripts/ai/Test-AiShiftLeftSafety.ps1": {
       "invocation": "orchestrated"
     },
+    "scripts/proofs/classify_runtimehost_sources.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
+    "scripts/proofs/synthesize_scale_model.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
+    "scripts/proofs/run-scale-proof.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/ai/build_core_context.py": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md"
