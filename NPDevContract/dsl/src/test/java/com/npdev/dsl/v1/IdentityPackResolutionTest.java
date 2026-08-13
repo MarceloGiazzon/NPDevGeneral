@@ -83,6 +83,62 @@ class IdentityPackResolutionTest {
         assertEquals("cascade", tokenUserId.getReferenceSemantics().getOnDelete());
     }
 
+    /**
+     * PK-2: the physical SQL identity of a pack-derived concept must depend on the pack's own
+     * {@code pack} id + major version, never the importing app's chosen alias. Compiles the SAME
+     * real identity pack twice -- once unaliased, once {@code as: "auth"} -- and asserts both
+     * produce the byte-identical physical table name. Before this card, the two would have compiled
+     * to {@code identity_users} and {@code auth_users} respectively: one pack, two apps,
+     * incompatible physical schemas.
+     */
+    @Test
+    void identityPackPhysicalTableNameIsIndependentOfImportAlias() throws Exception {
+        Path realPack = Path.of("..", "packs", "identity", "pack.json").toAbsolutePath().normalize();
+        String packJson = Files.readString(realPack);
+
+        write("unaliased/packs/identity/pack.json", packJson);
+        Path unaliasedModel = write("unaliased/model.json", """
+                {
+                  "namespace": "identity.pack.unaliased",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [
+                    { "$ref": "packs/identity/pack.json" }
+                  ]
+                }
+                """);
+
+        write("aliased/packs/identity/pack.json", packJson);
+        Path aliasedModel = write("aliased/model.json", """
+                {
+                  "namespace": "identity.pack.aliased",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [
+                    { "$ref": "packs/identity/pack.json", "as": "auth" }
+                  ]
+                }
+                """);
+
+        CompiledModel unaliasedCompiled = compile(unaliasedModel);
+        CompiledModel aliasedCompiled = compile(aliasedModel);
+
+        CompiledConcept unaliasedUser = unaliasedCompiled.findConcept("identity::User").orElseThrow();
+        CompiledConcept aliasedUser = aliasedCompiled.findConcept("auth::User").orElseThrow();
+
+        assertEquals("identity_v1_users", unaliasedUser.getTableName());
+        assertEquals("identity_v1_users", aliasedUser.getTableName(),
+                "the same pack imported under a different alias must produce the identical physical table name");
+    }
+
+    private static CompiledModel compile(Path model) throws Exception {
+        ResolvedModelSource resolvedSource = new ModelSourceResolver().resolve(model);
+        ModelAst ast = new JsonModelParser().parse(resolvedSource);
+        List<String> errors = new SemanticValidator().validate(ast);
+        assertTrue(errors.isEmpty(), "Expected model to validate, got: " + errors);
+        return new ModelCompiler().compile(ast);
+    }
+
     private static CompiledField field(CompiledConcept concept, String name) {
         return concept.getFields().stream()
                 .filter(f -> name.equals(f.getName()))

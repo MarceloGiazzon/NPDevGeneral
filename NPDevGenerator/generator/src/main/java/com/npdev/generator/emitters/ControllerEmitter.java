@@ -33,7 +33,10 @@ public final class ControllerEmitter extends AbstractEmitter {
             ctx.put("referenceFinders", referenceFinders(entity, conceptsByName));
             ctx.put("manyToManyBonds", manyToManyBonds(entity, conceptsByName));
 
-            ctx.put("route", SqlIdentifierSupport.tableName(entity));
+            // PK-2: the REST route stays LOGICAL, deliberately decoupled from the concept's physical
+            // SQL table name -- a pack's version bump (which changes SqlIdentifierSupport.tableName)
+            // must never silently rename a client's already-bookmarked REST URL.
+            ctx.put("route", SqlIdentifierSupport.aliasPreservingTableName(entity, model.getContexts()));
 
             // Base logic (no annotations)
             writer.writeRelative(

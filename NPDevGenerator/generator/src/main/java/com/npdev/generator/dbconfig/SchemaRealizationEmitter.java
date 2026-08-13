@@ -3,6 +3,7 @@ package com.npdev.generator.dbconfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledContext;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledIndex;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
@@ -1011,11 +1012,29 @@ public final class SchemaRealizationEmitter {
      * Reuses {@link SqlIdentifierSupport#tableName(String, String)} for both the "is this an
      * override" check and the old-name derivation -- never re-deriving the
      * toSnakePlural/safeSqlIdentifier convention by hand (guardrail 11).
+     *
+     * <p>PK-2: a SECOND, independent rename trigger, for a pack-derived concept whose physical
+     * table name changed because of the pack's own id/major-version qualifier -- NOT because the
+     * concept's authoring name changed (it never does; {@code renamedFrom} stays blank for this
+     * case). Compares the concept's real (new, physical) table name against what
+     * {@link SqlIdentifierSupport#aliasPreservingTableName} would have produced pre-PK-2 (the same
+     * alias-based derivation routes still use, see {@code ControllerEmitter}/{@code
+     * BusinessUiEmitter}); a difference means this app's pack import predates PK-2 and needs an
+     * in-place rename on this regeneration. Deliberately only checked in the {@code renamedFrom}-blank
+     * branch: a plain bounded-context concept (the {@code physicallyIsolate} mechanism) computes
+     * both values via the identical code path and is always equal, so it can never false-positive
+     * here; a concept using BOTH an author-declared rename AND a pack-version bump in the same
+     * regeneration is a real but out-of-scope edge case for this card (see PK-2's ledger entry).
      */
-    private static Map.Entry<String, String> conceptTableRename(CompiledConcept concept) {
+    private static Map.Entry<String, String> conceptTableRename(CompiledConcept concept, List<CompiledContext> contexts) {
         String renamedFrom = concept.getRenamedFrom();
         if (renamedFrom == null || renamedFrom.isBlank()) {
-            return null;
+            String currentTable = SqlIdentifierSupport.tableName(concept);
+            String preMigrationTable = SqlIdentifierSupport.aliasPreservingTableName(concept, contexts);
+            if (preMigrationTable.equals(currentTable)) {
+                return null;
+            }
+            return Map.entry(currentTable, preMigrationTable);
         }
         String currentTable = SqlIdentifierSupport.tableName(concept);
         String conventionalCurrentTable = SqlIdentifierSupport.tableName(concept.getName(), null);
@@ -1208,7 +1227,7 @@ public final class SchemaRealizationEmitter {
             if (!renames.isEmpty()) {
                 businessTableRenamedColumns.put(table, renames);
             }
-            Map.Entry<String, String> tableRename = conceptTableRename(concept);
+            Map.Entry<String, String> tableRename = conceptTableRename(concept, model.getContexts());
             if (tableRename != null) {
                 businessTableRenames.put(tableRename.getKey(), tableRename.getValue());
             }

@@ -3,8 +3,10 @@ title: >-
   Physical table identity derives from the local pack alias, so one pack yields different schemas in different apps
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-13
+verification: UNIT_TESTED
 source: >-
   Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md card PK-2). packRef.as overrides the namespace
   prefix, and the prefix flows through SqlIdentifierSupport.toSnake into the table name. App A
@@ -16,11 +18,50 @@ source: >-
 surface: dsl/pack-physical-identity
 files:
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/SqlIdentifierSupport.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ControllerEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
 detail: |
-  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-2 for the full spec: split logical
-  (alias-able) from physical (packId+major-derived) qualifiers in
-  SqlIdentifierSupport.contextAwareIdentifierSource; version the built-in packs (only 2 exist today --
-  identity, workspace, not the roadmap's assumed 6); ship an `npdev migrate pack-physical-names`
-  codemod per the standing breaking-change convention (owner decisions PD2/PD3/PD5 already answered:
-  yes to major-in-table-name, yes break now, keep alias as authoring-local sugar only).
-  MASTER-ROADMAP.md spine S2 (Step 6); not in this session's scope (Steps 1-4).
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-2 for the full spec. Implemented as
+  designed with one deliberate simplification, verified sufficient this session: no new field on
+  ConceptAst/CompiledConcept, no touch to the compiled-model canonical-JSON chain -- a pack's
+  physical qualifier (realPackId + "_v" + majorVersion) is threaded as a side-channel
+  Map<String,String> (ModelSourceResolver -> ResolvedModelSource -> JsonModelParser -> ModelAst,
+  mirroring how contexts[] already threads), consumed once at ModelCompiler compile time to derive
+  CompiledConcept.tableName -- which already round-trips through canonical JSON, so nothing new needs
+  to. This is narrower than PACK-2's still-open full origin/provenance field, and was confirmed
+  sufficient: BuiltinPackComposer compiles each pack (including both built-ins, identity/workspace,
+  not the roadmap's originally-assumed 6) through its own resolver->parser->compiler pipeline before
+  merging, so the physical name is already baked in before it reaches an app's model.
+
+  SqlIdentifierSupport gains physicalTableNameSource (the real fix, used by ModelCompiler and
+  ConceptValidation.validateTableNameCollisions so they can never drift) and
+  aliasPreservingTableName (recomputes the pre-PK-2, alias-based derivation on demand -- used by
+  ControllerEmitter/BusinessUiEmitter to keep REST routes permanently decoupled from a pack's
+  physical table name, and by SchemaRealizationEmitter to detect the rename automatically).
+
+  No `npdev migrate` codemod was shipped, a deliberate deviation from this item's own original
+  detail text -- explained in BREAKING.md's entry: the break requires zero model.json changes (no
+  JSON tree for a codemod to rewrite), and SchemaRealizationEmitter's new second rename-detection
+  trigger (alongside the existing renamedFrom-driven one) makes regeneration itself the migration,
+  proven safe (in-place ALTER TABLE RENAME, not drop-and-add) by the pre-existing
+  SchemaLifecycleExecutorTableRenameTest infrastructure and a real end-to-end proof this session
+  (pre-PK-2-equivalent app generated, row inserted, PK-2 applied, app regenerated, same row confirmed
+  surviving under the new table name on both H2 and Postgres).
+
+  Two existing tests (PackBondResolutionTest, PackBondEmitterTest) asserted the old alias-derived
+  table names for a real pack import and were updated to the new, correct expectation -- not a
+  regression, the intentional behavior change this card exists to make (same discipline as PK-1's
+  own two golden-test updates).
+
+  Verified: 545/545 DSL tests green, 316+/316+ generator tests green, check-schema-mirror-consistency.py,
+  check-deterministic-generation.ps1 (0 differing), and a real two-engine (H2 + Postgres)
+  generate->build->boot->migrate proof all pass.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/PackBondResolutionTest.java#packNaturalKeyAnchorResolvesSemanticallyAndSurvivesCompile
+  asserts: a pack imported under a local alias ("cat" for pack id "catalog") compiles its concepts' physical table names from the pack's own id + major version ("catalog_v1_products"), not the alias
+  provenRed: true

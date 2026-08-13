@@ -3,6 +3,7 @@ package com.npdev.dsl.v1.ast;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @SuppressWarnings("deprecation")
 public final class ModelAst {
@@ -35,6 +36,7 @@ public final class ModelAst {
     private final List<PropertyAst> properties;
     private final List<ContextAst> contexts;
     private final List<ConversionAst> conversions;
+    private final Map<String, String> physicalQualifierByConceptName;
 
     public ModelAst(String namespace, String version, List<? extends EntityAst> entities) {
         this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -455,6 +457,48 @@ public final class ModelAst {
             List<ContextAst> contexts,
             List<ConversionAst> conversions
     ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                contexts, conversions, Map.of());
+    }
+
+    /** PK-2: canonical constructor, adds {@code physicalQualifierByConceptName} -- a pack-derived
+     *  concept's physical SQL identity (see {@link com.npdev.dsl.v1.compiled.SqlIdentifierSupport}),
+     *  keyed by the concept's LOGICAL qualified name ({@code aliasOrPackId::Name}), value formatted
+     *  as {@code realPackId_v<major>}. Side-channel only -- never round-tripped through the compiled
+     *  model's canonical JSON, since {@code ModelCompiler} consumes it once, at compile time, to
+     *  compute {@code CompiledConcept.tableName}, which itself already round-trips. */
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<SelectorAst> selectors,
+            List<DocumentAst> documents,
+            List<String> parserWarnings,
+            ExternalAiAst externalAi,
+            SettingsAst settings,
+            List<RoleAst> roles,
+            List<PropertyScopeAst> propertyScopes,
+            List<PropertyAst> properties,
+            List<ContextAst> contexts,
+            List<ConversionAst> conversions,
+            Map<String, String> physicalQualifierByConceptName
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -482,6 +526,8 @@ public final class ModelAst {
         this.properties = properties == null ? new ArrayList<>() : new ArrayList<>(properties);
         this.contexts = contexts == null ? new ArrayList<>() : new ArrayList<>(contexts);
         this.conversions = conversions == null ? new ArrayList<>() : new ArrayList<>(conversions);
+        this.physicalQualifierByConceptName = physicalQualifierByConceptName == null
+                ? Map.of() : Map.copyOf(physicalQualifierByConceptName);
     }
 
     public String getNamespace() { return namespace; }
@@ -600,6 +646,12 @@ public final class ModelAst {
     /** S7 Phase B (B13): declared conversions, empty when the model declares none. */
     public List<ConversionAst> getConversions() {
         return Collections.unmodifiableList(conversions);
+    }
+
+    /** PK-2: pack-derived concepts' physical SQL identity qualifier, keyed by logical qualified name
+     *  ({@code aliasOrPackId::Name}); empty when the model declares no packs. */
+    public Map<String, String> getPhysicalQualifierByConceptName() {
+        return physicalQualifierByConceptName;
     }
 
     private static List<ConceptAst> toConcepts(List<? extends EntityAst> source) {

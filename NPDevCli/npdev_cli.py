@@ -4981,6 +4981,65 @@ def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
     return 2 if report.get("status") == "failed" else 0
 
 
+def _run_pack_gradle_task(task: str, model_path: Path, extra_props: dict[str, str] | None = None) -> int:
+    """PK-3: shared plumbing for npdev pack add|update|list|why -- same
+    JavaExec-task-wrapping-a-small-Main-class shape run_validate_semantic already uses for
+    `validate model`. Each Main class prints its own JSON report to stdout; this just forwards the
+    Gradle task's own stdout (the report) and returns its exit code, since none of these four
+    commands need the temp-file capture-and-reread dance validate does (no --releaseGate-style
+    optional extra processing here).
+    """
+    root = repo_root()
+    wrapper = gradle_wrapper(root)
+    if not wrapper.exists():
+        raise CliError(f"Gradle wrapper not found: {wrapper}")
+    model = Path(model_path).expanduser().resolve()
+    if not model.exists():
+        raise CliError(f"model not found: {model}")
+
+    gradle_args = [
+        str(wrapper),
+        *gradle_project_cache_args("root"),
+        f":NPDevContract:dsl:{task}",
+        f"-PmodelPath={model}",
+        "-q",
+        "--console=plain",
+    ]
+    for key, value in (extra_props or {}).items():
+        gradle_args.append(f"-P{key}={value}")
+    if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+        gradle_args = ["cmd.exe", "/c"] + gradle_args
+    completed = subprocess.run(gradle_args, cwd=root, check=False, capture_output=True, text=True)
+    stdout = (completed.stdout or "").strip()
+    if stdout:
+        print(stdout)
+    if completed.returncode not in (0, 2):
+        detail = (completed.stderr or "").strip()
+        raise CliError(f"pack {task} failed (gradle exit {completed.returncode})"
+                        + (f": {detail[-500:]}" if detail else ""))
+    try:
+        report = json.loads(stdout) if stdout else {}
+    except json.JSONDecodeError:
+        report = {}
+    return 2 if report.get("status") == "failed" else 0
+
+
+def run_pack_add(args: argparse.Namespace) -> int:
+    return _run_pack_gradle_task("packAdd", Path(args.model))
+
+
+def run_pack_update(args: argparse.Namespace) -> int:
+    return _run_pack_gradle_task("packUpdate", Path(args.model))
+
+
+def run_pack_list(args: argparse.Namespace) -> int:
+    return _run_pack_gradle_task("packList", Path(args.model))
+
+
+def run_pack_why(args: argparse.Namespace) -> int:
+    return _run_pack_gradle_task("packWhy", Path(args.model), {"packId": args.pack_id})
+
+
 def _print_boundary_limits(report: dict) -> None:
     """REG-135: a diagnostic carrying boundaryId is hitting a NAMED, accepted NPDev design limit
     (docs/ACCEPTED_BOUNDARIES.md), not a mistake in the model -- render it distinctly from an
@@ -5865,26 +5924,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     migrate_bc.add_argument("--report", help="write a JSON report of every model's outcome to this path")
 
-    migration = subparsers.add_parser(
-        "migration", help="Classify a schema change as safe or destructive; dry-run the migration plan."
-    )
-    migration_sub = migration.add_subparsers(dest="migration_command")
-    migration_diff = migration_sub.add_parser("diff")
-    migration_diff.add_argument("--baseline", required=True)
-    migration_diff.add_argument("--current", required=True)
-    migration_diff.add_argument("--output")
-    migration_diff.add_argument("--decision-report", dest="decision_report")
-
-    # PK-4 Stage A/B: pack.json diff classification + publish gate
-    # (com.npdev.dsl.v1.pack.PackDiffEngine / PackPublishGate). Same JavaExec-wrapped-by-a-thin-
-    # Python-subparser shape as `validate model` and `migration diff` above -- this is a different
-    # mechanism from `migration diff`: that one classifies a model.json schema change for the DB
-    # migration planner (MigrationPlanEmitter), this one classifies a pack.json content change for
-    # PACK VERSIONING, with no database involved either way.
+    # PK-3: transitive pack dependency resolution -- add/update both resolve the live pack graph
+    # and (re)write npdev.lock (same operation, two names for UX clarity); list reads the
+    # committed lock (or a live dry-run if none exists); why explains a version selection.
+    # PK-4 Stage A/B (same subparser group -- one `pack` command, not two): pack.json diff
+    # classification + publish gate (com.npdev.dsl.v1.pack.PackDiffEngine / PackPublishGate).
+    # Different mechanism from `migration diff` below: that one classifies a model.json schema
+    # change for the DB migration planner (MigrationPlanEmitter); this one classifies a pack.json
+    # content change for PACK VERSIONING, no database involved either way.
     pack = subparsers.add_parser(
-        "pack", help="Diff two pack.json documents, or gate a version-bump publish against that diff."
+        "pack", help="Resolve/lock/inspect a model's transitive pack graph, or diff/publish a pack.json."
     )
     pack_sub = pack.add_subparsers(dest="pack_command")
+    pack_add = pack_sub.add_parser("add", help="Resolve the pack graph and write npdev.lock.")
+    pack_add.add_argument("--model", required=True, help="path to the model.json to resolve")
+    pack_update = pack_sub.add_parser("update", help="Re-resolve the pack graph and rewrite npdev.lock.")
+    pack_update.add_argument("--model", required=True, help="path to the model.json to resolve")
+    pack_list = pack_sub.add_parser("list", help="Print the current npdev.lock (or a live dry-run).")
+    pack_list.add_argument("--model", required=True, help="path to the model.json to resolve")
+    pack_why = pack_sub.add_parser("why", help="Explain why a pack resolved to its current version.")
+    pack_why.add_argument("--model", required=True, help="path to the model.json to resolve")
+    pack_why.add_argument("pack_id", metavar="<packId>", help="the pack id to explain")
+
     pack_diff = pack_sub.add_parser(
         "diff", help="Classify every difference between two pack.json documents as ADDITIVE/BREAKING/PATCH."
     )
@@ -5903,6 +5964,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="apply the change: write an empty migrations chain entry into <newPack.json> when the "
              "publish is allowed and non-breaking; without this flag, only reports what would happen",
     )
+
+    migration = subparsers.add_parser(
+        "migration", help="Classify a schema change as safe or destructive; dry-run the migration plan."
+    )
+    migration_sub = migration.add_subparsers(dest="migration_command")
+    migration_diff = migration_sub.add_parser("diff")
+    migration_diff.add_argument("--baseline", required=True)
+    migration_diff.add_argument("--current", required=True)
+    migration_diff.add_argument("--output")
+    migration_diff.add_argument("--decision-report", dest="decision_report")
 
     # AI_AUTHORING_CONTRACT-2026-07-31.md Part 9 (E2/E4/E5): the Custodian's diff gate.
     author = subparsers.add_parser(
@@ -6420,6 +6491,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "migration" and args.migration_command == "diff":
             run_migration_diff(args)
             return 0
+        if args.command == "pack" and args.pack_command == "add":
+            return run_pack_add(args)
+        if args.command == "pack" and args.pack_command == "update":
+            return run_pack_update(args)
+        if args.command == "pack" and args.pack_command == "list":
+            return run_pack_list(args)
+        if args.command == "pack" and args.pack_command == "why":
+            return run_pack_why(args)
         if args.command == "pack" and args.pack_command == "diff":
             return run_pack_diff(args)
         if args.command == "pack" and args.pack_command == "publish":

@@ -142,8 +142,16 @@ if ($CleanTransientReportTemp) {
     }
 }
 
+# 2026-08-13 (PK-3 session): .claude\worktrees is `.gitignore`d (line 94's `.claude/*`, no
+# re-inclusion for `worktrees` the way `.claude/skills/` gets one) -- it holds full git-worktree
+# checkouts for parallel background agents, a sanctioned pattern this session uses routinely. Two
+# concurrent agent worktrees alongside a normal session tripped this check at ~10,500 files though
+# the real tracked tree was ~3,600 -- not generated build output the way every prior recalibration
+# in this file's history was (Output/ trees, .gradle caches), just OTHER agents' own full checkouts
+# never meant to be measured as this workspace's content. Excluding the directory, not raising the
+# limit -- the limit still fires correctly for actual bloat inside a single checkout.
 $allFiles = @(Get-ChildItem -LiteralPath $WorkspaceRoot -Recurse -Force -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -notmatch "\\.git\\" })
+        Where-Object { $_.FullName -notmatch "\\.git\\" -and $_.FullName -notmatch "\\\.claude\\worktrees\\" })
 $totalBytes = Get-LengthSum $allFiles
 $totalSizeMB = [math]::Round(([decimal]$totalBytes) / 1MB, 2)
 
@@ -208,7 +216,7 @@ if (Test-Path -LiteralPath $sampleOutputRoot -PathType Container) {
 
 $forbiddenDirNames = @(".gradle", "build", "target", "dist", "coverage", "node_modules", "RunOutput", "bin")
 foreach ($dir in @(Get-ChildItem -LiteralPath $WorkspaceRoot -Recurse -Force -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -notmatch "\\.git\\" -and $_.Name -in $forbiddenDirNames })) {
+        Where-Object { $_.FullName -notmatch "\\.git\\" -and $_.FullName -notmatch "\\\.claude\\worktrees\\" -and $_.Name -in $forbiddenDirNames })) {
     $summary = Get-FileSummary $dir.FullName
     if ($summary.fileCount -gt 0) {
         Add-Violation $violations "rebuildable-directory-inside-workspace" ("Rebuildable directory must not remain in the workspace: " + $summary.path) $summary
@@ -218,6 +226,7 @@ foreach ($dir in @(Get-ChildItem -LiteralPath $WorkspaceRoot -Recurse -Force -Di
 $jarViolations = @(Get-ChildItem -LiteralPath $WorkspaceRoot -Recurse -Force -File -Filter "*.jar" -ErrorAction SilentlyContinue |
         Where-Object {
             $_.FullName -notmatch "\\.git\\" -and
+            $_.FullName -notmatch "\\\.claude\\worktrees\\" -and
             ((Get-RelativePath $_.FullName) -notmatch "gradle\\wrapper\\gradle-wrapper\.jar$")
         } |
         ForEach-Object {
@@ -231,7 +240,7 @@ if ($jarViolations.Count -gt 0) {
 }
 
 $archiveViolations = @(Get-ChildItem -LiteralPath $WorkspaceRoot -Recurse -Force -File -Include "*.zip", "*.7z", "*.rar" -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -notmatch "\\.git\\" } |
+        Where-Object { $_.FullName -notmatch "\\.git\\" -and $_.FullName -notmatch "\\\.claude\\worktrees\\" } |
         ForEach-Object {
             [pscustomobject]@{
                 path = Get-RelativePath $_.FullName
