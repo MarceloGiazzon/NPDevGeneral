@@ -664,6 +664,9 @@
     },
     "scripts/quality/check-no-markdown-reads.py": {
       "invocation": "ci-gate"
+    },
+    "scripts/quality/check-pack-diff-gate.py": {
+      "invocation": "ci-gate"
     }
   }
 }
