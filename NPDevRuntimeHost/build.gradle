@@ -179,7 +179,6 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/CanonicalDemoBusinessE2EIT.java',
         'com/finalexec/InvariantApiIntegrationTest.java',
         'com/finalexec/JwtAuthExternalBetaIT.java',
-        'com/finalexec/ModelSyncStatusControllerIntegrationTest.java',
         'com/finalexec/ModelSyncStatusControllerStandaloneTest.java',
         'com/finalexec/NonDefaultRuntimeSurfaceProfileIntegrationTest.java',
         'com/finalexec/PanelRuntimeTest.java',
@@ -188,10 +187,8 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/PublicationRollbackE2EIT.java',
         'com/finalexec/PluginManifestLoaderTest.java',
         'com/finalexec/PluginPackageDescriptorLoaderTest.java',
-        'com/finalexec/RuntimeMetadataControllerIntegrationTest.java',
         'com/finalexec/RuntimeMetadataControllerStandaloneTest.java',
         'com/finalexec/RuntimeMetadataServiceTest.java',
-        'com/finalexec/RuntimeMetadataValidationControllerIntegrationTest.java',
         'com/finalexec/RuntimeMetadataValidationControllerStandaloneTest.java',
         'com/finalexec/RuntimePluginFilesystemDiscoveryIntegrationTest.java',
         'com/finalexec/RuntimePluginStatusControllerIntegrationTest.java',
@@ -201,7 +198,6 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/RuntimePluginPackageDiscoveryServiceTest.java',
         'com/finalexec/RuntimePluginProfileResolverTest.java',
         'com/finalexec/RuntimePluginRuntimeRefResolverTest.java',
-        'com/finalexec/RuntimeUiMetadataControllerIntegrationTest.java',
         'com/finalexec/RuntimeUiMetadataControllerStandaloneTest.java',
         'com/finalexec/SupportedCoreControllerBlackBoxIntegrationTest.java',
         'com/finalexec/SupportedRuntimeSurfaceAllowlistIntegrationTest.java',
@@ -326,7 +322,6 @@ sourceSets {
     test {
         java {
             modelSpecificGeneratedAppTests.each { exclude it }
-            generatedRuntimeDependentTestSources.each { exclude it }
             // LNCH-1 Phase 7 (task 7.2): Docker-dependent (Testcontainers Postgres) -- must not run,
             // or even compile, as part of the plain `test` task (no com.npdev.generated. reference,
             // so generatedRuntimeDependentTestSources' auto-exclusion would not otherwise catch it;
@@ -355,6 +350,12 @@ sourceSets {
             // can't see. Excluded ONLY when the mount is absent, so the assembled-app gate (mount present)
             // still compiles and runs them exactly as before.
             if (!generatedRuntimeMountPresent()) {
+                // R1 Stage 1 (MASTER-ROADMAP.md): this exclusion was previously unconditional, so it
+                // ran even when a real generated-runtime mount WAS present -- silently skipping
+                // AgentProxyControllerTest and 5 siblings (21 @Test) that guard the SUPERUSER gate in
+                // front of the provider API key. It belongs here: these tests import
+                // com.npdev.generated. classes that only exist when the mount is present.
+                generatedRuntimeDependentTestSources.each { exclude it }
                 // Derived (Move 11 W1) -- see testsReferencingExcludedMainSources above.
                 testsReferencingExcludedMainSources.each { exclude it }
                 // Second-order, and therefore NOT derivable from the rule above: these two name main

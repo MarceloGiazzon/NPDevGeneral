@@ -20,6 +20,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import javax.sql.DataSource;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -46,7 +47,7 @@ class ConceptQueryControllerExportCsvVolumeTest {
     private static final int ROWS = 100_000;
 
     @Test
-    void exportsOneHundredThousandRowsInBoundedPagesWithoutFetchingAllAtOnce() throws SQLException {
+    void exportsOneHundredThousandRowsInBoundedPagesWithoutFetchingAllAtOnce() throws SQLException, IOException {
         String url = "jdbc:h2:mem:lnch10-export-volume-" + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
         DataSource dataSource = new SingleConnectionUrlDataSource(url);
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
