@@ -5,6 +5,7 @@ import type {
   AuthoringBundle,
   AuthoringBundleSession,
   BundleImportResult,
+  ModelImportResult,
   SavedBundleSnapshot
 } from "./bundleTypes";
 
@@ -22,12 +23,17 @@ type LegacyCompatibleModelDocument = Omit<AuthoringModelDocument, "concepts"> & 
   orchestrations?: AuthoringModelDocument["orchestrationRules"];
 };
 
+// R6 (MASTER-ROADMAP.md): these two used to be hardcoded 16-key object literals -- packs, roles,
+// propertyScopes, properties, contexts and 13 other schema-valid root sections were silently
+// dropped on every export and import. Mirrors modelDocumentService.ts's normalizeDocument, which
+// already spreads the whole document first so unrecognized keys survive untouched: spread first,
+// then only override the fields this function actually needs to default or remap. `entities` and
+// `orchestrations` are legacy INPUT aliases only (normalized into `concepts`/`orchestrationRules`
+// below) -- they must not leak through to the canonical/internal document as extra keys, since
+// JsonModelParser treats `orchestrations` as canonical and errors if both are present.
 export function toCanonicalModelDocument(document: AuthoringModelDocument): CanonicalModelDocument {
   return {
-    $schema: document.$schema,
-    namespace: document.namespace,
-    dslVersion: document.dslVersion,
-    version: document.version,
+    ...document,
     domainTypes: [...(document.domainTypes ?? [])],
     concepts: [...document.concepts],
     capabilities: [...(document.capabilities ?? [])],
@@ -38,31 +44,27 @@ export function toCanonicalModelDocument(document: AuthoringModelDocument): Cano
     queries: [...(document.queries ?? [])],
     ruleProfiles: [...(document.ruleProfiles ?? [])],
     procedures: [...(document.procedures ?? [])],
-    panels: [...(document.panels ?? [])],
-    metadata: document.metadata
+    panels: [...(document.panels ?? [])]
   };
 }
 
 export function toInternalModelDocument(document: LegacyCompatibleModelDocument): AuthoringModelDocument {
   const concepts = document.concepts ?? document.entities ?? [];
-  const { concepts: _concepts, entities: _entities, ...rest } = document;
+  const orchestrationRules = document.orchestrationRules ?? document.orchestrations ?? [];
+  const { entities: _entities, orchestrations: _orchestrations, ...rest } = document;
   return {
-    $schema: rest.$schema,
-    namespace: rest.namespace,
-    dslVersion: rest.dslVersion,
-    version: rest.version,
+    ...rest,
     domainTypes: [...(rest.domainTypes ?? [])],
-    concepts,
+    concepts: [...concepts],
     capabilities: [...(rest.capabilities ?? [])],
     bindings: [...(rest.bindings ?? [])],
     events: [...(rest.events ?? [])],
-    orchestrationRules: [...(rest.orchestrationRules ?? rest.orchestrations ?? [])],
+    orchestrationRules: [...orchestrationRules],
     flows: [...(rest.flows ?? [])],
-    queries: [...(document.queries ?? [])],
-    ruleProfiles: [...(document.ruleProfiles ?? [])],
-    procedures: [...(document.procedures ?? [])],
-    panels: [...(document.panels ?? [])],
-    metadata: rest.metadata
+    queries: [...(rest.queries ?? [])],
+    ruleProfiles: [...(rest.ruleProfiles ?? [])],
+    procedures: [...(rest.procedures ?? [])],
+    panels: [...(rest.panels ?? [])]
   };
 }
 
@@ -135,6 +137,43 @@ export async function importBundleFromFiles(
     },
     modelFileName: modelFile.name,
     configFileName: configFile.name
+  };
+}
+
+// R6 (MASTER-ROADMAP.md): opens a bare model.json -- an AppGen app definition, for example --
+// with no sibling config.json required. Reuses the same lossless toInternalModelDocument pass-
+// through import side does.
+export async function importModelFromFile(modelFile: File | null): Promise<ModelImportResult> {
+  if (!modelFile) {
+    return {
+      ok: false,
+      message: "Choose a model.json file before importing."
+    };
+  }
+
+  const modelText = await modelFile.text();
+  const parsedModel = parseJsonDocument<AuthoringModelDocument>(modelText);
+  if (!parsedModel.ok) {
+    return {
+      ok: false,
+      message: `Model import failed: ${parsedModel.issue.message}`
+    };
+  }
+
+  return {
+    ok: true,
+    document: toInternalModelDocument(parsedModel.value as LegacyCompatibleModelDocument),
+    modelFileName: modelFile.name
+  };
+}
+
+export function buildImportedModelSession(document: AuthoringModelDocument, label: string): AuthoringDocumentSession {
+  return {
+    sourceKey: `import:model:${label}`,
+    sourceLabel: `Imported model: ${label}`,
+    document: JSON.parse(JSON.stringify(document)) as AuthoringModelDocument,
+    dirty: true,
+    lastLoadedLabel: new Date().toLocaleString()
   };
 }
 

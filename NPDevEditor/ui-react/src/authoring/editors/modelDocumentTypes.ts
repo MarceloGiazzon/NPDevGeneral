@@ -265,12 +265,9 @@ export type AuthoringQuery = {
 export type AuthoringRuleProfile = {
   name: string;
   description?: string;
-  concept?: string;
   appliesTo?: string[];
   invariants?: string[];
   enabled?: boolean;
-  permissionRequirements?: string[];
-  permissions?: string[];
   metadata?: Record<string, AuthoringModelPrimitive>;
 };
 
@@ -372,8 +369,6 @@ export type AuthoringPanel = {
   name: string;
   route?: string;
   title?: string;
-  concept?: string;
-  dataSource?: AuthoringPanelDataSource;
   dataSources?: AuthoringPanelDataSource[];
   layout?: AuthoringPanelLayout;
   fields?: AuthoringPanelField[];
