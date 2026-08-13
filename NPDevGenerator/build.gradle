@@ -43,6 +43,11 @@ allprojects {
 
 subprojects {
     apply plugin: 'java-library'
+    // R3 (MASTER-ROADMAP.md Step 9 / ledger QUAL-6): applies to :generator, :tools:npdev-cli and
+    // every sibling contract/kernel/dsl/adapter project this multi-project build pulls in.
+    // Unconditional -- none of these ship into a generated FinalApp (see NPDevRuntimeHost/
+    // build.gradle.template's own gating comment for the one build that does).
+    apply plugin: 'jacoco'
 
     java {
         toolchain {
@@ -66,6 +71,16 @@ subprojects {
         maxHeapSize = '2g'
         maxParallelForks = 2
         jvmArgs '-XX:+UseParallelGC'
+        // R3: any test run (including :generator's own custom `behaviorTest` task, which is a
+        // Test-typed task too) also produces a fresh JaCoCo XML report as a byproduct.
+        finalizedBy tasks.named('jacocoTestReport')
+    }
+
+    tasks.withType(JacocoReport).configureEach {
+        reports {
+            xml.required = true
+            html.required = false
+        }
     }
 }
 

@@ -23,6 +23,18 @@ plugins {
 group = 'com.finalexec'
 version = '0.1.0'
 
+// R3 (MASTER-ROADMAP.md Step 9 / ledger QUAL-6): this file is copied byte-for-byte
+// (materializeRootTemplate, substitution-free) into every generated FinalApp -- unlike dsl/
+// generator/kernel (all platform-internal, dev-time-only builds), whatever plugin this file applies
+// ships to every user who generates an app. JaCoCo is therefore OFF by default and opt-in only via
+// `-PenableCoverage=true` (scripts/quality/run-runtimehost-gate.ps1 passes it so the RuntimeHost
+// gate keeps measuring itself); a generated app's own `./gradlew test` is byte-identical to before
+// this card unless the caller explicitly asks for coverage.
+def npdevCoverageEnabled = project.hasProperty('enableCoverage')
+if (npdevCoverageEnabled) {
+    apply plugin: 'jacoco'
+}
+
 java {
     toolchain {
         // deps-and-java/PLAN.md D1/W1.4: only the GENERATED APP's own toolchain is variable --
@@ -586,6 +598,22 @@ tasks.named('test') {
         environment 'DOCKER_HOST', 'npipe:////./pipe/dockerDesktopLinuxEngine'
         systemProperty 'docker.host', 'npipe:////./pipe/dockerDesktopLinuxEngine'
         systemProperty 'docker.client.strategy', 'org.testcontainers.dockerclient.NpipeSocketClientProviderStrategy'
+    }
+}
+
+// R3: only registered/wired when -PenableCoverage=true applied the jacoco plugin above -- referencing
+// tasks.named('jacocoTestReport') unconditionally would fail configuration when the plugin was never
+// applied (the normal, default case for every generated app).
+if (npdevCoverageEnabled) {
+    tasks.named('test') {
+        finalizedBy tasks.named('jacocoTestReport')
+    }
+    tasks.named('jacocoTestReport') {
+        dependsOn tasks.named('test')
+        reports {
+            xml.required = true
+            html.required = false
+        }
     }
 }
 

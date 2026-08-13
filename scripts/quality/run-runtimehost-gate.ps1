@@ -77,15 +77,30 @@ try {
         Write-NPDevInfo ("Running RuntimeHost verification tasks for sample " + $SampleId)
         $verificationLogPath = Resolve-NPDevWorkspacePath $WorkspaceRoot ("scripts\reports\out\runtimehost-" + $SampleId + "-verification.log")
         $assembledGradleWrapper = Get-NPDevGradleWrapperExecutable $assembledAppRoot
+        # R3 (MASTER-ROADMAP.md Step 9 / ledger QUAL-6): -PenableCoverage=true opts this ONE
+        # gate-owned test run into the JaCoCo plugin gated in NPDevRuntimeHost/build.gradle.template
+        # -- this does not change what FinalAppAssembler copies into any user's generated app, only
+        # this script's own throwaway verification build.
         $verificationCommand = Invoke-NPDevCommandEvidence `
             -WorkspaceRoot $WorkspaceRoot `
             -WorkingDirectory $assembledAppRoot `
             -Executable $assembledGradleWrapper `
-            -Arguments @("--no-daemon", "--console=plain", "enforceSingleSchemaRealizationSource", "test") `
+            -Arguments @("--no-daemon", "--console=plain", "-PenableCoverage=true", "enforceSingleSchemaRealizationSource", "test") `
             -LogPath $verificationLogPath
 
         if ([string]$verificationCommand.status -ne "passed") {
             throw "RuntimeHost verification command failed."
+        }
+
+        # R3: scripts/quality/check-coverage-ratchet.py reads this stable, non-cleaned path -- the
+        # cleanup step below (-BuildCachesOnly) deletes the assembled app's own build/ directory
+        # (where jacocoTestReport.xml actually lands) before run-ai-knowledge-gate.ps1 ever runs.
+        $runtimeHostJacocoSource = Resolve-NPDevWorkspacePath $assembledAppRoot "build\reports\jacoco\test\jacocoTestReport.xml"
+        $runtimeHostJacocoDestination = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\runtimehost-jacoco-test-report.xml"
+        if (Test-Path -LiteralPath $runtimeHostJacocoSource -PathType Leaf) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $runtimeHostJacocoDestination) | Out-Null
+            Copy-Item -LiteralPath $runtimeHostJacocoSource -Destination $runtimeHostJacocoDestination -Force
+            Write-NPDevInfo ("Preserved RuntimeHost JaCoCo report before cleanup: " + $runtimeHostJacocoDestination)
         }
     }
     finally {

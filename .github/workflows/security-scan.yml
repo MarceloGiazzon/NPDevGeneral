@@ -1,0 +1,86 @@
+name: Security scan
+
+# R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2). Two independent scans that had zero coverage before
+# this workflow: static analysis (CodeQL, across the three languages this repo actually ships --
+# java-kotlin for the DSL/generator/kernel/adapters/RuntimeHost, javascript-typescript for
+# NPDevEditor/ui-react + NPDevManager's UI, python for NPDevCli/NPDevMcp/scripts) and dependency
+# vulnerability scanning for the editor's npm project (scripts/security/check-npm-audit-policy.py,
+# reading the previously-orphaned scripts/policy/frontend-npm-audit-policy.json).
+#
+# build-mode: none for every language, deliberately -- this repo has seven independent Gradle roots
+# with a custom external build-root resolution (see any build.gradle's resolveNpdevBuildRoot) and a
+# committed gradle.properties that hardcodes a dev-machine path ai-knowledge-gate.yml already has to
+# strip before Gradle will even start on Linux CI. Getting CodeQL's Java autobuild to reliably drive
+# that is a real project on its own and a broken autobuild fails this whole scan silently-red forever;
+# build-mode: none trades some cross-compilation-unit analysis depth for a scan that actually runs.
+#
+# NOT wired into branch protection as a required check (only "AI knowledge substrate gate" is, per
+# ledger QUAL-8) -- a finding here is a signal to triage, not a merge-blocker by itself.
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+  schedule:
+    # Catches a newly-disclosed CVE in unchanged code/dependencies, not just new commits.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # GitHub's own recommended minimum for github/codeql-action/analyze: actions:read lets the
+      # action fetch this workflow's own run status; security-events:write is what lets it upload
+      # the SARIF results as code-scanning alerts.
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["java-kotlin", "javascript-typescript", "python"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  npm-audit:
+    name: npm audit policy (NPDevEditor/ui-react)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # --package-lock-only: reads package-lock.json directly, no `npm ci`/install needed first.
+      - name: Check npm audit against frontend-npm-audit-policy.json
+        run: python scripts/security/check-npm-audit-policy.py --project-dir NPDevEditor/ui-react

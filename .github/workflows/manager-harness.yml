@@ -19,6 +19,11 @@ on:
     - cron: '0 5 * * *'
   workflow_dispatch: {}
 
+# R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2): least-privilege default -- both jobs build/test in
+# throwaway containers and upload their own run artifacts, never writing to the repo/PR/release.
+permissions:
+  contents: read
+
 concurrency:
   group: manager-harness-${{ github.ref }}
   cancel-in-progress: false

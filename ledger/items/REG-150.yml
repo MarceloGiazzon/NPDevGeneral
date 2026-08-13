@@ -1,0 +1,49 @@
+id: REG-150
+title: >-
+  run-editor-complexity-check.ps1 has no install step of its own -- fails with "vitest is not
+  recognized" the moment node_modules isn't already present
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-13
+source: >-
+  Found while implementing R4 Part A (MASTER-ROADMAP.md Step 9 / ledger QUAL-7): wiring
+  run-editor-complexity-check.ps1 into run-frontend-gate.ps1 (its first real gate, per QUAL-7 -- it
+  was previously reachable from no gate at all) made this the first automated run of the script.
+  Confirmed pre-existing and unrelated to this branch's edits to the script itself:
+  `git diff main -- scripts/quality/run-editor-complexity-check.ps1` is empty, and running the
+  unmodified script standalone (after manually deleting node_modules) reproduces the identical
+  failure.
+surface: scripts/quality/run-editor-complexity-check.ps1
+files:
+  - scripts/quality/run-editor-complexity-check.ps1
+detail: |
+  The script's Invoke-CommandCapture helper calls `npm test` / `npm run build` directly (lines ~153-
+  165) with no `npm ci`/`npm install` step before them -- it has always assumed a developer running
+  it by hand already has NPDevEditor/ui-react/node_modules populated from normal local usage.
+
+  run-frontend-gate.ps1's own Gradle npmTest/npmBuild tasks are `finalizedBy cleanUiReactGenerated`
+  (NPDevEditor/build.gradle), which deletes node_modules (among other generated directories) as part
+  of the gate's own no-residue policy (Find-GeneratedResidue). So by the time
+  run-editor-complexity-check.ps1 runs afterward in the same gate, node_modules is already gone, and
+  `npm test` fails immediately:
+
+      > vitest run
+      'vitest' não é reconhecido como um comando interno ou externo, um programa operável ou um
+      arquivo em lotes.
+
+  Worked around at the CALL SITE (run-frontend-gate.ps1 now runs `gradlew npmInstall` -- deliberately
+  NOT in cleanUiReactGenerated's finalizedBy list -- immediately before invoking
+  run-editor-complexity-check.ps1) rather than in the script itself, since Card 3 (R4 Part A) frames
+  this script as load-bearing and to be wired in, not rewritten. The underlying gap remains: anyone
+  else invoking run-editor-complexity-check.ps1 directly against a checkout with no node_modules
+  (e.g. a fresh clone, or right after any other tool that cleans node_modules) hits the same failure.
+  A durable fix would add the script's own `npm ci`/`npm install` step before its test/build calls,
+  the same self-sufficiency every other npm-invoking gate script in this repo already has.
+guard:
+  kind: manual
+  ref: cd NPDevEditor/ui-react && rm -rf node_modules && cd ../.. && pwsh -NoProfile -File
+    scripts/quality/run-editor-complexity-check.ps1
+  asserts: the script installs its own dependencies and passes, rather than failing with "vitest is
+    not recognized"
+  provenRed: true

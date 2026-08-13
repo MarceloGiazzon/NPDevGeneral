@@ -47,6 +47,12 @@ on:
         required: false
         default: 'all'
 
+# R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2): least-privilege default -- every job here
+# generates/builds/boots against Docker-hosted engines and uploads its own run artifacts, never
+# writing to the repo/PR/release.
+permissions:
+  contents: read
+
 env:
   # Same pinned digests as storage-dialect-conformance.yml, and for the same reason: a gate whose
   # image moves cannot tell a regression from an upstream change. check-container-images-pinned.py
