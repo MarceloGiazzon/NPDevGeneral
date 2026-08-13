@@ -69,3 +69,48 @@ detail: |
   their own step(s) continuing MASTER-ROADMAP.md's ordering. This item stays OPEN until the full
   card (A+B+C) closes -- Stage A alone does not yet make `dev`'s own known key stop working, only
   the misconfigured/production-adjacent fallback.
+
+  **Stage C (per-app random key generation) DONE 2026-08-13**, branch step12-r7-stage-c, sequenced
+  BEFORE Stage B per the roadmap's own "sequence Stage C before Stage B or every app stops booting"
+  warning. New idempotent PowerShell function `Ensure-NpdevApiKey`
+  (`OperationalRunbookEmitter.java`, sibling to `SECRETS_ENV_LOADER`, not a generalization of it --
+  that loader is agent-proxy-specific and the generator must never write the file it reads; this one
+  the launcher may). First call for an app with no `secrets/api-key.env`: generates a
+  `RandomNumberGenerator`-backed (not `Get-Random`, which is not a CSPRNG) key, writes ONE line
+  (`NPDEV_AUTH_API_KEYS=<key>=dev:developer:admin` -- the exact `key=tenantId:actorId:roles` shape
+  `RuntimeApiKeyAuthFilter.PrincipalClaims.parse` expects), and prints it once (D4/D5). Every call
+  loads that line into `$env:`, so it is safe to call from any script needing the key regardless of
+  order. Wired into `runFinalAppScript()` (before the `java -jar` launch) and `smokeTestScript()`
+  (which now resolves its own header key via the same function instead of the generation-time
+  `$plan.apiKey`, making it correct standalone or right after a fresh boot).
+
+  **Confirmed via direct code reading, not assumed**: `$env:NPDEV_AUTH_API_KEYS` binds onto
+  `npdev.auth.api-keys` through Spring Boot's standard relaxed env-var binding. Because that
+  property is a single String (not a List/Map), `RuntimeApiKeyAuthFilter.parseMappings` never merges
+  sources -- the env var (highest precedence) REPLACES `application-dev.yml`'s value outright. **Net
+  effect: `dev-key`/`api-dev` stop authenticating on every regenerated app the moment this lands**,
+  closing the "dev profile ships a known key" gap Stage A explicitly deferred -- as a side effect of
+  Stage C, not something Stage B needed to separately fix.
+
+  `NPDevCli/npdev_monitor.py`'s `probe_app()` (`record["apiKey"]`) redirected to prefer the live
+  `secrets/api-key.env` value over the now-generation-time-only `plan.apiKey`, via new helper
+  `_read_live_api_key`. `redact()`'s existing `api[_-]?key` regex needed no change -- confirmed the
+  field name is unchanged, closing the pending item Stage A flagged.
+
+  Verified LIVE: generated a fresh app with no pre-existing `secrets/api-key.env`, booted via
+  `_ops\Run-FinalApp.ps1` -- banner printed exactly once, file created with the expected shape;
+  `curl -H "X-Api-Key: dev-key"` now 401s; `curl -H "X-Api-Key: <printed key>"` returns 200; stopped
+  and restarted WITHOUT deleting the secrets file -- banner did not reprint, the same key still
+  authenticated; `_ops\Smoke-Test.ps1` run standalone against the running app resolved the key
+  itself and reported PASS. Full DSL and generator regression suites green, zero regressions.
+
+  **Explicitly deferred, filed separately as REG-152**: `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1`
+  are a second, fully independent launch-script generator (own `Test-App.ps1`/`New-AppConsole.ps1`,
+  never wired to `--npdev.auth.api-keys` at all -- their `'dev-key'` default only ever worked by
+  coincidence). Once an app is launched through that pipeline, its own smoke test and console will
+  send a now-stale key. Not fixed here per this session's "unrelated bugs filed separately"
+  discipline; needs its own scoped step.
+
+  Stage B (profiles: stop `dev` being the implicit default, real `application-prod.properties`,
+  `_ops\Run-FinalApp.ps1` profile-explicit) remains OPEN. This item stays OPEN until Stage B closes
+  the full card.
