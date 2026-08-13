@@ -279,11 +279,60 @@
     },
     "migrations": {
       "type": "object",
-      "description": "PK-4 Stage A/B: the migration-replay chain for this pack's version history, keyed '<oldVersion> -> <newVersion>' (e.g. \"1.0.0 -> 1.1.0\"). `npdev pack publish` auto-populates an empty array here for every non-BREAKING (ADDITIVE/PATCH-only, or no-op) version bump -- see com.npdev.dsl.v1.pack.PackPublishGate. What a non-empty array contains is Stage C's contract, not yet defined here; this field only reserves the shape so a chain link exists to be filled in later, without another schema change.",
+      "description": "PK-4 Stage A/B/C: the migration-replay chain for this pack's version history, keyed '<oldVersion> -> <newVersion>' (e.g. \"1.0.0 -> 1.1.0\"). `npdev pack publish` auto-populates an empty array here for every non-BREAKING (ADDITIVE/PATCH-only, or no-op) version bump -- see com.npdev.dsl.v1.pack.PackPublishGate. A non-empty array is hand-authored by the pack author for a BREAKING bump, one op per DSL-level change the hop actually made; com.npdev.dsl.v1.pack.PackMigrationComposer composes hops across a multi-version jump and synthesizes the renamedFrom markers com.npdev.dsl.v1.pack.PackMigrationChainSynthesizer injects before the app model is generated. Once published, a hop's array is immutable -- see PackPublishGate's chain-immutability check.",
+      "propertyNames": {
+        "pattern": "^\\d+\\.\\d+\\.\\d+ -> \\d+\\.\\d+\\.\\d+$"
+      },
       "additionalProperties": {
         "type": "array",
         "items": {
-          "type": "object"
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "A field was renamed within the same concept.",
+              "properties": {
+                "op": { "const": "renameField" },
+                "concept": { "type": "string", "minLength": 1 },
+                "from": { "type": "string", "minLength": 1 },
+                "to": { "type": "string", "minLength": 1 }
+              },
+              "required": ["op", "concept", "from", "to"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "A concept itself was renamed.",
+              "properties": {
+                "op": { "const": "renameConcept" },
+                "from": { "type": "string", "minLength": 1 },
+                "to": { "type": "string", "minLength": 1 }
+              },
+              "required": ["op", "from", "to"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "Audit trail only -- never consulted by renamedFrom synthesis, since an added field needs no replay to reach the new pack version cleanly.",
+              "properties": {
+                "op": { "const": "addField" },
+                "concept": { "type": "string", "minLength": 1 },
+                "field": { "type": "string", "minLength": 1 }
+              },
+              "required": ["op", "concept", "field"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "Audit trail only -- never consulted by renamedFrom synthesis; a dropped field is an ordinary, ack-token-gated destructive change with no rename to preserve.",
+              "properties": {
+                "op": { "const": "dropField" },
+                "concept": { "type": "string", "minLength": 1 },
+                "field": { "type": "string", "minLength": 1 }
+              },
+              "required": ["op", "concept", "field"],
+              "additionalProperties": false
+            }
+          ]
         }
       }
     }
