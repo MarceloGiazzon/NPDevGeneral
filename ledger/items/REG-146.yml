@@ -1,0 +1,46 @@
+id: REG-146
+title: >-
+  Workbench i18n string map key order is nondeterministic, breaking check-deterministic-generation.ps1 for dsl-conformance-max
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-13
+source: >-
+  Found incidentally during MASTER-ROADMAP.md Step 6 (PK-2) verification, while running
+  check-deterministic-generation.ps1 -SampleId dsl-conformance-max as an additional regression check
+  (this sample carries real pack imports, unlike the default simple-contact-intake sample). Confirmed
+  NOT caused by PK-2's own changes: reproduces identically on a clean, unmodified main checkout
+  (commit ff2711d6), stash-tested directly -- git stash the PK-2 working tree, rebuild, rerun the
+  check, same 8 files flagged, then git stash pop to restore.
+surface: generator/workbench-emission
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache
+detail: |
+  check-deterministic-generation.ps1 -SampleId dsl-conformance-max fails reproducibly (not
+  intermittently -- reproduced 3 times in a row): src/main/resources/npdev/compiled-model.json,
+  src/main/resources/npdev/support/generated-folder.signature.properties, and both
+  WidgetOrder*Workbench.html files differ between two back-to-back generations of the identical
+  input model.
+
+  Root cause isolated to the Workbench HTML's embedded i18n string JSON blob: the SAME key/value set
+  (action.new, action.select, workbench.readOnly, workbench.header, etc.) appears in a DIFFERENT
+  order between runs, e.g.:
+    run 1: ..., workbench.header, action.new, action.select, workbench.readOnly
+    run 2: action.new, action.select, workbench.readOnly, ..., workbench.header
+  This is a classic HashMap/HashSet-iteration-order symptom -- something feeding
+  workbench-page.html.mustache's i18n block collects keys into an unordered Map/Set instead of a
+  LinkedHashMap or a sorted one. Not yet traced to the exact Java collection site (out of scope for
+  the session that found this; templates/emitters that build the workbench i18n map were not
+  otherwise touched). compiled-model.json's own diff and the generated-folder signature diff are
+  downstream symptoms of the same root cause (the signature hashes the whole tree; compiled-model.json
+  may embed the same i18n data or a derived ordering).
+
+  Confirmed NOT related to PK-2, R5, or any other change landed this session -- reproduces on
+  unmodified main. The default check-deterministic-generation.ps1 sample (simple-contact-intake) does
+  NOT exercise this path (no Workbench usage), which is why this has been invisible to every prior T1
+  fast-gate run; only -SampleId dsl-conformance-max surfaces it.
+guard:
+  kind: manual
+  ref: "pwsh -NoProfile -File scripts/hygiene/check-deterministic-generation.ps1 -SampleId dsl-conformance-max"
+  asserts: two back-to-back generations of dsl-conformance-max produce byte-identical output; currently fails on unmodified main
+  provenRed: true
