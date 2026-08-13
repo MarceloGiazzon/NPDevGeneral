@@ -1598,17 +1598,23 @@ public final class ModelSourceResolver {
             JsonNode ref = node.get("$ref");
             if (ref != null) {
                 // A bare include is exactly {"$ref": "..."}; a pack import may additionally carry
-                // an "as" alias ({"$ref": "...", "as": "..."}); a top-level context declaration (B20,
-                // S2) additionally carries a required "name" ({"$ref": "...", "name": "..."}) and,
-                // since S8 Wave 4 (ADR-0011 D4's v2 opt-in), an optional "physicallyIsolate", but
-                // ONLY at /contexts/N -- everywhere else "name"/"physicallyIsolate" alongside a bare
-                // $ref stays malformed, same as any other stray key would.
+                // an "as" alias ({"$ref": "...", "as": "..."}) and, since PK-3, "allowSideBySide"
+                // (ONLY at /packs/N -- see model.schema.json's packRef); a top-level context
+                // declaration (B20, S2) additionally carries a required "name"
+                // ({"$ref": "...", "name": "..."}) and, since S8 Wave 4 (ADR-0011 D4's v2 opt-in),
+                // an optional "physicallyIsolate", but ONLY at /contexts/N -- everywhere else
+                // "name"/"physicallyIsolate"/"allowSideBySide" alongside a bare $ref stays
+                // malformed, same as any other stray key would.
                 boolean isContextDeclaration = path.matches("^\\$/contexts/\\d+$");
+                boolean isPackDeclaration = path.matches("^\\$/packs/\\d+$");
                 boolean onlyRefAndOptionalAlias = node.size() == 1
                         || (node.size() == 2 && node.has("as"))
                         || (isContextDeclaration && node.size() == 2 && node.has("name"))
                         || (isContextDeclaration && node.size() == 3 && node.has("name")
-                                && node.has("physicallyIsolate"));
+                                && node.has("physicallyIsolate"))
+                        || (isPackDeclaration && node.size() == 2 && node.has("allowSideBySide"))
+                        || (isPackDeclaration && node.size() == 3 && node.has("as")
+                                && node.has("allowSideBySide"));
                 if (!onlyRefAndOptionalAlias) {
                     throwUnchecked(new IOException("Malformed model include at " + sourceFile + " " + path
                             + ": $ref object must not contain extra properties"));
@@ -1724,7 +1730,9 @@ public final class ModelSourceResolver {
         }
     }
 
-    private static ValidationDiagnostic diagnostic(
+    // Package-private: PackDependencyGraphWalker (PK-3) emits its own allowSideBySide warning
+    // through the same diagnostic shape every other resolver warning already uses.
+    static ValidationDiagnostic diagnostic(
             ValidationSeverity severity,
             String code,
             String message,

@@ -281,6 +281,124 @@ class PackTransitiveDependencyResolutionTest {
         assertEquals("simple::Widget", concepts.get(0).get("name").asText());
     }
 
+    @Test
+    void directImportCollidingWithATransitivelyResolvedPackRefusesWithoutAllowSideBySide() throws Exception {
+        writeSideBySideFixtures();
+        Path model = write("model.json", """
+                {
+                  "namespace": "sbs.refuse.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [
+                    { "$ref": "packs/crm/pack.json" },
+                    { "$ref": "packs/user-v3/pack.json", "as": "userv3" }
+                  ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(thrown.getMessage().contains("allowSideBySide"),
+                "must point at the escape hatch, got: " + thrown.getMessage());
+    }
+
+    @Test
+    void allowSideBySideWithoutAnExplicitAliasRefuses() throws Exception {
+        writeSideBySideFixtures();
+        Path model = write("model.json", """
+                {
+                  "namespace": "sbs.noalias.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [
+                    { "$ref": "packs/crm/pack.json" },
+                    { "$ref": "packs/user-v3/pack.json", "allowSideBySide": true }
+                  ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(thrown.getMessage().contains("explicit 'as' alias"),
+                "must require an alias, got: " + thrown.getMessage());
+    }
+
+    @Test
+    void allowSideBySideWithAnAliasLetsBothVersionsCoexist() throws Exception {
+        writeSideBySideFixtures();
+        Path model = write("model.json", """
+                {
+                  "namespace": "sbs.ok.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [
+                    { "$ref": "packs/crm/pack.json" },
+                    { "$ref": "packs/user-v3/pack.json", "as": "userv3", "allowSideBySide": true }
+                  ]
+                }
+                """);
+
+        ResolvedModelSource source = new ModelSourceResolver().resolve(model);
+        JsonNode concepts = source.resolvedRoot().get("concepts");
+        boolean sawTransitiveUser = false;
+        boolean sawDirectUserV3 = false;
+        for (JsonNode concept : concepts) {
+            String name = concept.get("name").asText();
+            if ("user::Account".equals(name)) {
+                sawTransitiveUser = true;
+            }
+            if ("userv3::Account".equals(name)) {
+                sawDirectUserV3 = true;
+            }
+        }
+        assertTrue(sawTransitiveUser, "the transitively-resolved user (v2, via crm) must still be present");
+        assertTrue(sawDirectUserV3, "the directly-imported, aliased user (v3) must be present too");
+        assertEquals(1, source.warnings().stream()
+                .filter(w -> "PACK_SIDE_BY_SIDE_MAJOR_VERSIONS".equals(w.getCode()))
+                .count(), "must emit exactly one loud warning naming the side-by-side decision");
+    }
+
+    private void writeSideBySideFixtures() throws Exception {
+        // The default-convention location a transitive dependency on "user" resolves to.
+        write("packs/user/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "2.0.0",
+                  "concepts": [
+                    { "name": "Account", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+        write("packs/crm/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [ { "pack": "user", "version": "^2.0" } ],
+                  "concepts": [
+                    { "name": "Lead", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+        // A DIFFERENT physical file, same real pack id "user", a different major -- what the app
+        // wants to import directly, alongside (not instead of) crm's own transitive dependency.
+        write("packs/user-v3/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "user",
+                  "version": "3.0.0",
+                  "concepts": [
+                    { "name": "Account", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+    }
+
     private Path write(String relative, String content) throws Exception {
         Path path = temp.resolve(relative);
         Files.createDirectories(path.getParent());

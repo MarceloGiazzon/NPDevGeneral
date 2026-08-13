@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.dsl.v1.pack.MinimalVersionSelector;
 import com.npdev.dsl.v1.pack.PackVersion;
 import com.npdev.dsl.v1.pack.PackVersionConstraint;
+import com.npdev.dsl.v1.validation.ValidationDiagnostic;
+import com.npdev.dsl.v1.validation.ValidationSeverity;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -72,8 +74,13 @@ final class PackDependencyGraphWalker {
         new PackDependencyGraphWalker(resolver, state, rootDslVersion).run(packsNode, resolved, modelFile);
     }
 
+    private record DirectImport(
+            String path, Path packFile, ObjectNode packNode, String realPackId, String qualifier, boolean allowSideBySide, boolean hasAlias) {
+    }
+
     private void run(ArrayNode packsNode, ObjectNode resolved, Path modelFile) throws IOException {
         Set<String> usedNamespaces = new LinkedHashSet<>();
+        List<DirectImport> directImports = new ArrayList<>();
 
         int index = 0;
         for (JsonNode packRefNode : packsNode) {
@@ -96,12 +103,49 @@ final class PackDependencyGraphWalker {
             if (!usedNamespaces.add(namespaceKey)) {
                 throw ModelSourceResolver.error(modelFile, path + "/as", "Duplicate pack namespace alias: " + qualifier);
             }
+            boolean allowSideBySide = packRef.has("allowSideBySide") && packRef.get("allowSideBySide").asBoolean(false);
+            directImports.add(new DirectImport(path, packFile, packNode, realPackId, qualifier, allowSideBySide, packRef.has("as")));
+            index++;
+        }
 
-            discover(realPackId, packNode, packFile, 1, List.of("app", realPackId));
+        // Two passes on purpose: every direct import's own file/realPackId is resolved above
+        // BEFORE any discovery runs, so the collision check below (an earlier direct import's own
+        // transitive walk already having claimed this same real packId under a DIFFERENT file) is
+        // decided the same way regardless of how deep that earlier walk went before reaching here.
+        for (DirectImport direct : directImports) {
+            if (packNodeById.containsKey(direct.realPackId())) {
+                Path existingFile = packFileById.get(direct.realPackId());
+                if (existingFile.equals(direct.packFile())) {
+                    // Same physical file already resolved transitively -- a harmless direct
+                    // re-declaration of what would have been pulled in anyway.
+                    qualifierById.put(direct.realPackId(), direct.qualifier());
+                    continue;
+                }
+                if (!direct.allowSideBySide()) {
+                    throw ModelSourceResolver.error(modelFile, direct.path(), "Pack '" + direct.realPackId()
+                            + "' is imported directly here (" + direct.packFile() + ") but a different file for "
+                            + "the same pack id is already resolved elsewhere in this model's dependency graph ("
+                            + existingFile + ") -- set allowSideBySide:true (with an explicit 'as' alias) on this "
+                            + "import to tolerate this, or point both at the same file/version");
+                }
+                if (!direct.hasAlias()) {
+                    throw ModelSourceResolver.error(modelFile, direct.path(), "allowSideBySide requires an "
+                            + "explicit 'as' alias so this direct import stays distinguishable from the pack of "
+                            + "the same id resolved elsewhere in the graph");
+                }
+                // A genuinely separate node: discover() is graph-key-agnostic (nothing inside it
+                // re-derives its key from packNode's own "pack" field), so the alias can stand in
+                // as the key with no further changes -- it can never collide with a REAL packId key
+                // since dependency edges (packs[].pack) are always real ids, never aliases.
+                discover(direct.qualifier(), direct.packNode(), direct.packFile(), 1, List.of("app", direct.qualifier()));
+                qualifierById.put(direct.qualifier(), direct.qualifier());
+                state.warnings.add(sideBySideWarning(modelFile, direct, existingFile));
+                continue;
+            }
+            discover(direct.realPackId(), direct.packNode(), direct.packFile(), 1, List.of("app", direct.realPackId()));
             // D6: a direct app import's qualifier always wins, whether this pack was already
             // discovered transitively (via an earlier direct import's own dependency graph) or not.
-            qualifierById.put(realPackId, qualifier);
-            index++;
+            qualifierById.put(direct.realPackId(), direct.qualifier());
         }
 
         detectPackCycle(modelFile);
@@ -210,6 +254,19 @@ final class PackDependencyGraphWalker {
                 throw ModelSourceResolver.error(modelFile, "/packs", refused.message());
             }
         }
+    }
+
+    private static ValidationDiagnostic sideBySideWarning(Path modelFile, DirectImport direct, Path existingFile) {
+        return ModelSourceResolver.diagnostic(
+                ValidationSeverity.WARNING,
+                "PACK_SIDE_BY_SIDE_MAJOR_VERSIONS",
+                "Pack '" + direct.realPackId() + "' resolves to two different files side by side: the direct "
+                        + "import at " + direct.packFile() + " (aliased '" + direct.qualifier() + "') and "
+                        + existingFile + " (resolved elsewhere in the graph, physical identity unaffected by the "
+                        + "alias) -- confirm this is intentional.",
+                modelFile,
+                direct.path()
+        );
     }
 
     private void detectPackCycle(Path modelFile) throws IOException {
