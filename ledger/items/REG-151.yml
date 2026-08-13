@@ -1,0 +1,61 @@
+id: REG-151
+title: >-
+  PackMigrationChain.earliestFromVersion() can under-compose if an UNTRACKED pack's chain is
+  missing its own earliest hop
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-13
+source: >-
+  MASTER-ROADMAP.md Step 11 (PK-4 Stage C/D, PACK-6). Found while designing the real end-to-end
+  migration-chain proof's RED control, before writing any proof code -- reasoning through what the
+  fallback actually guarantees surfaced a real, narrower gap distinct from the one it was built to
+  fix.
+surface: dsl/pack-migration
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackMigrationChain.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/PackDependencyGraphWalker.java
+detail: |
+  `PackDependencyGraphWalker.applyMigrationChains` composes a migration chain from `fromVersion` to
+  `toVersion`. When a packId has no tracked `migratedVersion` in `npdev.lock` (never generated
+  before, or generated back before this pack had a migrations key at all), `fromVersion` falls back
+  to `PackMigrationChain.earliestFromVersion()` -- the lowest `from` version across every hop
+  CURRENTLY declared in the chain. This is correct when the chain is intact: a hop can only exist
+  between two real published versions, so the lowest `from` is provably the pack's own first-ever
+  version, and composing from it is safe whether the live database is real (a pre-existing install)
+  or nonexistent (a fresh install, where a synthesized-but-unnecessary marker is harmless).
+
+  The gap: this reasoning breaks if the chain's OWN earliest hop is itself missing or altered
+  (accidentally, or via a hand-edit that bypasses `npdev pack publish`'s chain-immutability
+  enforcement, which only runs at publish time, not at read time). `earliestFromVersion()` then
+  computes the SECOND-earliest hop's `from` as if it were the true origin, and composition can
+  succeed (finding a complete path from that later "origin" to the target) without ever detecting
+  that an earlier hop is missing -- silently under-composing rather than refusing.
+
+  Confirmed distinct from the TRACKED case (an app with a real, recorded `migratedVersion`), which
+  already refuses correctly on ANY missing hop in the requested range, including the earliest one --
+  proven by `PackMigrationComposerTest.missingHopRefusesNamingTheGap` and
+  `PackMigrationChainResolutionTest.missingHopInTheChainRefusesRatherThanSilentlyDropping`/
+  `redControl_...`, and by the real end-to-end proof
+  (`scripts/proofs/run-pk4-migration-chain-proof.py`), all of which write an explicit tracked lock
+  before exercising the missing-hop refusal. This item is specifically the UNTRACKED variant of the
+  same RED control, which the roadmap's own proof section does not literally demand (its recipe
+  describes re-running an already-established upgrade, i.e. the tracked case).
+
+  A durable fix likely needs a trust anchor independent of the chain's own current content -- e.g. a
+  pack-level, publish-time-immutable "first published version" field, protected by
+  `PackPublishGate`'s existing immutability check the same way individual hops already are -- rather
+  than deriving the origin from whatever hops happen to currently be observable. Not designed here;
+  flagging the shape of the fix for whoever picks this up.
+guard:
+  kind: manual
+  ref: >-
+    construct a pack chain with hops ONLY from 2.0.0 onward (no 1.0.0 -> 2.0.0 entry at all,
+    simulating an accidentally-truncated or hand-edited history), leave npdev.lock absent
+    (untracked), and compose from PackMigrationChain.earliestFromVersion() to the pack's current
+    version -- it succeeds silently instead of refusing, even though the true origin (1.0.0) is
+    unknowable from the truncated chain alone
+  asserts: >-
+    an untracked pack whose chain is missing its own earliest hop is detected and refused, not
+    silently under-composed
+  provenRed: false

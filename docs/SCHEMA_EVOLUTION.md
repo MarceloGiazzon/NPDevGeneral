@@ -91,6 +91,17 @@ plus a brand-new one."
   a column you meant to rename, STOP and fix the marker** before proceeding. The plan preview emits a
   `WARNINGS` block when a `renamedFrom` names a column the previous model has no record of — the
   earliest signal that a marker has gone stale.
+- **A pack-derived `renamedFrom` can be synthesized, not hand-typed.** When a pack import skips one
+  or more published versions in a single regenerate (e.g. `identity@1.0` straight to `@3.0`, never
+  generating `@2.0`), `PackMigrationComposer` composes every intervening version's declared
+  `migrations` chain entry into the single immediately-previous marker this section describes —
+  collapsing a multi-hop history down to the one string the engine actually consumes, exactly as if
+  a human had typed it. This is tracked via `npdev.lock`'s `migratedVersion` field: **regenerate
+  (and, ideally, boot) after every pack-version bump you actually intend to apply to a real
+  database**, rather than batching several bumps into a single skipped regenerate you never boot in
+  between — an app that regenerates repeatedly without booting the intermediate build has no way for
+  the platform to know which hops were actually reached live, the same class of staleness a
+  hand-authored marker risks if left too long.
 
 ## Dropping a concept
 
