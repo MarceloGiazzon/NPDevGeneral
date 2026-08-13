@@ -20,6 +20,7 @@ import {
 } from "./bundleIoService";
 import SemanticDiffPanel from "./SemanticDiffPanel";
 import PipelineHandoffSection from "./PipelineHandoffSection";
+import ModelOnlyImportSection from "./ModelOnlyImportSection";
 
 type ImportExportWorkspaceProps = {
   documentSession: AuthoringDocumentSession | null;
@@ -174,6 +175,8 @@ export default function ImportExportWorkspace({
           </button>
         </div>
       </section>
+
+      <ModelOnlyImportSection onImportModel={onReplaceDocumentSession} onStatusMessage={setStatusMessage} />
 
       <section className="authoring-editor-section">
         <div className="authoring-editor-section__header">

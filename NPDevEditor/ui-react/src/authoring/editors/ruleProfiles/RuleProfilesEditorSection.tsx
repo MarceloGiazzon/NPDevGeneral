@@ -4,13 +4,11 @@ import { joinTextList, parseTextList } from "../editorUtils";
 
 type RuleProfilesEditorSectionProps = {
   ruleProfiles: AuthoringRuleProfile[];
-  conceptNames: string[];
   onChange: (ruleProfiles: AuthoringRuleProfile[]) => void;
 };
 
 export default function RuleProfilesEditorSection({
   ruleProfiles,
-  conceptNames,
   onChange
 }: RuleProfilesEditorSectionProps): JSX.Element {
   return (
@@ -30,7 +28,6 @@ export default function RuleProfilesEditorSection({
               ...ruleProfiles,
               {
                 name: "interactive",
-                concept: conceptNames[0] ?? "",
                 enabled: true,
                 appliesTo: []
               }
@@ -81,32 +78,6 @@ export default function RuleProfilesEditorSection({
                 </label>
 
                 <label>
-                  Concept
-                  <select
-                    value={profile.concept ?? ""}
-                    onChange={(event) =>
-                      onChange(
-                        ruleProfiles.map((entry, index) =>
-                          index === profileIndex
-                            ? {
-                                ...entry,
-                                concept: event.target.value || undefined
-                              }
-                            : entry
-                        )
-                      )
-                    }
-                  >
-                    <option value="">Any concept</option>
-                    {conceptNames.map((conceptName) => (
-                      <option key={conceptName} value={conceptName}>
-                        {conceptName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label>
                   Applies to
                   <input
                     value={joinTextList(profile.appliesTo)}
@@ -117,26 +88,6 @@ export default function RuleProfilesEditorSection({
                             ? {
                                 ...entry,
                                 appliesTo: parseTextList(event.target.value)
-                              }
-                            : entry
-                        )
-                      )
-                    }
-                  />
-                </label>
-
-                <label>
-                  Permissions
-                  <input
-                    value={joinTextList(profile.permissionRequirements ?? profile.permissions)}
-                    onChange={(event) =>
-                      onChange(
-                        ruleProfiles.map((entry, index) =>
-                          index === profileIndex
-                            ? {
-                                ...entry,
-                                permissionRequirements: parseTextList(event.target.value),
-                                permissions: undefined
                               }
                             : entry
                         )
