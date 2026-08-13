@@ -1,6 +1,7 @@
 package com.npdev.adapters.json.jackson;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.npdev.kernel.ports.JsonCodec;
@@ -20,7 +21,17 @@ public final class JacksonJsonCodec implements JsonCodec {
         // type this way and corrupted a second, capability-dispatched persistence write of the same
         // entity (the generated CRUD's own direct JDBC save used the correctly-typed DTO value and
         // succeeded; this codec's re-decoded copy did not).
-        this(new ObjectMapper().findAndRegisterModules().disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS));
+        //
+        // R5: fromJsonToObject's untyped decode (target Object.class) has the same class of hazard
+        // for a decimal field -- Jackson's untyped-number handling downgrades any JSON number token
+        // to Double by default, silently losing precision for a decimal/money value carried through
+        // an event or flow payload. USE_BIG_DECIMAL_FOR_FLOATS keeps it a BigDecimal instead. Typed
+        // REST DTO binding (@RequestBody BigDecimal fields) is unaffected either way -- Jackson's
+        // BigDecimalDeserializer already accepts a numeric JSON token correctly once the field is
+        // actually typed as BigDecimal.
+        this(new ObjectMapper().findAndRegisterModules()
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS));
     }
 
     public JacksonJsonCodec(ObjectMapper objectMapper) {
