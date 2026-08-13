@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "npdev-scale-proof-baseline.v1",
+  "runs": {
+    "26": [
+      {
+        "schemaVersion": "npdev-scale-proof-report.v1",
+        "generatedAt": "2026-08-13T01:00:59.7409189Z",
+        "concepts": 26,
+        "status": "passed",
+        "phases": {
+          "synthesize": {
+            "status": "passed",
+            "durationMs": 242,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\26\\Input\\model.json"
+          },
+          "generate": {
+            "status": "passed",
+            "durationMs": 15526,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\26\\Output\\App"
+          },
+          "build": {
+            "status": "passed",
+            "durationMs": 50053,
+            "message": "exit 0"
+          },
+          "boot": {
+            "status": "passed",
+            "durationMs": 57267,
+            "message": "http://127.0.0.1:18226/actuator/health"
+          },
+          "firstRequest": {
+            "status": "passed",
+            "durationMs": 295,
+            "message": "http://127.0.0.1:18226/api/runtime/metadata/ui/panels/ScaleProofPanel -- status 200: {\"endpointVersion\":\"1.0.0\",\"surfaceType\":\"panel-runtime\",\"operation\":\"loadPanel\",\"panelName\":\"ScaleProofPanel\",\"route\":\"/scale-proof/synthetic\",\"title\":\"Scale proof\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"ruleProfile\":\"interactive\",\"governedDataAccess\":\"ConceptGateway\",\"dataSources\":[{\"name\":\"allRows\",\"concept\":\"SyntheticConcept0001\",\"query\":\"AllSyntheticConcept0001\",\"procedure\":\"\",\"parentDataSource\":\"\",\"childField\":\"\",\"rowOps\":[],\"addFormFields\":[],\"recordCount\":0,\"fallback\":false}],\"data\":{\"allRows\":[]},\"fields\":[{\"field\":\"label\"},{\"field\":\"sequence\"}],\"fieldBindings\":[{\"field\":\"label\",\"dataSource\":\"allRows\",\"sourceField\":\"label\",\"editable\":false,\"label\":\"\",\"order\":null},{\"field\":\"sequence\",\"dataSource\":\"allRows\",\"sourceField\":\"sequence\",\"editable\":false,\"label\":\"\",\"order\":null}],\"actions\":[],\"metadata\":{},\"fallbackUi\":false,\"layout\":{\"fields\":[\"label\",\"sequence\"],\"type\":\"table\"},\"gatewayTrace\":[{\"timestampMs\":1786582858911,\"operation\":\"LIST\",\"conceptName\":\"SyntheticConcept0001\",\"id\":\"*\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"outcome\":\"SUCCESS\",\"reasonCode\":\"allowed\",\"ruleProfiles\":[\"always\",\"interactive\",\"query\"],\"defaultsApplied\":[],\"derivedValuesApplied\":[],\"lifecycleTransition\":null,\"explanation\":\"allowed\",\"details\":{\"decisionOutcome\":\"queryRestrictionsExplicit\",\"operation\":\"LIST\",\"concept\":\"SyntheticConcept0001\",\"rulesEvaluated\":[{\"expression\":\"label != null && label != ''\",\"allowed\":true,\"outcome\":\"notAppliedToQueryOperation\",\"rule\":\"expressionInvariant1\"},{\"expression\":\"label != null && label != ''\",\"allowed\":true,\"outcome\":\"notAppliedToQueryOperation\",\"rule\":\"SyntheticConcept0001LabelRequired\"}]}}]}"
+          }
+        }
+      }
+    ],
+    "100": [
+      {
+        "schemaVersion": "npdev-scale-proof-report.v1",
+        "generatedAt": "2026-08-13T01:04:32.3219397Z",
+        "concepts": 100,
+        "status": "passed",
+        "phases": {
+          "synthesize": {
+            "status": "passed",
+            "durationMs": 227,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\100\\Input\\model.json"
+          },
+          "generate": {
+            "status": "passed",
+            "durationMs": 20612,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\100\\Output\\App"
+          },
+          "build": {
+            "status": "passed",
+            "durationMs": 106045,
+            "message": "exit 0"
+          },
+          "boot": {
+            "status": "passed",
+            "durationMs": 63444,
+            "message": "http://127.0.0.1:18300/actuator/health"
+          },
+          "firstRequest": {
+            "status": "passed",
+            "durationMs": 494,
+            "message": "http://127.0.0.1:18300/api/runtime/metadata/ui/panels/ScaleProofPanel -- status 200: {\"endpointVersion\":\"1.0.0\",\"surfaceType\":\"panel-runtime\",\"operation\":\"loadPanel\",\"panelName\":\"ScaleProofPanel\",\"route\":\"/scale-proof/synthetic\",\"title\":\"Scale proof\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"ruleProfile\":\"interactive\",\"governedDataAccess\":\"ConceptGateway\",\"dataSources\":[{\"name\":\"allRows\",\"concept\":\"SyntheticConcept0001\",\"query\":\"AllSyntheticConcept0001\",\"procedure\":\"\",\"parentDataSource\":\"\",\"childField\":\"\",\"rowOps\":[],\"addFormFields\":[],\"recordCount\":0,\"fallback\":false}],\"data\":{\"allRows\":[]},\"fields\":[{\"field\":\"label\"},{\"field\":\"sequence\"}],\"fieldBindings\":[{\"field\":\"label\",\"dataSource\":\"allRows\",\"sourceField\":\"label\",\"editable\":false,\"label\":\"\",\"order\":null},{\"field\":\"sequence\",\"dataSource\":\"allRows\",\"sourceField\":\"sequence\",\"editable\":false,\"label\":\"\",\"order\":null}],\"actions\":[],\"metadata\":{},\"fallbackUi\":false,\"layout\":{\"fields\":[\"label\",\"sequence\"],\"type\":\"table\"},\"gatewayTrace\":[{\"timestampMs\":1786583071121,\"operation\":\"LIST\",\"conceptName\":\"SyntheticConcept0001\",\"id\":\"*\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"outcome\":\"SUCCESS\",\"reasonCode\":\"allowed\",\"ruleProfiles\":[\"always\",\"interactive\",\"query\"],\"defaultsApplied\":[],\"derivedValuesApplied\":[],\"lifecycleTransition\":null,\"explanation\":\"allowed\",\"details\":{\"concept\":\"SyntheticConcept0001\",\"operation\":\"LIST\",\"decisionOutcome\":\"queryRestrictionsExplicit\",\"rulesEvaluated\":[{\"outcome\":\"notAppliedToQueryOperation\",\"allowed\":true,\"expression\":\"label != null && label != ''\",\"rule\":\"expressionInvariant1\"},{\"outcome\":\"notAppliedToQueryOperation\",\"allowed\":true,\"expression\":\"label != null && label != ''\",\"rule\":\"SyntheticConcept0001LabelRequired\"}]}}]}"
+          }
+        }
+      }
+    ]
+  }
+}
