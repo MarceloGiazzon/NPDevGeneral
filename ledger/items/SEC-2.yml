@@ -6,7 +6,7 @@ severity: MEDIUM
 status: DONE
 opened: 2026-08-12
 closed: 2026-08-13
-verification: LIVE_VERIFIED
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R2). No Dependabot config,
   no CodeQL workflow, no npm audit consumer -- scripts/policy/frontend-npm-audit-policy.json is an
@@ -68,15 +68,16 @@ resolution: |
 
   Real, pre-existing, unrelated finding surfaced by check-npm-audit-policy.py's first live run
   against NPDevEditor/ui-react (3 high-severity dev-dependency vulnerabilities: nanoid, postcss,
-  vite) -- filed separately as REG-146 rather than fixed here (confirmed via
-  `git diff --stat main -- NPDevEditor/ui-react/package*.json`, empty, so this branch did not cause
-  it). This means security-scan.yml's npm-audit job will show red on its first real run on main,
-  which is expected/correct (the check is supposed to catch this) and does not block merging this
-  card (security-scan.yml is not a required status check).
+  vite) -- confirmed via `git diff --stat main -- NPDevEditor/ui-react/package*.json` (empty) that
+  this branch did not cause it. Filed and fixed as REG-149: `npm audit fix` (no `--force`) resolved
+  all 3 in-range (only package-lock.json changed, no package.json edit), re-verified 0
+  vulnerabilities post-fix plus a clean build and full vitest pass. Fixed rather than left red so
+  security-scan.yml's npm-audit job is actually green on this card's own merge, not merely
+  documented as an expected first-run failure (security-scan.yml is not a required status check
+  either way, so this was not a merge-blocker, but a gate that starts red gives no future signal).
 guard:
   kind: manual
   ref: python scripts/security/check-npm-audit-policy.py --calibrate; grep -c '^permissions:'
     .github/workflows/*.yml | grep -c ':1$'
-  asserts: the 5-control self-test passes; exactly 10 of 10 workflow files carry a top-level
-    permissions: block
+  asserts: the 5-control self-test passes; exactly 10 of 10 workflow files carry a top-level permissions block
   provenRed: true

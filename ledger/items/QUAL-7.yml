@@ -6,7 +6,7 @@ severity: LOW
 status: DONE
 opened: 2026-08-12
 closed: 2026-08-13
-verification: LIVE_VERIFIED
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R4 Part A). 21
   scripts/quality/run-*.ps1 confirmed unreachable (18 referenced nowhere at all, 3 only from prose),

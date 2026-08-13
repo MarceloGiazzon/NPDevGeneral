@@ -1,0 +1,39 @@
+id: REG-149
+title: >-
+  NPDevEditor/ui-react carried 3 real high-severity dev-dependency vulnerabilities, undetected
+  until R2's own new npm-audit-policy gate ran for the first time
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-13
+closed: 2026-08-13
+source: >-
+  MASTER-ROADMAP.md Step 9 (R2: Dependabot + CodeQL + npm audit policy). PR #17's own new
+  "npm audit policy (NPDevEditor/ui-react)" CI check failed on its first real run, naming
+  nanoid/postcss/vite as high-severity, non-allowlistable (rules.failOnSeverityAtOrAbove: high
+  in scripts/policy/frontend-npm-audit-policy.json has no allowlist escape at that floor).
+surface: NPDevEditor/ui-react
+files:
+  - NPDevEditor/ui-react/package-lock.json
+detail: |
+  Confirmed via `git diff main origin/step9-hygiene -- NPDevEditor/ui-react/package.json
+  NPDevEditor/ui-react/package-lock.json` (empty output) that Step 9's own commits never touched
+  either file -- the 3 vulnerabilities (nanoid <=3.3.16, postcss <=8.5.22, vite 8.0.0-8.0.15, all
+  dev-only transitive deps of the vite/vitest toolchain) were already present on `main` before R2's
+  gate existed to catch them. `scripts/policy/frontend-npm-audit-policy.json` had been an orphan
+  file with zero consumers until Step 9 wired it into `.github/workflows/security-scan.yml` -- this
+  is that gate correctly doing its job for the first time, not a regression Step 9 introduced.
+
+  Fix: `npm audit fix` (no `--force`) inside NPDevEditor/ui-react resolved all 3 in-range -- only
+  package-lock.json changed (vite 8.0.9 -> 8.2.1 within the existing `^8.0.9` package.json range,
+  plus transitive vitest/rollup/etc. bumps), no package.json edit, no BREAKING.md entry needed.
+  Verified post-fix: `npm audit --audit-level=high` -> 0 vulnerabilities; `npm run build` succeeds
+  (unchanged bundle sizes); `npx vitest run` -> 13 files / 79 tests all pass; the new checker itself
+  (`python scripts/security/check-npm-audit-policy.py --project-dir NPDevEditor/ui-react`) reports
+  "0 (production: 0)" / OK. Landed as a commit on step9-hygiene alongside the rest of R2, since a
+  gate that starts in a permanently-red state provides no future signal.
+guard:
+  kind: script
+  ref: scripts/security/check-npm-audit-policy.py
+  asserts: NPDevEditor/ui-react has 0 vulnerable packages at or above the high-severity floor
+  provenRed: true
