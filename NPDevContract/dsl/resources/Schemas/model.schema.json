@@ -394,6 +394,25 @@
         "$ref": "#/$defs/packRef"
       }
     },
+    "provides": {
+      "type": "object",
+      "description": "PK-3: what this app satisfies for a pack's own `requires` (roles/capabilities/network) -- a pack's requirement unbound here refuses composition, naming the pack, its path, and the unbound key.",
+      "properties": {
+        "roles": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "network": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
     "externalAi": {
       "$ref": "#/$defs/externalAi"
     },
@@ -4501,6 +4520,10 @@
           "minLength": 1,
           "pattern": "^[a-z][a-z0-9_-]*$",
           "description": "Optional alias overriding the pack's own identifier as the namespace prefix in this model."
+        },
+        "allowSideBySide": {
+          "type": "boolean",
+          "description": "PK-3: tolerate this direct import's real pack id colliding, at a different major version, with a pack id resolved transitively elsewhere in this model's dependency graph -- normally a hard refusal. Requires `as`, since the direct import must stay distinguishable from the transitive one."
         }
       },
       "additionalProperties": false

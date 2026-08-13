@@ -94,7 +94,12 @@ public final class ModelSourceResolver {
             "pack",
             "namespace",
             "version",
-            "description"
+            "description",
+            // PK-3: identity-level declarations exactly like the six above -- a fragment declaring
+            // its own transitive dependencies or its own requires would be the same authoring
+            // mistake as a fragment declaring its own pack id.
+            "packs",
+            "requires"
     );
     private static final Pattern PACK_ID_PATTERN = Pattern.compile("^[a-z][a-z0-9_-]*$");
 
@@ -459,80 +464,65 @@ public final class ModelSourceResolver {
         Deque<String> pathStack = new ArrayDeque<>();
         for (String start : importGraph.keySet()) {
             if (!visited.contains(start)) {
-                detectImportCycleFrom(start, importGraph, visited, onStack, pathStack, modelFile);
+                detectCycleFrom(start, importGraph, visited, onStack, pathStack, cyclePath ->
+                        error(modelFile, "/contexts", "Import cycle detected: " + String.join(" -> ", cyclePath)
+                                + " -- a context's imports[] graph must be acyclic (a cycle means the boundary "
+                                + "is not a boundary)"));
             }
         }
     }
 
-    private static void detectImportCycleFrom(
+    /** PK-3: the generic DFS-with-onStack cycle detector D8 built for the bounded-context
+     *  {@code imports[]} graph, extracted so {@link PackDependencyGraphWalker}'s packId-keyed
+     *  dependency graph can reuse the SAME algorithm rather than a second hand-rolled one --
+     *  only the error message differs between the two callers, supplied via {@code errorReporter}.
+     *  Package-private: PackDependencyGraphWalker is a sibling class in this package. */
+    static void detectCycleFrom(
             String node,
-            Map<String, Set<String>> importGraph,
+            Map<String, Set<String>> graph,
             Set<String> visited,
             Set<String> onStack,
             Deque<String> pathStack,
-            Path modelFile
+            CycleErrorReporter errorReporter
     ) throws IOException {
         visited.add(node);
         onStack.add(node);
         pathStack.push(node);
-        for (String next : importGraph.getOrDefault(node, Set.of())) {
+        for (String next : graph.getOrDefault(node, Set.of())) {
             if (onStack.contains(next)) {
                 List<String> cyclePath = new ArrayList<>(pathStack);
                 Collections.reverse(cyclePath);
                 int startIndex = cyclePath.indexOf(next);
-                String description = String.join(" -> ", cyclePath.subList(startIndex, cyclePath.size())) + " -> " + next;
-                throw error(modelFile, "/contexts", "Import cycle detected: " + description
-                        + " -- a context's imports[] graph must be acyclic (a cycle means the boundary "
-                        + "is not a boundary)");
+                List<String> cycle = new ArrayList<>(cyclePath.subList(startIndex, cyclePath.size()));
+                cycle.add(next);
+                throw errorReporter.describe(cycle);
             }
             if (!visited.contains(next)) {
-                detectImportCycleFrom(next, importGraph, visited, onStack, pathStack, modelFile);
+                detectCycleFrom(next, graph, visited, onStack, pathStack, errorReporter);
             }
         }
         pathStack.pop();
         onStack.remove(node);
     }
 
+    @FunctionalInterface
+    interface CycleErrorReporter {
+        IOException describe(List<String> cyclePath) throws IOException;
+    }
+
+    /**
+     * PK-3: delegates to {@link PackDependencyGraphWalker}, which reproduces this method's own
+     * pre-PK-3 behavior exactly when no pack in the graph declares its own {@code packs[]} (every
+     * existing pack/app in this repo today) and additionally resolves transitive dependencies,
+     * cycles, and depth/fan-out DoS caps when one does.
+     */
     private void resolvePacks(
             ArrayNode packsNode,
             ObjectNode resolved,
             Path modelFile,
             ResolutionState state
     ) throws IOException {
-        String rootDslVersion = textOrBlank(resolved.get("dslVersion"));
-        Set<String> usedNamespaces = new LinkedHashSet<>();
-        int index = 0;
-        for (JsonNode packRefNode : packsNode) {
-            String path = "/packs/" + index;
-            if (!packRefNode.isObject()) {
-                throw error(modelFile, path, "Pack import must be a JSON object with $ref");
-            }
-            ObjectNode packRef = (ObjectNode) packRefNode;
-            JsonNode refNode = packRef.get("$ref");
-            if (refNode == null || !refNode.isTextual() || refNode.asText("").isBlank()) {
-                throw error(modelFile, path + "/$ref", "Pack $ref must be a non-blank string");
-            }
-
-            Path packFile = resolvePackPath(refNode.asText(), modelFile, state.rootDirectory);
-            ObjectNode rawPackNode = loadPackJson(packFile, state);
-            String packDslVersion = textOrBlank(rawPackNode.get("dslVersion"));
-            if (!rootDslVersion.isBlank() && !rootDslVersion.equals(packDslVersion)) {
-                throw error(packFile, "/dslVersion", "Pack DSL version mismatch for " + refNode.asText()
-                        + ": root model uses " + rootDslVersion + " but pack uses " + packDslVersion);
-            }
-            ObjectNode packNode = resolvePackRoot(rawPackNode, packFile, state, 1, new ArrayDeque<>());
-
-            String packId = resolvePackNamespace(packRef, packNode, modelFile, packFile, path);
-            String namespaceKey = packId.toLowerCase(Locale.ROOT);
-            if (!usedNamespaces.add(namespaceKey)) {
-                throw error(modelFile, path + "/as", "Duplicate pack namespace alias: " + packId);
-            }
-            Map<String, Map<String, String>> rewriteMaps = buildRewriteMaps(packId, packNode);
-            mergePackConcepts(packId, packNode, resolved, packFile, rewriteMaps);
-            mergePackNonConceptArrays(packId, packNode, resolved, packFile, rewriteMaps);
-            recordPhysicalQualifiers(packId, packNode, packFile, state);
-            index++;
-        }
+        PackDependencyGraphWalker.resolve(this, packsNode, resolved, modelFile, state);
     }
 
     /**
@@ -544,7 +534,7 @@ public final class ModelSourceResolver {
      * by the same qualified concept name {@link #namespacePackConcept} just produced, whose value is
      * derived from the pack's own {@code pack}/{@code version} fields instead of the alias.
      */
-    private static void recordPhysicalQualifiers(
+    static void recordPhysicalQualifiers(
             String qualifierId,
             ObjectNode packNode,
             Path packFile,
@@ -585,7 +575,7 @@ public final class ModelSourceResolver {
         }
     }
 
-    private static String resolvePackNamespace(
+    static String resolvePackNamespace(
             ObjectNode packRef,
             ObjectNode packNode,
             Path modelFile,
@@ -647,7 +637,7 @@ public final class ModelSourceResolver {
      *  against that kind's own map (e.g. {@code queries}), never a same-named member of a
      *  different kind. {@code capabilities} and {@code customCapabilities} share one merged map --
      *  a {@code capability} reference field does not distinguish which of the two declared it. */
-    private static Map<String, Map<String, String>> buildRewriteMaps(String qualifierId, ObjectNode sourceNode) {
+    static Map<String, Map<String, String>> buildRewriteMaps(String qualifierId, ObjectNode sourceNode) {
         Map<String, Map<String, String>> maps = new LinkedHashMap<>();
         for (String kind : MODEL_ARRAY_KEYS) {
             maps.put(kind, memberRewriteMap(qualifierId, sourceNode, kind));
@@ -732,7 +722,7 @@ public final class ModelSourceResolver {
      * normal duplicate-member error. Without this, pack-defined domain types/capabilities that a
      * pack's concepts depend on would be silently dropped.
      */
-    private static void mergePackNonConceptArrays(
+    static void mergePackNonConceptArrays(
             String packId,
             ObjectNode packNode,
             ObjectNode resolved,
@@ -1090,11 +1080,11 @@ public final class ModelSourceResolver {
         String resolve(String bareName);
     }
 
-    private static Path resolvePackPath(String ref, Path modelFile, Path rootDirectory) throws IOException {
+    static Path resolvePackPath(String ref, Path modelFile, Path rootDirectory) throws IOException {
         return resolveJsonRefUnderRoot(ref, modelFile, rootDirectory, rootDirectory, "Pack $ref");
     }
 
-    private static ObjectNode loadPackJson(Path packFile, ResolutionState state) throws IOException {
+    static ObjectNode loadPackJson(Path packFile, ResolutionState state) throws IOException {
         JsonNode node = readJson(packFile);
         if (!node.isObject()) {
             throw error(packFile, "$", "Pack file must be a JSON object");
@@ -1105,7 +1095,7 @@ public final class ModelSourceResolver {
         return (ObjectNode) node;
     }
 
-    private ObjectNode resolvePackRoot(
+    ObjectNode resolvePackRoot(
             ObjectNode rawPack,
             Path packFile,
             ResolutionState state,
@@ -1130,6 +1120,18 @@ public final class ModelSourceResolver {
         }
         if (rawPack.has("metadata")) {
             resolvedPack.set("metadata", rawPack.get("metadata").deepCopy());
+        }
+        // PK-3: survive packs[]/requires through verbatim, exactly like metadata above -- neither
+        // is in PACK_ROOT_SCALAR_KEYS or MODEL_ARRAY_KEYS, so without this they schema-validate and
+        // then silently vanish (the same "twin forgotten" hazard REG-108 already found for
+        // roles/propertyScopes/properties). resolvePackRoot itself stays non-recursive: nothing here
+        // resolves a dependency's own file -- that recursion is PackDependencyGraphWalker's job, one
+        // layer up, which is also where packs[]/requires actually get consumed.
+        if (rawPack.has("packs")) {
+            resolvedPack.set("packs", rawPack.get("packs").deepCopy());
+        }
+        if (rawPack.has("requires")) {
+            resolvedPack.set("requires", rawPack.get("requires").deepCopy());
         }
         JsonNode fragments = rawPack.get("fragments");
         if (fragments != null) {
@@ -1272,7 +1274,7 @@ public final class ModelSourceResolver {
         }
     }
 
-    private static void mergePackConcepts(
+    static void mergePackConcepts(
             String packId,
             ObjectNode packNode,
             ObjectNode resolved,
@@ -1739,7 +1741,9 @@ public final class ModelSourceResolver {
         );
     }
 
-    private static IOException error(Path sourceFile, String path, String message) {
+    // Package-private: PackDependencyGraphWalker (PK-3) is a sibling class in this package and
+    // needs the same error-formatting convention every other resolver error uses.
+    static IOException error(Path sourceFile, String path, String message) {
         return new IOException(sourceFile + " " + path + ": " + message);
     }
 
@@ -1747,7 +1751,8 @@ public final class ModelSourceResolver {
         return value == null ? "" : value.replace("~", "~0").replace("/", "~1");
     }
 
-    private static String textOrBlank(JsonNode node) {
+    // Package-private: PackDependencyGraphWalker (PK-3) reads pack scalar fields the same way.
+    static String textOrBlank(JsonNode node) {
         return node != null && node.isTextual() ? node.asText("").trim() : "";
     }
 
@@ -1762,17 +1767,20 @@ public final class ModelSourceResolver {
     private record Ref(String ref) {
     }
 
-    private static final class ResolutionState {
-        private final Path rootRealPath;
-        private final Path rootDirectory;
-        private final List<Path> includedFiles = new ArrayList<>();
-        private final Set<Path> seenIncludedFiles = new LinkedHashSet<>();
-        private final Map<String, Path> provenance = new HashMap<>();
-        private final List<ValidationDiagnostic> diagnostics = new ArrayList<>();
-        private final List<ValidationDiagnostic> warnings = new ArrayList<>();
-        private final Map<String, String> physicalQualifierByConceptName = new LinkedHashMap<>();
+    // Package-private (not private): PackDependencyGraphWalker (PK-3) is a sibling class in this
+    // package that shares one resolution pass's state (physicalQualifierByConceptName, warnings,
+    // rootDirectory) with ModelSourceResolver -- same reasoning as error()/textOrBlank() above.
+    static final class ResolutionState {
+        final Path rootRealPath;
+        final Path rootDirectory;
+        final List<Path> includedFiles = new ArrayList<>();
+        final Set<Path> seenIncludedFiles = new LinkedHashSet<>();
+        final Map<String, Path> provenance = new HashMap<>();
+        final List<ValidationDiagnostic> diagnostics = new ArrayList<>();
+        final List<ValidationDiagnostic> warnings = new ArrayList<>();
+        final Map<String, String> physicalQualifierByConceptName = new LinkedHashMap<>();
 
-        private ResolutionState(Path rootRealPath, Path rootDirectory) {
+        ResolutionState(Path rootRealPath, Path rootDirectory) {
             this.rootRealPath = rootRealPath;
             this.rootDirectory = rootDirectory;
         }

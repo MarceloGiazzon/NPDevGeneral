@@ -383,7 +383,7 @@ class BondSemanticsSupportTest {
         Files.writeString(packsDir.resolve("catalog.json"), """
                 {
                   "pack": "catalog",
-                  "version": "1.0",
+                  "version": "1.0.0",
                   "dslVersion": "1.0.0",
                   "concepts": [
                     {
