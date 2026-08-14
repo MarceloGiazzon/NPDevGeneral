@@ -397,6 +397,11 @@
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:272",
       "why": "NOT SQL. This is the TEXT OF A REFUSAL MESSAGE inside SqlServerDialect.rowLimited -- the UnsupportedOperationException thrown when a statement does not begin with SELECT and therefore has nowhere to put SQL Server's PREFIX row cap. The sweep is matching the words 'SELECT TOP n' and 'select' inside a human explanation, not a query. Nothing here reads any row, so there is no row set to scope to a tenant. Verified by reading the method: its only effect is to build a String and throw. storage/FULL_SUPPORT_PLAN.md W1.3."
     },
+    "2d3341e8a109": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/workspace/WorkspaceMenuSeeder.java:205",
+      "why": "Not model-author-reachable in the sense the pattern warns about: menuTable is resolved ONCE in the constructor via resolveMenuTable(compiledModel) -> compiledModel.findConcept(\"workspace::Menu\").map(CompiledConcept::getTableName) -- the exact same compiled-model source of truth the generator itself used to CREATE this table (workspace_v1_menus), never a caller-, request-, or runtime-supplied value. Every actual VALUE in these statements (tenant_id, label, target, kind, ordinal, ...) is bound via PreparedStatement.setString/setObject; only the table identifier is spliced, which is unavoidable since JDBC bind parameters can only parameterize values, never identifiers -- same posture as JdbcBusinessConceptStore's own compiled-model-derived table splicing (fingerprint 3cce05597d93). New fingerprint because REG-160 replaced the previous hardcoded literal \"workspace_menus\" with this dynamic resolution. Triaged 2026-08-14, REG-160 (docs/SECURITY_PATTERN_SWEEP_2026-07.md 4.12)."
+    },
     "2d55d71c5c3d": {
       "rule": "B4/G2",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java:719; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/FieldWidgetDefaults.java:26",
@@ -406,6 +411,11 @@
       "rule": "F5",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java:261",
       "why": "Round 5 section 5.1 (R5-F2), recorded INFO: all values are parameterised and only identity-pack IDENTIFIERS are spliced, arriving from application.properties written by the generator rather than from a request. A missing defence-in-depth layer, not a bypass -- cleared so it stops competing with un-triaged hits, tracked in the Round 5 document."
+    },
+    "2d8edc262871": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/workspace/WorkspaceMenuSeeder.java:239",
+      "why": "Not model-author-reachable in the sense the pattern warns about: menuTable is resolved ONCE in the constructor via resolveMenuTable(compiledModel) -> compiledModel.findConcept(\"workspace::Menu\").map(CompiledConcept::getTableName) -- the exact same compiled-model source of truth the generator itself used to CREATE this table (workspace_v1_menus), never a caller-, request-, or runtime-supplied value. Every actual VALUE in these statements (tenant_id, label, target, kind, ordinal, ...) is bound via PreparedStatement.setString/setObject; only the table identifier is spliced, which is unavoidable since JDBC bind parameters can only parameterize values, never identifiers -- same posture as JdbcBusinessConceptStore's own compiled-model-derived table splicing (fingerprint 3cce05597d93). New fingerprint because REG-160 replaced the previous hardcoded literal \"workspace_menus\" with this dynamic resolution. Triaged 2026-08-14, REG-160 (docs/SECURITY_PATTERN_SWEEP_2026-07.md 4.12)."
     },
     "2dc56da0c104": {
       "rule": "I3",
@@ -526,6 +536,11 @@
       "rule": "sql-string-building",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:461",
       "why": "STOR-6 re-fingerprint: this is the same generation-time DDL assembly already cleared at this site, whose text changed because every identifier now goes through sqlId(engine, ...) -> SqlDialect.identifier(). Written to a .sql FILE and never executed against a live connection with request data in scope; identifiers still pass SqlIdentifierSupport's [a-z0-9_] whitelist first, and the added quoting can only narrow what an identifier can mean, never widen it."
+    },
+    "3e12ca10afd7": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/workspace/WorkspaceMenuSeeder.java:216",
+      "why": "Not model-author-reachable in the sense the pattern warns about: menuTable is resolved ONCE in the constructor via resolveMenuTable(compiledModel) -> compiledModel.findConcept(\"workspace::Menu\").map(CompiledConcept::getTableName) -- the exact same compiled-model source of truth the generator itself used to CREATE this table (workspace_v1_menus), never a caller-, request-, or runtime-supplied value. Every actual VALUE in these statements (tenant_id, label, target, kind, ordinal, ...) is bound via PreparedStatement.setString/setObject; only the table identifier is spliced, which is unavoidable since JDBC bind parameters can only parameterize values, never identifiers -- same posture as JdbcBusinessConceptStore's own compiled-model-derived table splicing (fingerprint 3cce05597d93). New fingerprint because REG-160 replaced the previous hardcoded literal \"workspace_menus\" with this dynamic resolution. Triaged 2026-08-14, REG-160 (docs/SECURITY_PATTERN_SWEEP_2026-07.md 4.12)."
     },
     "3e2fd16c94f6": {
       "rule": "H1",
@@ -1407,6 +1422,11 @@
       "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java:519; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ValidationDiagnosticNormalizer.java:318",
       "why": "SQL-shaped English or a URL, not SQL -- same class as rule D1. AutoPanelExpander builds the ROUTE \"/select/\" + selector.name(); ValidationDiagnosticNormalizer builds the sentence \"Update the model so it satisfies ...\". The DSL module issues no SQL. Verified 2026-07-25."
     },
+    "a48f5f23e7b5": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/workspace/WorkspaceMenuSeeder.java:191",
+      "why": "Not model-author-reachable in the sense the pattern warns about: menuTable is resolved ONCE in the constructor via resolveMenuTable(compiledModel) -> compiledModel.findConcept(\"workspace::Menu\").map(CompiledConcept::getTableName) -- the exact same compiled-model source of truth the generator itself used to CREATE this table (workspace_v1_menus), never a caller-, request-, or runtime-supplied value. Every actual VALUE in these statements (tenant_id, label, target, kind, ordinal, ...) is bound via PreparedStatement.setString/setObject; only the table identifier is spliced, which is unavoidable since JDBC bind parameters can only parameterize values, never identifiers -- same posture as JdbcBusinessConceptStore's own compiled-model-derived table splicing (fingerprint 3cce05597d93). New fingerprint because REG-160 replaced the previous hardcoded literal \"workspace_menus\" with this dynamic resolution. Triaged 2026-08-14, REG-160 (docs/SECURITY_PATTERN_SWEEP_2026-07.md 4.12)."
+    },
     "a5347c60db7e": {
       "rule": "F3",
       "where": "NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java:391",
@@ -1926,6 +1946,11 @@
       "rule": "H2",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/api/StorageSummaryController.java:104",
       "why": "Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision."
+    },
+    "e77af6717a3b": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/workspace/WorkspaceMenuSeeder.java:168",
+      "why": "Not model-author-reachable in the sense the pattern warns about: menuTable is resolved ONCE in the constructor via resolveMenuTable(compiledModel) -> compiledModel.findConcept(\"workspace::Menu\").map(CompiledConcept::getTableName) -- the exact same compiled-model source of truth the generator itself used to CREATE this table (workspace_v1_menus), never a caller-, request-, or runtime-supplied value. Every actual VALUE in these statements (tenant_id, label, target, kind, ordinal, ...) is bound via PreparedStatement.setString/setObject; only the table identifier is spliced, which is unavoidable since JDBC bind parameters can only parameterize values, never identifiers -- same posture as JdbcBusinessConceptStore's own compiled-model-derived table splicing (fingerprint 3cce05597d93). New fingerprint because REG-160 replaced the previous hardcoded literal \"workspace_menus\" with this dynamic resolution. Triaged 2026-08-14, REG-160 (docs/SECURITY_PATTERN_SWEEP_2026-07.md 4.12)."
     },
     "e78c4a16b9c5": {
       "rule": "F1",

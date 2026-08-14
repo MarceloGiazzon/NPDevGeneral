@@ -104,7 +104,17 @@ RESOLVED_MARKERS = (
 CONTEXT_LINES = 3
 
 # id -> reason. An entry here MUST say why a resolved-looking mention coexists with a live OPEN row.
-ACCEPTED: dict[str, str] = {}
+ACCEPTED: dict[str, str] = {
+    "REG-160": (
+        "WorkspaceMenuSeeder.java's own javadoc/comment (added by the 2026-08-14 fix) describes HOW "
+        "the fix resolves the physical table name at runtime -- 'resolved from the compiled model' "
+        "refers to CompiledModel.findConcept(...).getTableName(), a mechanism word, not a claim that "
+        "the ledger item itself is closed. The real code change landed, but REG-160's own guard (a "
+        "fresh-DB generate+build+boot proof against superuser-admin-console) has deliberately not "
+        "been re-run yet -- it is a real fix that HAS NOT been re-verified live, and ledger/items/"
+        "REG-160.yml's own 2026-08-14 addendum says exactly that, so status correctly stays OPEN."
+    ),
+}
 
 ID_IN_LEDGER = re.compile(r"^([A-Z]+-\d+)\.yml$")
 

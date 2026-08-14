@@ -71,6 +71,67 @@ detail: |
   four SQL literals to `workspace_v1_menus` (matching the table the generator actually creates),
   or better, resolve the physical name the same way the generator does rather than hardcoding it a
   second time in `runtimehost-core`, so the two can never drift apart again.
+
+  **2026-08-14 fix (real code change, not yet re-verified live):** fixed `WorkspaceMenuSeeder.java`
+  directly, picking the "better" option this item's own `detail` above already named rather than the
+  literal-rename fallback -- resolving the physical table name dynamically instead of hardcoding a
+  second literal that would just as silently drift on the next pack version bump.
+
+  Found the resolution mechanism already exists and is the platform's own idiomatic pattern for this
+  exact situation: `DefaultPropertyResolver`
+  (`NPDevKernel/kernel/src/main/java/com/npdev/kernel/properties/DefaultPropertyResolver.java`), the
+  closest analog (also a built-in workspace-pack concept read/written via raw JDBC underneath at
+  runtime), never touches a physical table name at all -- it addresses `workspace::PropertyValue` by
+  LOGICAL concept name through `ConceptGateway`, and `JdbcBusinessConceptStore.shapes(CompiledModel)`
+  (same module as `WorkspaceMenuSeeder`,
+  `NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:856-865`)
+  is what actually resolves `concept.getTableName()` underneath that gateway. `WorkspaceMenuSeeder`'s
+  hand-rolled raw-JDBC delete/upsert-with-fingerprint shape doesn't map cleanly onto `ConceptGateway`'s
+  generic CRUD without a materially larger rewrite than this bug warrants, so rather than doing that
+  rewrite, wired the SAME underlying resolution `JdbcBusinessConceptStore` already uses directly:
+  `WorkspaceMenuSeeder` now takes a `CompiledModel compiledModel` constructor parameter (already a
+  live, unconditionally-registered Spring bean --
+  `NpdevCapabilityBindingConfig.compiledModel(NPDevModelProvider)`,
+  `NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevCapabilityBindingConfig.java:71-74` -- so
+  no new Spring wiring was needed) and resolves the table name once at construction time
+  (new private `resolveMenuTable` helper):
+  `compiledModel.findConcept("workspace::Menu").map(CompiledConcept::getTableName)`, throwing
+  `IllegalStateException` if absent (should be unreachable given the class's own
+  `@ConditionalOnResource` -- this bean is only ever active for an app that composed the concept).
+  All five raw-SQL occurrences of the literal `workspace_menus`
+  (`countExistingMenus`/`findExistingFingerprint`/`deleteExistingMenus`/`insertFingerprintRow`/
+  `insertMenuRow`) now interpolate the resolved `menuTable` field instead; the boot log message and
+  the class javadoc were updated too so neither still describes a now-stale literal.
+
+  Confirmed the naming rule this closes the drift against by reading the generator source, not by
+  running anything (per this session's explicit instruction to defer real build+boot verification):
+  `ModelSourceResolver.recordPhysicalQualifiers`
+  (`NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java:669-671`)
+  computes `physicalQualifier = pack + "_v" + majorVersion` (`"workspace_v1"` for this pack's
+  declared `"version": "1.0.0"`, confirmed directly in `NPDevContract/packs/workspace/pack.json`),
+  and `ModelCompiler`/`SqlIdentifierSupport.physicalTableNameSource`
+  (`NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/SqlIdentifierSupport.java:103-117`)
+  turns `physicalQualifier + "::" + "Menu"` into the pluralized snake table name stored on
+  `CompiledEntity.getTableName()` -- `workspace_v1_menus`, matching what the generator's own
+  schema-realization SQL creates. `BREAKING.md`'s PK-2 entry shows this versioned naming scheme is
+  itself brand new (the pre-PK-2 scheme produced unversioned names) -- exactly why a literal rename
+  would still have been fragile: hardcoding `"workspace_v1_menus"` today leaves the NEXT pack
+  major-version bump free to silently reintroduce this same class of bug, where resolving through
+  `CompiledModel` self-heals with it instead.
+
+  **Not yet re-verified live** -- per this session's explicit instruction, the real fresh-boot proof
+  this item's own `guard` below describes (generate `superuser-admin-console`, delete `data/`, build,
+  boot via `_ops\Run-FinalApp.ps1 -Profile dev,trial`, confirm `/actuator/health` responds instead of
+  crashing) is deferred to a later consolidated verification pass across this session's whole batch of
+  fixes, not performed as part of this change. `status` stays `OPEN` until that proof actually runs.
+
+  Also worth flagging for whoever picks it up next (out of this item's own scope, not fixed here):
+  `IdentityProvisioning`
+  (`NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/IdentityProvisioning.java`)
+  hardcodes the SAME kind of pre-PK-2 unversioned literals (`identity_users`, `identity_roles`,
+  `identity_user_roles`) behind `@ConditionalOnProperty(name = "npdev.auth.mode", havingValue =
+  "jwt")` -- the identical defect shape as this item, just gated behind a property/profile
+  combination that does not appear to have been exercised by any fresh-DB live-boot test yet.
 guard:
   kind: manual
   ref: >-
