@@ -77,3 +77,13 @@ files:
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/StorageCapability.java
+  - scripts/quality/check-rollback-claims.py
+guard:
+  kind: script
+  ref: scripts/quality/check-rollback-claims.py
+  asserts: >-
+    no storage/schema message asserts a rollback or "nothing persisted" without first asking
+    SqlDialects.active().supports(DDL_IN_TRANSACTION) -- the mechanical half of this fix, per
+    run-ai-knowledge-gate.ps1's own step comment
+  provenRed: true
+

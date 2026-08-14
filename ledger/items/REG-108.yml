@@ -65,3 +65,12 @@ detail: |
   a PACK contributing roles/propertyScopes/properties (only root-level declarations are corpus-
   covered today) -- P3.1/P3.4 is exactly the work that will need this shape for real, and should add
   the corpus fixture alongside it (R6).
+guard:
+  kind: test
+  ref: >-
+    NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/ModelSourceResolverTest.java#packContributedRolesPropertyScopesAndPropertiesAreMergedNotDropped
+  asserts: >-
+    a pack contributing roles/propertyScopes/properties alongside root-level declarations of the
+    same three keys resolves with BOTH present (root entries first, pack entries appended) instead
+    of the pack's declaration being silently dropped by MODEL_ARRAY_KEYS omitting them
+  provenRed: false

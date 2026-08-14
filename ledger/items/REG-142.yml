@@ -87,3 +87,12 @@ files:
   - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PermissionAwareUiMetadataService.java
   - scripts/quality/check-template-resource-shadowing.py
   - scripts/quality/run-ai-knowledge-gate.ps1
+guard:
+  kind: script
+  ref: scripts/quality/check-template-resource-shadowing.py
+  asserts: >-
+    no runtime-host template resource sits at a path the generator also writes -- the exact shape
+    of this bug, where npdev/model.json and npdev/security/dev.ui-metadata-policy.json shadowed the
+    generated app's own copies under DuplicatesStrategy.EXCLUDE
+  provenRed: true
+

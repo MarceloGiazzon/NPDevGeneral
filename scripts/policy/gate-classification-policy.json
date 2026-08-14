@@ -229,6 +229,12 @@
       "reason": "R3 (this same Step 9): measures real JaCoCo execution coverage per Java module and fails on a real regression -- added by this card, the 23rd product entry (37 total post-R3).",
       "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
       "movedToWeekly": false
+    },
+    "check-done-item-guards.py": {
+      "classification": "product",
+      "reason": "R11 (strategy-2026-08-12/ROADMAP.md): unlike check-doc-inventory.py/check-ledger-status-reverse-freshness.py (paperwork, weekly -- documentation and status-drift hygiene that accumulates slowly), a ledger item's own status: DONE claim and its guard: block are authored in the SAME commit that closes or re-touches the item, so a missing or unresolvable guard is directly attributable to the commit under review, the same shape as checks 5/6/7/9 in this gate.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
     }
   }
 }
