@@ -49,6 +49,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 
 import javax.sql.DataSource;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -278,11 +279,25 @@ public class NpdevPluginConfig {
             @Value("${npdev.mail.smtp.username:}") String username,
             @Value("${npdev.mail.smtp.password:}") String password,
             @Value("${npdev.mail.smtp.from:no-reply@example.com}") String from,
-            @Value("${npdev.mail.smtp.starttls:true}") boolean startTls
+            @Value("${npdev.mail.smtp.starttls:true}") boolean startTls,
+            // R8d (RUN-4): adapter-owned deadline, independent of CapabilityExecutionPolicy (see
+            // SmtpMailCapabilityAdapter's javadoc). connectTimeoutMs bounds the TCP handshake;
+            // ioTimeoutMs bounds every subsequent read/write on the session; maxRetries is retries
+            // AFTER the first attempt, only for a MessagingException wrapping an IOException.
+            @Value("${npdev.mail.smtp.connectTimeoutMs:10000}") long connectTimeoutMs,
+            @Value("${npdev.mail.smtp.ioTimeoutMs:30000}") long ioTimeoutMs,
+            @Value("${npdev.mail.smtp.maxRetries:2}") int maxRetries,
+            @Value("${npdev.mail.smtp.retryBackoffMs:1000}") long retryBackoffMs
     ) {
         return namedRuntimePluginRealizationProvider(
                 "mailSmtpCapabilityAdapter",
-                () -> new SmtpMailCapabilityAdapter(host, port, username, password, from, startTls)
+                () -> new SmtpMailCapabilityAdapter(
+                        host, port, username, password, from, startTls,
+                        Duration.ofMillis(connectTimeoutMs),
+                        Duration.ofMillis(ioTimeoutMs),
+                        maxRetries,
+                        Duration.ofMillis(retryBackoffMs)
+                )
         );
     }
 

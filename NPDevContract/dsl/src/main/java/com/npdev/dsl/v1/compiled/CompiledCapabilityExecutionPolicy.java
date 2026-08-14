@@ -1,5 +1,14 @@
 package com.npdev.dsl.v1.compiled;
 
+/**
+ * npdev-capability-execution-policy-mirror: this shape MIRRORS, field-for-field,
+ * {@code com.npdev.kernel.capabilities.CapabilityExecutionPolicy} in the kernel module (the DSL
+ * module cannot depend on kernel types, so the two are independent classes rather than one shared
+ * type). See that class's javadoc for the twin-pair rule this comment anchors
+ * (scripts/quality/twin-pair-registry.json, enforced by check-twin-pair-consistency.py) -- a field
+ * added to one side without the other silently never reaches the generator/runtime on whichever side
+ * was skipped.
+ */
 public final class CompiledCapabilityExecutionPolicy {
     private final int retryCount;
     private final long retryDelayMs;

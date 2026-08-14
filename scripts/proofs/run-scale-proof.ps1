@@ -1,27 +1,54 @@
 <#
 .SYNOPSIS
-    R9 reduced scale ladder (ROADMAP.md card R9, reduced per MASTER-ROADMAP.md prelude card 0.3 /
-    Step 2a): synthesize a deterministic N-concept model, then generate -> build -> boot -> one
-    first request, timing each phase. Two rungs only (26, 100); generate/build/boot timings only --
-    latency-under-load, DDL count and memory are Track C's "R9 full" upgrade, not this script.
+    R9 nightly model-scale ladder, FULL version (ROADMAP.md card R9; Track C C6; extends the
+    reduced prelude done in MASTER-ROADMAP.md Step 2a). Synthesizes a deterministic N-concept
+    model, then synthesize -> generate -> ddl-count -> build -> boot -> firstRequest -> latency ->
+    memory, recording all EIGHT measurements per rung. One invocation = one rung; the 5-rung ladder
+    (26/50/100/260/520) is driven by calling this script 5 times -- see
+    .github/workflows/nightly-scale-ladder.yml for the scheduled driver.
 
 .DESCRIPTION
-    F2 (MASTER-ROADMAP.md): this is the baseline BT-1 needs before it lands, so BT-1's own
-    before/after build-time claim is measurable. Writes its working files under an out-of-repo
+    F2 (MASTER-ROADMAP.md): this is the baseline BT-1 needed before it landed, so BT-1's own
+    before/after build-time claim was measurable. Writes its working files under an out-of-repo
     workspace (NEVER under AppGen/apps or NPDevSamples -- both are corpus roots scanned by
     validate-corpus.py, and a synthesized throwaway model joining that corpus needs a corpusRole
     it has no business carrying).
+
+    The eight measurements, in pipeline order:
+      1. synthesize   -- model.json generation time (scripts/proofs/synthesize_scale_model.py).
+      2. generate      -- NPDevGenerator :generator:run time.
+      3. ddl           -- CREATE TABLE count in the generated V1__npdev_schema_realization.sql
+                          (SchemaRealizationEmitter's static output -- deterministic, read right
+                          after generate, no dependency on runtime logging or boot succeeding).
+      4. build         -- assembled app's own `gradlew clean build -x test` time.
+      5. boot          -- gradlew bootRun until /actuator/health reports UP.
+      6. firstRequest  -- one authenticated GET against the synthesized panel's runtime metadata.
+      7. latency       -- average elapsed ms across -LatencyRequestCount repeat requests against
+                          the same panel endpoint, once firstRequest has proven it works.
+      8. memory        -- peak JVM resident-set size (WorkingSet64) sampled from the bootRun JVM's
+                          own process tree while polling boot health and while issuing the
+                          firstRequest/latency requests. NOT actuator-based: /actuator/metrics is
+                          stripped down to health,info,mappings,beans by application-dev.properties
+                          under the dev,trial profile this script boots with, and the remaining
+                          metrics/prometheus endpoints are additionally gated by
+                          ActuatorAdminGuardFilter behind a live SUPERUSER key -- reading the OS
+                          process's own memory counters sidesteps both instead of fighting either.
 
 .PARAMETER Concepts
     Number of concepts to synthesize.
 
 .PARAMETER Port
-    Port the assembled app boots on. Defaults to 18200 + Concepts so two rungs run back-to-back
-    without a stale process from the previous rung colliding.
+    Port the assembled app boots on. Defaults to 18200 + Concepts so rungs run back-to-back
+    without a stale process from a previous rung colliding.
 
 .PARAMETER BootTimeoutSeconds
     Generous by default (300s) -- the fast-gate canary lesson: gradlew bootRun forks a single-use
-    Gradle daemon, and that overhead, not the app, is most of the budget.
+    Gradle daemon, and that overhead, not the app, is most of the budget. Larger rungs (260/520)
+    should pass a larger value explicitly.
+
+.PARAMETER LatencyRequestCount
+    Number of repeat requests issued for the latency phase once firstRequest has already proven
+    the endpoint works. Default 20.
 
 .PARAMETER BaselinePath
     The tracked, diffable record (repo-relative). Ratchet-only per ROADMAP.md D8 -- no ceiling,
@@ -29,15 +56,17 @@
 
 .EXAMPLE
     pwsh -NoProfile -File scripts/proofs/run-scale-proof.ps1 -Concepts 26
-    pwsh -NoProfile -File scripts/proofs/run-scale-proof.ps1 -Concepts 100
+    pwsh -NoProfile -File scripts/proofs/run-scale-proof.ps1 -Concepts 520 -BootTimeoutSeconds 900
 #>
 param(
     [Parameter(Mandatory = $true)][int]$Concepts,
     [string]$WorkspaceRoot = "",
     [int]$Port = 0,
     [int]$BootTimeoutSeconds = 300,
+    [int]$LatencyRequestCount = 20,
     [string]$BaselinePath = "",
-    [string]$ReportPath = ""
+    [string]$ReportPath = "",
+    [string]$SchemaPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -53,6 +82,9 @@ if ($Port -eq 0) {
 }
 if ([string]::IsNullOrWhiteSpace($BaselinePath)) {
     $BaselinePath = Join-Path $repoRoot "scripts\policy\scale-proof-baseline.json"
+}
+if ([string]::IsNullOrWhiteSpace($SchemaPath)) {
+    $SchemaPath = Join-Path $repoRoot "schemas\ai\scale-proof-report.schema.json"
 }
 
 # Out-of-repo workspace: sibling of the repo, exactly like invoke-ai-beta-app-smoke.ps1's own
@@ -71,8 +103,11 @@ if ([string]::IsNullOrWhiteSpace($ReportPath)) {
 New-Item -ItemType Directory -Force -Path $inputRoot | Out-Null
 
 function New-Phase {
-    param([string]$Status, [long]$DurationMs, [string]$Message = "")
-    return [ordered]@{ status = $Status; durationMs = [int]$DurationMs; message = $Message }
+    param([string]$Status, [long]$DurationMs, [string]$Message = "", [object]$Value = $null, [string]$Unit = "")
+    $phase = [ordered]@{ status = $Status; durationMs = [int]$DurationMs; message = $Message }
+    if ($null -ne $Value) { $phase.value = $Value }
+    if (-not [string]::IsNullOrWhiteSpace($Unit)) { $phase.unit = $Unit }
+    return $phase
 }
 
 function Convert-ResponseContentToString {
@@ -86,18 +121,49 @@ function Convert-ResponseContentToString {
     return [string]$Content
 }
 
+# Cross-platform (added for the FULL ladder's CI wiring, which targets ubuntu-latest per the
+# card's own "CI runner physics" framing -- the reduced prelude only ever ran on the author's
+# Windows machine, so Win32_Process-only was never exercised off it). Win32_Process/CIM does not
+# exist outside Windows; `ps -eo pid,ppid` is the POSIX equivalent, available on every GitHub-hosted
+# ubuntu-latest runner without extra setup.
 function Get-DescendantProcessIds {
     param([int]$RootProcessId)
-    $allProcesses = @(Get-CimInstance Win32_Process)
-    $pending = [System.Collections.Generic.Queue[int]]::new()
     $descendants = [System.Collections.Generic.List[int]]::new()
+    $pending = [System.Collections.Generic.Queue[int]]::new()
     $pending.Enqueue($RootProcessId)
-    while ($pending.Count -gt 0) {
-        $parentId = $pending.Dequeue()
-        foreach ($child in @($allProcesses | Where-Object { $_.ParentProcessId -eq $parentId })) {
-            $childId = [int]$child.ProcessId
-            $descendants.Add($childId) | Out-Null
-            $pending.Enqueue($childId)
+    if ($IsWindows) {
+        $allProcesses = @(Get-CimInstance Win32_Process)
+        while ($pending.Count -gt 0) {
+            $parentId = $pending.Dequeue()
+            foreach ($child in @($allProcesses | Where-Object { $_.ParentProcessId -eq $parentId })) {
+                $childId = [int]$child.ProcessId
+                $descendants.Add($childId) | Out-Null
+                $pending.Enqueue($childId)
+            }
+        }
+    }
+    else {
+        $childrenByParent = @{}
+        foreach ($line in @(& ps -eo pid,ppid --no-headers 2>$null)) {
+            $parts = @(([string]$line).Trim() -split '\s+')
+            if ($parts.Count -lt 2) { continue }
+            $childPid = 0
+            $parentPid = 0
+            if (-not [int]::TryParse($parts[0], [ref]$childPid)) { continue }
+            if (-not [int]::TryParse($parts[1], [ref]$parentPid)) { continue }
+            if (-not $childrenByParent.ContainsKey($parentPid)) {
+                $childrenByParent[$parentPid] = [System.Collections.Generic.List[int]]::new()
+            }
+            $childrenByParent[$parentPid].Add($childPid) | Out-Null
+        }
+        while ($pending.Count -gt 0) {
+            $parentId = $pending.Dequeue()
+            if ($childrenByParent.ContainsKey($parentId)) {
+                foreach ($childId in $childrenByParent[$parentId]) {
+                    $descendants.Add($childId) | Out-Null
+                    $pending.Enqueue($childId)
+                }
+            }
         }
     }
     return @($descendants)
@@ -111,6 +177,26 @@ function Stop-ProcessTree {
         if ($id -ne $PID) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
     }
     if ($RootProcessId -ne $PID) { Stop-Process -Id $RootProcessId -Force -ErrorAction SilentlyContinue }
+}
+
+# Memory measurement (phase 8): read the OS process's own resident-set size rather than fighting
+# actuator's dev-profile exposure list (health,info,mappings,beans only -- metrics/prometheus are
+# stripped by application-dev.properties) or its ActuatorAdminGuardFilter SUPERUSER-key gate.
+# `gradlew bootRun` forks Gradle -> a worker -> the actual java process, so the JVM is a
+# DESCENDANT of $RootProcessId, never $RootProcessId itself.
+function Get-PeakJavaWorkingSetMb {
+    param([int]$RootProcessId)
+    $candidateIds = @(@($RootProcessId) + (Get-DescendantProcessIds -RootProcessId $RootProcessId))
+    $peakBytes = 0L
+    foreach ($id in $candidateIds) {
+        try {
+            $proc = Get-Process -Id $id -ErrorAction Stop
+        }
+        catch { continue }
+        if ($proc.ProcessName -notmatch '(?i)java') { continue }
+        if ($proc.WorkingSet64 -gt $peakBytes) { $peakBytes = $proc.WorkingSet64 }
+    }
+    return [Math]::Round($peakBytes / 1MB, 1)
 }
 
 $phases = [ordered]@{}
@@ -187,6 +273,31 @@ if (-not $overallFailed) {
     if (-not $generateOk) { $overallFailed = $true }
 }
 
+# -- Phase: ddl (static count -- SchemaRealizationEmitter writes every CREATE TABLE to this file
+#    deterministically at generate time; reading it needs neither a successful build nor a boot,
+#    and sidesteps SchemaLifecycleExecutor entirely -- confirmed to carry no logger and no
+#    per-statement DDL log line, only unconditional System.out.println narration of LATER
+#    drift-driven boots, never a fresh one). Non-fatal: a miscount here is informative, not a
+#    reason to skip build/boot. ------------------------------------------------------------------
+if (-not $overallFailed) {
+    Write-Host "-- ddl --"
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $schemaRealizationPath = Join-Path $artifactRoot "src\main\resources\db\schema-realization\V1__npdev_schema_realization.sql"
+    $ddlCount = 0
+    $ddlOk = $false
+    if (Test-Path -LiteralPath $schemaRealizationPath -PathType Leaf) {
+        $ddlText = Get-Content -Raw -LiteralPath $schemaRealizationPath
+        $ddlCount = @([regex]::Matches($ddlText, '(?m)^CREATE TABLE ')).Count
+        $ddlOk = $ddlCount -gt 0
+    }
+    $sw.Stop()
+    $ddlMessage = if ($ddlOk) { "$ddlCount CREATE TABLE statement(s) in $schemaRealizationPath" } else { "no CREATE TABLE statements found at $schemaRealizationPath" }
+    $phases.ddl = New-Phase -Status ($(if ($ddlOk) { "passed" } else { "failed" })) -DurationMs $sw.ElapsedMilliseconds -Message $ddlMessage -Value $ddlCount -Unit "count"
+}
+else {
+    $phases.ddl = New-Phase -Status "skipped" -DurationMs 0 -Message "generate did not pass"
+}
+
 # -- Phase: build (assembled app's own Gradle build, no tests -- same command
 #    invoke-ai-beta-app-smoke.ps1 uses) --------------------------------------------------------
 if (-not $overallFailed) {
@@ -205,7 +316,7 @@ if (-not $overallFailed) {
     if (-not $buildOk) { $overallFailed = $true }
 }
 
-# -- Phase: boot + firstRequest ------------------------------------------------------------------
+# -- Phase: boot + firstRequest + latency + memory ------------------------------------------------
 if (-not $overallFailed) {
     Write-Host "-- boot --"
     $appGradlew = Get-NPDevGradleWrapperExecutable $appRoot
@@ -217,12 +328,19 @@ if (-not $overallFailed) {
     $firstRequestOk = $false
     $bootSw = [System.Diagnostics.Stopwatch]::StartNew()
     $firstRequestMs = 0
+    $peakMemoryMb = 0.0
+    $latencyPhaseResult = $null
     try {
         $process = Start-Process -FilePath $appGradlew -ArgumentList $bootArgs -WorkingDirectory $appRoot -NoNewWindow -PassThru -RedirectStandardOutput $bootStdout -RedirectStandardError $bootStderr
         $healthUri = "http://127.0.0.1:$Port/actuator/health"
         $deadline = (Get-Date).AddSeconds($BootTimeoutSeconds)
         while ((Get-Date) -lt $deadline) {
             if ($process.HasExited) { break }
+            # Phase 8 (memory) sampling: piggybacks on the health poll that already runs every 2s,
+            # so watching for boot completion is what pays for watching peak RSS too -- no extra
+            # polling loop, no extra wall-clock cost.
+            $sample = Get-PeakJavaWorkingSetMb -RootProcessId $process.Id
+            if ($sample -gt $peakMemoryMb) { $peakMemoryMb = $sample }
             try {
                 $healthResponse = Invoke-WebRequest -Uri $healthUri -TimeoutSec 5 -SkipHttpErrorCheck
                 $healthBody = Convert-ResponseContentToString $healthResponse.Content
@@ -254,6 +372,46 @@ if (-not $overallFailed) {
             }
             $firstSw.Stop()
             $firstRequestMs = $firstSw.ElapsedMilliseconds
+            $sample = Get-PeakJavaWorkingSetMb -RootProcessId $process.Id
+            if ($sample -gt $peakMemoryMb) { $peakMemoryMb = $sample }
+
+            if ($firstRequestOk) {
+                Write-Host "-- latency --"
+                $latencies = [System.Collections.Generic.List[double]]::new()
+                $latencyFailures = 0
+                for ($i = 0; $i -lt $LatencyRequestCount; $i++) {
+                    $reqSw = [System.Diagnostics.Stopwatch]::StartNew()
+                    try {
+                        $latencyResponse = Invoke-WebRequest -Uri $panelUri -TimeoutSec 15 -SkipHttpErrorCheck -Headers @{ "X-NPDEV-API-Key" = "dev-key"; "X-API-Key" = "dev-key" }
+                        $reqSw.Stop()
+                        if ([int]$latencyResponse.StatusCode -eq 200) {
+                            $latencies.Add([double]$reqSw.ElapsedMilliseconds) | Out-Null
+                        }
+                        else {
+                            $latencyFailures++
+                        }
+                    }
+                    catch {
+                        $reqSw.Stop()
+                        $latencyFailures++
+                    }
+                }
+                $sample = Get-PeakJavaWorkingSetMb -RootProcessId $process.Id
+                if ($sample -gt $peakMemoryMb) { $peakMemoryMb = $sample }
+
+                if ($latencies.Count -gt 0) {
+                    $sorted = @($latencies | Sort-Object)
+                    $avgMs = [Math]::Round((($sorted | Measure-Object -Average).Average), 1)
+                    $p95Index = [Math]::Min($sorted.Count - 1, [Math]::Ceiling(0.95 * $sorted.Count) - 1)
+                    $p95Ms = $sorted[$p95Index]
+                    $latencyPhaseResult = New-Phase -Status "passed" -DurationMs ([long]$avgMs) `
+                        -Message ("avg " + $avgMs + "ms / p95 " + $p95Ms + "ms over " + $sorted.Count + " request(s) against " + $panelUri + " (" + $latencyFailures + " failed)") `
+                        -Value $avgMs -Unit "ms"
+                }
+                else {
+                    $latencyPhaseResult = New-Phase -Status "failed" -DurationMs 0 -Message ("all " + $LatencyRequestCount + " latency request(s) failed against " + $panelUri)
+                }
+            }
         }
     }
     finally {
@@ -265,27 +423,65 @@ if (-not $overallFailed) {
     if (-not $bootOk) {
         $overallFailed = $true
         $phases.firstRequest = New-Phase -Status "skipped" -DurationMs 0 -Message "boot did not pass"
+        $phases.latency = New-Phase -Status "skipped" -DurationMs 0 -Message "boot did not pass"
+        $phases.memory = New-Phase -Status ($(if ($peakMemoryMb -gt 0) { "passed" } else { "skipped" })) -DurationMs 0 -Message "peak RSS sampled while polling boot (boot never reached UP)" -Value $peakMemoryMb -Unit "mb"
     }
     else {
         $phases.firstRequest = New-Phase -Status ($(if ($firstRequestOk) { "passed" } else { "failed" })) -DurationMs $firstRequestMs -Message ($panelUri + " -- " + $firstRequestDetail)
-        if (-not $firstRequestOk) { $overallFailed = $true }
+        if (-not $firstRequestOk) {
+            $overallFailed = $true
+            $phases.latency = New-Phase -Status "skipped" -DurationMs 0 -Message "firstRequest did not pass"
+        }
+        else {
+            $phases.latency = $latencyPhaseResult
+            if ($latencyPhaseResult.status -ne "passed") { $overallFailed = $true }
+        }
+        $phases.memory = New-Phase -Status "passed" -DurationMs 0 -Message "peak RSS sampled across boot polling + firstRequest + latency (point samples, not a continuous profiler)" -Value $peakMemoryMb -Unit "mb"
     }
 }
 else {
     $phases.build = if ($phases.Contains("build")) { $phases.build } else { New-Phase -Status "skipped" -DurationMs 0 }
     $phases.boot = New-Phase -Status "skipped" -DurationMs 0
     $phases.firstRequest = New-Phase -Status "skipped" -DurationMs 0
+    $phases.latency = New-Phase -Status "skipped" -DurationMs 0
+    $phases.memory = New-Phase -Status "skipped" -DurationMs 0
 }
 
 # -- Report ---------------------------------------------------------------------------------------
+# schemaVersion bumped v1 -> v2: v1 reports (still sitting in scale-proof-baseline.json's ratchet
+# history, never rewritten) had 5 phases; v2 adds the 3 new required ones (ddl/latency/memory) --
+# see schemas/ai/scale-proof-report.schema.json.
 $report = [ordered]@{
-    schemaVersion = "npdev-scale-proof-report.v1"
+    schemaVersion = "npdev-scale-proof-report.v2"
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
     concepts = $Concepts
     status = if ($overallFailed) { "failed" } else { "passed" }
     phases = $phases
 }
 Write-NPDevJsonFile $ReportPath $report
+
+# Schema validation is best-effort/non-fatal here on purpose: this script's primary signal is
+# whether generate/build/boot/firstRequest actually passed, and that must not go red just because
+# the AJV validator's Node toolchain (scripts/quality/Invoke-JsonSchemaValidation.ps1) is
+# unavailable or slow to npm-install on a given machine/runner. A malformed report is still worth
+# surfacing loudly, just not as this script's own exit code.
+try {
+    $schemaValidationPath = Join-Path $rungRoot "scale-proof-report-schema-validation.json"
+    $ErrorActionPreference = "Continue"
+    pwsh -NoProfile -File (Join-Path $repoRoot "scripts\quality\Invoke-JsonSchemaValidation.ps1") -SchemaPath $SchemaPath -InstancePath $ReportPath -ReportPath $schemaValidationPath 2>$null | Out-Null
+    $schemaExitCode = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    if ($schemaExitCode -eq 0) {
+        Write-Host "-- schema: report matches $SchemaPath --" -ForegroundColor Green
+    }
+    else {
+        Write-Host "-- schema: WARNING -- report did NOT validate against $SchemaPath (see $schemaValidationPath) --" -ForegroundColor Yellow
+    }
+}
+catch {
+    $ErrorActionPreference = "Stop"
+    Write-Host ("-- schema: WARNING -- validation could not run (" + $_.Exception.Message + ") --") -ForegroundColor Yellow
+}
 
 # -- Baseline (tracked, in-repo, ratchet-only per ROADMAP.md D8 -- no ceiling asserted here) ------
 $baseline = if (Test-Path -LiteralPath $BaselinePath) {
