@@ -3,8 +3,10 @@ title: >-
   Every generated app ships two published ADMIN API keys and boots on that profile
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R7). Cleaning
   application-dev.yml alone changes nothing observable -- the real fix is
@@ -235,20 +237,47 @@ detail: |
   launcher can reach it today -- all pass an explicit profile -- so this does not block Stage B,
   but it is a genuine validate/enforce split-brain worth its own fix.
 
-  **This item does NOT close.** `status` stays `OPEN`. Stage B's own mechanism (dropping the
-  implicit `dev` default, shipping a real fail-closed `application-prod.properties`, making
-  `_ops/Run-FinalApp.ps1` profile-explicit) is real and independently verified -- see the Verified
-  LIVE block above, and this session's own adversarial multi-agent review of this PR before merge,
-  which confirmed the mechanism against the actual source rather than trusting prose. But the
-  card's title -- "every generated app ships two published ADMIN API keys and boots on that
-  profile" -- is **still true** for one real, documented path: `Build-NpdevApp.ps1`/
+  **At this point (2026-08-14, before REG-152), this item did NOT close.** Stage B's own mechanism
+  (dropping the implicit `dev` default, shipping a real fail-closed `application-prod.properties`,
+  making `_ops/Run-FinalApp.ps1` profile-explicit) was real and independently verified -- see the
+  Verified LIVE block above, and this session's own adversarial multi-agent review of this PR
+  before merge, which confirmed the mechanism against the actual source rather than trusting prose.
+  But the card's title -- "every generated app ships two published ADMIN API keys and boots on
+  that profile" -- was **still true** for one real, documented path: `Build-NpdevApp.ps1`/
   `Build-ClaudeApp.ps1`, CLAUDE.md's own documented PRIMARY "Generate + build + run a FinalApp"
-  recipe, never calls `Ensure-NpdevApiKey` and boots with `application-dev.yml`'s live, published,
-  working `dev-key`/`api-dev` ADMIN mapping (`REG-152`, severity corrected HIGH 2026-08-13 -- see
-  that item, and its correction note above in this item's own Stage C section). Closing SEC-1 on
-  the strength of the `_ops/Run-FinalApp.ps1`/docker-compose path alone, while the platform's own
-  documented primary build/run recipe still ships a working published admin key, would be an
-  inaccurate claim in a security-tracking ledger -- worse than leaving the card open, since it
-  would cause a still-live vulnerability to be deprioritized as already fixed. This item stays OPEN
-  until REG-152 is actually fixed. Stage D (the migration surface) remains its own, separately
-  scoped, not-yet-started future step per the roadmap, gated on this item actually closing.
+  recipe, never called `Ensure-NpdevApiKey` and booted with `application-dev.yml`'s live,
+  published, working `dev-key`/`api-dev` ADMIN mapping (`REG-152`, severity corrected HIGH
+  2026-08-13). Closing SEC-1 on the strength of the `_ops/Run-FinalApp.ps1`/docker-compose path
+  alone, while the platform's own documented primary build/run recipe still shipped a working
+  published admin key, would have been an inaccurate claim in a security-tracking ledger -- worse
+  than leaving the card open, since it would cause a still-live vulnerability to be deprioritized
+  as already fixed.
+
+  **REG-152 fixed 2026-08-14 -- card CLOSED.** `Ensure-NpdevApiKey`'s exact algorithm mirrored (as
+  a self-contained PowerShell constant, `$ApiKeyProvisioner`, duplicated once per pipeline since
+  every emitted `_ops` script here is deliberately self-contained) into every java-launching script
+  in both `Build-NpdevApp.ps1` and `Build-ClaudeApp.ps1` (`Start-App.ps1`, `Impact-Only.ps1`,
+  `Reissue-SuperUserKey.ps1`), plus every `X-Api-Key` header consumer (`Test-App.ps1`,
+  `Status-App.ps1`, `Check-Provenance.ps1`, `New-AppConsole.ps1`'s `Get-AppStatus`) redirected from
+  the stale `$plan.apiKey` placeholder to the live `secrets/api-key.env` value. All three launch
+  pipelines (the primary `_ops` toolbox and these two AppGen launchers) idempotently share ONE key
+  per app -- `app-plan.json`'s `appRoot` and `OperationalRunbookEmitter`'s `finalAppRoot` resolve
+  to the identical directory.
+
+  Verified LIVE on both real pipelines, not assumed, and with a genuine RED proof (not inferred):
+  generated, built, and started the real "Claude Support Desk" official sample via
+  `Build-ClaudeApp.ps1` and `simple-product-h2local` via `Build-NpdevApp.ps1`. RED proven directly
+  by launching the packaged jar with the exact arguments the OLD unfixed `Start-App.ps1` used (no
+  `Ensure-NpdevApiKey` call, `NPDEV_AUTH_API_KEYS` explicitly unset) -- `dev-key` returned 200 as
+  ADMIN. Then the real, fixed `Start-App.ps1` run against the same app -- `dev-key`/`api-dev` 401,
+  the generated key 200, banner printed once, `Test-App.ps1` PASS (resolved the live key itself,
+  not the placeholder), `Impact-Only.ps1` (a third, separate java launch site) booted successfully
+  with the shared provisioner and reused the identical key `Start-App.ps1` had already generated,
+  proving idempotency across independent script invocations, not just restarts of the same one.
+  Full detail in `REG-152.yml`, which this item's fix depended on and which is now `status: DONE`.
+
+  **Card CLOSED: no generated app, on any of the three launch pipelines this platform ships, boots
+  with a live published ADMIN credential anymore, and none boots implicitly on `dev`.** Both halves
+  of this item's title are now false, live-verified on every pipeline, not just the primary one.
+  Stage D (the migration surface: browser routines, sample configs) remains its own, separately
+  scoped, not-yet-started future step per the roadmap.
