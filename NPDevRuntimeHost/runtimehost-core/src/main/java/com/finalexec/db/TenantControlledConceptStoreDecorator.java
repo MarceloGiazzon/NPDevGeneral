@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.npdev.kernel.concepts.ConceptListSlice;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
@@ -58,6 +59,14 @@ public final class TenantControlledConceptStoreDecorator implements ConceptStore
     @Override
     public List<ConceptRecord> findAll(String tenantId, String conceptName) {
         return effectiveStore(tenantId).findAll(tenantId, conceptName);
+    }
+
+    /** RUN-1 (R8a): forwards to the resolved delegate's own pushdown override (see
+     *  {@code AuditingConceptStoreDecorator}'s twin) rather than {@link ConceptStore}'s
+     *  fetch-all-then-trim default. */
+    @Override
+    public ConceptListSlice<ConceptRecord> findAllCapped(String tenantId, String conceptName, int maxRows) {
+        return effectiveStore(tenantId).findAllCapped(tenantId, conceptName, maxRows);
     }
 
     @Override

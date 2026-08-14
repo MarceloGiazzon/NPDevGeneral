@@ -317,6 +317,59 @@ class DefaultConceptGatewayTest {
         assertTrue(noMatch.isEmpty());
     }
 
+    /**
+     * RUN-1 (R8a): {@link DefaultConceptGateway#listCapped} exactly AT the cap must not be reported
+     * as truncated -- the off-by-one this method exists to get right. Exercises the SAME boundary
+     * condition {@code JdbcBusinessConceptStore#findAllCapped}'s real SQL {@code LIMIT maxRows + 1}
+     * pushdown relies on (see the sibling live-H2 test in runtimehost), generically over
+     * {@code maxRows} rather than the literal 1000 the generated service uses -- the boundary logic
+     * is the same regardless of the specific cap value.
+     */
+    @Test
+    void listCappedExactlyAtTheCapIsNotReportedAsTruncated() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ExecutionContext context = ExecutionContext.of("tenant-a", "actor-a");
+
+        for (int i = 0; i < 3; i++) {
+            gateway.save(new ConceptWriteRequest("Widget", "widget-" + i, null, Map.of("name", "Widget " + i)), context);
+        }
+
+        ConceptListSlice<ConceptRecord> slice = gateway.listCapped(new ConceptListRequest("Widget", null), context, 3);
+
+        assertEquals(3, slice.records().size());
+        assertFalse(slice.truncated(), "exactly maxRows records must not be reported as truncated");
+    }
+
+    /** RUN-1 (R8a): one row OVER the cap must be truncated to exactly maxRows AND flagged. */
+    @Test
+    void listCappedOneRowOverTheCapIsTruncatedAndBoundedToMaxRows() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ExecutionContext context = ExecutionContext.of("tenant-a", "actor-a");
+
+        for (int i = 0; i < 4; i++) {
+            gateway.save(new ConceptWriteRequest("Widget", "widget-" + i, null, Map.of("name", "Widget " + i)), context);
+        }
+
+        ConceptListSlice<ConceptRecord> slice = gateway.listCapped(new ConceptListRequest("Widget", null), context, 3);
+
+        assertEquals(3, slice.records().size(), "the response must never exceed maxRows");
+        assertTrue(slice.truncated(), "maxRows + 1 records must be reported as truncated");
+    }
+
+    /** RUN-1 (R8a): under the cap, every record comes back and nothing is flagged. */
+    @Test
+    void listCappedUnderTheCapReturnsEverythingUntruncated() {
+        DefaultConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
+        ExecutionContext context = ExecutionContext.of("tenant-a", "actor-a");
+
+        gateway.save(new ConceptWriteRequest("Widget", "widget-1", null, Map.of("name", "Widget 1")), context);
+
+        ConceptListSlice<ConceptRecord> slice = gateway.listCapped(new ConceptListRequest("Widget", null), context, 3);
+
+        assertEquals(1, slice.records().size());
+        assertFalse(slice.truncated());
+    }
+
     private static final class CapturingAuditLogStore implements AuditLogStore {
         private final List<AuditRecord> records = new ArrayList<>();
 

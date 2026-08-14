@@ -49,6 +49,40 @@ class BondJavaEmitterTest {
         assertFalse(entity.contains("private java.util.UUID productId;"), entity);
     }
 
+    /**
+     * RUN-1 (R8a): {@code listBy*} reference finders must stay on the platform's original UNBOUNDED
+     * fetch, never the cap introduced for {@link #scalarBondJavaFieldsUseResolvedAnchorType} to lock
+     * around -- caught in review before merge: a reference finder filters AFTER the fetch
+     * ({@code findAllX(...).stream().filter(matches value)}), so routing it through the capped path
+     * would silently drop a legitimate match whose id sorts past the cap, with no truncation signal
+     * at all (this method returns a raw {@code List}, not a {@code ConceptListSlice}). Locks in the
+     * exemption explicitly so a future refactor that re-shares the helper trips this test.
+     */
+    @Test
+    void listByFinderStaysOnTheUnboundedFetchNotTheCappedOne() throws Exception {
+        CompiledModel model = modelWithNaturalKeyBond(false);
+        TemplateEngine templates = new TemplateEngine("npdev-templates/");
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+
+        new EntityEmitter(templates, writer).emit(model);
+        new DtoEmitter(templates, writer).emit(model);
+        new ServiceEmitter(templates, writer).emit(model);
+        new ControllerEmitter(templates, writer).emit(model);
+
+        String service = Files.readString(tempDir.resolve("src/main/java/com/npdev/generated/services/InvoiceServiceBase.java"));
+
+        int methodStart = service.indexOf("listByProductId(Object value)");
+        assertTrue(methodStart >= 0, service);
+        int bodyStart = service.indexOf('{', methodStart);
+        int bodyEnd = service.indexOf("\n    }", bodyStart);
+        String methodBody = service.substring(bodyStart, bodyEnd < 0 ? service.length() : bodyEnd);
+
+        assertTrue(methodBody.contains("findAllUnboundedFromConceptStore()"), methodBody);
+        assertFalse(methodBody.contains("findAllSliceFromConceptStore"), methodBody);
+        assertFalse(methodBody.contains("findAllFromConceptStore()"), methodBody);
+        assertFalse(methodBody.contains("listCapped"), methodBody);
+    }
+
     @Test
     void manyToManyBondIsNotEmittedAsScalarCrudField() throws Exception {
         CompiledModel model = modelWithNaturalKeyBond(true);

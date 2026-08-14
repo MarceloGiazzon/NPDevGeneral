@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.npdev.kernel.concepts.ConceptListSlice;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
@@ -51,6 +52,19 @@ public final class AuditingConceptStoreDecorator implements ConceptStore {
     public List<ConceptRecord> findAll(String tenantId, String conceptName) {
         log("findAll", "");
         return delegate.findAll(tenantId, conceptName);
+    }
+
+    /**
+     * RUN-1 (R8a): forwards to the delegate's own pushdown override (on
+     * {@link JdbcBusinessConceptStore}, a real SQL {@code LIMIT}) rather than falling through to
+     * {@link ConceptStore}'s default (fetch-all + trim-in-the-JVM) -- the same "without this
+     * override, wrapping a concept in this decorator silently downgrades a capability" trap
+     * {@link #query}/{@link #aggregate} below already document.
+     */
+    @Override
+    public ConceptListSlice<ConceptRecord> findAllCapped(String tenantId, String conceptName, int maxRows) {
+        log("findAllCapped", "");
+        return delegate.findAllCapped(tenantId, conceptName, maxRows);
     }
 
     @Override

@@ -8,6 +8,7 @@ import com.npdev.dsl.v1.query.GroupByJoinGrammar;
 import com.npdev.kernel.concepts.ConceptAggregateEngine;
 import com.npdev.kernel.concepts.ConceptAggregateQuery;
 import com.npdev.kernel.concepts.ConceptAggregateResult;
+import com.npdev.kernel.concepts.ConceptListSlice;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
@@ -176,6 +177,42 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed listing concept " + conceptName + " from JDBC store", exception);
+        } finally {
+            releaseConnection(connection);
+        }
+    }
+
+    /**
+     * RUN-1 (R8a): the pushdown counterpart of {@link ConceptStore#findAllCapped}'s interface
+     * default -- fetches at most {@code maxRows + 1} rows (one more than the cap, cheaply, in the
+     * SAME query) so the database itself never streams a whole tenant table for this call, and the
+     * "+1" is all that's needed to tell "truncated" from "exactly maxRows rows total" without a
+     * separate {@code COUNT(*)}. Same stable {@code ORDER BY} as {@link #findAll} so which rows get
+     * cut is deterministic across calls.
+     */
+    @Override
+    public ConceptListSlice<ConceptRecord> findAllCapped(String tenantId, String conceptName, int maxRows) {
+        ConceptShape shape = shape(conceptName);
+        String sql = dialect.paginated("SELECT * FROM " + sqlId(shape.tableName())
+                + " WHERE tenant_id = ? ORDER BY " + sqlId(shape.idColumn()) + " ").stripTrailing();
+        Connection connection = openConnection();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            int nextIndex = 1;
+            statement.setObject(nextIndex++, bindable(statement, tenantId));
+            for (int pageValue : dialect.limitOffset().values(maxRows + 1, 0)) {
+                statement.setInt(nextIndex++, pageValue);
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<ConceptRecord> out = new ArrayList<>();
+                while (resultSet.next()) {
+                    out.add(toRecord(shape, tenantId, resultSet));
+                }
+                boolean truncated = out.size() > maxRows;
+                List<ConceptRecord> bounded = truncated ? List.copyOf(out.subList(0, maxRows)) : List.copyOf(out);
+                return new ConceptListSlice<>(bounded, truncated);
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed listing (capped) concept " + conceptName + " from JDBC store", exception);
         } finally {
             releaseConnection(connection);
         }
