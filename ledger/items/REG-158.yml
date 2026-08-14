@@ -1,0 +1,67 @@
+id: REG-158
+title: >-
+  run-weekly-paperwork-checks.ps1 shipped without the structured-report contract, breaking
+  NPDev CI Validation's "Script automation quality" step on every push to main since 2026-08-13
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-13
+closed: 2026-08-13
+verification: VERIFIED_LIVE
+source: >-
+  User-reported: the "NPDev CI Validation" workflow's "NPDev segmented CI validation" job has
+  failed at its "Script automation quality" step on every push to main since commit 83eaf603
+  (Step 9: hygiene, #17, 2026-08-13) -- not a flake, reproduced locally on a clean worktree at
+  the same commit run-script-automation-quality.ps1's own structured-report-contract sub-check
+  named run-weekly-paperwork-checks.ps1 as the sole failure.
+surface: quality/gate-inventory
+files:
+  - scripts/quality/run-weekly-paperwork-checks.ps1
+  - scripts/quality/run-script-automation-quality.ps1
+detail: |
+  scripts/quality/run-script-automation-quality.ps1's "structured-report-contract" check
+  (lines ~106-148) scans every scripts/quality/run-*.ps1 not on its own exclusion lists and
+  requires each to either use Invoke-NPDevReportedCommand/Invoke-ReportedCommand, the
+  runtimehost-automation-contract-helper.psm1 pattern, Write-NPDevJsonFile/
+  Write-StructuredRunReport, or (ConvertTo-Json persisted via Set-Content/Out-File AND a
+  reports/out or -report.json/ReportPath target). run-weekly-paperwork-checks.ps1 (added in
+  83eaf603, the same PR that classified paperwork checkers and moved 11 of them here) did none
+  of these -- it only ever did `Write-Host`/`exit 1`/`exit 0`, the exact REG-31-backlog shape
+  (see run-script-automation-quality.ps1's $reportContractMigrationBacklog), but was never added
+  to that backlog nor given the compliant pattern. Confirmed via git blame that both files'
+  relevant logic predate 83eaf603 unchanged -- the checker was not new or newly-strict; the new
+  script simply never adopted (or was excused from) its existing contract.
+
+  Because "Script automation quality" is an un-guarded step in the middle of the
+  "NPDev segmented CI validation" job (.github/workflows/npdev-ci-validation.yml:484), its
+  failure additionally skipped every later step in that job on each affected run (Runtime
+  surface evidence, DSL contract check, Generator gate, RuntimeHost gate, Editor gate, etc.) --
+  the CI signal loss was larger than the one failing step suggested. Fixing this restores those
+  steps running again; no separate fix needed for that half.
+
+  Fix: run-weekly-paperwork-checks.ps1 now dot-sources scripts/npdev-common.ps1 and, after each
+  of its 11 existing `& $py ...`/`$LASTEXITCODE` check invocations (behavior and console output
+  unchanged), appends a New-NPDevCheckResult entry to a $checks list; at the end it builds and
+  writes (via Write-NPDevJsonFile) a report object carrying the standard
+  generatedAt/runId/scriptPath/workspaceRoot/overallStatus fields plus per-check detail --
+  the same pattern scripts/quality/run-generator-governance.ps1 already uses. The script's
+  console output, exit-code contract, and the 11 underlying paperwork checks are unchanged.
+
+  Re-running the newly-reporting script against the real repo surfaced no new paperwork
+  findings -- all 11 checks (adr-decision-implementation, allowlist-citations,
+  cadence-coverage, doc-inventory, external-ai-mission-coverage,
+  ledger-status-reverse-freshness, markdown-links, no-markdown-reads, pinned-download-links,
+  readme-contract, record-surfaces) passed, so the missing structured report was not itself
+  masking a paperwork-compliance regression -- only masking downstream CI steps (see above).
+guard:
+  kind: script
+  ref: >-
+    pwsh -NoProfile -File scripts/quality/run-script-automation-quality.ps1; pwsh -NoProfile
+    -File scripts/quality/run-weekly-paperwork-checks.ps1
+  asserts: >-
+    run-script-automation-quality.ps1's structuredReportContract.failures is empty and
+    overallStatus is "passed"; run-weekly-paperwork-checks.ps1 exits 0, all 11 checks still
+    print their original console output, and writes
+    scripts/reports/out/weekly-paperwork-checks-report.json with overallStatus "passed" and
+    11/11 checks passed
+  provenRed: true
