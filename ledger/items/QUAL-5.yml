@@ -3,7 +3,7 @@ title: >-
   36 RuntimeHost test files, incl. all MockMvc tests, never compile in any gate
 type: BUG
 severity: HIGH
-status: OPEN
+status: PARTIAL
 opened: 2026-08-12
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R1). One undifferentiated
@@ -15,23 +15,97 @@ source: >-
   routing, the 6 genuinely uncompilable tests) not yet done.
 surface: runtimehost/build-config
 detail: |
-  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R1 for the full 6-stage spec. This session
-  (MASTER-ROADMAP.md Step 1) completed Stage 0 (delete 4 phantom entries) and Stage 1 (move the
-  generatedRuntimeDependentTestSources exclusion inside the generatedRuntimeMountPresent() guard --
-  the actual win, reviving 6 files / 21 @Test). Reviving the 6 files surfaced two genuine,
-  never-before-caught bugs, both fixed in the same commit: (1) ConceptQueryControllerExportCsvVolumeTest
-  had a compile error (unreported IOException/UnsupportedEncodingException) that could never be caught
-  while the file was unconditionally excluded; (2) once compiled, that same test caught a real data
-  leak -- JdbcBusinessConceptStore.toRecord() put tenant_id into ConceptRecord.data() as "tenantId"
-  even though tenant_id already has its own dedicated ConceptRecord component (record.tenantId()),
-  leaking it into REST responses and CSV exports. Fixed with the same exclusion pattern LNCH-16
-  already used for row_version, and independently confirmed correct by an existing test
-  (JdbcBusinessConceptStoreTenantIsolationTest) that already asserted this invariant on the write path.
-  Stages 2-5 remain: MASTER-ROADMAP.md Track C item C3.
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R1 for the full 6-stage spec. Stage 0
+  (delete 4 phantom entries) and Stage 1 (move generatedRuntimeDependentTestSources inside the
+  generatedRuntimeMountPresent() guard, reviving 6 files / 21 @Test) shipped in commit a4ea2ca1,
+  already on main.
+
+  This session (MASTER-ROADMAP.md Track C item C3) did Stages 2, 4, and 5; Stage 3 was stopped
+  after its first candidate surfaced a real failure, per the card's own "one at a time... stop and
+  report" instruction.
+
+  STAGE 2 (done -- verified empirically, not by trusting the card's "10" count): removed 9 of the
+  36 remaining hand-listed entries after a real `gradlew test` run against the assembled
+  simple-contact-intake sample. A first attempt removed 15 entries that looked blocker-free from
+  static analysis of runtime-supported-controllers.json alone; the real test run FAILED 11 tests
+  across 6 of those files (PermissionAwareUiMetadataServiceTest,
+  PublicationChainTenantReferenceValidationTest, RuntimeMetadataControllerStandaloneTest,
+  RuntimeMetadataValidationControllerStandaloneTest, RuntimePluginRuntimeRefResolverTest,
+  RuntimeUiMetadataControllerStandaloneTest) -- all model-fixture-coupled assertions that don't
+  match this sample's model. Those 6 were put back; the other 9 (PluginManifestLoaderTest,
+  PluginPackageDescriptorLoaderTest, RuntimePluginPackageRealizationServiceTest,
+  RuntimePluginAdapterRegistryTest, RuntimePluginPackageAdmissionEvaluatorTest,
+  RuntimePluginPackageDiscoveryServiceTest, RuntimePluginProfileResolverTest,
+  SupportedRuntimeSurfacePackagingTest, SupportedCoreControllerBlackBoxStandaloneTest) are
+  confirmed compiling and passing. ModelSyncStatusControllerStandaloneTest stays excluded: it
+  imports ModelSyncStatusController/ModelSyncStatusService, both in
+  runtime-supported-controllers.json's deferredControllers (not allowedControllers), so
+  unsupportedRuntimeHostControllerSources/unsupportedRuntimeHostServiceSources compile them OUT of
+  sourceSets.main -- a real, confirmed compile blocker.
+
+  STAGE 3 (NOT completed -- 1 of 5 tried, real failure found, stopped per the card's own
+  instruction): reviving NonDefaultRuntimeSurfaceProfileIntegrationTest alone (never as a batch)
+  failed for real -- nonDefaultRuntimeProfileExposesSupportedCoreAndNonDefaultControllersOnly
+  asserts a deferredControllers-listed controller becomes active under the non-default runtime
+  profile, but RuntimeControllerAllowlistConfig can only REMOVE bean definitions, never add one
+  back for a controller whose .java file was already compiled out. Filed as REG-163 (a real,
+  separate architecture gap between the compile-time and runtime-time controller allowlists), not
+  fixed here. The other 4 candidates (SupportedRuntimeSurfaceAllowlistIntegrationTest,
+  SupportedCoreControllerBlackBoxIntegrationTest, RuntimePluginStatusControllerIntegrationTest,
+  RuntimePluginFilesystemDiscoveryIntegrationTest) were deliberately left untested this session.
+
+  STAGE 4 (structurally done; execution partially verified): added `useJUnitPlatform {
+  excludeTags 'integration' }` to the `test` task in both gradle files -- previously it had NO
+  excludeTags at all, so the ONLY thing keeping an @Tag("integration") AbstractScenarioIntegrationTest
+  subclass out of `test` was remembering to hand-list it. Of the 6 remaining compilable
+  AbstractScenarioIntegrationTest subclasses, only 2 (AsyncWaitResumeE2EIT, Stage12UiModelRuntimeIT)
+  were routed into generatedRuntimeIntegrationTestSources -- confirmed via a real
+  `compileIntegrationTestJava` run against superuser-admin-console, the actual sample
+  .github/workflows/npdev-ci-validation.yml's integrationTest CI step uses. The other 4
+  (CanonicalDemoBusinessE2EIT, InvariantApiIntegrationTest, Step01MultiConceptIntegrationTest,
+  Step03NestedJsonbIntegrationTest) import com.npdev.generated.entities/repositories for
+  Patient/Provider/Appointment/InsuranceClaim, none of which superuser-admin-console's model
+  declares -- real "cannot find symbol" compile errors against that sample, so routing them would
+  have BROKEN the currently-passing CI integrationTest job. They stay excluded from both `test` and
+  `integrationTest`. The full `integrationTest` pass/fail run (real Postgres via Testcontainers)
+  could not be verified end-to-end this session: even the 3 PRE-EXISTING, untouched
+  integrationTest files (JwtAuthExternalBetaIT, PublicationRollbackE2EIT, TenantIsolationE2EIT)
+  failed identically with `PSQLException: relation "workspace_menus" does not exist` against a
+  Postgres server reporting error messages in Portuguese -- strong evidence of shared-machine
+  Testcontainers/Docker contamination (this session ran directly in the shared main checkout
+  alongside other concurrent agents' builds), not a regression from this session's changes. The
+  `test` task side of Stage 4 (excludeTags hardening + confirming the 6 files never leak into
+  `test`) IS fully verified: test-result counts stayed exactly 4 api / 1 controlpanel / 119 total,
+  0 failures, before and after.
+
+  STAGE 5 / D7 (done, verified): deleted the 6 permanently-uncompilable test files outright.
+  Step02ReferencesEnumsDomainTypesIntegrationTest, Step04InvariantExplainabilityIntegrationTest,
+  Step05ProviderOverlapIntegrationTest, Step06RoomOverlapIntegrationTest each imported
+  com.npdev.generated.repositories.ExamRoomRepository -- confirmed via repo-wide search that zero
+  `ExamRoom` concepts exist in any model.json in the corpus, so that package can never exist.
+  PanelRuntimeTest and RuntimeMetadataServiceTest used RuntimeMetadataService's single-arg
+  constructor (REG-103's exact shape) and asserted fixture-specific values (namespace
+  "canonical.clinicdemo", catalogCount==11, an "Appointment" concept) no corpus model backs
+  anymore; their twin-pair rule (test-exclusion-siblings) already required them excluded together,
+  satisfied trivially now that both are deleted.
+
+  Net RuntimeHost test-result counts on the assembled simple-contact-intake sample, this session:
+  RED (post-Stage-1 baseline, confirmed unchanged) 4 api / 1 controlpanel / 110 total, 0 failures
+  -> GREEN (post Stages 2/4/5) 4 api / 1 controlpanel / 119 total, 0 failures (Stage 2 net +9,
+  Stage 5 net -6 file deletions with zero result-count change since those 6 never produced a
+  result file while excluded, Stage 4 net 0 change to `test` by design).
+
+  Remaining work: Stage 3's other 4 candidates (untested), a real fix for REG-163 (which may also
+  unblock reviving NonDefaultRuntimeSurfaceProfileIntegrationTest), and Stage 4's 4 deferred
+  scenario tests (need a fixture model with Patient/Provider/Appointment/InsuranceClaim wired into
+  a Postgres-capable sample, or a rewrite against an existing corpus model).
 guard:
   kind: script
-  ref: NPDevSamples/scripts/generate-sample-app.ps1 + gradlew test (RED/GREEN test-result-file counts under com/finalexec/api and com/finalexec/controlpanel)
-  asserts: Stage 1's fix moves the assembled sample app's RuntimeHost test-result counts from 2/0 (RED) to 4/1 (GREEN) with zero failures
+  ref: NPDevSamples/scripts/generate-sample-app.ps1 + gradlew test (RED/GREEN test-result-file counts under com/finalexec/api and com/finalexec/controlpanel), plus scripts/quality/run-runtimehost-gate.ps1 (full gate, passed)
+  asserts: >-
+    Assembled sample app's RuntimeHost test-result counts stay 4/1 (api/controlpanel) with zero
+    failures through Stages 2/4/5, total test-result files 110 -> 119, and the full
+    run-runtimehost-gate.ps1 passes end to end
   provenRed: true
 files:
   - NPDevRuntimeHost/build.gradle

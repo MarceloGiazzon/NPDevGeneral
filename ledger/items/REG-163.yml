@@ -1,0 +1,68 @@
+id: REG-163
+title: >-
+  deferredControllers can never actually go "active" under the non-default/experimental runtime
+  surface profile -- the compile-time controller allowlist excludes their .java files from
+  sourceSets.main regardless of profile, so the runtime-level allowlist filter has no bean to keep
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Found while attempting R1 Stage 3 (MASTER-ROADMAP.md Track C item C3, "revive the 5 full-boot
+  @SpringBootTest surface tests one at a time"). Reviving
+  NonDefaultRuntimeSurfaceProfileIntegrationTest alone against the assembled simple-contact-intake
+  sample app produced a real, reproducible test failure, not a fixture-coupling issue.
+surface: runtimehost/controller-surface-governance
+files:
+  - NPDevRuntimeHost/build.gradle
+  - NPDevRuntimeHost/build.gradle.template
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/RuntimeControllerAllowlistConfig.java
+  - NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json
+  - NPDevRuntimeHost/src/test/java/com/finalexec/NonDefaultRuntimeSurfaceProfileIntegrationTest.java
+detail: |
+  `runtime-supported-controllers.json` declares three buckets: `allowedControllers` (the
+  `supported-core` default profile), `deferredControllers` (meant to become reachable under the
+  `non-default`/`experimental` `npdev.runtime.surface-profile`), and `testOnlyControllers`.
+  `RuntimeControllerAllowlistConfig` (runtimehost-core) implements the RUNTIME half of this:
+  a `BeanDefinitionRegistryPostProcessor` that walks every registered `*Controller` bean and
+  REMOVES it if `RuntimeSurfaceManifest.allowsController(name, profile)` returns false -- under
+  `non-default`/`experimental` that check is `allowedControllers.contains(name) ||
+  deferredControllers.contains(name)`, so by design a deferred controller should survive under
+  those profiles.
+
+  But `NPDevRuntimeHost/build.gradle(.template)`'s `unsupportedRuntimeHostControllerSources` --
+  the COMPILE-time half -- excludes any `com/finalexec/api/**/*Controller.java` whose simple name
+  is not in `supportedCoreControllerNames`, and that set is built from `allowedControllers` ONLY
+  (`runtimeSurfaceManifest.allowedControllers`, not `deferredControllers`). So e.g.
+  `RuntimePluginPackagesController.java` / `ModelSyncStatusController.java` are never even compiled
+  into `sourceSets.main` for ANY profile -- there is no bean for `RuntimeControllerAllowlistConfig`
+  to keep, because a `BeanDefinitionRegistryPostProcessor` can only REMOVE bean definitions that
+  exist, never add one back for a class the classpath never had.
+
+  Live proof (assembled `simple-contact-intake` sample, `gradlew test --tests
+  com.finalexec.NonDefaultRuntimeSurfaceProfileIntegrationTest`):
+  `nonDefaultRuntimeProfileExposesSupportedCoreAndNonDefaultControllersOnly` FAILED at
+  `assertTrue(activeControllers.contains("RuntimePluginPackagesController"))` (line 40) with
+  `org.opentest4j.AssertionFailedError` -- the very next assertion in the same test,
+  `assertTrue(activeControllers.contains("ModelSyncStatusController"))` (line 42), would fail
+  identically for the same reason.
+
+  Likely fix (not designed further here -- filed per this session's "unrelated bugs filed
+  separately, never fixed in passing" discipline): `unsupportedRuntimeHostControllerSources`
+  (and its `unsupportedRuntimeHostServiceSources` sibling, which has the analogous gap for
+  `nonDefaultServicePatterns`/`experimentalServicePatterns`-listed services) needs to compile
+  `allowedControllers UNION deferredControllers` into `sourceSets.main`, and rely entirely on
+  `RuntimeControllerAllowlistConfig`'s runtime filter to keep `supported-core` apps from exposing
+  them -- otherwise the compile-time gate is strictly narrower than the runtime one it's supposed
+  to only backstop, and `deferredControllers`/the non-default profile is dead code.
+guard:
+  kind: script
+  ref: >-
+    Generate NPDevSamples/simple-contact-intake, run its assembled app's
+    `gradlew test --tests com.finalexec.NonDefaultRuntimeSurfaceProfileIntegrationTest` with that
+    test un-excluded from NPDevRuntimeHost/build.gradle(.template)'s modelSpecificGeneratedAppTests
+  asserts: >-
+    nonDefaultRuntimeProfileExposesSupportedCoreAndNonDefaultControllersOnly passes, i.e. a
+    deferredControllers-listed controller is both compiled and reachable under
+    npdev.runtime.surface-profile=non-default
+  provenRed: true
