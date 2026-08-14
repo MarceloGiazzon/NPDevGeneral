@@ -49,13 +49,81 @@ detail: |
   sink alone, then decide whether the fix is "don't put password in this particular result dict" or
   "redact password inside `_print_result`/`_explain_human_summary` generically, the same way
   `npdev_monitor.redact()` already does for its own surface."
+
+  2026-08-14 addendum (fix pass): Got the real CodeQL dataflow this time, via
+  `gh api repos/.../code-scanning/analyses/<id>` with `Accept: application/sarif+json` (the plain
+  `code-scanning/alerts` list only gives a generic `message.text`; the SARIF's `codeFlows` gives the
+  full traced path). **The unverified hypothesis above was wrong on the specific field**: the traced
+  source is NOT `database.password` -- every one of the 4 alerts (now numbered #5/#6/#7/#8 in the
+  scan; line numbers had drifted to 5186/5188/5508/5510 from main commits since this item was filed)
+  traces from `npdev_monitor.py:509`'s `record["apiKey"] = _read_live_api_key(final_app_root) or
+  plan.get("apiKey") or None` -- the app's live agent-proxy API key, read from
+  `secrets/api-key.env`. CodeQL's message always says "(password)" regardless of the actual
+  credential shape; that wording is not evidence it found a DB password. Confirmed real, not a false
+  positive, by direct code reading: `run_monitor()`'s `scan`/`probe` handlers and `run_explore()`'s
+  dispatcher pass the raw `probe_app()` result (or, for `explore preflight`, a dict embedding it
+  under `result["app"]`) straight to `_print_result`/`_explore_human_summary`'s print branches with
+  no call to the existing `npdev_monitor.redact()` anywhere on that path -- confirmed via the code's
+  own comment at `npdev_monitor.py:501-504` ("Named `apiKey` on purpose -- `redact()`'s key pattern
+  matches it, so the export bundle and the assistant payload replace it with <redacted> with no
+  extra rule"), which names exactly two call sites (`export_logs`, `npdev_explore.py:1357`'s
+  AI-repair payload) and conspicuously not this one. A synthetic-input smoke check
+  (`npdev monitor scan --json` / `npdev explore preflight --json` against a fake app tree with a
+  known fake key) reproduced the clear-text leak before the fix and confirmed it gone after.
+
+  **Fix has one deliberate asymmetry, found by searching for real consumers before blanket-fixing**:
+  `_print_result` now redacts by default (protects `monitor engine` and any future caller too, not
+  just the two commands found today), and the `explore` dispatcher redacts unconditionally -- but
+  `monitor probe`'s call site opts out (`_print_result(result, args, redact_output=False)`) on
+  purpose. Two real, load-bearing consumers of `monitor probe --json`'s raw `apiKey` were found and
+  would have broken: `NPDevSamples/scripts/sample-common.ps1`'s `Get-NpdevLiveApiKey` (parses
+  `.apiKey` from this exact command's stdout; feeds 9 other sample-verification scripts), and the
+  NPDev Manager's Monitor Inspector "copy API key" row (`NPDevManager/ui/monitor.js:529-580`,
+  already documented as deliberate in the DONE `REG-159`). `monitor scan` and `explore preflight`
+  have zero such consumers (confirmed by a repo-wide search for `.apiKey`/`.app.apiKey` readers), so
+  those two are safe to redact outright. Existing test
+  `test_probe_reports_the_apps_real_api_key_not_the_published_default` (unit-level, calls
+  `probe_app()` directly, not the CLI print layer) already asserted this raw-key contract and was
+  left untouched -- confirming `probe_app()` itself was never the bug, only the CLI print layer that
+  forgot to call `redact()`.
+
+  Changed: `NPDevCli/npdev_cli.py` (`_print_result` gained a `redact_output: bool = True` parameter;
+  `monitor probe`'s call site passes `redact_output=False` with a comment; `run_explore`'s print
+  block now redacts unconditionally). Added `NPDevCli/tests/test_monitor_and_explore.py`'s
+  `CliPrintRedaction` class (6 tests) covering the default-redacts, opt-out-keeps-the-real-key, and
+  end-to-end `monitor scan`/`monitor probe`/`explore preflight` CLI behaviours. Verified with a
+  targeted run of the affected/adjacent test classes (`DiscoveryRules`, `ProbeFacts`, `Redaction`,
+  `CliPrintRedaction`: 20/20 pass) plus a standalone synthetic-input smoke script -- not the full
+  gate suite, per this task's scope. (Unrelated, pre-existing finding along the way:
+  `EngineDetection` in the same test file hangs in this sandbox regardless of this change --
+  environment-specific, not touched by this fix, not chased further here.)
+
+  **`guard.provenRed` flips to `true` this pass**: this session independently reproduced the
+  clear-text leak itself, outside CodeQL -- `git stash` on just the `npdev_cli.py` fix, then calling
+  `npdev_cli._print_result({"apiKey": "THE-REAL-LIVE-KEY-0001", "health": "running", "command":
+  "monitor probe"}, argparse.Namespace(json=True))` directly against the pre-fix code printed the
+  fake key in clear text via `json.dumps` (the exact sink CodeQL traced), then the stash was popped
+  and the same call was re-run to confirm it now prints `<redacted>`. That is real RED/GREEN evidence
+  for the vulnerability class, independent of CodeQL.
+
+  **Still open, deliberately**: this PR has not been re-scanned by CodeQL's default-setup check yet
+  (that only runs against `main`/PRs per its own schedule, distinct from the workflow-based CodeQL
+  Actions checks this repo also runs). Confirming the specific 4 alerts (numbers #5/#6/#7/#8) actually
+  clear post-merge is the real remaining verification, not assumed here -- that is a DIFFERENT claim
+  than "the leak was real", which this session did independently confirm (see above).
 guard:
   kind: manual
   ref: >-
-    read the CodeQL alert list for this repo (code-scanning tab) filtered to npdev_cli.py, or
-    re-run the default-setup CodeQL scan locally against a command whose result dict is suspected
-    to carry a password (e.g. `npdev db test --db-password ...`) and inspect its --json output
+    python -m unittest tests.test_monitor_and_explore.CliPrintRedaction -v (NPDevCli/, 6 tests,
+    covers `monitor scan`/`monitor probe`/`explore preflight` end-to-end plus `_print_result`'s
+    `redact_output` plumbing directly); for the CodeQL side specifically, read the alert list for
+    this repo (code-scanning tab, or `gh api repos/.../code-scanning/alerts` filtered to
+    npdev_cli.py) after this PR merges and confirm alert numbers #5/#6/#7/#8 report `fixed_at` --
+    that confirmation is still pending as of this note
   asserts: >-
     no `npdev` CLI command's --json or human-summary output includes a database or credential
-    password in clear text
-  provenRed: false
+    password (including the agent-proxy API key) in clear text, EXCEPT `monitor probe`'s
+    deliberate, documented exposure of the live API key (consumed by
+    `NPDevSamples/scripts/sample-common.ps1`'s `Get-NpdevLiveApiKey` and the NPDev Manager's
+    Monitor Inspector "copy API key" row)
+  provenRed: true
