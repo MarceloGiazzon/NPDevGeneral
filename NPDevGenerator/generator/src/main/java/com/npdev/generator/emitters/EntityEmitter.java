@@ -23,59 +23,88 @@ public final class EntityEmitter extends AbstractEmitter {
         super(templates, writer);
     }
 
+    private static final String DEFAULT_PACKAGE_NAME = "com.npdev.generated.entities";
+
     public void emit(CompiledModel model) {
         Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept entity : model.getConcepts()) {
-            // REG-64/F10 (docs/FINAL_OPEN_ITEMS_PLAN.md): checked here, before any Java field is
-            // emitted -- not just at SQL-DDL time (SchemaRealizationEmitter, which runs downstream
-            // of Java compilation). A model field colliding with a platform-reserved column
-            // (version/row_version/tenant_id) previously surfaced only as a bare javac
-            // "duplicate field" error; this fails first with the actionable rename message.
-            ReservedColumnNames.validateNoCollision(entity);
-
-            Map<String, Object> ctx = new HashMap<>();
-            ctx.put("packageName", "com.npdev.generated.entities");
-            ctx.put("entityName", entity.getClassName());
-            ctx.put("tableName", entity.getTableName());
-
-            List<Map<String, Object>> fields = new ArrayList<>();
-            boolean hasJsonFields = false;
-            CompiledField idField = idField(entity);
-            ctx.put("idFieldName", idField.getName());
-            ctx.put("idFieldCapName", cap(idField.getName()));
-            ctx.put("idFieldIsNamedId", "id".equals(idField.getName()));
-            ctx.put("idJavaType", idField.getJavaType());
-
-            for (CompiledField f : entity.getFields()) {
-                Optional<Bond> bond = BondModelSupport.resolveBond(entity, f, conceptsByName);
-                if (bond.map(value -> value.cardinality() == Cardinality.MANY_TO_MANY).orElse(false)) {
-                    continue;
-                }
-                Map<String, Object> fm = new HashMap<>();
-                fm.put("name", f.getName());
-                fm.put("capName", cap(f.getName()));
-                fm.put("columnName", SqlIdentifierSupport.columnName(f));
-                fm.put("javaType", bond.map(Bond::effectiveJavaType).orElse(f.getJavaType()));
-                fm.put("id", f.isId());
-                boolean jsonField = isJsonField(f.getDslType());
-                fm.put("jsonField", jsonField);
-                hasJsonFields = hasJsonFields || jsonField;
-
-                boolean required = false;
-                try { required = f.isRequired(); } catch (Exception ignored) {}
-                fm.put("required", required);
-
-                fields.add(fm);
-            }
-
-            ctx.put("fields", fields);
-            ctx.put("hasJsonFields", hasJsonFields);
-
-            writer.writeRelative(
-                    "src/main/java/com/npdev/generated/entities/" + entity.getClassName() + ".java",
-                    templates.render("entity.mustache", ctx)
-            );
+            emitOne(entity, entity.getClassName(), DEFAULT_PACKAGE_NAME, conceptsByName);
         }
+    }
+
+    /**
+     * BT-2 (PACK-ROADMAP.md, Track B): emits one entity into an arbitrary namespace with an arbitrary
+     * class name, instead of the app-wide {@link #DEFAULT_PACKAGE_NAME} the normal {@link
+     * #emit(CompiledModel)} path always uses. Used by {@code SealedPackSourceEmitter} to emit a sealed
+     * pack's own concepts into the pack's OWN namespace ({@code com.npdev.pack.<packId>.v<major>}),
+     * bare class name (no pack-alias prefix baked in -- the package already disambiguates), never the
+     * app's flat entity package. Everything else about entity emission (field mapping, bond
+     * resolution, reserved-column checking) is byte-for-byte the same code path {@link
+     * #emit(CompiledModel)} uses -- this is the ONLY thing that differs between an app's own concepts
+     * and a sealed pack's, which is the whole point (a pack's compiled output must not depend on which
+     * app is generating it).
+     *
+     * @param entity          the concept to emit (its OWN {@link CompiledConcept#getClassName()} is
+     *                        ignored -- {@code entityClassNameOverride} is used instead)
+     * @param conceptsByName  bond-resolution lookup, scoped to just the pack's own concepts for a
+     *                        sealed pack (never the whole app's concept set -- a sealed pack's bonds
+     *                        must resolve within the pack alone, or it would not be sealed)
+     */
+    public void emitOne(
+            CompiledConcept entity,
+            String entityClassNameOverride,
+            String packageName,
+            Map<String, CompiledConcept> conceptsByName
+    ) {
+        // REG-64/F10 (docs/FINAL_OPEN_ITEMS_PLAN.md): checked here, before any Java field is
+        // emitted -- not just at SQL-DDL time (SchemaRealizationEmitter, which runs downstream
+        // of Java compilation). A model field colliding with a platform-reserved column
+        // (version/row_version/tenant_id) previously surfaced only as a bare javac
+        // "duplicate field" error; this fails first with the actionable rename message.
+        ReservedColumnNames.validateNoCollision(entity);
+
+        Map<String, Object> ctx = new HashMap<>();
+        ctx.put("packageName", packageName);
+        ctx.put("entityName", entityClassNameOverride);
+        ctx.put("tableName", entity.getTableName());
+
+        List<Map<String, Object>> fields = new ArrayList<>();
+        boolean hasJsonFields = false;
+        CompiledField idField = idField(entity);
+        ctx.put("idFieldName", idField.getName());
+        ctx.put("idFieldCapName", cap(idField.getName()));
+        ctx.put("idFieldIsNamedId", "id".equals(idField.getName()));
+        ctx.put("idJavaType", idField.getJavaType());
+
+        for (CompiledField f : entity.getFields()) {
+            Optional<Bond> bond = BondModelSupport.resolveBond(entity, f, conceptsByName);
+            if (bond.map(value -> value.cardinality() == Cardinality.MANY_TO_MANY).orElse(false)) {
+                continue;
+            }
+            Map<String, Object> fm = new HashMap<>();
+            fm.put("name", f.getName());
+            fm.put("capName", cap(f.getName()));
+            fm.put("columnName", SqlIdentifierSupport.columnName(f));
+            fm.put("javaType", bond.map(Bond::effectiveJavaType).orElse(f.getJavaType()));
+            fm.put("id", f.isId());
+            boolean jsonField = isJsonField(f.getDslType());
+            fm.put("jsonField", jsonField);
+            hasJsonFields = hasJsonFields || jsonField;
+
+            boolean required = false;
+            try { required = f.isRequired(); } catch (Exception ignored) {}
+            fm.put("required", required);
+
+            fields.add(fm);
+        }
+
+        ctx.put("fields", fields);
+        ctx.put("hasJsonFields", hasJsonFields);
+
+        writer.writeRelative(
+                "src/main/java/" + packageName.replace('.', '/') + "/" + entityClassNameOverride + ".java",
+                templates.render("entity.mustache", ctx)
+        );
     }
 
     private static CompiledField idField(CompiledConcept entity) {
