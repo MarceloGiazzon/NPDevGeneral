@@ -16,11 +16,7 @@ guard:
   kind: test
   ref: >-
     NPDevGenerator/generator/src/test/java/com/npdev/generator/assembly/FinalAppAssemblerTest.java
-    #mountsCompanionWebAssetsIntoStaticFolder and
-    #refusesToAssembleWhenWebAssetsRootIsDeclaredButMissing (custom-screen mount, automated); python
-    scripts/proofs/run-r10-plugin-controller-proof.py --port <free-port> --report <path>
-    (plugin:java-controller mount, automated); manual generate+build+boot+HTTP proof of the
-    custom-screen mount recorded below (not yet a checked-in proof script -- see "still open" note)
+    #mountsCompanionWebAssetsIntoStaticFolder
   asserts: >-
     plugin:java-controller: generate+build+boot NPDevSamples/probes/p7-plugin-controller on H2
     succeeds; GET /api/plugins/admin-tools/ping with the dev API key returns 200 {ok:true}; GET
@@ -263,3 +259,16 @@ detail: |
   a new gate-adjacent script (script-inventory classification + invocation declaration) on top of
   an already-complete, already-live-verified migration, and forcing it in risked exactly the kind
   of time-pressured, undertested addition this session's own scope discipline exists to avoid.
+
+  2026-08-14 (reconciliation, merging all roadmap branches): R11's new check-done-item-guards.py
+  (just merged) caught a real structural problem in this item's own guard block on first real run
+  against combined content -- guard.ref bundled THREE separate proof references (two automated,
+  one manual) into one compound string, which kind: test's single "path #method" resolver
+  (TEST_REF_RE, anchored end-to-end) cannot parse -- it never matched a real file, so R1/R2 reported
+  it unresolvable on a DONE item. Fixed by narrowing guard.ref to ONE real, resolvable, automated
+  reference (FinalAppAssemblerTest#mountsCompanionWebAssetsIntoStaticFolder) -- the schema supports
+  exactly one machine-checked ref per item, not a bundle. Nothing is lost: the second JUnit method
+  (#refusesToAssembleWhenWebAssetsRootIsDeclaredButMissing), the Python proof script for the
+  plugin:java-controller half (run-r10-plugin-controller-proof.py), and the manual proof narrative
+  all remain fully documented above in this same detail section, just no longer squeezed into the
+  one field the checker mechanically resolves.
