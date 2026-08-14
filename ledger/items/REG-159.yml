@@ -80,7 +80,7 @@ detail: |
   already-existing, already-correct fallback chain Stage C built
   (`npdev_monitor._read_live_api_key`, then the generation-time `plan.apiKey`), so the routines are
   correct regardless of which of the four launch styles actually booted the target app, with no
-  new second opinion about "what's the real key." Wired into all 9 sample driver scripts that
+  new second opinion about "what's the real key." Wired into all 10 sample driver scripts that
   either call `Invoke-ScrapRoutine` or send a raw `X-Api-Key` header
   (`demonstrate-browser.ps1` x3, `demonstrate-promotion-lifecycle.ps1`,
   `demonstrate-schema-evolution.ps1`, `demonstrate-schema-destructive-snapshot.ps1`,
@@ -180,7 +180,14 @@ guard:
   ref: >-
     generate+build+boot a sample that composes Store/Box View (e.g. superuser-admin-console) via
     `_ops\Run-FinalApp.ps1` (which calls Ensure-NpdevApiKey), then run
-    `NPDevSamples/scripts/superuser-admin-console/demonstrate-browser.ps1 -BaseUrl <that app's URL>`
+    `NPDevSamples/scripts/superuser-admin-console/demonstrate-browser.ps1 -BaseUrl <that app's URL>`.
+    **A stock build of superuser-admin-console crashes on boot before reaching this at all -- see
+    REG-160 (WorkspaceMenuSeeder queries the never-created "workspace_menus" table on every boot,
+    not just a fresh-DB first boot). Either apply REG-160's fix first, or reproduce this guard
+    against a sample that doesn't compose the built-in workspace pack's menu seed** (this session's
+    own verification used an unshipped local workaround -- stripping the seed resource from the
+    test jar -- which is not part of this diff and must not be assumed present when re-running
+    this guard).
   asserts: >-
     every routine resolves and injects the app's own live per-app key (via
     Get-NpdevLiveApiKey/npdev monitor probe) rather than a hardcoded dev-key/api-dev literal, and
