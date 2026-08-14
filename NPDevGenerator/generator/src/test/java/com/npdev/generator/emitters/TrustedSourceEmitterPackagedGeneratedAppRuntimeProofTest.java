@@ -1150,6 +1150,15 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 "-jar",
                 jar.toString(),
                 "--server.port=" + port,
+                // R7 Stage B removed application.properties's implicit spring.profiles.default=dev,
+                // so an un-profiled boot now lands on Spring's bare 'default' profile instead of
+                // 'dev' -- application-default.properties sets no npdev.auth.mode, which this test's
+                // own --npdev.auth.enabled=false makes irrelevant to auth, but 'dev' also carries
+                // spring.main.allow-bean-definition-overriding=true that 'default' does not, which
+                // this packaged-app boot depends on. Pass the same explicit profile the sibling
+                // Harden*PackagedGeneratedAppRuntimeProofTest classes already do, so this is no
+                // longer a second, ungrepped caller of the implicit default.
+                "--spring.profiles.active=dev,step0,trial",
                 "--npdev.storage.mode=jdbc",
                 "--npdev.database.engine=H2",
                 "--npdev.auth.enabled=false",
