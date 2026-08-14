@@ -1,0 +1,76 @@
+id: REG-171
+title: >-
+  AsyncWaitResumeE2EIT's fixed test fixture binds capability "persistence" to adapter "inmemory",
+  but the generator's own plugin manifest/bindings spell it "memory" -- the test has been dormant
+  and failing since the beta baseline, invisible only because REG-169 always aborted the CI job
+  one step earlier
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Found investigating why "Linux post-Beta0 maturity validation" failed on the fully-reconciled
+  main (run 31840753060, commit 80d6baf0) right after this session's 7-PR fix batch merged. Broke
+  this session's established "known flake" pattern-matching discipline again: rather than assume
+  this was the just-fixed REG-169 recurring, a background investigation confirmed it is a
+  completely different, pre-existing bug that REG-169's fix simply stopped masking -- the
+  "RuntimeHost generated-app Postgres integration tests" step this failure lives in had NEVER
+  reached far enough to execute in any prior CI run, because REG-169 always killed the job earlier
+  at "Generator unit tests" via fail-fast. Confirmed via git log/blame on every file in the real
+  call chain: none were touched by any of the 7 PRs merged today (REG-169/161/160/147/162/153/
+  PACK-2) -- most recent touches predate this session entirely (`fbec1169`, the beta baseline,
+  2026-04-27).
+surface: runtimehost/plugin-adapters
+files:
+  - NPDevRuntimeHost/src/test/resources/npdev/async-wait-resume-compiled-model.json
+  - NPDevRuntimeHost/src/test/resources/npdev/async-wait-resume-model.json
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/RuntimePluginAdapterRegistry.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/CapabilityAdapterResolver.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevCapabilityBindingConfig.java
+detail: |
+  Exact exception, pulled from JUnit XML (byte-identical in both the pre-PACK-2 run 31838643969 and
+  the post-merge run 31840753060, confirming this is not new):
+
+    java.lang.IllegalStateException: Adapter 'inmemory' for capability 'persistence' operation
+    '<binding>' is not declared in active plugin manifest
+    'npdev/plugins/default.plugin-manifest.json'
+
+  Thrown during Spring context startup for `AsyncWaitResumeE2EIT`, aborting the whole test class
+  before any HTTP request runs. Call chain: `NpdevCapabilityBindingConfig.capabilityRegistry`
+  (`NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevCapabilityBindingConfig.java:236-269`)
+  eagerly loops every `CompiledCapabilityBinding` in the test's compiled model during bean
+  construction and calls `CapabilityAdapterResolver.resolve()`
+  (`.../config/CapabilityAdapterResolver.java:76-77`), which calls
+  `RuntimePluginAdapterRegistry.requireContribution()`
+  (`.../npdev/service/RuntimePluginAdapterRegistry.java:32-51`, throws at line 63).
+
+  The test's fixed fixture (`async-wait-resume-compiled-model.json`, and its DSL source
+  `async-wait-resume-model.json`) hardcodes `"bindings": [{"capability": "persistence", "adapter":
+  "inmemory"}]`. The generated app's `default.plugin-manifest.json` is built from the static
+  generator template `NPDevGenerator/resources/Plugins/default.plugin-manifest.json`, whose
+  in-memory persistence plugin registers `"adapterId": "memory"` -- not `"inmemory"`.
+  `NPDevGenerator/resources/bindings/dev.bindings.json` agrees with `"memory"` too, so the
+  generator's own resources are internally consistent; only this RuntimeHost test fixture uses the
+  different spelling. `CapabilityAdapterResolver.resolve()` treats an explicit `binding.getAdapter()`
+  as authoritative with no aliasing/normalization, so "inmemory" is looked up verbatim and never
+  matches "memory".
+
+  This is a broken TEST FIXTURE, not a platform bug -- no evidence any real generated app is
+  affected, since the generator's own plugin-manifest/bindings resources are self-consistent. The
+  finding is that this specific integration test has been silently failing (or more precisely,
+  silently never-executed, then silently failing once reachable) for months without anyone
+  noticing, which is itself worth fixing: a test that asserts nothing for months is false coverage.
+
+  Fix: change the test fixture's `"adapter": "inmemory"` to `"adapter": "memory"` in both
+  `async-wait-resume-model.json` (DSL source) and `async-wait-resume-compiled-model.json` (its
+  compiled form) -- or add "inmemory" as a recognized alias in the generator's default plugin
+  manifest if that spelling is meant to be accepted too. The former is almost certainly correct: no
+  other fixture in the codebase uses "inmemory".
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/AsyncWaitResumeE2EIT.java
+  asserts: >-
+    waitingExecutionCompletesAfterEventPublicationAndResume passes instead of failing Spring context
+    startup with "Adapter 'inmemory' for capability 'persistence' ... is not declared in active
+    plugin manifest"
+  provenRed: true

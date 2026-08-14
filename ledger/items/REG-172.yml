@@ -1,0 +1,58 @@
+id: REG-172
+title: >-
+  Stage12UiModelRuntimeIT still asserts against canonical-demo's concepts/flows (Patient,
+  Appointment, ScheduleAppointmentRunnerV2) three weeks after the CI step it runs in was
+  repointed at superuser-admin-console, which has neither
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Found in the same investigation as REG-171 (why "Linux post-Beta0 maturity validation" failed on
+  the fully-reconciled main, run 31840753060). A second, separate, unrelated failure in the same
+  step -- confirmed NOT a cascade from REG-171's Spring-context failure (an initial hypothesis, ruled
+  out): Stage12's Spring context boots cleanly and every endpoint returns HTTP 200 with real JSON in
+  the run being investigated; the 3 test failures are pure content-assertion mismatches, not startup
+  failures. Also confirmed unrelated to any of this session's 7 merged PRs via git log -- the test
+  file and superuser-admin-console's model.json both last changed before this session
+  (`fbec1169`/2026-04-27 and `52d27c42`/2026-07-30 respectively).
+surface: runtimehost/ci-fixtures
+files:
+  - NPDevRuntimeHost/src/test/java/com/finalexec/Stage12UiModelRuntimeIT.java
+  - .github/workflows/npdev-ci-validation.yml
+detail: |
+  Three assertion failures in the same run:
+    - modelExport_endpoint_returns_flow_definitions() -- the exported model has no "flows" key at
+      all.
+    - uiModel_endpoint_returns_model_derived_field_metadata() -- findConcept(concepts, "Patient")
+      is null.
+    - editorDraft_endpoint_is_reachable() -- same shape, a further assertion against
+      canonical-demo-only content.
+
+  Root cause: commit `9af8cd7c` ("ci(NEW-1 Fix A): point postgres ITs at superuser-admin-console...
+  not InMemory canonical-demo", 2026-07-23) changed `.github/workflows/npdev-ci-validation.yml`'s
+  `-SampleIds` for this CI step from `canonical-demo` to `superuser-admin-console`, for an unrelated
+  DataSource reason -- but `Stage12UiModelRuntimeIT.java` was never updated to match. It still
+  expects the concepts and flow `canonical-demo`'s model declares (`Patient`, `Appointment`,
+  `ScheduleAppointmentRunnerV2` -- confirmed via `git show 9af8cd7c~1:NPDevSamples/canonical-demo/
+  Input/model.json`), but the app now actually generated and booted for this step is
+  `superuser-admin-console`, whose real model exports `Project`/`Note` concepts and zero flows.
+
+  This test has been asserting against the wrong reference app for about three weeks, and -- same
+  masking mechanism as REG-171 -- was invisible the whole time because REG-169 always aborted this
+  same CI job at an earlier step before this test ever ran.
+
+  Two possible fixes, not designed further here: (a) update `Stage12UiModelRuntimeIT`'s expectations
+  to match `superuser-admin-console`'s real concepts/flows, or (b) if `Stage12UiModelRuntimeIT`
+  specifically needs a flow-bearing sample to test flow-definition export (which
+  `superuser-admin-console` apparently lacks), give this one test its own dedicated
+  `-SampleIds`/generated-app fixture rather than sharing the step's main sample, so future sample
+  swaps for unrelated reasons can't silently break it again.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/Stage12UiModelRuntimeIT.java
+  asserts: >-
+    modelExport_endpoint_returns_flow_definitions, uiModel_endpoint_returns_model_derived_field_metadata,
+    and editorDraft_endpoint_is_reachable all pass against whichever sample app this CI step actually
+    generates and boots
+  provenRed: true
