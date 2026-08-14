@@ -235,6 +235,21 @@ class PostgresDialectGoldenSqlTest {
         }
 
         @Test
+        @DisplayName("REG-147: Postgres's DO $$ arm also terminates a statement missing its "
+                + "semicolon -- every SchemaRealizationEmitter caller builds the ALTER TABLE text "
+                + "with no trailing ';', relying on the dialect to add one, exactly like the H2 arm "
+                + "above; the Postgres arm silently dropped that normalization when STOR-5 split it "
+                + "out of the shared pre-extraction method, so a 3+-column composite unique (or any "
+                + "constraint) landed as `... UNIQUE (a, b, c)\\n  END IF;` -- a PL/pgSQL syntax "
+                + "error, since the semicolon there is a mandatory statement terminator, not an "
+                + "optional trailing character")
+        void postgresGuardedDdlTerminatesTheStatement() {
+            String guarded = postgres.guardedConstraintDdl("c", "t", "ALTER TABLE t ADD CONSTRAINT c UNIQUE (a)");
+            assertTrue(guarded.contains("ALTER TABLE t ADD CONSTRAINT c UNIQUE (a);\n"),
+                    "expected a semicolon-terminated statement before END IF;, got: " + guarded);
+        }
+
+        @Test
         @DisplayName("SchemaLifecycleExecutor / CurrentSchemaReader system schemas")
         void systemSchemasAreUnchanged() {
             assertEquals(java.util.Set.of("information_schema", "pg_catalog"), postgres.systemSchemas());
