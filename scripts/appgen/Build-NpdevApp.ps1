@@ -944,14 +944,19 @@ Set-Content -LiteralPath (Join-Path $OpsDir 'Start-App.ps1') -Value $StartApp -E
 # database, not a fresh local boot. npdev.schema.lifecycle.mode=REPORT_ONLY makes
 # SchemaLifecycleExecutor compute + print the impact report and System.exit before any DDL/write and
 # before the web server binds a port, so nothing long-running is left behind.
-$ImpactOnlyApp = $ApiKeyProvisioner + @'
+$ImpactOnlyApp = @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
 $jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
        Where-Object { $_.FullName -like '*\build\libs\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
 if ($null -eq $jar) { Write-Host 'Runnable jar not found. Run Build-App.ps1 first.' -ForegroundColor Red; exit 1 }
 Write-Host "Computing schema impact for $($plan.appName) against its configured live database (zero writes)..."
-Ensure-NpdevApiKey -AppRoot $plan.appRoot
+# REG-152 review: deliberately NOT calling Ensure-NpdevApiKey here. REPORT_ONLY mode never sends
+# an HTTP request or checks X-Api-Key -- SchemaLifecycleExecutor exits before the web server binds
+# a port -- so the key is never consumed, and calling the provisioner would perform an
+# unnecessary filesystem write against a script whose own banner promises "zero writes".
+# StartupValidator still passes: application-dev.yml's own npdev.auth.api-keys mapping (left
+# untouched by design, see application-dev.yml's own comments) is a valid mapping on its own.
 $javaArgs = @("-Dnpdev.schema.lifecycle.mode=REPORT_ONLY", '-jar', $jar.FullName,
               "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)")
 & java @javaArgs
