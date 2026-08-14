@@ -155,7 +155,7 @@ final class PackDependencyGraphWalker {
             String version = ModelSourceResolver.textOrBlank(packNodeById.get(packId).get("version"));
             String from = fromByPackId.getOrDefault(packId, "");
             entries.put(packId, new PackLockFile.LockedPack(
-                    version, PackLockFile.sha256(packFile), sourcePathFor(packFile, from), "", from));
+                    version, digestFor(packFile, from), sourcePathFor(packFile, from), "", from));
         }
         return entries;
     }
@@ -170,6 +170,30 @@ final class PackDependencyGraphWalker {
         return from.isEmpty()
                 ? rootDirectory.relativize(packFile).toString().replace('\\', '/')
                 : packFile.toAbsolutePath().toString();
+    }
+
+    /**
+     * PK-5 (post-review fix): a LOCAL pack's digest is (as before) {@link PackLockFile#sha256} over
+     * its own {@code pack.json} bytes only. A REMOTE pack's digest MUST instead be the exact string
+     * {@link PackCache} used as that entry's directory name -- which, since {@link PackCache#store}
+     * now hashes the WHOLE fetched tree (post-review fix, not just {@code pack.json}), is no longer
+     * the same value {@code PackLockFile.sha256(packFile)} would compute over the single cached
+     * {@code pack.json} file. Recomputing a second, different hash here and writing THAT into
+     * {@code npdev.lock} would desynchronize the lock's {@code digest} field from the cache
+     * directory it is supposed to key into -- the DENIED-path lookup in {@link
+     * #resolveRemotePackFile} would then try to {@code PackCache.read} a digest that names no real
+     * cache entry. The one value guaranteed to always agree with the cache directory's own name,
+     * with zero risk of drift and no extra tree walk, is the directory name itself:
+     * {@code packFile}'s parent IS {@code <cacheRoot>/sha256/<digest>}, by construction of {@link
+     * PackCache#entryDir}.
+     */
+    private String digestFor(Path packFile, String from) throws IOException {
+        if (from.isEmpty()) {
+            return PackLockFile.sha256(packFile);
+        }
+        Path entryDir = packFile.getParent();
+        String hex = entryDir == null || entryDir.getFileName() == null ? "" : entryDir.getFileName().toString();
+        return "sha256:" + hex;
     }
 
     /** CLI-only accessor ({@code npdev pack why}): every constraint any pack in the graph placed
@@ -492,10 +516,11 @@ final class PackDependencyGraphWalker {
             ObjectNode packNode = packNodeById.get(packId);
             Path packFile = packFileById.get(packId);
             String liveVersion = ModelSourceResolver.textOrBlank(packNode.get("version"));
-            String liveSourcePath = sourcePathFor(packFile, fromByPackId.getOrDefault(packId, ""));
+            String from = fromByPackId.getOrDefault(packId, "");
+            String liveSourcePath = sourcePathFor(packFile, from);
             String liveDigest;
             try {
-                liveDigest = PackLockFile.sha256(packFile);
+                liveDigest = digestFor(packFile, from);
             } catch (IOException unreadable) {
                 stale.add(packId + " (its locked sourcePath " + locked.sourcePath() + " could not be read: "
                         + unreadable.getMessage() + ")");

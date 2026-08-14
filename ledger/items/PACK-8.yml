@@ -109,7 +109,8 @@ detail: |
     JSON; deleting the lock makes generate refuse naming "run 'npdev pack add'"; a lock whose `from`
     doesn't match the model's own coordinate refuses ("is not in npdev.lock"); corrupting the cached
     pack.json's bytes makes generate hard-refuse naming "CORRUPT".
-  - Full existing dsl suite (545+ tests) still green; check-schema-mirror-consistency.py and
+  - Full existing dsl suite (720 tests, verified via the real per-run XML reports, not assumed)
+    still green; check-schema-mirror-consistency.py and
     check-twin-pair-consistency.py both clean; check-deterministic-generation.ps1 still 0 differing
     (this feature adds a new authoring surface but touches no existing sample's generated output).
 
@@ -122,8 +123,12 @@ detail: |
     GeneratedPackCatalogController at it) -- not started. Needs a human to create the GitHub Pages
     repo; not attempted, per this session's explicit scope boundary.
   - OCI fetch itself: coordinate grammar is real and tested; RemotePackFetcher's OCI branch checks
-    the NetworkPolicy guard (proven) and then throws a clearly-worded UnsupportedOperationException
-    naming this item as the follow-up. A real Distribution-API v2 pull (manifest fetch, registry
+    the NetworkPolicy guard (proven) and then throws a clearly-worded IOException naming this item
+    as the follow-up (IOException, not an unchecked type, so PackAddMain/PackUpdateMain's existing
+    `catch (IOException)` still produces this CLI's documented JSON {"status":"failed",...} + exit 2
+    contract rather than a raw crash -- an earlier UnsupportedOperationException version of this
+    stub did NOT, caught by the same PR #70 adversarial review that found the two must-fix items
+    above). A real Distribution-API v2 pull (manifest fetch, registry
     auth-token dance, blob fetch) needs verification against a real or local-fake registry to be
     trustworthy code at all -- writing it with zero live verification, when this session is
     explicitly forbidden from touching ghcr.io, would be exactly the "green RED-proof meant the TEST
@@ -147,10 +152,45 @@ detail: |
     example, `identity:2.1.0`), not only a pinned digest.
   - PackListMain's no-lock dry-run fails entirely (rather than partially reporting local packs) the
     moment ANY packs[] entry uses `from` with no lock yet -- acceptable degradation, not fixed.
+  - `packs[].from` has zero NPDevSamples/dsl-conformance-max corpus coverage -- check-dsl-coverage.py
+    (CLAUDE.md's own "every DSL feature gets real corpus coverage or the gate fails" rule) never
+    flags this because its FEATURE_DETECTORS table was never given a `packs.from` entry, so the gate
+    silently passes without ever checking (found by the same PR #70 adversarial review that found
+    the two items below). Deliberately not added in this pass: a real fixture needs either a
+    committed npdev.lock + cache (the two-phase design's whole point is that generate never fetches,
+    so corpus generation in CI can't run `pack add` for it) or a vendored git+file:// repo INSIDE the
+    corpus tree with pack add wired into check-dsl-conformance-generates.py's network-free pipeline --
+    real, non-trivial CI-wiring work of its own, not a one-line fixture addition. Next slice.
 
-  No unrelated bugs found and filed separately this session -- both limitations above are direct,
-  in-scope consequences of this exact feature (discovered while designing it), not pre-existing
-  defects, so they are recorded here rather than as standalone REG items.
+  Post-review fixes (adversarial multi-agent review of this PR, 14/15 findings confirmed,
+  MERGE-WITH-CONDITIONS): two real defects were found and fixed on top of the above --
+  (1) GeneratorMain.advanceMigrationTrackedLock (generator module, not touched by the original PK-5
+  commit) used PackLockFile.LockedPack's lossy 4-arg backward-compat constructor when merging an
+  existing+fresh lock entry, silently zeroing `from` on every generate that advances a migration-
+  tracked pack's migratedVersion -- broke PK-5's own core promise (fetch once via pack add, then
+  generate/validate offline forever) for any from-based pack that ALSO declares a migration chain.
+  Fixed to use the 5-arg constructor, `from` taken from `existing` (guaranteed equal to `fresh`'s own
+  value whenever reachable, since the DENIED-path lookup that produced `fresh` could only have
+  succeeded by matching this exact existing entry). Regression-tested directly against the now-
+  package-private method (GeneratorMainMigrationTrackedLockFromFieldTest, 3 cases: existing-entry
+  merge, no-existing-entry, local-pack-unaffected). (2) PackCache's digest covered only pack.json,
+  not the fragment tree it caches -- two fetched trees with byte-identical pack.json but DIFFERENT
+  fragment content silently aliased to the same cache digest, and the write-once early-return let
+  the second tree's fragments be silently discarded while read() still reported the entry as digest-
+  verified. Fixed: the digest now covers every regular file in the tree (path + content, sorted,
+  .git excluded), computed identically pre-copy (store) and post-copy (read) so the two never
+  diverge. Regression-tested (PackCacheTest: identical pack.json + different fragments now produce
+  different digests; identical whole trees still dedupe to one entry). Two smaller items from the
+  same review were fixed alongside since they were cheap and in the exact code being touched: a
+  staging-directory leak on `store()`'s concurrent-write-race path (committed was set true even when
+  the loser's staging dir was never consumed by a move), and defense-in-depth SHA-256-hex validation
+  on PackCache.entryDir/read/has plus converting the OCI-not-implemented stub from an unchecked
+  UnsupportedOperationException to a checked IOException so PackAddMain/PackUpdateMain's existing
+  catch block produces this CLI's documented JSON contract instead of a raw crash.
+
+  No unrelated bugs found and filed separately this session -- every limitation and fix recorded
+  above is a direct, in-scope consequence of this exact feature (found while building or reviewing
+  it), not a pre-existing defect, so all of it is recorded here rather than as standalone REG items.
 guard:
   kind: test
   ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/PackFromCoordinateResolutionTest.java

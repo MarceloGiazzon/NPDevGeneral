@@ -89,6 +89,49 @@ class PackCacheTest {
         assertTrue(Files.isRegularFile(packJson.getParent().resolve("roles-fragment.json")));
     }
 
+    /**
+     * PK-5 regression (adversarial multi-agent review of PR #70, finding #2, blocker severity): the
+     * digest used to cover ONLY {@code pack.json}, so two fetched trees with byte-identical
+     * {@code pack.json} but DIFFERENT fragment content silently aliased to the SAME cache entry --
+     * the second {@code store()} became a no-op (its fragment content was simply discarded), and
+     * {@code read()} would report the surviving entry as digest-verified while permanently serving
+     * the FIRST tree's fragments. Not reachable through the real pipeline today (a separate,
+     * already-disclosed "escapes the model root" bug blocks any remote+fragment pack from resolving
+     * at all -- see PACK-8.yml), but a landmine in a brand-new shared, machine-wide cache primitive
+     * whose own class doc claims "a same-digest entry can never legitimately differ".
+     */
+    @Test
+    void identicalPackJsonWithDifferentFragmentContentProducesDifferentDigests() throws Exception {
+        Path tree1 = fetchedTree("{\"pack\":\"identity\",\"version\":\"2.1.0\"}");
+        Files.writeString(tree1.resolve("roles-fragment.json"), "{\"roles\":[\"admin\"]}");
+
+        Path tree2 = fetchedTree("{\"pack\":\"identity\",\"version\":\"2.1.0\"}");
+        Files.writeString(tree2.resolve("roles-fragment.json"), "{\"roles\":[\"admin\",\"viewer\"]}");
+
+        String digest1 = cache().store(tree1);
+        String digest2 = cache().store(tree2);
+
+        assertFalse(digest1.equals(digest2),
+                "identical pack.json + different fragment content must NOT alias to the same cache digest");
+        // Both entries must independently survive: storing tree2 must not have silently no-op'd or
+        // clobbered tree1's own already-cached fragment content.
+        assertEquals("{\"roles\":[\"admin\"]}",
+                Files.readString(cache().read(digest1).getParent().resolve("roles-fragment.json")));
+        assertEquals("{\"roles\":[\"admin\",\"viewer\"]}",
+                Files.readString(cache().read(digest2).getParent().resolve("roles-fragment.json")));
+    }
+
+    @Test
+    void identicalWholeTreeIncludingFragmentsReusesTheSameCacheEntry() throws Exception {
+        Path tree1 = fetchedTree("{\"pack\":\"identity\",\"version\":\"2.1.0\"}");
+        Files.writeString(tree1.resolve("roles-fragment.json"), "{\"roles\":[\"admin\"]}");
+
+        Path tree2 = fetchedTree("{\"pack\":\"identity\",\"version\":\"2.1.0\"}");
+        Files.writeString(tree2.resolve("roles-fragment.json"), "{\"roles\":[\"admin\"]}");
+
+        assertEquals(cache().store(tree1), cache().store(tree2));
+    }
+
     @Test
     void storeExcludesGitMetadataDirectory() throws Exception {
         Path tree = fetchedTree("{\"pack\":\"identity\",\"version\":\"2.1.0\"}");

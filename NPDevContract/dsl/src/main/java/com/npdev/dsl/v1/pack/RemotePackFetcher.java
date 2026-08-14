@@ -50,7 +50,13 @@ public final class RemotePackFetcher {
             return fetchGit(git, cache);
         }
         if (coordinate instanceof OciCoordinate oci) {
-            throw new UnsupportedOperationException("OCI registry fetch (" + oci
+            // IOException (not UnsupportedOperationException, post-review fix, PR #70 review
+            // finding, low severity but cheap): PackAddMain/PackUpdateMain's `catch (IOException
+            // failure)` is the ONLY place any pack-resolution failure gets turned into this CLI's
+            // documented JSON {"status":"failed","error":...} + exit 2 contract -- an unchecked
+            // exception type here skipped that entirely and crashed with a raw, uncaught stack
+            // trace instead, for the one coordinate scheme guaranteed to hit this path today.
+            throw new IOException("OCI registry fetch (" + oci
                     + ") is not implemented in this slice (PK-5 steps 1/2/4 shipped: local cache, "
                     + "network-policy guard, digest verification, and coordinate parsing for both "
                     + "schemes; the git substrate's fetch is fully implemented and live-tested). "
