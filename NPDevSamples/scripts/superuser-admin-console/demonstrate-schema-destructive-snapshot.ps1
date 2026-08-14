@@ -129,14 +129,21 @@ try {
     $appCtx = Start-SampleAppProcess -Label "v1"
     Assert-BootLogContains -AppCtx $appCtx -Needle "no stored schema fingerprint found" -Label "v1 boot (fresh database)"
 
+    # R7 Stage D: this script boots the app itself (raw gradlew, no Ensure-NpdevApiKey call), so
+    # resolve whatever key actually authenticates against THIS boot rather than hardcoding "api-dev".
+    $liveCreds = @{ apiKey = (Get-NpdevLiveApiKey -AppRoot $sample.AppRoot) }
+
     Info "=== Phase 2: populate one Project + one Note through the real UI (Note is the leaf table this demo targets -- nothing has an FK pointing at it, so dropping it alone never hits the pre-existing FK-ordering limitation that dropping the referenced Project table would) ==="
     Initialize-ScrapForAI -Root $ScrapForAIRoot | Out-Null
     $scrapCtx = Start-ScrapForAI -AppBaseUrl $appBaseUrl -Root $ScrapForAIRoot -Port $ScraperPort `
         -ArtifactDir (Join-Path "D:\WorkSpace\NPDev\Build\scrapforai-artifacts" $sampleId)
     $populateResult = Invoke-ScrapRoutine -Context $scrapCtx `
         -RoutinePath (Join-Path $PSScriptRoot "browser-routines\04-create-project-and-note-via-ui.json") `
-        -Variables $sharedVars
-    Assert-RoutineGreen -Result $populateResult -Label "destructive-01-populate-before" | Out-Null
+        -Variables $sharedVars -Credentials $liveCreds
+    # R7 Stage D: the routine's own pre-fill page load is now genuinely unauthenticated (no more
+    # guessed devKeyHint auto-fill), logging an expected one-time 401 burst before the explicit
+    # credential fill+reload takes effect.
+    Assert-RoutineGreen -Result $populateResult -Label "destructive-01-populate-before" -AllowConsoleErrorSubstrings @("responded with a status of 401") | Out-Null
     Save-RoutineEvidence -Result $populateResult -OutDir $evidenceDir -Name "destructive-01-populate-before" | Out-Null
     $results += [ordered]@{ routine = "destructive-01-populate-before"; status = (Get-Prop $populateResult "status") }
     Stop-ScrapForAI $scrapCtx

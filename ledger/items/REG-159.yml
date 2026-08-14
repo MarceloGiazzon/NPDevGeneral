@@ -1,0 +1,195 @@
+id: REG-159
+title: >-
+  R7 Stage D -- migrate the dev-key/api-dev "migration surface" (browser routines, generator UI
+  auto-fill, docs/schema) now that Stages A+B+C mean neither literal reliably authenticates anymore
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-13
+closed: 2026-08-14
+verification: VERIFIED_LIVE
+source: >-
+  MASTER-ROADMAP.md Step 13 (R7 Stage D), gated on SEC-1's A+B+C (all DONE, REG-152 closed SEC-1
+  2026-08-14). The roadmap's own original framing ("22 browser routines, 13 sample configs in 3
+  mirrored trees") was re-verified rather than trusted: 22 routines confirmed correct; the config
+  count had drifted to 21 (not 13) by the time this step started, from probe fixtures the PK-4
+  migration-chain work (Steps 10-11) added in the same multi-day session; the "3 mirrored trees"
+  turned out to mean something narrower than all 21 -- see detail.
+surface: appgen/samples,runtimehost/business-ui,docs
+files:
+  - NPDevSamples/scripts/browser/scrapforai-harness.ps1
+  - NPDevSamples/scripts/sample-common.ps1
+  - NPDevCli/npdev_explore.py
+  - NPDevCli/npdev_cli.py
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-ui-app.mustache
+  - NPDevContract/schemas/config.schema.json
+  - NPDevContract/schemas/authoring/config.schema.json
+  - NPDevContract/dsl/resources/Schemas/config.schema.json
+  - content/npdev-concepts-deep-dive.yml
+  - content/npdev-user-manual.yml
+  - docs/TUTORIAL_FIRST_APP.md
+detail: |
+  **Triage first, re-verified rather than assumed.** Re-ran the roadmap's own counting commands
+  before touching anything: 22 browser-routine JSONs under `**/browser-routines/**/*.json` in
+  NPDevSamples (confirmed, matches the roadmap) reference `dev-key`/`api-dev` as a literal `fill`
+  value; 21 (not 13) `NPDevSamples/**/config.json` files do, and a separate, NOT-git-tracked
+  `AppGen\apps` tree (layer 2, CLAUDE.md's source-of-truth layers) has 23 more with the identical
+  shape. Of the 21 NPDevSamples configs, exactly 5 (`canonical-demo`, `medium-expense-approval`,
+  `simple-contact-intake`, `simple-user-registry`, `restaurant-saas-multitenant`) are BYTE-IDENTICAL
+  mirrors across three trees (`NPDevSamples`, `NPDevContract/dsl/resources/Models`,
+  `NPDevGenerator/resources/Models`) -- that is what "3 mirrored trees" actually refers to, not the
+  full 21-file set as the roadmap's phrasing could be read to imply.
+
+  **What was genuinely broken (fixed here) vs. already-fine (left alone), and why -- the load-
+  bearing finding of this whole step**: a generated app's REAL admin key now depends entirely on
+  HOW it was launched. Two of the platform's shipped launchers
+  (`_ops/Run-FinalApp.ps1`/`Build-NpdevApp.ps1`'s/`Build-ClaudeApp.ps1`'s `Start-App.ps1`) call
+  `Ensure-NpdevApiKey` and replace `application-dev.yml`'s static default with a random per-app key
+  BEFORE `dev-key`/`api-dev` ever gets a chance to work. But `NPDevSamples/scripts/run-sample-app.ps1`
+  (every sample's own OWN documented "generate then run" recipe) does a raw `gradlew bootRun` and
+  NEVER calls `Ensure-NpdevApiKey` -- so on THAT specific launch path, `application-dev.yml`'s
+  `dev-key`/`api-dev` default is genuinely, deliberately, still unchanged and still works (Stage
+  A's own accepted-risk carve-out: "the dev profile ships a known key"). Every one of the 21+10+23
+  `trialDefaults.apiKey`/`recommendedProfiles` config fields checked (all of them, not a sample)
+  recommends a `dev`-inclusive profile with no `Ensure-NpdevApiKey` call in its own documented
+  recipe -- so **the config.json fields needed NO fix**: they are still accurate for their own
+  documented usage, and (confirmed by re-reading `OperationalRunbookEmitter.java`/
+  `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1`) already purely generation-time/display fallbacks per
+  REG-152, never read as a live credential by anything. Added a `description` to the `apiKey`
+  schema property in all three `config.schema.json` mirrors instead, so a future config author
+  reads the real contract rather than assuming a working credential.
+
+  The BROWSER ROUTINES are different in kind: they actively SEND the literal as a live header,
+  attempting real authentication, and their own documented boot recipe is ambiguous about which
+  pipeline a reader actually uses (`_ops\Run-FinalApp.ps1` is equally plausible and IS the one this
+  step tested against). Traced the actual routine-execution mechanism
+  (`NPDevSamples/scripts/browser/scrapforai-harness.ps1` -> ScrapForAI's own
+  `/v1/explorations/run`) before assuming a fix shape: the engine ALREADY supports a `credentials`
+  request bucket and a step-level `valueFromCredential` field
+  (`D:\WorkSpace\ScrapForAILegacy\src\runner\runExploration.ts`/`explorationRequest.schema.ts`),
+  redacted from evidence output (`collectKnownSecretValues`) the way plain `variables` are not --
+  this is the ENGINE's own purpose-built mechanism for exactly this, not something new to invent.
+  All 22 routine `fill #apiKey` steps now read `"valueFromCredential": "apiKey"` instead of a
+  literal `"value"`. Extended the harness/CLI plumbing to supply it: `Invoke-ScrapRoutine` gained a
+  `-Credentials` parameter (merged over the routine's own declared `credentials`, mirroring the
+  existing `-Variables` parameter exactly); `npdev_explore.compose_engine_request`/`run_exploration`
+  and `npdev explore run --credential NAME=VALUE` gained the equivalent for CLI-driven runs. The
+  actual value is sourced by a new `Get-NpdevLiveApiKey` helper in `sample-common.ps1` that shells
+  out to `npdev monitor probe --app-dir <dir> --json` and reads `.apiKey` -- the SAME
+  already-existing, already-correct fallback chain Stage C built
+  (`npdev_monitor._read_live_api_key`, then the generation-time `plan.apiKey`), so the routines are
+  correct regardless of which of the four launch styles actually booted the target app, with no
+  new second opinion about "what's the real key." Wired into all 10 sample driver scripts that
+  either call `Invoke-ScrapRoutine` or send a raw `X-Api-Key` header
+  (`demonstrate-browser.ps1` x3, `demonstrate-promotion-lifecycle.ps1`,
+  `demonstrate-schema-evolution.ps1`, `demonstrate-schema-destructive-snapshot.ps1`,
+  `populate-restaurant-tenants.ps1`, `verify-restaurant-tenant-data.ps1`,
+  `demonstrate-platform-tenancy.ps1`, `run-durable-resume-demo.ps1`).
+
+  **A second, independent consumer found and fixed, NOT in the roadmap's own list**: the generated
+  business UI (`business-ui-app.mustache`) and operator UI (`npdev-ui-app.mustache`) both silently
+  pre-fill AND (operator UI) persist a guessed default (`devKeyHint`/`DEFAULT_DEV_API_KEY`,
+  `"api-dev"`) into the `#apiKey` field on first visit, then attempt to auto-authenticate with it --
+  a real, live, user-visible regression once `Ensure-NpdevApiKey`'s random key is what's actually
+  active (the guess just silently fails, leaving a confusing "not logged in" state with no
+  indication the field's own guess is wrong). Fixed by keeping the guessed value as a PLACEHOLDER
+  only (still useful on an honest `dev`-profile boot with no override) and no longer writing it
+  into the live field value / localStorage. Checked and deliberately did NOT touch
+  `InfoPageEmitter.java`'s own static `"X-Api-Key: dev-key"` info.html row or the matching
+  `NPDevManager` fixtures: `NPDevManager/ui/monitor.js`'s `infoRow()` already has a dedicated,
+  already-shipped mechanism (MONITOR_PLAN's own "D-b", predating this card) that detects when the
+  live key differs from info.html's static advertised default and overlays the real value plus an
+  explicit "still advertises X" note -- changing the static text would either do nothing (the
+  Monitor already shows the truth) or break `monitor.js`'s exact-format parsing for no behavioural
+  gain. `GeneratorApiVersioningContractTest.java`'s literal-checking assertions (3 `assertFalse` for
+  the OLD removed auth-filter fallback, 1 `assertTrue` for `DEFAULT_DEV_API_KEY = "api-dev"` still
+  being declared) all remain valid unchanged.
+
+  **Docs**: `content/npdev-concepts-deep-dive.yml` and `content/npdev-user-manual.yml` (source of
+  truth for `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`/`docs/NPDEV_USER_MANUAL.md` +
+  `content/*.json`, regenerated via `scripts/docs/generate_group_e_docs.py`, never hand-edited)
+  had "X-Api-Key: dev-key" phrased as a working example; reworded to explain the actual mechanism
+  (generated once per app at first launch, printed to console, saved to `secrets/api-key.env`).
+  `docs/TUTORIAL_FIRST_APP.md` had a WORSE, independently-confirmed defect (found by this step's
+  own sub-agent triage, spot-checked directly before acting on it): its documented boot command
+  (`java -jar ... --server.port=8080`, no `--spring.profiles.active` at all) no longer just uses a
+  stale key -- since R7 Stage B, an un-profiled boot lands on Spring's own `default` profile, which
+  seeds NO key at all, so `StartupValidator` now refuses to boot the app entirely. Fixed by adding
+  the missing `--spring.profiles.active=dev` flag (after which `dev-key` in that same tutorial's
+  subsequent curl example is correctly left alone -- true dev-profile default, no
+  `Ensure-NpdevApiKey` in this exact recipe).
+
+  **Explicitly investigated and left alone, with reasons, rather than guessed past**:
+  `AppGen\apps\**\config.json` (23 files, non-git-tracked layer 2) -- spot-checked all 23, same
+  dev-inclusive-recommendedProfiles pattern as NPDevSamples, same conclusion, no per-file edits
+  (the schema description fix above covers new authoring going forward for both trees at once).
+  `NPDevManager/fixtures/*.json`, `golden-ai-scenarios/*/ai-verification-report.json` -- static,
+  compiled-in demo/historical snapshots (`include_str!` in `NPDevManager/src/npdev.rs`), never sent
+  as a live credential. `docs/beta/*.md` -- classified `historical` in
+  `scripts/policy/doc-entrypoint-classification-policy.json`, narrative of a past run, not a
+  current-state claim. `NPDevRuntimeHost` `@ActiveProfiles("dev"...)` tests and
+  `StartupValidatorTest.java` -- exercise `dev`'s own accepted-risk default or synthetic
+  parser-fixture strings, never attempt to authenticate against a separately-launched process.
+  `run-reg152-secondlaunch-proof.ps1` -- deliberately reproduces the OLD vulnerable state as its own
+  RED proof; the literal must stay.
+
+  **A companion fix the credential migration itself required, discovered only by actually running
+  a routine rather than just editing the JSON**: every routine's own FIRST page load (via `goto`,
+  before its explicit `fill`+`reload`) is now genuinely unauthenticated once the devKeyHint
+  auto-fill guess is removed -- this logs a real, expected, one-time burst of console 401s before
+  the credential takes effect. `Assert-RoutineGreen` calls after a login sequence now pass
+  `-AllowConsoleErrorSubstrings @("responded with a status of 401")`, the exact same mechanism
+  (and, for the promotion routines, literally the same parameter) already used to tolerate the
+  promotion routines' deliberate 400s.
+
+  **Verified LIVE, not assumed**: generated `superuser-admin-console` fresh
+  (`NPDevSamples/scripts/generate-sample-app.ps1`), refreshed `runtimehost-libs` from current
+  source (`sync-runtimehost-libs.ps1 -BuildLocalJars`, needed regardless of this card -- the
+  pre-existing cache was stale for an unrelated reason, see REG-160), built it, and booted via
+  `_ops\Run-FinalApp.ps1 -Profile dev,trial` (the SAME pipeline SEC-1/REG-152 verified
+  Ensure-NpdevApiKey on). RED: `curl -H "X-Api-Key: dev-key"` and `curl -H "X-Api-Key: api-dev"`
+  both 401 against the live app's `/api/projects`. GREEN: the key resolved by
+  `Get-NpdevLiveApiKey`/`npdev monitor probe --app-dir ... --json`'s `.apiKey` field (matching the
+  console banner `Ensure-NpdevApiKey` printed on first boot) returns 200 on the same endpoint. Then
+  ran the ACTUAL fixed routine (`browser-routines/03-box-view-panel.json`, using
+  `valueFromCredential` end to end) through the real ScrapForAI engine via
+  `Invoke-ScrapRoutine -Credentials @{apiKey=<live key>}`: `OK 03-box-view-panel (FINAL VERIFY) :
+  routine green (13 steps, 0 page/console/external errors)` -- the rendered page's own DOM text
+  confirmed `logado como developer (ADMIN)` with the full super-user nav (Identity/Workspace/
+  Store/Box View/Promotion) and a real Box View table listing every composed concept's physical
+  table name. Two OTHER routines in the same corpus (`01-load-and-nav.json`'s "My Preferences"
+  assertion, `02-store-panel.json`'s nested-table Playwright strict-mode selector) hit unrelated,
+  pre-existing issues during this same verification pass (the former is this session's OWN
+  temporary workaround for REG-160, not shippable; the latter is a pack-catalog UI selector
+  ambiguity, filed nowhere yet since it needs its own separate investigation this session did not
+  have time for -- noted here for whoever picks it up next, not filed as its own REG item because
+  it was not independently reproduced outside this already-abnormal test run).
+
+  **Not exhaustively fixed, called out rather than silently skipped**: a Playwright strict-mode
+  failure in `02-store-panel.json` (the nested pack-detail-row drill-down tables make `table.records`
+  match 9 elements instead of 1) was observed once during this step's own live verification but not
+  investigated further or fixed -- it did not block this card's own live-verification requirement
+  (`03-box-view-panel.json` gave a clean, complete, independent proof of the same credential
+  mechanism), and turning it into a real finding would need a rerun outside this already-nonstandard
+  test session (seeder disabled, workaround jar) to confirm it reproduces normally. Whoever next
+  touches `NPDevSamples/scripts/superuser-admin-console/browser-routines/02-store-panel.json` should
+  re-check it against a normal boot first.
+guard:
+  kind: manual
+  ref: >-
+    generate+build+boot a sample that composes Store/Box View (e.g. superuser-admin-console) via
+    `_ops\Run-FinalApp.ps1` (which calls Ensure-NpdevApiKey), then run
+    `NPDevSamples/scripts/superuser-admin-console/demonstrate-browser.ps1 -BaseUrl <that app's URL>`.
+    **A stock build of superuser-admin-console crashes on boot before reaching this at all -- see
+    REG-160 (WorkspaceMenuSeeder queries the never-created "workspace_menus" table on every boot,
+    not just a fresh-DB first boot). Either apply REG-160's fix first, or reproduce this guard
+    against a sample that doesn't compose the built-in workspace pack's menu seed** (this session's
+    own verification used an unshipped local workaround -- stripping the seed resource from the
+    test jar -- which is not part of this diff and must not be assumed present when re-running
+    this guard).
+  asserts: >-
+    every routine resolves and injects the app's own live per-app key (via
+    Get-NpdevLiveApiKey/npdev monitor probe) rather than a hardcoded dev-key/api-dev literal, and
+    authenticates successfully against the random key Ensure-NpdevApiKey actually generated
+  provenRed: true

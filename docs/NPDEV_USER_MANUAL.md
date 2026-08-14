@@ -230,8 +230,12 @@ database lives in `db.definition.json`):
 }
 ```
 
-Every REST call you make against the running app needs the header
-`X-Api-Key: dev-key` (or whatever `trialDefaults.apiKey` says).
+Every REST call you make against the running app needs the `X-Api-Key` header. Its value is
+**not** `trialDefaults.apiKey` above -- that field is only a pre-generation placeholder. The
+real key is a random value generated once per app, the first time you launch it (via any of
+`_ops\Start-App.ps1`, `_ops\Run-FinalApp.ps1`, or the equivalent AppGen launcher): printed once
+to the console (`X-Api-Key: <key>`) and saved to `secrets\api-key.env` inside the generated app,
+so a later launch reuses the same key without reprinting it.
 
 #### Optional: `build` — per-app Java level and third-party dependencies
 
@@ -432,11 +436,14 @@ $ops = 'D:\WorkSpace\NPDev\Build\generated-finalapps\notes-app\_ops'
 & "$ops\Build-App.ps1"; & "$ops\Start-App.ps1"
 ```
 
-**Prove it works** — call the flow over REST:
+**Prove it works** — call the flow over REST. `Start-App.ps1` prints this app's own randomly
+generated admin key once, the first time it boots (`X-Api-Key: <key>`, also saved to
+`secrets\api-key.env` next to `_ops`) — copy that key rather than typing a fixed one, since
+a hardcoded `dev-key`/`api-dev` no longer authenticates against an app launched this way:
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri 'http://localhost:8100/api/flows/CreateNote/execute' `
-  -Headers @{ 'X-Api-Key' = 'dev-key' } -ContentType 'application/json' `
+  -Headers @{ 'X-Api-Key' = '<the key Start-App.ps1 printed>' } -ContentType 'application/json' `
   -Body '{ "title": "Buy milk", "body": "2% please" }'
 ```
 

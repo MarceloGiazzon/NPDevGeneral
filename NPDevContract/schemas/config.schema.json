@@ -284,7 +284,8 @@
       "properties": {
         "apiKey": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "ADVISORY, generation-time only (R7 Stage D). Every generated app's REAL admin key is now chosen at first LAUNCH, per app, at random, and saved to secrets/api-key.env (Ensure-NpdevApiKey) -- this field is never read as a live credential by any launcher. It exists so `resolved-db-plan.json`/documentation have a plausible default to print BEFORE that key exists, and is only accurate as a working credential when `recommendedProfiles` includes `dev` and the app is launched WITHOUT going through Ensure-NpdevApiKey (application-dev.yml's own accepted-risk static default)."
         },
         "recommendedProfiles": {
           "type": "string",

@@ -1,6 +1,10 @@
 param(
     [string]$BaseUrl = "http://localhost:8093",
-    [string]$ApiKey = "api-dev",
+    # R7 Stage D: "" means "resolve the live key" (Get-NpdevLiveApiKey below) -- a hardcoded
+    # "api-dev" default stopped being reliably correct once Stage C's per-app random key can
+    # replace it, depending on how the target app was launched. Pass -ApiKey explicitly to force
+    # a specific value (e.g. a RED-proof against the old literal).
+    [string]$ApiKey = "",
     [string]$OutputPath = ""
 )
 
@@ -76,9 +80,14 @@ try {
     throw "The generated app is not reachable at $BaseUrl. Start it with run-generated-app.ps1 first. Details: $($_.Exception.Message)"
 }
 
+$samplesRoot = Normalize-AbsolutePath (Join-Path $PSScriptRoot "..\..")
+$sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId "restaurant-saas-multitenant"
+
+if ([string]::IsNullOrWhiteSpace($ApiKey)) {
+    $ApiKey = Get-NpdevLiveApiKey -AppRoot $sample.AppRoot
+}
+
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $samplesRoot = Normalize-AbsolutePath (Join-Path $PSScriptRoot "..\..")
-    $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId "restaurant-saas-multitenant"
     $outputDir = $sample.RunOutputRoot
     New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
