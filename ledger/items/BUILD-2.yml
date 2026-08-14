@@ -70,8 +70,30 @@ detail: |
   silently assumed safe. `SealedPackBuilder.seal()` calls this first and throws
   `PackNotSealedException` (naming every violation) before writing anything, for an unsealed pack --
   live-proven (`SealedPackBuilderTest.refusesUnsealedPack_andWritesNothing`, zero files written).
-  `PackSealednessAnalyzerTest` (7 cases) proves the real in-repo `identity` pack sealed, and each
+  `PackSealednessAnalyzerTest` (10 cases) proves the real in-repo `identity` pack sealed, and each
   violation kind refused and named, against synthetic fixtures.
+
+  POST-REVIEW FIX (adversarial review of this PR before merge, real defect found and fixed):
+  `PackSealednessAnalyzer`'s reference-target resolution originally only read the object form
+  (`"reference": {"target": "Concept"}`). The DSL's real reference-field grammar accepts THREE
+  legitimate spellings, all live-handled by `JsonModelParser` (~line 239-249,
+  `firstNonBlank(readText(f,"ref"), firstNonBlank(referenceSemantics.getTarget(), readText(f,
+  "reference")))`) and independently confirmed real by `ModelSourceResolver.namespacePackFieldRefs`:
+  the bare-string shorthand `"ref": "Concept"` (checked FIRST), the object form, and bare-string
+  `"reference": "Concept"`. The analyzer's original object-form-only check meant a pack using either
+  bare-string spelling for a real outbound reference would have been wrongly certified sealed --
+  proven live by the reviewer with two adversarial tests run for real
+  (`./gradlew.bat -p NPDevContract/dsl test`) before the fix, both reporting `sealed=true` for a
+  field pointing at an external `identity::User` concept. `identity` itself was not affected (its
+  own `pack.json` happens to use only the object form), which is exactly why this went undetected by
+  the original test suite -- a latent trap for the next pack sealed with this tool, not a bug
+  `identity`'s own certification ever tripped. Fixed: `PackSealednessAnalyzer.referenceTarget(JsonNode)`
+  now mirrors `JsonModelParser`'s exact priority order. `PackSealednessAnalyzerTest` grew from 7 to
+  10 cases: two new negative regressions (bare `ref`, bare-string `reference`, each pointing at
+  `identity::User`, both now correctly refused naming the concept/field/target) plus one new positive
+  case confirming self-contained references using either bare-string spelling still analyze sealed
+  (not spuriously over-strict). Full dsl suite (134 test classes) and full generator suite (337 test
+  cases) re-run green after the fix.
 
   Step 2 (emit into the pack's own namespace): `SealedPackBuilder` computes
   `com.npdev.pack.<packId>.v<majorVersion>` (`PackAbiManifest.packageName()`) and emits BARE class

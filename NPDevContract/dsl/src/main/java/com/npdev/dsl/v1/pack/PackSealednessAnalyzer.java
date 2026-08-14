@@ -42,7 +42,14 @@ import java.util.Set;
  *       this SAME pack's own {@code concepts[]} (by bare, unqualified name -- pack.json concepts are
  *       always authored with bare names; a {@code ::}-qualified target, possible only via this pack's
  *       own {@code packs[]}, is itself already excluded by rule 1 above). This is the "zero outbound
- *       references to non-pack concepts" half.</li>
+ *       references to non-pack concepts" half. The target is resolved via {@link
+ *       #referenceTarget(JsonNode)}, which recognizes all THREE spellings {@code JsonModelParser}
+ *       actually accepts at real parse time -- {@code "ref": "Concept"}, {@code "reference":
+ *       {"target": "Concept"}}, and {@code "reference": "Concept"} -- in the same priority order. An
+ *       earlier version of this analyzer only recognized the object form and was caught by
+ *       adversarial review before merge: a pack using either bare-string spelling for an outbound
+ *       reference would have been wrongly certified sealed. {@link PackSealednessAnalyzerTest} covers
+ *       all three shapes so this cannot silently regress.</li>
  * </ol>
  *
  * <p><b>Not checked (documented limitation, not silently ignored):</b> a concept declared via a
@@ -143,15 +150,10 @@ public final class PackSealednessAnalyzer {
                 if (typeNode == null || !"reference".equals(typeNode.asText(""))) {
                     continue;
                 }
-                JsonNode referenceNode = field.get("reference");
-                if (referenceNode == null || !referenceNode.isObject()) {
+                String rawTarget = referenceTarget(field);
+                if (rawTarget == null) {
                     continue;
                 }
-                JsonNode targetNode = referenceNode.get("target");
-                if (targetNode == null || !targetNode.isTextual()) {
-                    continue;
-                }
-                String rawTarget = targetNode.asText();
                 String bareTarget = bareName(rawTarget);
                 if (!conceptNames.contains(bareTarget)) {
                     String fieldName = field.has("name") ? field.get("name").asText("?") : "?";
@@ -164,6 +166,40 @@ public final class PackSealednessAnalyzer {
         }
 
         return violations.isEmpty() ? SealednessResult.allSealed() : SealednessResult.unsealed(violations);
+    }
+
+    /**
+     * Resolves a {@code reference}-typed field's target the SAME way {@code JsonModelParser}
+     * (lines ~239-249) actually does at real parse time -- three legitimate, independently-authored
+     * spellings, in the SAME priority order: (a) the bare-string shorthand {@code "ref": "Concept"},
+     * checked first; (b) the object form {@code "reference": {"target": "Concept", ...}}; (c) the
+     * bare-string form {@code "reference": "Concept"}. {@code ModelSourceResolver
+     * .namespacePackFieldRefs} independently confirms all three are real, separately-rewritten
+     * spellings during actual pack composition -- an analyzer that only recognizes (b) would
+     * wrongly certify a pack using (a) or (c) for an outbound reference as sealed. Returns
+     * {@code null} (not blank) when the field declares no resolvable target at all.
+     */
+    private static String referenceTarget(JsonNode field) {
+        String bareRef = textOrNull(field.get("ref"));
+        if (bareRef != null) {
+            return bareRef;
+        }
+        JsonNode referenceNode = field.get("reference");
+        if (referenceNode != null && referenceNode.isObject()) {
+            String target = textOrNull(referenceNode.get("target"));
+            if (target != null) {
+                return target;
+            }
+        }
+        return textOrNull(referenceNode);
+    }
+
+    private static String textOrNull(JsonNode node) {
+        if (node == null || !node.isTextual()) {
+            return null;
+        }
+        String text = node.asText();
+        return text.isBlank() ? null : text;
     }
 
     private static String bareName(String qualifiedOrBare) {
