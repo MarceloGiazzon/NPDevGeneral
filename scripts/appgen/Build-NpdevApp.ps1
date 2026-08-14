@@ -807,7 +807,48 @@ exit 0
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Build-App.ps1') -Value $BuildApp -Encoding UTF8
 
-$StartApp = @'
+# REG-152: this pipeline generates its own, separate _ops toolbox and never called
+# OperationalRunbookEmitter's Ensure-NpdevApiKey (R7 Stage C) at all -- an app launched through it
+# still booted with application-dev.yml's live, published dev-key/api-dev ADMIN mapping. Same
+# algorithm, same secrets\api-key.env file format (NPDEV_AUTH_API_KEYS=<key>=dev:developer:admin)
+# as the Java-emitted version in OperationalRunbookEmitter.API_KEY_PROVISIONER, so both pipelines
+# idempotently share ONE key per app (app-plan.json's appRoot and OperationalRunbookEmitter's
+# finalAppRoot are the same directory -- $OutRoot\App). Kept as its own copy rather than shared
+# tooling: every emitted _ops script here is deliberately self-contained (see the
+# Get-NPDevGradleWrapperExecutable precedent above), since a generated app's toolbox must not
+# depend on dot-sourcing anything from the platform repo.
+$ApiKeyProvisioner = @'
+function Ensure-NpdevApiKey {
+  param([string]$AppRoot)
+  $secretsDir = Join-Path $AppRoot 'secrets'
+  $keyFile = Join-Path $secretsDir 'api-key.env'
+  if (-not (Test-Path -LiteralPath $keyFile)) {
+    if (-not (Test-Path -LiteralPath $secretsDir)) { New-Item -ItemType Directory -Force -Path $secretsDir | Out-Null }
+    $bytes = New-Object byte[] 24
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    $key = ([Convert]::ToBase64String($bytes) -replace '[^a-zA-Z0-9]', '')
+    Set-Content -LiteralPath $keyFile -Value ('NPDEV_AUTH_API_KEYS=' + $key + '=dev:developer:admin') -Encoding UTF8 -NoNewline
+    Write-Host ''
+    Write-Host '==========================================================================' -ForegroundColor Yellow
+    Write-Host 'Generated a new admin API key for this app (printed once, saved to:' -ForegroundColor Yellow
+    Write-Host "  $keyFile" -ForegroundColor Yellow
+    Write-Host "X-Api-Key: $key" -ForegroundColor Yellow
+    Write-Host '==========================================================================' -ForegroundColor Yellow
+    Write-Host ''
+  }
+  foreach ($rawLine in (Get-Content -LiteralPath $keyFile)) {
+    $line = $rawLine.Trim()
+    if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
+      $parts = $line.Split('=', 2)
+      $name = $parts[0].Trim()
+      if ($name) { Set-Item -Path ("env:" + $name) -Value $parts[1].Trim() }
+    }
+  }
+}
+
+'@
+
+$StartApp = $ApiKeyProvisioner + @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
 $startEnv = Join-Path $PSScriptRoot 'Start-Environment.ps1'
@@ -855,6 +896,7 @@ if (Test-Path -LiteralPath $secretsEnv) {
   # NAMES only -- never values. app.out.log is archived on restart and collected by log bundles.
   Write-Host ("Loaded " + $loadedNames.Count + " secret(s) from " + $secretsEnv + ": " + ($loadedNames -join ', '))
 }
+Ensure-NpdevApiKey -AppRoot $plan.appRoot
 $args = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)")
 $proc = Start-Process -FilePath 'java' -ArgumentList $args -WorkingDirectory $plan.appRoot -PassThru -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $PSScriptRoot 'app.err.log') -WindowStyle Hidden
 $proc.Id | Set-Content -LiteralPath $pidFile -Encoding ascii
@@ -909,6 +951,12 @@ $jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.ja
        Where-Object { $_.FullName -like '*\build\libs\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
 if ($null -eq $jar) { Write-Host 'Runnable jar not found. Run Build-App.ps1 first.' -ForegroundColor Red; exit 1 }
 Write-Host "Computing schema impact for $($plan.appName) against its configured live database (zero writes)..."
+# REG-152 review: deliberately NOT calling Ensure-NpdevApiKey here. REPORT_ONLY mode never sends
+# an HTTP request or checks X-Api-Key -- SchemaLifecycleExecutor exits before the web server binds
+# a port -- so the key is never consumed, and calling the provisioner would perform an
+# unnecessary filesystem write against a script whose own banner promises "zero writes".
+# StartupValidator still passes: application-dev.yml's own npdev.auth.api-keys mapping (left
+# untouched by design, see application-dev.yml's own comments) is a valid mapping on its own.
 $javaArgs = @("-Dnpdev.schema.lifecycle.mode=REPORT_ONLY", '-jar', $jar.FullName,
               "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)")
 & java @javaArgs
@@ -943,7 +991,7 @@ Set-Content -LiteralPath (Join-Path $OpsDir 'Stop-App.ps1') -Value $StopApp -Enc
 # the app's own master credential." Starts the app once with npdev.superuser.force-reissue=true
 # (SuperUserBootstrapper revokes any existing Super User credential then issues a fresh one),
 # captures the new key straight from this one run's log, then restarts normally.
-$ReissueSuperUserKey = @'
+$ReissueSuperUserKey = $ApiKeyProvisioner + @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
 $pidFile = Join-Path $PSScriptRoot 'app.pid'
@@ -960,6 +1008,7 @@ $logFile = Join-Path $PSScriptRoot 'app.out.log'
 $keyFileSource = Join-Path $plan.appRoot 'SUPER_USER_KEY.txt'
 Remove-Item -LiteralPath $keyFileSource -Force -ErrorAction SilentlyContinue
 Write-Host 'Starting the app once with npdev.superuser.force-reissue=true...'
+Ensure-NpdevApiKey -AppRoot $plan.appRoot
 $args = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)", '--npdev.superuser.force-reissue=true')
 $proc = Start-Process -FilePath 'java' -ArgumentList $args -WorkingDirectory $plan.appRoot -PassThru -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $PSScriptRoot 'app.err.log') -WindowStyle Hidden
 $proc.Id | Set-Content -LiteralPath $pidFile -Encoding ascii
@@ -996,13 +1045,14 @@ exit 0
 Set-Content -LiteralPath (Join-Path $OpsDir 'Status-App.ps1') -Value $StatusApp -Encoding UTF8
 
 # Data-driven smoke test: reads ..\Input\smoke-plan.json if present.
-$TestApp = @'
+$TestApp = $ApiKeyProvisioner + @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
 $inputRoot = Join-Path (Split-Path -Parent $PSScriptRoot) 'Input'
 $inputDir = Join-Path $inputRoot 'input'
 $base = $plan.baseUrl
-$headers = @{ 'X-Api-Key' = $plan.apiKey }
+Ensure-NpdevApiKey -AppRoot $plan.appRoot
+$headers = @{ 'X-Api-Key' = $env:NPDEV_AUTH_API_KEYS.Split('=', 2)[0] }
 $report = [ordered]@{ appId = $plan.appId; baseUrl = $base; steps = @(); status = 'FAIL' }
 $smokePlanPath = Join-Path $inputRoot 'smoke-plan.json'
 $smoke = if (Test-Path -LiteralPath $smokePlanPath) { Get-Content -Raw -LiteralPath $smokePlanPath | ConvertFrom-Json } else { $null }
@@ -1044,7 +1094,7 @@ Set-Content -LiteralPath (Join-Path $OpsDir 'Test-App.ps1') -Value $TestApp -Enc
 # credentials, fetches the live UI-contract bundle, and runs the gate against THIS app's own web/
 # source directory (where *.panel.json manifests are authored). A field rename followed by the
 # normal rebuild-and-restart now fails here, without anyone remembering to run anything separately.
-$CheckProvenance = @'
+$CheckProvenance = $ApiKeyProvisioner + @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
 
@@ -1061,8 +1111,10 @@ if ($manifestCount -eq 0) {
 $base = $plan.baseUrl
 $bundleUri = "$base/api/v1/runtime/metadata/ui/bundle"
 $bundle = $null
+Ensure-NpdevApiKey -AppRoot $plan.appRoot
+$apiKey = $env:NPDEV_AUTH_API_KEYS.Split('=', 2)[0]
 try {
-  $bundle = Invoke-RestMethod -Method GET -Uri $bundleUri -Headers @{ 'X-Api-Key' = $plan.apiKey } -TimeoutSec 15
+  $bundle = Invoke-RestMethod -Method GET -Uri $bundleUri -Headers @{ 'X-Api-Key' = $apiKey } -TimeoutSec 15
 } catch {
   # X-Api-Key doesn't authenticate a JWT-mode app (e.g. WmsOffice) -- fall back to a bearer token
   # an operator drops at _ops\jwt-token.txt after logging in once. No attempt to automate that

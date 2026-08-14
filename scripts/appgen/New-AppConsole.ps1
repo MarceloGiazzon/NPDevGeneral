@@ -74,6 +74,24 @@ function Get-AppStatus {
   $base = ''; $key = 'dev-key'; $appRoot = ''
   $planPath = Join-Path $OpsDir 'app-plan.json'
   if (Test-Path -LiteralPath $planPath) { try { $pl = Get-Content -Raw -LiteralPath $planPath | ConvertFrom-Json; $base = "$($pl.baseUrl)"; $key = "$($pl.apiKey)"; $appRoot = "$($pl.appRoot)" } catch {} }
+  # REG-152: $pl.apiKey is a generation-time-only placeholder once Ensure-NpdevApiKey has run (R7
+  # Stage C/REG-152 fix) -- the live, working key lives in secrets/api-key.env. Prefer it when
+  # present, same redirect Stage C already applied to npdev_monitor.py's probe_app().
+  if ($appRoot) {
+    $liveKeyFile = Join-Path $appRoot 'secrets\api-key.env'
+    if (Test-Path -LiteralPath $liveKeyFile) {
+      try {
+        foreach ($rawLine in (Get-Content -LiteralPath $liveKeyFile)) {
+          $line = $rawLine.Trim()
+          if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
+            $mapping = $line.Split('=', 2)[1]
+            $key = $mapping.Split('=', 2)[0]
+            break
+          }
+        }
+      } catch {}
+    }
+  }
   $jar = $null
   if ($appRoot) { $jar = Get-ChildItem -Path (Join-Path $appRoot 'build\libs') -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*-plain.jar' } | Select-Object -First 1 }
   $reachable = $false

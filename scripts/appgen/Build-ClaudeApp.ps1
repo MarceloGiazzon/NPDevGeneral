@@ -331,7 +331,47 @@ exit 0
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Build-App.ps1') -Value $BuildApp -Encoding UTF8
 
-$StartApp = @'
+# REG-152: this pipeline's own separate _ops toolbox never called OperationalRunbookEmitter's
+# Ensure-NpdevApiKey (R7 Stage C) -- an app launched through it still booted with
+# application-dev.yml's live, published dev-key/api-dev ADMIN mapping. Same algorithm and secrets\
+# api-key.env file format as the Java-emitted version in OperationalRunbookEmitter.
+# API_KEY_PROVISIONER and Build-NpdevApp.ps1's own copy, so all three pipelines idempotently share
+# ONE key per app (app-plan.json's appRoot is the same directory as OperationalRunbookEmitter's
+# finalAppRoot). Kept as its own copy, not shared tooling -- every emitted _ops script here is
+# deliberately self-contained, since a generated app's toolbox must not depend on dot-sourcing
+# anything from the platform repo.
+$ApiKeyProvisioner = @'
+function Ensure-NpdevApiKey {
+  param([string]$AppRoot)
+  $secretsDir = Join-Path $AppRoot 'secrets'
+  $keyFile = Join-Path $secretsDir 'api-key.env'
+  if (-not (Test-Path -LiteralPath $keyFile)) {
+    if (-not (Test-Path -LiteralPath $secretsDir)) { New-Item -ItemType Directory -Force -Path $secretsDir | Out-Null }
+    $bytes = New-Object byte[] 24
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    $key = ([Convert]::ToBase64String($bytes) -replace '[^a-zA-Z0-9]', '')
+    Set-Content -LiteralPath $keyFile -Value ('NPDEV_AUTH_API_KEYS=' + $key + '=dev:developer:admin') -Encoding UTF8 -NoNewline
+    Write-Host ''
+    Write-Host '==========================================================================' -ForegroundColor Yellow
+    Write-Host 'Generated a new admin API key for this app (printed once, saved to:' -ForegroundColor Yellow
+    Write-Host "  $keyFile" -ForegroundColor Yellow
+    Write-Host "X-Api-Key: $key" -ForegroundColor Yellow
+    Write-Host '==========================================================================' -ForegroundColor Yellow
+    Write-Host ''
+  }
+  foreach ($rawLine in (Get-Content -LiteralPath $keyFile)) {
+    $line = $rawLine.Trim()
+    if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
+      $parts = $line.Split('=', 2)
+      $name = $parts[0].Trim()
+      if ($name) { Set-Item -Path ("env:" + $name) -Value $parts[1].Trim() }
+    }
+  }
+}
+
+'@
+
+$StartApp = $ApiKeyProvisioner + @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
 $jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
@@ -346,16 +386,18 @@ if (Test-Path -LiteralPath $pidFile) {
 $portBusy = Get-NetTCPConnection -LocalPort $plan.serverPort -State Listen -ErrorAction SilentlyContinue
 if ($portBusy) { Write-Host "Port $($plan.serverPort) is already in use (PID $(($portBusy.OwningProcess | Sort-Object -Unique) -join ', ')). Stop that first (Stop-App.ps1) to avoid a duplicate." -ForegroundColor Yellow; exit 0 }
 Write-Host "Starting $($plan.appName) on $($plan.baseUrl) (profiles: $($plan.springProfiles))"
+Ensure-NpdevApiKey -AppRoot $plan.appRoot
 $args = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)")
 $proc = Start-Process -FilePath 'java' -ArgumentList $args -WorkingDirectory $plan.appRoot -PassThru -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $PSScriptRoot 'app.err.log') -WindowStyle Hidden
 $proc.Id | Set-Content -LiteralPath $pidFile -Encoding ascii
 Write-Host "Started PID $($proc.Id). Logs: $logFile"
 Write-Host "Waiting for health..."
 $ok = $false
+$liveApiKey = $env:NPDEV_AUTH_API_KEYS.Split('=', 2)[0]
 for ($i = 0; $i -lt 60; $i++) {
   Start-Sleep -Seconds 2
   try {
-    Invoke-RestMethod -Method GET -Uri "$($plan.baseUrl)/api/flows" -Headers @{ 'X-Api-Key' = $plan.apiKey } -TimeoutSec 3 | Out-Null
+    Invoke-RestMethod -Method GET -Uri "$($plan.baseUrl)/api/flows" -Headers @{ 'X-Api-Key' = $liveApiKey } -TimeoutSec 3 | Out-Null
     $ok = $true; break
   } catch { }
 }
@@ -377,7 +419,7 @@ exit 0
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Stop-App.ps1') -Value $StopApp -Encoding UTF8
 
-$StatusApp = @'
+$StatusApp = $ApiKeyProvisioner + @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
 $pidFile = Join-Path $PSScriptRoot 'app.pid'
@@ -386,8 +428,9 @@ if (Test-Path -LiteralPath $pidFile) {
   $proc = Get-Process -Id ([int](Get-Content -Raw -LiteralPath $pidFile)) -ErrorAction SilentlyContinue
   $running = ($null -ne $proc)
 }
+Ensure-NpdevApiKey -AppRoot $plan.appRoot
 try {
-  Invoke-RestMethod -Method GET -Uri "$($plan.baseUrl)/api/flows" -Headers @{ 'X-Api-Key' = $plan.apiKey } -TimeoutSec 3 | Out-Null
+  Invoke-RestMethod -Method GET -Uri "$($plan.baseUrl)/api/flows" -Headers @{ 'X-Api-Key' = $env:NPDEV_AUTH_API_KEYS.Split('=', 2)[0] } -TimeoutSec 3 | Out-Null
   Write-Host "UP   - $($plan.baseUrl)/api/flows reachable (pidFileRunning=$running)"
 } catch {
   Write-Host "DOWN - $($plan.baseUrl)/api/flows not reachable (pidFileRunning=$running)"
@@ -396,12 +439,13 @@ exit 0
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Status-App.ps1') -Value $StatusApp -Encoding UTF8
 
-$TestApp = @'
+$TestApp = $ApiKeyProvisioner + @'
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
 $inputDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'Input\input'
 $base = $plan.baseUrl
-$headers = @{ 'X-Api-Key' = $plan.apiKey }
+Ensure-NpdevApiKey -AppRoot $plan.appRoot
+$headers = @{ 'X-Api-Key' = $env:NPDEV_AUTH_API_KEYS.Split('=', 2)[0] }
 $report = [ordered]@{ appId = $plan.appId; baseUrl = $base; steps = @(); status = 'FAIL' }
 
 function Invoke-Flow {

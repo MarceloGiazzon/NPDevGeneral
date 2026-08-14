@@ -1,0 +1,63 @@
+id: REG-157
+title: >-
+  Every Ensure-NpdevApiKey caller assumes $env:NPDEV_AUTH_API_KEYS is non-null immediately
+  afterward; a pre-existing empty/malformed secrets/api-key.env crashes with an uncaught
+  null-reference instead of regenerating or failing cleanly
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-14
+source: >-
+  MASTER-ROADMAP.md Step 12 (R7, SEC-1/REG-152). Found by this session's own adversarial review
+  of PR #66 (the REG-152 fix) before merge: a review dimension reproduced the failure path live
+  rather than just reading the code, confirming it's genuinely reachable, not just theoretical.
+surface: appgen/launcher
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
+  - scripts/appgen/Build-NpdevApp.ps1
+  - scripts/appgen/Build-ClaudeApp.ps1
+detail: |
+  Every `Ensure-NpdevApiKey`/`API_KEY_PROVISIONER` caller across all three launch pipelines
+  follows the same pattern: call the provisioner, then immediately read
+  `$env:NPDEV_AUTH_API_KEYS.Split('=', 2)[0]` (or the Java-side equivalent in
+  `smokeTestScript()`) to extract the bare key for an `X-Api-Key` header. The provisioner is
+  idempotent by design: if `secrets/api-key.env` already exists, it does NOT regenerate --
+  it just parses the existing file's lines into `$env:`.
+
+  If that pre-existing file is empty, contains no `=` on any non-comment line, or is otherwise
+  malformed, the provisioner's read-loop silently sets nothing, leaving
+  `$env:NPDEV_AUTH_API_KEYS` null. The very next line's `.Split(...)` then throws an uncaught
+  `InvalidOperation: You cannot call a method on a null-valued expression` -- a confusing crash
+  for whoever hits it, rather than either regenerating the key (treating "empty/malformed" the
+  same as "absent") or failing with a clear, named error.
+
+  This pattern predates REG-152's fix -- `OperationalRunbookEmitter.java`'s `smokeTestScript()`
+  (line ~982, part of R7 Stage C, already merged) has the identical unguarded read -- and
+  REG-152's fix faithfully mirrored it into four more call sites (`Test-App.ps1` and
+  `Check-Provenance.ps1` in both `Build-NpdevApp.ps1` and `Build-ClaudeApp.ps1`) rather than
+  introducing a new defect. `_ops/Run-FinalApp.ps1`'s own `Ensure-NpdevApiKey` call
+  (the original, Stage C site) does not have this problem in practice because it always runs
+  before any header-reading code in the same script, and nothing else deletes/truncates
+  `secrets/api-key.env` out from under a running app -- but the crash is still reachable by hand
+  (e.g. an operator who edits the file and leaves it empty, or a partially-written file from an
+  interrupted process).
+
+  Confirmed reproducible live, not just plausible: pre-created an empty `secrets/api-key.env`,
+  invoked `Ensure-NpdevApiKey` in a fresh process (no prior env var), then hit the exact
+  documented crash.
+
+  Likely fix: make `Ensure-NpdevApiKey`/`API_KEY_PROVISIONER` treat "file exists but produced no
+  usable mapping" the same as "file absent" (regenerate), rather than only checking
+  `Test-Path`. This is one, shared fix (the provisioner's own regeneration condition), not five
+  separate call-site guards -- consistent with how the provisioner is already duplicated
+  per-pipeline rather than call-site-guarded today.
+guard:
+  kind: manual
+  ref: >-
+    pre-create an empty (or `=`-free) secrets/api-key.env for a generated app, then run any of:
+    _ops/Smoke-Test.ps1, Build-NpdevApp.ps1's Test-App.ps1/Check-Provenance.ps1,
+    Build-ClaudeApp.ps1's Test-App.ps1
+  asserts: >-
+    the script either regenerates a fresh key (treating empty/malformed the same as absent) or
+    fails with a clear, named error -- not an uncaught null-reference exception
+  provenRed: true
