@@ -70,6 +70,56 @@ detail: |
   Not designed further or fixed here -- this item is a finding from a review of unrelated work
   (REG-158), filed immediately per this session's "unrelated bugs filed separately, never silently
   worked around" discipline, not folded into that PR's scope.
+
+  **2026-08-14 (fix, branch `fix/reg-161-pr-gate-trigger`): took the first "likely fix" option
+  above, with a scoping refinement, rather than extracting a second job/workflow.** Read both
+  workflow files in full first. `npdev-pr-gate.yml`'s own header comment explains it was
+  deliberately built as a NEW, separate, faster workflow specifically because running
+  `npdev-ci-validation.yml`'s Linux job (Postgres Testcontainers kernel adapters, full
+  maturity-report bootstrap, ~120min) on every PR would be too slow/expensive -- that reasoning
+  does not apply to the `ci-validation` (Windows) job, which is the actual home of the six gate
+  scripts this item is about and carries no Testcontainers/maturity-bootstrap cost of its own.
+  Extracting the six gates into a third job/workflow was rejected as the worse option: it would
+  duplicate roughly ten setup steps already in `ci-validation` (Java 17+21, Python, Node, Gradle
+  cache, Playwright cache+install, RuntimeHost lib staging) into a second, parallel-maintained
+  definition that will drift the next time one copy is edited and the other isn't -- exactly the
+  "one place updated, its twin forgotten" failure class this repo's CLAUDE.md already warns about
+  for other twin-pair chains.
+
+  Changed `.github/workflows/npdev-ci-validation.yml`: added a bare `pull_request:` trigger to the
+  workflow's `on:` block (alongside the existing `workflow_dispatch`/`schedule`/`push`), and added
+  `if: github.event_name != 'pull_request'` to the `linux-maturity-validation` job specifically, so
+  it keeps its original push/schedule/workflow_dispatch-only cadence -- its own PR-relevant pieces
+  (DSL, kernel inproc adapters, a 3-adapter Postgres subset, generator, RuntimeHost smoke) already
+  run per-PR via `npdev-pr-gate.yml`, and its PR-exclusive remainder (the other Postgres
+  Testcontainers adapters + full maturity bootstrap) is exactly the cost `npdev-pr-gate.yml` was
+  built to avoid duplicating. The `ci-validation` job itself got no `if:` guard, so it now runs on
+  every trigger including `pull_request` -- all six gate scripts (Runtime surface evidence,
+  Generator gate, Security hardening maturity evidence, Runtime security consistency evidence,
+  RuntimeHost gate, Editor gate) stay in their one existing job definition, unchanged, with no new
+  duplicated setup.
+
+  **Tradeoff accepted deliberately, not overlooked:** this makes a full `ci-validation` run
+  (120min budget; a handful of its steps -- DSL contract check, Script automation quality --
+  slightly overlap what `npdev-pr-gate.yml` already checks on Linux) a mandatory per-PR cost, on
+  top of `npdev-pr-gate.yml`'s existing ~6-15min Linux run. Chose correctness over speed here
+  because this item's whole premise is HIGH severity precisely due to that missing coverage --
+  seven real merges landed with zero pre- or post-merge validation from these six gates. The
+  Windows-specific re-runs of DSL/script-automation checks are not pure waste either: `ci-validation`'s
+  own inline comments document Windows-only failures (LegacyModelMigrationToolTest, REG-136/137)
+  a Linux-only PR gate structurally cannot see. If this proves too slow in practice once real PR
+  timing is observed, narrowing to a subset of the six gates (or moving the two overlapping steps
+  out) is the next lever, not reverting the trigger.
+
+  **Verification method used, and its limit:** `python -c "import yaml; yaml.safe_load(...)"`
+  confirms the file parses and that `on.pull_request` is present with a `None` (bare-trigger)
+  value, `on.push` is unchanged, `jobs.linux-maturity-validation.if` reads exactly
+  `"github.event_name != 'pull_request'"`, and `jobs.ci-validation.if` is absent -- plus a full
+  manual read-through of the diff. This proves the YAML is syntactically valid and shaped as
+  intended; it does NOT prove the six gates actually pass, or even actually run, against a real PR
+  -- that is what this PR opening against `main` will demonstrate for the first time, and is why
+  `status` stays OPEN rather than DONE. `guard:` below is intentionally untouched -- it still
+  describes the pre-fix grep-based detection, not a description of the fix's own verification.
 guard:
   kind: manual
   ref: >-
