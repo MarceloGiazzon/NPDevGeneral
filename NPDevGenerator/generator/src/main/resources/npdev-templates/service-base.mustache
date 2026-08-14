@@ -114,6 +114,14 @@ public class {{entityName}}ServiceBase {
         return persistence.findById(id);
     }
 
+    /**
+     * RUN-1 (R8a): bounded to {@code ConceptQuery.MAX_LIMIT} rows (the platform's existing
+     * single-query ceiling -- see {@link #page} below) as of this fix; before it, this streamed an
+     * ENTIRE tenant table into the JVM with no ceiling at all. Still returns every row for any
+     * concept under the cap (unchanged behavior for the overwhelming common case), and a caller
+     * that must know whether the cap actually cut anything should call {@link #listCapped()}
+     * instead -- this method has no channel to report that and never has (see BREAKING.md).
+     */
     public List<{{entityName}}> list() {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "LIST", generatedCrudExecutionContext());
@@ -122,10 +130,27 @@ public class {{entityName}}ServiceBase {
     }
 
     /**
+     * RUN-1 (R8a): same records {@link #list()} returns, wrapped with whether the cap actually
+     * truncated the tenant's table -- used by the typed REST list endpoint
+     * (controller-base.mustache's {@code listBase()}) to set the {@code X-List-Truncated}/
+     * {@code X-List-Limit} response headers. {@link #list()} itself keeps its historical
+     * {@code List<{{entityName}}>} signature (other callers: the generic concepts controller's
+     * free-text-filter fallback, {@code listBy*} reference finders below) since neither has a
+     * channel for a second return value.
+     */
+    public com.npdev.kernel.concepts.ConceptListSlice<{{entityName}}> listCapped() {
+{{#kernelControlled}}
+        runtimeSupport.checkCrudPermission("{{conceptName}}", "LIST", generatedCrudExecutionContext());
+{{/kernelControlled}}
+        return findAllSliceFromConceptStore();
+    }
+
+    /**
      * LNCH-5: pushes a filtered/sorted/paged list down to the store (SQL LIMIT/OFFSET on the JDBC
-     * adapter) instead of {@link #list()}'s fetch-everything-then-slice, so a grid over a large
-     * concept streams one page, not the whole table. Returns raw {@link com.npdev.kernel.concepts.ConceptRecord}s
-     * (not {{entityName}} entities) since the caller only needs field values for JSON projection.
+     * adapter) instead of {@link #list()}'s bounded-but-still-fetch-then-slice path, so a grid over
+     * a large concept streams one page, not the whole (capped) table. Returns raw
+     * {@link com.npdev.kernel.concepts.ConceptRecord}s (not {{entityName}} entities) since the
+     * caller only needs field values for JSON projection.
      */
     public com.npdev.kernel.concepts.ConceptPage page(com.npdev.kernel.concepts.ConceptQuery query) {
 {{#kernelControlled}}
@@ -802,12 +827,26 @@ public class {{entityName}}ServiceBase {
     }
 
     private List<{{entityName}}> findAllFromConceptStore() {
-        return conceptGateway.list(
+        return findAllSliceFromConceptStore().records();
+    }
+
+    /**
+     * RUN-1 (R8a): the one place {@link #list()}/{@link #listCapped()}/{@code listBy*} finders all
+     * route through -- capped at {@code ConceptQuery.MAX_LIMIT} via
+     * {@link com.npdev.kernel.concepts.ConceptGateway#listCapped}, which still applies row-level
+     * {@code access.read} scoping the same way {@link #findByIdFromConceptStore} does (LNCH-13),
+     * now against the capped slice rather than the whole tenant table.
+     */
+    private com.npdev.kernel.concepts.ConceptListSlice<{{entityName}}> findAllSliceFromConceptStore() {
+        com.npdev.kernel.concepts.ConceptListSlice<ConceptRecord> slice = conceptGateway.listCapped(
                 new ConceptListRequest(CONCEPT_NAME, currentTenantId()),
-                generatedCrudExecutionContext()
-        ).stream()
+                generatedCrudExecutionContext(),
+                com.npdev.kernel.concepts.ConceptQuery.MAX_LIMIT
+        );
+        List<{{entityName}}> entities = slice.records().stream()
                 .map(this::entityFromRecord)
                 .toList();
+        return new com.npdev.kernel.concepts.ConceptListSlice<>(entities, slice.truncated());
     }
 
     private {{entityName}} saveToConceptStore({{entityName}} entity) {

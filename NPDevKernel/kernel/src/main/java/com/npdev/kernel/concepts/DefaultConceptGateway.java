@@ -188,6 +188,47 @@ public final class DefaultConceptGateway implements ConceptGateway {
         return records;
     }
 
+    /**
+     * RUN-1 (R8a): pushes the cap down to {@link ConceptStore#findAllCapped} (a real SQL
+     * {@code LIMIT} on the JDBC adapter) instead of the interface default's fetch-everything-
+     * then-trim. Row-level {@code access.read} scoping and the {@code filterField}/{@code
+     * filterValue} match are applied to the already-capped slice, not pushed into the store call --
+     * the SAME deliberate v1 boundary {@link #query} documents for its own SQL-windowed page (a
+     * denied/filtered-out row can shrink the effective result below {@code maxRows} without that
+     * meaning fewer than {@code maxRows} rows existed) -- so {@code truncated} reports what the
+     * STORE saw, not what survived filtering.
+     */
+    @Override
+    public ConceptListSlice<ConceptRecord> listCapped(ConceptListRequest request, ExecutionContext context, int maxRows) {
+        ExecutionContext effectiveContext = normalizeContext(context);
+        String tenantId = enforceTenant(request.tenantId(), effectiveContext, "CONCEPT_LIST", request.conceptName(), "*");
+        enforcePermission(effectiveContext, "concept.list", request.conceptName(), "CONCEPT_LIST", "*");
+
+        ConceptGatewayRequestContext requestContext = requestContext(
+                ConceptGatewayOperation.LIST,
+                request.conceptName(),
+                "*",
+                tenantId,
+                Map.of(),
+                effectiveContext,
+                Optional.empty()
+        );
+        ConceptSemanticDecision decision = evaluateRuleProfiles(
+                requestContext,
+                ruleProfilesForRead(effectiveContext)
+        );
+
+        ConceptListSlice<ConceptRecord> slice = store.findAllCapped(tenantId, request.conceptName(), maxRows);
+        List<ConceptRecord> records = slice.records().stream()
+                .filter(item -> semanticPolicy.isRowReadable(item, requestContext))
+                .map(item -> semanticPolicy.filterVisibleFields(item, requestContext))
+                .filter(item -> matchesExact(item, request.filterField(), request.filterValue()))
+                .toList();
+        audit(effectiveContext, "CONCEPT_LIST", request.conceptName(), "*", "SUCCESS", "allowed", tenantId);
+        trace(requestContext, "SUCCESS", "allowed", decision);
+        return new ConceptListSlice<>(records, slice.truncated());
+    }
+
     @Override
     public ConceptPage query(ConceptQueryRequest request, ExecutionContext context) {
         ExecutionContext effectiveContext = normalizeContext(context);
