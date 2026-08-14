@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run --coverage",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "e2e:stage": "node ./scripts/stage-playwright-static-host.mjs",
@@ -23,6 +23,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^4.1.5",
     "typescript": "^5.6.3",
     "vite": "^8.0.9",
     "vitest": "^4.1.5"
