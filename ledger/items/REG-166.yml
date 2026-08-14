@@ -1,0 +1,52 @@
+id: REG-166
+title: >-
+  S3ObjectStoreFileStoreAdapter's S3Client has no configured deadline -- a hung object-store call
+  blocks the calling thread forever, same class of gap as RUN-4 but outside CapabilityExecutionPolicy's
+  reach
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Found while investigating RUN-4/R8d (Track C, branch track-c-r8d-capability-deadlines): scanning
+  NPDevKernel/adapters/ for "real network-calling adapters" surfaced file-store-objectstore alongside
+  external-ai-http and mail-smtp. Filed separately per this session's "unrelated bugs filed
+  separately, never fixed in passing" discipline -- S3ObjectStoreFileStoreAdapter implements
+  FileStoreContract directly, not CapabilityAdapter, so it is never dispatched through
+  CapabilityDispatcher/KernelRunner's capability-execution path and RUN-4's fix (adapter-level
+  deadlines on the two CapabilityAdapter network adapters) does not cover it.
+surface: kernel/file-store
+files:
+  - NPDevKernel/adapters/file-store-objectstore/src/main/java/com/npdev/adapters/filestore/objectstore/S3ObjectStoreFileStoreAdapter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/NpdevFileStoreConfig.java
+detail: |
+  `NpdevFileStoreConfig.objectStoreFileStoreContract` builds its `S3Client` with only
+  `.region(...)`, `.serviceConfiguration(...)`, an optional `.endpointOverride(...)`, and a
+  credentials provider -- no `.overrideConfiguration(ClientOverrideConfiguration.builder()
+  .apiCallTimeout(...).apiCallAttemptTimeout(...).build())`. AWS SDK v2 leaves both of those
+  unset (no deadline) by default; whatever bound exists falls back entirely to the underlying
+  synchronous HTTP client's own connect/socket-read defaults, which are not verified here and are
+  not the SDK's documented "you must set your own API call timeout" mechanism.
+
+  `S3ObjectStoreFileStoreAdapter.put/get/head/delete/exists/listTenants/list` all call `s3Client
+  .*` directly and synchronously (`streamToS3`'s multipart loop in particular can make many
+  sequential `uploadPart` calls for one large upload) -- an object store that accepts a TCP
+  connection and then stalls mid-response (a real failure mode for S3-compatible services under
+  load, e.g. MinIO/R2 backpressure) blocks the calling thread for however long the underlying HTTP
+  client's own default allows, with no adapter-level retry either.
+
+  This is the same class of gap RUN-4 documents for external-ai-http/mail-smtp (no adapter-set
+  deadline, no bounded retry), but S3ObjectStoreFileStoreAdapter is NOT a `CapabilityAdapter` --
+  file storage is a distinct port (`FileStoreContract`), used directly by upload/download
+  controllers, never routed through `CapabilityDispatcher`/`KernelRunner`'s `CapabilityExecutionPolicy`
+  /`timeoutMs` machinery at all. So RUN-4's fix (and any future kernel-default decision on
+  `CapabilityExecutionPolicy`) does not and cannot cover this adapter; it needs its own,
+  independent deadline/retry treatment analogous to what RUN-4 shipped for the two
+  CapabilityAdapter network adapters -- likely `ClientOverrideConfiguration.apiCallTimeout`/
+  `apiCallAttemptTimeout` plus AWS SDK v2's own built-in retry policy (`RetryMode`/`RetryPolicy`),
+  configured explicitly rather than left at whatever the SDK's unstated default resolves to.
+
+  Not fixed here -- filed for a future session, no fix designed further than the likely-fix sketch
+  above. `webhook-inproc` (`InProcWebhookCapabilityAdapter`) was also checked and ruled OUT: despite
+  its port implying network I/O, it is a genuine in-memory stub (appends to an `ArrayList`, no
+  socket/HTTP call anywhere) with nothing to time out.
