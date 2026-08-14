@@ -1,4 +1,4 @@
-id: REG-165
+id: REG-167
 title: >-
   Author-supplied web assets and platform-generated static files share one Gradle resource
   sourceSet with no reserved-name guard, so a same-named file collides undefined-winner
