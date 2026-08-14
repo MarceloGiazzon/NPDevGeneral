@@ -17,6 +17,12 @@
 **/coverage/
 **/node_modules/
 
+# coverage.py's own data file (Track C C8) -- written to the repo root by
+# run-ai-knowledge-gate.ps1's [18/35] step (cwd = repo root); the JSON report it feeds to
+# check-coverage-ratchet.py already lands under the gitignored scripts/reports/out/ above.
+.coverage
+.coverage.*
+
 # Generated sample/example/final-app output
 **/RunOutput/
 

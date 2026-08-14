@@ -3,8 +3,8 @@
 # scripts/quality/generate_open_items.py parses ledger/items/*.yml; scripts/docs/generate_gaps_roadmap.py
 # and scripts/ai/extract_platform_status.py parse ledger/gaps.yml; scripts/quality/check-workflow-yaml-syntax.py
 # parses .github/workflows/*.yml. (check-register-consistency.py was a fifth consumer, deleted by
-# md-zero-2026-08-11 PLAN.md Phase 2.) Every other script under scripts/ is stdlib-only. Installed by
-# .github/workflows/ai-knowledge-gate.yml before running any of them -- see ledger/README.md.
+# md-zero-2026-08-11 PLAN.md Phase 2.) Installed by .github/workflows/ai-knowledge-gate.yml before
+# running any of them -- see ledger/README.md.
 PyYAML>=6.0.1
 
 # scripts/quality/check-config-schema.py validates every corpus config.json against
@@ -17,3 +17,11 @@ PyYAML>=6.0.1
 # deliberate stdlib-only validator for that (see its own docstring: the Manager ships a private
 # Python with no third-party packages), so this entry is for repo-development/CI use only.
 jsonschema>=4.0
+
+# Track C card C8 (2026-08-14, ledger QUAL-6's R3 extension): run-ai-knowledge-gate.ps1's [18/35]
+# step wraps NPDevCli/tests' `unittest discover` in `coverage run` and writes a `coverage json`
+# report that check-coverage-ratchet.py's [35/35] step reads (reportFormat "coverage-py-json" in
+# scripts/policy/coverage-baseline.json). Same "refuse to silently skip" stance as jsonschema above
+# -- a missing `coverage` module fails step [18/35] loudly rather than quietly falling back to plain
+# `unittest` and never measuring anything.
+coverage>=7.0
