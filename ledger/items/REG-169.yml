@@ -103,6 +103,13 @@ detail: |
   map happens to carry, by construction, rather than by the caller's data map never colliding with
   those keys by convention. That closes the whole class of risk regardless of which upstream path
   produces a stale/null value on the entity.
+
+  2026-08-14 (horizontal fix pass): implemented on branch `fix/reg-169-tenant-id-clobber` -- exactly
+  the re-ordering above, `id`/`tenant_id` now applied after the `record.data()` merge loop, not
+  before. Not yet re-verified against the real repro (the packaged-proof test in `guard.ref` below)
+  as part of this change -- that run is deferred to a consolidated verification pass across this
+  session's whole batch of fixes, per an explicit user instruction to fix first and batch-verify
+  once at the end rather than per item. Status stays OPEN until that pass confirms GREEN.
 guard:
   kind: manual
   ref: >-
