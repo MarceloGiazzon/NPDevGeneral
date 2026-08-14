@@ -3,7 +3,7 @@ title: >-
   No ledger status can express not-doing; no DONE claim is falsifiable
 type: PROCESS
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-08-12
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F6, ROADMAP.md card R11). A DONE claim in the
@@ -19,6 +19,15 @@ detail: |
   and early (done this session, Step 1c) so all 29 items filed alongside this one carry the field
   from birth instead of a 29-item backfill. The rest of R11 (restructuring, backfill, gaps.yml v2) is
   Track C item C9; not in this session's scope.
+
+  2026-08-14 (ledger-currency sweep): downgraded OPEN -> PARTIAL rather than DONE. The schema field
+  landed (as this item's own text already said), and more: `scripts/quality/check-done-item-guards.py`
+  now exists and actively enforces it -- every DONE item in this pass was required to carry a real,
+  falsifiable guard before being closed, live-tested constantly this session. But this item's own
+  TITLE is broader than the schema field ("no ledger status can express not-doing; no DONE claim is
+  falsifiable"), and that fuller scope -- restructuring, the full backfill, gaps.yml v2 -- is C9's
+  job, still PARTIAL. Marking this DONE would overclaim past what C9 has actually finished; OPEN
+  understated the real, live enforcement mechanism now running. PARTIAL is the honest middle.
 guard:
   kind: script
   ref: scripts/quality/generate_open_items.py (validate_guard)
