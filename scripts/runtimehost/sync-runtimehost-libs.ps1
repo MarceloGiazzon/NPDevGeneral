@@ -237,6 +237,41 @@ foreach ($required in $requiredLocalJars) {
     }
 }
 
+# REG-162 safety net (2026-08-14): a freshly-built jar has been found landing in a worktree-scoped
+# shadow directory (Get-NPDevBuildRoot resolving wrong for a nested worktree -- fixed above in
+# npdev-common.ps1) while THIS script still logged success against the correct, explicitly-requested
+# $runtimeHostLibs -- i.e. a silent, wrong SUCCESS: the staged jar quietly stayed stale. That fix
+# removes the one confirmed trigger, but this script also inherits whatever $env:NPDEV_BUILD_ROOT /
+# $env:NPDEV_RUNTIMEHOST_LIBS_DIR happen to already be set to by an earlier command in the same
+# session (both are real, documented overrides several build.gradle files honor -- REG-137), which is
+# outside this script's control. Sync-NPDevJars already decided, for every jar name, which file it
+# believes is the authoritative SOURCE ($sourceByName) -- re-verify AFTER staging that the file
+# actually sitting in $runtimeHostLibs is byte-identical to that source, rather than trusting the
+# copy-or-skip decision blindly. This closes the exact failure shape regardless of which mechanism
+# caused the divergence: it fails loud the moment the staged jar and its recorded source disagree.
+$stagedContentMismatches = @()
+foreach ($required in $requiredLocalJars) {
+    if ($missingRequired -contains $required) {
+        continue
+    }
+    $sourcePath = [string]$sourceByName[$required]
+    if ([string]::IsNullOrWhiteSpace($sourcePath) -or -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        continue
+    }
+    $stagedPath = Join-Path $runtimeHostLibs $required
+    $sourceItem = Get-Item -LiteralPath $sourcePath
+    $stagedItem = Get-Item -LiteralPath $stagedPath
+    if ($sourceItem.Length -ne $stagedItem.Length) {
+        $stagedContentMismatches += [pscustomobject]@{ name = $required; source = $sourcePath; staged = $stagedPath; reason = "size differs" }
+        continue
+    }
+    $sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
+    $stagedHash = (Get-FileHash -LiteralPath $stagedPath -Algorithm SHA256).Hash
+    if ($sourceHash -ne $stagedHash) {
+        $stagedContentMismatches += [pscustomobject]@{ name = $required; source = $sourcePath; staged = $stagedPath; reason = "hash differs ($sourceHash vs $stagedHash)" }
+    }
+}
+
 $manifestPath = Join-Path $runtimeHostLibs "runtimehost-libs-manifest.json"
 $manifest = [pscustomobject]@{
     schemaVersion = "npdev-runtimehost-libs-manifest.v1"
@@ -284,7 +319,7 @@ if ($BuildLocalJars) {
     }
 }
 
-$overallStatus = if ($missingRequired.Count -gt 0 -or $discoveryFailures.Count -gt 0) { "failed" } else { "passed" }
+$overallStatus = if ($missingRequired.Count -gt 0 -or $discoveryFailures.Count -gt 0 -or $stagedContentMismatches.Count -gt 0) { "failed" } else { "passed" }
 $report = [pscustomobject]@{
     generatedAt = (Get-Date).ToString("o")
     workspaceRoot = $WorkspaceRoot
@@ -300,9 +335,17 @@ $report = [pscustomobject]@{
     externalOrMissing = $externalOrMissing
     missingRequired = $missingRequired
     discoveryFailures = $discoveryFailures
+    stagedContentMismatches = $stagedContentMismatches
     cleanedSourceBuildOutputs = $cleanedSourceBuildOutputs
 }
 Write-NPDevJsonFile $ReportPath $report
+
+if ($stagedContentMismatches.Count -gt 0) {
+    foreach ($mismatch in $stagedContentMismatches) {
+        Write-NPDevWarn ("Staged jar does NOT match its discovered source (" + $mismatch.reason + "): " + $mismatch.name + " -- source " + $mismatch.source + ", staged " + $mismatch.staged)
+    }
+    throw ("RuntimeHost libs sync staged jar(s) that do not match their discovered source -- refusing to report success (REG-162): " + (($stagedContentMismatches | ForEach-Object { $_.name }) -join ", "))
+}
 
 if ($overallStatus -ne "passed") {
     Write-NPDevWarn ("RuntimeHost libs sync failed; missing required jars: " + ($missingRequired -join ", ") + "; discovery failures: " + ($discoveryFailures -join ", "))

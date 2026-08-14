@@ -400,6 +400,27 @@ function Get-NPDevRuntimeHostLibsDir([string]$WorkspaceRoot) {
 # cannot diverge again -- the same "one place updated, its twin forgotten" shape this project
 # already tracks via scripts/quality/check-twin-pair-consistency.py, fixed by deleting the twin
 # instead of registering it.
+# REG-162 (2026-08-14): a git worktree checked out UNDER this repo (.claude\worktrees\<id>, this
+# platform's normal way of running an isolated agent session) is a FULL checkout -- it legitimately
+# contains its own NPDevContract/NPDevGenerator/NPDevKernel subdirectories, so it satisfies the
+# predicate below just as validly as the canonical checkout does, one level "too early". The walk
+# used to stop at the FIRST (innermost/closest) ancestor satisfying the predicate, which for a
+# worktree IS the worktree itself -- so this returned <worktree>\..\Build (a throwaway,
+# worktree-scoped shadow directory, e.g. "...\.claude\worktrees\Build") instead of the ONE shared
+# "D:\WorkSpace\NPDev\Build" every other checkout (and every other tool: Get-NPDevRuntimeHostLibsDir,
+# sync-runtimehost-libs.ps1's own -PnpdevBuildRoot gradle invocations, and the env var it leaks into
+# the rest of the session) actually reads/writes. Reproduced live: from a real worktree, this
+# function returned "<repo>\.claude\worktrees\Build" byte-for-byte -- exactly the shadow path a
+# rebuild-and-restage run found a freshly-built kernel jar sitting in while reporting success against
+# the correct, explicitly-requested target.
+#
+# Fix: keep walking PAST a match to find the OUTERMOST ancestor that still satisfies the predicate,
+# not the innermost. A worktree nested under the canonical checkout has exactly one further matching
+# ancestor (the canonical checkout itself) and climbing to it recovers the single shared Build root
+# by construction, under any worktree name or depth -- no special-casing "am I a worktree" needed.
+# Running directly from the canonical checkout (no nested match above it) or from a CI checkout
+# nested one level under its own container (REG-144; no NPDevContract et al. at that outer level
+# either) is unaffected: exactly one match is found either way, same as before this fix.
 function Get-NPDevBuildRoot([string]$WorkspaceRoot) {
     if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_BUILD_ROOT)) {
         return Normalize-NPDevPath $env:NPDEV_BUILD_ROOT
@@ -407,14 +428,18 @@ function Get-NPDevBuildRoot([string]$WorkspaceRoot) {
 
     $workspace = Get-Item -LiteralPath (Normalize-NPDevPath $WorkspaceRoot)
     $ancestor = $workspace
-    while ($null -ne $ancestor -and -not (
-            (Test-Path -LiteralPath (Join-Path $ancestor.FullName "NPDevContract") -PathType Container) -and
+    $matched = $null
+    while ($null -ne $ancestor) {
+        $isCandidateRoot = (Test-Path -LiteralPath (Join-Path $ancestor.FullName "NPDevContract") -PathType Container) -and
             (Test-Path -LiteralPath (Join-Path $ancestor.FullName "NPDevGenerator") -PathType Container) -and
-            (Test-Path -LiteralPath (Join-Path $ancestor.FullName "NPDevKernel") -PathType Container))) {
+            (Test-Path -LiteralPath (Join-Path $ancestor.FullName "NPDevKernel") -PathType Container)
+        if ($isCandidateRoot) {
+            $matched = $ancestor
+        }
         $ancestor = $ancestor.Parent
     }
-    if ($null -ne $ancestor -and $null -ne $ancestor.Parent) {
-        return Normalize-NPDevPath (Join-Path $ancestor.Parent.FullName "Build")
+    if ($null -ne $matched -and $null -ne $matched.Parent) {
+        return Normalize-NPDevPath (Join-Path $matched.Parent.FullName "Build")
     }
     return Normalize-NPDevPath (Join-Path $workspace.Parent.FullName "Build")
 }
