@@ -118,9 +118,21 @@ resolution: |
   scripts/reports/out/python-coverage/npdevcli-coverage.json, read by [35/35] via reportFormat
   "coverage-py-json". `coverage>=7.0` added to scripts/requirements.txt (same "refuse to silently
   skip a missing validator" stance as the existing jsonschema entry). Verified live: 145 tests, all
-  pass, real measured floor 30.2947% LINE (1768/5836) across NPDevCli's 9 top-level modules.
-  NPDevCli is the one coverage module measured for real even in the standalone,
+  pass. NPDevCli is the one coverage module measured for real even in the standalone,
   never-builds-anything ai-knowledge-gate.yml CI job, since its test suite already runs there.
+
+  Real, CI-caught finding: the first commit recorded a Windows-measured floor (30.2947%, 1768/5836)
+  and PR #81's own "AI knowledge substrate gate" CI job (Linux) immediately failed with a genuine
+  regression -- 30.1576% (1760/5836). NOT a flake, not REG-164 (the pre-existing Windows-only
+  pack-lock CRLF bug, which never fires on Linux CI and did not appear in this run's failure list).
+  NPDevCli has dozens of `os.name == "nt"` branches (npdev_cli.py, dev_loop.py, npdev_monitor.py,
+  npdev_explore.py); the same 145 tests legitimately execute a few more lines on Windows than on
+  Linux. Fixed by pinning the committed floor to the Linux CI job's own measurement (30.1576%,
+  1760/5836) rather than a local dev machine's, with a note on the entry itself warning against
+  re-measuring by hand on any OS other than CI's. General lesson for any future coverage floor: this
+  ratchet is enforced by ONE specific CI environment (ai-knowledge-gate.yml, ubuntu-latest) -- the
+  floor must come from THAT environment's own measurement, not whichever machine happens to run the
+  suite first.
 
   NPDevMcp and scripts/ (the rest of "the Python tooling," per this card's own framing): investigated
   and found NEITHER has a dedicated automated test suite anywhere in the repo -- NPDevMcp/server.py
