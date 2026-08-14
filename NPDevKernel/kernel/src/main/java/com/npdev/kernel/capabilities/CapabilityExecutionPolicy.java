@@ -2,6 +2,19 @@ package com.npdev.kernel.capabilities;
 
 import com.npdev.kernel.CapabilityErrorKind;
 
+/**
+ * npdev-capability-execution-policy-mirror: this shape is MIRRORED, field-for-field, by
+ * {@code com.npdev.dsl.v1.compiled.CompiledCapabilityExecutionPolicy} in the DSL module (kernel
+ * cannot depend on the DSL's compiled-model types, so the two are independent classes rather than
+ * one shared type). R8d (RUN-4, ledger/items/RUN-4.yml) touched adapter-level deadlines only and
+ * deliberately did NOT change this shape or flip {@link #defaults()}'s zeros -- but the NEXT session
+ * that revisits the kernel-wide timeout default (or adds a field here, e.g. a jitter or deadline
+ * knob) must mirror it to the DSL-side class in the same commit, or a value that parses/compiles
+ * clean on one side never reaches the other -- the exact "one place updated, its twin forgotten"
+ * shape CLAUDE.md's twin-pair rules exist to catch (see
+ * scripts/quality/twin-pair-registry.json's "capability-execution-policy-mirror" rule,
+ * enforced by check-twin-pair-consistency.py).
+ */
 public record CapabilityExecutionPolicy(
         int retryCount,
         long retryDelayMs,
