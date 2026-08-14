@@ -179,8 +179,14 @@ public final class ModelSourceResolver {
      *  discovery+MVS pass {@link #resolve} does, but never enforces {@code npdev.lock} (add/update
      *  are what WRITE it; why is always a fresh live computation) and never merges pack content
      *  into a model -- just returns the resolved graph. A model with no {@code packs[]} at all
-     *  resolves to an empty result. */
-    public PackCliResolution resolvePackGraphForCli(Path modelJsonPath) throws IOException {
+     *  resolves to an empty result.
+     *
+     *  @param networkPolicy PK-5: {@link com.npdev.dsl.v1.pack.NetworkPolicy#ALLOWED} for {@code
+     *                       pack add}/{@code update} (the only two commands allowed to fetch a
+     *                       {@code from}-based remote pack); {@link
+     *                       com.npdev.dsl.v1.pack.NetworkPolicy#DENIED} for {@code pack list}/
+     *                       {@code why}, which never fetch. */
+    public PackCliResolution resolvePackGraphForCli(Path modelJsonPath, com.npdev.dsl.v1.pack.NetworkPolicy networkPolicy) throws IOException {
         if (modelJsonPath == null) {
             throw new IOException("model.json path is required");
         }
@@ -207,7 +213,7 @@ public final class ModelSourceResolver {
             resolvedShell.set("dslVersion", root.get("dslVersion").deepCopy());
         }
         PackDependencyGraphWalker walker = PackDependencyGraphWalker.resolveForCli(
-                this, (ArrayNode) packs, resolvedShell, rootRealPath, state);
+                this, (ArrayNode) packs, resolvedShell, rootRealPath, state, networkPolicy);
 
         Map<String, com.npdev.dsl.v1.pack.PackLockFile.LockedPack> lockEntries = walker.toLockEntries();
         Map<String, List<String>> why = new LinkedHashMap<>();

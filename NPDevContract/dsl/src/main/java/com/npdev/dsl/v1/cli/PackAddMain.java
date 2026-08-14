@@ -2,6 +2,7 @@ package com.npdev.dsl.v1.cli;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.npdev.dsl.v1.pack.NetworkPolicy;
 import com.npdev.dsl.v1.pack.PackLockFile;
 import com.npdev.dsl.v1.parser.ModelSourceResolver;
 
@@ -52,8 +53,11 @@ public final class PackAddMain {
         ObjectNode report = MAPPER.createObjectNode();
         try {
             Path modelPath = Path.of(modelArg);
+            // PK-5 step 2: this is one of the two call sites (with PackUpdateMain, which delegates
+            // here) allowed to pass ALLOWED -- the explicit network phase a `from`-based remote
+            // pack's fetch happens during.
             ModelSourceResolver.PackCliResolution resolution =
-                    new ModelSourceResolver().resolvePackGraphForCli(modelPath);
+                    new ModelSourceResolver().resolvePackGraphForCli(modelPath, NetworkPolicy.ALLOWED);
             PackLockFile.of(resolution.lockEntries()).write(resolution.rootDirectory());
 
             report.put("status", "ok");
@@ -63,6 +67,9 @@ public final class PackAddMain {
                 entry.put("resolvedVersion", locked.resolvedVersion());
                 entry.put("sourcePath", locked.sourcePath());
                 entry.put("digest", locked.digest());
+                if (!locked.from().isEmpty()) {
+                    entry.put("from", locked.from());
+                }
             });
             report.put("lockFile", resolution.rootDirectory().resolve(PackLockFile.FILE_NAME).toString());
         } catch (IOException failure) {
