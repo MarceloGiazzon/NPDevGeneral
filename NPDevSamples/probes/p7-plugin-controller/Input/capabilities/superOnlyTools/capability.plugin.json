@@ -1,0 +1,34 @@
+{
+  "$schema": "npdev/capability-plugin.schema.json",
+  "packageFormatVersion": "1.0",
+  "packageId": "user-superonlytools-java-controller-package",
+  "pluginId": "user-superonlytools-java-controller-plugin",
+  "displayName": "Super-only tools probe controller",
+  "version": "1.0.0",
+  "description": "R10 probe: a SUPERUSER-gated mounted @RestController. dev/auth.mode=none never auto-grants SUPERUSER (CLAUDE.md's agent-proxy precedent), so the SAME dev-key caller that succeeds against adminTools must be rejected here -- proving minimumRole enforcement checks the DECLARED role, not merely 'is authenticated'.",
+  "capability": "superOnlyTools",
+  "capabilityType": "SuperOnlyToolsController",
+  "adapterId": "plugin:java-controller",
+  "implementation": {
+    "kind": "javaController",
+    "sourceRoot": "capabilities/superOnlyTools/src/main/java",
+    "controllerClass": "com.npdev.generated.plugin.superonlytools.SuperOnlyToolsController"
+  },
+  "mount": {
+    "basePath": "/api/plugins/super-only",
+    "security": {
+      "minimumRole": "SUPERUSER"
+    }
+  },
+  "trust": {
+    "mode": "artifact-local-source",
+    "source": "external-artifact-bundle",
+    "level": "developer-supplied"
+  },
+  "generation": {
+    "mount": "compileIntoGeneratedApp",
+    "emitManifestContribution": true,
+    "emitPackageDescriptor": false,
+    "emitBinding": false
+  }
+}

@@ -1,0 +1,62 @@
+id: REG-164
+title: >-
+  Pack lock digests are computed over raw file bytes with no line-ending normalization, so a
+  Windows checkout of a pack.json committed under `* text=auto` reports npdev.lock as stale even
+  though nothing about the pack changed
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Found while running scripts/quality/validate-corpus.py as part of R10 (EXT-1) verification --
+  unrelated to plugin:java-controller, filed separately per this session's "unrelated bugs filed
+  separately, never fixed in passing" discipline. validate-corpus.py FAILED on
+  NPDevSamples/probes/p6-satellite-extension (shipped this session, PACK-10/PK-6 Step 1) with:
+  "npdev.lock is stale for: clinical (locked 1.0.0 @ packs/clinical/pack.json, live 1.0.0 @
+  packs/clinical/pack.json); identity (...) -- run 'npdev pack update'" on a clean checkout of
+  this branch with no local edits to either pack.json.
+surface: contract/dsl-pack-distribution
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackLockFile.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/PackDependencyGraphWalker.java
+  - .gitattributes
+detail: |
+  `PackLockFile.sha256(Path file)` hashes `Files.readAllBytes(file)` verbatim -- no line-ending
+  normalization -- and `PackDependencyGraphWalker.digestFor()` uses that same raw-byte hash for
+  every LOCAL pack (`from.isEmpty()`, i.e. every pack this probe declares). `.gitattributes` has
+  no `*.json text eol=lf` rule (nor any rule at all for pack.json specifically); the repo's
+  blanket `* text=auto` line applies, which lets Git for Windows' default `core.autocrlf=true`
+  normalize the checked-out bytes to CRLF -- DIFFERENT bytes than whatever produced the digest
+  recorded in `npdev.lock` (almost certainly committed from a checkout without that conversion,
+  e.g. Linux CI or `core.autocrlf=input`).
+
+  Verified live, not assumed: computed both digests directly against
+  NPDevSamples/probes/p6-satellite-extension/Input/packs/clinical/pack.json on this Windows
+  checkout --
+    sha256(raw bytes on disk)          = 5e8310fa2702e7e1bbe17308d16c5bf26f9d81843e825276c5994fab5951861c
+    sha256(same bytes, CRLF -> LF)     = 31b4220767b7fae4a2adb61dc8725468c53cf905907489576c88f81ba8df820d
+  and `npdev.lock`'s recorded digest for `clinical` is exactly the LF-normalized value
+  (`sha256:31b4220767b7fae4a2adb61dc8725468c53cf905907489576c88f81ba8df820d`) -- proving the
+  mismatch is pure line-ending drift, not a real content change, and that any pack authored/locked
+  on a non-Windows machine (or a Windows machine with `core.autocrlf=false`/`input`) will report
+  spuriously stale on a default Git-for-Windows clone. `packs/identity/pack.json` reproduces
+  identically.
+
+  This is the general shape .gitattributes' own header documents as this repo's eighth instance of
+  "works on my machine, fails only on Windows, so a Linux-checkout CI stays green" -- except this
+  one is a FALSE stale rather than a broken execution, so it fails Windows contributors' local
+  validate-corpus.py runs (and any future `npdev pack update`/lock CI check that runs on a Windows
+  runner) while a Linux-only CI matrix would never see it. Likely fix (not designed further here):
+  either declare `pack.json text eol=lf` in .gitattributes (matching the existing pattern for
+  `*.sh`/`*.py`/etc.) so the checked-out bytes are deterministic across platforms, or have
+  `PackLockFile.sha256` normalize CRLF to LF before hashing (parallel to how JSON parsing already
+  treats the two as equivalent) -- the two are not equivalent fixes: the .gitattributes route
+  fixes the bytes at the source, the hashing route tolerates whatever bytes arrive.
+guard:
+  kind: script
+  ref: python scripts/quality/validate-corpus.py (from a Windows checkout with default core.autocrlf)
+  asserts: >-
+    NPDevSamples/probes/p6-satellite-extension (or any local pack consumer) parses without a
+    "npdev.lock is stale" structural error when its pack.json content has not changed since the
+    lock was written
+  provenRed: true

@@ -1,0 +1,34 @@
+{
+  "$schema": "npdev/capability-plugin.schema.json",
+  "packageFormatVersion": "1.0",
+  "packageId": "user-admintools-java-controller-package",
+  "pluginId": "user-admintools-java-controller-plugin",
+  "displayName": "Admin tools probe controller",
+  "version": "1.0.0",
+  "description": "R10 probe: an ADMIN-gated mounted @RestController. dev/auth.mode=none grants every caller ADMIN, so this proves the mount serves a real request end to end.",
+  "capability": "adminTools",
+  "capabilityType": "AdminToolsController",
+  "adapterId": "plugin:java-controller",
+  "implementation": {
+    "kind": "javaController",
+    "sourceRoot": "capabilities/adminTools/src/main/java",
+    "controllerClass": "com.npdev.generated.plugin.admintools.AdminToolsController"
+  },
+  "mount": {
+    "basePath": "/api/plugins/admin-tools",
+    "security": {
+      "minimumRole": "ADMIN"
+    }
+  },
+  "trust": {
+    "mode": "artifact-local-source",
+    "source": "external-artifact-bundle",
+    "level": "developer-supplied"
+  },
+  "generation": {
+    "mount": "compileIntoGeneratedApp",
+    "emitManifestContribution": true,
+    "emitPackageDescriptor": false,
+    "emitBinding": false
+  }
+}

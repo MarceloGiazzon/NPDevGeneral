@@ -94,6 +94,25 @@ public final class GeneratedPluginMountPlan {
         return mounts;
     }
 
+    /**
+     * R10 correction, found by a real boot (not assumed): JAVA_CONTROLLER mounts DO need a plugin
+     * manifest contribution, same as every other mount kind. {@code NpdevCapabilityBindingConfig
+     * .capabilityRegistry()} EAGERLY resolves EVERY {@code compiledModel.getBindings()} entry at
+     * boot (not lazily, only when a flow calls it, as the JAVA_SOURCE precedent's own comments
+     * elsewhere in this file assume) via {@code CapabilityAdapterResolver.resolve()}, which requires
+     * {@code RuntimePluginAdapterRegistry} to have SOME contribution for {capability, adapterId} --
+     * with a blank operation, since a controller-bound capability is never called by name, the
+     * registry's own fallback (blank operation -> ignore the exact operation index, match on
+     * {capability, adapterId} alone) is exactly what a controller mount needs. Omitting the
+     * contribution entirely (an earlier version of this method did) fails EVERY app with a plugin
+     * controller at boot with "Adapter 'plugin:java-controller' for capability '...' operation
+     * '&lt;binding&gt;' is not declared in active plugin manifest" -- confirmed live via
+     * run-r10-plugin-controller-proof.py. {@link Mount#runtimeRef()} already resolves a
+     * JAVA_CONTROLLER mount to {@link #GENERIC_MOUNTED_RUNTIME_REF} (the same fallback every other
+     * unrecognized {@code plugin:*} adapter uses) because {@code javaSource} is null for this kind --
+     * so nothing else has to change; the manifest contribution is realized against a handler nothing
+     * ever actually calls (no flow references a mounted controller's capability), which is harmless.
+     */
     public List<PackageGroup> packageGroups() {
         Map<String, List<Mount>> byCapabilityAdapter = new LinkedHashMap<>();
         for (Mount mount : mounts) {
@@ -113,6 +132,12 @@ public final class GeneratedPluginMountPlan {
                 .filter(group -> group.representative().mountKind() == MountKind.JAVA_SOURCE)
                 .map(group -> new JavaSourcePackageGroup(group.representative().javaSource(), group.mounts()))
                 .toList();
+    }
+
+    /** R10: every plugin:java-controller mount, in the same deterministic order as {@link #mounts()}.
+     *  Deliberately NOT grouped by {@link #packageGroups()} -- see that method's javadoc. */
+    public List<Mount> javaControllerMounts() {
+        return mounts.stream().filter(mount -> mount.mountKind() == MountKind.JAVA_CONTROLLER).toList();
     }
 
     public static boolean isReservedCapability(String capabilityName, String capabilityType) {
@@ -151,8 +176,28 @@ public final class GeneratedPluginMountPlan {
         if ("plugin:java-source".equals(normalized)) {
             return MountKind.JAVA_SOURCE;
         }
+        if ("plugin:java-controller".equals(normalized)) {
+            return MountKind.JAVA_CONTROLLER;
+        }
         return MountKind.GENERIC_MOUNTED;
     }
+
+    /**
+     * R10: the ONE package prefix a mounted plugin controller's source is allowed to declare.
+     * {@code FinalExecApplication}'s {@code @ComponentScan} only scans {@code com.finalexec} (the
+     * platform's own, allowlist-gated surface) and {@code com.npdev.generated} (generated + mounted
+     * content) -- so a controller outside either is never a Spring bean at all, silently dead code
+     * rather than a security hole. Forcing it specifically under {@code .plugin.} (not the sibling
+     * {@code .controllers.}/{@code .services.} packages the generator itself emits into) is what lets
+     * the runtime-side guard (PluginControllerSecurityConfig, the 4th enforcement point) tell
+     * "a plugin controller that must have a security-manifest entry" apart from "any other generated
+     * bean" using nothing but the package name.
+     */
+    static final String PLUGIN_CONTROLLER_PACKAGE_PREFIX = "com.npdev.generated.plugin.";
+
+    /** R10: every plugin:java-controller mount is reserved to this URL prefix, so it can never
+     *  collide with a platform-owned {@code /api/*} route (present or future) outside it. */
+    static final String PLUGIN_CONTROLLER_BASE_PATH_PREFIX = "/api/plugins/";
 
     private static JavaSourceDescriptor loadJavaSourceDescriptor(CompiledPluginRequirement requirement, Path artifactRoot) {
         if (artifactRoot == null) {
@@ -247,6 +292,118 @@ public final class GeneratedPluginMountPlan {
         }
     }
 
+    /**
+     * R10: mirrors {@link #loadJavaSourceDescriptor} as closely as the shape difference allows --
+     * same {@code capabilities/<name>/capability.plugin.json} descriptor location, same
+     * artifact-local sourceRoot copy-at-generation-time mechanism -- but a raw {@code @RestController}
+     * has no {@code operationBindings} (Spring routes it by annotation, not by capability-dispatch
+     * method lookup) and instead declares a {@code mount} block: {@code basePath} (the URL prefix
+     * Spring will actually serve it under) and {@code security.minimumRole} (D9: enforced by a
+     * generated wrapper at request time, not merely validated here and trusted -- see
+     * {@code PluginControllerSecurityConfig} in NPDevRuntimeHost, the 4th enforcement point). Both are
+     * REQUIRED: a plugin controller with no declared minimumRole fails generation outright rather than
+     * silently mounting unguarded, which is the exact "declared-only is worse than none" trap D9 was
+     * written to close off.
+     *
+     * <p>npdev-plugin-controller-security-enforcement: twin-pair token
+     * (scripts/quality/twin-pair-registry.json) binding this descriptor loader to
+     * {@code RuntimeApiEmitter} (writes the security manifest from these validated fields),
+     * NPDevRuntimeHost's {@code PluginControllerSecurityConfig} (reads that manifest and enforces
+     * minimumRole at request time -- the 4th runtime-supported-controller enforcement point), and
+     * {@code run-r10-plugin-controller-proof.py} (the live proof this mechanism is verified by).
+     */
+    private static JavaControllerDescriptor loadJavaControllerDescriptor(CompiledPluginRequirement requirement, Path artifactRoot) {
+        if (artifactRoot == null) {
+            throw new IllegalStateException("plugin:java-controller capability '" + requirement.capabilityName()
+                    + "' requires a model source parent for capability.plugin.json discovery.");
+        }
+        Path descriptorPath = artifactRoot
+                .resolve("capabilities")
+                .resolve(requirement.capabilityName())
+                .resolve("capability.plugin.json")
+                .normalize();
+        if (!descriptorPath.startsWith(artifactRoot) || !Files.isRegularFile(descriptorPath)) {
+            throw new IllegalStateException("plugin:java-controller capability '" + requirement.capabilityName()
+                    + "' requires descriptor: capabilities/" + requirement.capabilityName() + "/capability.plugin.json");
+        }
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(descriptorPath.toFile());
+            String capability = requiredText(root, "capability", descriptorPath);
+            String capabilityType = text(root, "capabilityType");
+            String adapterId = requiredText(root, "adapterId", descriptorPath);
+            String packageId = requiredText(root, "packageId", descriptorPath);
+            String pluginId = requiredText(root, "pluginId", descriptorPath);
+            String displayName = firstNonBlank(text(root, "displayName"), "User " + capability + " Java controller plugin");
+            String version = firstNonBlank(text(root, "version"), "1.0.0");
+
+            JsonNode implementation = root.path("implementation");
+            if (!"javacontroller".equals(normalize(implementation.path("kind").asText()))) {
+                throw new IllegalStateException("plugin:java-controller descriptor " + descriptorPath
+                        + " must declare implementation.kind = javaController");
+            }
+            String sourceRoot = requiredText(implementation, "sourceRoot", descriptorPath);
+            String controllerClass = requiredText(implementation, "controllerClass", descriptorPath);
+            if (!normalize(controllerClass).startsWith(normalize(PLUGIN_CONTROLLER_PACKAGE_PREFIX))) {
+                throw new IllegalStateException("plugin:java-controller descriptor " + descriptorPath
+                        + " controllerClass '" + controllerClass + "' must be declared under package "
+                        + PLUGIN_CONTROLLER_PACKAGE_PREFIX + " (FinalExecApplication only component-scans "
+                        + "com.finalexec and com.npdev.generated; the security guard only recognizes this "
+                        + "reserved subpackage as a mounted plugin controller)");
+            }
+            Path resolvedSourceRoot = artifactRoot.resolve(sourceRoot.replace('/', java.io.File.separatorChar)).normalize();
+            if (!resolvedSourceRoot.startsWith(artifactRoot) || !Files.isDirectory(resolvedSourceRoot)) {
+                throw new IllegalStateException("plugin:java-controller descriptor " + descriptorPath
+                        + " points to missing sourceRoot: " + sourceRoot);
+            }
+            Path controllerClassSource = resolvedSourceRoot.resolve(controllerClass.replace('.', '/') + ".java").normalize();
+            if (!controllerClassSource.startsWith(resolvedSourceRoot) || !Files.isRegularFile(controllerClassSource)) {
+                throw new IllegalStateException("plugin:java-controller descriptor " + descriptorPath
+                        + " points to missing controllerClass source: " + controllerClass + " expected at "
+                        + sourceRoot + "/" + controllerClass.replace('.', '/') + ".java");
+            }
+
+            JsonNode mount = root.path("mount");
+            String basePath = requiredText(mount, "basePath", descriptorPath);
+            if (!basePath.startsWith(PLUGIN_CONTROLLER_BASE_PATH_PREFIX)) {
+                throw new IllegalStateException("plugin:java-controller descriptor " + descriptorPath
+                        + " mount.basePath '" + basePath + "' must start with " + PLUGIN_CONTROLLER_BASE_PATH_PREFIX
+                        + " -- every plugin controller is reserved to this URL prefix so it can never collide "
+                        + "with a platform-owned route");
+            }
+            JsonNode security = mount.path("security");
+            String minimumRole = requiredText(security, "minimumRole", descriptorPath);
+
+            if (!normalize(capability).equals(normalize(requirement.capabilityName()))) {
+                throw new IllegalStateException("plugin:java-controller descriptor " + descriptorPath
+                        + " capability '" + capability + "' does not match model capability '"
+                        + requirement.capabilityName() + "'");
+            }
+            if (!normalize(adapterId).equals(normalize(requirement.boundAdapter()))) {
+                throw new IllegalStateException("plugin:java-controller descriptor " + descriptorPath
+                        + " adapterId '" + adapterId + "' does not match model binding adapter '"
+                        + requirement.boundAdapter() + "'");
+            }
+            return new JavaControllerDescriptor(
+                    descriptorPath,
+                    artifactRoot,
+                    packageId,
+                    pluginId,
+                    displayName,
+                    version,
+                    capability,
+                    capabilityType,
+                    adapterId,
+                    sourceRoot.replace('\\', '/'),
+                    resolvedSourceRoot,
+                    controllerClass,
+                    basePath,
+                    minimumRole.toUpperCase(Locale.ROOT)
+            );
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed reading plugin:java-controller descriptor: " + descriptorPath, exception);
+        }
+    }
+
     private static String text(JsonNode node, String fieldName) {
         JsonNode value = node == null ? null : node.get(fieldName);
         return value == null || value.isNull() ? "" : value.asText("").trim();
@@ -267,7 +424,8 @@ public final class GeneratedPluginMountPlan {
 
     public enum MountKind {
         GENERIC_MOUNTED,
-        JAVA_SOURCE
+        JAVA_SOURCE,
+        JAVA_CONTROLLER
     }
 
     public record Mount(
@@ -280,7 +438,8 @@ public final class GeneratedPluginMountPlan {
             String normalizedCapability,
             String normalizedAdapter,
             MountKind mountKind,
-            JavaSourceDescriptor javaSource
+            JavaSourceDescriptor javaSource,
+            JavaControllerDescriptor javaController
     ) {
 
         private static final Comparator<Mount> ORDERING = Comparator
@@ -295,6 +454,9 @@ public final class GeneratedPluginMountPlan {
             JavaSourceDescriptor javaSource = kind == MountKind.JAVA_SOURCE
                     ? loadJavaSourceDescriptor(requirement, artifactRoot)
                     : null;
+            JavaControllerDescriptor javaController = kind == MountKind.JAVA_CONTROLLER
+                    ? loadJavaControllerDescriptor(requirement, artifactRoot)
+                    : null;
             return new Mount(
                     requirement.capabilityName(),
                     requirement.capabilityType(),
@@ -305,7 +467,8 @@ public final class GeneratedPluginMountPlan {
                     normalizedIdPart(requirement.capabilityName()),
                     normalizedIdPart(requirement.boundAdapter()),
                     kind,
-                    javaSource
+                    javaSource,
+                    javaController
             );
         }
 
@@ -313,12 +476,18 @@ public final class GeneratedPluginMountPlan {
             if (javaSource != null) {
                 return javaSource.pluginId();
             }
+            if (javaController != null) {
+                return javaController.pluginId();
+            }
             return "generated-" + normalizedCapability + "-" + normalizedAdapter + "-plugin";
         }
 
         public String packageId() {
             if (javaSource != null) {
                 return javaSource.packageId();
+            }
+            if (javaController != null) {
+                return javaController.packageId();
             }
             return "generated-" + normalizedCapability + "-" + normalizedAdapter + "-package";
         }
@@ -344,15 +513,51 @@ public final class GeneratedPluginMountPlan {
         }
 
         public String displayName() {
-            return javaSource == null ? "Generated " + capability + " plugin" : javaSource.displayName();
+            if (javaSource != null) {
+                return javaSource.displayName();
+            }
+            if (javaController != null) {
+                return javaController.displayName();
+            }
+            return "Generated " + capability + " plugin";
         }
 
         public String version() {
-            return javaSource == null ? "1.0.0" : javaSource.version();
+            if (javaSource != null) {
+                return javaSource.version();
+            }
+            if (javaController != null) {
+                return javaController.version();
+            }
+            return "1.0.0";
         }
 
         public String methodName() {
             return javaSource == null ? operation : javaSource.methodForOperation(operation);
+        }
+
+        /** R10: the URL prefix this mounted controller is served under, or "" for any other mount kind. */
+        public String controllerBasePath() {
+            return javaController == null ? "" : javaController.basePath();
+        }
+
+        /** R10: the role D9 requires the generated security wrapper to enforce before delegating,
+         *  or "" for any other mount kind. */
+        public String controllerMinimumRole() {
+            return javaController == null ? "" : javaController.minimumRole();
+        }
+
+        /** R10: the mounted controller's fully-qualified class name, or "" for any other mount kind. */
+        public String controllerClassName() {
+            return javaController == null ? "" : javaController.controllerClass();
+        }
+
+        /** R10: the mounted controller's simple class name -- what
+         *  PluginControllerSecurityConfig matches Spring bean class names against. */
+        public String controllerSimpleClassName() {
+            String fullyQualified = controllerClassName();
+            int lastDot = fullyQualified.lastIndexOf('.');
+            return lastDot < 0 ? fullyQualified : fullyQualified.substring(lastDot + 1);
         }
     }
 
@@ -395,6 +600,28 @@ public final class GeneratedPluginMountPlan {
         public String methodForOperation(String operation) {
             return methodByOperation.get(normalize(operation));
         }
+    }
+
+    /** R10: the plugin:java-controller sibling of {@link JavaSourceDescriptor} -- same descriptor
+     *  file convention, but a {@code mount} block (basePath + security.minimumRole) instead of
+     *  {@code runtimeRef}/{@code operationBindings}, since a raw controller is routed by Spring
+     *  annotations, never capability-dispatched. */
+    public record JavaControllerDescriptor(
+            Path descriptorPath,
+            Path artifactRoot,
+            String packageId,
+            String pluginId,
+            String displayName,
+            String version,
+            String capability,
+            String capabilityType,
+            String adapterId,
+            String sourceRoot,
+            Path resolvedSourceRoot,
+            String controllerClass,
+            String basePath,
+            String minimumRole
+    ) {
     }
 
     public record JavaSourcePackageGroup(
