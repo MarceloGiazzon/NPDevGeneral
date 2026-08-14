@@ -3,8 +3,9 @@ title: >-
   Zero checkers boot a generated app
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-13
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F3, ROADMAP.md card R12). Zero of 36
   checkers boot a generated application -- the largest gap in the verification suite.
@@ -15,3 +16,16 @@ detail: |
   multi-hop pack upgrade preserve a real row?) is the most valuable one in the system -- do not build
   two artifacts. Lands at MASTER-ROADMAP.md Step 11 (PM3 milestone); not in this session's scope
   (Steps 1-4).
+
+  2026-08-14 (ledger-currency sweep): status was still OPEN even though the absorbing work landed.
+  `ledger/items/PACK-6.yml` (status DONE, closed 2026-08-13) states directly: "a multi-hop upgrade
+  replays the chain and preserves a real row IS the first checker that boots a generated app" --
+  a real generate->build->boot->seed->regenerate->build->boot->verify cycle, exactly the gap this
+  item named. Closed on that item's own evidence, not re-derived independently here.
+guard:
+  kind: test
+  ref: ledger/items/PACK-6.yml
+  asserts: >-
+    PACK-6's guard (a real build+boot+regenerate+build+boot cycle) is the first checker in this
+    codebase's suite that boots a generated application, closing the gap this item named
+  provenRed: true

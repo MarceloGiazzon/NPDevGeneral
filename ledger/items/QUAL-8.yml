@@ -3,8 +3,9 @@ title: >-
   The largest gate triggers on pull_request only; 52 of 60 commits bypass it
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-12
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R4 Part B). Confirmed live
   this session: .github/workflows/ai-knowledge-gate.yml's `on:` block is
@@ -19,6 +20,12 @@ detail: |
   (MarceloGiazzon/NPDevGeneral) requiring the ai-knowledge-gate status check and a PR before merge,
   rather than adding a bare `push:` trigger (which would just make every direct push slow without
   changing the habit).
+
+  2026-08-14 (ledger-currency sweep): status was still OPEN despite the item's own text already
+  saying "fixed this session." Re-verified live, not just re-reading the old note:
+  `gh api repos/MarceloGiazzon/NPDevGeneral/branches/main/protection` currently returns
+  `required_status_checks.contexts: ["AI knowledge substrate gate"]` -- branch protection is live
+  today, not just at the time this was first written.
 guard:
   kind: manual
   ref: gh api repos/MarceloGiazzon/NPDevGeneral/branches/main/protection

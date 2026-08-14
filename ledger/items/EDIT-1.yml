@@ -3,8 +3,9 @@ title: >-
   Editor bundle IO drops 17 of 34 root DSL sections and cannot open a model.json
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-14
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F1 -- live hazard, ROADMAP.md card R6).
   Confirmed live this session: bundleIoService.ts's toCanonicalModelDocument/toInternalModelDocument
@@ -19,6 +20,15 @@ detail: |
   (cannot be reduced -- the loss-detector test is the whole point). Fix: replace the allowlists with
   an ordered pass-through mirroring modelDocumentService.ts's normalizeDocument `...document` spread
   pattern. MASTER-ROADMAP.md Step 3, this session's scope.
+
+  2026-08-14 (ledger-currency sweep): status was still OPEN despite the fix having shipped days
+  earlier -- commit `74501683` ("fix(editor): bundleIoService loses 17 of 34 schema root sections on
+  save (R6)", PR #11) landed on main 2026-08-12. Confirmed live on the current checkout, not just by
+  the commit existing: `toCanonicalModelDocument` now opens with `...document` (line 36) instead of a
+  hardcoded object literal, and both guard files exist
+  (`bundleIoService.schemaLossDetector.test.ts`, `importExportRoundTrip.test.ts`). The vitest run
+  itself was not re-executed this pass (`node_modules` not installed in this checkout) -- closed on
+  source-level + commit-history evidence, not a fresh test run.
 guard:
   kind: test
   ref: NPDevEditor/ui-react/src/authoring/io/importExportRoundTrip.test.ts (schema-driven loss-detector test)

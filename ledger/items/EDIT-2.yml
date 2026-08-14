@@ -3,8 +3,9 @@ title: >-
   Editor "Add panel"/"Add rule profile" emit schema-invalid keys
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-14
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R6). Confirmed live this
   session against the real schema: the panel $def (additionalProperties: false) has no
@@ -22,3 +23,21 @@ detail: |
   them from AuthoringModelDocument's panel/ruleProfile authoring types, fix modelValidation.ts's
   panel.route-or-panel.concept check to match the real schema shape. MASTER-ROADMAP.md Step 3, this
   session's scope (bundled with EDIT-1's fix, same card).
+
+  2026-08-14 (ledger-currency sweep): status was still OPEN despite shipping alongside EDIT-1 in
+  commit `74501683` (PR #11, landed 2026-08-12). Confirmed live on the current checkout: grepping
+  `PanelsEditorSection.tsx` and `RuleProfilesEditorSection.tsx` for the specific invalid keys this
+  item named (a bare `dataSource`/`concept` field on a panel, a `permissionRequirements` field on a
+  rule profile) finds zero matches -- neither file writes them anymore. No dedicated automated guard
+  test exists for this specific check (the roundtrip loss-detector test covers EDIT-1's scope, not
+  this one), so this is closed on direct source inspection, not a test run.
+guard:
+  kind: manual
+  ref: >-
+    grep NPDevEditor/ui-react/src/authoring/editors/panels/PanelsEditorSection.tsx and
+    RuleProfilesEditorSection.tsx for a bare `dataSource:`/`concept:` field on a panel or a
+    `permissionRequirements` field on a rule profile
+  asserts: >-
+    neither file writes a key outside model.schema.json's panel/ruleProfile $def
+    (additionalProperties: false), matching the schema's real shape
+  provenRed: false
