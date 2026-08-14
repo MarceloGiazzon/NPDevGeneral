@@ -87,10 +87,33 @@ detail: |
   log (`AUTH DEBUG -> ... X-API-Key=present | claims={actor_id=developer, roles=[ADMIN], ...}`,
   i.e. authentication succeeded and the flow reached real business logic before failing on an
   invariant check with nothing to do with credentials). `Impact-Only.ps1` (a third, separate java
-  launch site) also verified live: booted successfully with the shared provisioner, reused the SAME
-  key `Start-App.ps1` had already generated (idempotency across independent script invocations
-  confirmed, not just across restarts of the same script), reported a real schema-impact verdict
-  (`SAFE`, exit 0) rather than refusing to boot.
+  launch site) also verified live: booted successfully unmodified, reused `application-dev.yml`'s
+  own untouched mapping (it never sends an authenticated HTTP request -- `REPORT_ONLY` mode exits
+  before the web server binds a port -- so it needs no `Ensure-NpdevApiKey` call at all; see below).
+
+  **This session's own adversarial review of the fix's PR (#66) before merge caught two real,
+  worth-fixing issues in the first draft, neither a functional regression**: (1) the initial draft
+  called `Ensure-NpdevApiKey` from `Impact-Only.ps1` too, which is dead weight (the key is never
+  consumed) and silently contradicted that script's own "zero writes" banner on a first-ever run --
+  removed; (2) every `Ensure-NpdevApiKey` caller assumes `$env:NPDEV_AUTH_API_KEYS` is non-null
+  immediately after the call, which crashes uncaught if a pre-existing `secrets/api-key.env` is
+  empty/malformed -- reproduced live, confirmed as a pre-existing pattern already in
+  `OperationalRunbookEmitter.java`'s `smokeTestScript()` (Stage C) that this fix faithfully
+  mirrored rather than introduced; filed separately as `REG-157` rather than partially guarding
+  only the new call sites.
+
+  **The review's central, correctly-weighted concern**: this platform's CI
+  (`.github/workflows/npdev-pr-gate.yml`) never invokes `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1`
+  or any script they emit -- confirmed by reading the workflow in full -- so a green CI run
+  corroborates nothing about this fix, and this exact ledger item already had one false "closed"
+  claim earlier (PR #65's first commit) with no comparable backstop this time. Answered with a new,
+  durable, re-runnable artifact rather than more prose: `scripts/proofs/
+  run-reg152-secondlaunch-proof.ps1` -- generates a real app via `Build-NpdevApp.ps1`, launches it
+  with the exact OLD (pre-fix) arguments as a RED control (`dev-key` -> 200, confirmed), then runs
+  the real fixed `Start-App.ps1` as GREEN (`dev-key`/`api-dev` -> 401, generated key -> 200,
+  `Test-App.ps1` PASS), writing full console output to
+  `__OutsideRepo/reg152-secondlaunch-proof-evidence/`. Run it yourself to independently re-confirm
+  this fix rather than trusting this prose -- that is the point of committing it.
 
   This closes SEC-1's own title claim: no generated app, on any of the three launch pipelines this
   platform ships, boots with a live published ADMIN credential anymore.
