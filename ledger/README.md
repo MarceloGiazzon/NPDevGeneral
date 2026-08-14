@@ -47,6 +47,42 @@ test or script that proves it, not just a sentence asserting it. Filed OPEN item
 (there is no proof yet); closing an item without one is a claim, not a proof. `R11`'s full card (ledger
 restructuring, derived gate numbers) is separate, larger, and not implied by this field's presence.
 
+**Enforced, not just documented, as of `check-done-item-guards.py` (R11's core mechanism, landed
+2026-08-14).** The field existed from 992d47a8 onward but nothing checked it — a `guard` could be
+absent from a DONE item, or present and pointing at nothing, and neither was ever caught. Two rules
+now run on every gate pass (`scripts/quality/check-done-item-guards.py`, wired into
+`run-ai-knowledge-gate.ps1` step [36/35]):
+
+1. **Coverage, ratcheted.** Every `status: DONE` item must carry a `guard:` block, unless its id is
+   in `scripts/policy/done-item-guard-policy.json`'s `legacy.ids` — the 177 DONE-without-guard items
+   that predated the checker, frozen 2026-08-14. That list is shrink-only, exactly
+   `scripts/policy/doc-inventory-policy.json`'s pre-ban legacy set: a **new** DONE item (filed or
+   re-closed from that commit forward) cannot be grandfathered into it, so it must carry a real guard
+   to close. An id leaves the legacy list (with `frozenCount` lowered in the same commit) once its
+   item genuinely gains a guard, changes status away from `DONE`, or is deleted — leaving a
+   no-longer-needed entry in place is itself a checker failure.
+2. **Resolution.** Every `guard:` block present on *any* item, regardless of status, must actually
+   resolve, checked mechanically:
+   - `kind: test` — the file at `ref` (before any `#method` or trailing `(...)` note) must exist, and
+     if a `#method` is given, that identifier must appear in the file.
+   - `kind: script` — at least one concrete anchor (a repo-rooted `.py`/`.ps1`/`.sh` path, a
+     fully-qualified Java test class, or `gradlew`) must be found in `ref`, and every anchor found
+     must exist.
+   - `kind: manual` — best-effort only: any *repo-rooted* path mentioned (starting with `scripts/`,
+     `NPDevContract/`, `docs/`, etc.) must exist. Most manual guards name no file at all (a live-app
+     HTTP interaction, a `gh api` call) and that is fine — see the checker's own module docstring
+     ("HONEST LIMIT") for exactly what is and isn't checked, and why a bare filename or an app-relative
+     path like `` `_ops\Run-FinalApp.ps1` `` (emitted per-app at generation time, never tracked in this
+     repo) is deliberately not chased.
+
+Three real guards were backfilled onto pre-existing DONE items in the same commit that added the
+checker, to prove the ratchet resolves something real rather than only asserting it: `REG-142` (a
+`script` guard pointing at `check-template-resource-shadowing.py`, itself already wired into the gate
+as the regression control for that exact bug), `REG-108` (a `test` guard naming
+`ModelSourceResolverTest#packContributedRolesPropertyScopesAndPropertiesAreMergedNotDropped`), and
+`STOR-2` (a `script` guard pointing at `check-rollback-claims.py`, described in
+`run-ai-knowledge-gate.ps1`'s own step comment as "the mechanical half of STOR-2").
+
 `legacyDetailRef` (optional) no longer appears on any current item: it used to point into
 `docs/NPDEV_OPEN_ITEMS_REGISTER.md`'s `#reg-N` anchors for the original, often multi-thousand-word
 investigation narrative, and md-zero-2026-08-11 PLAN.md Phase 2 removed it from all 64 items in the
@@ -76,7 +112,11 @@ Declared in `scripts/requirements.txt`; `.github/workflows/ai-knowledge-gate.yml
 
 ## What consumes the ledger now
 
-- `scripts/quality/generate_open_items.py` — renders OPEN_ITEMS.md.
+- `scripts/quality/generate_open_items.py` — renders OPEN_ITEMS.md, and is reused by
+  `check-done-item-guards.py` for schema-validated item loading (`from generate_open_items import
+  load_items`) rather than re-implementing the same validation twice.
+- `scripts/quality/check-done-item-guards.py` — enforces the `guard:` coverage ratchet and resolution
+  rules described above, against `scripts/policy/done-item-guard-policy.json`.
 - `scripts/external-review/build-review-pack.py`'s `FORBIDDEN_PATH_PATTERNS` names `OPEN_ITEMS\.md$`
   (excluding it from any external-AI review pack, since it carries the platform's own conclusions
   about itself) and `NPDEV_OPEN_ITEMS_REGISTER\.md$` (the archived register that pattern was
