@@ -5178,14 +5178,27 @@ def inspect_app(args: argparse.Namespace) -> None:
 # ok, exit 2 = ran fine and reported a real structured problem, exit 1 only for an unexpected raise).
 # -------------------------------------------------------------------------------------------------
 
-def _print_result(result: dict, args: argparse.Namespace) -> None:
+def _print_result(result: dict, args: argparse.Namespace, *, redact_output: bool = True) -> None:
     """--json prints the object; without it, a short human summary. Both, always -- a command that
     only speaks JSON is a command a person cannot use, and the CLI has to stay usable in a terminal
-    for D1's promise ('nothing here is a dead end if you later want the command line') to be true."""
+    for D1's promise ('nothing here is a dead end if you later want the command line') to be true.
+
+    REG-153: redacted by DEFAULT before printing, either way. CodeQL's default-setup scan traced a
+    real path into both branches here: `npdev_monitor.probe_app()` puts the app's live API key
+    (read from `secrets/api-key.env`) in `record["apiKey"]`, and that record (or something built
+    from it) reaches this function for several `monitor`/`explore` subcommands. `redact()` is the
+    exact key-name-driven scrub already used for the log-bundle export and the AI-repair payload
+    (`npdev_monitor.redact`, D10/E3-a) -- this was simply the one path that never called it.
+    `redact_output=False` is a narrow, explicit opt-out for the ONE caller (`monitor probe`) whose
+    entire job is answering "what is this app's real API key": `NPDevSamples/scripts/
+    sample-common.ps1`'s `Get-NpdevLiveApiKey` shells out to exactly `monitor probe --json` and
+    parses `.apiKey`, so redacting that command's output would trade a hardening for a real
+    functional break. Every other caller of this function stays safe by default."""
+    safe_result = npdev_monitor.redact(result) if redact_output else result
     if getattr(args, "json", False):
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        print(json.dumps(safe_result, indent=2, ensure_ascii=False))
         return
-    print(_human_summary(result))
+    print(_human_summary(safe_result))
 
 
 def _human_summary(result: dict) -> str:
@@ -5242,7 +5255,10 @@ def run_monitor(args: argparse.Namespace) -> int:
         result.setdefault("schemaVersion", "npdev-monitor-probe.v1")
         result.setdefault("command", "monitor probe")
         result["ok"] = result.get("status") == "ok"
-        _print_result(result, args)
+        # REG-153: this is the one command whose job is answering "what is this app's real API
+        # key" (see the comment on `record["apiKey"]` in `npdev_monitor.probe_app`) -- keep it
+        # unredacted here, matching the documented, tested contract `Get-NpdevLiveApiKey` depends on.
+        _print_result(result, args, redact_output=False)
         return 0 if result["ok"] else 2
     if args.monitor_command == "engine":
         result = npdev_monitor.detect_engine(args.port, args.root, repo_root())
@@ -5504,10 +5520,17 @@ def run_explore(args: argparse.Namespace) -> int:
         # exploration (D4). Exit 2, structured, with the sentence that says what to do.
         raise CliError(str(exc)) from exc
 
+    # REG-153: `explore preflight`'s result embeds a whole `npdev_monitor.probe_app()` record
+    # (under `result["app"]`), which carries the target app's live API key -- CodeQL's default-setup
+    # scan traced exactly that into both print branches below. No `explore` subcommand's output is
+    # a documented source of a credential for other tooling (unlike `monitor probe`, see
+    # `_print_result`'s own REG-153 note), so redacting here is safety net with no known behaviour
+    # cost.
+    safe_result = npdev_monitor.redact(result)
     if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        print(json.dumps(safe_result, indent=2, ensure_ascii=False))
     else:
-        print(_explore_human_summary(args.explore_command, result))
+        print(_explore_human_summary(args.explore_command, safe_result))
     return 0 if result.get("ok", True) else 2
 
 
