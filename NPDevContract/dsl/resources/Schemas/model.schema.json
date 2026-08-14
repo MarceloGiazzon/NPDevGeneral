@@ -4506,14 +4506,21 @@
     },
     "packRef": {
       "type": "object",
-      "required": [
-        "$ref"
+      "oneOf": [
+        { "required": ["$ref"] },
+        { "required": ["from"] }
       ],
       "properties": {
         "$ref": {
           "type": "string",
           "minLength": 1,
           "pattern": "^(?![A-Za-z][A-Za-z0-9+.-]*:)(?!/).*\\.json$"
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(oci://[A-Za-z0-9][A-Za-z0-9._:/-]*(:[A-Za-z0-9._-]+|@sha256:[0-9a-f]{64})|git\\+(https|http|ssh|file|git)://.+@[A-Za-z0-9][A-Za-z0-9._/-]*)$",
+          "description": "PK-5: remote pack coordinate -- oci://registry/repository:tag (or @sha256:<digest>), or git+<transport>://url[//subpath]@tag. Mutually exclusive with $ref, which stays local-file-only by design (a deliberate hermeticity guarantee, PACK-ROADMAP.md card PK-5 step 3) -- npdev generate resolves a 'from' pack ONLY from the local content-addressed cache via npdev.lock, never over the network; see NetworkPolicy."
         },
         "as": {
           "type": "string",

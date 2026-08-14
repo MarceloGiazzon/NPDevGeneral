@@ -4,12 +4,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.dsl.v1.pack.MinimalVersionSelector;
+import com.npdev.dsl.v1.pack.NetworkPolicy;
+import com.npdev.dsl.v1.pack.PackCache;
+import com.npdev.dsl.v1.pack.PackCoordinate;
 import com.npdev.dsl.v1.pack.PackLockFile;
 import com.npdev.dsl.v1.pack.PackMigrationChain;
 import com.npdev.dsl.v1.pack.PackMigrationChainSynthesizer;
 import com.npdev.dsl.v1.pack.PackMigrationComposer;
 import com.npdev.dsl.v1.pack.PackVersion;
 import com.npdev.dsl.v1.pack.PackVersionConstraint;
+import com.npdev.dsl.v1.pack.RemotePackFetcher;
 import com.npdev.dsl.v1.validation.ValidationDiagnostic;
 import com.npdev.dsl.v1.validation.ValidationSeverity;
 
@@ -60,12 +64,28 @@ final class PackDependencyGraphWalker {
     private final Map<String, String> qualifierById = new LinkedHashMap<>();
     private final Map<String, List<MinimalVersionSelector.Requirement>> requirementsByPackId = new LinkedHashMap<>();
     private final List<ModelSourceResolver.PackRequirementEntry> packRequirements = new ArrayList<>();
+    /** PK-5: real packId -> the exact {@code packs[].from} coordinate it was resolved from, for
+     *  every DIRECT import that used {@code from} instead of {@code $ref}. Empty for every packId
+     *  resolved the pre-PK-5 way (local {@code $ref}, including every transitive dependency --
+     *  {@code from} is direct-app-import-only in this slice; see {@link #defaultPackFile}'s own
+     *  doc). Drives {@link #toLockEntries} / {@link #checkLock}'s sourcePath computation (a remote
+     *  pack's file lives in the shared {@link PackCache}, which can be on a different filesystem
+     *  root than the app -- {@link Path#relativize} across drive roots throws on Windows). */
+    private final Map<String, String> fromByPackId = new LinkedHashMap<>();
+    private boolean anyRemoteDirectImport = false;
+    private final NetworkPolicy networkPolicy;
 
-    private PackDependencyGraphWalker(ModelSourceResolver resolver, ModelSourceResolver.ResolutionState state, String rootDslVersion) {
+    private PackDependencyGraphWalker(
+            ModelSourceResolver resolver,
+            ModelSourceResolver.ResolutionState state,
+            String rootDslVersion,
+            NetworkPolicy networkPolicy
+    ) {
         this.resolver = resolver;
         this.state = state;
         this.rootDirectory = state.rootDirectory;
         this.rootDslVersion = rootDslVersion;
+        this.networkPolicy = networkPolicy;
     }
 
     static List<ModelSourceResolver.PackRequirementEntry> resolve(
@@ -95,23 +115,33 @@ final class PackDependencyGraphWalker {
             boolean enforceLock
     ) throws IOException {
         String rootDslVersion = ModelSourceResolver.textOrBlank(resolved.get("dslVersion"));
-        PackDependencyGraphWalker walker = new PackDependencyGraphWalker(resolver, state, rootDslVersion);
+        // PK-5 step 2 ("Distribution", PACK-ROADMAP.md card PK-5): this is the ONLY call site
+        // ModelSourceResolver.resolvePacks uses (the real generate/validate path), and
+        // NetworkPolicy.DENIED is hardcoded here -- not threaded in from any caller -- so a future
+        // edit cannot quietly reintroduce a fetch on this path without also having to change this
+        // literal line. See NetworkPolicy's own doc for the full guarantee.
+        PackDependencyGraphWalker walker = new PackDependencyGraphWalker(resolver, state, rootDslVersion, NetworkPolicy.DENIED);
         walker.run(packsNode, resolved, modelFile, enforceLock);
         return walker.packRequirements;
     }
 
     /** CLI-only entry point (pack add/update/list/why): returns the walker instance itself, so the
      *  caller can pull lock entries / why-requirements / resolved packIds off it -- never enforces
-     *  the lock (see {@link #resolve(ModelSourceResolver, ArrayNode, ObjectNode, Path, ModelSourceResolver.ResolutionState, boolean)}). */
+     *  the lock (see {@link #resolve(ModelSourceResolver, ArrayNode, ObjectNode, Path, ModelSourceResolver.ResolutionState, boolean)}).
+     *  {@code networkPolicy} is the caller's choice, unlike the real-resolution overload above --
+     *  {@code pack add}/{@code update} pass {@link NetworkPolicy#ALLOWED} (they are the one phase
+     *  that may fetch); {@code pack list}/{@code why} pass {@link NetworkPolicy#DENIED} (neither
+     *  ever fetches -- they only read an existing lock or dry-run the local-file graph). */
     static PackDependencyGraphWalker resolveForCli(
             ModelSourceResolver resolver,
             ArrayNode packsNode,
             ObjectNode resolved,
             Path modelFile,
-            ModelSourceResolver.ResolutionState state
+            ModelSourceResolver.ResolutionState state,
+            NetworkPolicy networkPolicy
     ) throws IOException {
         String rootDslVersion = ModelSourceResolver.textOrBlank(resolved.get("dslVersion"));
-        PackDependencyGraphWalker walker = new PackDependencyGraphWalker(resolver, state, rootDslVersion);
+        PackDependencyGraphWalker walker = new PackDependencyGraphWalker(resolver, state, rootDslVersion, networkPolicy);
         walker.run(packsNode, resolved, modelFile, false);
         return walker;
     }
@@ -123,10 +153,23 @@ final class PackDependencyGraphWalker {
         for (String packId : packNodeById.keySet()) {
             Path packFile = packFileById.get(packId);
             String version = ModelSourceResolver.textOrBlank(packNodeById.get(packId).get("version"));
-            String sourcePath = rootDirectory.relativize(packFile).toString().replace('\\', '/');
-            entries.put(packId, new PackLockFile.LockedPack(version, PackLockFile.sha256(packFile), sourcePath));
+            String from = fromByPackId.getOrDefault(packId, "");
+            entries.put(packId, new PackLockFile.LockedPack(
+                    version, PackLockFile.sha256(packFile), sourcePathFor(packFile, from), "", from));
         }
         return entries;
+    }
+
+    /** PK-5: a LOCAL pack's sourcePath is (as before) the app-relative path to its {@code $ref}
+     *  file. A REMOTE pack's file lives in the shared, machine-wide {@link PackCache} -- which can
+     *  sit on an entirely different filesystem root than the app (a different drive letter on
+     *  Windows, in particular) -- so {@code rootDirectory.relativize(packFile)} would throw
+     *  {@code IllegalArgumentException} there; record the cache path's own absolute form instead,
+     *  informational only (the digest, not sourcePath, is what generate actually re-verifies). */
+    private String sourcePathFor(Path packFile, String from) {
+        return from.isEmpty()
+                ? rootDirectory.relativize(packFile).toString().replace('\\', '/')
+                : packFile.toAbsolutePath().toString();
     }
 
     /** CLI-only accessor ({@code npdev pack why}): every constraint any pack in the graph placed
@@ -142,7 +185,8 @@ final class PackDependencyGraphWalker {
     }
 
     private record DirectImport(
-            String path, Path packFile, ObjectNode packNode, String realPackId, String qualifier, boolean allowSideBySide, boolean hasAlias) {
+            String path, Path packFile, ObjectNode packNode, String realPackId, String qualifier,
+            boolean allowSideBySide, boolean hasAlias, String from) {
     }
 
     private void run(ArrayNode packsNode, ObjectNode resolved, Path modelFile, boolean enforceLock) throws IOException {
@@ -157,13 +201,28 @@ final class PackDependencyGraphWalker {
             }
             ObjectNode packRef = (ObjectNode) packRefNode;
             JsonNode refNode = packRef.get("$ref");
-            if (refNode == null || !refNode.isTextual() || refNode.asText("").isBlank()) {
-                throw ModelSourceResolver.error(modelFile, path + "/$ref", "Pack $ref must be a non-blank string");
+            JsonNode fromNode = packRef.get("from");
+            boolean hasRef = refNode != null && refNode.isTextual() && !refNode.asText("").isBlank();
+            boolean hasFrom = fromNode != null && fromNode.isTextual() && !fromNode.asText("").isBlank();
+            if (hasRef == hasFrom) {
+                throw ModelSourceResolver.error(modelFile, path, "Pack import must declare exactly one of "
+                        + "'$ref' (a local file) or 'from' (a remote coordinate, PK-5) -- never both, never neither");
             }
 
-            Path packFile = ModelSourceResolver.resolvePackPath(refNode.asText(), modelFile, rootDirectory);
+            Path packFile;
+            String fromCoordinate = "";
+            if (hasRef) {
+                packFile = ModelSourceResolver.resolvePackPath(refNode.asText(), modelFile, rootDirectory);
+            } else {
+                fromCoordinate = fromNode.asText().trim();
+                packFile = resolveRemotePackFile(fromCoordinate, path, modelFile);
+                anyRemoteDirectImport = true;
+            }
             ObjectNode packNode = loadAndResolvePack(packFile, 1);
             String realPackId = ModelSourceResolver.textOrBlank(packNode.get("pack"));
+            if (!fromCoordinate.isEmpty()) {
+                fromByPackId.put(realPackId, fromCoordinate);
+            }
 
             String qualifier = ModelSourceResolver.resolvePackNamespace(packRef, packNode, modelFile, packFile, path);
             String namespaceKey = qualifier.toLowerCase(Locale.ROOT);
@@ -171,7 +230,8 @@ final class PackDependencyGraphWalker {
                 throw ModelSourceResolver.error(modelFile, path + "/as", "Duplicate pack namespace alias: " + qualifier);
             }
             boolean allowSideBySide = packRef.has("allowSideBySide") && packRef.get("allowSideBySide").asBoolean(false);
-            directImports.add(new DirectImport(path, packFile, packNode, realPackId, qualifier, allowSideBySide, packRef.has("as")));
+            directImports.add(new DirectImport(
+                    path, packFile, packNode, realPackId, qualifier, allowSideBySide, packRef.has("as"), fromCoordinate));
             index++;
         }
 
@@ -242,6 +302,56 @@ final class PackDependencyGraphWalker {
                     + " -- checked transitively, not just for direct imports");
         }
         return resolver.resolvePackRoot(rawPackNode, packFile, state, depth, new ArrayDeque<>());
+    }
+
+    /**
+     * PK-5 steps 1+2+4: resolves a DIRECT import's {@code from} coordinate to a local file WITHOUT
+     * ever touching the network on the generate/validate path -- this is the whole two-phase
+     * design ("Distribution", {@code PACK-ROADMAP.md} card PK-5 step 2).
+     *
+     * <p>When {@link #networkPolicy} is {@link NetworkPolicy#ALLOWED} (the CLI's {@code pack add}/
+     * {@code update} only), actually fetches via {@link RemotePackFetcher} into the shared {@link
+     * PackCache} and returns the freshly cached, digest-verified {@code pack.json}.
+     *
+     * <p>When DENIED (every other caller, including every real {@code npdev generate}/{@code
+     * validate}), never calls {@link RemotePackFetcher} at all -- instead looks up {@code
+     * npdev.lock} for an entry whose OWN recorded {@link PackLockFile.LockedPack#from} string
+     * exactly matches this coordinate. (The packId isn't known yet at this point -- it lives
+     * inside the very file this method is trying to locate -- so the coordinate string itself,
+     * not the packId, has to be the lookup key.) Reads the match through {@link PackCache#read},
+     * which re-verifies the cached bytes' digest on every call: a hard refusal, never a fetch, if
+     * the lock has no matching entry or the cache entry is missing/corrupt.
+     */
+    private Path resolveRemotePackFile(String fromCoordinate, String path, Path modelFile) throws IOException {
+        PackCoordinate coordinate;
+        try {
+            coordinate = PackCoordinate.parse(fromCoordinate);
+        } catch (IllegalArgumentException malformed) {
+            throw ModelSourceResolver.error(modelFile, path + "/from", malformed.getMessage());
+        }
+
+        PackCache cache = PackCache.atDefaultRoot();
+        if (networkPolicy.isAllowed()) {
+            RemotePackFetcher.FetchResult fetched = RemotePackFetcher.fetch(coordinate, networkPolicy, cache);
+            return fetched.packJson();
+        }
+
+        if (!PackLockFile.exists(rootDirectory)) {
+            throw ModelSourceResolver.error(modelFile, path + "/from", "pack 'from: " + fromCoordinate
+                    + "' has no " + PackLockFile.FILE_NAME + " entry (no lock file exists at all) -- run "
+                    + "'npdev pack add' first; npdev generate never touches the network");
+        }
+        PackLockFile lock = PackLockFile.read(rootDirectory);
+        for (PackLockFile.LockedPack locked : lock.packs().values()) {
+            if (fromCoordinate.equals(locked.from())) {
+                String digest = locked.digest();
+                String digestHex = digest.startsWith("sha256:") ? digest.substring("sha256:".length()) : digest;
+                return cache.read(digestHex);
+            }
+        }
+        throw ModelSourceResolver.error(modelFile, path + "/from", "pack 'from: " + fromCoordinate
+                + "' is not in " + PackLockFile.FILE_NAME + " -- run 'npdev pack add' first; npdev generate "
+                + "never touches the network");
     }
 
     /**
@@ -356,7 +466,12 @@ final class PackDependencyGraphWalker {
     private void checkLock(Path modelFile) throws IOException {
         boolean anyTransitiveDependency = packNodeById.values().stream()
                 .anyMatch(node -> node.get("packs") != null && node.get("packs").isArray() && !node.get("packs").isEmpty());
-        if (!anyTransitiveDependency) {
+        // PK-5: a from-based direct import ALREADY required (inside resolveRemotePackFile, above,
+        // called from run()'s per-packRef loop, well before this method) that npdev.lock exist and
+        // contain a matching entry -- so by the time this runs, the lock is known to exist. This
+        // extra pass adds defense-in-depth (the packId-SET-equality check below, resolvedVersion
+        // drift) that resolveRemotePackFile's own narrower per-coordinate check doesn't cover.
+        if (!anyTransitiveDependency && !anyRemoteDirectImport) {
             return;
         }
         if (!PackLockFile.exists(rootDirectory)) {
@@ -377,7 +492,7 @@ final class PackDependencyGraphWalker {
             ObjectNode packNode = packNodeById.get(packId);
             Path packFile = packFileById.get(packId);
             String liveVersion = ModelSourceResolver.textOrBlank(packNode.get("version"));
-            String liveSourcePath = rootDirectory.relativize(packFile).toString().replace('\\', '/');
+            String liveSourcePath = sourcePathFor(packFile, fromByPackId.getOrDefault(packId, ""));
             String liveDigest;
             try {
                 liveDigest = PackLockFile.sha256(packFile);

@@ -41,11 +41,29 @@ public final class PackLockFile {
      *                        composes an empty range -- see {@code PackMigrationComposer.compose}'s
      *                        {@code from.equals(to)} no-op case, reached by treating an empty
      *                        migratedVersion as equal to resolvedVersion at the call site).
+     * @param from            PK-5: the exact {@code packs[].from} coordinate string this packId was
+     *                        fetched from (e.g. {@code git+https://.../identity//pk@v2.1.0}), empty
+     *                        for a LOCAL pack (imported via {@code $ref}, the only kind that existed
+     *                        before PK-5). When non-empty, {@code sourcePath} is NOT a path relative
+     *                        to the app's model root (a remote pack lives in the shared, machine-wide
+     *                        {@code PackCache}, which can be on a different filesystem root entirely
+     *                        -- {@code Path.relativize} across drive roots throws on Windows) -- it is
+     *                        instead the cache entry's own absolute path, informational only. The
+     *                        generate path (network-DENIED) looks up a remote pack by matching this
+     *                        field against the model's own {@code packs[].from} string, never by
+     *                        packId alone, since the coordinate is known before the pack's own
+     *                        declared {@code pack} id is (chicken-and-egg: the id lives inside the
+     *                        file being located).
      */
-    public record LockedPack(String resolvedVersion, String digest, String sourcePath, String migratedVersion) {
-        /** Backward-compatible with every call site written before PK-4 Stage D added this field. */
+    public record LockedPack(String resolvedVersion, String digest, String sourcePath, String migratedVersion, String from) {
+        /** Backward-compatible with every call site written before PK-5 added this field. */
+        public LockedPack(String resolvedVersion, String digest, String sourcePath, String migratedVersion) {
+            this(resolvedVersion, digest, sourcePath, migratedVersion, "");
+        }
+
+        /** Backward-compatible with every call site written before PK-4 Stage D added migratedVersion. */
         public LockedPack(String resolvedVersion, String digest, String sourcePath) {
-            this(resolvedVersion, digest, sourcePath, "");
+            this(resolvedVersion, digest, sourcePath, "", "");
         }
     }
 
@@ -80,7 +98,8 @@ public final class PackLockFile {
                     textOrEmpty(value.get("resolvedVersion")),
                     textOrEmpty(value.get("digest")),
                     textOrEmpty(value.get("sourcePath")),
-                    textOrEmpty(value.get("migratedVersion"))));
+                    textOrEmpty(value.get("migratedVersion")),
+                    textOrEmpty(value.get("from"))));
         });
         return new PackLockFile(packs);
     }
@@ -98,6 +117,9 @@ public final class PackLockFile {
             entryNode.put("sourcePath", locked.sourcePath());
             if (!locked.migratedVersion().isEmpty()) {
                 entryNode.put("migratedVersion", locked.migratedVersion());
+            }
+            if (!locked.from().isEmpty()) {
+                entryNode.put("from", locked.from());
             }
         }
         Files.writeString(rootDirectory.resolve(FILE_NAME),
