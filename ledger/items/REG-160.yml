@@ -1,4 +1,4 @@
-id: REG-158
+id: REG-160
 title: >-
   WorkspaceMenuSeeder hardcodes the unversioned table name "workspace_menus", but the current
   generator's schema-realization SQL creates "workspace_v1_menus" -- any app composing the

@@ -146,7 +146,7 @@ detail: |
   **Verified LIVE, not assumed**: generated `superuser-admin-console` fresh
   (`NPDevSamples/scripts/generate-sample-app.ps1`), refreshed `runtimehost-libs` from current
   source (`sync-runtimehost-libs.ps1 -BuildLocalJars`, needed regardless of this card -- the
-  pre-existing cache was stale for an unrelated reason, see REG-158), built it, and booted via
+  pre-existing cache was stale for an unrelated reason, see REG-160), built it, and booted via
   `_ops\Run-FinalApp.ps1 -Profile dev,trial` (the SAME pipeline SEC-1/REG-152 verified
   Ensure-NpdevApiKey on). RED: `curl -H "X-Api-Key: dev-key"` and `curl -H "X-Api-Key: api-dev"`
   both 401 against the live app's `/api/projects`. GREEN: the key resolved by
@@ -161,7 +161,7 @@ detail: |
   table name. Two OTHER routines in the same corpus (`01-load-and-nav.json`'s "My Preferences"
   assertion, `02-store-panel.json`'s nested-table Playwright strict-mode selector) hit unrelated,
   pre-existing issues during this same verification pass (the former is this session's OWN
-  temporary workaround for REG-158, not shippable; the latter is a pack-catalog UI selector
+  temporary workaround for REG-160, not shippable; the latter is a pack-catalog UI selector
   ambiguity, filed nowhere yet since it needs its own separate investigation this session did not
   have time for -- noted here for whoever picks it up next, not filed as its own REG item because
   it was not independently reproduced outside this already-abnormal test run).
