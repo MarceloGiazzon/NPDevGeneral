@@ -133,6 +133,13 @@
       "description": "Move 14 A1: the full-rebuild wall-clock baseline (measured 573s on 2026-08-01) the entire fast-lane tiering plan justifies itself against. A build-time regression is exactly the slow drift this ledger exists to surface -- re-time it periodically rather than letting the one number the plan rests on go stale and unverified."
     },
     {
+      "id": "scale-proof-ladder",
+      "tier": "T3",
+      "maxStaleness": "7-days",
+      "invokedBy": ".github/workflows/nightly-scale-ladder.yml (schedule: '0 4 * * *') / manual-runbook: pwsh -File scripts/proofs/run-scale-proof.ps1 -Concepts <26|50|100|260|520>, then `python scripts/quality/cadence_state.py record --id scale-proof-ladder --tier T3 --result passed`",
+      "description": "ROADMAP.md card R9 / ledger SCALE-1: the 5-rung (26/50/100/260/520 concepts) nightly model-scale ladder -- synthesize/generate/ddl/build/boot/firstRequest/latency/memory per rung, recorded to scripts/policy/scale-proof-baseline.json. The nightly CI run is the durable schedule; this cadence entry is informational bookkeeping in the same spirit as scale-baseline below, since CI's own cadence_state.py record call does not persist across runner-ephemeral checkouts -- a human re-running it locally and recording is what keeps this id out of 'never-run'."
+    },
+    {
       "id": "scale-baseline",
       "tier": "T3",
       "maxStaleness": "30-days",

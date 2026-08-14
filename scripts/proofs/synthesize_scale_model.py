@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""R9 reduced scale ladder (ROADMAP.md card R9, reduced per MASTER-ROADMAP.md prelude card 0.3 /
-Step 2a): deterministic synthetic model.json generator for the scale proof.
+"""R9 nightly model-scale ladder (ROADMAP.md card R9; Track C C6; extends the reduced prelude done
+in MASTER-ROADMAP.md Step 2a): deterministic synthetic model.json generator for the scale proof.
+Used by scripts/proofs/run-scale-proof.ps1 for every rung (26/50/100/260/520 concepts) -- this
+generator itself is unchanged by the full-ladder extension, since --concepts already accepted any
+positive integer; only the driver script and its measurement phases grew.
 
 Produces an N-concept schema-valid model, structurally modeled on the frozen
 NPDevSamples/npdev-canary/Input/model.json fixture (same capability/binding/query/procedure/

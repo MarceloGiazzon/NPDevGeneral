@@ -1,0 +1,154 @@
+name: R9 Nightly Scale Ladder
+
+# ROADMAP.md card R9 / ledger SCALE-1: "Still open: no CI wiring" -- this workflow is that wiring.
+# Synthesizes a deterministic model at each of 26/50/100/260/520 concepts and drives it through
+# scripts/proofs/run-scale-proof.ps1's full 8-measurement pipeline (synthesize/generate/ddl/build/
+# boot/firstRequest/latency/memory). H2 only, per this card's own session policy -- the ladder's
+# job is measuring NPDev's own scale limits, not engine parity, and Docker/Postgres would add an
+# unrelated failure mode to a workflow already carrying real risk of runner-resource exhaustion.
+#
+# 520 is deliberately informational (card R9's own words: "CI runner physics will bite before any
+# NPDev limit does -- ubuntu-latest is 2 vCPU / ~7GB / ~14GB disk, and the 520 rung may simply not
+# fit. Treat 520 as informational"), so fail-fast is off: one rung's failure (including an
+# out-of-resources 520 rung) must never hide the others' results.
+#
+# Deliberately does NOT commit scripts/policy/scale-proof-baseline.json back to the repo. That
+# tracked file stays a human-curated ratchet log (matches the "manual-runbook: run it, record it,
+# commit it" convention scripts/quality/verification-cadence.json already uses for
+# rebuild-calibration/scale-baseline) -- this workflow uploads each rung's report as a build
+# artifact instead, for a human to pull into a real baseline update when reviewing the run.
+on:
+  schedule:
+    - cron: '0 4 * * *'  # 04:00 UTC daily -- between npdev-ci-validation.yml (03:00) and
+                          # manager-harness.yml (05:00), no shared concurrency group so no conflict
+                          # either way; picked purely to spread nightly runner load out.
+  # Same 5-rung matrix as the schedule trigger -- no partial-rerun input, to keep the matrix static
+  # (GitHub Actions needs a second, matrix-generating job to filter a strategy.matrix dynamically
+  # from a dispatch input, which is more moving parts than a manual re-run of this ladder needs).
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-scale-ladder-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  scale-proof-rung:
+    name: Scale proof (${{ matrix.concepts }} concepts)
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeoutMinutes }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - concepts: 26
+            timeoutMinutes: 30
+            bootTimeoutSeconds: 300
+          - concepts: 50
+            timeoutMinutes: 30
+            bootTimeoutSeconds: 300
+          - concepts: 100
+            timeoutMinutes: 40
+            bootTimeoutSeconds: 400
+          - concepts: 260
+            timeoutMinutes: 60
+            bootTimeoutSeconds: 600
+          - concepts: 520
+            timeoutMinutes: 90
+            bootTimeoutSeconds: 900
+
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      CI: true
+      # REG-144: pin explicitly rather than let each script's own ancestor-walk resolve it --
+      # matches npdev-ci-validation.yml's Linux job, and is what makes Gradle's own build output
+      # and sync-runtimehost-libs.ps1's jar discovery agree on a checkout named 'NPDevGeneral'.
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # CI-1 (2026-07-23): the committed gradle.properties for the 4 platform modules (never for
+      # NPDevRuntimeHost/runtimehost-core, which already ship with none per REG-10/BT-1) hardcode a
+      # dev-machine org.gradle.projectcachedir. Mirrors npdev-ci-validation.yml.
+      - name: Neutralize dev-machine gradle projectcachedir (portability)
+        run: |
+          foreach ($f in @("gradle.properties", "NPDevContract/dsl/gradle.properties", "NPDevEditor/gradle.properties", "NPDevGenerator/gradle.properties", "NPDevKernel/gradle.properties", "NPDevRuntimeHost/gradle.properties")) {
+            if (Test-Path -LiteralPath $f) {
+              (Get-Content -LiteralPath $f) | Where-Object { $_ -notmatch 'org\.gradle\.projectcachedir' } | Set-Content -LiteralPath $f -Encoding UTF8
+            }
+          }
+
+      # Deterministic, not cache-dependent (Shared-root fix, 2026-07-24): builds+stages
+      # kernel/generator/dsl/runtimehost-core jars this rung's own `build` phase needs.
+      - name: Stage RuntimeHost libs
+        timeout-minutes: 30
+        run: pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars
+
+      # No per-step timeout-minutes here (unlike the other steps) -- it would need to be smaller
+      # than the job-level one above to leave room for checkout/setup/staging, and this IS the step
+      # that needs the lion's share of the budget; the job-level timeout already bounds it.
+      - name: Run scale proof (${{ matrix.concepts }} concepts)
+        id: scale-proof
+        run: |
+          pwsh -NoProfile -File scripts/proofs/run-scale-proof.ps1 -Concepts ${{ matrix.concepts }} -BootTimeoutSeconds ${{ matrix.bootTimeoutSeconds }}
+          $rc = $LASTEXITCODE
+          "exitCode=$rc" >> $env:GITHUB_OUTPUT
+          exit $rc
+
+      # Informational only (see cadence_state.py's own docstring: state lives under gitignored
+      # scripts/reports/out/, thrown away with the runner -- this call documents the convention
+      # rather than persisting anything durable across nightly runs).
+      - name: Record cadence state
+        if: always() && steps.scale-proof.outcome != 'skipped'
+        run: |
+          $result = if ("${{ steps.scale-proof.outcome }}" -eq "success") { "passed" } else { "failed" }
+          python scripts/quality/cadence_state.py record --id scale-proof-ladder --tier T3 --result $result
+
+      # actions/upload-artifact@v4 forbids '..' in path patterns and the rung's report lives
+      # out-of-repo by design (the corpus trap -- see run-scale-proof.ps1's own header). Copy the
+      # legal, workspace-relative subset first (mirrors npdev-ci-validation.yml's own pattern).
+      - name: Stage rung evidence for upload
+        if: always()
+        run: |
+          $outsideRepoRoot = Join-Path (Split-Path -Parent "${{ github.workspace }}") "NPDevGeneral__OutsideRepo"
+          $rungRoot = Join-Path $outsideRepoRoot ("scale-proof\" + "${{ matrix.concepts }}")
+          $stageRoot = "ci-scale-proof-evidence/${{ matrix.concepts }}"
+          New-Item -ItemType Directory -Force -Path $stageRoot | Out-Null
+          if (Test-Path -LiteralPath $rungRoot) {
+            Copy-Item -LiteralPath $rungRoot -Destination $stageRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          else {
+            Write-Host "No rung evidence found at $rungRoot (nothing to stage)."
+          }
+
+      - name: Upload rung evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scale-proof-rung-${{ matrix.concepts }}
+          path: ci-scale-proof-evidence
+          if-no-files-found: warn
+          retention-days: 30

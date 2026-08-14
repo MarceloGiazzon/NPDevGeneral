@@ -3,8 +3,9 @@ title: >-
   Platform unproven above 26 concepts; CI ceiling is 11
 type: GAP
 severity: HIGH
-status: OPEN
+status: PARTIAL
 opened: 2026-08-12
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F2, ROADMAP.md card R9). Today's proven
   ceiling is 26 concepts, and that model lives outside the repo and outside CI. Everything about
@@ -15,27 +16,98 @@ files:
   - scripts/proofs/synthesize_scale_model.py
   - scripts/proofs/run-scale-proof.ps1
   - scripts/policy/scale-proof-baseline.json
+  - schemas/ai/scale-proof-report.schema.json
+  - scripts/policy/script-invocation-declarations.json
+  - scripts/quality/verification-cadence.json
+  - .github/workflows/nightly-scale-ladder.yml
 detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R9 for the full 5-rung (26/50/100/260/520
   concepts) nightly ladder spec (latency, DDL count, memory). MASTER-ROADMAP.md prelude card 0.3
-  reduces this to 2 rungs (26, 100) and generate/build/boot timing only -- done this session (Step
-  2a). Full ladder (5 rungs, latency/DDL/memory) is Track C item C6. Still open: no CI wiring, no
-  latency/DDL/memory rungs, only 2 of the 5 concept counts.
+  reduced this to 2 rungs (26, 100) and generate/build/boot timing only -- done 2026-08-12/13 (Step
+  2a). Full ladder (5 rungs, latency/DDL/memory) is Track C item C6.
 
   2026-08-13 (F8 re-baseline, after MASTER-ROADMAP.md Step 6/PK-2 landed): both reduced-ladder rungs
   re-run against post-PK-2, post-BT-1 code and appended to scripts/policy/scale-proof-baseline.json.
-  The synthesized scale-ladder model declares no `packs[]`, so PK-2's rename path never fires for
-  it -- F8's specific worry (a pre-PK-2 measurement silently including a one-time migration cost)
-  does not literally apply to this synthetic model either way; the re-baseline's value here is
-  simply that the recorded numbers now reflect current code, not a stale pre-PK-2/pre-BT-1 snapshot.
-  One incidental finding while re-running: the shared runtimehost-libs cache
-  (D:\WorkSpace\NPDev\Build\runtimehost-libs) had no runtimehost-core jar staged post-BT-1, so the
-  first re-baseline attempt failed to compile (`cannot find symbol` on types BT-1 moved into the
-  jar) -- not a new bug, the documented "restage jars after RuntimeHost/kernel changes" gotcha
-  (CLAUDE.md), fixed by running sync-runtimehost-libs.ps1 -BuildLocalJars. The failed attempt is
-  preserved in the baseline's ratchet history rather than deleted.
+
+  PARTIAL as of 2026-08-14 (track-c-r9-full-ladder branch) -- what shipped vs. what is still deferred:
+
+  SHIPPED, all live-proven:
+  - `run-scale-proof.ps1` now records all 8 measurements per rung: synthesize, generate, ddl, build,
+    boot, firstRequest, latency, memory (was 5: synthesize/generate/build/boot/firstRequest timing
+    only). `ddl` reads the CREATE TABLE count directly from the generated
+    `V1__npdev_schema_realization.sql` (SchemaRealizationEmitter's static output) -- deterministic,
+    independent of build/boot succeeding, and confirmed (via a dedicated investigation) that
+    `SchemaLifecycleExecutor` carries no logger and no per-statement DDL log line to grep instead.
+    `latency` issues 20 repeat requests against the synthesized panel endpoint once `firstRequest`
+    already proved it works, reporting avg/p95. `memory` samples the bootRun JVM's own OS process
+    working-set (peak across boot-poll + firstRequest + latency), NOT actuator `/metrics` --
+    confirmed the `dev,trial` boot profile's `application-dev.properties` strips actuator exposure
+    to `health,info,mappings,beans` (drops `metrics`/`prometheus`), and the remaining
+    `ActuatorAdminGuardFilter` gates metrics behind a live SUPERUSER key -- reading OS process
+    counters sidesteps both instead of fighting either.
+  - `schemas/ai/scale-proof-report.schema.json` (pre-existed from the 2026-08-12 prelude but was
+    NEVER actually validated against -- v1, 5 required phases, orphaned) extended to v2 (8 required
+    phases, `value`/`unit` fields for ddl/latency/memory) and, for the first time, actually wired
+    into `run-scale-proof.ps1` (best-effort/non-fatal by design -- a schema-validator toolchain
+    hiccup must not flip a real generate/build/boot pass to a red exit code). v1 history entries in
+    the baseline stay as-is, never rewritten.
+  - Cross-platform process handling: the reduced prelude's `Get-DescendantProcessIds`/
+    `Stop-ProcessTree` used `Get-CimInstance Win32_Process` unconditionally (Windows-only -- it had
+    only ever run on the author's dev machine). Now branches on `$IsWindows`, with a `ps -eo
+    pid,ppid` equivalent for the ubuntu-latest runner the nightly workflow actually targets.
+  - `.github/workflows/nightly-scale-ladder.yml`: `schedule: '0 4 * * *'` + `workflow_dispatch`,
+    5-rung matrix (26/50/100/260/520) on ubuntu-latest, `fail-fast: false` so one rung (especially
+    260/520, expected to be resource-bound per the card's own "CI runner physics" framing) never
+    hides the others. H2 only, per this session's policy. Does NOT auto-commit
+    `scale-proof-baseline.json` back to the repo -- uploads each rung's report as a build artifact
+    instead, matching the existing "manual-runbook: run it, record it, commit it" convention
+    `rebuild-calibration`/`scale-baseline` already use in `verification-cadence.json` (a new
+    `scale-proof-ladder` T3 entry, 7-days staleness).
+  - `run-scale-proof.ps1` reclassified `ci-gate` in `script-invocation-declarations.json` (was
+    `manual-runbook`) -- now literally true, its basename appears directly in the new workflow.
+    `synthesize_scale_model.py` stays `manual-runbook` (confirmed still valid, unchanged).
+  - REAL measurement runs, live, this session, all 3 smaller rungs (26/50/100 -- the ones the card
+    explicitly asks to prove even if wall-clock forces 260/520 to stay unexercised): all PASSED, all
+    8 phases green, schema-valid. Representative numbers (26 concepts, this session, warm
+    runtimehost-libs cache): generate 34.9s, ddl 41 CREATE TABLE statements, build 63.1s, boot
+    55.2s, firstRequest 372ms, latency avg 34.1ms/p95 60ms over 20 requests (0 failed), memory peak
+    931.2MB RSS. Full reports appended to `scripts/policy/scale-proof-baseline.json` under
+    `runs.26`/`runs.50`/`runs.100` (schemaVersion v2).
+
+  DEFERRED, honestly, not silently:
+  - 260 and 520 concepts are WIRED into the nightly workflow's matrix (fail-fast:false, generous
+    per-rung timeouts: 60min/900s-boot-timeout for 260, 90min/900s-boot-timeout for 520) but NOT run
+    to completion in this session -- per the card's own scope-discipline note, a 520-concept
+    generate->build->boot cycle was judged too much local wall-clock to iterate on safely, and the
+    card explicitly treats 520 as informational (CI runner physics, not an NPDev limit, is expected
+    to bound it). Neither rung has ever been exercised, locally or in CI, at the time of this PR.
+  - The workflow itself has not yet run for real: `schedule:` triggers only fire on the default
+    branch, and this PR is unmerged per the session's "hold all merges until the whole roadmap is
+    done" policy -- so the YAML is confirmed syntactically valid
+    (`check-workflow-yaml-syntax.py`) and its steps mirror proven patterns from
+    `npdev-ci-validation.yml`'s Linux job, but no GitHub-hosted ubuntu-latest run of it exists yet.
+    First real nightly run (or a manual `workflow_dispatch` once this branch reaches main) is the
+    actual proof of the CI wiring, not this PR alone.
+  - The measured rungs (26/50/100) never exercise a WRITE path -- the synthesized model's one
+    procedure/flow is never invoked by `run-scale-proof.ps1` (only a GET against the empty panel).
+    So R9's own "expected first failures" list (the full-tenant uniqueness pre-check, R8a's
+    still-open deferred half) is NOT expected to surface in this measurement's current scope, and
+    didn't: all 3 rungs passed cleanly with zero anomalies. Proving that failure mode would need a
+    write-heavy rung, which is out of scope for this L-effort card's read-path timing ladder.
+  - No new platform bug was found or filed. One existing, already-open item (`REG-162`, filed
+    2026-08-14, same day as this work, by a different session) documents that
+    `Rebuild-And-Restage.ps1` resolves the wrong `runtimehost-libs` directory when run from a git
+    worktree. This session's live runs avoided it entirely by pinning `NPDEV_BUILD_ROOT` explicitly
+    to the shared `D:\WorkSpace\NPDev\Build` before calling `sync-runtimehost-libs.ps1` and
+    `run-scale-proof.ps1` directly (never through the `Rebuild-And-Restage.ps1` wrapper) -- both
+    scripts then resolve the SAME jar-staging directory consistently, sidestepping the class of bug
+    REG-162 already tracks rather than re-discovering it.
 guard:
   kind: script
   ref: scripts/proofs/run-scale-proof.ps1
-  asserts: generate+build+boot timing recorded for 26 and 100 concept synthetic models, written to scripts/policy/scale-proof-baseline.json
+  asserts: >-
+    All 8 measurements (synthesize/generate/ddl/build/boot/firstRequest/latency/memory) recorded and
+    schema-valid for 26/50/100-concept synthetic models, written to
+    scripts/policy/scale-proof-baseline.json; 260/520 wired into
+    .github/workflows/nightly-scale-ladder.yml's matrix but not yet exercised by any real run.
   provenRed: false

@@ -20,8 +20,7 @@
       "documentedIn": "CLAUDE.md"
     },
     "scripts/proofs/run-scale-proof.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "CLAUDE.md"
+      "invocation": "ci-gate"
     },
     "scripts/ai/build_core_context.py": {
       "invocation": "manual-runbook",
