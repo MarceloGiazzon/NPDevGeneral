@@ -5,6 +5,47 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-14 — the generated CRUD `list()` REST endpoint no longer returns an unbounded table (RUN-1/R8a)
+
+**What changes.** `GET /api/{route}` (the typed per-entity list endpoint) and `GET
+/api/concepts/{conceptName}` (the generic concepts controller's free-text-search fallback) now cap
+at `ConceptQuery.MAX_LIMIT` (1000 rows — the same ceiling the platform's existing paginated `page()`
+path already enforces per page) instead of materializing an entire tenant table into the JVM and
+serializing all of it. Both responses now carry `X-List-Truncated` (`"true"`/`"false"`) and
+`X-List-Limit` response headers so a caller can tell a genuinely-complete list from a silently
+partial one — previously there was no signal at all. A concept with more than 1000 rows for a given
+tenant is the only case affected; every existing concept under the cap is byte-identical.
+
+**Who is affected.** Any generated app's hand-written or generated frontend code that calls the
+plain list endpoint and assumes it always returns literally everything (rather than switching to
+the already-existing paginated `GET /api/concepts/{conceptName}?page=&size=` route, or the new
+`X-List-Truncated` header, once a concept grows past 1000 rows). `ConceptStore` gains a new default
+method (`findAllCapped`) and `ConceptGateway` gains a new default method (`listCapped`) — additive,
+source-compatible for every existing implementation; `com.finalexec.db.AuditingConceptStoreDecorator`
+/ `TenantControlledConceptStoreDecorator` (both in `runtimehost-core`) each gain a forwarding
+override of `findAllCapped`, following the same pattern their `query`/`aggregate` overrides already
+established. The generated `{{entityName}}ServiceBase.list()` keeps its existing
+`List<{{entityName}}>` signature; a new sibling `listCapped()` (returning
+`ConceptListSlice<{{entityName}}>`) is what the REST layer now calls for the truncation flag.
+
+**No `npdev migrate` codemod applies** — this is a runtime-behavior change, not a model/DSL
+construct; nothing in an authored `model.json` needs rewriting. **Regenerating the app is the
+migration**, same as any other generated-code-layout change.
+
+**The two full-tenant-scan uniqueness pre-checks** (`existsUniqueInConceptStore`/
+`existsUniqueCompoundInConceptStore` in `service-base.mustache`) are **explicitly NOT touched by
+this change** — see `ledger/items/RUN-1.yml` for why (their `uniqueValuesEqual` case-insensitive/
+whitespace-trimmed comparison semantics do not translate cleanly to a portable indexed SQL lookup
+across all four engines without a real risk of silently changing which values collide; deferred as
+its own follow-up rather than forced under this pass).
+
+**Reference finders (`listBy*`, the auto-generated `GET /api/{route}/by/{name}/{value}` foreign-key
+lookup every bonded field gets) are also explicitly NOT capped.** They filter AFTER fetching, so
+capping their fetch would silently drop a legitimate match instead of just returning fewer rows —
+worse than the bug this change fixes, and with no way to signal it (`listBy*` returns a raw
+`List<{{entityName}}>`, not a `ConceptListSlice`). They keep calling the platform's original
+unbounded `conceptGateway.list(...)` fetch, byte-identical to before this change.
+
 ## 2026-08-13 — a pack-derived concept's physical table name depends on the pack's own id + major version, never the importing app's alias (PK-2)
 
 **What changes.** `packRef.as` overrides the LOGICAL namespace prefix only (`packId::Name` ->

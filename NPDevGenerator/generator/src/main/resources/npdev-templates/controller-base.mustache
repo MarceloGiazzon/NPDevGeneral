@@ -26,8 +26,22 @@ public class {{entityName}}ControllerBase {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    /**
+     * RUN-1 (R8a): {@code service.listCapped()} bounds the read (see ServiceBase.list()'s own
+     * javadoc for why) and reports whether the cap actually cut anything -- surfaced here as two
+     * response headers rather than silently returning a partial list as if it were complete.
+     * {@code X-List-Truncated}: {@code "true"} means more rows existed than this response carries;
+     * {@code X-List-Limit}: the cap that was applied ({@code ConceptQuery.MAX_LIMIT}), so a caller
+     * that hits {@code "true"} knows to switch to the windowed alternative instead
+     * ({@code GET /api/concepts/{conceptName}}, which pushes filter/sort/page down to SQL via
+     * {@code ServiceBase#page}).
+     */
     protected ResponseEntity<List<{{entityName}}>> listBase() {
-        return ResponseEntity.ok(service.list());
+        com.npdev.kernel.concepts.ConceptListSlice<{{entityName}}> slice = service.listCapped();
+        return ResponseEntity.ok()
+                .header("X-List-Truncated", String.valueOf(slice.truncated()))
+                .header("X-List-Limit", String.valueOf(com.npdev.kernel.concepts.ConceptQuery.MAX_LIMIT))
+                .body(slice.records());
     }
 
     protected ResponseEntity<?> createBase({{entityName}}CreateRequest request) {

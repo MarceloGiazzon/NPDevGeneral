@@ -64,7 +64,7 @@ public class GeneratedConceptCrudController {
 {{/fields}}
         bindings.put("{{route}}", ConceptBinding.of(
                 {{serviceVariable}}Metadata,
-                {{serviceVariable}}::list,
+                {{serviceVariable}}::listCapped,
                 {{serviceVariable}}::getById,
                 {{serviceVariable}}::create,
                 {{serviceVariable}}::update,
@@ -99,10 +99,15 @@ public class GeneratedConceptCrudController {
 
         // LNCH-5: the free-text 'filter' param is an OR-across-every-filterable-field substring
         // search, which the single-field AND-combined ConceptQuery contract can't express -- so it
-        // stays on the legacy fetch-all-then-in-memory-filter path below. Every OTHER request shape
+        // stays on the legacy fetch-then-in-memory-filter path below. Every OTHER request shape
         // (no filter; only structured 'where' clauses, which ARE single-field comparisons) pushes the
         // filter/sort/page window down to the store instead of streaming the whole table through the
         // JVM. This is the common case: a grid with no search box open on a large concept.
+        //
+        // RUN-1 (R8a): the free-text path is now bounded (binding.list() is capped at
+        // ConceptQuery.MAX_LIMIT -- see ServiceBase#listCapped), so a search over a concept larger
+        // than the cap can miss a match beyond it. X-List-Truncated/X-List-Limit below say so rather
+        // than returning a silently incomplete search result with no signal at all.
         if (filter == null || filter.isBlank()) {
             WhereClausesResult parsedClauses = parseWhereClauses(binding.metadata(), where);
             if (parsedClauses.error() != null) {
@@ -128,8 +133,9 @@ public class GeneratedConceptCrudController {
                     content, safePage, safeSize, pushedDown.total(), sortField, safeDirection, filter, where));
         }
 
+        com.npdev.kernel.concepts.ConceptListSlice<?> slice = binding.list().get();
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (Object record : binding.list().get()) {
+        for (Object record : slice.records()) {
             rows.add(toRecord(binding.metadata(), record));
         }
         FilterResult filteredByWhere = applyWhere(binding.metadata(), rows, where);
@@ -144,8 +150,11 @@ public class GeneratedConceptCrudController {
         int to = Math.min(total, from + safeSize);
         List<Map<String, Object>> content = rows.subList(from, to);
 
-        return ResponseEntity.ok(listResponse(
-                content, safePage, safeSize, total, sortField, safeDirection, filter, where));
+        return ResponseEntity.ok()
+                .header("X-List-Truncated", String.valueOf(slice.truncated()))
+                .header("X-List-Limit", String.valueOf(com.npdev.kernel.concepts.ConceptQuery.MAX_LIMIT))
+                .body(listResponse(
+                        content, safePage, safeSize, total, sortField, safeDirection, filter, where));
     }
 
     private static Map<String, Object> listResponse(
@@ -588,7 +597,10 @@ public class GeneratedConceptCrudController {
 
     private record ConceptBinding<T>(
             ConceptMetadata metadata,
-            Supplier<List<T>> list,
+            // RUN-1 (R8a): capped, not a plain Supplier<List<T>> -- see #list's own call site
+            // (the free-text-filter fallback) for why this generic controller needs the truncation
+            // flag too, not just the typed per-entity controller.
+            Supplier<com.npdev.kernel.concepts.ConceptListSlice<T>> list,
             Function<UUID, Optional<T>> getById,
             Function<Map<String, Object>, T> create,
             BiFunction<UUID, Map<String, Object>, Optional<T>> update,
@@ -597,7 +609,7 @@ public class GeneratedConceptCrudController {
     ) {
         static <T> ConceptBinding<T> of(
                 ConceptMetadata metadata,
-                Supplier<List<T>> list,
+                Supplier<com.npdev.kernel.concepts.ConceptListSlice<T>> list,
                 Function<UUID, Optional<T>> getById,
                 Function<Map<String, Object>, T> create,
                 BiFunction<UUID, Map<String, Object>, Optional<T>> update,

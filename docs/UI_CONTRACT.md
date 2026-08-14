@@ -114,6 +114,21 @@ follow the outcome, correlating via `execution.correlationField` (`executionId`)
 carry a single `successStatus` (200/201/204) and *are* synchronous — check it per entry rather than
 assuming.
 
+### List reads are capped, and say so
+
+`GET /api/{route}` (direct CRUD's plain list endpoint) and `GET /api/concepts/{conceptName}`'s
+free-text-search fallback both cap at `ConceptQuery.MAX_LIMIT` (1000 rows) instead of returning an
+entire tenant table (RUN-1/R8a). Every response from either carries:
+
+| Header | Meaning |
+|---|---|
+| `X-List-Truncated` | `"true"` if more rows existed than this response carries; `"false"` if this response is the complete list. |
+| `X-List-Limit` | The cap that was applied (currently always `1000`). |
+
+A caller that sees `X-List-Truncated: true` should switch to `GET /api/concepts/{conceptName}?page=&size=`
+(pushed-down SQL `LIMIT`/`OFFSET`, no cap on total rows reachable via paging) rather than assume the
+list endpoint ever grows past the cap.
+
 ### Error codes
 
 | Status | Meaning |
