@@ -314,6 +314,13 @@ final class PackDependencyGraphWalker {
             ModelSourceResolver.mergePackConcepts(qualifier, packNode, resolved, packFile, rewriteMaps);
             ModelSourceResolver.mergePackNonConceptArrays(qualifier, packNode, resolved, packFile, rewriteMaps);
             ModelSourceResolver.recordPhysicalQualifiers(qualifier, packNode, packFile, state);
+            // PACK-2 (ledger; PACK-ROADMAP.md card PK-1 steps 5-7): records which pack (id/version/
+            // digest/sealedness) contributed every member just merged above, so JsonModelParser can
+            // attach an OriginAst to each AST node. The digest reuses digestFor's existing local-vs-
+            // remote branching (see its own doc) -- the exact same value toLockEntries() would write
+            // to npdev.lock for this packId, never a second, independently-computed digest.
+            ModelSourceResolver.recordOrigin(
+                    qualifier, packNode, digestFor(packFile, fromByPackId.getOrDefault(packId, "")), state);
         }
     }
 

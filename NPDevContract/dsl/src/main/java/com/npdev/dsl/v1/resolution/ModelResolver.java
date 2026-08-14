@@ -24,6 +24,7 @@ import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.ast.OrchestrationActionAst;
 import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
+import com.npdev.dsl.v1.ast.OriginAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
@@ -153,7 +154,8 @@ public final class ModelResolver {
                     domainType.getNormalizationRules(),
                     domainType.getFormatHint(),
                     domainType.getExamples(),
-                    ui
+                    ui,
+                    domainType.getOrigin()
             ));
         }
         resolved.sort(Comparator.comparing(domainType -> normalize(domainType.getName())));
@@ -216,7 +218,8 @@ public final class ModelResolver {
                 concept.getIndexes(),
                 concept.getAccess(),
                 concept.getRenamedFrom(),
-                concept.getSatelliteOf()
+                concept.getSatelliteOf(),
+                concept.getOrigin()
         );
     }
 
@@ -276,6 +279,13 @@ public final class ModelResolver {
                 ? specialization.getAccess()
                 : base.getAccess();
 
+        // PACK-2: same "specialization wins, else base" rule as access/module just above -- a
+        // specialization declared in a different pack (or in the app itself, specializing a pack
+        // concept) is attributed to ITS OWN origin, not silently inherited from the base it extends.
+        OriginAst mergedOrigin = specialization.getOrigin() != null
+                ? specialization.getOrigin()
+                : base.getOrigin();
+
         return new ConceptAst(
                 specialization.getName(),
                 null,
@@ -290,7 +300,8 @@ public final class ModelResolver {
                 mergedIndexes,
                 mergedAccess,
                 specialization.getRenamedFrom(),
-                specialization.getSatelliteOf()
+                specialization.getSatelliteOf(),
+                mergedOrigin
         );
     }
 
@@ -563,7 +574,8 @@ public final class ModelResolver {
                 capability.getName(),
                 capability.getType(),
                 null,
-                operations
+                operations,
+                capability.getOrigin()
         );
     }
 
@@ -598,11 +610,14 @@ public final class ModelResolver {
             mergedOperations.add(copyOperation(localOperation));
         }
         mergedOperations.sort(Comparator.comparing(operation -> normalize(operation.getName())));
+        // PACK-2: specialization wins, else base -- same rule as mergeConcept's origin.
+        OriginAst mergedOrigin = specialization.getOrigin() != null ? specialization.getOrigin() : base.getOrigin();
         return new CapabilityAst(
                 specialization.getName(),
                 resolvedType,
                 null,
-                mergedOperations
+                mergedOperations,
+                mergedOrigin
         );
     }
 
@@ -664,7 +679,8 @@ public final class ModelResolver {
                 null,
                 event.getVersion(),
                 payload,
-                event.getTriggerMode()
+                event.getTriggerMode(),
+                event.getOrigin()
         );
     }
 
@@ -698,13 +714,16 @@ public final class ModelResolver {
         String localTriggerMode = safe(specialization.getTriggerMode());
         String resolvedTriggerMode = !localTriggerMode.isBlank() ? specialization.getTriggerMode() : base.getTriggerMode();
 
+        // PACK-2: specialization wins, else base -- same rule as mergeConcept's origin.
+        OriginAst mergedOrigin = specialization.getOrigin() != null ? specialization.getOrigin() : base.getOrigin();
         return new EventAst(
                 specialization.getName(),
                 resolvedConcept,
                 null,
                 resolvedVersion,
                 resolvedPayload,
-                resolvedTriggerMode
+                resolvedTriggerMode,
+                mergedOrigin
         );
     }
 
@@ -841,7 +860,8 @@ public final class ModelResolver {
                 flow.getOutputSchema(),
                 cloneActionMetadata(flow.getAction()),
                 flow.isStartEndpoint(),
-                flow.getSchedule()
+                flow.getSchedule(),
+                flow.getOrigin()
         );
     }
 
@@ -885,6 +905,8 @@ public final class ModelResolver {
         // there's no sensible way to combine two cron expressions.
         FlowScheduleAst mergedSchedule = specialization.getSchedule() != null
                 ? specialization.getSchedule() : base.getSchedule();
+        // PACK-2: specialization wins, else base -- same rule as mergeConcept's origin.
+        OriginAst mergedOrigin = specialization.getOrigin() != null ? specialization.getOrigin() : base.getOrigin();
         return new FlowAst(
                 specialization.getName(),
                 base.getConcept(),
@@ -896,7 +918,8 @@ public final class ModelResolver {
                 base.getOutputSchema(),
                 firstNonNullAction(specialization.getAction(), base.getAction()),
                 specialization.isStartEndpoint() || base.isStartEndpoint(),
-                mergedSchedule
+                mergedSchedule,
+                mergedOrigin
         );
     }
 

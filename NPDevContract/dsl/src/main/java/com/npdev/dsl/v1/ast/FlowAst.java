@@ -16,6 +16,7 @@ public final class FlowAst {
     private final ActionMetadataAst action;
     private final boolean startEndpoint;
     private final FlowScheduleAst schedule;
+    private final OriginAst origin;
 
     public FlowAst(String name, String concept, List<StepAst> steps) {
         this(name, concept, null, null, List.of(), steps, null, null, null);
@@ -91,6 +92,25 @@ public final class FlowAst {
             boolean startEndpoint,
             FlowScheduleAst schedule
     ) {
+        this(name, concept, mode, specializesName, hooks, steps, inputSchema, outputSchema, action, startEndpoint, schedule, null);
+    }
+
+    /** PACK-2: attaches pack-attribution provenance (see getOrigin) -- null for an app's own root-
+     *  or context-declared flow, non-null for a pack-contributed one. */
+    public FlowAst(
+            String name,
+            String concept,
+            String mode,
+            String specializesName,
+            List<FlowHookAst> hooks,
+            List<StepAst> steps,
+            SchemaAst inputSchema,
+            SchemaAst outputSchema,
+            ActionMetadataAst action,
+            boolean startEndpoint,
+            FlowScheduleAst schedule,
+            OriginAst origin
+    ) {
         this.name = name;
         this.concept = concept;
         this.mode = mode;
@@ -102,6 +122,7 @@ public final class FlowAst {
         this.action = action;
         this.startEndpoint = startEndpoint;
         this.schedule = schedule;
+        this.origin = origin;
     }
 
     public String getName() { return name; }
@@ -140,5 +161,10 @@ public final class FlowAst {
 
     public FlowScheduleAst getSchedule() {
         return schedule;
+    }
+
+    /** PACK-2: pack-attribution provenance, or null if this flow is not pack-contributed. */
+    public OriginAst getOrigin() {
+        return origin;
     }
 }

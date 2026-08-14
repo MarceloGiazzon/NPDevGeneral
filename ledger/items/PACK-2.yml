@@ -3,8 +3,10 @@ title: >-
   The compiled model carries no pack provenance, so a pack's tables cannot be attributed or diffed
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-14
+verification: UNIT_TESTED
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md spine S1, PACK-ROADMAP.md card PK-1 step 5).
   Confirmed live this session: CompiledConcept and every other Compiled* member type (CompiledQuery,
@@ -12,7 +14,16 @@ source: >-
   have no pack/version/digest/origin field of any kind.
 surface: dsl/compiled-model
 files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/OriginAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledOrigin.java
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledConcept.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/PackDependencyGraphWalker.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java
 detail: |
   See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-1 steps 5-7. Fix: add
   origin: {packId, packVersion, packDigest, sealed} to the AST and to every compiled member carrier,
@@ -20,6 +31,74 @@ detail: |
   CompiledModelCanonicalJson/Reader -> ModelResolver), following the `roles` field's existing
   precedent for that chain. New twin-pair registry entry pins it. MASTER-ROADMAP.md Step 4 (spine
   S1), this session's scope.
+
+  2026-08-14 close-out (feat/pack-2-origin-provenance branch). Implemented exactly as scoped above.
+  New `OriginAst` (ast package) / `CompiledOrigin` (compiled package) records, each
+  `{packId, packVersion, packDigest, sealed}`, added as a new trailing field/component on all 8
+  member types the source line names: CompiledConcept+ConceptAst, CompiledQuery+QueryAst,
+  CompiledEvent+EventAst, CompiledFlow+FlowAst, CompiledCapability+CapabilityAst,
+  CompiledRole+RoleAst, CompiledPanel+PanelAst, CompiledDomainType+DomainTypeAst. Class-shaped types
+  got a new widest telescoping constructor (matching satelliteOf's precedent); record-shaped types
+  (Query/Panel/Role, both layers) got origin as a new canonical-constructor component plus a
+  backward-compatible secondary constructor defaulting it to null, so every pre-existing call site
+  (including 4 test files and AutoPanelExpander.java) compiles unchanged.
+
+  Pack attribution is determined during resolution, not invented: `ModelSourceResolver.recordOrigin`
+  (called from `PackDependencyGraphWalker.run`, right beside the existing `recordPhysicalQualifiers`)
+  reads a pack's own `pack`/`version` header fields directly off its JSON (never the local `as`
+  alias -- same rule PK-2 the roadmap card's physical-qualifier derivation already established),
+  reuses `PackDependencyGraphWalker.digestFor` for packDigest (the SAME sha256 value already written
+  to npdev.lock for that pack -- PK-5's existing digest machinery, not a second one) and
+  `PackSealednessAnalyzer.analyze(packNode).sealed()` for sealed (BT-2's existing sealedness
+  computation, not a second notion of "sealed"). Both packDigest and sealed therefore have REAL
+  sources today -- neither is a placeholder, better than the ledger's own source note anticipated.
+  The result is recorded into a new `ResolutionState.originByQualifiedMemberName` map (kind ->
+  qualified-name -> origin, mirroring physicalQualifierByConceptName's existing shape), threaded
+  through `ResolvedModelSource` into `JsonModelParser`, which looks an origin up by (kind, name) as
+  it builds each of the 8 covered member kinds and attaches it (or null, for a root-/context-
+  declared member -- never pack-contributed). `ModelResolver`'s specialization merge (`extends`) was
+  the one hazard CLAUDE.md's REG-104 note calls out by name: ConceptAst/CapabilityAst/EventAst/
+  FlowAst are each RECONSTRUCTED field-by-field at TWO sites (sanitizeX/mergeX), and origin had to be
+  threaded through both, with "specialization wins, else base" as the merge policy (same rule
+  access/module/schedule already use there). Query/Panel/Role/DomainType are untouched pass-through
+  or simple field-copy in ModelResolver, so no merge-policy decision was needed for them.
+
+  Known, deliberate scope limits (not gaps left unaddressed by oversight): (1) a concept-NESTED event
+  (declared inline under `concepts[].events[]`, as opposed to a top-level `events[]` member) always
+  gets origin=null, even when its enclosing concept is pack-contributed -- ModelSourceResolver's
+  origin recording walks MODEL_ARRAY_KEYS top-level arrays only, matching exactly what the pack
+  merge itself namespaces; (2) the other 10 MODEL_ARRAY_KEYS kinds NOT named in this item's source
+  line (bindings, orchestrations, ruleProfiles, procedures, conversions, guidePages, propertyScopes,
+  properties) do not carry origin -- out of scope per the ledger's own explicit 8-type enumeration,
+  left for a follow-up if a future card needs pack attribution on one of them; (3) context-declared
+  members (as opposed to pack-declared) never get an origin -- deliberate, since contexts are a
+  physical-isolation mechanism unrelated to pack provenance, not a bug.
+
+  Real verification, run fresh this session (not merely asserted): (a) the reflective guard test
+  itself -- `gradlew :NPDevContract:dsl:test --tests "*CanonicalJsonRoundTripCompletenessTest*"` --
+  1 test, 0 failures, 0 errors (fresh XML timestamp 2026-08-14T19:12:04, confirmed by a second
+  --rerun pass at 19:14:48); (b) the FULL `NPDevContract:dsl` test suite (not just the one guard
+  test), to catch any regression the ModelResolver/JsonModelParser/ModelCompiler/
+  ModelSourceResolver edits could have introduced in existing pack-composition/specialization/
+  canonical-JSON behavior -- `gradlew :NPDevContract:dsl:test` -- 737 tests, 0 failures, 0 errors,
+  0 skipped across all 134 test classes; (c) `gradlew :NPDevContract:dsl:validateModel` against
+  `NPDevSamples/dsl-conformance-max/Input/model.json` (the reference DSL-coverage corpus, which
+  composes the `labeling` pack) -- `status: passed`, 0 errors, 0 warnings; (d) the same against
+  `NPDevSamples/probes/p6-satellite-extension/Input/model.json` failed, but on a pre-existing,
+  unrelated `npdev.lock` staleness diagnostic (STRUCTURAL_ERROR, "npdev.lock is stale for: clinical,
+  identity -- run 'npdev pack update'") -- nothing this branch touches (no pack.json/npdev.lock file
+  was edited); confirmed the failure is about lock freshness, not origin/schema validation.
+  (e) `check-twin-pair-consistency.py`: new rule `origin-ast-compiled-four-place` added (5-file
+  chain, same shape as `satelliteof-ast-compiled-four-place`), all 21 registered rules OK.
+  (f) `check-schema-mirror-consistency.py`: all copies still semantically identical (expected --
+  this item deliberately does not touch model.schema.json/pack.schema.json, since origin is
+  resolver-derived data with no authored JSON surface, not an authored field like `roles`).
+
+  Marking DONE with genuine confidence: the guard test is real, fresh, and green; the full module
+  suite is green; the reference corpus validates clean. Not run (explicitly out of scope per this
+  item's own task brief): the generator/kernel/runtimehost/editor gates, any app generate+build+boot,
+  or surfacing origin anywhere outside the compiled model (runtime manifest, `GET /api/admin/packs`,
+  schema-impact report -- PK-1 step 8 in the roadmap, a separate, later concern).
 guard:
   kind: test
   ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/compiled/CanonicalJsonRoundTripCompletenessTest.java

@@ -100,7 +100,8 @@ class GeneratorMainMigrationTrackedLockFromFieldTest {
                 List.of(),
                 List.of(),
                 Map.of(),
-                migrationTrackedPacks
+                migrationTrackedPacks,
+                Map.of()
         );
     }
 }

@@ -14,6 +14,7 @@ public final class CompiledFlow {
     private final CompiledActionMetadata action;
     private final boolean startEndpoint;
     private final CompiledFlowSchedule schedule;
+    private final CompiledOrigin origin;
 
     public CompiledFlow(String name, String concept, List<CompiledFlowStep> steps) {
         this(name, concept, null, steps, null, null, null);
@@ -70,6 +71,23 @@ public final class CompiledFlow {
             boolean startEndpoint,
             CompiledFlowSchedule schedule
     ) {
+        this(name, concept, mode, steps, inputSchema, outputSchema, action, startEndpoint, schedule, null);
+    }
+
+    /** PACK-2: attaches pack-attribution provenance (see getOrigin) -- null for an app's own root-
+     *  or context-declared flow, non-null for a pack-contributed one. */
+    public CompiledFlow(
+            String name,
+            String concept,
+            String mode,
+            List<CompiledFlowStep> steps,
+            CompiledSchema inputSchema,
+            CompiledSchema outputSchema,
+            CompiledActionMetadata action,
+            boolean startEndpoint,
+            CompiledFlowSchedule schedule,
+            CompiledOrigin origin
+    ) {
         this.name = name;
         this.concept = concept;
         this.mode = mode;
@@ -79,6 +97,7 @@ public final class CompiledFlow {
         this.action = action;
         this.startEndpoint = startEndpoint;
         this.schedule = schedule;
+        this.origin = origin;
     }
 
     public String getName() { return name; }
@@ -109,5 +128,10 @@ public final class CompiledFlow {
 
     public CompiledFlowSchedule getSchedule() {
         return schedule;
+    }
+
+    /** PACK-2: pack-attribution provenance, or null if this flow is not pack-contributed. */
+    public CompiledOrigin getOrigin() {
+        return origin;
     }
 }
