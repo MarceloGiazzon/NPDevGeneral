@@ -13,10 +13,16 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -249,6 +255,61 @@ class HttpExternalAiCapabilityAdapterTest {
         // fails at the vendor instead of a deny that names the problem.
         assertFalse(openai.keyPresent());
         assertFalse(openai.effortSupported());
+    }
+
+    /**
+     * R8d (RUN-4) live proof: a request-level deadline that actually fires, and a bounded retry
+     * that actually happens -- against a REAL local server that accepts the TCP connection and then
+     * never answers (never a mocked timeout). No external network dependency: the "unreachable
+     * endpoint" is a loopback {@link ServerSocket} this test owns.
+     */
+    @Test
+    void requestTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer() throws Exception {
+        try (ServerSocket hangingServer = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))) {
+            AtomicInteger acceptedConnections = new AtomicInteger();
+            Thread acceptor = new Thread(() -> {
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        Socket socket = hangingServer.accept();
+                        acceptedConnections.incrementAndGet();
+                        // Deliberately never write a response -- the client must hit its own
+                        // requestTimeout, not a server-side close.
+                    } catch (IOException e) {
+                        return;
+                    }
+                }
+            }, "hanging-server-acceptor");
+            acceptor.setDaemon(true);
+            acceptor.start();
+
+            ExternalAiVendorProfile profile = new ExternalAiVendorProfile(
+                    "hangy", "http://127.0.0.1:" + hangingServer.getLocalPort() + "/v1/chat/completions",
+                    "some-model", "NPDEV_TEST_HANGY_KEY", ExternalAiRequestFormat.OPENAI_CHAT);
+            // requestTimeout=300ms, maxRetries=1 (2 total attempts), retryBackoff=50ms -- short enough
+            // that the whole test resolves in well under a second if the deadline is real, and would
+            // hang the JUnit run (previously: forever) if it were not.
+            HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
+                    List.of(profile),
+                    HttpClient.newHttpClient(),
+                    env -> "test-key",
+                    Duration.ofMillis(300),
+                    1,
+                    Duration.ofMillis(50));
+
+            long startedAt = System.nanoTime();
+            UncheckedIOException thrown = assertThrows(UncheckedIOException.class,
+                    () -> adapter.generateText(new ExternalAiGenerationRequest("hangy", null, null, "hello")));
+            long elapsedMs = Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
+
+            acceptor.interrupt();
+            hangingServer.close();
+
+            assertTrue(elapsedMs < 5000,
+                    "expected the adapter's own requestTimeout to bound the call well under 5s, took " + elapsedMs + "ms");
+            assertEquals(2, acceptedConnections.get(),
+                    "expected exactly maxRetries+1 = 2 attempts (2 real TCP connections) against the hanging server");
+            assertTrue(thrown.getMessage().contains("attempt 2/2"), thrown.getMessage());
+        }
     }
 
     private interface StubHandler {

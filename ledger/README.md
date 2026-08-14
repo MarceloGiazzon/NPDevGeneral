@@ -47,6 +47,59 @@ test or script that proves it, not just a sentence asserting it. Filed OPEN item
 (there is no proof yet); closing an item without one is a claim, not a proof. `R11`'s full card (ledger
 restructuring, derived gate numbers) is separate, larger, and not implied by this field's presence.
 
+**Enforced, not just documented, as of `check-done-item-guards.py` (R11's core mechanism, landed
+2026-08-14).** The field existed from 992d47a8 onward but nothing checked it — a `guard` could be
+absent from a DONE item, or present and pointing at nothing, and neither was ever caught. Four rules
+now run on every gate pass (`scripts/quality/check-done-item-guards.py`, wired into
+`run-ai-knowledge-gate.ps1` step [36/35]):
+
+1. **Coverage.** Every `status: DONE` item must carry a `guard:` block, unless its id is in
+   `scripts/policy/done-item-guard-policy.json`'s `legacy.ids` — the 177 DONE-without-guard items
+   that predated the checker, frozen 2026-08-14. An id leaves the legacy list (with `frozenCount`
+   lowered in the same commit) once its item genuinely gains a guard, changes status away from
+   `DONE`, or is deleted — leaving a no-longer-needed entry in place is itself a checker failure.
+2. **Resolution.** Every `guard:` block present on *any* item, regardless of status, must actually
+   resolve, checked mechanically:
+   - `kind: test` — the file at `ref` (before any `#method` or trailing `(...)` note) must exist. If
+     a `#method` is given, it must exist as a real method DECLARATION (a word-boundary, not-a-
+     substring-of-a-longer-name match) and, for a `.java` file, be annotated `@Test`/
+     `@ParameterizedTest`/`@RepeatedTest`/`@TestFactory`/`@TestTemplate` — citing a private helper
+     the test happens to call is not the same claim as citing the test itself.
+   - `kind: script` — at least one concrete anchor must be found: a repo-rooted `.py`/`.ps1`/`.sh`
+     path, a fully-qualified Java test class (package **and** simple name both verified against the
+     real file, not simple-name-only), or a Gradle task path (`:Module:sub:task`, module directory
+     verified to exist) — a bare mention of the word "gradlew" with no specific task or class is
+     **not** an anchor (the wrapper trivially exists in any checkout and proves nothing).
+   - `kind: manual` — best-effort only: any *repo-rooted* path mentioned (starting with `scripts/`,
+     `NPDevContract/`, `docs/`, etc.) must exist. Most manual guards name no file at all (a live-app
+     HTTP interaction, a `gh api` call) and that is fine — see the checker's own module docstring
+     ("HONEST LIMIT") for exactly what is and isn't checked, and why a bare filename or an app-relative
+     path like `` `_ops\Run-FinalApp.ps1` `` (emitted per-app at generation time, never tracked in this
+     repo) is deliberately not chased.
+3. **Honesty.** A `legacy.ids` entry whose item no longer needs the exemption (deleted, un-DONE, or
+   now genuinely guarded) is a stale-entry finding.
+4. **History-anchored ratchet.** Rule 1's "shrink-only" claim about `legacy.ids` is only true if it is
+   pinned to a point in git history — comparing the *current* `legacy.ids`/`frozenCount` against each
+   other, both declared in the same file in the same commit, cannot detect a new id added in that same
+   commit. Proven by direct reproduction (independent review, 2026-08-14): hand-add a brand-new
+   `status: DONE`, no-`guard:` item, add its id to `legacy.ids`, bump `frozenCount` to match — with
+   only rules 1–3, the checker reports zero findings. The checker now also compares `legacy.ids`
+   against its value at `git merge-base HEAD origin/main` (the same mechanism
+   `check-pack-diff-gate.py` already established for the analogous "did this branch's own diff do
+   something it shouldn't" question): any id added since that merge-base must have already been a
+   guard-less `DONE` item **at** the merge-base (genuine pre-existing debt), or the finding fires.
+   `frozenCount` must also equal `len(legacy.ids)` exactly. If no merge-base can be resolved (no
+   network/remote/history), this rule is skipped for that run rather than failed — this repo's own CI
+   fetches full history (`fetch-depth: 0`), so that case does not arise there.
+
+Three real guards were backfilled onto pre-existing DONE items in the same commit that added the
+checker, to prove the ratchet resolves something real rather than only asserting it: `REG-142` (a
+`script` guard pointing at `check-template-resource-shadowing.py`, itself already wired into the gate
+as the regression control for that exact bug), `REG-108` (a `test` guard naming
+`ModelSourceResolverTest#packContributedRolesPropertyScopesAndPropertiesAreMergedNotDropped`), and
+`STOR-2` (a `script` guard pointing at `check-rollback-claims.py`, described in
+`run-ai-knowledge-gate.ps1`'s own step comment as "the mechanical half of STOR-2").
+
 `legacyDetailRef` (optional) no longer appears on any current item: it used to point into
 `docs/NPDEV_OPEN_ITEMS_REGISTER.md`'s `#reg-N` anchors for the original, often multi-thousand-word
 investigation narrative, and md-zero-2026-08-11 PLAN.md Phase 2 removed it from all 64 items in the
@@ -76,7 +129,11 @@ Declared in `scripts/requirements.txt`; `.github/workflows/ai-knowledge-gate.yml
 
 ## What consumes the ledger now
 
-- `scripts/quality/generate_open_items.py` — renders OPEN_ITEMS.md.
+- `scripts/quality/generate_open_items.py` — renders OPEN_ITEMS.md, and is reused by
+  `check-done-item-guards.py` for schema-validated item loading (`from generate_open_items import
+  load_items`) rather than re-implementing the same validation twice.
+- `scripts/quality/check-done-item-guards.py` — enforces the `guard:` coverage ratchet and resolution
+  rules described above, against `scripts/policy/done-item-guard-policy.json`.
 - `scripts/external-review/build-review-pack.py`'s `FORBIDDEN_PATH_PATTERNS` names `OPEN_ITEMS\.md$`
   (excluding it from any external-AI review pack, since it carries the platform's own conclusions
   about itself) and `NPDEV_OPEN_ITEMS_REGISTER\.md$` (the archived register that pattern was
