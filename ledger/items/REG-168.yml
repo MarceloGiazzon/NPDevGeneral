@@ -1,0 +1,79 @@
+id: REG-168
+title: >-
+  check-coverage-ratchet.py auto-discovers coverage reports by glob + newest-mtime with no check
+  that they were produced from the currently checked-out source, so a leftover report from an
+  unrelated build/checkout/worktree silently sets or ratchets the recorded floor
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Found while live-verifying Track C card C8 (ledger QUAL-6's R3 extension: editor + Python
+  coverage) -- unrelated to that card's own scope, filed separately per this session's "unrelated
+  bugs filed separately, never fixed in passing" discipline. Running
+  `python scripts/quality/check-coverage-ratchet.py` (no arguments, the exact invocation
+  run-ai-knowledge-gate.ps1's [35/35] step uses) from this session's worktree
+  (.claude/worktrees/agent-a16811166b3414722) auto-discovered and ratcheted UP the
+  NPDevContract/dsl, NPDevGenerator/generator, and NPDevKernel/kernel floors (to 83.6422%,
+  76.1286%, and 72.0356% respectively) even though this session made no Java changes and ran no
+  Java build at all -- it read JaCoCo XML reports left in the external Build directory
+  (`.claude/worktrees/Build/gradle/...`) by UNRELATED, PARALLEL Track C work in a sibling
+  worktree. That Build directory is a sibling of every worktree under `.claude/worktrees/`, not
+  private to any one of them, so it accumulates reports from whichever worktree last built each
+  module -- reports that may not correspond to the source tree currently checked out in THIS
+  worktree at all.
+surface: quality/coverage
+files:
+  - scripts/quality/check-coverage-ratchet.py
+detail: |
+  `_find_reports()` globs `reportGlobs` under both the repo root and the external Build root
+  (`_external_build_root()`, itself just `NPDEV_BUILD_ROOT` or `<repo-parent>/Build` -- see that
+  function's own docstring) and `measure_module()` picks the newest-by-mtime match with zero
+  further validation. Nothing ties a discovered report back to the git commit, working-tree state,
+  or even just "was this produced by a build of the code currently on disk here." Two concrete ways
+  this goes wrong, both real, not hypothetical:
+
+    1. Shared/multi-worktree Build directories (this session's actual trigger): several `git
+       worktree`-based agent sessions can share one external Build root if it resolves relative to
+       a common ancestor above all the worktree directories (exactly what happened here -- see
+       source: above). A report from worktree A's build of module X silently becomes worktree B's
+       "fresh measurement" of module X, even though B never built X and B's copy of X's source may
+       differ (different branch, different commit, mid-edit).
+
+    2. Single-checkout staleness: even without multiple worktrees, a developer who builds once,
+       then `git checkout`s an older commit or reverts a source change WITHOUT rebuilding, still
+       has yesterday's jacocoTestReport.xml sitting at the same reportGlobs path. Gradle's
+       incremental-build up-to-date check would normally protect against this WITHIN one checkout
+       (no source change -> no re-run -> the existing report IS still valid for what's on disk),
+       but that protection doesn't extend across `git checkout`/`git worktree`/CI-cache-restore
+       boundaries, which this script's own docstring already acknowledges it reads through
+       ("Reports only exist here because an EARLIER step... already ran... test" -- with no
+       claim, and no check, that "earlier" means "against this same source").
+
+  Caught live, not by inspection: this session ran the real (non-`--calibrate`) ratchet script once
+  to record real editor + NPDevCli floors, and it ALSO silently rewrote the three Java modules'
+  `coveragePercent`/`measuredOn` fields in the same pass, using data this session never produced.
+  Had that not been noticed and manually reverted before commit, the PR would have committed
+  Java coverage floors sourced from a different worktree's unknown, unverified state -- exactly the
+  kind of "plausible-looking but wrong number, silently trusted" defect class the X0 registry and
+  twin-pair-consistency checks exist to catch for OTHER surfaces, but this script has no equivalent
+  guard for itself.
+
+  Not designed further here, but two independent angles: (a) stamp each report with (or check it
+  against) a git commit hash / source-file mtime the current checkout can verify, refusing to
+  ratchet on a mismatch (matches how SchemaLifecycleExecutor-style fingerprinting works elsewhere
+  in this repo); (b) at minimum, scope `_external_build_root()`'s search to a build root that is
+  actually private to `_repo_root()` (e.g. include the worktree's own directory name in the
+  resolved path) so sibling worktrees can no longer share one Build directory by construction --
+  this second angle wouldn't help the plain single-checkout staleness case in (2) above, so (a) is
+  the more complete fix.
+guard:
+  kind: manual
+  ref: >-
+    from a worktree whose external Build root ALSO contains a JaCoCo report for a module this
+    worktree has not itself built this session, run `python scripts/quality/check-coverage-ratchet.py`
+    with no arguments and diff scripts/policy/coverage-baseline.json before/after
+  asserts: >-
+    the unbuilt module's coveragePercent/measuredOn change anyway, sourced from a report this
+    invocation did not produce
+  provenRed: true

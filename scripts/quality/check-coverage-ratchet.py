@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Coverage ratchet gate: JaCoCo LINE coverage per Java module must never drop below its floor.
+"""Coverage ratchet gate: LINE coverage per module must never drop below its recorded floor.
 
 WHY THIS EXISTS
 ---------------
@@ -7,9 +7,21 @@ R3 (MASTER-ROADMAP.md Step 9 / ledger QUAL-6). Four Java builds (NPDevContract/d
 NPDevGenerator/generator, NPDevKernel/kernel + its 36 adapters, NPDevRuntimeHost) now carry a JaCoCo
 plugin -- see each build.gradle's own comment for why RuntimeHost's is gated behind
 `-PenableCoverage=true` while the other three are unconditional (only RuntimeHost's
-build.gradle.template ships into a generated FinalApp; the platform-internal builds never do). This
-script is the other half: it reads scripts/policy/coverage-baseline.json, looks for a
-freshly-produced JaCoCo XML report per module, and:
+build.gradle.template ships into a generated FinalApp; the platform-internal builds never do).
+
+Track C card C8 (2026-08-14) extended this same ratchet -- same file, same schema, same gate step --
+to the two ecosystems R3 explicitly deferred: the editor (`NPDevEditor/ui-react`, `@vitest/coverage-v8`
+via `npm test` -> `vitest run --coverage`, `json-summary` reporter) and NPDevCli
+(`coverage.py` wrapping the SAME `python -m unittest discover -s NPDevCli/tests` invocation
+run-ai-knowledge-gate.ps1 already ran). Neither tool emits JaCoCo's XML shape, so each module now
+declares a `reportFormat` (`jacoco-xml` / `istanbul-json-summary` / `coverage-py-json`) and this
+script dispatches to the matching parser -- the RATCHET SEMANTICS below are identical across all
+three formats; only the bytes-on-disk differ. See coverage-baseline.json's own per-module notes for
+why NPDevMcp and the rest of scripts/ stay at the 0.0/null placeholder (no dedicated automated test
+suite exists for either yet -- the same kind of pre-existing, honestly-labelled gap as kernel's).
+
+It reads scripts/policy/coverage-baseline.json, looks for a freshly-produced coverage report per
+module, and:
 
   - if a module's report is missing this run, reports it as NOT MEASURED and does not fail -- the
     ratchet's whole point (see coverage-baseline.json's own _comment) is that the first real
@@ -25,16 +37,22 @@ freshly-produced JaCoCo XML report per module, and:
 
 WHERE REPORTS COME FROM
 ------------------------
-This script builds nothing itself -- it is wired into run-ai-knowledge-gate.ps1, which is static by
-design (no Gradle, no boot). Reports only exist here because an EARLIER step in the same
-`run-all-gates.ps1` invocation (run-generator-gate.ps1 for dsl/generator, run-runtimehost-gate.ps1
-for RuntimeHost) already ran `gradlew ... test`, and JaCoCo's `finalizedBy jacocoTestReport` wiring
-in each build.gradle left an XML report on disk. In the STANDALONE ai-knowledge-gate.yml CI job
-(which never builds anything), every module legitimately reads not-measured every time -- that is
-the intended behaviour, not a bug: this check becomes load-bearing when a developer runs the full
-`run-all-gates.ps1` locally, or in a future CI job that combines a build with this check. Kernel has
-no dedicated CI gate at all yet (kernelQualityGate is a real Gradle task nobody invokes) -- a
-pre-existing gap this card does not close; see coverage-baseline.json's kernel note.
+This script is wired into run-ai-knowledge-gate.ps1, which is static by design (no Gradle, no npm
+install, no boot). Reports only exist here because an EARLIER step in the same `run-all-gates.ps1`
+invocation (run-generator-gate.ps1 for dsl/generator, run-runtimehost-gate.ps1 for RuntimeHost,
+run-frontend-gate.ps1 for the editor) already ran the real test command, and each tool's own
+report-writing left a file on disk: JaCoCo's `finalizedBy jacocoTestReport` wiring in each
+build.gradle, vitest's `coverage.reporter: ["text","json-summary"]` in vitest.config.ts, or (for
+NPDevCli) run-ai-knowledge-gate.ps1's OWN step [18/35] running the suite under `coverage run` before
+this later step reads its `coverage json` output. In the STANDALONE ai-knowledge-gate.yml CI job
+(which never builds the Java/frontend modules), the Java and editor modules legitimately read
+not-measured every time -- that is the intended behaviour, not a bug: those checks become
+load-bearing when a developer runs the full `run-all-gates.ps1` locally, or in a future CI job that
+combines a build with this check. NPDevCli is the one module measured for real even in the
+standalone CI job, since step [18/35] already runs its tests there. Kernel has no dedicated CI gate
+at all yet (kernelQualityGate is a real Gradle task nobody invokes) -- a pre-existing gap this card
+does not close; see coverage-baseline.json's kernel note. NPDevMcp and the rest of scripts/ have no
+dedicated automated test suite at all yet -- same shape of gap, see their own baseline notes.
 
 Usage:
     python scripts/quality/check-coverage-ratchet.py
@@ -102,22 +120,73 @@ def save_baseline(repo_root: Path, baseline: dict) -> None:
         f.write("\n")
 
 
-def _line_counter(report_root: ET.Element) -> tuple[int, int] | None:
+DEFAULT_REPORT_FORMAT = "jacoco-xml"
+
+
+def _jacoco_line_counts(report_path: Path) -> tuple[int, int] | None:
     """JaCoCo's <report> root carries <counter type="..."/> elements as DIRECT children summarizing
     the whole report (one per counter type) -- NOT the per-package/per-class ones nested inside
     <package>/<class>/<method>, which is why this only looks at direct children of the root."""
-    for counter in report_root.findall("counter"):
+    try:
+        tree = ET.parse(report_path)
+    except (ET.ParseError, OSError):
+        return None
+    for counter in tree.getroot().findall("counter"):
         if counter.get("type") == "LINE":
             return int(counter.get("covered", "0")), int(counter.get("missed", "0"))
     return None
 
 
-def parse_line_coverage_percent(xml_path: Path) -> float | None:
+def _istanbul_json_summary_line_counts(report_path: Path) -> tuple[int, int] | None:
+    """`@vitest/coverage-v8`'s (and plain istanbul's) `json-summary` reporter writes ONE
+    coverage-summary.json whose top-level "total" key already aggregates every instrumented file --
+    same shape this script wants, just under `total.lines.{covered,total}` instead of an XML
+    <counter>. A file with no "total.lines" key (wrong reporter, truncated write) reads as
+    not-measured rather than a crash."""
     try:
-        tree = ET.parse(xml_path)
-    except (ET.ParseError, OSError):
+        with report_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
         return None
-    counts = _line_counter(tree.getroot())
+    lines = data.get("total", {}).get("lines")
+    if not isinstance(lines, dict) or "covered" not in lines or "total" not in lines:
+        return None
+    covered = int(lines["covered"])
+    total = int(lines["total"])
+    return covered, max(total - covered, 0)
+
+
+def _coverage_py_json_line_counts(report_path: Path) -> tuple[int, int] | None:
+    """`coverage.py`'s `coverage json` writes `totals.{covered_lines,num_statements}` -- its
+    "statement coverage" is the same conceptual metric as JaCoCo's LINE counter (each executable
+    source line counted once), just named differently by the tool."""
+    try:
+        with report_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+    totals = data.get("totals")
+    if not isinstance(totals, dict) or "covered_lines" not in totals or "num_statements" not in totals:
+        return None
+    covered = int(totals["covered_lines"])
+    num_statements = int(totals["num_statements"])
+    return covered, max(num_statements - covered, 0)
+
+
+_FORMAT_PARSERS = {
+    "jacoco-xml": _jacoco_line_counts,
+    "istanbul-json-summary": _istanbul_json_summary_line_counts,
+    "coverage-py-json": _coverage_py_json_line_counts,
+}
+
+
+def _line_counts(report_path: Path, report_format: str) -> tuple[int, int] | None:
+    parser = _FORMAT_PARSERS.get(report_format, _jacoco_line_counts)
+    return parser(report_path)
+
+
+def parse_line_coverage_percent(report_path: Path, report_format: str = DEFAULT_REPORT_FORMAT) -> float | None:
+    counts = _line_counts(report_path, report_format)
     if counts is None:
         return None
     covered, missed = counts
@@ -127,20 +196,17 @@ def parse_line_coverage_percent(xml_path: Path) -> float | None:
     return round((covered / total) * 100.0, 4)
 
 
-def sum_line_coverage(reports: list[Path]) -> float | None:
-    """Aggregate LINE coverage across multiple JaCoCo XML reports -- used for the kernel+adapters
-    module family, which has no single Gradle-level aggregate report (see coverage-baseline.json's
-    kernel note: 36 adapters each produce their own report, summed here in Python instead of via a
-    hand-built Gradle JacocoReport merge task)."""
+def sum_line_coverage(reports: list[Path], report_format: str = DEFAULT_REPORT_FORMAT) -> float | None:
+    """Aggregate LINE coverage across multiple reports of the SAME format -- used for the
+    kernel+adapters module family, which has no single Gradle-level aggregate report (see
+    coverage-baseline.json's kernel note: 36 adapters each produce their own report, summed here in
+    Python instead of via a hand-built Gradle JacocoReport merge task). Generalized beyond JaCoCo so
+    any future multi-report module (e.g. a per-package vitest/coverage.py split) can reuse it."""
     total_covered = 0
     total_missed = 0
     found_any = False
     for report in reports:
-        try:
-            tree = ET.parse(report)
-        except (ET.ParseError, OSError):
-            continue
-        counts = _line_counter(tree.getroot())
+        counts = _line_counts(report, report_format)
         if counts is None:
             continue
         covered, missed = counts
@@ -174,11 +240,13 @@ def measure_module(
     repo_root: Path, module_cfg: dict, override_path: str | None
 ) -> tuple[float | None, str | None]:
     """Returns (percent, evidence) or (None, None) if not measured this run."""
+    report_format = module_cfg.get("reportFormat", DEFAULT_REPORT_FORMAT)
+
     if override_path:
         p = Path(override_path)
         if not p.is_file():
             return None, None
-        return parse_line_coverage_percent(p), str(p)
+        return parse_line_coverage_percent(p, report_format), str(p)
 
     globs = module_cfg.get("reportGlobs", [])
     candidates = _find_reports(repo_root, globs)
@@ -186,12 +254,12 @@ def measure_module(
         return None, None
 
     if module_cfg.get("aggregate", False):
-        pct = sum_line_coverage(candidates)
+        pct = sum_line_coverage(candidates, report_format)
         evidence = f"{len(candidates)} report(s), e.g. {candidates[0]}"
         return pct, evidence
 
     newest = max(candidates, key=lambda p: p.stat().st_mtime)
-    return parse_line_coverage_percent(newest), str(newest)
+    return parse_line_coverage_percent(newest, report_format), str(newest)
 
 
 def _now_iso() -> str:
@@ -208,7 +276,8 @@ def main(argv: list[str]) -> int:
         action="append",
         default=[],
         metavar="MODULE=PATH",
-        help="Explicitly point one module at a fresh JaCoCo XML report, bypassing auto-discovery. May repeat.",
+        help="Explicitly point one module at a fresh coverage report (in whatever format that module's "
+        "reportFormat declares), bypassing auto-discovery. May repeat.",
     )
     parser.add_argument(
         "--calibrate",
@@ -300,6 +369,37 @@ def run_calibration() -> int:
         )
         return path
 
+    def make_istanbul_summary(path: Path, covered: int, total: int) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "total": {
+                        "lines": {"total": total, "covered": covered, "skipped": 0, "pct": 0},
+                        "statements": {"total": total, "covered": covered, "skipped": 0, "pct": 0},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def make_coverage_py_json(path: Path, covered_lines: int, num_statements: int) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "totals": {
+                        "covered_lines": covered_lines,
+                        "num_statements": num_statements,
+                        "percent_covered": 0,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
     with tempfile.TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
 
@@ -346,6 +446,24 @@ def run_calibration() -> int:
         pass4b = pct_agg2 is not None and abs(pct_agg2 - 89.1089) < 0.01
         print(f"  [{'PASS' if pass4b else 'FAIL'}] a skewed pair (90%/weight100, 0%/weight1) aggregates by weighted sum, not naive average (measured: {pct_agg2}, expected ~89.11)")
         ok = ok and pass4b
+
+        # Control 4c (Track C C8): the editor's `istanbul-json-summary` format (vitest
+        # coverage-v8's json-summary reporter) parses covered/total from total.lines, not from a
+        # <counter> element -- proves the format dispatch actually routes to a different parser.
+        istanbul_report = make_istanbul_summary(tmp / "vitest" / "coverage-summary.json", covered=30, total=100)
+        pct_istanbul = parse_line_coverage_percent(istanbul_report, "istanbul-json-summary")
+        pass4c = pct_istanbul is not None and abs(pct_istanbul - 30.0) < 1e-6
+        print(f"  [{'PASS' if pass4c else 'FAIL'}] istanbul-json-summary format parses total.lines (30/100 -> measured: {pct_istanbul})")
+        ok = ok and pass4c
+
+        # Control 4d (Track C C8): NPDevCli's `coverage-py-json` format (coverage.py's `coverage
+        # json` output) parses covered_lines/num_statements from totals, not from total.lines --
+        # proves the two new formats are genuinely independent parsers, not the same code twice.
+        coveragepy_report = make_coverage_py_json(tmp / "python" / "coverage.json", covered_lines=17, num_statements=68)
+        pct_coveragepy = parse_line_coverage_percent(coveragepy_report, "coverage-py-json")
+        pass4d = pct_coveragepy is not None and abs(pct_coveragepy - 25.0) < 1e-6
+        print(f"  [{'PASS' if pass4d else 'FAIL'}] coverage-py-json format parses totals.covered_lines/num_statements (17/68 -> measured: {pct_coveragepy})")
+        ok = ok and pass4d
 
         # Control 5: ratchet logic itself -- feed a fixture repo through main()'s measurement path
         # via an explicit --report override, on a throwaway baseline file, and confirm both the

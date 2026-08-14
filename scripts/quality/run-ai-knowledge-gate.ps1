@@ -131,6 +131,20 @@
     must contain -- starts with ADR-0011's four decisions (D1-D4) only, not retrofitted across the
     other 10 ADRs. Blocking, same rationale as every other checker in this gate.
 
+    Check 36 (R11, strategy-2026-08-12/ROADMAP.md, "Falsifiable DONE"): a status: DONE ledger item is
+    an assertion, not a proof, unless a machine can re-check it. 178/178 items were DONE at the audit
+    that named this gap, 154 claimed verification: VERIFIED_LIVE, and nothing anywhere re-tested any
+    of them -- the one freshness checker in this gate (check-ledger-status-reverse-freshness.py,
+    weekly) only ever examined OPEN items, of which there were none. This runs
+    check-done-item-guards.py: every DONE item must carry a guard: block (test/script/manual, see
+    ledger/README.md) unless its id is frozen into scripts/policy/done-item-guard-policy.json's
+    shrink-only legacy list (177 pre-ratchet items, frozen 2026-08-14 -- a NEW DONE item cannot join
+    it), and every guard actually present, on any item of any status, must RESOLVE (the named test
+    method exists, the named script/class exists, a manual guard's repo-rooted path if any exists).
+    Blocking, same rationale as checks 5/6/7/9 -- unlike doc-inventory/ledger-status-freshness
+    (weekly: slow-moving hygiene), a ledger item's own DONE claim and guard are authored in the same
+    commit under review, so a broken one is directly attributable to it.
+
     Run before merging any change to the ledger, the cards, the AI knowledge scripts, model.schema.json
     (any of its four copies), any `.github/workflows/*.yml`, or any code the sweep's patterns cover
     (SQL building, auth catches, template authorization guards).
@@ -418,10 +432,23 @@ try {
     # evaluator both depend on had been live-verified exactly once (Move 13 P2) but had ZERO
     # automated regression coverage; REG-110's own closure named that residual explicitly. Stdlib
     # unittest, no live boot needed -- the HTTP calls are mocked.
-    Write-Host "[18/35] Checking NPDevCli's own test suite (acceptance runner + dsl-2 migration)..."
-    python -m unittest discover -s "NPDevCli/tests" -p "test_*.py" -v 2>&1 | Out-Host
+    #
+    # Track C card C8 (2026-08-14, ledger QUAL-6's R3 extension): wrapped in `coverage run` so this
+    # SAME invocation also feeds check-coverage-ratchet.py's [35/35] step below -- NPDevCli is the
+    # one coverage module measured for real even in the standalone ai-knowledge-gate.yml CI job,
+    # since (unlike the Java/editor modules) its real test suite already runs here. `coverage json`
+    # always writes a report from whatever ran, even if some tests failed, so a real regression is
+    # still visible to the ratchet rather than silently reading as not-measured.
+    Write-Host "[18/35] Checking NPDevCli's own test suite (acceptance runner + dsl-2 migration), under coverage.py..."
+    & $py -m coverage run --source="NPDevCli" --omit="NPDevCli/tests/*,NPDevCli/tests/fixtures/*" -m unittest discover -s "NPDevCli/tests" -p "test_*.py" -v 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) {
-        $failures += "NPDevCli/tests failed -- see output above (python -m unittest discover -s NPDevCli/tests)"
+        $failures += "NPDevCli/tests failed -- see output above (python -m coverage run -m unittest discover -s NPDevCli/tests)"
+    }
+    $npdevCliCoverageDir = "scripts/reports/out/python-coverage"
+    New-Item -ItemType Directory -Force -Path $npdevCliCoverageDir | Out-Null
+    & $py -m coverage json -o (Join-Path $npdevCliCoverageDir "npdevcli-coverage.json") 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "coverage.py could not write NPDevCli's coverage report -- see output above (python -m coverage json)"
     }
 
     # [19/35] Move 14 Phase E item E1 (U2): "a rule applied in one place, not mirrored to its twin"
@@ -683,6 +710,18 @@ try {
     & $py "scripts/quality/check-coverage-ratchet.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "coverage dropped below its recorded floor for at least one module: see scripts/quality/check-coverage-ratchet.py output above, and scripts/policy/coverage-baseline.json"
+    }
+
+    # [36/35] R11 (strategy-2026-08-12/ROADMAP.md): falsifiable DONE. See this file's own .DESCRIPTION
+    # for the full rationale. The "/35" denominator is already inaccurate for several older steps in
+    # this file's own comments (e.g. the stale "[37/35]"/"[42/35]" narrative references above, left
+    # from checks that were since deleted or reordered) -- gate step numbers becoming structural
+    # ($script:GateSteps + a Write-Step helper, instead of hand-typed literals like this one) is R11's
+    # own explicitly deferred follow-up, not redone here.
+    Write-Host "[36/35] Checking every DONE ledger item's DONE claim is falsifiable..."
+    & $py "scripts/quality/check-done-item-guards.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a ledger item's falsifiable-DONE guard is missing or unresolvable: see scripts/quality/check-done-item-guards.py output above, and scripts/policy/done-item-guard-policy.json"
     }
 
     if ($failures.Count -gt 0) {

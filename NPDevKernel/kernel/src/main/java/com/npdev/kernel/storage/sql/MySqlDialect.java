@@ -76,7 +76,10 @@ public final class MySqlDialect implements SqlDialect {
             StorageCapability.UNIQUE_CONSTRAINTS,
             StorageCapability.SERVER_SIDE_JOIN,
             StorageCapability.AGGREGATION_PIPELINE,
-            StorageCapability.OPTIMISTIC_LOCKING);
+            StorageCapability.OPTIMISTIC_LOCKING,
+            // R8c: native "FOR UPDATE SKIP LOCKED" since MySQL 8.0 GA (this platform already
+            // targets 8.4 elsewhere -- see SqlDialect#keyableTextColumnType's javadoc).
+            StorageCapability.SKIP_LOCKED_READS);
     // SNAPSHOT_RESTORE absent: mysqldump is an external tool, not something the platform can drive
     // as an engine operation, and declaring it would be a promise the generator trusts wrongly.
 
@@ -169,6 +172,16 @@ public final class MySqlDialect implements SqlDialect {
     @Override
     public String selectForUpdate(String columns, String table, String whereClause) {
         return "SELECT " + columns + " FROM " + table + " WHERE " + whereClause + " FOR UPDATE";
+    }
+
+    @Override
+    public String selectForUpdateSkipLocked(
+            String columns, String table, String whereClause, String orderBy, int maxRows) {
+        if (maxRows <= 0) {
+            throw new IllegalArgumentException("engine 'mysql': maxRows must be positive, got " + maxRows);
+        }
+        return "SELECT " + columns + " FROM " + table + " WHERE " + whereClause
+                + " ORDER BY " + orderBy + " LIMIT " + maxRows + " FOR UPDATE SKIP LOCKED";
     }
 
     @Override

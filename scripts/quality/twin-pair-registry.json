@@ -318,6 +318,20 @@
         "NPDevRuntimeHost/src/main/java/com/finalexec/config/PluginControllerSecurityConfig.java",
         "scripts/proofs/run-r10-plugin-controller-proof.py"
       ]
+    },
+    {
+      "id": "capability-execution-policy-mirror",
+      "citedBy": "RUN-4 (R8d, ledger/items/RUN-4.yml)",
+      "description": "CapabilityExecutionPolicy (kernel) and CompiledCapabilityExecutionPolicy (DSL module) are independent classes with the same field-for-field shape (retryCount/retryDelayMs/timeoutMs/circuitOpenAfterFailures/circuitOpenMs/bulkheadMaxConcurrent/idempotencyKeyField/failureClassification) -- the kernel cannot depend on the DSL's compiled-model types, so there is no single shared type to enforce this instead. R8d (2026-08) deliberately left both untouched (adapter-level deadlines only, per the card's own sequencing: adapter deadlines first, the kernel-wide default -- CapabilityExecutionPolicy.defaults()'s zeros -- a separate, later decision). Registered here as groundwork for whoever DOES touch the kernel default or either shape next: a field added to one side without the other is exactly REG-104's 'parses/compiles clean, never reaches the runtime on the skipped side' shape. Each class carries the 'npdev-capability-execution-policy-mirror' token in its javadoc so dropping one (e.g. a rewrite that deletes the class) is a gate failure rather than a silent divergence.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev-capability-execution-policy-mirror"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevKernel/kernel/src/main/java/com/npdev/kernel/capabilities/CapabilityExecutionPolicy.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledCapabilityExecutionPolicy.java"
+      ]
     }
   ]
 }

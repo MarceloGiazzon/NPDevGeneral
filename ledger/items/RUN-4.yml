@@ -3,20 +3,136 @@ title: >-
   Capability timeout/retry default to off; neither network adapter sets a deadline
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-08-12
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R8d).
   CapabilityExecutionPolicy.defaults() returns zeros for timeout/retry/idempotency and neither network
-  adapter sets its own -- a capability invocation can hang forever.
+  adapter sets its own -- a capability invocation can hang forever. Track C session 2026-08-14
+  (branch track-c-r8d-capability-deadlines) shipped the adapter-level half per the card's own
+  sequencing (adapter deadlines first, kernel default a separate decision) and confirmed the
+  ForkJoinPool.commonPool claim with real evidence; the kernel-wide default itself was deliberately
+  NOT flipped -- see detail below for what remains open.
 surface: kernel/capability-execution
 files:
-  - NPDevKernel/kernel/.../CapabilityExecutionPolicy.java
-  - NPDevContract/dsl/.../CompiledCapabilityExecutionPolicy.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/capabilities/CapabilityExecutionPolicy.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledCapabilityExecutionPolicy.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java
+  - NPDevKernel/adapters/external-ai-http/src/main/java/com/npdev/adapters/externalai/http/HttpExternalAiCapabilityAdapter.java
+  - NPDevKernel/adapters/mail-smtp/src/main/java/com/npdev/adapters/mail/smtp/SmtpMailCapabilityAdapter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/NpdevExternalAiConfig.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/NpdevPluginConfig.java
+  - scripts/quality/twin-pair-registry.json
 detail: |
-  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8, sub-item R8d. Flipping the kernel default
-  moves every capability invocation from the synchronous path onto ForkJoinPool.commonPool, which
-  silently drops thread context -- prefer adapter-level deadlines first, treat the kernel default as a
-  separate decision. CapabilityExecutionPolicy is mirrored by CompiledCapabilityExecutionPolicy in the
-  DSL module -- both must move together. MASTER-ROADMAP.md Track C (part of R8); not in this session's
-  scope (Steps 1-4).
+  **What shipped (adapter-level deadlines, both network-calling CapabilityAdapters):**
+
+  `HttpExternalAiCapabilityAdapter` (external-ai-http) previously built `HttpClient.newHttpClient()`
+  with no connect timeout and built every `HttpRequest` with no `.timeout(...)` -- a vendor that
+  accepted the TCP connection and then never responded hung the calling thread forever, no retry.
+  Now: a `Duration requestTimeout` (default 120s, generous because "high" reasoning effort can
+  legitimately run tens of seconds) is applied per-request via `HttpRequest.Builder#timeout`
+  regardless of which `HttpClient` sends it, plus a bounded adapter-local retry loop in `send()`
+  (default `maxRetries=2`, linear backoff) that retries only `IOException` (which covers
+  `HttpTimeoutException`) and 429/5xx responses -- never a 4xx contract failure or the
+  `ExternalAiEgressDeniedException` deny path, neither of which a retry can fix. `NpdevExternalAiConfig
+  .httpExternalAiCapabilityContract` now builds the `HttpClient` itself with a configured
+  `connectTimeout` and reads all four knobs from `npdev.externalai.http.{connectTimeoutMs,
+  requestTimeoutMs,maxRetries,retryBackoffMs}`.
+
+  `SmtpMailCapabilityAdapter` (mail-smtp) previously set none of JavaMail's
+  `mail.smtp.connectiontimeout`/`mail.smtp.timeout`/`mail.smtp.writetimeout` properties -- a stuck
+  SMTP transaction hung forever, no retry. Now: all three are set from configurable
+  `connectTimeout`/`ioTimeout` `Duration`s (defaults 10s/30s), and `send()` retries only a
+  `MessagingException` whose cause is an `IOException` (connection refused/reset, or the new timeout
+  firing) -- never `AuthenticationFailedException`/`SendFailedException`, which a retry cannot fix.
+  `NpdevPluginConfig.mailSmtpRuntimePluginRealizationProvider` reads the four knobs from
+  `npdev.mail.smtp.{connectTimeoutMs,ioTimeoutMs,maxRetries,retryBackoffMs}`.
+
+  Both adapters keep their pre-existing constructors (tests and any other caller are unaffected) and
+  add a new full constructor taking the explicit deadline/retry config; neither touches
+  `CapabilityExecutionPolicy` or routes through it -- the deadline is enforced entirely inside the
+  adapter's own retry loop, on the calling thread, exactly the card's "adapter owns its own deadline
+  behavior, no platform-wide execution-path change" framing.
+
+  **Live proof, not a mocked timeout:** both adapter test suites gained a test that opens a real
+  loopback `ServerSocket`, accepts the TCP connection, and deliberately never answers (never sends an
+  HTTP response / never sends the SMTP "220" greeting), counts real accepted connections via an
+  `AtomicInteger` in the accept loop, and asserts (a) the call throws within a bounded wall-clock time
+  far under what an unbounded hang would take, and (b) the connection count equals exactly
+  `maxRetries + 1` -- proving both the deadline actually fires and the retry actually happens, not
+  just that the code compiles. `HttpExternalAiCapabilityAdapterTest
+  .requestTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer` and
+  `SmtpMailCapabilityAdapterTest.sendTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer`
+  both pass (`:adapters:external-ai-http:test` / `:adapters:mail-smtp:test`, full suites green, run
+  2026-08-14).
+
+  **The ForkJoinPool.commonPool claim: CONFIRMED, with concrete evidence, not taken on faith.**
+  `KernelRunner.invokeCapabilityWithTimeout` (the method backing `resolveEffectiveCapabilityPolicy`'s
+  `timeoutMs`) branches at `timeoutMs <= 0` (today's default, from `CapabilityExecutionPolicy
+  .defaults()`'s `timeoutMs=0`): that branch calls `capabilityDispatcher.invoke(call, finalContextState)`
+  directly, synchronously, on the calling thread. The `timeoutMs > 0` branch instead calls
+  `CompletableFuture.supplyAsync(() -> capabilityDispatcher.invoke(...))` with NO explicit
+  `Executor` argument -- per the JDK's own `CompletableFuture` contract, that overload runs the
+  supplier on `ForkJoinPool.commonPool()`. So flipping `CapabilityExecutionPolicy.defaults()`'s
+  `timeoutMs` from 0 to any positive value would move EVERY capability invocation platform-wide from
+  the synchronous path onto that shared pool -- confirmed by reading the code, not inferred.
+
+  Also confirmed: this platform has real thread-local-shaped state that `ForkJoinPool.commonPool()`'s
+  pre-existing, reused worker threads do not inherit from the calling (request/flow) thread.
+  (1) SLF4J MDC: `CorrelationIdFilter` (`com.finalexec.config`) does `MDC.put("correlationId", ...)`
+  on the request thread, and every generated app's `application.properties` sets
+  `logging.pattern.console=... [%X{correlationId:--}] ...` -- a log line emitted from a
+  `ForkJoinPool.commonPool` worker would silently print `--` instead of the real id, breaking
+  cross-log traceability with no exception anywhere. (2) Spring's `RequestContextHolder`:
+  `GeneratedCrudRuntimeSupport.resolveCurrentExecutionContext()` (expression-cel adapter) calls
+  `RequestContextHolder.getRequestAttributes()` and falls back to `ExecutionContext.anonymous()` when
+  it returns null (which it would, from a pool worker thread that never had the request bound to it)
+  -- a silent authorization/audit-identity downgrade, not a crash. Neither call site is proven to sit
+  on the literal `capabilityDispatcher.invoke(...)` call stack today (that would need a full
+  capability-by-capability trace, out of this session's scope), but both prove the *mechanism* is
+  real and already present in this codebase: MDC and `RequestContextHolder` are exactly the kind of
+  thread-local state the card warns "silently drops," and this platform depends on both today.
+
+  **Deliberately NOT done this session, per the card's own sequencing (adapter deadlines first,
+  kernel default a separate, later decision):** `CapabilityExecutionPolicy.defaults()` still returns
+  `timeoutMs=0`/`retryCount=1` -- unchanged. `CompiledCapabilityExecutionPolicy.defaults()` (the DSL
+  mirror) is also unchanged. Flipping either is explicitly out of scope here.
+
+  **Twin-pair groundwork for whoever does take that decision next:** `CapabilityExecutionPolicy`
+  (kernel) and `CompiledCapabilityExecutionPolicy` (DSL module) are independent classes with the same
+  field-for-field shape and had no twin-pair rule pinning them together. Registered
+  `capability-execution-policy-mirror` in `scripts/quality/twin-pair-registry.json` (enforced by
+  `check-twin-pair-consistency.py`, part of `run-ai-knowledge-gate.ps1`) -- both classes now carry the
+  `npdev-capability-execution-policy-mirror` token in their javadoc, so a future change to one shape
+  without the other fails the gate instead of silently shipping a value that parses on one side and
+  never reaches the other (REG-104's shape).
+
+  **What remains open (why this is PARTIAL, not DONE):** the kernel-wide default decision itself --
+  whether/how to give `CapabilityExecutionPolicy.defaults()` a non-zero timeout without routing
+  through `ForkJoinPool.commonPool()` (e.g. a dedicated bounded executor with an `InheritableThreadLocal`-
+  aware or explicit context-propagating wrapper, or restructuring `KernelRunner`'s timeout enforcement
+  to not need a second thread at all for the common case) -- is unresolved and requires its own
+  dedicated session per the card. A full call-graph trace proving (or disproving) that MDC/
+  `RequestContextHolder` actually sit on a live capability's call stack (as opposed to just being
+  present elsewhere in the codebase) would strengthen the case either way and is worth doing before
+  that session picks a design.
+
+  **2026-08-14 (reconciliation, merging all roadmap branches):** R11's check-done-item-guards.py
+  (just merged) caught the same guard-bundling problem here that it caught on EXT-1 -- guard.ref
+  named two test methods across two different files joined by "and", which kind: test's single
+  "path #method" resolver can't parse. Narrowed guard.ref to one representative reference
+  (HttpExternalAiCapabilityAdapterTest); the mail-smtp sibling test remains fully documented above
+  and unchanged, just no longer squeezed into the one field the checker mechanically resolves.
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/adapters/external-ai-http/src/test/java/com/npdev/adapters/externalai/http/HttpExternalAiCapabilityAdapterTest.java#requestTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer
+  asserts: >-
+    Pointed at a real local socket that accepts a TCP connection and never answers, the adapter
+    throws within a bounded time (not an unbounded hang) and retries exactly maxRetries+1 times
+    (asserted via a real accepted-connection count). The mail-smtp adapter has an identical sibling
+    test (SmtpMailCapabilityAdapterTest#sendTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer,
+    see detail) proving the same property there; this guard covers one representative reference per
+    R11's single-ref-per-item schema. Proves the adapter-level deadline/retry portion of this item
+    only; the kernel-wide default decision remains open (see detail).
+  provenRed: true
