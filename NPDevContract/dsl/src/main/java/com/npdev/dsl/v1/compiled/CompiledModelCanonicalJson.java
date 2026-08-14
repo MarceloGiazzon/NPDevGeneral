@@ -184,6 +184,7 @@ public final class CompiledModelCanonicalJson {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("name", safe(role.name()));
             node.set("grants", toStringArray(role.grants()));
+            node.set("origin", toOrigin(role.origin()));
             roles.add(node);
         }
         return roles;
@@ -589,6 +590,7 @@ public final class CompiledModelCanonicalJson {
             // diffing, which must see index changes, not just DDL emitted at generation time.
             node.set("indexes", toIndexes(concept.getIndexes()));
             node.set("access", toConceptAccess(concept.getAccess()));
+            node.set("origin", toOrigin(concept.getOrigin()));
             concepts.add(node);
         }
         return concepts;
@@ -626,6 +628,7 @@ public final class CompiledModelCanonicalJson {
             node.set("examples", toStringArray(domainType.getExamples()));
             node.set("validationSchema", toSchema(domainType.getValidationSchema()));
             node.set("ui", toDomainTypeUi(domainType.getUi()));
+            node.set("origin", toOrigin(domainType.getOrigin()));
             domainTypes.add(node);
         }
         return domainTypes;
@@ -757,6 +760,7 @@ public final class CompiledModelCanonicalJson {
                 operationsNode.add(operationNode);
             }
             node.set("operations", operationsNode);
+            node.set("origin", toOrigin(capability.getOrigin()));
             capabilities.add(node);
         }
         return capabilities;
@@ -797,6 +801,7 @@ public final class CompiledModelCanonicalJson {
                 payloadNode.add(payloadFieldNode);
             }
             node.set("payload", payloadNode);
+            node.set("origin", toOrigin(event.getOrigin()));
             events.add(node);
         }
         return events;
@@ -817,6 +822,7 @@ public final class CompiledModelCanonicalJson {
             node.set("action", toActionMetadata(flow.getAction()));
             node.set("steps", toFlowSteps(flow.getSteps()));
             node.set("schedule", toFlowSchedule(flow.getSchedule()));
+            node.set("origin", toOrigin(flow.getOrigin()));
             flows.add(node);
         }
         return flows;
@@ -851,6 +857,7 @@ public final class CompiledModelCanonicalJson {
             node.set("groupBy", toGroupByFields(query.groupBy()));
             node.set("aggregates", toAggregateFunctions(query.aggregates()));
             node.put("having", safe(query.having()));
+            node.set("origin", toOrigin(query.origin()));
             queries.add(node);
         }
         return queries;
@@ -1041,6 +1048,7 @@ public final class CompiledModelCanonicalJson {
             node.set("explainability", toObjectMap(panel.explainability()));
             node.set("metadata", toObjectMap(panel.metadata()));
             node.put("guidePage", safe(panel.guidePage()));
+            node.set("origin", toOrigin(panel.origin()));
             panels.add(node);
         }
         return panels;
@@ -1222,6 +1230,22 @@ public final class CompiledModelCanonicalJson {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.put("read", safe(access.getRead()));
         node.put("write", safe(access.getWrite()));
+        return node;
+    }
+
+    /** PACK-2 (ledger; PACK-ROADMAP.md card PK-1 steps 5-7): pack-attribution provenance
+     *  ({@code origin: {packId, packVersion, packDigest, sealed}}); null (key omitted) for an app's
+     *  own root- or context-declared member -- same null-means-absent convention {@code access}
+     *  just above uses. */
+    private static ObjectNode toOrigin(CompiledOrigin origin) {
+        if (origin == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("packId", safe(origin.packId()));
+        node.put("packVersion", safe(origin.packVersion()));
+        node.put("packDigest", safe(origin.packDigest()));
+        node.put("sealed", origin.sealed());
         return node;
     }
 

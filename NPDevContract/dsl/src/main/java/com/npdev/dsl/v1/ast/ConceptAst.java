@@ -9,6 +9,7 @@ public final class ConceptAst extends EntityAst {
     private final ConceptAccessAst access;
     private final String renamedFrom;
     private final String satelliteOf;
+    private final OriginAst origin;
 
     public ConceptAst(String name, List<FieldAst> fields, List<InvariantAst> invariants) {
         this(name, null, null, fields, invariants, List.of(), null, null, null, null, List.of());
@@ -162,12 +163,35 @@ public final class ConceptAst extends EntityAst {
             String renamedFrom,
             String satelliteOf
     ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel, module, indexes, access, renamedFrom, satelliteOf, null);
+    }
+
+    /** PACK-2: attaches pack-attribution provenance (see getOrigin) -- null for an app's own root-
+     *  or context-declared concept, non-null for a pack-contributed one. */
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module,
+            List<IndexAst> indexes,
+            ConceptAccessAst access,
+            String renamedFrom,
+            String satelliteOf,
+            OriginAst origin
+    ) {
         super(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
         this.access = access;
         this.renamedFrom = renamedFrom;
         this.satelliteOf = satelliteOf;
+        this.origin = origin;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -193,6 +217,11 @@ public final class ConceptAst extends EntityAst {
     /** PK-6: the pack-qualified base concept this concept is a satellite extension of, or null if it declares none. */
     public String getSatelliteOf() {
         return satelliteOf;
+    }
+
+    /** PACK-2: pack-attribution provenance, or null if this concept is not pack-contributed. */
+    public OriginAst getOrigin() {
+        return origin;
     }
 
     public static ConceptAst fromLegacyEntity(EntityAst legacy) {

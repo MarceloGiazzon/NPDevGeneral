@@ -8,8 +8,13 @@ import java.util.List;
  * {@code RoleValidation} at compile time and resolved against the real
  * {@code com.npdev.kernel.auth.Permission} enum at runtime boot).
  */
-public record CompiledRole(String name, List<String> grants) {
+public record CompiledRole(String name, List<String> grants, CompiledOrigin origin) {
     public CompiledRole {
         grants = grants == null ? List.of() : List.copyOf(grants);
+    }
+
+    /** Pre-PACK-2 convenience constructor -- origin defaults to null (not pack-contributed). */
+    public CompiledRole(String name, List<String> grants) {
+        this(name, grants, null);
     }
 }

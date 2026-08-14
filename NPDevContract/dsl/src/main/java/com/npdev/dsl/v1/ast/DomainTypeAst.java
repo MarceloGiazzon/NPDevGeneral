@@ -12,6 +12,7 @@ public final class DomainTypeAst {
     private final String formatHint;
     private final List<String> examples;
     private final DomainTypeUiAst ui;
+    private final OriginAst origin;
 
     public DomainTypeAst(
             String name,
@@ -21,6 +22,21 @@ public final class DomainTypeAst {
             String formatHint,
             List<String> examples,
             DomainTypeUiAst ui
+    ) {
+        this(name, baseType, validationSchema, normalizationRules, formatHint, examples, ui, null);
+    }
+
+    /** PACK-2: attaches pack-attribution provenance (see getOrigin) -- null for an app's own root-
+     *  or context-declared domain type, non-null for a pack-contributed one. */
+    public DomainTypeAst(
+            String name,
+            String baseType,
+            SchemaAst validationSchema,
+            List<String> normalizationRules,
+            String formatHint,
+            List<String> examples,
+            DomainTypeUiAst ui,
+            OriginAst origin
     ) {
         this.name = name;
         this.baseType = baseType;
@@ -33,6 +49,7 @@ public final class DomainTypeAst {
                 ? List.of()
                 : Collections.unmodifiableList(new ArrayList<>(examples));
         this.ui = ui;
+        this.origin = origin;
     }
 
     public String getName() {
@@ -61,5 +78,10 @@ public final class DomainTypeAst {
 
     public DomainTypeUiAst getUi() {
         return ui;
+    }
+
+    /** PACK-2: pack-attribution provenance, or null if this domain type is not pack-contributed. */
+    public OriginAst getOrigin() {
+        return origin;
     }
 }

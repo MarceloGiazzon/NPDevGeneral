@@ -49,6 +49,7 @@ import com.npdev.dsl.v1.ast.GuidePageThemeAst;
 import com.npdev.dsl.v1.ast.IndexAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.OrchestrationActionAst;
+import com.npdev.dsl.v1.ast.OriginAst;
 import com.npdev.dsl.v1.ast.SchemaAst;
 import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.PanelActionAst;
@@ -100,6 +101,7 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledOrchestration;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationTrigger;
+import com.npdev.dsl.v1.compiled.CompiledOrigin;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
@@ -325,7 +327,8 @@ public final class ModelCompiler {
                             compiledIndexes,
                             compiledAccess,
                             concept.getRenamedFrom(),
-                            concept.getSatelliteOf()
+                            concept.getSatelliteOf(),
+                            toCompiledOrigin(concept.getOrigin())
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());
@@ -349,7 +352,8 @@ public final class ModelCompiler {
                 ));
             }
             operations.sort(Comparator.comparing(operation -> normalize(operation.getName())));
-            capabilities.add(new CompiledCapability(capabilityAst.getName(), capabilityAst.getType(), operations));
+            capabilities.add(new CompiledCapability(capabilityAst.getName(), capabilityAst.getType(), operations,
+                    toCompiledOrigin(capabilityAst.getOrigin())));
             capabilityTypesByName.put(normalize(capabilityAst.getName()), capabilityAst.getType());
             Map<String, CompiledCapabilityOperation> operationMap = new LinkedHashMap<>();
             for (CompiledCapabilityOperation operation : operations) {
@@ -374,7 +378,8 @@ public final class ModelCompiler {
                 payloadFields.add(new CompiledEventField(payloadField.getName(), payloadField.getType()));
             }
             payloadFields.sort(Comparator.comparing(field -> normalize(field.getName())));
-            events.add(new CompiledEvent(eventAst.getName(), eventAst.getConceptName(), payloadFields, eventAst.getTriggerMode()));
+            events.add(new CompiledEvent(eventAst.getName(), eventAst.getConceptName(), payloadFields, eventAst.getTriggerMode(),
+                    toCompiledOrigin(eventAst.getOrigin())));
         }
 
         List<FlowAst> orderedFlows = new ArrayList<>(modelAst.getFlows());
@@ -397,7 +402,8 @@ public final class ModelCompiler {
                     toCompiledSchema(flowAst.getOutputSchema()),
                     toCompiledActionMetadata(flowAst.getAction()),
                     flowAst.isStartEndpoint(),
-                    toCompiledFlowSchedule(flowAst.getSchedule())
+                    toCompiledFlowSchedule(flowAst.getSchedule()),
+                    toCompiledOrigin(flowAst.getOrigin())
             ));
         }
 
@@ -452,7 +458,8 @@ public final class ModelCompiler {
                     sortObjectMap(queryAst.metadata()),
                     toCompiledGroupByFields(queryAst.groupBy()),
                     toCompiledAggregateFunctions(queryAst.aggregates()),
-                    queryAst.having()
+                    queryAst.having(),
+                    toCompiledOrigin(queryAst.origin())
             ));
         }
 
@@ -760,7 +767,8 @@ public final class ModelCompiler {
             List<com.npdev.dsl.v1.ast.RoleAst> roleAsts) {
         List<com.npdev.dsl.v1.compiled.CompiledRole> compiled = new ArrayList<>();
         for (com.npdev.dsl.v1.ast.RoleAst roleAst : roleAsts) {
-            compiled.add(new com.npdev.dsl.v1.compiled.CompiledRole(roleAst.name(), roleAst.grants()));
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledRole(
+                    roleAst.name(), roleAst.grants(), toCompiledOrigin(roleAst.origin())));
         }
         return compiled;
     }
@@ -1134,6 +1142,14 @@ public final class ModelCompiler {
         };
     }
 
+    /** PACK-2: converts the AST-level pack-attribution provenance into its compiled mirror --
+     *  null in, null out (not pack-contributed). */
+    private static CompiledOrigin toCompiledOrigin(OriginAst origin) {
+        return origin == null
+                ? null
+                : new CompiledOrigin(origin.packId(), origin.packVersion(), origin.packDigest(), origin.sealed());
+    }
+
     private static CompiledDomainType toCompiledDomainType(DomainTypeAst domainTypeAst) {
         if (domainTypeAst == null) {
             return null;
@@ -1157,7 +1173,8 @@ public final class ModelCompiler {
                 domainTypeAst.getNormalizationRules(),
                 domainTypeAst.getFormatHint(),
                 domainTypeAst.getExamples(),
-                ui
+                ui,
+                toCompiledOrigin(domainTypeAst.getOrigin())
         );
     }
 
@@ -1722,7 +1739,8 @@ public final class ModelCompiler {
                 compilePanelActions(panelAst.actions()),
                 sortObjectMap(panelAst.explainability()),
                 sortObjectMap(panelAst.metadata()),
-                panelAst.guidePage()
+                panelAst.guidePage(),
+                toCompiledOrigin(panelAst.origin())
         );
     }
 

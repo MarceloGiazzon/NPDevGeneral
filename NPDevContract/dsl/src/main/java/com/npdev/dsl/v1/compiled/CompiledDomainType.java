@@ -13,6 +13,7 @@ public final class CompiledDomainType {
     private final String formatHint;
     private final List<String> examples;
     private final CompiledDomainTypeUi ui;
+    private final CompiledOrigin origin;
 
     public CompiledDomainType(
             String name,
@@ -23,6 +24,22 @@ public final class CompiledDomainType {
             String formatHint,
             List<String> examples,
             CompiledDomainTypeUi ui
+    ) {
+        this(name, baseType, javaType, validationSchema, normalizationRules, formatHint, examples, ui, null);
+    }
+
+    /** PACK-2: attaches pack-attribution provenance (see getOrigin) -- null for an app's own root-
+     *  or context-declared domain type, non-null for a pack-contributed one. */
+    public CompiledDomainType(
+            String name,
+            String baseType,
+            String javaType,
+            CompiledSchema validationSchema,
+            List<String> normalizationRules,
+            String formatHint,
+            List<String> examples,
+            CompiledDomainTypeUi ui,
+            CompiledOrigin origin
     ) {
         this.name = name;
         this.baseType = baseType;
@@ -36,6 +53,7 @@ public final class CompiledDomainType {
                 ? List.of()
                 : Collections.unmodifiableList(new ArrayList<>(examples));
         this.ui = ui;
+        this.origin = origin;
     }
 
     public String getName() {
@@ -68,5 +86,10 @@ public final class CompiledDomainType {
 
     public CompiledDomainTypeUi getUi() {
         return ui;
+    }
+
+    /** PACK-2: pack-attribution provenance, or null if this domain type is not pack-contributed. */
+    public CompiledOrigin getOrigin() {
+        return origin;
     }
 }

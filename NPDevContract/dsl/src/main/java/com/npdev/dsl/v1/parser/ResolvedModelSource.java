@@ -19,6 +19,7 @@ public final class ResolvedModelSource {
     private final List<ValidationDiagnostic> warnings;
     private final Map<String, String> physicalQualifierByConceptName;
     private final Map<String, PackLockFile.LockedPack> migrationTrackedPacks;
+    private final Map<String, Map<String, ModelSourceResolver.PackOrigin>> originByQualifiedMemberName;
 
     public ResolvedModelSource(
             Path rootModelPath,
@@ -29,7 +30,8 @@ public final class ResolvedModelSource {
             List<ValidationDiagnostic> diagnostics,
             List<ValidationDiagnostic> warnings,
             Map<String, String> physicalQualifierByConceptName,
-            Map<String, PackLockFile.LockedPack> migrationTrackedPacks
+            Map<String, PackLockFile.LockedPack> migrationTrackedPacks,
+            Map<String, Map<String, ModelSourceResolver.PackOrigin>> originByQualifiedMemberName
     ) {
         this.rootModelPath = Objects.requireNonNull(rootModelPath, "rootModelPath");
         this.canonicalRootDirectory = Objects.requireNonNull(canonicalRootDirectory, "canonicalRootDirectory");
@@ -41,6 +43,8 @@ public final class ResolvedModelSource {
         this.physicalQualifierByConceptName = Map.copyOf(
                 physicalQualifierByConceptName == null ? Map.of() : physicalQualifierByConceptName);
         this.migrationTrackedPacks = Map.copyOf(migrationTrackedPacks == null ? Map.of() : migrationTrackedPacks);
+        this.originByQualifiedMemberName = Map.copyOf(
+                originByQualifiedMemberName == null ? Map.of() : originByQualifiedMemberName);
     }
 
     public Path rootModelPath() {
@@ -81,6 +85,13 @@ public final class ResolvedModelSource {
      *  generate, to advance {@code npdev.lock}'s migratedVersion bookkeeping. */
     public Map<String, PackLockFile.LockedPack> migrationTrackedPacks() {
         return migrationTrackedPacks;
+    }
+
+    /** PACK-2: pack-attribution facts for every pack-contributed member, keyed first by {@code
+     *  ModelSourceResolver.MODEL_ARRAY_KEYS} kind then by the member's already-qualified name --
+     *  see {@code ModelSourceResolver#recordOrigin}. Empty for a model with no {@code packs[]}. */
+    public Map<String, Map<String, ModelSourceResolver.PackOrigin>> originByQualifiedMemberName() {
+        return originByQualifiedMemberName;
     }
 
     public String resolvedModelJson() {

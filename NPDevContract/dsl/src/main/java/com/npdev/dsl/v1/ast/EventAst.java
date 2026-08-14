@@ -11,6 +11,7 @@ public final class EventAst {
     private final String version;
     private final List<EventPayloadAst> payload;
     private final String triggerMode;
+    private final OriginAst origin;
 
     public EventAst(String name, List<EventPayloadAst> payload) {
         this(name, null, null, null, payload);
@@ -44,12 +45,27 @@ public final class EventAst {
             List<EventPayloadAst> payload,
             String triggerMode
     ) {
+        this(name, conceptName, specializesName, version, payload, triggerMode, null);
+    }
+
+    /** PACK-2: attaches pack-attribution provenance (see getOrigin) -- null for an app's own root-
+     *  or concept-nested event, non-null for a pack-contributed top-level event. */
+    public EventAst(
+            String name,
+            String conceptName,
+            String specializesName,
+            String version,
+            List<EventPayloadAst> payload,
+            String triggerMode,
+            OriginAst origin
+    ) {
         this.name = name;
         this.conceptName = conceptName;
         this.specializesName = specializesName;
         this.version = version;
         this.payload = payload == null ? List.of() : new ArrayList<>(payload);
         this.triggerMode = triggerMode;
+        this.origin = origin;
     }
 
     public String getName() { return name; }
@@ -66,6 +82,11 @@ public final class EventAst {
 
     public String getTriggerMode() {
         return triggerMode;
+    }
+
+    /** PACK-2: pack-attribution provenance, or null if this event is not pack-contributed. */
+    public OriginAst getOrigin() {
+        return origin;
     }
 
     public List<EventPayloadAst> getPayloadFields() {

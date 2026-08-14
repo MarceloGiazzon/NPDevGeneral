@@ -43,6 +43,28 @@ public final class JsonModelParser {
             "true", "false", "null", "and", "or", "not", "cap", "ctx"
     );
 
+    /** PACK-2: converts a resolver-side {@link ModelSourceResolver.PackOrigin} carrier into the
+     *  AST-level {@link OriginAst} every parsed member kind this card covers attaches -- null in,
+     *  null out (not pack-contributed). */
+    private static OriginAst toOriginAst(ModelSourceResolver.PackOrigin origin) {
+        return origin == null
+                ? null
+                : new OriginAst(origin.packId(), origin.packVersion(), origin.packDigest(), origin.sealed());
+    }
+
+    /** PACK-2: looks up the pack origin recorded for one member, by {@code ModelSourceResolver
+     *  .MODEL_ARRAY_KEYS} kind (e.g. "concepts", "queries") and the member's own (already-qualified
+     *  for a pack member, unqualified for a root-declared one) name -- returns null (not pack-
+     *  contributed) when the map has no entry, which is always the case for a root-/context-declared
+     *  member since only {@code PackDependencyGraphWalker} ever populates this map. */
+    private static OriginAst originFor(
+            Map<String, Map<String, ModelSourceResolver.PackOrigin>> originByQualifiedMemberName,
+            String kind,
+            String name
+    ) {
+        return toOriginAst(originByQualifiedMemberName.getOrDefault(kind, Map.of()).get(name));
+    }
+
     public ModelAst parse(Path modelJsonPath) throws IOException {
         if (!Files.exists(modelJsonPath)) {
             throw new IOException("model.json not found: " + modelJsonPath);
@@ -64,11 +86,11 @@ public final class JsonModelParser {
         }
         return parse(source.resolvedRoot(), source.rootModelPath().toString(), source.warnings().stream()
                 .map(ValidationDiagnostic::getMessage)
-                .toList(), source.physicalQualifierByConceptName());
+                .toList(), source.physicalQualifierByConceptName(), source.originByQualifiedMemberName());
     }
 
     public ModelAst parse(JsonNode root) throws IOException {
-        return parse(root, "<resolved-model>", List.of(), Map.of());
+        return parse(root, "<resolved-model>", List.of(), Map.of(), Map.of());
     }
 
     /**
@@ -117,14 +139,15 @@ public final class JsonModelParser {
     }
 
     public ModelAst parse(JsonNode root, String sourceLabel) throws IOException {
-        return parse(root, sourceLabel, List.of(), Map.of());
+        return parse(root, sourceLabel, List.of(), Map.of(), Map.of());
     }
 
     private ModelAst parse(
             JsonNode root,
             String sourceLabel,
             List<String> sourceWarnings,
-            Map<String, String> physicalQualifierByConceptName
+            Map<String, String> physicalQualifierByConceptName,
+            Map<String, Map<String, ModelSourceResolver.PackOrigin>> originByQualifiedMemberName
     ) throws IOException {
         if (root == null || !root.isObject()) {
             throw new IOException("model.json root must be an object");
@@ -200,7 +223,8 @@ public final class JsonModelParser {
                         normalizationRules,
                         formatHint,
                         examples,
-                        ui
+                        ui,
+                        originFor(originByQualifiedMemberName, "domainTypes", domainTypeName)
                 ));
             }
         }
@@ -379,13 +403,13 @@ public final class JsonModelParser {
             String module = readText(ent, "module");
             String conceptRenamedFrom = readText(ent, "renamedFrom");
             String conceptSatelliteOf = readText(ent, "satelliteOf");
-            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf);
+            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf, originFor(originByQualifiedMemberName, "concepts", name));
             concepts.add(concept);
             conceptsByLowerName.put(name.toLowerCase(Locale.ROOT), concept);
         }
 
-        parseCapabilitiesArray(root.get("capabilities"), "capabilities", capabilities, conceptsByLowerName);
-        parseCapabilitiesArray(root.get("customCapabilities"), "customCapabilities", capabilities, conceptsByLowerName);
+        parseCapabilitiesArray(root.get("capabilities"), "capabilities", capabilities, conceptsByLowerName, originByQualifiedMemberName);
+        parseCapabilitiesArray(root.get("customCapabilities"), "customCapabilities", capabilities, conceptsByLowerName, originByQualifiedMemberName);
 
         JsonNode eventsNode = root.get("events");
         if (eventsNode != null) {
@@ -409,7 +433,8 @@ public final class JsonModelParser {
                             + " declares \"mode\", which only applies to a concept-nested event "
                             + "(move it under that concept's \"events\" array).");
                 }
-                events.add(new EventAst(name, null, specializes, eventVersion, payload));
+                events.add(new EventAst(name, null, specializes, eventVersion, payload, null,
+                        originFor(originByQualifiedMemberName, "events", name)));
             }
         }
 
@@ -473,7 +498,8 @@ public final class JsonModelParser {
                         outputSchema,
                         action,
                         Boolean.TRUE.equals(startEndpoint),
-                        schedule
+                        schedule,
+                        originFor(originByQualifiedMemberName, "flows", flowName)
                 ));
             }
         }
@@ -548,10 +574,10 @@ public final class JsonModelParser {
             }
         }
 
-        queries.addAll(parseQueries(root.get("queries")));
+        queries.addAll(parseQueries(root.get("queries"), originByQualifiedMemberName.getOrDefault("queries", Map.of())));
         ruleProfiles.addAll(parseRuleProfiles(root.get("ruleProfiles")));
         procedures.addAll(parseProcedures(root.get("procedures")));
-        panels.addAll(parsePanels(root.get("panels")));
+        panels.addAll(parsePanels(root.get("panels"), originByQualifiedMemberName.getOrDefault("panels", Map.of())));
         guidePages.addAll(parseGuidePages(root.get("guidePages")));
         aggregates.addAll(parseAggregates(root.get("aggregates")));
         autoPanels.addAll(parseAutoPanels(root.get("autoPanels")));
@@ -559,7 +585,7 @@ public final class JsonModelParser {
         documents.addAll(parseDocuments(root.get("documents")));
         ExternalAiAst externalAi = parseExternalAi(root.get("externalAi"));
         SettingsAst settings = parseSettings(root.get("settings"));
-        roles.addAll(parseRoles(root.get("roles")));
+        roles.addAll(parseRoles(root.get("roles"), originByQualifiedMemberName.getOrDefault("roles", Map.of())));
         propertyScopes.addAll(parsePropertyScopes(root.get("propertyScopes")));
         properties.addAll(parseProperties(root.get("properties")));
         contexts.addAll(parseContexts(root.get("contexts")));
@@ -696,7 +722,10 @@ public final class JsonModelParser {
      *  {@code grants} (a list of platform permission names, checked structurally here only; see
      *  {@link com.npdev.dsl.v1.ast.RoleAst}'s own javadoc for why the DSL module cannot validate
      *  against the real Permission enum). */
-    private static List<com.npdev.dsl.v1.ast.RoleAst> parseRoles(JsonNode node) throws IOException {
+    private static List<com.npdev.dsl.v1.ast.RoleAst> parseRoles(
+            JsonNode node,
+            Map<String, ModelSourceResolver.PackOrigin> originByName
+    ) throws IOException {
         List<com.npdev.dsl.v1.ast.RoleAst> out = new ArrayList<>();
         if (node == null || node.isNull()) {
             return out;
@@ -705,9 +734,11 @@ public final class JsonModelParser {
             throw new IOException("roles must be an array");
         }
         for (JsonNode roleNode : node) {
+            String name = requiredText(roleNode, "name");
             out.add(new com.npdev.dsl.v1.ast.RoleAst(
-                    requiredText(roleNode, "name"),
-                    parseTextArray(roleNode.get("grants"))
+                    name,
+                    parseTextArray(roleNode.get("grants")),
+                    toOriginAst(originByName.get(name))
             ));
         }
         return out;
@@ -802,7 +833,10 @@ public final class JsonModelParser {
         return new SettingsAst(locale, strings, pageRows, dateFormat);
     }
 
-    private static List<QueryAst> parseQueries(JsonNode node) throws IOException {
+    private static List<QueryAst> parseQueries(
+            JsonNode node,
+            Map<String, ModelSourceResolver.PackOrigin> originByName
+    ) throws IOException {
         List<QueryAst> out = new ArrayList<>();
         if (node == null || node.isNull()) {
             return out;
@@ -825,7 +859,8 @@ public final class JsonModelParser {
                     parseObjectMap(queryNode.get("metadata")),
                     parseGroupByFields(queryNode.get("groupBy")),
                     parseAggregateFunctions(queryNode.get("aggregates")),
-                    readText(queryNode, "having")
+                    readText(queryNode, "having"),
+                    toOriginAst(originByName.get(name))
             ));
         }
         return out;
@@ -1036,7 +1071,10 @@ public final class JsonModelParser {
         return out;
     }
 
-    private static List<PanelAst> parsePanels(JsonNode node) throws IOException {
+    private static List<PanelAst> parsePanels(
+            JsonNode node,
+            Map<String, ModelSourceResolver.PackOrigin> originByName
+    ) throws IOException {
         List<PanelAst> out = new ArrayList<>();
         if (node == null || node.isNull()) {
             return out;
@@ -1058,7 +1096,8 @@ public final class JsonModelParser {
                     parsePanelActions(panelNode.get("actions"), "panels[" + name + "].actions"),
                     parseObjectMap(panelNode.get("explainability")),
                     parseObjectMap(panelNode.get("metadata")),
-                    readText(panelNode, "guidePage")
+                    readText(panelNode, "guidePage"),
+                    toOriginAst(originByName.get(name))
             ));
         }
         return out;
@@ -2013,7 +2052,8 @@ public final class JsonModelParser {
             JsonNode capabilitiesNode,
             String sourceLabel,
             List<CapabilityAst> target,
-            Map<String, ConceptAst> conceptsByLowerName
+            Map<String, ConceptAst> conceptsByLowerName,
+            Map<String, Map<String, ModelSourceResolver.PackOrigin>> originByQualifiedMemberName
     ) throws IOException {
         if (capabilitiesNode == null) {
             return target;
@@ -2062,7 +2102,8 @@ public final class JsonModelParser {
                     }
                 }
             }
-            target.add(new CapabilityAst(name, type, specializes, operations));
+            target.add(new CapabilityAst(name, type, specializes, operations,
+                    originFor(originByQualifiedMemberName, sourceLabel, name)));
         }
         return target;
     }

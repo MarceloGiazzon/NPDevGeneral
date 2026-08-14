@@ -168,7 +168,8 @@ public final class ModelSourceResolver {
                     state.diagnostics,
                     state.warnings,
                     state.physicalQualifierByConceptName,
-                    state.migrationTrackedPacks
+                    state.migrationTrackedPacks,
+                    state.originByQualifiedMemberName
             );
         } catch (UncheckedModelSourceException exception) {
             throw exception.getCause();
@@ -595,6 +596,16 @@ public final class ModelSourceResolver {
     record PackRequirementEntry(String packId, List<String> path, JsonNode requires) {
     }
 
+    /** PACK-2 (ledger; PACK-ROADMAP.md card PK-1 steps 5-7): the pack-attribution facts recorded
+     *  for every member a pack contributes, populated by {@link #recordOrigin} and consumed by
+     *  {@code JsonModelParser} to attach an {@code OriginAst} to each parsed AST node. Fields mirror
+     *  {@code com.npdev.dsl.v1.ast.OriginAst}/{@code com.npdev.dsl.v1.compiled.CompiledOrigin}
+     *  exactly; kept as a separate, parser-package-local type (rather than reusing the ast type
+     *  directly) so this resolver -- which otherwise works purely at the JSON level, never
+     *  constructing an AST node itself -- does not take on an ast-package dependency. */
+    record PackOrigin(String packId, String packVersion, String packDigest, boolean sealed) {
+    }
+
     /** PK-3: refuses composition the moment any collected {@code requires.roles}/{@code
      *  capabilities}/{@code network} entry is not present in the app's own root {@code provides}
      *  -- checked here (resolve time, right after resolvePacks returns) to stay consistent with
@@ -683,6 +694,54 @@ public final class ModelSourceResolver {
                 continue;
             }
             state.physicalQualifierByConceptName.put(qualifierId + "::" + bareName, physicalQualifier);
+        }
+    }
+
+    /**
+     * PACK-2 (ledger; {@code PACK-ROADMAP.md} card PK-1 steps 5-7): records which pack (and which
+     * version/digest/sealedness of it) contributed EVERY member this pack merge just added under
+     * {@code qualifierId} -- one entry per {@link #MODEL_ARRAY_KEYS} kind the pack actually declares,
+     * keyed by the same already-qualified ({@code qualifierId::Name}) name {@link
+     * #mergeQualifiedConcepts}/{@link #mergeQualifiedNonConceptArrays} just wrote into the resolved
+     * model, so {@code JsonModelParser} can look an origin up by (kind, qualified name) as it parses
+     * each member kind's own array. Mirrors {@link #recordPhysicalQualifiers}'s own "derive straight
+     * off the pack's own JSON header, never the local alias" rule for {@code packId}.
+     *
+     * <p>Deliberately walks all 18 {@link #MODEL_ARRAY_KEYS} kinds (via {@link #memberRewriteMap},
+     * the same generalized walker PK-1 steps 1-4 already built) even though only 8 of them
+     * (concepts, domainTypes, capabilities, customCapabilities, events, flows, queries, roles,
+     * panels) currently carry an {@code origin} field on their {@code Compiled*}/{@code *Ast} type
+     * -- {@code JsonModelParser} only ever looks up the 8 kinds it knows about, so the extra entries
+     * for the other 10 kinds are simply never read. Doing the walk generically here (rather than
+     * hand-listing 8 kind strings) means a future kind gaining an {@code origin} field only needs
+     * the AST/Compiled/parser/compiler/canonical-JSON wiring, not a change here too.
+     *
+     * <p>Never called for a context merge (contexts are a physical-isolation mechanism, unrelated to
+     * pack provenance) -- only {@link PackDependencyGraphWalker#run} calls this, right alongside
+     * {@link #recordPhysicalQualifiers}, so a context-contributed member's origin stays absent from
+     * the map and every lookup against it resolves to null (not pack-contributed).
+     */
+    static void recordOrigin(
+            String qualifierId,
+            ObjectNode packNode,
+            String digest,
+            ResolutionState state
+    ) {
+        String realPackId = textOrBlank(packNode.get("pack"));
+        String packVersion = textOrBlank(packNode.get("version"));
+        boolean sealed = com.npdev.dsl.v1.pack.PackSealednessAnalyzer.analyze(packNode).sealed();
+        PackOrigin origin = new PackOrigin(realPackId, packVersion, digest, sealed);
+
+        for (String kind : MODEL_ARRAY_KEYS) {
+            Map<String, String> rewriteMap = memberRewriteMap(qualifierId, packNode, kind);
+            if (rewriteMap.isEmpty()) {
+                continue;
+            }
+            Map<String, PackOrigin> byQualifiedName =
+                    state.originByQualifiedMemberName.computeIfAbsent(kind, ignored -> new LinkedHashMap<>());
+            for (String qualifiedName : rewriteMap.values()) {
+                byQualifiedName.put(qualifiedName, origin);
+            }
         }
     }
 
@@ -1931,6 +1990,12 @@ public final class ModelSourceResolver {
          *  it ever bumps past its first version would be a visible behavior change to every existing
          *  app, not just the ones this card's feature actually applies to. */
         final Map<String, com.npdev.dsl.v1.pack.PackLockFile.LockedPack> migrationTrackedPacks = new LinkedHashMap<>();
+        /** PACK-2: pack-attribution facts for every pack-contributed member, keyed first by
+         *  {@link #MODEL_ARRAY_KEYS} kind (e.g. "concepts", "queries") then by the member's
+         *  already-qualified ({@code packId::Name}) name -- populated by {@link #recordOrigin}.
+         *  Absent for any root- or context-declared member (never pack-contributed), which is
+         *  exactly how {@code JsonModelParser} distinguishes "no origin" from "pack origin". */
+        final Map<String, Map<String, PackOrigin>> originByQualifiedMemberName = new LinkedHashMap<>();
 
         ResolutionState(Path rootRealPath, Path rootDirectory) {
             this.rootRealPath = rootRealPath;
