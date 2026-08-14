@@ -1,0 +1,83 @@
+id: REG-161
+title: >-
+  Six real CI gate scripts (Runtime surface evidence, Generator gate, RuntimeHost gate, Editor
+  gate, Security hardening maturity evidence, Runtime security consistency evidence) have no
+  pull_request-triggered CI home anywhere in the repo -- every recent merge to main went in
+  without ever being checked by them, pre- or post-merge
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Surfaced by this session's own adversarial review of PR #67 (REG-158, a narrow
+  script-automation-quality reporting-contract fix) before merge. The review's "downstream-skip"
+  dimension traced the actual consequence of that broken step failing on every push to `main`
+  since commit `83eaf603`, and found something bigger than the step it was investigating: the six
+  gate scripts it was skipping have no OTHER CI trigger at all, so the skip was never masking a
+  passing result being hidden -- these checks have genuinely never run against a pull request in
+  this repo's history since at least `83eaf603`.
+surface: ci/workflows
+files:
+  - .github/workflows/npdev-ci-validation.yml
+  - .github/workflows/npdev-pr-gate.yml
+detail: |
+  `.github/workflows/npdev-ci-validation.yml`'s `ci-validation` job is the ONLY place in the repo
+  that invokes `scripts/quality/run-runtime-surface-evidence.ps1`,
+  `scripts/quality/run-generator-gate.ps1`, `scripts/quality/run-runtimehost-gate.ps1`,
+  `scripts/quality/run-editor-gate.ps1`,
+  `scripts/quality/write-security-hardening-maturity-report.ps1`, and
+  `scripts/quality/run-runtime-security-consistency.ps1` (grepped all 10 other workflow files
+  under `.github/workflows/` for these six script names -- zero matches anywhere else).
+
+  This job's `on:` block is `workflow_dispatch` / `schedule` / `push` (branches: `[main]`) only --
+  **no `pull_request` trigger**. `.github/workflows/npdev-pr-gate.yml`, the one workflow that DOES
+  trigger on `pull_request`, runs a materially different and narrower check set (direct
+  `gradlew`/`npm test` invocations plus a RuntimeHost smoke test against one sample app) -- it is
+  not a substitute for the six gates above.
+
+  Separately, `scripts/quality/run-weekly-paperwork-checks.ps1`'s reporting-contract break
+  (`REG-158`, commit `83eaf603`, an unrelated PR merged earlier the same day as this finding) has
+  caused `npdev-ci-validation.yml`'s `ci-validation` job to fail at its "Script automation
+  quality" step and silently skip all 9 steps after it (a GitHub Actions default: an unguarded
+  step failure skips every later unguarded step in the same job) on **every one of the 7 confirmed
+  pushes to `main` since that commit** -- including the merges for PK-4 Stages C+D (#61), R7 Stage
+  A (#62), R7 Stage C (#63), R7 Stage B (#65), and the REG-152 fix (#66).
+
+  **Net effect, confirmed via real `gh run`/`gh api` job-step data, not inferred**: none of Runtime
+  surface evidence / Generator gate / RuntimeHost gate / Editor gate / Security hardening maturity
+  evidence / Runtime security consistency evidence ran against any of that work, pre-merge (no
+  trigger exists) or post-merge (main's own push run skipped them). REG-158 fixes the reporting
+  contract that caused the skip on those 7 runs, but does NOT give these six gates a
+  `pull_request` trigger -- that gap predates REG-158, is not touched by its fix, and persists
+  after REG-158 merges.
+
+  **Compounding governance gap found in the same review pass**: the one `pull_request`-triggered
+  check that IS closest to a substitute, "PR gate (DSL/kernel/generator/RuntimeHost smoke,
+  Linux)" in `npdev-pr-gate.yml`, was itself red at merge time for PR #65 and PR #66 (both failed
+  on the same known, unrelated `HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest`
+  flake) and both merged anyway -- correctly, since that specific failure was independently
+  confirmed as the known flake each time, but it means even the narrower existing safety net
+  was not effectively gating those merges either.
+
+  Likely fix: add `pull_request` to `npdev-ci-validation.yml`'s `ci-validation` job trigger (or
+  extract the six gate scripts into their own job/workflow that runs on both `push` and
+  `pull_request`), so future security- and correctness-relevant PRs actually get validated by
+  these checks before merge, not only on a schedule/post-merge basis where a skip goes unnoticed.
+  Also worth deciding whether any of these six should become REQUIRED branch-protection checks
+  once they have a `pull_request` trigger, given branch protection today requires only "AI
+  knowledge substrate gate".
+
+  Not designed further or fixed here -- this item is a finding from a review of unrelated work
+  (REG-158), filed immediately per this session's "unrelated bugs filed separately, never silently
+  worked around" discipline, not folded into that PR's scope.
+guard:
+  kind: manual
+  ref: >-
+    grep every file under .github/workflows/ for run-runtime-surface-evidence.ps1,
+    run-generator-gate.ps1, run-runtimehost-gate.ps1, run-editor-gate.ps1,
+    write-security-hardening-maturity-report.ps1, run-runtime-security-consistency.ps1, and check
+    which workflow files' on: blocks include pull_request
+  asserts: >-
+    at least one pull_request-triggered workflow invokes all six gate scripts, so a future PR gets
+    real coverage from them before merge, not just a scheduled/post-merge push run
+  provenRed: true
