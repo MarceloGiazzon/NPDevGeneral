@@ -29,7 +29,11 @@ $config = Read-SampleConfig -Sample $sample
 $port = Get-ConfigInt -Config $config -Path @("runtime", "serverPort") -Fallback 8097
 $profiles = Get-ConfigString -Config $config -Path @("runtime", "springProfile") -Fallback "dev,trial"
 $baseUrl = "http://localhost:$port"
-$apiKey = "dev-key"
+# R7 Stage D: resolved below, once the app has been generated (Get-NpdevLiveApiKey needs
+# _ops/resolved-db-plan.json, which generate-sample-app.ps1 has not written yet at this point).
+# This script boots the app itself (raw java -jar, no Ensure-NpdevApiKey call), so a hardcoded
+# "dev-key" is no longer a safe assumption -- ask what actually authenticates instead.
+$apiKey = $null
 
 $logDir = Join-Path $sample.OutputRoot "RunOutput"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -67,6 +71,7 @@ Info "=== Step 0: generate + build ==="
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { Fail "Sample generation failed" }
 
 $appRoot = $sample.AppRoot
+$apiKey = Get-NpdevLiveApiKey -AppRoot $appRoot
 $gradlew = Get-NPDevGradleWrapperExecutable $appRoot
 Ensure-File -PathValue $gradlew -Label "Generated app Gradle wrapper"
 

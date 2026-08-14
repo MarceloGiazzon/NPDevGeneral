@@ -3832,10 +3832,15 @@
     // page's static <title> until some later re-render happened to run.
     document.title = state.manifest.appName || "Business Data";
     if (state.manifest.auth && state.manifest.auth.devKeyHint) {
+      // R7 Stage D: devKeyHint is a static generation-time guess (the Spring `dev` profile's own
+      // known default) -- it is NOT the app's real key once launched via any of the platform's
+      // shipped launch pipelines, which now provision a random per-app key at boot
+      // (Ensure-NpdevApiKey, secrets/api-key.env) that overrides this default outright. Silently
+      // pre-filling+persisting a guess that usually no longer authenticates produced a confusing
+      // "auto-login" that just fails; show it as a PLACEHOLDER only (still useful on an actual
+      // `dev`-profile boot with no override) and let bootstrap()'s existing empty-key handling
+      // (loadPrincipal() gracefully renders an unauthenticated view) take it from there.
       el.apiKey.placeholder = "dev/smoke: " + state.manifest.auth.devKeyHint;
-      if (!el.apiKey.value) {
-        el.apiKey.value = state.manifest.auth.devKeyHint;
-      }
     }
     await loadPrincipal();
     // Delegates all chrome (header, nav tree, right rail) to the shared shell -- same runtime as

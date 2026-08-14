@@ -1,0 +1,84 @@
+id: REG-158
+title: >-
+  WorkspaceMenuSeeder hardcodes the unversioned table name "workspace_menus", but the current
+  generator's schema-realization SQL creates "workspace_v1_menus" -- any app composing the
+  built-in workspace pack with a menu seed crashes on first boot
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Found while doing R7 Stage D's live-verification (generating, building and booting
+  `superuser-admin-console` fresh to prove the migrated browser-routine credential mechanism
+  authenticates against a real app). Unrelated to Stage D's own auth/credential work -- discovered
+  only because Stage D required an actual clean boot to run a browser routine against, which R7's
+  own prior stages never needed (their live verification re-used already-generated apps or booted
+  on `dev` with no fresh-schema workspace-pack composition in the loop).
+surface: runtimehost/workspace
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/workspace/WorkspaceMenuSeeder.java
+detail: |
+  `WorkspaceMenuSeeder` (`@ConditionalOnResource(resources = "classpath:npdev-seed/workspace-menu-seed.json")`,
+  active for any app that composes the built-in `workspace::Menu` pack) is an `ApplicationRunner`
+  that unconditionally queries a literal, hardcoded, unversioned table name on every boot:
+
+      SELECT COUNT(*) FROM workspace_menus WHERE tenant_id = ?          (line 136)
+      SELECT target FROM workspace_menus WHERE ... AND kind = 'INTERNAL' ...  (line 159)
+      DELETE FROM workspace_menus WHERE tenant_id = ?                   (line 173)
+      INSERT INTO workspace_menus (...)                                  (lines 184, 207)
+
+  The generator's OWN schema-realization SQL, for the SAME app, creates the table under a
+  PACK-VERSIONED name instead:
+
+      CREATE TABLE IF NOT EXISTS workspace_v1_menus ( ... )
+
+  (confirmed directly: `grep -oE "CREATE TABLE IF NOT EXISTS [a-z0-9_]*"
+  npdev-generated/src/main/resources/db/schema-realization/V1__npdev_schema_realization.sql` on a
+  freshly generated `superuser-admin-console` lists `workspace_v1_menus`/`identity_v1_users`/etc.,
+  never the unversioned forms). Every OTHER built-in-pack table the generator creates is similarly
+  versioned (`identity_v1_roles`, `identity_v1_users`, `workspace_v1_property_values`, ...) --
+  `WorkspaceMenuSeeder` is the one place in `runtimehost-core` still written against the
+  pre-versioning name.
+
+  **Live-reproduced, not inferred**: generated `superuser-admin-console` fresh (config.json's own
+  `defaults.internal.tables=true` composes the workspace pack), built it, deleted any stale
+  database, and booted via `_ops\Run-FinalApp.ps1 -Profile dev,trial`. Flyway's own migration
+  succeeds ("Successfully applied 2 migrations to schema \"public\", now at version v1") -- the
+  table genuinely gets created, just under the versioned name -- and then
+  `WorkspaceMenuSeeder.countExistingMenus` throws immediately after:
+
+      org.h2.jdbc.JdbcSQLSyntaxErrorException: Table "workspace_menus" not found; SQL statement:
+      SELECT COUNT(*) FROM workspace_menus WHERE tenant_id = ? [42102-232]
+
+  Spring Boot's `ApplicationRunner` failure aborts the whole boot (graceful shutdown, process
+  exits). **Any app that composes the workspace pack's `Menu` concept with a menu seed present can
+  never complete a first boot against a genuinely fresh database** -- this is not a corner case,
+  it is the documented headline feature of the `superuser-admin-console` sample
+  (`docs/beta/beta1-vision-spine-status-and-handoff.md`'s "Increment 2", and the sample's own
+  `config.json` notes: "Super-user-only surfaces once booted: an 'Admin' nav group (identity/
+  workspace concepts)...").
+
+  Confirmed this is NOT a stale-jar artifact of this session's own worktree: refreshed
+  `runtimehost-libs` from the current source tree first (`scripts/runtimehost/sync-runtimehost-libs.ps1
+  -BuildLocalJars`), rebuilt the app's jar against the fresh jars, and the identical crash
+  reproduced -- the mismatch is in the checked-in source of `WorkspaceMenuSeeder.java` itself, not
+  an environment/build-cache issue.
+
+  Worked around, for this session's OWN verification purposes only (never shipped): stripped
+  `BOOT-INF/classes/npdev-seed/workspace-menu-seed.json` from the built jar so
+  `@ConditionalOnResource` makes the seeder bean absent entirely, letting the app boot without
+  seeding any menu rows. This is a test-only workaround, not a fix -- a real fix should rename the
+  four SQL literals to `workspace_v1_menus` (matching the table the generator actually creates),
+  or better, resolve the physical name the same way the generator does rather than hardcoding it a
+  second time in `runtimehost-core`, so the two can never drift apart again.
+guard:
+  kind: manual
+  ref: >-
+    generate any sample that composes the built-in workspace pack with `defaults.internal.tables:
+    true` (e.g. NPDevSamples/superuser-admin-console), delete any existing `data/` directory, build
+    it, and boot fresh via `_ops\Run-FinalApp.ps1 -Profile dev,trial` (or any profile that boots
+    against a real, non-ephemeral database)
+  asserts: >-
+    the app reaches a healthy `/actuator/health` response instead of crashing during
+    ApplicationRunner startup with "Table \"workspace_menus\" not found"
+  provenRed: true

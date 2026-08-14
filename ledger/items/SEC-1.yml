@@ -281,3 +281,10 @@ detail: |
   of this item's title are now false, live-verified on every pipeline, not just the primary one.
   Stage D (the migration surface: browser routines, sample configs) remains its own, separately
   scoped, not-yet-started future step per the roadmap.
+
+  **Stage D DONE 2026-08-14, filed and closed as its own item, `REG-159`** (not folded into this
+  already-closed card, per the roadmap's own "Stage D is its own later step" framing) -- migrated
+  every place that hardcoded `dev-key`/`api-dev` as a credential it expected to actually
+  authenticate (22 browser routines via the ScrapForAI engine's own `valueFromCredential`
+  mechanism, the generated business/operator UI's auto-fill, two doc sources), live-verified
+  against a freshly generated, `Ensure-NpdevApiKey`-launched app. Full detail in `REG-159.yml`.

@@ -42,6 +42,10 @@ $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId "superuser-adm
 $evidenceDir = Join-Path $sample.RunOutputRoot "browser"
 New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
 
+# R7 Stage D: routines fill #apiKey via valueFromCredential rather than a hardcoded literal --
+# resolve whatever key actually authenticates against THIS running app right now.
+$liveCreds = @{ apiKey = (Get-NpdevLiveApiKey -AppRoot $sample.AppRoot) }
+
 $routineDir = Join-Path $PSScriptRoot "browser-routines"
 $routines = Get-ChildItem -LiteralPath $routineDir -Filter "*.json" | Sort-Object Name
 if ($routines.Count -eq 0) { Fail "No browser routines found in $routineDir" }
@@ -68,8 +72,16 @@ try {
     foreach ($routine in $routines) {
         $name = [System.IO.Path]::GetFileNameWithoutExtension($routine.Name)
         Info ("=== Routine: " + $name + " ===")
-        $result = Invoke-ScrapRoutine -Context $ctx -RoutinePath $routine.FullName -Variables $sharedVars
-        Assert-RoutineGreen -Result $result -Label $name | Out-Null
+        $result = Invoke-ScrapRoutine -Context $ctx -RoutinePath $routine.FullName -Variables $sharedVars -Credentials $liveCreds
+        # R7 Stage D: every routine's own FIRST page load (via `goto`, before its explicit
+        # `fill #apiKey` + `reload`) is now genuinely unauthenticated -- the manifest's devKeyHint
+        # auto-fill guess no longer pre-empts it (removed: it was usually wrong once Stage C's
+        # per-app random key replaced the static default it guessed). That transient pre-fill state
+        # logs a real, expected, one-time 401 burst to the console before the explicit credential
+        # takes effect; the routine's own later assertions (nav/data actually rendering) are what
+        # prove authentication genuinely succeeded, exactly like the promotion routines already
+        # tolerate their own deliberate 400s below.
+        Assert-RoutineGreen -Result $result -Label $name -AllowConsoleErrorSubstrings @("responded with a status of 401") | Out-Null
         Save-RoutineEvidence -Result $result -OutDir $evidenceDir -Name $name | Out-Null
         $results += [ordered]@{
             routine     = $name

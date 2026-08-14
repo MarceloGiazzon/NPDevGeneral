@@ -115,13 +115,22 @@ def config_path(app_dir: Path) -> Path:
 # Routine -> engine request. ONE composer (R10).
 # ---------------------------------------------------------------------------------------------
 
-def compose_engine_request(routine: dict, base_url: str, variables: dict | None = None) -> dict:
+def compose_engine_request(routine: dict, base_url: str, variables: dict | None = None,
+                            credentials: dict | None = None) -> dict:
     """Exactly what `Invoke-ScrapRoutine` builds: drop NPDev's private `targetPath`, inject an
-    absolute `targetUrl`, merge runtime variable overrides over the routine's declared ones.
+    absolute `targetUrl`, merge runtime variable/credential overrides over the routine's declared
+    ones.
 
     A routine FILE is therefore never validated directly against the pinned schema -- the composed
     REQUEST is. Validating the file would report a missing `targetUrl` on every correct routine in
-    the corpus."""
+    the corpus.
+
+    `credentials` is merged exactly like `variables` (R7 Stage D) -- e.g. the freshly-generated
+    app's own live API key (see `npdev_monitor._read_live_api_key` / `Get-NpdevLiveApiKey` in
+    `sample-common.ps1`), which a routine references via a step's `valueFromCredential` rather than
+    a hardcoded `value` so a rotated per-app key never needs a routine-file edit. Kept as a SEPARATE
+    bucket from `variables`, never folded in: the engine redacts `credentials` values from evidence
+    (`collectKnownSecretValues` in ScrapForAILegacy) but not `variables` ones."""
     target_path = routine.get("targetPath", DEFAULT_TARGET_PATH)
     if not isinstance(target_path, str) or not target_path.startswith("/"):
         target_path = DEFAULT_TARGET_PATH
@@ -133,6 +142,10 @@ def compose_engine_request(routine: dict, base_url: str, variables: dict | None 
         merged = dict(request.get("variables") or {})
         merged.update(variables)
         request["variables"] = merged
+    if credentials:
+        merged = dict(request.get("credentials") or {})
+        merged.update(credentials)
+        request["credentials"] = merged
     request["steps"] = routine.get("steps")
     return request
 
@@ -863,6 +876,7 @@ def run_exploration(
     api_key: str | None = None,
     driver: str = "cli",
     variables: dict | None = None,
+    credentials: dict | None = None,
     ledger_id: str | None = None,
     keep_engine: bool = False,
     on_event=None,
@@ -903,7 +917,7 @@ def run_exploration(
             emit({"kind": "engine", "state": "started", "endpoint": endpoint})
 
         try:
-            request = compose_engine_request(routine, base_url, variables)
+            request = compose_engine_request(routine, base_url, variables, credentials)
             errors = npdev_jsonschema.validate(routine_schema(repo_root), request)
             if errors:
                 raise ExploreError(

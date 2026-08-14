@@ -180,8 +180,10 @@ the saved record back to whoever called the flow.*
 
 - The response body wraps your `return` value inside `.output` — expect
   `{ "output": { "id": "...", "name": "...", ... } }`, not the bare record.
-- Every call needs the `X-Api-Key` header (default `dev-key`, configurable in `config.json`
-  under `trialDefaults.apiKey`).
+- Every call needs the `X-Api-Key` header. Its value is generated per app at first launch and
+  printed once to the console (also saved to `secrets\api-key.env` inside the generated app) --
+  `config.json`'s `trialDefaults.apiKey` is only a pre-generation placeholder, not a working
+  credential once the app has actually been launched.
 
 **Going deeper:** `waitForEvent` above is the entry point to a full durable workflow engine — a flow
 paused on it survives a JVM restart and resumes exactly where it left off, with event correlation,

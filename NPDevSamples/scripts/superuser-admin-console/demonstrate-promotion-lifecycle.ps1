@@ -107,7 +107,7 @@ function Stop-SampleAppProcess([object]$AppCtx) {
 }
 
 function Invoke-AdminJson([string]$Method, [string]$Route, [hashtable]$Body = $null) {
-    $headers = @{ "X-Api-Key" = "api-dev" }
+    $headers = @{ "X-Api-Key" = $script:liveApiKey }
     $uri = $appBaseUrl + $Route
     try {
         if ($null -ne $Body) {
@@ -171,6 +171,11 @@ try {
     & (Join-Path $scriptsRoot "generate-sample-app.ps1") -SampleId $sampleId | Out-Null
     $appCtx = Start-SampleAppProcess -Label "promotion"
 
+    # R7 Stage D: this script boots the app itself (raw gradlew, no Ensure-NpdevApiKey call), so
+    # resolve whatever key actually authenticates against THIS run rather than hardcoding "api-dev".
+    $liveApiKey = Get-NpdevLiveApiKey -AppRoot $sample.AppRoot
+    $liveCreds = @{ apiKey = $liveApiKey }
+
     Initialize-ScrapForAI -Root $ScrapForAIRoot | Out-Null
     $scrapCtx = Start-ScrapForAI -AppBaseUrl $appBaseUrl -Root $ScrapForAIRoot -Port $ScraperPort `
         -ArtifactDir (Join-Path "D:\WorkSpace\NPDev\Build\scrapforai-artifacts" $sampleId)
@@ -184,12 +189,15 @@ try {
         $path = Join-Path $routineDir $FileName
         $name = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
         Info ("=== Routine: " + $name + " ===")
-        $result = Invoke-ScrapRoutine -Context $scrapCtx -RoutinePath $path
+        $result = Invoke-ScrapRoutine -Context $scrapCtx -RoutinePath $path -Credentials $liveCreds
         # These routines deliberately trigger rejected (400) advance attempts to prove
         # the gate rules -- Chrome logs the failed fetch to the console even though the
         # app code catches and handles it via setStatus(). See the parameter doc on
-        # Assert-RoutineGreen for why this is safe to allow only here.
-        Assert-RoutineGreen -Result $result -Label $name -AllowConsoleErrorSubstrings @("responded with a status of 400") | Out-Null
+        # Assert-RoutineGreen for why this is safe to allow only here. R7 Stage D adds 401: the
+        # routine's own pre-fill page load is now genuinely unauthenticated (no more guessed
+        # devKeyHint auto-fill), logging an expected one-time 401 burst before the explicit
+        # credential fill+reload takes effect.
+        Assert-RoutineGreen -Result $result -Label $name -AllowConsoleErrorSubstrings @("responded with a status of 400", "responded with a status of 401") | Out-Null
         Save-RoutineEvidence -Result $result -OutDir $evidenceDir -Name $name | Out-Null
         $script:results += [ordered]@{ routine = $name; status = (Get-Prop $result "status") }
     }

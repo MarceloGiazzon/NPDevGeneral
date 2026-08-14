@@ -5446,6 +5446,11 @@ def run_explore(args: argparse.Namespace) -> int:
                 name, _, value = pair.partition("=")
                 if name:
                     variables[name] = value
+            credentials = {}
+            for pair in args.credential:
+                name, _, value = pair.partition("=")
+                if name:
+                    credentials[name] = value
             emit = (lambda event: print(json.dumps(event), flush=True)) if args.json else \
                    (lambda event: print(f"  [{event.get('kind')}] "
                                         f"{event.get('phase') or event.get('state') or event.get('runId') or ''}",
@@ -5453,7 +5458,7 @@ def run_explore(args: argparse.Namespace) -> int:
             result = npdev_explore.run_exploration(
                 root, Path(args.app_dir), Path(args.file),
                 engine_port=args.engine_port, configured_root=args.engine_root, api_key=args.api_key,
-                driver=args.driver, variables=variables, ledger_id=args.ledger_id,
+                driver=args.driver, variables=variables, credentials=credentials, ledger_id=args.ledger_id,
                 keep_engine=args.keep_engine, on_event=emit)
             result["command"] = "explore run"
             result["ok"] = True
@@ -6316,6 +6321,11 @@ def build_parser() -> argparse.ArgumentParser:
                              choices=["cli", "monitor-ui", "harness", "ai-session", "playwright"])
     explore_run.add_argument("--var", action="append", default=[], metavar="NAME=VALUE",
                              help="Runtime variable override, repeatable.")
+    explore_run.add_argument("--credential", action="append", default=[], metavar="NAME=VALUE",
+                             help="Runtime credential override, repeatable (R7 Stage D -- e.g. "
+                                  "--credential apiKey=<value> for a routine step that reads it via "
+                                  "valueFromCredential). Unlike --var, values are redacted from the "
+                                  "engine's own evidence output.")
     explore_run.add_argument("--ledger-id", default=None,
                              help="Link this run to a ledger item; a linked run keeps its blobs.")
     explore_run.add_argument("--keep-engine", action="store_true",
