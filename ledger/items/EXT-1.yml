@@ -3,8 +3,9 @@ title: >-
   No supported path to add a REST endpoint or custom screen to a generated app
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-14
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F4, ROADMAP.md card R10). No plugin:
   java-controller kind and no custom-screen mount exist -- an author cannot extend a generated app
@@ -12,14 +13,20 @@ source: >-
 surface: generator/extension-points
 verification: VERIFIED_LIVE
 guard:
-  kind: script
-  ref: python scripts/proofs/run-r10-plugin-controller-proof.py --port <free-port> --report <path>
+  kind: test
+  ref: >-
+    NPDevGenerator/generator/src/test/java/com/npdev/generator/assembly/FinalAppAssemblerTest.java
+    #mountsCompanionWebAssetsIntoStaticFolder
   asserts: >-
-    generate+build+boot NPDevSamples/probes/p7-plugin-controller on H2 succeeds; GET
-    /api/plugins/admin-tools/ping with the dev API key returns 200 {ok:true}; GET
+    plugin:java-controller: generate+build+boot NPDevSamples/probes/p7-plugin-controller on H2
+    succeeds; GET /api/plugins/admin-tools/ping with the dev API key returns 200 {ok:true}; GET
     /api/plugins/super-only/ping with the SAME dev API key returns 403 (minimumRole=SUPERUSER,
     never auto-granted in dev/auth.mode=none, proving enforcement is real and per-mount, not
-    merely "is authenticated")
+    merely "is authenticated"). custom-screen mount: FinalAppAssembler.mountWebAssets copies a
+    nested author asset tree into <finalAppRoot>/src/main/resources/static, filters it through the
+    same EXCLUDED_DIRECTORY_NAMES/EXCLUDED_FILE_NAMES every other copy mode already applies (a
+    stray .git/Thumbs.db is dropped), and a declared-but-missing webAssetsRoot fails assembly
+    loudly instead of silently mounting nothing.
   provenRed: true
 detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R10 (Wave 5, milestone M5). Decision D9
@@ -149,3 +156,119 @@ detail: |
   of which a design-only pass would have found. A future session should START by re-investigating
   whether a custom-screen mount mechanism exists at all before designing its migration.
   Also not touched: runtime-supported-controllers.json (correctly -- the trap the card names).
+
+  2026-08-14 (track-c-r10-custom-screen-mount branch): RESOLVED the ambiguity the prior session
+  left open, and SHIPPED the card's second bullet. The card's premise was TRUE, just
+  differently-named than the follow-up search's own guesses (README.md's "custom screens are
+  hand-written" honest-limitations line and the two platform-utility-page builders
+  (New-ControlPanelPage.ps1/New-PropertiesAdminPage.ps1) were both real but were NOT the mechanism
+  the card meant -- those are platform-authored admin pages generated FOR every app, not an
+  author-supplied-screen mount).
+
+  THE MECHANISM, found by grep for "web" (not "screen") across scripts/appgen/:
+  Build-NpdevApp.ps1's step 4b ("mount companion web/ assets into the app static folder") copied
+  anything under `<AppFolder>/web` verbatim into the generated app's
+  `App/src/main/resources/static` at generation time via a hand-rolled `Copy-Item -Recurse` loop --
+  a real, generic, already-in-production "author supplies a screen file, NPDev mounts it, it
+  survives regeneration" mechanism, exactly as the card describes, just spelled "companion web
+  assets" rather than "custom screen mount" anywhere in the code. It is NOT a niche or
+  experimental feature: FOUR real apps use it with real content --
+  AppGen/apps/_official/WmsOffice/web (15 HTML pages + panel.json manifests + theme.css, the
+  flagship reference app), _official/Pigmentampa/web, _official/AuxScreen/web, and
+  simple-user-registry-inmemory/web (empty). New-AppTreePage.ps1 independently documents the SAME
+  convention ("web/ holds the app's bespoke UI screens ... It lives beside definition/, under the
+  app folder") for its own, unrelated read-only tree-viewer purpose -- confirming this is an
+  established, named convention, not a one-off. CONFIRMED by code reading, not guesswork:
+  Build-ClaudeApp.ps1 had zero "web" references (grep, zero hits) and `run_generate()`
+  (NPDevCli/npdev_cli.py, the `npdev generate app` implementation) built its `:generator:run`
+  arg list with no web-asset step at all -- so the card's "one PowerShell builder" claim was
+  exactly right, and the "two mounts racing" line reads correctly as a warning against the
+  obvious-but-wrong fix (copy-pasting the same Copy-Item loop into Build-ClaudeApp.ps1 as a SECOND,
+  separately-maintained PowerShell mount) rather than a claim that two mounts already existed.
+
+  THE HARDER PART, found only by tracing the actual call graph, not by reading the card alone:
+  Build-NpdevApp.ps1, Build-ClaudeApp.ps1 (via invoke-npdev-generator.ps1) and `npdev generate app`
+  (via Gradle :generator:run) all ultimately invoke the SAME entry point,
+  com.npdev.generator.GeneratorMain -> FinalAppAssembler.assemble() -- so migrating the mount into
+  the Java generator, once, gives all three callers the identical result for free, with no
+  per-caller reimplementation. But the EXISTING plugin:java-source/plugin:java-controller mount
+  convention (GeneratedPluginMountPlan) resolves `capabilities/<name>/capability.plugin.json`
+  relative to wherever --model points (its OWN parent directory, "artifactRoot") -- while the
+  real apps' `web/` sits ONE LEVEL ABOVE that (a sibling of `definition/`, at the app-folder level,
+  not a sibling of model.json itself). Naively reusing the capabilities/ convention would have
+  required MOVING all four real apps' web/ directories (WmsOffice notably, 15 files, the most
+  heavily live-verified reference app across many sessions) -- real risk for a mechanical migration
+  with no time budget to regenerate+reboot+re-verify all four in this session. Resolved by making
+  the new mount EXPLICIT-ONLY, the same discipline every other GeneratorMain path flag
+  (--runtimeHostTemplate, --finalAppOut, --dbDefinitionPath, ...) already uses: a new
+  `--webAssetsRoot <path>` CLI flag, threaded through `FinalAppAssembler.Options.webAssetsRoot()`
+  (nullable, zero behavior change when absent) and a new `mountWebAssets()` step in `assemble()`
+  (CopyMode.WEB_ASSETS gets the SAME generic EXCLUDED_DIRECTORY_NAMES/EXCLUDED_FILE_NAMES filtering
+  every other copy mode already gets, with none of RUNTIME_HOST_BASE's controller-source exclusions
+  or GENERATED_ARTIFACT's migration-artifact skip). Each of the three callers computes the source
+  path with ITS OWN existing app-layout convention and passes it explicitly -- zero filesystem-name
+  guessing anywhere in the Java generator itself, zero directory moves required for any existing
+  app. `Build-NpdevApp.ps1` (both its wrapper-invocation and its -PlanOnly/-Upgrade/
+  -AcknowledgeDestructive direct-Java-invocation branches) and `Build-ClaudeApp.ps1` now compute
+  `$WebSrc = Join-Path $AppFolder 'web'` early and pass `-WebAssetsRoot`/`--webAssetsRoot` whenever
+  it exists; `npdev generate app` gained an optional `--web-assets <path>` flag with the identical
+  explicit-only contract. `invoke-npdev-generator.ps1` (the wrapper both Build-NpdevApp.ps1's
+  common path and Build-ClaudeApp.ps1 call, staged OUTSIDE this repo at
+  AppGen/generator-runtime/current, source template AppGen/generator-runtime/
+  invoke-npdev-generator.template.ps1) gained a `-WebAssetsRoot` pass-through param, edited per
+  CLAUDE.md's "may edit layer 2/3 for speed" allowance since GeneratorMain's own CLI contract (the
+  real code truth) already lived in this repo. Build-NpdevApp.ps1's step 4b (the retired
+  Copy-Item loop) is GONE -- replaced by a comment naming exactly what replaced it and why.
+
+  LIVE VERIFICATION (H2, this session's test-cadence policy), all three callers, real apps, not
+  synthetic fixtures: (1) rebuilt AppGen's generator-runtime pack from this branch
+  (prepare-npdev-generator-runtime.ps1 -ProductRepo <this branch> -RuntimeRoot
+  AppGen/generator-runtime -Force) so the staged jars + refreshed invoker actually carry this
+  session's code; (2) `Build-AppGenApp.ps1 -App AuxScreen` (-> Build-NpdevApp.ps1's common,
+  non-direct-Java path, i.e. through invoke-npdev-generator.ps1) generated, and its log shows
+  `--webAssetsRoot D:\WorkSpace\NPDev\AppGen\apps\_official\AuxScreen\web` on the actual java
+  command line and `Web assets copied: 2`; aux-screen.html + aux-screen.panel.json landed under
+  App/src/main/resources/static; `_ops\Build-App.ps1` built the jar, `_ops\Start-App.ps1` booted it
+  on H2 (TCP 9103 / port 8093), `curl http://localhost:8093/aux-screen.html` returned HTTP 200 with
+  the exact original content (Content-Type text/html, no auth required -- static is exempt from the
+  API-key filter, as documented), and `_ops\Test-App.ps1`'s full REST smoke suite (7/7 checks:
+  flows/audit/storage-summary GETs + 4 flow POSTs) passed; app stopped cleanly after. (2) `npdev
+  generate app --model .../AuxScreen/definition/model.json --config
+  .../AuxScreen/definition/config.json --output <tmp>/App --web-assets .../AuxScreen/web` (the
+  Python CLI -> Gradle :generator:run path) independently produced `Web assets copied: 2` and the
+  same two files under its own App/src/main/resources/static. (3) `Build-ClaudeApp.ps1
+  -GenerateOnly` (a regression check -- Claude Support Desk has no web/ folder today) generated
+  successfully with `Web assets copied: 0` and no --webAssetsRoot flag on the command line at all,
+  proving the new, empty-by-default code path is a true no-op for every app that doesn't use it.
+
+  New unit coverage: FinalAppAssemblerTest#mountsCompanionWebAssetsIntoStaticFolder (nested asset
+  tree lands under src/main/resources/static, never npdev-generated/; a stray .git/Thumbs.db is
+  filtered) and #refusesToAssembleWhenWebAssetsRootIsDeclaredButMissing (a declared-but-missing
+  webAssetsRoot fails loud, matching requireDirectory's existing discipline for every other
+  explicit path option). Full generator test suite, generator gate (deterministic-generation +
+  out-of-tree-generation + trusted-source-security checks, which also runs :tools:npdev-cli:test),
+  script-inventory check, and twin-pair-consistency check (19/19) all green.
+
+  STILL OPEN, honestly: no checked-in, automated proof script for the custom-screen mount exists
+  yet (unlike the plugin:java-controller half's run-r10-plugin-controller-proof.py) -- the live
+  verification above was run by hand this session, not scripted, so it is not yet a falsifiable
+  regression guard the way R11 asks for. A natural, well-scoped follow-up: a new probe under
+  NPDevSamples/probes/ with a web/ fixture (mirroring lib-probe's plugin:java-source demonstration)
+  plus a run-r10-custom-screen-mount-proof.py mirroring run-r10-plugin-controller-proof.py's
+  machinery. Deliberately not built this session -- it is a new probe (corpus-roles.json entry) and
+  a new gate-adjacent script (script-inventory classification + invocation declaration) on top of
+  an already-complete, already-live-verified migration, and forcing it in risked exactly the kind
+  of time-pressured, undertested addition this session's own scope discipline exists to avoid.
+
+  2026-08-14 (reconciliation, merging all roadmap branches): R11's new check-done-item-guards.py
+  (just merged) caught a real structural problem in this item's own guard block on first real run
+  against combined content -- guard.ref bundled THREE separate proof references (two automated,
+  one manual) into one compound string, which kind: test's single "path #method" resolver
+  (TEST_REF_RE, anchored end-to-end) cannot parse -- it never matched a real file, so R1/R2 reported
+  it unresolvable on a DONE item. Fixed by narrowing guard.ref to ONE real, resolvable, automated
+  reference (FinalAppAssemblerTest#mountsCompanionWebAssetsIntoStaticFolder) -- the schema supports
+  exactly one machine-checked ref per item, not a bundle. Nothing is lost: the second JUnit method
+  (#refusesToAssembleWhenWebAssetsRootIsDeclaredButMissing), the Python proof script for the
+  plugin:java-controller half (run-r10-plugin-controller-proof.py), and the manual proof narrative
+  all remain fully documented above in this same detail section, just no longer squeezed into the
+  one field the checker mechanically resolves.

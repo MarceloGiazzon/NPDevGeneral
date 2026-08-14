@@ -1,9 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://npdev.local/schemas/ai/scale-proof-report.schema.json",
-  "title": "NPDev Scale Proof Report",
-  "description": "One generate/build/boot/first-request timing run of scripts/proofs/run-scale-proof.ps1 against a synthetic model of a given concept count. R9 reduced form (MASTER-ROADMAP.md prelude card 0.3): timing only, no latency/DDL-count/memory phases.",
+  "$id": "https://npdev.local/schema/scale-proof-report.schema.json",
+  "title": "NPDev R9 Scale Proof Report",
+  "description": "One rung of the R9 nightly model-scale ladder (ROADMAP.md card R9 / ledger SCALE-1): scripts/proofs/run-scale-proof.ps1 synthesizes an N-concept model, drives it through synthesize -> generate -> ddl -> build -> boot -> firstRequest -> latency -> memory, and writes one instance of this shape per rung to an out-of-repo report path. Every appended entry under scripts/policy/scale-proof-baseline.json's runs.<concepts>[] array is one of these (schemaVersion v1 entries predate the ddl/latency/memory phases and are kept as historical ratchet entries, never rewritten to match this schema retroactively).",
   "type": "object",
+  "additionalProperties": true,
   "required": [
     "schemaVersion",
     "generatedAt",
@@ -13,42 +14,95 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": "npdev-scale-proof-report.v1"
+      "const": "npdev-scale-proof-report.v2"
     },
     "generatedAt": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "concepts": {
       "type": "integer",
       "minimum": 1
     },
     "status": {
+      "type": "string",
       "enum": ["passed", "failed"]
     },
     "phases": {
       "type": "object",
-      "required": ["synthesize", "generate", "build", "boot", "firstRequest"],
+      "additionalProperties": true,
+      "required": [
+        "synthesize",
+        "generate",
+        "ddl",
+        "build",
+        "boot",
+        "firstRequest",
+        "latency",
+        "memory"
+      ],
       "properties": {
-        "synthesize": { "$ref": "#/$defs/phase" },
-        "generate": { "$ref": "#/$defs/phase" },
-        "build": { "$ref": "#/$defs/phase" },
-        "boot": { "$ref": "#/$defs/phase" },
-        "firstRequest": { "$ref": "#/$defs/phase" }
-      },
-      "additionalProperties": false
+        "synthesize": {
+          "$ref": "#/$defs/phase",
+          "description": "model.json + config.json + db.definition.json generation time."
+        },
+        "generate": {
+          "$ref": "#/$defs/phase",
+          "description": "NPDevGenerator :generator:run time (includes FinalApp assembly)."
+        },
+        "ddl": {
+          "$ref": "#/$defs/phase",
+          "description": "CREATE TABLE count in the generated V1__npdev_schema_realization.sql (value/unit: count). Static -- read right after generate, independent of build/boot succeeding."
+        },
+        "build": {
+          "$ref": "#/$defs/phase",
+          "description": "Assembled app's own `gradlew clean build -x test` time."
+        },
+        "boot": {
+          "$ref": "#/$defs/phase",
+          "description": "gradlew bootRun until /actuator/health reports UP."
+        },
+        "firstRequest": {
+          "$ref": "#/$defs/phase",
+          "description": "One authenticated GET against the synthesized panel's runtime metadata endpoint."
+        },
+        "latency": {
+          "$ref": "#/$defs/phase",
+          "description": "Average elapsed ms (value/unit: ms) across repeat requests against the same panel endpoint, once firstRequest already proved it works."
+        },
+        "memory": {
+          "$ref": "#/$defs/phase",
+          "description": "Peak JVM resident-set size in MB (value/unit: mb), sampled from the bootRun process tree's own OS process counters -- not actuator metrics, which the dev,trial boot profile does not expose by default."
+        }
+      }
     }
   },
-  "additionalProperties": false,
   "$defs": {
     "phase": {
       "type": "object",
-      "required": ["status", "durationMs"],
+      "additionalProperties": true,
+      "required": ["status", "durationMs", "message"],
       "properties": {
-        "status": { "enum": ["passed", "failed", "skipped"] },
-        "durationMs": { "type": "integer", "minimum": 0 },
-        "message": { "type": "string" }
-      },
-      "additionalProperties": false
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed", "skipped"]
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "message": {
+          "type": "string"
+        },
+        "value": {
+          "description": "The raw measurement for phases where durationMs alone isn't the natural unit (ddl: statement count; memory: MB; latency: average ms, same value as durationMs).",
+          "type": ["number", "integer"]
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["ms", "mb", "count"]
+        }
+      }
     }
   }
 }
