@@ -299,6 +299,7 @@ writer.writeRelative(
                 readPluginPackageIndex(pluginMountPlan)
         );
         emitJavaSourceMounts(pluginMountPlan);
+        emitJavaControllerMounts(pluginMountPlan);
     }
 
     private static String readModelSource(Path modelSourcePath) {
@@ -423,6 +424,15 @@ writer.writeRelative(
                         binding.path("adapterId").asText()
                 ));
             }
+            // R10 correction, found by a real boot: a JAVA_CONTROLLER mount needs a dev.bindings.json
+            // entry too, same as every other mount kind -- an EARLIER version of this method excluded
+            // it, reasoning that CapabilityAdapterResolver.resolve() only consults this manifest as a
+            // fallback (true, but irrelevant). NpdevPluginConfig.runtimePluginProfileDiagnostics() is a
+            // SEPARATE eager-at-boot coherence check: it resolves EVERY declared binding (except
+            // eventbus) through CapabilityBindingResolver -- which IS backed by this manifest -- and
+            // fails startup ("Runtime plugin deployment mismatch ... unresolvedCapabilities=[...]") the
+            // moment one comes back empty, regardless of whether the model's binding also names an
+            // explicit adapter. Confirmed live via run-r10-plugin-controller-proof.py.
             for (GeneratedPluginMountPlan.Mount mount : pluginMountPlan.mounts()) {
                 String key = bindingKey(mount.capability(), mount.adapterId());
                 if (existing.contains(key)) {
@@ -1188,6 +1198,84 @@ writer.writeRelative(
                 throw new RuntimeException("Failed emitting artifact-local Java source for " + descriptor.capability(), exception);
             }
         }
+    }
+
+    /**
+     * R10: mirrors {@link #emitJavaSourceMounts} as closely as the shape difference allows -- copies
+     * the author's controller source verbatim (same artifact-local mechanism, same
+     * "definition-directory content survives regeneration because it never lives in the generated
+     * tree's own source" property {@code plugin:java-source} already proved) -- but ALSO writes the
+     * per-app security manifest {@code PluginControllerSecurityConfig} (the 4th enforcement point,
+     * NPDevRuntimeHost) reads at boot to register a role-checking interceptor for every mounted
+     * controller's basePath. This runs ALONGSIDE (not instead of) the normal
+     * {@link #emitPluginManifest}/{@link #emitBindingManifest} pipeline -- a real boot proved
+     * {@code NpdevCapabilityBindingConfig.capabilityRegistry()} eagerly resolves EVERY declared
+     * binding at boot, controller-bound or not (see {@link GeneratedPluginMountPlan#packageGroups()}'s
+     * javadoc for the exact failure this omission produced the first time), so a JAVA_CONTROLLER mount
+     * still needs its (harmless, never-actually-dispatched) plugin-manifest contribution.
+     *
+     * <p>npdev-plugin-controller-security-enforcement: twin-pair token
+     * (scripts/quality/twin-pair-registry.json) binding this emission to
+     * {@code GeneratedPluginMountPlan}'s descriptor validation, NPDevRuntimeHost's
+     * {@code PluginControllerSecurityConfig} (reads exactly the manifest shape written below), and
+     * {@code run-r10-plugin-controller-proof.py} (the live proof this mechanism is verified by).
+     */
+    private void emitJavaControllerMounts(GeneratedPluginMountPlan pluginMountPlan) {
+        List<GeneratedPluginMountPlan.Mount> controllerMounts = pluginMountPlan.javaControllerMounts();
+        if (controllerMounts.isEmpty()) {
+            return;
+        }
+        emitJavaControllerFiles(controllerMounts);
+        writer.writeRelative(
+                "src/main/resources/npdev/plugin-controllers/plugin-controller-security.json",
+                pluginControllerSecurityManifestSource(controllerMounts)
+        );
+    }
+
+    private void emitJavaControllerFiles(List<GeneratedPluginMountPlan.Mount> controllerMounts) {
+        Set<String> emitted = new LinkedHashSet<>();
+        for (GeneratedPluginMountPlan.Mount mount : controllerMounts) {
+            GeneratedPluginMountPlan.JavaControllerDescriptor descriptor = mount.javaController();
+            try (java.util.stream.Stream<Path> stream = Files.walk(descriptor.resolvedSourceRoot())) {
+                List<Path> sources = stream
+                        .filter(path -> Files.isRegularFile(path) && path.toString().endsWith(".java"))
+                        .sorted(Comparator.comparing(path -> descriptor.resolvedSourceRoot().relativize(path).toString(), String.CASE_INSENSITIVE_ORDER))
+                        .toList();
+                for (Path source : sources) {
+                    Path relative = descriptor.resolvedSourceRoot().relativize(source);
+                    String destination = "src/main/java/" + relative.toString().replace('\\', '/');
+                    if (!emitted.add(destination.toLowerCase(Locale.ROOT))) {
+                        throw new IllegalStateException("Duplicate artifact-local plugin controller source destination: " + destination);
+                    }
+                    writer.writeRelative(destination, Files.readString(source, StandardCharsets.UTF_8));
+                }
+            } catch (IOException exception) {
+                throw new RuntimeException("Failed emitting artifact-local plugin controller source for " + descriptor.capability(), exception);
+            }
+        }
+    }
+
+    /**
+     * The manifest {@code PluginControllerSecurityConfig} loads at boot. One entry per mounted
+     * controller: its simple class name (what a Spring bean's class name is matched against),
+     * basePath (the interceptor's URL pattern), and the D9-mandated minimumRole. Deterministically
+     * ordered (mounts are already sorted by {@code GeneratedPluginMountPlan.Mount.ORDERING}) so two
+     * generations of the same model byte-diff identically (the generator-determinism gate).
+     */
+    private static String pluginControllerSecurityManifestSource(List<GeneratedPluginMountPlan.Mount> controllerMounts) {
+        ObjectNode root = OBJECT_MAPPER.createObjectNode();
+        root.put("manifestVersion", "1.0.0");
+        ArrayNode entries = root.withArray("mountedControllers");
+        for (GeneratedPluginMountPlan.Mount mount : controllerMounts) {
+            ObjectNode entry = OBJECT_MAPPER.createObjectNode();
+            entry.put("capability", mount.capability());
+            entry.put("controllerClass", mount.controllerSimpleClassName());
+            entry.put("controllerClassName", mount.controllerClassName());
+            entry.put("basePath", mount.controllerBasePath());
+            entry.put("minimumRole", mount.controllerMinimumRole());
+            entries.add(entry);
+        }
+        return prettyJson(root);
     }
 
     private static String javaSourceProvidersSource(List<GeneratedPluginMountPlan.JavaSourcePackageGroup> javaSourceGroups) {

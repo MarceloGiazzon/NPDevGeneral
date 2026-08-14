@@ -1,0 +1,53 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.p7plugincontroller",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "R10 probe: plugin:java-controller mount + the D9 security wrapper. Two mounted @RestControllers from the definition directory, deliberately gated at different roles so ONE probe proves both directions -- the mount actually serves a request, AND minimumRole enforcement genuinely rejects an under-privileged caller. adminTools is minimumRole=ADMIN, which the dev/auth.mode=none profile auto-grants every caller (CLAUDE.md's agent-proxy precedent), so it proves the ACCEPT path. superOnlyTools is minimumRole=SUPERUSER, which that same dev fallback NEVER grants (CLAUDE.md: 'ADMIN is no gate at all in dev apps ... SUPERUSER is never in that fallback set') -- the identical dev-key caller that succeeds against adminTools must be rejected here, proving the wrapper checks the DECLARED role and not just 'is authenticated'."
+  },
+  "concepts": [
+    {
+      "name": "ProbeRecord",
+      "ui": {
+        "label": "Probe record"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "required": false,
+          "ui": {
+            "label": "Note"
+          }
+        }
+      ]
+    }
+  ],
+  "customCapabilities": [
+    {
+      "name": "adminTools",
+      "type": "AdminToolsController"
+    },
+    {
+      "name": "superOnlyTools",
+      "type": "SuperOnlyToolsController"
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "adminTools",
+      "adapter": "plugin:java-controller"
+    },
+    {
+      "capability": "superOnlyTools",
+      "adapter": "plugin:java-controller"
+    }
+  ]
+}
