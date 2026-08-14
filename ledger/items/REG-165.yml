@@ -1,0 +1,80 @@
+id: REG-165
+title: >-
+  npdev CLI's canonical-schema validator silently degrades any subprocess crash into an
+  undiagnosable "canonical model schema validation failed" with zero detail, indistinguishable
+  from a real model-content failure
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Found while investigating an R8c-unrelated failing test (dsl module's
+  LegacyModelMigrationToolTest, itself a false alarm caused by this worktree's own corrupted
+  node_modules -- not a repo regression, see detail) during R8c (RUN-2) verification. Filed
+  separately per this session's "unrelated bugs filed separately, never fixed in passing"
+  discipline.
+surface: NPDevCli
+files:
+  - NPDevCli/npdev_cli.py
+detail: |
+  `validate_json_schema()` (NPDevCli/npdev_cli.py:244-287) shells out to the Node/ajv canonical
+  schema validator and parses its stdout as JSON:
+
+      output = completed.stdout.strip() or "{}"
+      try:
+          result = json.loads(output)
+      except json.JSONDecodeError as exc:
+          raise CliError("canonical schema validator did not return JSON") from exc
+      if completed.returncode != 0 or result.get("status") != "passed":
+          errors = result.get("errors") or []
+          detail = "; ".join(...)
+          raise CliError("canonical model schema validation failed" + (f": {detail}" if detail else ""))
+
+  When the Node subprocess CRASHES before it ever prints its JSON result object (a missing/broken
+  npm dependency, a syntax error in validate-json-schema.mjs, any uncaught exception -- the crash
+  text goes to stderr, which this function never reads), `completed.stdout.strip()` is empty, so
+  `output` falls back to the literal string `"{}"`. That parses as valid JSON with no exception,
+  `result.get("status")` is `None` (not `"passed"`), and `result.get("errors")` is `[]` -- so the
+  raised message is the bare string "canonical model schema validation failed" with NO detail
+  clause at all. This is BYTE-IDENTICAL to what a genuinely invalid model instance would report
+  if ajv itself somehow returned zero errors, and gives the operator no way to tell "your model is
+  wrong" apart from "the validator itself is broken" without manually re-invoking
+  `node validate-json-schema.mjs` by hand to see the real stderr.
+
+  Reproduced live: this worktree's `scripts/quality/json-schema-validator/node_modules/ajv/`
+  existed as a directory but contained only `LICENSE` (no `index.js`, no `package.json` -- an
+  interrupted/corrupted `npm install`). Because `validate_json_schema()` only runs `npm install`
+  when `node_modules` is ABSENT (`if not node_modules.exists()`), a PRESENT-but-broken
+  `node_modules` is never repaired or even detected -- every subsequent `npdev migrate
+  legacy-model` (and every other command that validates a model) failed with exactly "npdev:
+  canonical model schema validation failed", no detail, exit code 1. Running the underlying
+  `node validate-json-schema.mjs --schema ... --instance ...` directly showed the real cause:
+
+      Error: Cannot find package '...\node_modules\ajv\index.js' imported from
+      ...\validate-json-schema.mjs
+      code: 'ERR_MODULE_NOT_FOUND'
+
+  Deleting and reinstalling `node_modules` (`npm install` in
+  scripts/quality/json-schema-validator/) fixed it immediately -- `npdev migrate legacy-model`
+  then exits 0 and produces a correctly-shaped `concepts`-based model, confirming there was never
+  a real schema-content problem: this is purely a diagnosability defect in how the CLI reports a
+  validator-subprocess failure, not a defect in any schema or fixture.
+
+  Likely fix (not designed further here): (1) capture and surface `completed.stderr` in the
+  `CliError` when `output` was empty/fell back to `"{}"`, so a crash reads as a crash, not as "0
+  errors, still failed"; (2) treat "node_modules exists but is missing the declared dependencies"
+  as equivalent to "node_modules absent" (e.g. check for the specific package directories, or
+  just always run `npm install --silent` -- it is a fast no-op when everything is already
+  present) so a partial/corrupted install self-heals instead of wedging every model-validating
+  command indefinitely.
+guard:
+  kind: manual
+  ref: >-
+    Delete scripts/quality/json-schema-validator/node_modules/ajv/index.js (or otherwise corrupt
+    it) with the directory itself left present, then run
+    `npdev migrate legacy-model --input test-fixtures/legacy-model.json --output <tmp>`
+  asserts: >-
+    the CLI's error message names the validator subprocess crash (e.g. quotes stderr or the
+    ERR_MODULE_NOT_FOUND text) rather than the current bare "canonical model schema validation
+    failed" with no detail clause
+  provenRed: true

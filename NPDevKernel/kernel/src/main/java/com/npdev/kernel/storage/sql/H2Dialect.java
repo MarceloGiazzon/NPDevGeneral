@@ -49,7 +49,10 @@ public final class H2Dialect implements SqlDialect {
             StorageCapability.UNIQUE_CONSTRAINTS,
             StorageCapability.SERVER_SIDE_JOIN,
             StorageCapability.AGGREGATION_PIPELINE,
-            StorageCapability.OPTIMISTIC_LOCKING);
+            StorageCapability.OPTIMISTIC_LOCKING,
+            // R8c: native "FOR UPDATE SKIP LOCKED" (Oracle-style syntax) since H2 2.2.220
+            // (2023-07-04); this platform already pins 2.2.224, which post-dates it.
+            StorageCapability.SKIP_LOCKED_READS);
     // SNAPSHOT_RESTORE deliberately absent: H2's SCRIPT/RUNSCRIPT is a dump and a replay, not a
     // point-in-time snapshot the platform can restore to, and declaring it would be a promise the
     // generator trusts wrongly. The platform's own SchemaDropSnapshotWriter is an application-level
@@ -123,6 +126,17 @@ public final class H2Dialect implements SqlDialect {
     @Override
     public String selectForUpdate(String columns, String table, String whereClause) {
         return "SELECT " + columns + " FROM " + table + " WHERE " + whereClause + " FOR UPDATE";
+    }
+
+    @Override
+    public String selectForUpdateSkipLocked(
+            String columns, String table, String whereClause, String orderBy, int maxRows) {
+        if (maxRows <= 0) {
+            throw new IllegalArgumentException("engine 'h2': maxRows must be positive, got " + maxRows);
+        }
+        // Oracle-style syntax, native since H2 2.2.220 -- see StorageCapability#SKIP_LOCKED_READS.
+        return "SELECT " + columns + " FROM " + table + " WHERE " + whereClause
+                + " ORDER BY " + orderBy + " LIMIT " + maxRows + " FOR UPDATE SKIP LOCKED";
     }
 
     @Override

@@ -196,7 +196,13 @@ public final class SchemaRealizationEmitter {
                 }
             }
 
-            // 3. Constraint/index blocks (unique/secondary/explicit indexes, then bond FKs).
+            // 3. Constraint/index blocks (internal-table indexes, then business unique/secondary/
+            // explicit indexes, then bond FKs).
+            if (plan.createInternalTables()) {
+                for (InternalTableDefinition table : NpdevInternalTables.all()) {
+                    appendInternalTableAdditiveIndexes(additive, table, plan.engine());
+                }
+            }
             if (plan.createBusinessTables()) {
                 Map<String, Set<String>> implicitIndexFields = collectImplicitIndexFields(model);
                 for (CompiledConcept concept : model.getConcepts()) {
@@ -232,6 +238,43 @@ public final class SchemaRealizationEmitter {
             }
             alter.append(";");
             appendGuardedAddColumn(sql, engine, table.name(), column.name(), alter.toString());
+        }
+        sql.append("\n");
+    }
+
+    /**
+     * R8c (RUN-2's resume-claim mechanism): the additive-migration counterpart of {@link
+     * #appendInternalTableAdditiveColumns}, for INDEXES. Internal tables previously had a column
+     * evolution path but no index one -- {@link #appendTable} only ever emits an internal table's
+     * indexes inside V1__, the fresh-database-only migration (Flyway runs a versioned migration
+     * like V1__ exactly once per checksum), so a database that already ran V1__ before a new index
+     * was added to an internal table's definition would never see that index land. This was exactly
+     * the "internal-table indexes have no additive-migration path" gap the R8c card named as its
+     * blocker: a claim mechanism needs an index on its eligibility predicate to avoid a full-table
+     * scan on every resume-poll cycle, and until this method existed there was no way to ship that
+     * index to an app that had already been deployed before the claim columns were added.
+     *
+     * <p>The primitive this needed already existed and needed no new work: {@link
+     * #appendGuardedCreateIndex} (via {@code SqlDialect#guardedCreateIndex}) is idempotent on all
+     * four engines and was already exercised for BUSINESS-table indexes in this very same
+     * repeatable migration (see {@link #appendBusinessTableConstraints}) -- internal tables were
+     * simply never wired to call it. Like {@link #appendInternalTableAdditiveColumns}, this blasts
+     * every declared index unconditionally into the repeatable migration on every boot; each
+     * dialect's guard (a catalog existence check) makes an already-present index a no-op rather
+     * than a failure, so this needs no diff against what the live database already has.
+     */
+    private static void appendInternalTableAdditiveIndexes(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
+        for (InternalIndexDefinition index : table.indexes()) {
+            StringBuilder createIndex = new StringBuilder("CREATE ")
+                    .append(index.unique() ? "UNIQUE " : "")
+                    .append("INDEX ")
+                    .append(index.name())
+                    .append(" ON ")
+                    .append(table.name())
+                    .append(" (")
+                    .append(String.join(", ", index.columns()))
+                    .append(");");
+            appendGuardedCreateIndex(sql, engine, index.name(), table.name(), createIndex.toString());
         }
         sql.append("\n");
     }
