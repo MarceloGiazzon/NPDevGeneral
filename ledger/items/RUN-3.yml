@@ -3,8 +3,10 @@ title: >-
   NULLS FIRST sits outside the dialect package and the dialect gate is blind to it
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R8b). JdbcFlowInstanceStore
   emits `ORDER BY ... NULLS FIRST` -- the only such site in the Java tree, un-dialected -- and
@@ -12,10 +14,33 @@ source: >-
   this class of bug is blind to it.
 surface: kernel/sql-dialect
 files:
-  - NPDevKernel/kernel/.../JdbcFlowInstanceStore.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevKernel/adapters/flowinstance-postgres/src/main/java/com/npdev/adapters/flowinstance/jdbc/JdbcFlowInstanceStore.java
   - scripts/quality/check-dialect-sites.py
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java
+  - NPDevKernel/adapters/flowinstance-postgres/src/test/java/com/npdev/adapters/flowinstance/postgres/PostgresFlowInstanceStoreTest.java
 detail: |
-  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8, sub-item R8b. Fix and gate in one commit
-  (adding the NULLS construct to check-dialect-sites.py's CONSTRUCTS map turns the gate red
-  immediately, proving it now catches this class). MASTER-ROADMAP.md Track C item C7 ("R8b is one
-  commit -- gate + fix together"); not in this session's scope (Steps 1-4).
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8, sub-item R8b. Fixed and gated in one
+  commit, RED-then-GREEN proven live:
+
+  1. Added a "nulls-ordering" construct (`\bNULLS\s+(?:FIRST|LAST)\b`) to check-dialect-sites.py's
+     CONSTRUCTS map. Confirmed RED first by stashing the JdbcFlowInstanceStore fix and re-running the
+     gate: it failed naming the EXACT site,
+     `JdbcFlowInstanceStore.java:164  [nulls-ordering]  ORDER BY next_eligible_resume_at ASC NULLS
+     FIRST, updated_at DESC, execution_id ASC`. Restoring the fix turned the gate GREEN again (0
+     dialect-bound sites outside com/npdev/kernel/storage/sql).
+  2. Added `SqlDialect.nullsFirstAscending(String column)` -- a DEFAULT method (not per-dialect,
+     unlike every other method on the interface) because a `CASE WHEN column IS NULL THEN 0 ELSE 1
+     END ASC, column ASC` tie-breaker sorts null-first identically on all four engines using nothing
+     but ANSI SQL every supported engine has always had; NULLS FIRST itself is Postgres/H2-only
+     syntax (MySQL has never supported the keyword; SQL Server has no equivalent at all).
+  3. `JdbcFlowInstanceStore.findWaitingEligibleToResume` now calls
+     `dialect.nullsFirstAscending("next_eligible_resume_at")` instead of spelling NULLS FIRST inline.
+  4. Live proof against a REAL Postgres engine (testcontainers, `PostgresFlowInstanceStoreTest`, new
+     test `findWaitingEligibleToResumeSortsNullNextEligibleResumeAtFirst`): three WAITING_EVENT rows
+     saved deliberately out of order (one with `next_eligible_resume_at = NULL`, two with different
+     non-null values), asserting the NULL row sorts first, then non-null ascending -- 7/7 tests in
+     that class pass, 0 skipped/failed. `DialectConformanceTierATest` gained two Tier A cases
+     (parameterised across all four dialects) proving the expression never re-emits the word "NULLS"
+     and is byte-identical across every dialect implementation -- all pass.
+  5. Not attempted (out of scope, per the card): R8c (resume claim) and R8d (deadlines).

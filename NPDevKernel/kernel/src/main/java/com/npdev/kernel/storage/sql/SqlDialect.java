@@ -316,6 +316,34 @@ public interface SqlDialect {
     }
 
     /**
+     * RUN-3 (R8b): a portable {@code ORDER BY} fragment (no keyword, no leading comma) that sorts
+     * {@code NULL} values of {@code column} before non-null ones, then non-null values ascending --
+     * {@code NULLS FIRST} is not universal SQL. Postgres and H2 accept it natively; MySQL has never
+     * supported the keyword at any version; SQL Server has no equivalent syntax at all
+     * ({@code sys.dm_exec_describe_first_result_set} confirms it, not just absence from the docs).
+     *
+     * <p>{@code JdbcFlowInstanceStore.findWaitingEligibleToResume} was the ONE site in the whole Java
+     * tree that spelled {@code NULLS FIRST} inline, un-dialected -- caught by
+     * {@code check-dialect-sites.py}'s {@code nulls-ordering} construct (added in the same commit as
+     * this method, RED before this fix existed, GREEN after).
+     *
+     * <p><b>Why this is a default method, not a per-dialect one.</b> Every other method on this
+     * interface exists because engines answer the SAME question differently. This one does not: a
+     * {@code CASE WHEN column IS NULL THEN 0 ELSE 1 END} tie-breaker sorts null-first identically on
+     * all four engines using nothing but {@code CASE}, which is plain ANSI SQL every engine this
+     * platform supports has always had. So every implementation would return the literal same
+     * expression -- the default IS the dialect answer, uniformly, which is different from "no
+     * dialect answer is needed" (this method still lives at the dialect boundary, not inline at the
+     * call site, because "is this construct portable" is exactly the question this package answers,
+     * and a future NULLS-ordering call site should not have to re-derive that the answer is yes).
+     *
+     * @param column the already-safe (quoted/validated) column reference to sort by
+     */
+    default String nullsFirstAscending(String column) {
+        return "CASE WHEN " + column + " IS NULL THEN 0 ELSE 1 END ASC, " + column + " ASC";
+    }
+
+    /**
      * A {@code SELECT} that takes a write lock on the rows it reads, so a check-then-act is atomic.
      *
      * <p><b>Built here rather than suffixed, because the lock is not always a suffix.</b> Three

@@ -155,6 +155,17 @@ CONSTRUCTS = {
         r"::\s*(?:text|int|integer|bigint|uuid|jsonb|timestamptz|boolean|numeric)\b",
         "dialect.cast(expression, SqlType.X)",
     ),
+
+    # RUN-3 (R8b). JdbcFlowInstanceStore.findWaitingEligibleToResume was the only site in the whole
+    # Java tree spelling NULLS FIRST/LAST inline: Postgres and H2 accept it natively, MySQL has never
+    # supported the keyword at any version, and SQL Server has no equivalent syntax at all. This
+    # construct was ADDED (not present when the gate first shipped), which is why it is documented as
+    # having gone RED against that exact site before the fix -- see ledger/items/RUN-3.yml.
+    "nulls-ordering": (
+        r"\bNULLS\s+(?:FIRST|LAST)\b",
+        "dialect.nullsFirstAscending(column) -- NULLS FIRST/LAST is Postgres/H2 syntax; MySQL has "
+        "never supported it and SQL Server has no equivalent at all",
+    ),
 }
 
 # An escaped \"x\" is only an SQL identifier when the line is actually SQL, and `returning` is an
