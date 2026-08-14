@@ -152,6 +152,10 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
             return List.of();
         }
         int effectiveLimit = normalizeLimit(limit);
+        // RUN-3 (R8b): was a literal "NULLS FIRST" here -- Postgres/H2-only syntax that MySQL has
+        // never supported and SQL Server has no equivalent for at all. dialect.nullsFirstAscending
+        // returns a CASE-based tie-breaker that sorts identically on all four engines; see its
+        // javadoc for why this is a dialect method despite having only one implementation.
         String sql = dialect.limited("""
                 SELECT execution_id, flow_name, correlation_id, status, current_step_index,
                        waiting_for_event_name, state_json, tenant_id, actor_id, created_at, updated_at,
@@ -161,8 +165,8 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
                 WHERE tenant_id = ?
                   AND status = 'WAITING_EVENT'
                   AND (next_eligible_resume_at IS NULL OR next_eligible_resume_at <= ?)
-                ORDER BY next_eligible_resume_at ASC NULLS FIRST, updated_at DESC, execution_id ASC
-                """);
+                ORDER BY %s, updated_at DESC, execution_id ASC
+                """.formatted(dialect.nullsFirstAscending("next_eligible_resume_at")));
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, effectiveTenantId);

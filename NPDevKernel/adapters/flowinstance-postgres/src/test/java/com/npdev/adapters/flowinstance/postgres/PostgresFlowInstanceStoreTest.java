@@ -225,6 +225,46 @@ class PostgresFlowInstanceStoreTest {
         assertEquals(List.of("exec-eligible"), rows.stream().map(FlowInstance::executionId).toList());
     }
 
+    /**
+     * RUN-3 (R8b): {@code findWaitingEligibleToResume}'s {@code ORDER BY} used to spell {@code NULLS
+     * FIRST} inline -- Postgres/H2-only syntax, un-dialected (the only such site in the whole Java
+     * tree; caught by {@code check-dialect-sites.py}'s {@code nulls-ordering} construct). Proves the
+     * portable replacement ({@link com.npdev.kernel.storage.sql.SqlDialect#nullsFirstAscending}) sorts
+     * identically against a REAL Postgres engine: a row with no {@code next_eligible_resume_at} at
+     * all (the common "never failed yet" case) must still sort BEFORE rows that do have one, even
+     * though a plain {@code NULL} sorts LAST in Postgres's own default ascending order without this
+     * tie-breaker -- i.e. this test would fail if the tie-breaker were ever silently dropped, not
+     * just if the query stopped compiling.
+     */
+    @Test
+    void findWaitingEligibleToResumeSortsNullNextEligibleResumeAtFirst() {
+        FlowInstance neverAttempted = new FlowInstance(
+                "exec-null", "AwaitApproval", "corr-null", "tenant-nulls", "actor-a",
+                1, FlowInstanceStatus.WAITING_EVENT, Map.of(), "Approved",
+                1000L, 2000L, 0, null, null, null, 1200L
+        );
+        FlowInstance retryingSoon = new FlowInstance(
+                "exec-soon", "AwaitApproval", "corr-soon", "tenant-nulls", "actor-a",
+                1, FlowInstanceStatus.WAITING_EVENT, Map.of(), "Approved",
+                1000L, 2000L, 1, 1500L, "transient_error", 1_500L, 1200L
+        );
+        FlowInstance retryingLater = new FlowInstance(
+                "exec-later", "AwaitApproval", "corr-later", "tenant-nulls", "actor-a",
+                1, FlowInstanceStatus.WAITING_EVENT, Map.of(), "Approved",
+                1000L, 2000L, 1, 1500L, "transient_error", 2_500L, 1200L
+        );
+
+        // Saved deliberately out of the expected result order, so a correct ORDER BY is the only way
+        // for the assertion below to pass.
+        store.save(retryingLater);
+        store.save(neverAttempted);
+        store.save(retryingSoon);
+
+        List<FlowInstance> rows = store.findWaitingEligibleToResume("tenant-nulls", 3000L, 10);
+        assertEquals(List.of("exec-null", "exec-soon", "exec-later"),
+                rows.stream().map(FlowInstance::executionId).toList());
+    }
+
     @Test
     void findStaleWaitingRespectsThresholdAndOrdering() {
         FlowInstance staleA = new FlowInstance(

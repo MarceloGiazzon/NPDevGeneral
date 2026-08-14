@@ -398,6 +398,12 @@ All four are the direct, mechanical fallout of REG-120's fix (a new kernel metho
 |---|---|---|
 | `OperationalRunbookEmitter.java:225` — `createEnvironmentScript()`'s text block | 1 | Rule **false-positive**, and a new sub-class worth naming: **the matched "SQL" is PowerShell.** The block is an emitted script, so the sweep sees the whole text block as one string and joins PowerShell's `Select-Object -First 1` (the JDBC-driver-jar lookup) to the English word "from" in the surrounding prose, reading them as `SELECT … FROM`. The block runs exactly one `DriverManager.getConnection` and issues no query at all — STOR-14's Create-becomes-VERIFY, which asks an externally-provisioned server whether the app's own database is reachable. There is no row set, no table and no tenant column, so there is nothing a tenant predicate could scope. Any future emitted-PowerShell block using `Select-Object` near prose will hit this same way. |
 
+### 4.10 → 2026-08-14, RUN-3/R8b (`JdbcFlowInstanceStore` NULLS-ordering dialect fix)
+
+| Lead | Hits | Resolution |
+|---|---|---|
+| `JdbcFlowInstanceStore.java:159` — `findWaitingEligibleToResume`'s `.formatted(dialect.nullsFirstAscending(...))` call | 1 | Rule **sql-string-building**, cleared safe (fingerprint `207f6a75c977`). Replaces the line's previous inline `NULLS FIRST` (Postgres/H2-only syntax, un-dialected — the exact bug `check-dialect-sites.py`'s new `nulls-ordering` construct now catches). The `.formatted()` call's ONLY argument is `dialect.nullsFirstAscending("next_eligible_resume_at")` — a hardcoded, compile-time Java string literal naming a fixed internal-table column, never a caller-, request-, or model-author-supplied value. `nullsFirstAscending` itself (a new `SqlDialect` default method, `CASE WHEN <col> IS NULL THEN 0 ELSE 1 END ASC, <col> ASC`) only ever concatenates that same literal — there is no path from any input to this text, the same reasoning §2's `SqlNamingSupport` triage already applies to a whitelisted identifier, narrowed further here to a single fixed literal rather than a whitelist. |
+
 ## 5. Reproducing this
 
 ```bash
