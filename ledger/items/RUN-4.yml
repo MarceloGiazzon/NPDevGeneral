@@ -116,15 +116,23 @@ detail: |
   `RequestContextHolder` actually sit on a live capability's call stack (as opposed to just being
   present elsewhere in the codebase) would strengthen the case either way and is worth doing before
   that session picks a design.
+
+  **2026-08-14 (reconciliation, merging all roadmap branches):** R11's check-done-item-guards.py
+  (just merged) caught the same guard-bundling problem here that it caught on EXT-1 -- guard.ref
+  named two test methods across two different files joined by "and", which kind: test's single
+  "path #method" resolver can't parse. Narrowed guard.ref to one representative reference
+  (HttpExternalAiCapabilityAdapterTest); the mail-smtp sibling test remains fully documented above
+  and unchanged, just no longer squeezed into the one field the checker mechanically resolves.
 guard:
   kind: test
   ref: >-
     NPDevKernel/adapters/external-ai-http/src/test/java/com/npdev/adapters/externalai/http/HttpExternalAiCapabilityAdapterTest.java#requestTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer
-    and
-    NPDevKernel/adapters/mail-smtp/src/test/java/com/npdev/adapters/mail/smtp/SmtpMailCapabilityAdapterTest.java#sendTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer
   asserts: >-
-    Both adapters, pointed at a real local socket that accepts a TCP connection and never answers,
-    throw within a bounded time (not an unbounded hang) and retry exactly maxRetries+1 times
-    (asserted via a real accepted-connection count) -- proves the adapter-level deadline/retry portion
-    of this item only; the kernel-wide default decision remains open (see detail).
+    Pointed at a real local socket that accepts a TCP connection and never answers, the adapter
+    throws within a bounded time (not an unbounded hang) and retries exactly maxRetries+1 times
+    (asserted via a real accepted-connection count). The mail-smtp adapter has an identical sibling
+    test (SmtpMailCapabilityAdapterTest#sendTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer,
+    see detail) proving the same property there; this guard covers one representative reference per
+    R11's single-ref-per-item schema. Proves the adapter-level deadline/retry portion of this item
+    only; the kernel-wide default decision remains open (see detail).
   provenRed: true
