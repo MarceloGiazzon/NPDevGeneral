@@ -159,8 +159,17 @@ try {
         if (-not (Test-Path -LiteralPath $prepare)) {
             throw "generator-runtime prepare script not found: $prepare (pass -GeneratorRuntimeRoot)"
         }
-        Write-Stage "Step 2/3: refreshing generator-runtime -> $GeneratorRuntimeRoot"
-        & $prepare -RuntimeRoot $GeneratorRuntimeRoot
+        # REG-162: prepare-npdev-generator-runtime.ps1 lives OUTSIDE this repo (AppGen\generator-
+        # runtime\, cannot be edited here) and defaults its own -ProductRepo to the LITERAL string
+        # 'D:\WorkSpace\NPDev\NPDev_General' -- exactly the REG-144 anti-pattern, just in a script
+        # this repo does not own. Left unset, every invocation from a worktree (or any differently-
+        # located checkout) silently builds and packages the generator distribution from that
+        # hardcoded WRONG source tree while still reporting "prepared successfully". $repoRoot above
+        # is already computed portably (PSScriptRoot-relative, REG-144's own pattern) and is exactly
+        # THIS checkout's own root -- pass it explicitly so the external script's bad default can
+        # never win, regardless of where this repo is checked out.
+        Write-Stage "Step 2/3: refreshing generator-runtime -> $GeneratorRuntimeRoot (source: $repoRoot)"
+        & $prepare -ProductRepo $repoRoot -RuntimeRoot $GeneratorRuntimeRoot
         if ($LASTEXITCODE -ne 0) { throw "prepare-npdev-generator-runtime failed (exit $LASTEXITCODE)" }
     }
 
