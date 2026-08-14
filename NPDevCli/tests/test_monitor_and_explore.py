@@ -11,14 +11,18 @@ already happened or a rule that was already broken once.
 
 from __future__ import annotations
 
+import argparse
+import io
 import json
 import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import npdev_cli
 import npdev_explore
 import npdev_jsonschema
 import npdev_monitor
@@ -177,6 +181,67 @@ class Redaction(unittest.TestCase):
                 blob = b"".join(archive.read(name) for name in archive.namelist())
             self.assertNotIn(b"s3cret", blob)
             self.assertIn("resolved-db-plan.redacted.json", result["included"])
+
+
+class CliPrintRedaction(unittest.TestCase):
+    """REG-153. CodeQL's default-setup scan traced `probe_app()`'s live `apiKey` into
+    `_print_result` and the `explore` dispatcher's print branches -- neither ever called `redact()`,
+    unlike the export bundle and the AI-repair payload. `monitor probe` is the one deliberate
+    exception (`test_probe_reports_the_apps_real_api_key_not_the_published_default` above; consumed
+    by `NPDevSamples/scripts/sample-common.ps1`'s `Get-NpdevLiveApiKey`), so it keeps opting out."""
+
+    @staticmethod
+    def _capture(fn, *args, **kwargs) -> str:
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            fn(*args, **kwargs)
+        return buf.getvalue()
+
+    def test_print_result_redacts_by_default_json(self):
+        result = {"health": "running", "apiKey": "THE-REAL-LIVE-KEY-0001"}
+        out = self._capture(npdev_cli._print_result, dict(result), argparse.Namespace(json=True))
+        self.assertNotIn("THE-REAL-LIVE-KEY-0001", out)
+        self.assertIn("<redacted>", out)
+
+    def test_print_result_redacts_by_default_human_summary(self):
+        # A result shape that does NOT match one of `_human_summary`'s named branches falls through
+        # to its own `json.dumps(result)` fallback -- that path must be scrubbed too.
+        result = {"apiKey": "THE-REAL-LIVE-KEY-0001", "somethingElse": True}
+        out = self._capture(npdev_cli._print_result, dict(result), argparse.Namespace(json=False))
+        self.assertNotIn("THE-REAL-LIVE-KEY-0001", out)
+
+    def test_print_result_opt_out_keeps_the_real_key(self):
+        result = {"health": "running", "apiKey": "THE-REAL-LIVE-KEY-0001"}
+        out = self._capture(npdev_cli._print_result, dict(result), argparse.Namespace(json=True),
+                            redact_output=False)
+        self.assertIn("THE-REAL-LIVE-KEY-0001", out)
+
+    def test_monitor_scan_json_redacts_every_apps_api_key(self):
+        with TemporaryDirectory() as tmp:
+            make_app(Path(tmp), plan={**DEFAULT_PLAN, "apiKey": "THE-REAL-LIVE-KEY-0001"})
+            args = argparse.Namespace(monitor_command="scan", paths=str(Path(tmp)), depth=4,
+                                      include_info=False, health_timeout=1.0, json=True)
+            out = self._capture(npdev_cli.run_monitor, args)
+            self.assertNotIn("THE-REAL-LIVE-KEY-0001", out)
+
+    def test_monitor_probe_json_still_returns_the_real_key(self):
+        # The contract `Get-NpdevLiveApiKey` (NPDevSamples/scripts/sample-common.ps1) depends on.
+        with TemporaryDirectory() as tmp:
+            app = make_app(Path(tmp), plan={**DEFAULT_PLAN, "apiKey": "THE-REAL-LIVE-KEY-0001"})
+            args = argparse.Namespace(monitor_command="probe", app_dir=str(app),
+                                      include_info=False, health_timeout=1.0, json=True)
+            out = self._capture(npdev_cli.run_monitor, args)
+            self.assertIn("THE-REAL-LIVE-KEY-0001", out)
+
+    def test_explore_preflight_json_redacts_the_embedded_apikey(self):
+        with TemporaryDirectory() as tmp:
+            app = make_app(Path(tmp), plan={**DEFAULT_PLAN, "apiKey": "THE-REAL-LIVE-KEY-0001"})
+            args = argparse.Namespace(explore_command="preflight", app_dir=str(app),
+                                      engine_port=npdev_monitor.DEFAULT_ENGINE_PORT,
+                                      engine_root=None, json=True)
+            out = self._capture(npdev_cli.run_explore, args)
+            self.assertNotIn("THE-REAL-LIVE-KEY-0001", out)
+            self.assertIn("<redacted>", out)
 
 
 class EngineDetection(unittest.TestCase):
