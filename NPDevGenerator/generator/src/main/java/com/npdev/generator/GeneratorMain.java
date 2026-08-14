@@ -318,7 +318,7 @@ public final class GeneratorMain {
      * non-empty, so an app that never touches a pack with a migration chain never gets a lock file
      * it didn't have before this card.
      */
-    private static void advanceMigrationTrackedLock(ResolvedModelSource resolvedModelSource) throws IOException {
+    static void advanceMigrationTrackedLock(ResolvedModelSource resolvedModelSource) throws IOException {
         Path rootDirectory = resolvedModelSource.canonicalRootDirectory();
         Map<String, PackLockFile.LockedPack> merged = new LinkedHashMap<>();
         if (PackLockFile.exists(rootDirectory)) {
@@ -328,11 +328,24 @@ public final class GeneratorMain {
             String packId = entry.getKey();
             PackLockFile.LockedPack fresh = entry.getValue();
             PackLockFile.LockedPack existing = merged.get(packId);
+            // PK-5: must use the 5-arg constructor and thread `from` through, or a from-based
+            // remote pack's coordinate is silently zeroed here on every generate that advances its
+            // migratedVersion -- the very next generate/validate then fails the DENIED-path lock
+            // lookup in PackDependencyGraphWalker.resolveRemotePackFile ("is not in npdev.lock"),
+            // breaking PK-5's own core promise (fetch once via pack add, generate/validate offline
+            // forever) for any from-based pack that also declares a migration chain. existing.from()
+            // is authoritative when an existing entry is present (same precedent as
+            // resolvedVersion/digest/sourcePath, all taken from existing below) -- it is also
+            // guaranteed equal to fresh.from() whenever this pack came from `from` at all, since the
+            // DENIED-path resolution that produced `fresh` this generate could only have succeeded by
+            // matching the model's own `from` string against this exact existing lock entry.
             PackLockFile.LockedPack updated = existing != null
                     ? new PackLockFile.LockedPack(
-                            existing.resolvedVersion(), existing.digest(), existing.sourcePath(), fresh.resolvedVersion())
+                            existing.resolvedVersion(), existing.digest(), existing.sourcePath(),
+                            fresh.resolvedVersion(), existing.from())
                     : new PackLockFile.LockedPack(
-                            fresh.resolvedVersion(), fresh.digest(), fresh.sourcePath(), fresh.resolvedVersion());
+                            fresh.resolvedVersion(), fresh.digest(), fresh.sourcePath(),
+                            fresh.resolvedVersion(), fresh.from());
             merged.put(packId, updated);
         }
         PackLockFile.of(merged).write(rootDirectory);

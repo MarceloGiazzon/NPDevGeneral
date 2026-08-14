@@ -3,7 +3,7 @@ title: >-
   Packs cannot be distributed; $ref is local-only by schema
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-08-12
 source: >-
   Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md §1 ground truth, card PK-5). Confirmed this
@@ -12,11 +12,195 @@ source: >-
   pack command exists at all beyond the unrelated `review pack`.
 surface: dsl/pack-distribution
 files:
-  - NPDevContract/dsl/src/main/resources/schema/pack.schema.json
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/NetworkPolicy.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/NetworkPolicyViolationException.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackCoordinate.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/OciCoordinate.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/GitCoordinate.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackCache.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/RemotePackFetcher.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackLockFile.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/PackDependencyGraphWalker.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/PackAddMain.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/PackListMain.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/PackWhyMain.java
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
 detail: |
-  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-5 (content-addressed cache,
-  oci://+git+ resolver, signatures). Decisions PD6/PD7 already recorded: both OCI and git substrates,
-  OCI primary, no hosted registry; local-path packs unsigned OK, remote packs require a signature or
-  an explicit --allow-unsigned in the lockfile. Extends check-container-images-pinned.py rather than
-  adding a new checker (F7, pulls R2/dependency-scanning forward to sit right before this).
-  MASTER-ROADMAP.md spine S7 (Step 14, milestone PM4); not in this session's scope (Steps 1-4).
+  MASTER-ROADMAP.md Step 14 (PM4), PACK-ROADMAP.md card PK-5, branch step14-pk5-distribution. Card
+  has 7 steps; this pass ships steps 1+2+4 fully, step 3 fully for the model-authoring/parsing half
+  (both schemes) and fully live for the git substrate specifically, and defers 5/6/7 -- same
+  judgment call this session used for R7 (Stages A-D) and PK-4 (Stages A-D): the smallest coherent,
+  real, live-verified slice, not a half-finished version of all 7. Builds directly on PK-1's
+  packDigest precedent (PackLockFile.sha256, unchanged, reused rather than reinvented) and PK-3's
+  npdev.lock/PackDependencyGraphWalker machinery (extended, not replaced).
+
+  SHIPPED, live-verified:
+
+  Step 1 (content-addressed cache): PackCache at ~/.npdev/packs/sha256/<digest>/ (overridable via
+  NPDEV_PACK_CACHE_ROOT env var for real use, npdev.pack.cache.root system property for hermetic
+  tests -- the property exists because a test JVM cannot portably mutate its own env). Digest =
+  sha256 of the cached pack.json's own bytes, via the SAME PackLockFile.sha256 local packs already
+  use for npdev.lock digests -- one digest primitive, not two. store() copies the whole fetched tree
+  (so a pack's local $ref fragments survive caching) into a staged temp dir then ATOMIC_MOVEs it into
+  place, keyed by digest, so a reader never observes a partial entry; a re-store at an
+  already-populated digest verifies rather than blindly trusting the existing entry.
+
+  Step 2 (two-phase resolution / NetworkPolicy guard): NetworkPolicy.DENIED is hardcoded (not
+  threaded from any caller) at PackDependencyGraphWalker's one real-resolution call site
+  (PackDependencyGraphWalker.resolve, used by ModelSourceResolver.resolvePacks, the sole path
+  JsonModelParser/generate/validate ever take) -- a future edit cannot reintroduce a fetch on that
+  path without changing that literal line. NetworkPolicy.ALLOWED is constructed only by
+  PackAddMain/PackUpdateMain (PackUpdateMain delegates to the former); PackListMain/PackWhyMain pass
+  DENIED too since neither ever fetches. RemotePackFetcher.fetch calls policy.requireAllowed(...) as
+  its FIRST statement, before any URL/process/socket -- proven uniform across BOTH coordinate schemes
+  (NetworkPolicyGuardLiveTest also proves it for oci://, which has no real fetch implementation at
+  all yet -- DENIED still throws the guard's own exception type rather than ever reaching that
+  scheme's "not implemented" stub).
+
+  Step 3 (packs[].from, scoped to DIRECT app-level imports only): model.schema.json's packRef
+  (all 4 copies) changed from requiring $ref to oneOf({required:[$ref]}, {required:[from]}) plus a
+  new `from` property with an oci://.../repo:tag|@sha256:<digest> or
+  git+<https|http|ssh|file|git>://url[//subpath]@tag pattern -- $ref's own URI-scheme-ban pattern is
+  UNCHANGED (verified: still rejects any scheme). PackCoordinate/OciCoordinate/GitCoordinate (pure,
+  no I/O) parse both grammars; the git tag delimiter is the LAST '@' (a legitimate earlier
+  user@host in an ssh URL is not mistaken for it), and the OCI tag/port colon disambiguation follows
+  "port colon is before the last /, tag colon is after" (Docker/OCI reference-grammar convention).
+  Deliberately NOT threaded into pack.schema.json's OWN packs[] (a pack's transitive dependency
+  declarations, {pack, version} shaped, a completely different object from packRef) -- a pack's own
+  transitive dependencies stay local-file-only in this slice; only an APP's direct packs[] import may
+  use `from`. This is why the CLAUDE.md four-place-chain rule does not apply here: `from` plays the
+  exact same purely-resolution-time role $ref/as/allowSideBySide already do (none of the four are
+  threaded into ModelAst/CompiledModel/canonical JSON either) -- it is resolution-time plumbing
+  consumed entirely inside ModelSourceResolver/PackDependencyGraphWalker and discarded once the
+  pack's content is merged, not new model content that needs to survive into the compiled model.
+  check-twin-pair-consistency.py confirms this (ran clean, nothing to register).
+
+  Step 4 (digest verification on every read): PackCache.read always recomputes the entry's live
+  digest and compares it to the directory name (the expected digest) -- corruption/tampering is a
+  hard IOException refusal every time, not a first-fetch-only check. The DENIED (generate/validate)
+  resolution path for a `from` pack ALWAYS goes through PackCache.read (never a raw file open),
+  looked up by matching the model's own `from` coordinate STRING against npdev.lock's recorded
+  `from` field (a new PackLockFile.LockedPack field, backward-compatible 3-/4-/5-arg constructors) --
+  the packId isn't known before the file is located, so the coordinate string, not the packId, is
+  the lookup key.
+
+  Live proof (not assumed -- real commands, real git, real filesystem, zero network):
+  - PackCoordinateTest: pure grammar, both schemes, malformed-input refusals (17 cases).
+  - PackCacheTest: store/read round trip, immutability/no-op re-store, "corrupt a cache entry ->
+    hard refusal" (the card's own named proof), .git-metadata exclusion, missing-pack.json refusal.
+  - RemotePackFetcherGitLiveTest: a REAL local git repo on disk, tagged, cloned by the REAL `git`
+    binary via git+file://, zero network I/O -- repo-root and monorepo-subpath fetches, refetch
+    idempotency, bad-tag failure. git+file:// judged a legitimate live substrate proof per the task's
+    own framing: it exercises the identical RemotePackFetcher/PackCache code a git+https:// fetch
+    would, differing only in the transport git itself dials underneath.
+  - NetworkPolicyGuardLiveTest: binds a real TCP port then closes it (nothing listening -> a real
+    connection attempt gets a fast refusal, not a hang) -- DENIED throws NetworkPolicyViolationException
+    pre-dispatch; ALLOWED spawns the real git process, which actually dials the closed port and fails
+    with a DIFFERENT exception type/message ("git clone failed"), proving an attempt genuinely
+    happened only when policy allows it. Repeated for oci:// to prove the guard is scheme-uniform.
+  - PackFromCoordinateResolutionTest (full pipeline via the real public entry points): `pack add`
+    (ALLOWED) fetches from a real git+file:// repo and writes npdev.lock with `from`; the source repo
+    is then DELETED from disk entirely; `generate` (DENIED, hardcoded) still resolves successfully,
+    proving it never re-fetches -- purely reads lock+cache; resolving twice produces byte-identical
+    JSON; deleting the lock makes generate refuse naming "run 'npdev pack add'"; a lock whose `from`
+    doesn't match the model's own coordinate refuses ("is not in npdev.lock"); corrupting the cached
+    pack.json's bytes makes generate hard-refuse naming "CORRUPT".
+  - Full existing dsl suite (720 tests, verified via the real per-run XML reports, not assumed)
+    still green; check-schema-mirror-consistency.py and
+    check-twin-pair-consistency.py both clean; check-deterministic-generation.ps1 still 0 differing
+    (this feature adds a new authoring surface but touches no existing sample's generated output).
+
+  DEFERRED, this item stays PARTIAL (not DONE) for exactly these:
+  - Step 5 (signatures/cosign, trust:{mode,source,level} vocabulary, --allow-unsigned lockfile
+    recording) -- not started at all. Next slice.
+  - Step 6 (`npdev pack publish` producing an OCI-artifact-shaped LOCAL output: pack JSON + chain +
+    signature bundle, stopping short of any registry push) -- not started.
+  - Step 7 (static JSON index on GitHub Pages, PR-moderated; pointing pack-catalog.json/
+    GeneratedPackCatalogController at it) -- not started. Needs a human to create the GitHub Pages
+    repo; not attempted, per this session's explicit scope boundary.
+  - OCI fetch itself: coordinate grammar is real and tested; RemotePackFetcher's OCI branch checks
+    the NetworkPolicy guard (proven) and then throws a clearly-worded IOException naming this item
+    as the follow-up (IOException, not an unchecked type, so PackAddMain/PackUpdateMain's existing
+    `catch (IOException)` still produces this CLI's documented JSON {"status":"failed",...} + exit 2
+    contract rather than a raw crash -- an earlier UnsupportedOperationException version of this
+    stub did NOT, caught by the same PR #70 adversarial review that found the two must-fix items
+    above). A real Distribution-API v2 pull (manifest fetch, registry
+    auth-token dance, blob fetch) needs verification against a real or local-fake registry to be
+    trustworthy code at all -- writing it with zero live verification, when this session is
+    explicitly forbidden from touching ghcr.io, would be exactly the "green RED-proof meant the TEST
+    was wrong" anti-pattern this repo's own culture warns against. A local fake-registry HTTP server
+    (analogous to git+file://'s role for the git substrate) is a legitimate option for the next slice
+    but was judged not worth the added scope here given the git substrate already proves the
+    fetch->cache->offline-read pipeline end to end.
+  - `from` is direct-app-import-only -- a pack's OWN transitive packs[] dependencies (discovered via
+    PackDependencyGraphWalker.defaultPackFile's local-file convention) cannot yet use `from`.
+    pack.schema.json is untouched.
+  - A remote pack containing fragments ($ref-based sub-files alongside pack.json, valid for a LOCAL
+    pack today) will fail resolution with a confusing "... escapes the model root" error --
+    resolvePackFragment's containment check (ModelSourceResolver.resolveJsonRefUnderRoot) always
+    validates a fragment against the APP's own rootDirectory in addition to the pack's own directory,
+    and a PackCache-resident file is never under the app's root. Not hit by this slice's own proof
+    (single-file pack.json, no fragments) but a real limitation for a remote pack that uses
+    fragments. Needs that check widened to skip the app-root boundary specifically for cache-resident
+    packs, keeping only the pack's-own-directory boundary -- next slice's first fix.
+  - check-container-images-pinned.py is NOT yet extended to pack coordinates (the card's own "Breaks"
+    section asks for this) -- `from` accepts a mutable tag today (matching the card's own worked
+    example, `identity:2.1.0`), not only a pinned digest.
+  - PackListMain's no-lock dry-run fails entirely (rather than partially reporting local packs) the
+    moment ANY packs[] entry uses `from` with no lock yet -- acceptable degradation, not fixed.
+  - `packs[].from` has zero NPDevSamples/dsl-conformance-max corpus coverage -- check-dsl-coverage.py
+    (CLAUDE.md's own "every DSL feature gets real corpus coverage or the gate fails" rule) never
+    flags this because its FEATURE_DETECTORS table was never given a `packs.from` entry, so the gate
+    silently passes without ever checking (found by the same PR #70 adversarial review that found
+    the two items below). Deliberately not added in this pass: a real fixture needs either a
+    committed npdev.lock + cache (the two-phase design's whole point is that generate never fetches,
+    so corpus generation in CI can't run `pack add` for it) or a vendored git+file:// repo INSIDE the
+    corpus tree with pack add wired into check-dsl-conformance-generates.py's network-free pipeline --
+    real, non-trivial CI-wiring work of its own, not a one-line fixture addition. Next slice.
+
+  Post-review fixes (adversarial multi-agent review of this PR, 14/15 findings confirmed,
+  MERGE-WITH-CONDITIONS): two real defects were found and fixed on top of the above --
+  (1) GeneratorMain.advanceMigrationTrackedLock (generator module, not touched by the original PK-5
+  commit) used PackLockFile.LockedPack's lossy 4-arg backward-compat constructor when merging an
+  existing+fresh lock entry, silently zeroing `from` on every generate that advances a migration-
+  tracked pack's migratedVersion -- broke PK-5's own core promise (fetch once via pack add, then
+  generate/validate offline forever) for any from-based pack that ALSO declares a migration chain.
+  Fixed to use the 5-arg constructor, `from` taken from `existing` (guaranteed equal to `fresh`'s own
+  value whenever reachable, since the DENIED-path lookup that produced `fresh` could only have
+  succeeded by matching this exact existing entry). Regression-tested directly against the now-
+  package-private method (GeneratorMainMigrationTrackedLockFromFieldTest, 3 cases: existing-entry
+  merge, no-existing-entry, local-pack-unaffected). (2) PackCache's digest covered only pack.json,
+  not the fragment tree it caches -- two fetched trees with byte-identical pack.json but DIFFERENT
+  fragment content silently aliased to the same cache digest, and the write-once early-return let
+  the second tree's fragments be silently discarded while read() still reported the entry as digest-
+  verified. Fixed: the digest now covers every regular file in the tree (path + content, sorted,
+  .git excluded), computed identically pre-copy (store) and post-copy (read) so the two never
+  diverge. Regression-tested (PackCacheTest: identical pack.json + different fragments now produce
+  different digests; identical whole trees still dedupe to one entry). Two smaller items from the
+  same review were fixed alongside since they were cheap and in the exact code being touched: a
+  staging-directory leak on `store()`'s concurrent-write-race path (committed was set true even when
+  the loser's staging dir was never consumed by a move), and defense-in-depth SHA-256-hex validation
+  on PackCache.entryDir/read/has plus converting the OCI-not-implemented stub from an unchecked
+  UnsupportedOperationException to a checked IOException so PackAddMain/PackUpdateMain's existing
+  catch block produces this CLI's documented JSON contract instead of a raw crash.
+
+  No unrelated bugs found and filed separately this session -- every limitation and fix recorded
+  above is a direct, in-scope consequence of this exact feature (found while building or reviewing
+  it), not a pre-existing defect, so all of it is recorded here rather than as standalone REG items.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/PackFromCoordinateResolutionTest.java
+  asserts: >-
+    npdev pack add (NetworkPolicy.ALLOWED) fetches a real pack from a real local git+file:// repo
+    and writes npdev.lock with a `from` entry; after the source repo is deleted from disk entirely,
+    npdev generate (NetworkPolicy.DENIED, hardcoded on that path) still resolves successfully and
+    byte-identically across repeated calls, proving it reads only the local content-addressed cache
+    and never re-fetches; a missing lock, a lock with a non-matching `from`, or a corrupted cache
+    entry each hard-refuse with a distinct, named error. NetworkPolicyGuardLiveTest separately proves
+    the guard itself trips before any socket/process for both coordinate schemes, against a real
+    closed TCP port.
+  provenRed: false
