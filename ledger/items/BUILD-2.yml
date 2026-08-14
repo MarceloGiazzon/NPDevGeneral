@@ -1,0 +1,180 @@
+id: BUILD-2
+title: >-
+  A sealed pack still generates and compiles its own concepts in every consuming app -- no
+  precompiled pack jar exists
+type: GAP
+severity: HIGH
+status: PARTIAL
+opened: 2026-08-14
+source: >-
+  PACK-ROADMAP.md card BT-2 (Track B, gated on BT-1 measured [BUILD-1, DONE, -25% build/-48% boot at
+  100 concepts] and PK-2 [PACK-3, DONE]). Explicit human authorization to proceed despite BT-1's
+  measured number being real but modest: BT-2's value case here is immutability, trust,
+  reproducibility and a real distribution unit, NOT primarily further build-time reduction -- keep
+  that framing, do not oversell this as a speed fix.
+surface: generator/pack-precompilation
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackSealednessAnalyzer.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/abi/KernelAbi.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/PackAbiManifest.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/PackAbiCompatibility.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/PackAbiIncompatibleException.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/PackNotSealedException.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/SealedPackBuilder.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/EntityEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RepositoryEmitter.java
+detail: |
+  See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card BT-2 for the full 6-step spec. This is
+  the largest, riskiest item on the whole pack roadmap (XL, risk high, "genuinely the most
+  architecturally novel remaining card" per this session's own framing) -- same discipline as PK-5/
+  PK-6: investigate and design the full mechanism, ship the smallest coherent real slice, defer the
+  rest by name. Ships steps 1-3 fully, a real (narrower-than-the-card-assumed) version of the ABI
+  half of step 4's "Breaks" callout, and step 6's proof for ONE real sealed pack (identity). Defers
+  step 4's actual app-linking wiring and all of step 5.
+
+  IMPORTANT CORRECTION TO THE CARD'S OWN PREMISE, found during investigation: the card says step 1
+  is "Mechanical, from PK-1's provenance (already merged this session -- check origin/provenance
+  fields on CompiledConcept and siblings)". That provenance does NOT exist. PK-1 (PACK-1, DONE) only
+  shipped steps 1-4 of ITS OWN card (namespacing + reference rewriting); steps 5-8 (an `origin`
+  field threaded through the four-place canonical chain onto every Compiled* member) were explicitly
+  deferred to a separate item, PACK-2, which is still OPEN (HIGH severity) as of this session. Rather
+  than block BT-2 on PACK-2 (a separately-scoped, HIGH-severity gap that is itself real work), this
+  slice computes sealedness a different, sufficient way: directly from a pack's own pack.json content
+  in isolation, before any app ever composes it -- which is actually MORE correct for this purpose
+  than compiled-model provenance would have been, since sealedness is a property of the pack alone.
+  See PackSealednessAnalyzer's own class doc for the full reasoning. PACK-2 stays open and unaffected
+  by this work either way.
+
+  A SECOND correction: the card's step 2 says "entity.mustache:1 is `package {{packageName}}` -- the
+  app's namespace, which is the entire reason identical packs produce different bytecode today."
+  Verified false as literally stated: EntityEmitter.java hardcoded `packageName` to the CONSTANT
+  `com.npdev.generated.entities` for every app already -- it was never app-specific text. The REAL
+  mechanism producing different bytecode for the same pack in two apps is `JavaIdentifierSupport
+  .className`, which Pascal-cases EVERY `::`-separated segment of a concept's qualified name --
+  `identity::User` (App A, unaliased) becomes class `IdentityUser`, `auth::User` (App B, `as: "auth"`)
+  becomes class `AuthUser`. Same package, genuinely different class NAME, so genuinely different
+  bytecode. The fix ships is the same either way (emit into a dedicated namespace with a bare,
+  alias-independent class name), just for the accurately-diagnosed reason.
+
+  SHIPPED, live-verified (all 3 real Gradle test runs green: 134 dsl test classes / 337 generator
+  test cases / 0 failures, including the new tests below):
+
+  Step 1 (compute sealedness, refuse to publish unsealed): `PackSealednessAnalyzer.analyze(JsonNode)`
+  -- pure function, no filesystem/DB, matching its `PackDiffEngine`/`PackPublishGate` siblings' own
+  contract. Checks (a) zero of the pack's OWN transitive `packs[]` dependencies (composed sealed
+  packs -- a sealed pack depending on another pack -- are explicitly NOT attempted this slice, see
+  "Deferred" below), (b) zero `requires.capabilities[]` (an unbound capability can never be bound at
+  pack-build time, since a sealed jar is built with no app in the loop), (c) every inline concept's
+  every `reference`-typed field targets another concept in the SAME pack's own `concepts[]`. A
+  fragment-declared concept (`{"$ref": ...}`) is treated as unverifiable and refused rather than
+  silently assumed safe. `SealedPackBuilder.seal()` calls this first and throws
+  `PackNotSealedException` (naming every violation) before writing anything, for an unsealed pack --
+  live-proven (`SealedPackBuilderTest.refusesUnsealedPack_andWritesNothing`, zero files written).
+  `PackSealednessAnalyzerTest` (7 cases) proves the real in-repo `identity` pack sealed, and each
+  violation kind refused and named, against synthetic fixtures.
+
+  Step 2 (emit into the pack's own namespace): `SealedPackBuilder` computes
+  `com.npdev.pack.<packId>.v<majorVersion>` (`PackAbiManifest.packageName()`) and emits BARE class
+  names (`User`, not `IdentityUser` -- the package already disambiguates) via new `emitOne(...)`
+  overloads added to `EntityEmitter`/`RepositoryEmitter`. The existing `emit(CompiledModel)` methods
+  (used by every real app's generation today) are UNCHANGED in behavior -- they now call `emitOne`
+  internally with the same constant package name and `entity.getClassName()` they always used, so
+  this is a pure refactor for the app-generation path with zero behavior change (proven: full
+  dsl+generator suites green, no golden-output churn). Sealing is NOT wired into `npdev generate` or
+  `BuiltinPackComposer`'s existing app-composition path at all -- it is a wholly separate, opt-in
+  operation (`SealedPackBuilder`, callable standalone), so this card's blast radius on the hundreds
+  of existing generated apps/samples is zero by construction, not just by test result.
+
+  Step 3 (verify the table name needs nothing): live-proven, not assumed --
+  `SealedPackBuilderTest.sealsRealIdentityPack_intoOwnNamespace_notTheAppNamespace` asserts the
+  sealed-pack-emitted `User.java` still carries `@Table(name = "identity_v1_users")`, PK-2's
+  alias-independent physical name, completely unaffected by sealing (as expected: `SealedPackBuilder`
+  reuses `BuiltinPackComposer.loadPackConcepts`, the SAME per-pack compile pipeline every real app
+  already uses, so `CompiledConcept.getTableName()` was already alias/pack-jar-independent before
+  this card touched anything).
+
+  Step 4 (partial -- ABI declaration/refusal only, app-linking wiring deferred): `KernelAbi
+  .CURRENT_ABI_VERSION` (new, `com.npdev.kernel.abi`, kernel module) is a manually-bumped contract
+  version for the `com.npdev.kernel.*`/`com.npdev.runtime.support.*` surface (incl.
+  `GeneratedCrudRuntimeSupport`, verified still 3,701 lines in `expression-cel` -- CLAUDE.md's own
+  "the card's number may be stale" caveat checked and found NOT stale). `PackAbiManifest` (record,
+  `META-INF/npdev-pack.properties` shape, round-trip tested) + `PackAbiCompatibility.checkLinkable`
+  (throws `PackAbiIncompatibleException` naming both ABI versions on mismatch, live-proven both
+  directions in `PackAbiCompatibilityTest`) are the refusal mechanism the card's "Breaks" section
+  asks for. Honest limitation, stated not hidden: this is a human-bumped integer contract, not
+  automatic bytecode-signature diffing of the kernel's actual exported surface -- see `KernelAbi`'s
+  own doc for why a real ABI-diff tool is materially harder and out of scope here.
+  `SealedPackBuilder.seal()` writes this manifest into the staged source tree's `META-INF/`.
+
+  Step 6 (byte-identical proof, ONE real sealed pack): `SealedPackBuilderTest
+  .sealingTheSamePackTwiceIndependently_producesByteIdenticalSourceAndClasses` seals the real
+  `NPDevContract/packs/identity/pack.json` twice, fully independently (two separate temp roots,
+  simulating what two different apps' own generation runs would each independently produce), and
+  proves (a) byte-identical relative file paths and source text for all 10 emitted .java files (5
+  entities + 5 repositories), and (b) byte-identical COMPILED .class bytes for all 5 entity classes,
+  via a real in-process `javax.tools.JavaCompiler` run (`jakarta.persistence-api:3.1.0`, the exact
+  version `expression-cel`'s build.gradle already pins, added as a `testImplementation`-only
+  dependency to `NPDevGenerator/generator/build.gradle` -- compile-time-only, nothing runtime/network
+  touches it). Repository interfaces are proven byte-identical at the SOURCE level only (compiling
+  `JpaRepository` needs `spring-data-jpa` on the classpath, a materially heavier dependency not added
+  for this proof alone) -- stated as a real, narrower scope than "every emitted file gets a compiled
+  byte-diff", not silently generalized.
+
+  DEFERRED, this item stays PARTIAL (not DONE) for exactly these, matching how PK-5 shipped 4 of 7
+  steps and PK-6 shipped step 1 of 5:
+  - Step 4's actual app-linking wiring: no generated `FinalExecApplication.java` (or a companion
+    `@Configuration`) actually adds `com.npdev.pack.<packId>.v<major>` to a real app's
+    `@ComponentScan`/`@EntityScan` base packages, and no generated `build.gradle` depends on a sealed
+    pack jar as a compile dependency instead of generating the pack's source into the app. Design (not
+    implemented): BT-1's own `FinalExecApplication.java` needed ZERO `@ComponentScan` change when its
+    `runtimehost-core` module split shipped, because the jar-ified classes kept their EXISTING package
+    (`com.finalexec.*`) -- BT-2 cannot reuse that trick, because picking a NEW, pack-owned package is
+    the entire mechanism that makes two packs (or a pack and the app) not collide; it therefore
+    genuinely needs a new, PER-APP-GENERATED `@ComponentScan(basePackages = {...})`/`@EntityScan
+    (basePackages = {...})` entry per linked sealed pack, which is real, non-trivial generator-template
+    work (which packs does this app link? threading that list into `FinalExecApplication.java`'s
+    emission) that this slice did not attempt, to keep the shipped slice's own claims precise.
+  - Step 5 (OCI-layer publish) entirely: NOT attempted, matching PK-5's own explicit boundary --
+    `ledger/items/PACK-8.yml` (PK-5, PARTIAL) records that no real OCI registry access exists this
+    session and step 5/6/7 of PK-5's own card were deferred for the same reason. `SealedPackBuilder`
+    stops at "a staged Java source tree + a manifest on local disk", explicitly documented in its own
+    class doc as NOT a compiled jar and NOT anything a registry interaction touches. No local mock
+    registry was built either (judged not worth the added scope given `SealedPackBuilderTest` already
+    proves the byte-identical-output property the wiring would depend on).
+  - Composed sealed packs (a sealed pack depending on another pack, via its own `packs[]`, now
+    possible since PK-3/PACK-5 shipped transitive dependencies): `PackSealednessAnalyzer` refuses any
+    pack declaring its own `packs[]`, by design -- bundling a whole transitive closure into one jar,
+    or requiring a dependency to itself already be a linked sealed jar, is new design work not
+    attempted here. Only leaf packs (identity today; workspace would also qualify, not tested) can be
+    sealed.
+  - Extending the "zero outbound references" walk beyond concept `reference`-typed fields (a query
+    join, a panel data source, a flow step naming a concept) to the rest of a pack's authoring
+    surface -- mechanical, same pattern, not attempted to keep this slice's own claim precise.
+  - No `npdev pack seal` CLI entry point exists yet (`PackDiffMain`/`PackPublishMain`'s sibling shape)
+    -- `SealedPackBuilder` is a real, tested Java API, callable today from a test or a future CLI
+    wrapper, but there is no `npdev pack seal <packFile> <outDir>` command a human can run directly.
+  - No jar is committed anywhere in this repo -- correct per CLAUDE.md's Build Output Policy (build
+    artifacts never belong inside the repo). Checked `check-generated-bundle-freshness.py`'s single
+    declared (source, artefact) pair (the authoring React bundle) explicitly: unaffected, still green,
+    because this card adds no new committed artefact for it to track.
+  - No `BREAKING.md` entry: this slice changes no schema (`pack.schema.json`/`model.schema.json`
+    untouched) and no default `npdev generate` behavior for any existing app (`BuiltinPackComposer`
+    and the `emit(CompiledModel)` entry points every real app uses are behaviorally unchanged, proven
+    by the full green dsl+generator suites) -- CLAUDE.md's four-place-chain rule does not apply either,
+    for the same reason (no new top-level model array field, no new compiled-model field at all).
+
+  Full dsl suite (134 test classes) and full generator suite (337 test cases, packaged-proof tests
+  excluded locally per this repo's own convention -- CI runs them, unaffected by this change since
+  no packaged-app generation path was touched) both green.
+  check-twin-pair-consistency.py (19/19 OK) and check-schema-mirror-consistency.py (OK, all copies)
+  both clean, as expected since no schema/twin-pair-registered file was touched.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/packs/SealedPackBuilderTest.java#sealingTheSamePackTwiceIndependently_producesByteIdenticalSourceAndClasses
+  asserts: >-
+    sealing the real identity pack twice, fully independently, produces byte-identical emitted Java
+    source (10 files) and byte-identical compiled .class bytes (5 entity classes, real javac);
+    PackSealednessAnalyzerTest and SealedPackBuilderTest's refusal case prove an unsealed pack is
+    refused (naming the violation) before anything is written; PackAbiCompatibilityTest proves the
+    ABI mismatch refusal both directions.
+  provenRed: true
