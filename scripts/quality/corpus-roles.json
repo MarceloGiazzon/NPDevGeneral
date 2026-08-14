@@ -67,6 +67,7 @@
     "NPDevSamples/probes/p4-constraints": "probe",
     "NPDevSamples/probes/p5-migration-chain/v1": "probe",
     "NPDevSamples/probes/p5-migration-chain/v3": "probe",
+    "NPDevSamples/probes/p6-satellite-extension": "probe",
     "NPDevSamples/restaurant-saas-multitenant": "showcase",
     "NPDevSamples/simple-contact-intake": "showcase",
     "NPDevSamples/simple-user-registry": "engine-variant",

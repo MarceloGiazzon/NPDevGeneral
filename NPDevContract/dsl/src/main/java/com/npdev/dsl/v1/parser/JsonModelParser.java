@@ -378,7 +378,8 @@ public final class JsonModelParser {
             TruthLevel truthLevel = TruthLevel.fromStringOrDefault(readText(ent, "truthLevel"));
             String module = readText(ent, "module");
             String conceptRenamedFrom = readText(ent, "renamedFrom");
-            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom);
+            String conceptSatelliteOf = readText(ent, "satelliteOf");
+            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf);
             concepts.add(concept);
             conceptsByLowerName.put(name.toLowerCase(Locale.ROOT), concept);
         }

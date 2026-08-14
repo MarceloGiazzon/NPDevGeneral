@@ -3,17 +3,86 @@ title: >-
   No variation mechanism; a variant requires forking a pack
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-08-12
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md card PK-6). Today, producing a hospital
   variant and a store variant of a base pack means forking it twice -- there is no additive-only
   extension-pack mechanism, and `extends`-on-packs is explicitly rejected (PACK-ROADMAP.md §4) as a
   second, weaker DSL.
 surface: dsl/pack-extension
+files:
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ConceptAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledConcept.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java
 detail: |
   See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card PK-6 (extension packs: satellites +
   additive-only enforcement). MASTER-ROADMAP.md F4: merged with ROADMAP.md's R10
   (plugin:java-controller + custom-screen mount) into one campaign, S8 (Step 15, milestone PM5 --
-  "variation without duplication"), because both touch GeneratedPluginMountPlan and the same three
-  runtime-supported-controllers.json enforcement points. Not in this session's scope (Steps 1-4).
+  "variation without duplication").
+
+  PARTIAL as of 2026-08-14 (step15-pk6-r10-extension branch): Step 1 of 5 (satellite concepts) is
+  DONE and live-proven; Steps 2-5 (additive-only IN-PLACE extension via PK-4's diff engine,
+  computed sealedness, conflict refusal for in-place field collisions, and generated UI
+  composition -- the card's own "part most likely to be underestimated") remain OPEN, as does all
+  of R10 (plugin:java-controller + custom-screen mount, tracked separately as EXT-1).
+
+  Step 1 mechanism: a new concept-level marker `satelliteOf` (a pack-qualified concept reference,
+  e.g. "identity::User") declares a 1:1 satellite relationship to a base concept OWNED BY ANOTHER
+  PACK -- deliberately NOT named `extends`, because `concept.extends` already means single-model
+  concept inheritance (field merging via ModelResolver.mergeConcept); reusing that keyword for a
+  completely different cross-pack FK-bond marker (the card's own example text literally writes
+  `extends: "identity::User"`) would have collided with existing, load-bearing semantics -- caught
+  by reading ConceptAst/EntityAst/ModelResolver before writing any schema change, exactly the kind
+  of "verify current behavior before coding" this repo's own history warns about.
+
+  `satelliteOf` is validation-only glue over the ALREADY-BUILT bonds mechanism (BONDS.md Phases 1-4,
+  DONE): SemanticValidator.validateConceptSatelliteOf requires the target to be pack-qualified,
+  resolve to a real concept, and be backed by exactly one unique+required `type: reference` field on
+  the same concept whose `reference.target` equals the satelliteOf value (the 1:1 anchor bond) --
+  the FK itself, its physical table naming (packId+major, PK-2), and the ON DELETE behavior are all
+  the EXISTING bonds/PK-2/PK-3 machinery, unmodified. Zero generator changes were needed: satellite
+  concepts get real FK-linked tables and generated CRUD REST endpoints for free, because a satellite
+  is, physically, an ordinary pack concept with an ordinary 1:1 bond.
+
+  Threaded through the four-place canonical chain (JsonModelParser -> ModelCompiler -> ModelResolver
+  [BOTH ConceptAst-reconstructing sites, sanitizeConcept and mergeConcept] -> CompiledModelCanonicalJson
+  /Reader), all 4 mirrored model.schema.json copies, and a new twin-pair-registry.json entry
+  (`satelliteof-ast-compiled-four-place`) pinning it -- following REG-104's exact precedent.
+
+  Proven live, not just unit-tested: `PackSatelliteExtensionResolutionTest.java` (3 tests: happy
+  path against the REAL built-in identity pack, missing-anchor RED control, unqualified-target RED
+  control) plus `scripts/proofs/run-pk6-satellite-extension-proof.py` -- a real generate->build->boot
+  cycle on H2 against `NPDevSamples/probes/p6-satellite-extension` (identity@1 composed
+  TRANSITIVELY, via PK-3, with a throwaway `clinical` extension pack). 5/5 live assertions pass: a
+  base identity::User row created through its generated CRUD endpoint (/api/concepts/identity_users
+  -- routes are alias-based/logical, not version-qualified, confirming PK-2's own "routes are
+  logical, tables are physical" recommendation); a satellite clinical::UserClinicalProfile row
+  created through ITS OWN generated endpoint referencing that user's id; the base row re-read and
+  confirmed to carry NONE of the satellite's fields; and the RED control -- a satellite row
+  referencing a nonexistent user id is refused with a clean 422 `bond_target_not_found` (never a
+  200/201/500), proving the anchor bond is a REAL foreign key, not a soft check.
+
+  Deferred deliberately, not from a blocker: Step 4 (UI composition, panel/section merge with
+  app-owned ordering) is explicitly flagged by the card itself as the part most likely to be
+  underestimated, and Steps 2/5 (in-place additive extension + conflict refusal) are an
+  ARCHITECTURALLY DIFFERENT mechanism from satellites (patching fields directly onto a base pack's
+  own concept from outside, vs. a satellite's own separate table) that deserves its own design pass
+  rather than being forced into this slice. `check-dsl-coverage.py`'s tracked-feature list was
+  deliberately NOT extended for `satelliteOf` in this slice -- doing so would require real usage in
+  `NPDevSamples/dsl-conformance-max` (a 74-reference shared fixture; probes are explicitly excluded
+  from DSL-coverage counting), which is more blast radius than a partial-slice PR should carry.
+guard:
+  kind: script
+  ref: "python scripts/proofs/run-pk6-satellite-extension-proof.py --engine h2local"
+  asserts: >-
+    identity::User's own generated CRUD endpoint and physical table stay untouched by the clinical
+    extension pack; clinical::UserClinicalProfile (satelliteOf: "identity::User") gets its own
+    FK-linked table and generated CRUD endpoint; and a satellite row referencing a nonexistent user
+    id is refused with a clean 422, never silently accepted.
+  provenRed: true

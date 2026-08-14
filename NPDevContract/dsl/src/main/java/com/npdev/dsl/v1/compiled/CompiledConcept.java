@@ -8,6 +8,7 @@ public final class CompiledConcept extends CompiledEntity {
     private final List<CompiledIndex> indexes;
     private final CompiledConceptAccess access;
     private final String renamedFrom;
+    private final String satelliteOf;
 
     public CompiledConcept(String name, String className, String tableName, List<CompiledField> fields) {
         this(name, className, tableName, fields, List.of(), List.of(), null, null, null, null, List.of());
@@ -137,11 +138,32 @@ public final class CompiledConcept extends CompiledEntity {
             CompiledConceptAccess access,
             String renamedFrom
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel, module, indexes, access, renamedFrom, null);
+    }
+
+    /** PK-6: declares this concept is a satellite extension of a base concept owned by another pack (see getSatelliteOf). */
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel,
+            String module,
+            List<CompiledIndex> indexes,
+            CompiledConceptAccess access,
+            String renamedFrom,
+            String satelliteOf
+    ) {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
         this.access = access;
         this.renamedFrom = renamedFrom;
+        this.satelliteOf = satelliteOf;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -162,6 +184,11 @@ public final class CompiledConcept extends CompiledEntity {
     /** The previous concept name this concept was renamed from, or null if this is not a declared rename. */
     public String getRenamedFrom() {
         return renamedFrom;
+    }
+
+    /** PK-6: the pack-qualified base concept this concept is a satellite extension of, or null if it declares none. */
+    public String getSatelliteOf() {
+        return satelliteOf;
     }
 
     public static CompiledConcept fromLegacyEntity(CompiledEntity legacy) {
