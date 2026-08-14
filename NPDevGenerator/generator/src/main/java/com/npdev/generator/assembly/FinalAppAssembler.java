@@ -138,14 +138,41 @@ public final class FinalAppAssembler {
         writeAppReadme(normalized, generatedMount);
         appendRuntimeHostLibsDirDefault(normalized);
         appendAppJavaVersionDefault(normalized);
+        int webAssetsCopied = mountWebAssets(normalized);
 
         return new AssemblyResult(
                 normalized.finalAppRoot(),
                 generatedMount,
                 hostStats.filesCopied(),
                 generatedStats.filesCopied(),
-                schemaRealizationCount
+                schemaRealizationCount,
+                webAssetsCopied
         );
+    }
+
+    /**
+     * R10 (EXT-1, "custom-screen mount"): copies {@link Options#webAssetsRoot()}'s contents into
+     * {@code <finalAppRoot>/src/main/resources/static} -- must land under the App module's OWN
+     * {@code src/main/resources/static}, NOT under {@code npdev-generated/}, which
+     * {@code StrictExecutionValidator} hashes at boot and refuses to start if any unexpected file
+     * appears there (see {@code Build-NpdevApp.ps1}'s retired step 4b, which this replaces
+     * byte-for-byte). A non-null {@code webAssetsRoot} that does not exist is a caller error (every
+     * caller is expected to check {@code Test-Path}/{@code Files.isDirectory} itself before passing
+     * the flag, same discipline {@code --runtimeHostTemplate} and every other explicit path option
+     * here already requires) -- fails loud rather than silently mounting nothing.
+     */
+    private static int mountWebAssets(Options options) throws IOException {
+        if (options.webAssetsRoot() == null) {
+            return 0;
+        }
+        requireDirectory(options.webAssetsRoot(), "Web assets root");
+        Path staticDir = options.finalAppRoot()
+                .resolve("src")
+                .resolve("main")
+                .resolve("resources")
+                .resolve("static");
+        CopyStats stats = copyTree(options.webAssetsRoot(), staticDir, CopyMode.WEB_ASSETS, options);
+        return stats.filesCopied();
     }
 
     private static void validate(Options options) throws IOException {
@@ -742,7 +769,13 @@ public final class FinalAppAssembler {
 
     private enum CopyMode {
         RUNTIME_HOST_BASE,
-        GENERATED_ARTIFACT
+        GENERATED_ARTIFACT,
+        /** R10 (EXT-1, "custom-screen mount"): author-supplied companion web assets (hand-written
+         *  HTML/CSS/JS screens). Gets only the generic {@link #EXCLUDED_DIRECTORY_NAMES}/
+         *  {@link #EXCLUDED_FILE_NAMES} filtering that every copy mode already applies -- none of
+         *  {@link #RUNTIME_HOST_BASE}'s controller/service-source exclusions or
+         *  {@link #GENERATED_ARTIFACT}'s migration-artifact skip apply to a plain asset tree. */
+        WEB_ASSETS
     }
 
     private record ApiKeyMapping(String apiKey, String tenantId, String actorId, List<String> roles) {
@@ -774,7 +807,21 @@ public final class FinalAppAssembler {
             /** deps-and-java/PLAN.md W1.3/W1.4: the generated app's own Gradle toolchain level
              *  (config.json's build.javaVersion, already validated against {17,21} by the caller).
              *  Platform modules never read this -- only the assembled app's own gradle.properties. */
-            int javaVersion
+            int javaVersion,
+            /**
+             * R10 (EXT-1, "custom-screen mount"). Optional: a directory of author-supplied,
+             * hand-written screens (HTML/CSS/JS -- {@code capability.plugin.json}'s sibling
+             * convention for a raw asset tree with no model-side declaration at all). Null means
+             * "no companion web assets for this app" -- zero behavior change for every caller that
+             * doesn't pass one. When present, its contents are copied into
+             * {@code <finalAppRoot>/src/main/resources/static}, served same-origin at
+             * {@code http://localhost:<port>/<file>} (no CORS, static is exempt from the API-key
+             * filter) -- the exact mechanism {@code Build-NpdevApp.ps1}'s retired step 4b used to
+             * perform in PowerShell, moved here so every caller (Build-NpdevApp.ps1,
+             * Build-ClaudeApp.ps1, {@code npdev generate app}) gets the identical result instead of
+             * each maintaining its own copy.
+             */
+            Path webAssetsRoot
     ) {
         Options normalized() {
             return new Options(
@@ -785,7 +832,8 @@ public final class FinalAppAssembler {
                     normalizeName(generatedFolderName, DEFAULT_GENERATED_FOLDER_NAME),
                     normalizeName(metaFolderName, "npdev-meta"),
                     deleteBeforeMount,
-                    javaVersion <= 0 ? 17 : javaVersion
+                    javaVersion <= 0 ? 17 : javaVersion,
+                    webAssetsRoot == null ? null : normalize(webAssetsRoot)
             );
         }
 
@@ -809,7 +857,8 @@ public final class FinalAppAssembler {
             Path generatedMount,
             int runtimeHostFilesCopied,
             int generatedFilesCopied,
-            int schemaRealizationArtifactsCopied
+            int schemaRealizationArtifactsCopied,
+            int webAssetsFilesCopied
     ) {
     }
 }

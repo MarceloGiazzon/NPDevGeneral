@@ -68,7 +68,8 @@ class FinalAppAssemblerTest {
                         "npdev-generated",
                         "npdev-meta",
                         true,
-                        17
+                        17,
+                        null
                 )
         );
 
@@ -153,7 +154,7 @@ class FinalAppAssemblerTest {
 
         new FinalAppAssembler().assemble(
                 new FinalAppAssembler.Options(
-                        host, artifact, finalApp, null, "npdev-generated", "npdev-meta", false, 21
+                        host, artifact, finalApp, null, "npdev-generated", "npdev-meta", false, 21, null
                 )
         );
 
@@ -191,7 +192,7 @@ class FinalAppAssemblerTest {
 
         new FinalAppAssembler().assemble(
                 new FinalAppAssembler.Options(
-                        host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17
+                        host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17, null
                 )
         );
 
@@ -201,6 +202,74 @@ class FinalAppAssemblerTest {
                 Files.readString(finalApp.resolve("secrets/agent-proxy.env")));
         assertFalse(Files.exists(finalApp.resolve("stale.txt")),
                 "the wipe must still remove regenerable output -- otherwise the spare list proves nothing");
+    }
+
+    /**
+     * R10 (EXT-1, "custom-screen mount"): the migrated mount -- previously a hand-rolled
+     * Copy-Item loop in Build-NpdevApp.ps1's now-retired step 4b, now
+     * {@link FinalAppAssembler#mountWebAssets}, reached via {@code Options#webAssetsRoot()}. Proves
+     * a nested author screen lands under the App module's OWN {@code src/main/resources/static}
+     * (never {@code npdev-generated/}, which {@code StrictExecutionValidator} hashes) and that the
+     * generic exclusion filtering (a stray {@code .git} directory, {@code Thumbs.db}) still applies
+     * to an asset tree the same way it already does for the RuntimeHost/generated-artifact copies.
+     */
+    @Test
+    void mountsCompanionWebAssetsIntoStaticFolder() throws Exception {
+        Path workspace = Files.createTempDirectory("npdev-final-app-assembly-webassets-");
+        Path host = workspace.resolve("RuntimeHost");
+        Path artifact = workspace.resolve("ArtifactNP");
+        Path finalApp = workspace.resolve("FinalExec");
+        Path webAssets = workspace.resolve("web");
+
+        write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
+        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+        write(webAssets.resolve("custom-screen.html"), "<html>custom screen</html>\n");
+        write(webAssets.resolve("assets/custom-screen.panel.json"), "{\"screen\":\"web/custom-screen.html\"}\n");
+        // Must be filtered exactly like every other copy mode -- proves WEB_ASSETS still gets the
+        // generic EXCLUDED_DIRECTORY_NAMES/EXCLUDED_FILE_NAMES pass, not an unfiltered raw copy.
+        write(webAssets.resolve(".git/HEAD"), "ref: refs/heads/main\n");
+        write(webAssets.resolve("Thumbs.db"), "junk");
+
+        FinalAppAssembler.AssemblyResult result = new FinalAppAssembler().assemble(
+                new FinalAppAssembler.Options(
+                        host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17, webAssets
+                )
+        );
+
+        assertTrue(Files.exists(finalApp.resolve("src/main/resources/static/custom-screen.html")));
+        assertEquals("<html>custom screen</html>\n",
+                Files.readString(finalApp.resolve("src/main/resources/static/custom-screen.html")));
+        assertTrue(Files.exists(finalApp.resolve("src/main/resources/static/assets/custom-screen.panel.json")));
+        assertFalse(Files.exists(finalApp.resolve("src/main/resources/static/.git")));
+        assertFalse(Files.exists(finalApp.resolve("src/main/resources/static/Thumbs.db")));
+        // Never under npdev-generated/ -- StrictExecutionValidator hashes that tree at boot.
+        assertFalse(Files.exists(finalApp.resolve("npdev-generated/src/main/resources/static/custom-screen.html")));
+        assertEquals(2, result.webAssetsFilesCopied());
+    }
+
+    /** A caller that declares webAssetsRoot but points it at nothing is a caller bug -- fails loud,
+     *  same discipline every other explicit path option here (runtimeHostRoot, generatedArtifactRoot)
+     *  already requires via {@code requireDirectory}, rather than silently mounting nothing. */
+    @Test
+    void refusesToAssembleWhenWebAssetsRootIsDeclaredButMissing() throws Exception {
+        Path workspace = Files.createTempDirectory("npdev-final-app-assembly-webassets-missing-");
+        Path host = workspace.resolve("RuntimeHost");
+        Path artifact = workspace.resolve("ArtifactNP");
+        Path finalApp = workspace.resolve("FinalExec");
+        Path missingWebAssets = workspace.resolve("does-not-exist");
+
+        write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
+        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+
+        FinalAppAssembler assembler = new FinalAppAssembler();
+        FinalAppAssembler.Options options = new FinalAppAssembler.Options(
+                host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17, missingWebAssets
+        );
+        java.io.IOException failure = org.junit.jupiter.api.Assertions.assertThrows(
+                java.io.IOException.class, () -> assembler.assemble(options));
+        assertTrue(failure.getMessage().contains("Web assets root"));
     }
 
     private static void write(Path path, String content) throws Exception {

@@ -182,6 +182,13 @@ function Write-MigrationPlanTable {
 $Definition = Join-Path $AppFolder 'definition'
 $ConfigSrc  = Join-Path $Definition 'config.json'
 $ModelSrc   = Join-Path $Definition 'model.json'
+# R10 (EXT-1, "custom-screen mount"): companion web/ assets (hand-written HTML/CSS/JS screens),
+# a sibling of definition/ under the app folder -- computed early so it can be passed straight
+# through to the generator call below (step 4) instead of copied by hand afterward (the retired
+# step 4b). Resolved here, once, so the -WebAssetsRoot passed to both the wrapper path and the
+# direct-Java path is always the exact same value.
+$WebSrc = Join-Path $AppFolder 'web'
+$HasWebAssets = Test-Path -LiteralPath $WebSrc
 foreach ($p in @($AppFolder, $ProductRepo, $RuntimeCurrent, $Definition, $ConfigSrc, $ModelSrc)) {
   if (-not (Test-Path -LiteralPath $p)) { throw "Required path not found: $p" }
 }
@@ -388,7 +395,11 @@ $UsesDirectGeneratorFlags = [bool]$PlanOnly -or [bool]$Upgrade -or (-not [string
 Write-NpdevRunAppProgress -AppRoot $FinalAppRoot -Phase 'GENERATE'
 if (-not $UsesDirectGeneratorFlags) {
   Write-Step 'Calling prepared NPDev generator runtime (direct Java; no Gradle).'
-  & $RuntimeInvoker -ConfigPath $ConfigPath -ModelPath $ModelPath -OutRoot $OutRoot -DbDefinitionPath $DbDefinitionPath -RuntimeHostTemplate $RuntimeHostTemplate -Clean
+  if ($HasWebAssets) {
+    & $RuntimeInvoker -ConfigPath $ConfigPath -ModelPath $ModelPath -OutRoot $OutRoot -DbDefinitionPath $DbDefinitionPath -RuntimeHostTemplate $RuntimeHostTemplate -Clean -WebAssetsRoot $WebSrc
+  } else {
+    & $RuntimeInvoker -ConfigPath $ConfigPath -ModelPath $ModelPath -OutRoot $OutRoot -DbDefinitionPath $DbDefinitionPath -RuntimeHostTemplate $RuntimeHostTemplate -Clean
+  }
   $GeneratorExit = $LASTEXITCODE
 } else {
   Write-Step 'Calling NPDevGenerator directly (Java) -- migration-plan/acknowledgment flags need pass-through invoke-npdev-generator.ps1 does not provide.'
@@ -419,6 +430,7 @@ if (-not $UsesDirectGeneratorFlags) {
     }
   }
   if (-not [string]::IsNullOrWhiteSpace($AcknowledgeDestructive)) { $DirectGeneratorArgs += @('--destructiveAcknowledgment', $AcknowledgeDestructive) }
+  if ($HasWebAssets) { $DirectGeneratorArgs += @('--webAssetsRoot', $WebSrc) }
   $DirectJavaArgs = @('-cp', $GenClasspath, 'com.npdev.generator.GeneratorMain') + $DirectGeneratorArgs
 
   # Mirror invoke-npdev-generator.ps1's own report+log writing (report.status/exitCode consumed
@@ -500,23 +512,13 @@ if ($PlanOnly -or $Upgrade) {
   }
 }
 
-# ---- 4b. mount companion web/ assets into the app static folder ------------
-# Anything under apps/<App>/web is copied into the generated app's classpath static
-# resources, so it is served same-origin at http://localhost:<port>/<file> (no CORS,
-# and static is exempt from the API-key filter).
-# IMPORTANT: must go under the App module's own src/main/resources/static, NOT under
-# npdev-generated/ - the runtime's strict-execution validator hashes the npdev-generated
-# tree and refuses to start if any unexpected file appears there.
-$WebSrc = Join-Path $AppFolder 'web'
+# ---- 4b. (RETIRED) mount companion web/ assets into the app static folder --------------------
+# R10 (EXT-1, "custom-screen mount"): this used to Copy-Item $WebSrc's contents into the app's
+# static folder by hand, in PowerShell -- the ONE PowerShell copy the roadmap card named, now
+# retired. The generator itself mounts them (FinalAppAssembler.mountWebAssets, reached via
+# --webAssetsRoot, passed above in step 4 whenever $HasWebAssets is true) so Build-ClaudeApp.ps1
+# and `npdev generate app` get the identical mount instead of each maintaining their own copy.
 $GeneratedAppRoot = Join-Path $OutRoot 'App'
-if (Test-Path -LiteralPath $WebSrc) {
-  $StaticDst = Join-Path $GeneratedAppRoot 'src\main\resources\static'
-  New-Item -ItemType Directory -Force -Path $StaticDst | Out-Null
-  Write-Step "Mounting companion web assets into app static: $WebSrc -> $StaticDst"
-  Get-ChildItem -LiteralPath $WebSrc -Force | ForEach-Object {
-    Copy-Item -LiteralPath $_.FullName -Destination $StaticDst -Recurse -Force
-  }
-}
 
 # ---- 4c. emit a workspace::Menu seed for declared companion pages + menu tree ----
 # definition\pages.json is an AppGen-authoring-only convention (like the existing 'console'
