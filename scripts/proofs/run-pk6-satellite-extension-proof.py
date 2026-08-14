@@ -21,6 +21,12 @@ generated CRUD REST surface:
      REFUSED (never silently accepted, never a 500) -- the real bond-integrity mapping
      (`bond_target_not_found`) generated CRUD already provides for every reference field, now proven
      for a satelliteOf-declared one too.
+  5. DELETE the base user through its own generated endpoint, then GET the satellite row and record
+     the ACTUAL observed outcome. PK-6's own card names this explicitly as a risk to "decide and test
+     explicitly" -- the probe's anchor field declares `onDelete: cascade`, and a prior version of this
+     proof only ever checked that COMPILED value, never whether cascade genuinely fires through the
+     generated app at runtime. This assertion reports the true outcome (cascaded away, orphaned, or
+     the delete itself blocked) rather than assuming the declared behavior took effect.
 
 Also asserts the probe's checked-in copy of the identity pack is still byte-identical to the real
 built-in pack (`NPDevContract/packs/identity/pack.json`) -- this probe intentionally embeds a static
@@ -120,6 +126,7 @@ def assertions(app: "_engine_proof.App", results: list[dict]) -> None:
     ok = status in (200, 201) and satellite is not None and satellite.get("userId") == user_id
     record("satellite-row-references-base-row", ok,
            f"POST {_SATELLITE_ENDPOINT} returned {status}: {satellite}")
+    satellite_id = satellite.get("id") if ok and isinstance(satellite, dict) else None
 
     # 3. The base row itself carries none of the satellite's fields -- satelliteOf composes at the
     # generated-app boundary WITHOUT touching the base pack's own concept, not merely in the schema.
@@ -139,6 +146,36 @@ def assertions(app: "_engine_proof.App", results: list[dict]) -> None:
            f"POST {_SATELLITE_ENDPOINT} with a nonexistent userId returned {status}: {refusal} "
            f"(must be a clean 4xx refusal, never 200/201/500 -- a satellite's anchor bond is a REAL "
            f"foreign key, not a soft validation)")
+
+    # 5. onDelete:cascade is DECLARED on the anchor field and CompiledField-level tested
+    # (PackSatelliteExtensionResolutionTest), but neither of those observes what actually happens at
+    # runtime when the base row is deleted through the real generated app -- PK-6's own card names
+    # this exact question as a risk to "decide and test explicitly". Report the true outcome, not an
+    # assumed one.
+    if satellite_id is None:
+        record("base-row-delete-cascades-to-satellite", False,
+               "skipped -- no satellite id captured from assertion 2 (it must have failed)")
+        return
+    delete_status, delete_response = http("DELETE", f"{base}{_USER_ENDPOINT}/{user_id}")
+    if delete_status not in (200, 204):
+        record("base-row-delete-cascades-to-satellite", False,
+               f"DELETE {_USER_ENDPOINT}/{user_id} returned {delete_status}: {delete_response} -- "
+               f"the base row delete itself was refused, so cascade behavior could not be observed "
+               f"at all")
+        return
+    get_status, satellite_after_delete = http("GET", f"{base}{_SATELLITE_ENDPOINT}/{satellite_id}")
+    cascaded = get_status in (404, 410)
+    outcome = (
+        "the satellite row was genuinely removed -- onDelete:cascade fires end to end through the "
+        "generated app, not just at the compiled-model level" if cascaded else
+        "the satellite row SURVIVED the base row delete -- onDelete:cascade for a satelliteOf "
+        "anchor bond did NOT take effect at runtime; this is a real, previously-unverified gap, "
+        "not a pass"
+    )
+    record("base-row-delete-cascades-to-satellite", cascaded,
+           f"DELETE {_USER_ENDPOINT}/{user_id} returned {delete_status}; "
+           f"GET {_SATELLITE_ENDPOINT}/{satellite_id} afterward returned {get_status}: "
+           f"{satellite_after_delete} -- {outcome}")
 
 
 def main(argv: list[str] | None = None) -> int:

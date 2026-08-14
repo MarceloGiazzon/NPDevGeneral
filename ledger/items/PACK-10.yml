@@ -45,10 +45,10 @@ detail: |
   DONE): SemanticValidator.validateConceptSatelliteOf requires the target to be pack-qualified,
   resolve to a real concept, and be backed by exactly one unique+required `type: reference` field on
   the same concept whose `reference.target` equals the satelliteOf value (the 1:1 anchor bond) --
-  the FK itself, its physical table naming (packId+major, PK-2), and the ON DELETE behavior are all
-  the EXISTING bonds/PK-2/PK-3 machinery, unmodified. Zero generator changes were needed: satellite
-  concepts get real FK-linked tables and generated CRUD REST endpoints for free, because a satellite
-  is, physically, an ordinary pack concept with an ordinary 1:1 bond.
+  the FK itself and its physical table naming (packId+major, PK-2) are the EXISTING bonds/PK-2/PK-3
+  machinery, unmodified. Zero generator changes were needed: satellite concepts get real FK-linked
+  tables and generated CRUD REST endpoints for free, because a satellite is, physically, an ordinary
+  pack concept with an ordinary 1:1 bond.
 
   Threaded through the four-place canonical chain (JsonModelParser -> ModelCompiler -> ModelResolver
   [BOTH ConceptAst-reconstructing sites, sanitizeConcept and mergeConcept] -> CompiledModelCanonicalJson
@@ -59,14 +59,22 @@ detail: |
   path against the REAL built-in identity pack, missing-anchor RED control, unqualified-target RED
   control) plus `scripts/proofs/run-pk6-satellite-extension-proof.py` -- a real generate->build->boot
   cycle on H2 against `NPDevSamples/probes/p6-satellite-extension` (identity@1 composed
-  TRANSITIVELY, via PK-3, with a throwaway `clinical` extension pack). 5/5 live assertions pass: a
+  TRANSITIVELY, via PK-3, with a throwaway `clinical` extension pack). 6/6 live assertions pass: a
   base identity::User row created through its generated CRUD endpoint (/api/concepts/identity_users
   -- routes are alias-based/logical, not version-qualified, confirming PK-2's own "routes are
   logical, tables are physical" recommendation); a satellite clinical::UserClinicalProfile row
   created through ITS OWN generated endpoint referencing that user's id; the base row re-read and
-  confirmed to carry NONE of the satellite's fields; and the RED control -- a satellite row
+  confirmed to carry NONE of the satellite's fields; the RED control -- a satellite row
   referencing a nonexistent user id is refused with a clean 422 `bond_target_not_found` (never a
-  200/201/500), proving the anchor bond is a REAL foreign key, not a soft check.
+  200/201/500), proving the anchor bond is a REAL foreign key, not a soft check; and (added
+  2026-08-14 after independent review flagged this as unverified) DELETE on the base user row
+  through its own generated endpoint returns 204, and a subsequent GET on the satellite row returns
+  404 -- **onDelete:cascade for a satelliteOf anchor bond is now RUNTIME-VERIFIED, not just a
+  compiled-value assertion.** PK-6's own card names exactly this ("the 1:1 FK is a new
+  referential-integrity surface -- what happens on base-row delete?") as a risk to "decide and test
+  explicitly"; the first version of this proof only checked the COMPILED `onDelete` string equalled
+  "cascade" (still true, see PackSatelliteExtensionResolutionTest.java) without ever deleting a row
+  and observing the real outcome. The real outcome, observed: cascade fires correctly end to end.
 
   Deferred deliberately, not from a blocker: Step 4 (UI composition, panel/section merge with
   app-owned ordering) is explicitly flagged by the card itself as the part most likely to be
@@ -83,6 +91,8 @@ guard:
   asserts: >-
     identity::User's own generated CRUD endpoint and physical table stay untouched by the clinical
     extension pack; clinical::UserClinicalProfile (satelliteOf: "identity::User") gets its own
-    FK-linked table and generated CRUD endpoint; and a satellite row referencing a nonexistent user
-    id is refused with a clean 422, never silently accepted.
+    FK-linked table and generated CRUD endpoint; a satellite row referencing a nonexistent user id
+    is refused with a clean 422, never silently accepted; and deleting the base user row through its
+    generated endpoint (204) genuinely cascades to the satellite row (a subsequent GET on it returns
+    404) -- onDelete:cascade runtime-verified, not just compiled-value-checked.
   provenRed: true
