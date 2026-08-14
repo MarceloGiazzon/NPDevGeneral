@@ -211,7 +211,8 @@ public final class GeneratorMain {
                             assemblyRequest.generatedFolderName(),
                             assemblyRequest.metaFolderName(),
                             assemblyRequest.deleteBeforeMount(),
-                            javaVersion
+                            javaVersion,
+                            assemblyRequest.webAssetsRoot()
                     )
             );
 
@@ -230,6 +231,7 @@ public final class GeneratorMain {
             System.out.println("RuntimeHost files copied: " + assemblyResult.runtimeHostFilesCopied());
             System.out.println("Generated files copied: " + assemblyResult.generatedFilesCopied());
             System.out.println("Schema realization artifacts copied: " + assemblyResult.schemaRealizationArtifactsCopied());
+            System.out.println("Web assets copied: " + assemblyResult.webAssetsFilesCopied());
             Path opsRoot = new OperationalRunbookEmitter().emit(
                     compiled,
                     config,
@@ -567,6 +569,15 @@ public final class GeneratorMain {
         boolean deleteBeforeMount = args.cleanFinalAppExplicit
                 ? args.cleanFinalApp
                 : readBoolean(config, false, "finalExec", "deleteBeforeMount");
+        // R10 (EXT-1, "custom-screen mount"): explicit-only, no filesystem-convention guessing --
+        // matches every other path option here (--runtimeHostTemplate, --finalAppOut, ...), which
+        // are all caller-resolved rather than derived from --model's location. Each caller (
+        // Build-NpdevApp.ps1, Build-ClaudeApp.ps1, `npdev generate app`) computes this path using
+        // its OWN app-layout convention and passes it explicitly; null means "no companion web
+        // assets for this app" -- zero behavior change for every caller that omits the flag.
+        Path webAssetsRoot = firstNonBlank(args.webAssetsRoot) != null
+                ? resolveConfiguredPath(null, args.webAssetsRoot)
+                : null;
 
         return new FinalAppAssemblyRequest(
                 shouldAssemble,
@@ -576,7 +587,8 @@ public final class GeneratorMain {
                 migrationsDir,
                 generatedFolderName,
                 metaFolderName,
-                deleteBeforeMount
+                deleteBeforeMount,
+                webAssetsRoot
         );
     }
 
@@ -792,6 +804,11 @@ public final class GeneratorMain {
          * genuinely ambiguous between a first generation and a lost one, and the honest default for
          * an ambiguous case is the existing fresh-install plan. */
         final boolean requirePreviousCompiledModel;
+        /** R10 (EXT-1, "custom-screen mount"). Optional: a directory of author-supplied,
+         *  hand-written web screens, mounted verbatim into the assembled app's own
+         *  {@code src/main/resources/static} (see {@code FinalAppAssembler.Options#webAssetsRoot}).
+         *  Absent means no mount -- zero behavior change for every existing caller. */
+        final String webAssetsRoot;
 
         private Args(
                 String configPath,
@@ -812,7 +829,8 @@ public final class GeneratorMain {
                 String previousCompiledModelPath,
                 String migrationPlanOutPath,
                 String destructiveAcknowledgmentToken,
-                boolean requirePreviousCompiledModel
+                boolean requirePreviousCompiledModel,
+                String webAssetsRoot
         ) {
             this.requirePreviousCompiledModel = requirePreviousCompiledModel;
             this.configPath = configPath;
@@ -833,6 +851,7 @@ public final class GeneratorMain {
             this.cleanFinalAppExplicit = cleanFinalAppExplicit;
             this.generatedFolderName = generatedFolderName;
             this.metaFolderName = metaFolderName;
+            this.webAssetsRoot = webAssetsRoot;
         }
 
         static Args parse(String[] args) {
@@ -858,6 +877,7 @@ public final class GeneratorMain {
             String migrationPlanOutPath = null;
             String destructiveAcknowledgmentToken = null;
             boolean requirePreviousCompiledModel = false;
+            String webAssetsRoot = null;
 
             for (int i = 0; i < args.length; i++) {
                 String cur = args[i];
@@ -882,6 +902,8 @@ public final class GeneratorMain {
                     generatedFolder = args[++i];
                 } else if ("--metaFolderName".equals(cur) && i + 1 < args.length) {
                     metaFolder = args[++i];
+                } else if ("--webAssetsRoot".equals(cur) && i + 1 < args.length) {
+                    webAssetsRoot = args[++i];
                 } else if ("--previousCompiledModel".equals(cur) && i + 1 < args.length) {
                     previousCompiledModelPath = args[++i];
                 } else if ("--schemaMigrationPlanOut".equals(cur) && i + 1 < args.length) {
@@ -934,7 +956,8 @@ public final class GeneratorMain {
                     previousCompiledModelPath,
                     migrationPlanOutPath,
                     destructiveAcknowledgmentToken,
-                    requirePreviousCompiledModel
+                    requirePreviousCompiledModel,
+                    webAssetsRoot
             );
         }
     }
@@ -947,7 +970,8 @@ public final class GeneratorMain {
             Path migrationsDir,
             String generatedFolderName,
             String metaFolderName,
-            boolean deleteBeforeMount
+            boolean deleteBeforeMount,
+            Path webAssetsRoot
     ) {
     }
 }

@@ -135,7 +135,8 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
                         "npdev-generated",
                         "npdev-meta",
                         true,
-                        17
+                        17,
+                        null
                 )
         );
         Files.writeString(evidenceRoot.resolve("packaged-app-generation-output.txt"),

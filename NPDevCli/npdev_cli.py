@@ -1432,6 +1432,17 @@ def run_generate(args: argparse.Namespace) -> None:
             "--clean",
             "--cleanFinalApp",
         ]
+        # R10 (EXT-1, "custom-screen mount"): explicit-only, no filesystem-convention guessing --
+        # same discipline as every other path flag above. Absent means no mount, unchanged
+        # behavior (the FinalAppAssembler.Options.webAssetsRoot() default). Gives `npdev generate
+        # app` the identical mount Build-NpdevApp.ps1's apps/<App>/web convention already has,
+        # instead of that PowerShell script being the only caller with the capability at all.
+        web_assets = getattr(args, "web_assets", None)
+        if web_assets:
+            web_assets_path = Path(web_assets).expanduser().resolve()
+            if not web_assets_path.is_dir():
+                raise CliError(f"--web-assets not found or not a directory: {web_assets_path}")
+            generator_args += ["--webAssetsRoot", str(web_assets_path)]
         args_str = " ".join(f'"{item}"' if " " in item else item for item in generator_args)
         command = [str(wrapper), *gradle_project_cache_args("generator"), ":generator:run",
                    "--no-daemon", "--console=plain", f"--args={args_str}"]
@@ -6026,6 +6037,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--require-db-definition",
         action="store_true",
         help="Fail if db.definition.json is missing instead of defaulting to an InMemory database definition.",
+    )
+    generate_app.add_argument(
+        "--web-assets",
+        help="R10 (EXT-1, 'custom-screen mount'): optional directory of hand-written screens "
+             "(HTML/CSS/JS) to mount into the generated app's src/main/resources/static, served "
+             "same-origin with no CORS. Same mechanism Build-NpdevApp.ps1's apps/<App>/web "
+             "convention uses (FinalAppAssembler.mountWebAssets via --webAssetsRoot) -- omit for "
+             "the previous, unchanged behavior.",
     )
 
     run = subparsers.add_parser(

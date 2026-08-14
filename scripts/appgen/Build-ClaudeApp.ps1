@@ -90,6 +90,14 @@ function Set-JsonProp {
 $Definition = Join-Path $AppFolder 'definition'
 $ConfigSrc  = Join-Path $Definition 'config.json'
 $ModelSrc   = Join-Path $Definition 'model.json'
+# R10 (EXT-1, "custom-screen mount"): companion web/ assets (hand-written HTML/CSS/JS screens),
+# a sibling of definition/ under the app folder -- same optional convention Build-NpdevApp.ps1
+# uses, mounted by the generator itself (FinalAppAssembler.mountWebAssets via --webAssetsRoot)
+# rather than a second, separately-maintained PowerShell copy loop. This app has no web/ today,
+# so $HasWebAssets is false and behavior is unchanged; the capability now exists identically to
+# every AppGen-built app for whenever the Claude Support Desk sample grows a hand-written screen.
+$WebSrc = Join-Path $AppFolder 'web'
+$HasWebAssets = Test-Path -LiteralPath $WebSrc
 
 foreach ($p in @($AppFolder, $ProductRepo, $RuntimeCurrent, $Definition, $ConfigSrc, $ModelSrc)) {
   if (-not (Test-Path -LiteralPath $p)) { throw "Required path not found: $p" }
@@ -204,6 +212,7 @@ $InvokeArgs = @{
   RuntimeHostTemplate = $RuntimeHostTemplate
   Clean               = $true
 }
+if ($HasWebAssets) { $InvokeArgs['WebAssetsRoot'] = $WebSrc }
 & $RuntimeInvoker @InvokeArgs
 $GeneratorExit = $LASTEXITCODE
 if ($GeneratorExit -ne 0) {

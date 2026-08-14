@@ -104,7 +104,8 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         "npdev-generated",
                         "npdev-meta",
                         true,
-                        17
+                        17,
+                        null
                 )
         );
         generationOutput.append("Final app root: ").append(assemblyResult.finalAppRoot()).append(System.lineSeparator());
