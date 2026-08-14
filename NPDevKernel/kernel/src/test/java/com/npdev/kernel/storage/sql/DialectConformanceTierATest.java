@@ -685,4 +685,35 @@ class DialectConformanceTierATest {
         assertTrue(upper.contains("IF NOT EXISTS") || upper.contains("IF EXISTS") || upper.contains("COUNT(*)"),
                 dialect.name() + " emitted an unguarded ADD CONSTRAINT: " + guarded);
     }
+
+    // ------------------------------------------------------------------ RUN-3 (R8b): null ordering
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("RUN-3: nullsFirstAscending never emits the keyword NULLS FIRST/LAST -- the whole point")
+    void nullsFirstAscendingNeverEmitsTheUnportableKeyword(SqlDialect dialect) {
+        String expr = dialect.nullsFirstAscending("next_eligible_resume_at");
+        String upper = expr.toUpperCase(java.util.Locale.ROOT);
+        // The construct this method exists to replace. If this ever appears again, the whole reason
+        // check-dialect-sites.py's "nulls-ordering" construct exists (RUN-3: JdbcFlowInstanceStore
+        // was the one site in the Java tree that spelled it inline, un-dialected) is defeated from
+        // inside the dialect package itself, where the gate deliberately does not scan.
+        assertFalse(upper.contains("NULLS"), dialect.name() + ": " + expr);
+        assertTrue(expr.contains("next_eligible_resume_at"), dialect.name() + ": column dropped -- " + expr);
+        assertTrue(upper.contains("CASE") && upper.contains("IS NULL"),
+                dialect.name() + ": expected a portable CASE WHEN ... IS NULL tie-breaker -- " + expr);
+    }
+
+    @Test
+    @DisplayName("RUN-3: every engine gets the IDENTICAL expression -- there is no per-dialect answer to diverge")
+    void nullsFirstAscendingIsUniformAcrossEngines() {
+        // Unlike every other method on SqlDialect, this one has no per-engine branch: a CASE WHEN
+        // tie-breaker sorts null-first the same way on all four engines using nothing but ANSI SQL.
+        // If a future edit gives one dialect its own override, this test is exactly what should catch
+        // the two answers silently drifting apart.
+        String expected = PostgresDialect.INSTANCE.nullsFirstAscending("c");
+        for (SqlDialect dialect : SqlDialects.all()) {
+            assertEquals(expected, dialect.nullsFirstAscending("c"), dialect.name());
+        }
+    }
 }

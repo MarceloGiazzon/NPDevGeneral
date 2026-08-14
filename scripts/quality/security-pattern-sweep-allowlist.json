@@ -247,6 +247,11 @@
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/BackfillPass.java:268",
       "why": "REG-61(b): countAffectedRows counts rows for a boot-time schema-migration refusal decision (does a literal-default backfill collide with a UNIQUE constraint), the same class of schema-lifecycle count already covered by B2 (SchemaLifecycleExecutor, ImpactReport, SchemaDeltaReport, et al.) -- not a tenant-scoped business-data read. Deliberately global rather than per-tenant (see the method's own javadoc): conservative, never unsafe, since a global count can only refuse a case a per-tenant count would have allowed."
     },
+    "207f6a75c977": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/adapters/flowinstance-postgres/src/main/java/com/npdev/adapters/flowinstance/jdbc/JdbcFlowInstanceStore.java:159",
+      "why": "RUN-3 (R8b): the .formatted() call splices dialect.nullsFirstAscending(\"next_eligible_resume_at\") into the ORDER BY clause -- but the ONLY argument is a hardcoded, compile-time Java string literal naming a fixed internal-table column, never a caller-, request-, or model-author-supplied value; there is no path from any input to this text. nullsFirstAscending itself only ever concatenates that same literal into a fixed 'CASE WHEN <col> IS NULL THEN 0 ELSE 1 END ASC, <col> ASC' shape (see its javadoc on SqlDialect) -- there is nothing here for an attacker to control, the same reasoning SqlNamingSupport's existing sql-string-building triage (015998481669) already applies to a whitelisted identifier, narrowed further here to a single fixed literal rather than a whitelist. Replaces the line's previous inline `NULLS FIRST` (Postgres/H2-only syntax, un-dialected -- see check-dialect-sites.py's new nulls-ordering construct), which is why the fingerprint is new rather than an existing cleared hit moving."
+    },
     "2091218da5e4": {
       "rule": "F2",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaDropSnapshotWriter.java:226",
