@@ -1,9 +1,11 @@
 id: REG-152
 title: >-
-  Build-NpdevApp.ps1/Build-ClaudeApp.ps1's second launch-script pipeline never wired its own
-  api-key default to real auth config, and now sends a smoke-test key that won't authenticate
+  Build-NpdevApp.ps1/Build-ClaudeApp.ps1 -- CLAUDE.md's own documented primary FinalApp build/run
+  recipe -- never invokes Ensure-NpdevApiKey, so an app launched that way still boots with a live,
+  published, working ADMIN credential (dev-key/api-dev). This is SEC-1's own vulnerability, not
+  yet closed, on the platform's primary launch path
 type: BUG
-severity: MEDIUM
+severity: HIGH
 status: OPEN
 opened: 2026-08-13
 source: >-
@@ -33,28 +35,38 @@ detail: |
   only ever a *coincidentally correct* testing credential because `'dev-key'` happened to match the
   live default.
 
-  R7 Stage C (SEC-1, this same step) makes that coincidence stop holding: once `secrets/api-key.env`
-  exists, its randomly-generated key REPLACES `application-dev.yml`'s value outright (env-var
-  precedence on a String property, not a merge -- see `RuntimeApiKeyAuthFilter.parseMappings`). Any
-  app generated or driven through `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1` will, after its first
-  launch via `_ops\Run-FinalApp.ps1`-equivalent code path, have `Test-App.ps1` and
-  `New-AppConsole.ps1`'s live-status probe sending a key that no longer authenticates -- both will
-  start reporting failure/unreachable against a genuinely healthy app.
+  **Corrected 2026-08-13 (R7 Stage B review): the original framing above was wrong about the
+  impact, not just imprecise.** `Build-NpdevApp.ps1`'s generated `_ops\Start-App.ps1` (and
+  `Build-ClaudeApp.ps1`'s equivalent) launches the packaged jar directly via
+  `Start-Process -FilePath 'java' -ArgumentList @('-jar', ..., "--spring.profiles.active=$($plan.springProfiles)")`
+  -- it does **not** call `Ensure-NpdevApiKey`, does **not** touch `secrets/api-key.env`, and does
+  **not** set `NPDEV_AUTH_API_KEYS`/`NPDEV_AUTH_APIKEYS` anywhere (confirmed by grep: zero matches
+  for `Ensure-NpdevApiKey|api-key\.env|NPDEV_AUTH_API_KEYS` in either script). `$SpringProfiles`
+  defaults to `'dev,step0,trial'` (`Build-NpdevApp.ps1:191`), which activates
+  `application-dev.yml`'s **unmodified** `npdev.auth.api-keys: "api-dev=dev:developer:admin;
+  dev-key=dev:developer:admin"` mapping -- Stage A left this value deliberately live (see SEC-1's
+  own Stage A section), on the understanding that Stage C's key generator would make it stop
+  working. That only holds for apps launched via `_ops\Run-FinalApp.ps1`. **An app built and run
+  via `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1` -- CLAUDE.md's own documented PRIMARY "Generate +
+  build + run a FinalApp" recipe -- still boots with a live, working, published ADMIN credential
+  today.** This is not a cosmetic stale-test-key problem (the original framing above): `dev-key`
+  genuinely authenticates as ADMIN against any app run this way, which is the exact vulnerability
+  SEC-1 was filed to close. `New-AppConsole.ps1`/`Test-App.ps1` sending that same (working, not
+  stale) key is a symptom of this, not a separate false-negative issue.
 
-  Explicitly deferred out of Stage C's scope (this step targets only the toolbox
-  `OperationalRunbookEmitter` emits, which every generated app gets regardless of launcher, per this
-  session's own "unrelated bugs filed separately, never silently worked around" discipline). A fix
-  needs its own scoped step: most likely, redirect this pipeline's `Test-App.ps1`/
-  `New-AppConsole.ps1` to resolve the key the same way `_ops\Smoke-Test.ps1` now does (read
-  `secrets/api-key.env` if present, falling back to the generation-time `$ApiKey` only before first
-  launch) rather than maintaining a second, disconnected key value.
+  A fix needs its own scoped step, most likely mirroring `Ensure-NpdevApiKey`'s provisioner call
+  (or delegating to the exact same function, since both pipelines end up invoking the same packaged
+  jar) into whatever script this pipeline uses to actually start the process
+  (`_ops\Start-App.ps1`'s generation site in `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1`), then
+  redirecting `Test-App.ps1`/`New-AppConsole.ps1` to read the resulting `secrets/api-key.env` the
+  same way `_ops\Smoke-Test.ps1` now does, rather than maintaining a second, disconnected key value.
 guard:
   kind: manual
   ref: >-
-    generate an app via Build-NpdevApp.ps1 or Build-ClaudeApp.ps1, launch it once (so
-    Ensure-NpdevApiKey generates secrets/api-key.env), then run that pipeline's own Test-App.ps1 or
-    open New-AppConsole.ps1's console page
+    generate an app via Build-NpdevApp.ps1 or Build-ClaudeApp.ps1, launch it via that pipeline's
+    own Start-App.ps1 (not _ops\Run-FinalApp.ps1), then curl -H "X-Api-Key: dev-key" any /api/*
+    endpoint on the running app
   asserts: >-
-    Test-App.ps1 reports PASS and the console reports "running" against the live app, using the
-    real generated key, not the stale trialDefaults.apiKey default
+    dev-key returns 401 invalid_api_key, matching what _ops\Run-FinalApp.ps1-launched apps already
+    prove (SEC-1's Stage A/C sections) -- currently FALSE, it returns 200 as ADMIN
   provenRed: false

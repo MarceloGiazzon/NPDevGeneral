@@ -13,7 +13,7 @@ source: >-
   RuntimeHost libs manifest in
   D:\WorkSpace\NPDev\NPDev_General\.claude\worktrees\Build\runtimehost-libs" -- a directory that
   has never existed and was never going to. Worked around with
-  `$env:NPDEV_RUNTIMEHOST_LIBS = 'D:\WorkSpace\NPDev\Build\runtimehost-libs'` (the real, existing
+  `$env:NPDEV_RUNTIMEHOST_LIBS_DIR = 'D:\WorkSpace\NPDev\Build\runtimehost-libs'` (the real, existing
   shared cache) per the documented escape hatch, then proceeded with Stage B's own verification.
   Filed separately because this is a pre-existing resolver gap unrelated to R7's auth/profile work,
   not something this branch's changes touched or caused.
@@ -50,7 +50,7 @@ detail: |
   Groovy twins and `WorkspaceRootLocator.java`), but they are described as sharing the identical
   "ancestor-with-three-module-dirs, then its parent" predicate, so the same worktree-nesting case
   plausibly reproduces in all of them -- flagged here rather than assumed fixed just because
-  `$env:NPDEV_RUNTIMEHOST_LIBS`/`$env:NPDEV_BUILD_ROOT` happen to override this one PowerShell
+  `$env:NPDEV_RUNTIMEHOST_LIBS_DIR`/`$env:NPDEV_BUILD_ROOT` happen to override this one PowerShell
   call site.
 
   Not fixed here -- unrelated to R7 Stage B's auth/profile scope, and a real fix needs a considered
