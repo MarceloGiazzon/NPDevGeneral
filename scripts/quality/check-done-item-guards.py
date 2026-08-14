@@ -89,6 +89,7 @@ USAGE
 from __future__ import annotations
 
 import argparse
+import bisect
 import glob
 import json
 import re
@@ -138,18 +139,30 @@ def _method_declaration_test_annotation_verdict(content: str, method: str) -> bo
     """True: `method` is declared and a JUnit test annotation sits directly above it (skipping only
     blank lines and other `@`-annotations). False: a declaration was found but is NOT test-annotated
     (reads as a private helper). None: no declaration-shaped occurrence of `method` exists at all
-    (renamed, removed, or only ever mentioned as a bare word/call site/comment)."""
+    (renamed, removed, or only ever mentioned as a bare word/call site/comment).
+
+    Matches against the FULL file content (not line-by-line) so a parameter list that wraps across
+    multiple lines -- ordinary, common Java style, e.g. several `@TempDir Path` parameters -- is still
+    found. `[^;{]` already matches newlines (a negated character class isn't `.`, so it needs no
+    DOTALL), bounded to a generous-but-finite width so a single stray unmatched `(` can't scan the
+    rest of the file looking for a `;`/`{`. `^` stays anchored to real line starts via MULTILINE, so
+    this still requires the declaration's own line (not some unrelated earlier line) to start it."""
     lines = content.splitlines()
+    line_starts = []
+    offset = 0
+    for line in lines:
+        line_starts.append(offset)
+        offset += len(line) + 1  # +1 for the '\n' splitlines() strips
     decl_re = re.compile(
         r"^[ \t]*(?:(?:public|private|protected|static|final|synchronized|abstract|default)\s+)*"
-        r"[\w$.<>\[\]]+\s+" + re.escape(method) + r"\s*\([^;{]*\)"
+        r"[\w$.<>\[\]]+\s+" + re.escape(method) + r"\s*\([^;{]{0,4000}?\)",
+        re.MULTILINE,
     )
     found_decl = False
-    for idx, line in enumerate(lines):
-        if not decl_re.search(line):
-            continue
+    for m in decl_re.finditer(content):
         found_decl = True
-        j = idx - 1
+        start_line_idx = bisect.bisect_right(line_starts, m.start()) - 1
+        j = start_line_idx - 1
         while j >= 0 and (lines[j].strip() == "" or lines[j].strip().startswith("@")):
             if any(re.match(r"^\s*" + re.escape(ann) + r"\b", lines[j]) for ann in JAVA_TEST_ANNOTATIONS):
                 return True
