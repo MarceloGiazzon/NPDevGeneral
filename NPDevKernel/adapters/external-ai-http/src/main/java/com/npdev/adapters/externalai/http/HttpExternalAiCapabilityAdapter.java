@@ -24,6 +24,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,18 @@ import java.util.function.Function;
  * <p><b>Fail-closed, same as the port's own default:</b> a mission naming a vendor this adapter has
  * no profile for, or whose configured API-key env var is unset, is denied -- it never silently no-ops
  * or sends with an empty key. No real network call happens until both a profile AND a real key exist.</p>
+ *
+ * <p><b>R8d (RUN-4): this adapter owns its own deadline, on purpose.</b> Before this, neither this
+ * class nor {@code mail-smtp} set a connect/request timeout, and {@code CapabilityExecutionPolicy
+ * .defaults()} returns zeros for timeout/retry -- so a vendor that accepted the TCP connection and
+ * then never responded hung the calling thread forever. The fix lives entirely here: a per-request
+ * {@link HttpRequest.Builder#timeout} plus a bounded, adapter-local retry loop in {@link #send}, both
+ * enforced on the calling thread. This deliberately does NOT flip {@code CapabilityExecutionPolicy
+ * .defaults()}'s kernel-wide timeout -- doing that would move every capability invocation (not just
+ * this one) from {@code KernelRunner}'s synchronous path onto {@code CompletableFuture.supplyAsync}'s
+ * default executor, {@code ForkJoinPool.commonPool()}, which does not propagate SLF4J's MDC or
+ * Spring's {@code RequestContextHolder} to its worker threads -- see {@code ledger/items/RUN-4.yml}
+ * for the confirmed evidence trail. That is a separate, platform-wide decision for a later session.</p>
  */
 public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter, ExternalAiCapabilityContract {
 
@@ -51,6 +64,32 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
 
     /** See the comment at its use site -- caps thinking + response text together, not just the answer. */
     private static final int ANTHROPIC_MAX_TOKENS = 16000;
+
+    /**
+     * R8d (RUN-4): connect timeout for the HttpClient this adapter builds itself (the 1-arg
+     * constructor). A caller-supplied HttpClient (the 3-/6-arg constructors -- every test uses one)
+     * is used exactly as given; this adapter never reaches into someone else's HttpClient to mutate
+     * it, only into the HttpRequest it builds (see {@link #DEFAULT_REQUEST_TIMEOUT}).
+     */
+    private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(10);
+
+    /**
+     * R8d (RUN-4): per-request deadline, applied via {@link HttpRequest.Builder#timeout} on every
+     * request regardless of which HttpClient sends it -- this is what actually bounds a hung vendor
+     * call, since a caller-supplied HttpClient's own connectTimeout only covers the TCP handshake,
+     * not a connection that opens fine and then never answers. Generous on purpose: a real vendor
+     * call (especially "high" reasoning effort) can legitimately run tens of seconds, and the goal is
+     * a deadline that exists at all, not the shortest one that could.
+     */
+    private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(120);
+
+    /**
+     * R8d (RUN-4): bounded retry, adapter-local, for transport-level failures and 429/5xx responses
+     * only -- never for a deny (no vendor/no key) or a contract-shape failure (bad verdict JSON),
+     * which a retry cannot fix. See {@link #isRetryableStatus}.
+     */
+    private static final int DEFAULT_MAX_RETRIES = 2;
+    private static final Duration DEFAULT_RETRY_BACKOFF = Duration.ofMillis(500);
 
     private final Map<String, ExternalAiVendorProfile> vendorsById;
 
@@ -65,11 +104,21 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
     private final List<ExternalAiVendorProfile> vendorsInOrder;
     private final HttpClient httpClient;
     private final Function<String, String> apiKeyLookup;
+    private final Duration requestTimeout;
+    private final int maxRetries;
+    private final Duration retryBackoff;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, ExternalAiVerdictRecord> verdictsByMissionId = new ConcurrentHashMap<>();
 
     public HttpExternalAiCapabilityAdapter(List<ExternalAiVendorProfile> vendors) {
-        this(vendors, HttpClient.newHttpClient(), System::getenv);
+        this(
+                vendors,
+                HttpClient.newBuilder().connectTimeout(DEFAULT_CONNECT_TIMEOUT).build(),
+                System::getenv,
+                DEFAULT_REQUEST_TIMEOUT,
+                DEFAULT_MAX_RETRIES,
+                DEFAULT_RETRY_BACKOFF
+        );
     }
 
     public HttpExternalAiCapabilityAdapter(
@@ -77,9 +126,32 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
             HttpClient httpClient,
             Function<String, String> apiKeyLookup
     ) {
+        this(vendors, httpClient, apiKeyLookup, DEFAULT_REQUEST_TIMEOUT, DEFAULT_MAX_RETRIES, DEFAULT_RETRY_BACKOFF);
+    }
+
+    /**
+     * R8d (RUN-4) full constructor: an adapter-owned deadline/retry policy. {@code requestTimeout}
+     * bounds a single attempt (connect + full response); {@code maxRetries} is the number of retries
+     * AFTER the first attempt (0 = try once, never retry); {@code retryBackoff} is the base delay,
+     * multiplied by the attempt number (linear backoff) between retries.
+     */
+    public HttpExternalAiCapabilityAdapter(
+            List<ExternalAiVendorProfile> vendors,
+            HttpClient httpClient,
+            Function<String, String> apiKeyLookup,
+            Duration requestTimeout,
+            int maxRetries,
+            Duration retryBackoff
+    ) {
         Objects.requireNonNull(vendors, "vendors");
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
         this.apiKeyLookup = Objects.requireNonNull(apiKeyLookup, "apiKeyLookup");
+        this.requestTimeout = Objects.requireNonNull(requestTimeout, "requestTimeout");
+        if (maxRetries < 0) {
+            throw new IllegalArgumentException("maxRetries must be >= 0");
+        }
+        this.maxRetries = maxRetries;
+        this.retryBackoff = Objects.requireNonNull(retryBackoff, "retryBackoff");
         Map<String, ExternalAiVendorProfile> byId = new LinkedHashMap<>();
         for (ExternalAiVendorProfile vendor : vendors) {
             if (byId.putIfAbsent(vendor.vendorId(), vendor) != null) {
@@ -190,24 +262,72 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
         return apiKey;
     }
 
+    /**
+     * R8d (RUN-4): bounded retry loop, entirely local to this adapter. Retries only transport-level
+     * failures ({@link IOException}, which covers {@code HttpTimeoutException} when {@link
+     * #requestTimeout} expires) and 429/5xx responses ({@link #isRetryableStatus}) -- never a 4xx
+     * contract failure, which a retry cannot fix. The same {@code request} object is safe to resend:
+     * its body publisher is built from a fixed in-memory string (see {@link #buildGenerationRequest}),
+     * not a one-shot stream.
+     */
     private HttpResponse<String> send(HttpRequest request, ExternalAiVendorProfile profile) {
-        HttpResponse<String> response;
+        RuntimeException lastFailure = null;
+        int totalAttempts = maxRetries + 1;
+        for (int attempt = 1; attempt <= totalAttempts; attempt++) {
+            try {
+                HttpResponse<String> response =
+                        httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                if (isRetryableStatus(response.statusCode()) && attempt < totalAttempts) {
+                    lastFailure = new IllegalStateException(
+                            "External AI vendor " + profile.vendorId() + " returned retryable HTTP "
+                                    + response.statusCode() + " on attempt " + attempt + "/" + totalAttempts
+                                    + ": " + response.body());
+                    backoff(attempt);
+                    continue;
+                }
+                if (response.statusCode() / 100 != 2) {
+                    throw new IllegalStateException(
+                            "External AI vendor " + profile.vendorId() + " returned HTTP " + response.statusCode()
+                                    + ": " + response.body());
+                }
+                return response;
+            } catch (IOException e) {
+                lastFailure = new UncheckedIOException(
+                        "External AI HTTP call failed for vendor " + profile.vendorId()
+                                + " on attempt " + attempt + "/" + totalAttempts
+                                + " (requestTimeout=" + requestTimeout + ")", e);
+                if (attempt >= totalAttempts) {
+                    throw lastFailure;
+                }
+                backoff(attempt);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(
+                        "External AI HTTP call interrupted for vendor " + profile.vendorId(), e);
+            }
+        }
+        // Unreachable in practice (the loop above always returns or throws on its last iteration),
+        // but the compiler cannot prove that from a non-constant loop bound.
+        throw lastFailure != null
+                ? lastFailure
+                : new IllegalStateException("External AI HTTP call exhausted retries with no recorded failure");
+    }
+
+    private static boolean isRetryableStatus(int statusCode) {
+        return statusCode == 429 || statusCode >= 500;
+    }
+
+    private void backoff(int attempt) {
+        long delayMs = retryBackoff.toMillis() * attempt;
+        if (delayMs <= 0) {
+            return;
+        }
         try {
-            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            throw new UncheckedIOException(
-                    "External AI HTTP call failed for vendor " + profile.vendorId(), e);
+            Thread.sleep(delayMs);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException(
-                    "External AI HTTP call interrupted for vendor " + profile.vendorId(), e);
+            throw new IllegalStateException("External AI HTTP retry backoff interrupted", e);
         }
-        if (response.statusCode() / 100 != 2) {
-            throw new IllegalStateException(
-                    "External AI vendor " + profile.vendorId() + " returned HTTP " + response.statusCode()
-                            + ": " + response.body());
-        }
-        return response;
     }
 
     @Override
@@ -300,6 +420,9 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
         }
         return builder
                 .header("Content-Type", "application/json")
+                // R8d (RUN-4): the deadline this call cannot escape -- applies per-attempt, regardless
+                // of which HttpClient sends it (see the class javadoc).
+                .timeout(requestTimeout)
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
     }

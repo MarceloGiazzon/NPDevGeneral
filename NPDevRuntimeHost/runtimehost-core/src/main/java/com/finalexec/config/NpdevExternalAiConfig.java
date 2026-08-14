@@ -9,7 +9,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.net.http.HttpClient;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -48,7 +50,15 @@ public class NpdevExternalAiConfig {
             @Value("${npdev.externalai.http.anthropic.apiKeyEnvVar:NPDEV_EXTERNALAI_ANTHROPIC_API_KEY}") String anthropicKeyEnvVar,
             @Value("${npdev.externalai.http.anthropic.model:claude-opus-5}") String anthropicModel,
             @Value("${npdev.externalai.http.openai.apiKeyEnvVar:NPDEV_EXTERNALAI_OPENAI_API_KEY}") String openaiKeyEnvVar,
-            @Value("${npdev.externalai.http.openai.model:gpt-4o-mini}") String openaiModel
+            @Value("${npdev.externalai.http.openai.model:gpt-4o-mini}") String openaiModel,
+            // R8d (RUN-4): adapter-owned deadline, independent of CapabilityExecutionPolicy (see
+            // HttpExternalAiCapabilityAdapter's javadoc). connectTimeoutMs bounds the TCP handshake;
+            // requestTimeoutMs bounds a single attempt end-to-end; maxRetries is retries AFTER the
+            // first attempt, only for transport failures and 429/5xx.
+            @Value("${npdev.externalai.http.connectTimeoutMs:10000}") long connectTimeoutMs,
+            @Value("${npdev.externalai.http.requestTimeoutMs:120000}") long requestTimeoutMs,
+            @Value("${npdev.externalai.http.maxRetries:2}") int maxRetries,
+            @Value("${npdev.externalai.http.retryBackoffMs:500}") long retryBackoffMs
     ) {
         // All four are always CONFIGURED here; only the ones whose key env var is actually set are
         // reachable -- the adapter denies the rest with EGRESS_DENIED_NO_API_KEY rather than sending.
@@ -59,6 +69,16 @@ public class NpdevExternalAiConfig {
                 ExternalAiVendorProfile.nvidiaBuild(nvidiaKeyEnvVar, nvidiaModel),
                 ExternalAiVendorProfile.gemini(geminiKeyEnvVar, geminiModel)
         );
-        return new HttpExternalAiCapabilityAdapter(vendors);
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(connectTimeoutMs))
+                .build();
+        return new HttpExternalAiCapabilityAdapter(
+                vendors,
+                httpClient,
+                System::getenv,
+                Duration.ofMillis(requestTimeoutMs),
+                maxRetries,
+                Duration.ofMillis(retryBackoffMs)
+        );
     }
 }
