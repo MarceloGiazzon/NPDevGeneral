@@ -6,8 +6,9 @@ title: >-
   yet closed, on the platform's primary launch path
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-13
+closed: 2026-08-14
 source: >-
   MASTER-ROADMAP.md Step 12 (R7 Stage C, SEC-1). Found while scoping Stage C's per-app random
   admin-key generator: tracing every consumer of `resolved-db-plan.json`'s `apiKey` field before
@@ -54,12 +55,45 @@ detail: |
   SEC-1 was filed to close. `New-AppConsole.ps1`/`Test-App.ps1` sending that same (working, not
   stale) key is a symptom of this, not a separate false-negative issue.
 
-  A fix needs its own scoped step, most likely mirroring `Ensure-NpdevApiKey`'s provisioner call
-  (or delegating to the exact same function, since both pipelines end up invoking the same packaged
-  jar) into whatever script this pipeline uses to actually start the process
-  (`_ops\Start-App.ps1`'s generation site in `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1`), then
-  redirecting `Test-App.ps1`/`New-AppConsole.ps1` to read the resulting `secrets/api-key.env` the
-  same way `_ops\Smoke-Test.ps1` now does, rather than maintaining a second, disconnected key value.
+  **Fixed 2026-08-14.** Mirrored `Ensure-NpdevApiKey`'s exact algorithm (same secrets/api-key.env
+  file format, `NPDEV_AUTH_API_KEYS=<key>=dev:developer:admin`) as a self-contained PowerShell
+  string constant, `$ApiKeyProvisioner`, duplicated once in each of `Build-NpdevApp.ps1` and
+  `Build-ClaudeApp.ps1` (not shared tooling -- every emitted `_ops` script in these pipelines is
+  deliberately self-contained, matching the existing `Get-NPDevGradleWrapperExecutable`-inline
+  precedent, since a generated app's toolbox must not depend on dot-sourcing anything from the
+  platform repo). Prepended to, and called from, every script in either pipeline that launches the
+  packaged jar directly: `Build-NpdevApp.ps1`'s `Start-App.ps1`, `Impact-Only.ps1`,
+  `Reissue-SuperUserKey.ps1`, and `Build-ClaudeApp.ps1`'s `Start-App.ps1`. `Test-App.ps1` (both
+  pipelines), `Status-App.ps1` (`Build-ClaudeApp.ps1`), and `Build-NpdevApp.ps1`'s
+  `Check-Provenance.ps1` redirected from `$plan.apiKey` to resolve the live key via the same
+  provisioner call instead. `New-AppConsole.ps1`'s `Get-AppStatus` (shared by both pipelines)
+  redirected to prefer `secrets/api-key.env` when present, falling back to `$pl.apiKey` only before
+  first launch -- the same pattern Stage C already applied to `npdev_monitor.py`'s `probe_app()`.
+
+  Because `app-plan.json`'s `appRoot` and `OperationalRunbookEmitter`'s `finalAppRoot` resolve to
+  the identical directory (`$OutRoot\App`), all three pipelines (the primary `_ops` toolbox and
+  these two AppGen launchers) idempotently share ONE `secrets/api-key.env` per app, regardless of
+  which one launches it first.
+
+  Verified LIVE on both real pipelines, not assumed: generated, built, and started the "Claude
+  Support Desk" official sample via `Build-ClaudeApp.ps1` (`D:\WorkSpace\NPDev\AppGen\apps\
+  _official\Claude`) and `simple-product-h2local` via `Build-NpdevApp.ps1`
+  (`D:\WorkSpace\NPDev\AppGen\apps\simple-product-h2local`). Both: banner printed exactly once with
+  a fresh random key, `curl -H "X-Api-Key: dev-key"` and `api-dev` now 401 (were previously 200 as
+  ADMIN, the exact vulnerability this item tracked), the generated key 200. `Test-App.ps1` PASS on
+  `simple-product-h2local` (resolved the live key itself, not the stale placeholder). Claude
+  Support Desk's own `Test-App.ps1` failed on an unrelated pre-existing `422 INVARIANT_FAILED` in
+  its `RegisterAgent` flow business logic -- confirmed unrelated to auth via the app's own debug
+  log (`AUTH DEBUG -> ... X-API-Key=present | claims={actor_id=developer, roles=[ADMIN], ...}`,
+  i.e. authentication succeeded and the flow reached real business logic before failing on an
+  invariant check with nothing to do with credentials). `Impact-Only.ps1` (a third, separate java
+  launch site) also verified live: booted successfully with the shared provisioner, reused the SAME
+  key `Start-App.ps1` had already generated (idempotency across independent script invocations
+  confirmed, not just across restarts of the same script), reported a real schema-impact verdict
+  (`SAFE`, exit 0) rather than refusing to boot.
+
+  This closes SEC-1's own title claim: no generated app, on any of the three launch pipelines this
+  platform ships, boots with a live published ADMIN credential anymore.
 guard:
   kind: manual
   ref: >-
@@ -68,5 +102,9 @@ guard:
     endpoint on the running app
   asserts: >-
     dev-key returns 401 invalid_api_key, matching what _ops\Run-FinalApp.ps1-launched apps already
-    prove (SEC-1's Stage A/C sections) -- currently FALSE, it returns 200 as ADMIN
-  provenRed: false
+    prove (SEC-1's Stage A/C sections)
+  provenRed: true
+  # RED proven directly, not inferred: launched simple-product-h2local's packaged jar manually
+  # with the exact args the OLD unfixed Start-App.ps1 used (--spring.profiles.active=dev,step0,trial,
+  # NPDEV_AUTH_API_KEYS explicitly unset, no Ensure-NpdevApiKey call) -- dev-key returned 200 as
+  # ADMIN. Then the real, fixed Start-App.ps1 was run against the same app -- dev-key returned 401.
