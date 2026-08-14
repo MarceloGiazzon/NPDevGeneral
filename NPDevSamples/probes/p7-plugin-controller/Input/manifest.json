@@ -1,0 +1,16 @@
+{
+  "id": "p7-plugin-controller",
+  "title": "p7-plugin-controller",
+  "complexity": "extension-probe",
+  "purpose": "Proves plugin:java-controller (R10): an author-supplied @RestController mounted from the app definition directory, and that security.minimumRole is ENFORCED at request time by a generated wrapper (D9), not merely declared and trusted.",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo. Driven by scripts/proofs/run-r10-plugin-controller-proof.py.",
+    "adminTools (minimumRole=ADMIN) proves the mount serves a real HTTP request end to end.",
+    "superOnlyTools (minimumRole=SUPERUSER) proves the SAME caller that succeeds against adminTools is rejected -- dev/auth.mode=none never auto-grants SUPERUSER."
+  ],
+  "expectedOutcomes": [
+    "GET /api/plugins/admin-tools/ping with the dev API key returns 200 {ok:true}.",
+    "GET /api/plugins/super-only/ping with the SAME dev API key returns 403."
+  ]
+}

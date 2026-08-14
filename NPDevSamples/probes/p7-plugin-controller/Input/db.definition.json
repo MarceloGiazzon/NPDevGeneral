@@ -1,0 +1,16 @@
+{
+  "database": {
+    "engine": "H2Local",
+    "databaseName": "p7_plugin_controller",
+    "username": "sa",
+    "password": "",
+    "createInternalTables": true,
+    "createBusinessTables": true
+  },
+  "schemaLifecycle": {
+    "strategy": "KeepExistingIfCompatible",
+    "allowDestructiveRecreate": false,
+    "destructiveRecreateConfirmation": "",
+    "scope": "NpdevOwnedTablesOnly"
+  }
+}

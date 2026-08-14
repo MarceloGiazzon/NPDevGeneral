@@ -3,13 +3,24 @@ title: >-
   No supported path to add a REST endpoint or custom screen to a generated app
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-08-12
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F4, ROADMAP.md card R10). No plugin:
   java-controller kind and no custom-screen mount exist -- an author cannot extend a generated app
   without editing generated code that regeneration will overwrite.
 surface: generator/extension-points
+verification: VERIFIED_LIVE
+guard:
+  kind: script
+  ref: python scripts/proofs/run-r10-plugin-controller-proof.py --port <free-port> --report <path>
+  asserts: >-
+    generate+build+boot NPDevSamples/probes/p7-plugin-controller on H2 succeeds; GET
+    /api/plugins/admin-tools/ping with the dev API key returns 200 {ok:true}; GET
+    /api/plugins/super-only/ping with the SAME dev API key returns 403 (minimumRole=SUPERUSER,
+    never auto-granted in dev/auth.mode=none, proving enforcement is real and per-mount, not
+    merely "is authenticated")
+  provenRed: true
 detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R10 (Wave 5, milestone M5). Decision D9
   already recorded: plugin:java-controller must ENFORCE security.minimumRole with an emitted wrapper,
@@ -37,3 +48,104 @@ detail: |
   session, see PACK-10) that forcing both into one PR would have meant designing the same extension
   model twice under time pressure rather than once, carefully -- deliberately deferred to its own
   session/PR rather than rushed. Still not in scope; status remains OPEN.
+
+  2026-08-14 (step15-r10-plugin-controller branch): SHIPPED the plugin:java-controller mount + D9
+  security enforcement + the fourth enforcement point -- the "REST endpoint" half of the card's own
+  goal sentence. DEFERRED the "custom screen" half (see below). Status moves OPEN -> PARTIAL, not
+  DONE.
+
+  MECHANISM, as built and live-verified (not merely designed): reused customCapabilities[]/
+  bindings[] as-is (adapter="plugin:java-controller") rather than adding a new top-level array field
+  -- both are ALREADY in ModelSourceResolver.MODEL_ARRAY_KEYS and the canonical writer/reader pair,
+  so CLAUDE.md's four-place-chain rule for a NEW top-level array does not apply here; this is new
+  DATA in an existing, already-threaded field, not a new field. The one real gap this reuse opened:
+  CompiledPluginRequirementGraphBuilder only ever discovered a capability via a flow/procedure
+  capabilityCall step, and a mounted @RestController is never called that way (HTTP clients hit it
+  directly) -- so it gained a small, targeted addition (addSyntheticControllerMountRequirements)
+  that synthesizes exactly one requirement per plugin:java-controller binding no real call site
+  found, using operation="mount" as a sentinel that can never collide with a real flow/procedure
+  operation name. GeneratedPluginMountPlan gained MountKind.JAVA_CONTROLLER + JavaControllerDescriptor,
+  loaded from the SAME capabilities/<name>/capability.plugin.json convention plugin:java-source uses
+  (implementation.kind=javaController instead of javaSource; a mount block with basePath + a REQUIRED
+  security.minimumRole instead of runtimeRef/operationBindings) -- descriptor loading REFUSES to
+  generate an app if minimumRole is missing, if controllerClass is outside the reserved
+  com.npdev.generated.plugin. package (FinalExecApplication only @ComponentScans com.finalexec and
+  com.npdev.generated -- anything else is dead code, never a bean, so this is also how a plugin
+  controller's SIMPLE NAME becomes checkable against a manifest without any package-independent
+  registry), or if mount.basePath is outside the reserved /api/plugins/ prefix (so a plugin
+  controller can never collide with any platform-owned /api/* route, present or future).
+  RuntimeApiEmitter copies the controller source verbatim (byte-identical mechanism to
+  plugin:java-source's artifact-local copy) and writes a NEW per-app manifest,
+  npdev/plugin-controllers/plugin-controller-security.json.
+
+  TWO real defects found ONLY by a live boot, not by design review -- exactly this session's
+  "smallest coherent, real, live-verified slice" discipline earning its keep: an earlier version of
+  this code excluded JAVA_CONTROLLER mounts from the existing plugin-manifest/bindings-manifest
+  pipeline entirely (reasoning: a controller is never capability-DISPATCHED, so why advertise a
+  runtimeRef nothing calls). That reasoning was correct about dispatch and WRONG about boot: TWO
+  separate `@Bean` factories in NPDevRuntimeHost -- NpdevCapabilityBindingConfig.capabilityRegistry()
+  and NpdevPluginConfig.runtimePluginProfileDiagnostics() -- EAGERLY resolve EVERY
+  compiledModel.getBindings() entry at boot (not lazily, only when called), and both threw real,
+  reproducible BeanCreationExceptions ("Adapter 'plugin:java-controller' ... is not declared in
+  active plugin manifest" / "Runtime plugin deployment mismatch ... unresolvedCapabilities=[...]")
+  the first two times the probe app was booted. Fixed by including JAVA_CONTROLLER mounts in BOTH
+  emitPluginManifest and emitBindingManifest after all (Mount.runtimeRef() already resolves a
+  controller mount to GENERIC_MOUNTED_RUNTIME_REF/genericMountedCapabilityHandler, the same fallback
+  every other unrecognized plugin:* adapter already uses, harmlessly realized against a handler
+  nothing ever actually calls). See GeneratedPluginMountPlan.packageGroups()'s and
+  RuntimeApiEmitter.emitBindingManifest()'s javadoc/comments for the full account.
+
+  FOURTH ENFORCEMENT POINT: NPDevRuntimeHost/src/main/java/com/finalexec/config/
+  PluginControllerSecurityConfig.java (com.finalexec.config, the app-coupled "bridge" module, not
+  runtimehost-core -- it needs com.npdev.generated.runtime.service.RuntimeContextService, same as
+  AgentProxyController). A WebMvcConfigurer that (a) reads the per-app security manifest and
+  registers one role-checking HandlerInterceptor per mounted controller's basePath -- D9's literal
+  "generated wrapper/interceptor that checks the role before delegating", reusing
+  AgentProxyController's existing requireSuperUser idiom generalized to a per-mount declared role --
+  and (b) enumerates every com.npdev.generated.plugin.*Controller bean and THROWS at boot if any
+  exists with no matching manifest entry (fail CLOSED, unlike RuntimeControllerAllowlistConfig's
+  fail-silent bean removal -- a plugin controller existing at all was the author's explicit intent,
+  so one missing its security declaration is a real defect, not a channel decision). This class has
+  no JUnit test: it imports com.npdev.generated.*, so build.gradle.template's
+  generatedRuntimeDependentMainSources exclusion compiles it ONLY inside an assembled app, never in
+  a bare-template unit test -- CLAUDE.md's own "RuntimeHost tests that name com.npdev.generated.
+  never run in any gate" is why a test would be dead weight here; the live proof is the real
+  verification. New twin-pair rule npdev-plugin-controller-security-enforcement
+  (scripts/quality/twin-pair-registry.json) binds the 4 real coupling points (GeneratedPluginMountPlan,
+  RuntimeApiEmitter, PluginControllerSecurityConfig, the proof script) via a marker token, mirroring
+  the existing npdev-build-root-resolution/npdev-sql-identifier-quoting convention for exactly this
+  situation -- functionally different literals in each file, no single string to track.
+
+  plugin:query-provider declared explicitly out of scope: model.schema.json's binding.adapter gained
+  `"not": {"const": "plugin:query-provider"}` + a description, in all 4 mirrored copies -- mechanically
+  verified live (validateModel rejects it with json_schema_not / "must not be valid to the schema").
+
+  LIVE VERIFICATION (H2, this session's test-cadence policy): NPDevSamples/probes/p7-plugin-controller
+  -- TWO mounted controllers, deliberately gated at different roles so ONE probe proves both
+  directions. adminTools (minimumRole=ADMIN, auto-granted to every dev/auth.mode=none caller) proves
+  the mount serves a REAL request (GET /api/plugins/admin-tools/ping -> 200 {ok:true}). superOnlyTools
+  (minimumRole=SUPERUSER, never auto-granted -- the exact AgentProxyController precedent CLAUDE.md
+  documents) proves the SAME dev-key caller is REJECTED (-> 403) -- D9's enforcement is real and
+  per-mount, not merely "is authenticated". scripts/proofs/run-r10-plugin-controller-proof.py runs
+  this end to end (generate+build+boot+2 HTTP assertions), reusing run-engine-app-proof.py's
+  machinery exactly as run-library-probe.py already does. ALSO live-proved the fail-closed guard's
+  RED path by hand: removed AdminToolsController's entry from an assembled app's manifest (both the
+  exploded resources and the BOOT-INF/classes jar entry), rebooted the same jar, and it refused to
+  start with exactly the expected message ("Plugin controller ... is not declared in
+  npdev/plugin-controllers/plugin-controller-security.json ... Refusing to start."). Determinism:
+  generated the probe twice and byte-diffed the full output (excluding the two already-declared
+  non-reproducible provenance files) -- zero differences. Generator (:generator:test) and DSL
+  (:NPDevContract:dsl:test) full suites green.
+
+  DEFERRED, genuinely, not silently: the custom-screen-mount PowerShell-builder-to-generator-emitter
+  migration (the card's second bullet). Not designed or touched this session -- an earlier
+  investigation for the exact PowerShell mechanism the card names ("the custom-screen mount
+  currently lives in ONE PowerShell builder") did not conclusively locate a discrete, already-built
+  "custom screen" mount under that name or an obvious synonym in scripts/appgen/; whether that
+  claim describes something real-but-differently-named, something half-built, or is itself stale
+  prose was NOT resolved this session. The plugin:java-controller mount + D9 wrapper + fourth
+  enforcement point already consumed the full session's real-code-plus-live-proof budget on their
+  own -- confirmed XL, not merely estimated, by the two live-boot-discovered defects above, neither
+  of which a design-only pass would have found. A future session should START by re-investigating
+  whether a custom-screen mount mechanism exists at all before designing its migration.
+  Also not touched: runtime-supported-controllers.json (correctly -- the trap the card names).

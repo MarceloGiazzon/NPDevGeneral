@@ -163,6 +163,110 @@ class CompiledPluginRequirementGraphBuilderTest {
         assertTrue(requirement.externalCandidate());
     }
 
+    /**
+     * R10 (plugin:java-controller): a mounted @RestController is never invoked by a flow/procedure
+     * capabilityCall step -- HTTP clients hit it directly -- so nothing in this graph's normal
+     * flow/procedure walk would ever discover a plugin:java-controller binding. Confirms the
+     * synthesized fallback: the capability is declared and bound but referenced by ZERO
+     * flows/procedures, and still yields exactly one requirement with a fixed "mount" operation
+     * sentinel (never a real flow/procedure operation name, so it can never collide with one).
+     */
+    @Test
+    void synthesizesOneRequirementForAnUncalledJavaControllerBinding() throws Exception {
+        ModelAst ast = parse("""
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    {
+                      "name": "TriggerEntity",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                      ]
+                    }
+                  ],
+                  "customCapabilities": [
+                    {
+                      "name": "adminTools",
+                      "type": "AdminToolsController"
+                    }
+                  ],
+                  "bindings": [
+                    { "capability": "adminTools", "adapter": "plugin:java-controller" }
+                  ]
+                }
+                """);
+
+        CompiledPluginRequirementGraph graph = new CompiledPluginRequirementGraphBuilder().build(ast);
+
+        assertEquals(1, graph.getRequirements().size());
+        CompiledPluginRequirement requirement = graph.getRequirements().get(0);
+        assertEquals("adminTools", requirement.capabilityName());
+        assertEquals("AdminToolsController", requirement.capabilityType());
+        assertEquals("mount", requirement.operationName());
+        assertEquals("", requirement.flowName());
+        assertEquals("", requirement.stepName());
+        assertEquals("plugin:java-controller", requirement.boundAdapter());
+        assertTrue(requirement.externalCandidate());
+    }
+
+    /**
+     * A capability call that DOES reference the same capability (e.g. a legacy flow that also
+     * invokes it) must not produce a second, duplicate requirement -- the synthesis only fills the
+     * gap for capabilities no real call site ever discovered.
+     */
+    @Test
+    void doesNotDuplicateAJavaControllerBindingAlreadyCalledByAFlow() throws Exception {
+        ModelAst ast = parse("""
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    {
+                      "name": "TriggerEntity",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                      ]
+                    }
+                  ],
+                  "customCapabilities": [
+                    {
+                      "name": "adminTools",
+                      "type": "AdminToolsController",
+                      "operations": ["ping"]
+                    }
+                  ],
+                  "bindings": [
+                    { "capability": "adminTools", "adapter": "plugin:java-controller" }
+                  ],
+                  "flows": [
+                    {
+                      "name": "PingAdminTools",
+                      "concept": "TriggerEntity",
+                      "steps": [
+                        {
+                          "name": "ping",
+                          "type": "capabilityCall",
+                          "capability": "adminTools",
+                          "operation": "ping",
+                          "input": "payload",
+                          "output": "result"
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """);
+
+        CompiledPluginRequirementGraph graph = new CompiledPluginRequirementGraphBuilder().build(ast);
+
+        assertEquals(1, graph.getRequirements().size());
+        assertEquals("ping", graph.getRequirements().get(0).operationName());
+        assertEquals("PingAdminTools", graph.getRequirements().get(0).flowName());
+    }
+
     private static ModelAst parse(String json) throws Exception {
         Path modelFile = Files.createTempFile("npdev-plugin-graph-", ".json");
         Files.writeString(modelFile, json, StandardCharsets.UTF_8);

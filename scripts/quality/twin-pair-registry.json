@@ -302,6 +302,22 @@
         "scripts/appgen/Build-ClaudeApp.ps1",
         "NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java"
       ]
+    },
+    {
+      "id": "npdev-plugin-controller-security-enforcement",
+      "citedBy": "EXT-1 (R10, plugin:java-controller mount)",
+      "description": "The FOURTH runtime-supported-controller enforcement point, distinct from the three runtime-supported-controllers.json enforcement points (RuntimeControllerAllowlistConfig, build.gradle.template's unsupportedRuntimeHostControllerSources, run-runtime-surface-evidence.ps1) that all key off com/finalexec/api plus one fixed, per-app-identical manifest. A plugin controller is author-supplied and lives under the reserved com.npdev.generated.plugin. package instead, with a PER-APP security posture generated from the model's own capability.plugin.json descriptors -- so it needs its own mechanism, not a fourth use of the existing three (adding its name to allowedControllers would neither enable it, wrong package, nor be architecturally sound, since that manifest must not vary per app). GeneratedPluginMountPlan validates the descriptor (controllerClass package prefix, mount.basePath prefix, security.minimumRole required) at generation time and refuses to generate an unguarded mount; RuntimeApiEmitter copies the controller source and writes the per-app npdev/plugin-controllers/plugin-controller-security.json manifest; NPDevRuntimeHost's PluginControllerSecurityConfig reads that manifest at boot, registers a role-checking HandlerInterceptor per mounted controller (D9: enforced by an emitted wrapper, not merely declared), and REFUSES TO START if any com.npdev.generated.plugin.*Controller bean exists with no matching manifest entry. Losing any of the four leaves either a controller descriptor nothing enforces at request time, or a security manifest nothing emits/reads, or a guard that can never fire because the mount it should be watching was never wired to it -- the exact 'three enforcement points, one forgotten' shape this rule exists to catch before a fifth session repeats it. The proof script is included because D9's own security.minimumRole enforcement (a live 403 against an under-privileged caller) is verified there, not in a JUnit test: PluginControllerSecurityConfig imports com.npdev.generated.*, so build.gradle.template's generatedRuntimeDependentMainSources exclusion means it compiles ONLY inside an assembled app and never in a bare-template unit test (CLAUDE.md: 'RuntimeHost tests that name com.npdev.generated. never run in any gate').",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev-plugin-controller-security-enforcement"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/GeneratedPluginMountPlan.java",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java",
+        "NPDevRuntimeHost/src/main/java/com/finalexec/config/PluginControllerSecurityConfig.java",
+        "scripts/proofs/run-r10-plugin-controller-proof.py"
+      ]
     }
   ]
 }
