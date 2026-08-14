@@ -10,6 +10,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -66,6 +67,20 @@ import java.util.Set;
  * existing at all was the author's explicit intent, so one missing its security declaration is a real
  * defect, not a channel decision).
  *
+ * <p><b>What this class does NOT independently verify.</b> The interceptor registered here trusts
+ * that the manifest's {@code basePath} actually covers every route the named controller class
+ * registers with Spring -- it never inspects {@code RequestMappingHandlerMapping} itself. That
+ * invariant is established at GENERATION time instead, by
+ * {@code GeneratedPluginMountPlan.validateControllerRoutesWithinBasePath} (a regex scan of the
+ * controller's {@code @RequestMapping}/{@code @GetMapping}/etc. annotations against the declared
+ * basePath, refusing to generate an app whose controller declares a route outside it) -- an
+ * adversarial-review finding on the original R10 PR that a declared basePath meant nothing on its
+ * own: a second, undeclared route in the same class compiled, mounted and served completely
+ * unguarded, because neither generation nor this class's orphan check ever looked past the class
+ * name. Generation-time was chosen over a boot-time route walk here because it is the strictly
+ * stronger guarantee -- a generated app can then never have the vulnerability at all, rather than
+ * merely being stopped from booting with it.
+ *
  * <p><b>npdev-plugin-controller-security-enforcement</b>: the twin-pair token
  * (scripts/quality/twin-pair-registry.json) binding this class to {@code GeneratedPluginMountPlan}
  * (which validates the descriptor and the reserved package prefix at generation time),
@@ -112,13 +127,24 @@ public class PluginControllerSecurityConfig implements WebMvcConfigurer {
      * Runs even when {@code entries} is empty: an app with NO declared plugin controllers must still
      * refuse to start if a {@code com.npdev.generated.plugin.*} controller bean somehow exists anyway
      * -- an empty manifest is not evidence of an empty package, only of nothing DECLARED.
+     *
+     * <p>Adversarial-review finding: an earlier version of this method enumerated only
+     * {@code @RestController} beans, so a controller written as plain {@code @Controller} +
+     * {@code @ResponseBody} on its methods (same HTTP-serving behaviour, different annotation) would
+     * be invisible to this guard -- present, routable, and never checked. Enumerates
+     * {@code @Controller} beans too (this also covers {@code @RestController}, since it is itself
+     * meta-annotated {@code @Controller}; both are queried explicitly rather than relying on that
+     * meta-annotation resolution, so this stays correct even if that Spring behaviour ever changes).
      */
     private void failClosedIfAnyPluginControllerBeanIsUndeclared(List<MountedControllerEntry> entries) {
         Set<String> declaredSimpleNames = new LinkedHashSet<>();
         for (MountedControllerEntry entry : entries) {
             declaredSimpleNames.add(simpleName(entry.controllerClass()));
         }
-        for (String beanName : applicationContext.getBeanNamesForAnnotation(RestController.class)) {
+        Set<String> candidateBeanNames = new LinkedHashSet<>();
+        candidateBeanNames.addAll(List.of(applicationContext.getBeanNamesForAnnotation(RestController.class)));
+        candidateBeanNames.addAll(List.of(applicationContext.getBeanNamesForAnnotation(Controller.class)));
+        for (String beanName : candidateBeanNames) {
             Class<?> beanType = applicationContext.getType(beanName);
             if (beanType == null || !beanType.getName().startsWith(RESERVED_PLUGIN_CONTROLLER_PACKAGE_PREFIX)) {
                 continue;

@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -19,6 +20,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class GeneratedPluginMountPlan {
 
@@ -370,6 +373,20 @@ public final class GeneratedPluginMountPlan {
                         + " -- every plugin controller is reserved to this URL prefix so it can never collide "
                         + "with a platform-owned route");
             }
+            // Adversarial-review finding (independent security review of the R10 PR): declaring a
+            // narrow, role-gated basePath here proved nothing about what routes the controller
+            // actually registers with Spring -- nothing before this line ever opened the .java file.
+            // A SECOND @GetMapping in the same class, mapped outside the declared basePath, compiled
+            // cleanly, mounted cleanly, and served completely unguarded: PluginControllerSecurityConfig's
+            // interceptor only ever registers interceptPathPatterns(basePath + "/**") from the MANIFEST,
+            // never from the controller's own annotations, and its fail-closed bean guard only checks
+            // "does a manifest entry exist for this class name," never "does every route this class
+            // serves fall inside that entry's basePath." Exactly the "declared reads as a guarantee,
+            // nothing enforces it" trap D9 exists to close, recreated one level below where D9 closed
+            // it. Closed here, at generation time, by refusing to generate an app whose controller
+            // declares a route outside its own basePath -- the strictly stronger guarantee versus a
+            // boot-time backstop, since a generated app can then never have the vulnerability at all.
+            validateControllerRoutesWithinBasePath(controllerClassSource, basePath, descriptorPath);
             JsonNode security = mount.path("security");
             String minimumRole = requiredText(security, "minimumRole", descriptorPath);
 
@@ -402,6 +419,159 @@ public final class GeneratedPluginMountPlan {
         } catch (IOException exception) {
             throw new RuntimeException("Failed reading plugin:java-controller descriptor: " + descriptorPath, exception);
         }
+    }
+
+    /**
+     * Finds the class declaration that splits "class-level annotations" (before it) from "method
+     * bodies" (after it) -- deliberately permissive about modifiers, since the only thing that
+     * matters is where the split falls, not validating the declaration itself. Assumes one top-level
+     * class per mounted-controller source file, which the descriptor's own controllerClass -> file
+     * path convention already requires.
+     */
+    private static final Pattern CLASS_DECLARATION = Pattern.compile(
+            "(?m)^[ \\t]*(?:public\\s+|final\\s+|abstract\\s+|static\\s+)*class\\s+\\w+");
+
+    /** Every Spring annotation that can register an HTTP route, class-level or method-level. */
+    private static final Pattern MAPPING_ANNOTATION = Pattern.compile(
+            "@(RequestMapping|GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\\b\\s*(\\([^)]*\\))?");
+
+    /** Within a mapping annotation's parenthesized args, the path is either the bare positional
+     *  value or an explicit value=/path= attribute -- never consumes=/produces=/params=/headers=,
+     *  which are also string literals and must NOT be mistaken for a route path. */
+    private static final Pattern VALUE_OR_PATH_ATTRIBUTE = Pattern.compile(
+            "(?:value|path)\\s*=\\s*(\\{[^}]*\\}|\"[^\"]*\")");
+
+    private static final Pattern STRING_LITERAL = Pattern.compile("\"([^\"]*)\"");
+
+    /**
+     * R10 (adversarial-review finding, closed the session it was raised in): a declared basePath and
+     * minimumRole meant nothing if the controller's ACTUAL Spring routes could sit outside that
+     * basePath -- generation and the runtime fail-closed guard both only ever checked "does a
+     * manifest entry exist for this class name," never "does every route this class serves fall
+     * inside that entry's basePath." This is a regex scan, not a full Java/AST parser (mirroring how
+     * loadJavaSourceDescriptor already validates operationBindings against declared operations
+     * without parsing the file as Java) -- adequate for catching the real, concrete risk (an honest
+     * mistake, or a second route quietly added later) without needing a compiler front end. It
+     * fails CLOSED on anything it cannot confidently place inside basePath, which is the correct
+     * default for a security check: an ambiguous route is refused, never silently accepted.
+     */
+    private static void validateControllerRoutesWithinBasePath(Path controllerClassSource, String basePath, Path descriptorPath) {
+        String source;
+        try {
+            source = Files.readString(controllerClassSource, StandardCharsets.UTF_8);
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed reading plugin:java-controller source for route validation: "
+                    + controllerClassSource, exception);
+        }
+
+        Matcher classSplit = CLASS_DECLARATION.matcher(source);
+        int classBodyStart = classSplit.find() ? classSplit.end() : 0;
+        String classLevelRegion = source.substring(0, classBodyStart);
+        String classBodyRegion = source.substring(classBodyStart);
+
+        List<String> classBasePaths = List.of("");
+        Matcher classLevelMapping = MAPPING_ANNOTATION.matcher(classLevelRegion);
+        while (classLevelMapping.find()) {
+            if ("RequestMapping".equals(classLevelMapping.group(1))) {
+                classBasePaths = extractAnnotationPaths(classLevelMapping.group(2));
+            }
+        }
+
+        List<String> offendingRoutes = new ArrayList<>();
+        Matcher methodMapping = MAPPING_ANNOTATION.matcher(classBodyRegion);
+        while (methodMapping.find()) {
+            String annotationName = methodMapping.group(1);
+            for (String methodPath : extractAnnotationPaths(methodMapping.group(2))) {
+                for (String classPath : classBasePaths) {
+                    String fullPath = joinRoutePaths(classPath, methodPath);
+                    if (!isWithinBasePath(fullPath, basePath)) {
+                        offendingRoutes.add(fullPath + " (@" + annotationName + ")");
+                    }
+                }
+            }
+        }
+
+        if (!offendingRoutes.isEmpty()) {
+            throw new IllegalStateException("plugin:java-controller descriptor " + descriptorPath
+                    + " declares mount.basePath '" + basePath + "', but " + controllerClassSource
+                    + " registers route(s) outside it: " + offendingRoutes
+                    + " -- every route the controller serves must fall inside its declared basePath, "
+                    + "or minimumRole's enforcement (the interceptor guards basePath + \"/**\", nothing "
+                    + "else) would not cover it. Move the route under " + basePath
+                    + " or split it into its own plugin:java-controller mount with its own basePath.");
+        }
+    }
+
+    /**
+     * Extracts the route path(s) an annotation declares from its raw parenthesized argument text
+     * (including the surrounding parens, or null for a bare annotation with no args at all, e.g.
+     * {@code @GetMapping}). Deliberately conservative: a named {@code value=}/{@code path=} attribute
+     * wins if present (so {@code consumes=}/{@code produces=}/etc. string literals are never mistaken
+     * for a route); otherwise, ONLY if the args contain no {@code =} at all (i.e. a purely positional
+     * value, {@code @GetMapping("/ping")}) are its string literals treated as paths; anything else
+     * (e.g. {@code @RequestMapping(method = RequestMethod.GET)}, no path attribute at all) defaults
+     * to a single empty path, meaning "exactly the class-level basePath, or root if there is none."
+     */
+    private static List<String> extractAnnotationPaths(String rawArgsWithParens) {
+        if (rawArgsWithParens == null) {
+            return List.of("");
+        }
+        String argsText = rawArgsWithParens.trim();
+        if (argsText.startsWith("(")) {
+            argsText = argsText.substring(1);
+        }
+        if (argsText.endsWith(")")) {
+            argsText = argsText.substring(0, argsText.length() - 1);
+        }
+        argsText = argsText.trim();
+        if (argsText.isEmpty()) {
+            return List.of("");
+        }
+
+        Matcher namedAttribute = VALUE_OR_PATH_ATTRIBUTE.matcher(argsText);
+        if (namedAttribute.find()) {
+            List<String> paths = extractStringLiterals(namedAttribute.group(1));
+            return paths.isEmpty() ? List.of("") : paths;
+        }
+        if (!argsText.contains("=")) {
+            List<String> paths = extractStringLiterals(argsText);
+            if (!paths.isEmpty()) {
+                return paths;
+            }
+        }
+        return List.of("");
+    }
+
+    private static List<String> extractStringLiterals(String text) {
+        List<String> literals = new ArrayList<>();
+        Matcher matcher = STRING_LITERAL.matcher(text);
+        while (matcher.find()) {
+            literals.add(matcher.group(1));
+        }
+        return literals;
+    }
+
+    /** Mirrors Spring's own class-path + method-path combination: a blank sub-path means "exactly
+     *  the base," a blank base means "the sub-path is absolute on its own." */
+    private static String joinRoutePaths(String basePath, String subPath) {
+        String base = basePath == null ? "" : basePath.trim();
+        String sub = subPath == null ? "" : subPath.trim();
+        if (sub.isEmpty()) {
+            return base.isEmpty() ? "/" : base;
+        }
+        String normalizedSub = sub.startsWith("/") ? sub : "/" + sub;
+        if (base.isEmpty()) {
+            return normalizedSub;
+        }
+        String normalizedBase = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        return normalizedBase + normalizedSub;
+    }
+
+    /** Same coverage semantics PluginControllerSecurityConfig's interceptor uses
+     *  ({@code addPathPatterns(basePath + "/**")}): the base itself, or anything one level (or
+     *  deeper) under it. */
+    private static boolean isWithinBasePath(String path, String basePath) {
+        return path.equals(basePath) || path.startsWith(basePath + "/");
     }
 
     private static String text(JsonNode node, String fieldName) {
