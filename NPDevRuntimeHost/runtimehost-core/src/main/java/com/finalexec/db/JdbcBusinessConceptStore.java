@@ -827,17 +827,17 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
 
     private Map<String, Object> dbRecord(ConceptShape shape, ConceptRecord record) {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put(shape.idColumn(), coerceId(record.id()));
-        // tenant_id has no safe DB-level default (unlike "version" DEFAULT 0) — it must come from
-        // the ConceptRecord's own dedicated tenantId component, not record.data(). The
-        // kernel-gateway write path (DefaultConceptGateway.save -> store.save) builds its payload
-        // from DSL-declared fields only and never puts a "tenantId" entry into data(), so relying on
-        // record.data() alone (as this loop does for every other column) would silently write NULL.
-        out.put("tenant_id", record.tenantId());
         for (Map.Entry<String, Object> entry : record.data().entrySet()) {
             String column = shape.columnByField().getOrDefault(entry.getKey().toLowerCase(Locale.ROOT), toDbColumn(entry.getKey()));
             out.put(column, entry.getValue());
         }
+        // id/tenant_id are applied LAST, unconditionally, so they always win over a same-named
+        // entry record.data() happens to carry — not merely never collide with one by convention.
+        // (REG-169: mapFromEntity()-style blanket entity serialization can put a stale/unhydrated
+        // "tenantId" into data() on an UPDATE path that never re-stamps the loaded entity before
+        // save; with tenant_id applied first, that entry silently clobbered the correct value.)
+        out.put(shape.idColumn(), coerceId(record.id()));
+        out.put("tenant_id", record.tenantId());
         return out;
     }
 
