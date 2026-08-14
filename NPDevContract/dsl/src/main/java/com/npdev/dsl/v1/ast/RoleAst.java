@@ -16,8 +16,13 @@ import java.util.List;
  * silently (the same "an input the evaluator cannot handle is an error" rule X0 established for
  * every other evaluator in the platform).
  */
-public record RoleAst(String name, List<String> grants) {
+public record RoleAst(String name, List<String> grants, OriginAst origin) {
     public RoleAst {
         grants = grants == null ? List.of() : List.copyOf(grants);
+    }
+
+    /** Pre-PACK-2 convenience constructor -- origin defaults to null (not pack-contributed). */
+    public RoleAst(String name, List<String> grants) {
+        this(name, grants, null);
     }
 }

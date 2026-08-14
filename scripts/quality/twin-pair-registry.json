@@ -289,6 +289,23 @@
       ]
     },
     {
+      "id": "origin-ast-compiled-four-place",
+      "citedBy": "PACK-2 (ledger; PACK-ROADMAP.md card PK-1 steps 5-7)",
+      "description": "origin (pack-attribution provenance -- packId/packVersion/packDigest/sealed -- attached to every Compiled*/*Ast member type PACK-2 covers: concept, query, event, flow, capability, role, panel, domain type) needs the same live path the ast-compiled-four-place rule requires for roles[] -- parser, compiler, ModelResolver (every ConceptAst/CapabilityAst/EventAst/FlowAst-reconstructing site: sanitizeX and mergeX both, same 'a per-member field is easy to drop at exactly this point' reasoning satelliteOf's own entry gives), and the canonical writer+reader pair -- or a member's pack attribution survives parsing but silently never reaches the generator/runtime (REG-104's exact shape). ModelSourceResolver.recordOrigin (where a pack-contributed member's origin is actually computed and recorded, keyed by MODEL_ARRAY_KEYS kind + qualified name) is deliberately NOT one of these four -- unlike an authored field, origin is resolver-DERIVED data with no pack.schema.json/model.schema.json surface, so it does not ride the separate pack-composition-four-place rule either; its own chain (ResolutionState -> ResolvedModelSource -> JsonModelParser's originByQualifiedMemberName lookup) is covered by NPDevContract/dsl's existing pack-composition test suite (737 tests green at PACK-2's own close), not this registry rule.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "origin"
+      ],
+      "caseSensitive": false,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+      ]
+    },
+    {
       "id": "app-secrets-dir-spared-three-seams",
       "citedBy": "agent-proxy",
       "description": "The list of <FinalApp>/App directories that regeneration must NOT delete is decided independently in three places that all run during one build -- Build-NpdevApp.ps1's $SparedInsideApp, Build-ClaudeApp.ps1's copy of it, and FinalAppAssembler.PRESERVED_APP_DIRECTORIES. The Java layer runs LAST, so a directory added to a PowerShell list and not to the Java one is spared and then deleted again, silently, in the same build: exactly what happened to `logs` between MONITOR_PLAN D10 and the agent-proxy work. Anything holding state the generator cannot reproduce -- the database, the log archive, the operator-written secrets/agent-proxy.env -- must appear in all three.",

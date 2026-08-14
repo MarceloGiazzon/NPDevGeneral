@@ -163,7 +163,7 @@ public final class CompiledModelCanonicalJsonReader {
 
     /** Wave 3 (RC-B1): reads a single app-defined role -> permission-ceiling declaration. */
     private static CompiledRole toRole(JsonNode node) {
-        return new CompiledRole(text(node, "name"), toStringList(node.get("grants")));
+        return new CompiledRole(text(node, "name"), toStringList(node.get("grants")), toOrigin(node.get("origin")));
     }
 
     /** B20 (S2): reads a single declared bounded context (name + $ref). S8 Wave 4: plus the
@@ -461,7 +461,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toStringList(node.get("normalizationRules")),
                 optionalText(node, "formatHint"),
                 toStringList(node.get("examples")),
-                toDomainTypeUi(node.get("ui"))
+                toDomainTypeUi(node.get("ui")),
+                toOrigin(node.get("origin"))
         );
     }
 
@@ -517,7 +518,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toIndexes(node.get("indexes")),
                 toConceptAccess(node.get("access")),
                 optionalText(node, "renamedFrom"),
-                optionalText(node, "satelliteOf")
+                optionalText(node, "satelliteOf"),
+                toOrigin(node.get("origin"))
         );
     }
 
@@ -548,6 +550,21 @@ public final class CompiledModelCanonicalJsonReader {
             return null;
         }
         return new CompiledConceptAccess(optionalText(node, "read"), optionalText(node, "write"));
+    }
+
+    /** PACK-2 (ledger; PACK-ROADMAP.md card PK-1 steps 5-7): reads {@code origin:
+     *  {packId, packVersion, packDigest, sealed}}; null for an app's own root- or context-declared
+     *  member, same "absent key -> null" convention {@link #toConceptAccess} just above uses. */
+    private static CompiledOrigin toOrigin(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return new CompiledOrigin(
+                optionalText(node, "packId"),
+                optionalText(node, "packVersion"),
+                optionalText(node, "packDigest"),
+                booleanValue(node, "sealed")
+        );
     }
 
     private static CompiledField toField(JsonNode node) {
@@ -744,7 +761,7 @@ public final class CompiledModelCanonicalJsonReader {
                     toExecutionPolicy(operationNode.get("executionPolicy"))
             ));
         }
-        return new CompiledCapability(text(node, "name"), optionalText(node, "type"), operations);
+        return new CompiledCapability(text(node, "name"), optionalText(node, "type"), operations, toOrigin(node.get("origin")));
     }
 
     private static CompiledEvent toEvent(JsonNode node) {
@@ -752,7 +769,8 @@ public final class CompiledModelCanonicalJsonReader {
         for (JsonNode payloadNode : array(node, "payload")) {
             payload.add(new CompiledEventField(text(payloadNode, "name"), text(payloadNode, "type")));
         }
-        return new CompiledEvent(text(node, "name"), optionalText(node, "conceptName"), payload, optionalText(node, "triggerMode"));
+        return new CompiledEvent(text(node, "name"), optionalText(node, "conceptName"), payload,
+                optionalText(node, "triggerMode"), toOrigin(node.get("origin")));
     }
 
     private static CompiledFlow toFlow(JsonNode node) {
@@ -769,7 +787,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toSchema(node.get("outputSchema")),
                 toActionMetadata(node.get("action")),
                 booleanValue(node, "startEndpoint"),
-                toFlowSchedule(node.get("schedule"))
+                toFlowSchedule(node.get("schedule")),
+                toOrigin(node.get("origin"))
         );
     }
 
@@ -943,7 +962,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toObjectMap(node.get("metadata")),
                 toGroupByFields(node),
                 toAggregateFunctions(node),
-                optionalText(node, "having")
+                optionalText(node, "having"),
+                toOrigin(node.get("origin"))
         );
     }
 
@@ -1096,7 +1116,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toPanelActions(node.get("actions")),
                 toObjectMap(node.get("explainability")),
                 toObjectMap(node.get("metadata")),
-                optionalText(node, "guidePage")
+                optionalText(node, "guidePage"),
+                toOrigin(node.get("origin"))
         );
     }
 

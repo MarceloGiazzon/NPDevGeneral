@@ -16,7 +16,8 @@ public record CompiledQuery(
         Map<String, Object> metadata,
         List<CompiledGroupByField> groupBy,
         List<CompiledAggregateFunction> aggregates,
-        String having
+        String having,
+        CompiledOrigin origin
 ) {
     public CompiledQuery {
         orderBy = orderBy == null ? List.of() : List.copyOf(orderBy);
@@ -25,6 +26,26 @@ public record CompiledQuery(
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
         groupBy = groupBy == null ? List.of() : List.copyOf(groupBy);
         aggregates = aggregates == null ? List.of() : List.copyOf(aggregates);
+    }
+
+    /** Pre-PACK-2 convenience constructor -- origin defaults to null (not pack-contributed). */
+    public CompiledQuery(
+            String name,
+            String concept,
+            String where,
+            List<String> orderBy,
+            Integer limit,
+            List<CompiledProcedureParameter> parameters,
+            List<String> permissionRequirements,
+            String tracePolicy,
+            String auditPolicy,
+            Map<String, Object> metadata,
+            List<CompiledGroupByField> groupBy,
+            List<CompiledAggregateFunction> aggregates,
+            String having
+    ) {
+        this(name, concept, where, orderBy, limit, parameters, permissionRequirements, tracePolicy, auditPolicy,
+                metadata, groupBy, aggregates, having, null);
     }
 
     /** Move 10 B1: a query with any groupBy/aggregates returns rows of aggregate output, not

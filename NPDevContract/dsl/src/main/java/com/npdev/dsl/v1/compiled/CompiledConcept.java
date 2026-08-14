@@ -9,6 +9,7 @@ public final class CompiledConcept extends CompiledEntity {
     private final CompiledConceptAccess access;
     private final String renamedFrom;
     private final String satelliteOf;
+    private final CompiledOrigin origin;
 
     public CompiledConcept(String name, String className, String tableName, List<CompiledField> fields) {
         this(name, className, tableName, fields, List.of(), List.of(), null, null, null, null, List.of());
@@ -158,12 +159,35 @@ public final class CompiledConcept extends CompiledEntity {
             String renamedFrom,
             String satelliteOf
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel, module, indexes, access, renamedFrom, satelliteOf, null);
+    }
+
+    /** PACK-2: attaches pack-attribution provenance (see getOrigin) -- null for an app's own root-
+     *  or context-declared concept, non-null for a pack-contributed one. */
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel,
+            String module,
+            List<CompiledIndex> indexes,
+            CompiledConceptAccess access,
+            String renamedFrom,
+            String satelliteOf,
+            CompiledOrigin origin
+    ) {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
         this.access = access;
         this.renamedFrom = renamedFrom;
         this.satelliteOf = satelliteOf;
+        this.origin = origin;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -189,6 +213,11 @@ public final class CompiledConcept extends CompiledEntity {
     /** PK-6: the pack-qualified base concept this concept is a satellite extension of, or null if it declares none. */
     public String getSatelliteOf() {
         return satelliteOf;
+    }
+
+    /** PACK-2: pack-attribution provenance, or null if this concept is not pack-contributed. */
+    public CompiledOrigin getOrigin() {
+        return origin;
     }
 
     public static CompiledConcept fromLegacyEntity(CompiledEntity legacy) {
