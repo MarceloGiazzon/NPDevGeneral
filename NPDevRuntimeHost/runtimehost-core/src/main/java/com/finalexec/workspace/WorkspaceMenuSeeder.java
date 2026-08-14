@@ -2,6 +2,8 @@ package com.finalexec.workspace;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -25,12 +27,18 @@ import java.util.UUID;
 
 /**
  * NPDev's first genuinely automatic (no human/curl trigger) data-seeding mechanism: on every
- * boot, if {@code workspace_menus} is empty for the configured tenant, inserts the default rows
- * BusinessUiEmitter derived at generation time from the app's own persisted concepts/declared
- * Panels, plus any hand-authored companion pages declared in definition/pages.json -- so both the
- * generic business UI and any app's own shell.js get a working nav with zero manual setup.
- * Self-disabling exactly like BootstrapAdminController: once any row exists, this never touches
- * the table again, so an app author's edits via generic CRUD are permanent.
+ * boot, if the {@code workspace::Menu} concept's table is empty for the configured tenant, inserts
+ * the default rows BusinessUiEmitter derived at generation time from the app's own persisted
+ * concepts/declared Panels, plus any hand-authored companion pages declared in
+ * definition/pages.json -- so both the generic business UI and any app's own shell.js get a
+ * working nav with zero manual setup. Self-disabling exactly like BootstrapAdminController: once
+ * any row exists, this never touches the table again, so an app author's edits via generic CRUD
+ * are permanent.
+ *
+ * <p>The physical table name is resolved from the compiled model at construction time
+ * ({@link #resolveMenuTable}) rather than hardcoded, because it is pack-versioned
+ * (e.g. {@code workspace_v1_menus} today) and the generator, not this class, owns that naming
+ * scheme -- see REG-160.</p>
  *
  * <p>Reads from TWO separate classpath resources, deliberately never merged at build time:
  * {@code npdev-seed/workspace-menu-seed.json} (required -- written by BusinessUiEmitter into the
@@ -55,17 +63,20 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
     private static final String FINGERPRINT_TARGET_PREFIX = "npdev:seed-fingerprint:";
     private static final String MODE_INSERT_IF_EMPTY = "insert-if-empty";
     private static final String MODE_UPSERT_IF_FINGERPRINT_CHANGED = "upsert-if-fingerprint-changed";
+    private static final String MENU_CONCEPT_NAME = "workspace::Menu";
 
     private final DataSource dataSource;
     private final ResourceLoader resourceLoader;
     private final ObjectMapper objectMapper;
     private final String tenantId;
     private final String seedMode;
+    private final String menuTable;
 
     public WorkspaceMenuSeeder(
             DataSource dataSource,
             ResourceLoader resourceLoader,
             ObjectMapper objectMapper,
+            CompiledModel compiledModel,
             @Value("${npdev.workspace.menu-seed.tenant-id:dev}") String tenantId,
             @Value("${npdev.workspace.menu-seed.mode:insert-if-empty}") String seedMode
     ) {
@@ -76,6 +87,27 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
         this.seedMode = MODE_UPSERT_IF_FINGERPRINT_CHANGED.equals(seedMode == null ? null : seedMode.trim())
                 ? MODE_UPSERT_IF_FINGERPRINT_CHANGED
                 : MODE_INSERT_IF_EMPTY;
+        this.menuTable = resolveMenuTable(compiledModel);
+    }
+
+    // REG-160: resolves the physical, pack-versioned table name the generator actually created
+    // for the workspace pack's Menu concept (e.g. "workspace_v1_menus" today), rather than
+    // hardcoding that literal a second time here. The generator computes it from the composing
+    // pack's own declared major version (see SqlIdentifierSupport.physicalTableNameSource /
+    // ModelCompiler in NPDevContract/dsl) -- a future pack version bump changes the table name on
+    // the generator side, and this resolution follows it automatically instead of silently
+    // drifting the way the previous hardcoded "workspace_menus" literal did. This bean is only
+    // ever active (see the class's @ConditionalOnResource) for an app that composed the workspace
+    // pack's Menu concept, so an absent concept here indicates a genuine platform inconsistency,
+    // not a normal runtime condition -- hence the hard failure rather than a silent fallback.
+    private static String resolveMenuTable(CompiledModel compiledModel) {
+        return compiledModel.findConcept(MENU_CONCEPT_NAME)
+                .map(CompiledConcept::getTableName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElseThrow(() -> new IllegalStateException(
+                        "WorkspaceMenuSeeder: compiled model has no usable table name for concept '"
+                                + MENU_CONCEPT_NAME + "' -- this seeder is only active when the workspace "
+                                + "pack's Menu concept is composed, so this should be unreachable"));
     }
 
     @Override
@@ -127,13 +159,13 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
                 insertFingerprintRow(connection, fingerprint);
             }
             System.out.println("WorkspaceMenuSeeder: seeded " + rows.size()
-                    + " workspace_menus row(s) for tenant '" + tenantId + "' (mode: " + seedMode + ").");
+                    + " row(s) into " + menuTable + " for tenant '" + tenantId + "' (mode: " + seedMode + ").");
         }
     }
 
     private int countExistingMenus(Connection connection) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT COUNT(*) FROM workspace_menus WHERE tenant_id = ?")) {
+                "SELECT COUNT(*) FROM " + menuTable + " WHERE tenant_id = ?")) {
             ps.setString(1, tenantId);
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
@@ -156,7 +188,7 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
 
     private String findExistingFingerprint(Connection connection) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT target FROM workspace_menus WHERE tenant_id = ? AND kind = 'INTERNAL' AND target LIKE ?")) {
+                "SELECT target FROM " + menuTable + " WHERE tenant_id = ? AND kind = 'INTERNAL' AND target LIKE ?")) {
             ps.setString(1, tenantId);
             ps.setString(2, FINGERPRINT_TARGET_PREFIX + "%");
             try (ResultSet rs = ps.executeQuery()) {
@@ -170,7 +202,7 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
 
     private void deleteExistingMenus(Connection connection) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
-                "DELETE FROM workspace_menus WHERE tenant_id = ?")) {
+                "DELETE FROM " + menuTable + " WHERE tenant_id = ?")) {
             ps.setString(1, tenantId);
             ps.executeUpdate();
         }
@@ -181,7 +213,7 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
     // skip any row that doesn't resolve to a real link, so this is inert to every existing reader.
     private void insertFingerprintRow(Connection connection, String fingerprint) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
-                "INSERT INTO workspace_menus (id, label, target, kind, parent_menu_id, required_role, ordinal, visible, tenant_id) "
+                "INSERT INTO " + menuTable + " (id, label, target, kind, parent_menu_id, required_role, ordinal, visible, tenant_id) "
                         + "VALUES (?, ?, ?, 'INTERNAL', NULL, NULL, ?, FALSE, ?)")) {
             ps.setObject(1, UUID.randomUUID());
             ps.setString(2, "");
@@ -204,7 +236,7 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
 
     private void insertMenuRow(Connection connection, JsonNode row, UUID id, UUID parentId) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
-                "INSERT INTO workspace_menus (id, label, target, kind, parent_menu_id, required_role, ordinal, visible, tenant_id) "
+                "INSERT INTO " + menuTable + " (id, label, target, kind, parent_menu_id, required_role, ordinal, visible, tenant_id) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             ps.setObject(1, id);
             ps.setString(2, row.path("label").asText(""));
