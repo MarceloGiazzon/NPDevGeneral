@@ -152,12 +152,16 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   adding a controller class or a `NPDevEditor/ui-react/src` component) and
   `scripts/proofs/run-item20-postgres-proof.ps1` (a one-off real-Postgres repro for a specific closed
   item; kept for re-running against a suspected regression, not part of any regular cadence).
-  `scripts/proofs/run-scale-proof.ps1` (R9 reduced scale ladder — synthesizes a deterministic model via
-  `synthesize_scale_model.py` and times generate/build/boot/first-request outside the repo, recording
-  history to `scripts/policy/scale-proof-baseline.json`) and
   `scripts/proofs/classify_runtimehost_sources.py` (BT-1a — standalone app-coupled-vs-app-independent
   split of `NPDevRuntimeHost/src/main/java`, mirroring the inline Groovy heuristic in
-  `build.gradle.template` as a re-runnable artifact) are the same kind of proof, run by hand.
+  `build.gradle.template` as a re-runnable artifact) is the same kind of proof, run by hand.
+- **R9 nightly model-scale ladder (ledger `SCALE-1`):** `scripts/proofs/run-scale-proof.ps1` synthesizes
+  a deterministic model (`synthesize_scale_model.py`) at 26/50/100/260/520 concepts and drives
+  synthesize→generate→ddl→build→boot→firstRequest→latency→memory (all 8 measurements written to
+  `scripts/policy/scale-proof-baseline.json`, schema `schemas/ai/scale-proof-report.schema.json`),
+  wired to run nightly via `.github/workflows/nightly-scale-ladder.yml` (`schedule:` + `workflow_dispatch`)
+  — H2 only, 520 is informational per the card (CI runner physics, not an NPDev limit, is expected to
+  bound it first).
 - **After changing kernel/adapter Java, restage jars before regenerating an app:**
   `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars`. **The defaults now agree**
   (both resolve to `D:\WorkSpace\NPDev\Build\runtimehost-libs` via `Get-NPDevRuntimeHostLibsDir`,
