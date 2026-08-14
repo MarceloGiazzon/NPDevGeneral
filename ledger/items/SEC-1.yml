@@ -14,6 +14,9 @@ surface: runtimehost/auth
 files:
   - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-api-key-auth-filter.mustache
   - NPDevRuntimeHost/src/main/resources/application-dev.yml
+  - NPDevRuntimeHost/src/main/resources/application.properties
+  - NPDevRuntimeHost/src/main/resources/application-prod.properties
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
 detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R7 (Wave 3, milestone M2) for the 4-stage,
   16-step, 4-session spec: fail closed (auth-filter fallback), profiles (real application-prod,
@@ -104,13 +107,148 @@ detail: |
   authenticated; `_ops\Smoke-Test.ps1` run standalone against the running app resolved the key
   itself and reported PASS. Full DSL and generator regression suites green, zero regressions.
 
-  **Explicitly deferred, filed separately as REG-152**: `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1`
-  are a second, fully independent launch-script generator (own `Test-App.ps1`/`New-AppConsole.ps1`,
-  never wired to `--npdev.auth.api-keys` at all -- their `'dev-key'` default only ever worked by
-  coincidence). Once an app is launched through that pipeline, its own smoke test and console will
-  send a now-stale key. Not fixed here per this session's "unrelated bugs filed separately"
-  discipline; needs its own scoped step.
+  **Explicitly deferred, filed separately as REG-152 (severity corrected to HIGH 2026-08-13, see
+  below)**: `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1` are a second, fully independent launch-script
+  generator (own `Test-App.ps1`/`New-AppConsole.ps1`), never wired to `Ensure-NpdevApiKey` at all.
+  **This is not a stale-key/false-negative issue -- it means an app launched via that pipeline
+  still boots with a live, working, published ADMIN credential (`dev-key`), the exact vulnerability
+  this card exists to close.** Not fixed here per this session's "unrelated bugs filed separately"
+  discipline; needs its own scoped step. Left uncorrected in this paragraph until Stage B's own
+  review caught the understatement -- see REG-152's own corrected text and the note at the end of
+  this item.
 
-  Stage B (profiles: stop `dev` being the implicit default, real `application-prod.properties`,
-  `_ops\Run-FinalApp.ps1` profile-explicit) remains OPEN. This item stays OPEN until Stage B closes
-  the full card.
+  **Stage B (profiles) DONE 2026-08-13**, branch `step12-r7-stage-b`, completing MASTER-ROADMAP.md
+  Step 12's A+B+C scope (Stage D -- the migration surface: 22 browser routines, 13 sample
+  `config.json` files, `GeneratorApiVersioningContractTest`'s literals, etc. -- is its own later
+  step per the roadmap's own "Stage D is its own later step, gated on A+B+C" framing, not part of
+  this item's scope).
+
+  Three changes, traced against real config-resolution behavior before touching anything (the same
+  discipline Stage A/C used): (1) `application.properties`'s `spring.profiles.default=dev` is
+  removed -- an un-profiled boot now activates Spring's OWN reserved `default` profile
+  (`application-default.properties`: governed execution mode, no seeded auth keys) instead of
+  silently becoming `dev`. Confirmed by direct code/config reading first: every supported launcher
+  already passed an explicit profile before this change (`Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1`:
+  `--spring.profiles.active=dev,step0,trial`; the two packaged-app proof tests
+  `HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest`/`HardenObjstoreFileUpload...`:
+  same; `FinalAppAssembler`'s generated README: `--spring.profiles.active=dev`; every
+  `@SpringBootTest` in `NPDevRuntimeHost/src/test`: explicit `@ActiveProfiles`) -- `_ops/
+  Run-FinalApp.ps1` (`OperationalRunbookEmitter.runFinalAppScript()`) was believed to be the ONLY
+  caller relying on the implicit default. **That belief was wrong, caught by this session's own
+  adversarial review of this PR before merge, not by the grep it cites**: a grep for the flag's
+  *presence* cannot find call sites where it is *absent*.
+  `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.java`'s packaged-app boot
+  (`startPackagedApp()`) passed no `--spring.profiles.active` at all, making it a second, real
+  caller of the implicit default -- and it is exactly why CI's `:generator:test` genuinely failed
+  on this branch's first commit (`fa90e89c`, run `31754013976`: "322 tests completed, 2 failed"),
+  not merely the repo's pre-existing `HardenGcDeleteReplaceCascade...` flake. Root cause confirmed,
+  not guessed: `application-dev.yml` sets `spring.main.allow-bean-definition-overriding: true`,
+  which no other profile file (including `application-default.properties`, where this test's boot
+  now landed) sets -- the packaged app's port never opened within the test's 6-minute timeout.
+  Fixed by giving this test the identical `--spring.profiles.active=dev,step0,trial` its sibling
+  `Harden*PackagedGeneratedAppRuntimeProofTest` classes already pass, re-verified both in isolation
+  (`-PincludePackagedProofs`) and as part of the full suite -- see the corrected Verified LIVE block
+  below. (2) `NPDevRuntimeHost/src/main/resources/application-prod.properties` now exists --
+  `DockerDeploymentEmitter` has named `SPRING_PROFILES_ACTIVE=prod`(`,postgres`) in every generated
+  `docker-compose.yml`/`.env.example` since LNCH-7 with no backing file. Deliberately minimal:
+  no storage mode (that stays the `postgres` Spring profile + env vars' job) and no seeded admin
+  key -- `npdev.auth.api-keys` is left unset so `StartupValidator.validateAuth()` fails closed
+  until one is supplied (`NPDEV_AUTH_APIKEYS`/`NPDEV_AUTH_API_KEYS` env var or Stage C's
+  `secrets/api-key.env`), exactly matching what `docker-compose.yml` already enforces
+  (`${NPDEV_AUTH_APIKEYS:?...}`). (3) `_ops/Run-FinalApp.ps1` gained a `-Profile` parameter
+  (default `'dev'`, so today's "just run this generated app locally" workflow is unchanged byte-
+  for-byte) that is now passed through as `--spring.profiles.active=$Profile` -- the java
+  invocation used to pass no profile flag at all.
+
+  **A real, live-caught bug in this session's own first draft, not shipped**: an initial
+  `application-prod.properties` also set `npdev.runtime.deployment-profile=prod` (by analogy with
+  `application-dev.properties`/`application-warning.properties`, which both set it). Live boot
+  crashed instead: `RuntimePluginProfileResolver` resolves that property either by convention
+  (classpath `npdev/bindings/<name>.bindings.json` + `npdev/plugins/<name>.plugin-manifest.json`,
+  how `dev` resolves -- both files are generated per-app) or against a small HARDCODED fallback map
+  containing only `{default, warning}` -- `prod` matches neither, so boot failed with
+  `IllegalStateException: Unknown deployment plugin profile 'prod'`. Fixed by leaving
+  `npdev.runtime.deployment-profile` unset (Java-level default `"default"`, which resolves via the
+  hardcoded fallback map to the same bindings/plugin-manifest pair `application-default.properties`
+  already uses) -- inventing a fourth deployment-plugin-profile variant would be unrelated
+  plugin-package policy, out of scope for this card. `npdev.runtime.execution-environment=prod` is
+  kept: it is a separate, pre-existing, string-only label with no fallback-map coupling --
+  `CapabilityAdapterResolver#activeEnvironment`'s own `preferredOrder` array already lists
+  `{dev, test, stage, prod, default}`.
+
+  Verified LIVE end to end, not assumed, using a freshly generated `npdev-canary` app (this
+  session's own platform worktree, H2Local engine): (1) normal dev boot via
+  `_ops\Run-FinalApp.ps1` (no `-Profile` argument) -- `Active profiles: [dev]` logged, Stage C's
+  `Ensure-NpdevApiKey` banner printed the generated key once, `dev-key`/`api-dev` both 401, the
+  generated key 200, `_ops\Smoke-Test.ps1` run standalone reported PASS -- proving the everyday
+  local workflow is unchanged. (2) `_ops\Run-FinalApp.ps1 -Profile prod` -- `Active profiles:
+  [prod]` logged, health UP, `dev-key`/`api-dev`/the Docker `.env.example` placeholder `change-me`
+  all 401, the SAME `secrets/api-key.env` key 200 -- proving Stage C's key mechanism is correctly
+  reused for a local `prod` boot rather than inventing a second one. (3) `prod` profile launched
+  directly via `java -jar ... --spring.profiles.active=prod` with the `NPDEV_AUTH_API_KEYS`/
+  `NPDEV_AUTH_APIKEYS` env vars explicitly cleared (bypassing `Ensure-NpdevApiKey` entirely) --
+  boot refused with `IllegalStateException: npdev.auth.api-keys must define at least one mapping
+  when auth is enabled`, proving `prod` fails closed rather than falling back to anything
+  insecure. (4) `java -jar ...` with NO `--spring.profiles.active` flag at all -- logged `No active
+  profile set, falling back to 1 default profile: "default"` (proving `dev` is no longer the
+  implicit default, the core Stage B claim) and then failed closed the same way as (3), since
+  `application-default.properties` also seeds no key.
+
+  **The "regression suites green" claim above (this branch's first commit, `fa90e89c`) was false,
+  caught by real CI, not by this session's own local run.** `gh pr checks 65`'s "PR gate
+  (DSL/kernel/generator/RuntimeHost smoke, Linux)" genuinely FAILED on that commit (run
+  `31754013976`): `:generator:test` reported "322 tests completed, 2 failed" -- one was the
+  standing, pre-existing `HardenGcDeleteReplaceCascade...` flake (present on essentially every
+  recent PR-gate run regardless of content, confirmed across the already-merged Stage A/C runs
+  too), but the other was `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest`, a genuine
+  regression from this same commit's own change (see the correction above: a second, missed caller
+  of the implicit default profile). Fixed in a follow-up commit on this same branch, re-verified
+  directly rather than assumed: the fixed test passes in isolation
+  (`./gradlew :generator:test --tests TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest
+  -PincludePackagedProofs`) and the full suite now shows exactly one failure -- the standing
+  pre-existing flake, confirmed by name and stack trace, not a new one -- with generator at 322
+  tests, 1 failed, 1 skipped (`HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest`'s own
+  environment-conditional skip, pre-existing and unrelated to this branch). DSL suite independently
+  re-run and green (unaffected -- this branch touches no DSL files). This correction, and the
+  ledger corrections above, were produced by this session's own adversarial multi-agent review of
+  this PR before merge -- 4 independent reviewers plus adversarial verification of every
+  high-severity finding, all against the real PR diff and real CI output, not the PR's own
+  self-report.
+
+  **Two unrelated findings from this session's own live testing, filed separately rather than
+  fixed here or ignored**: `REG-154` (docs/CONFIGURATION.md's `NPDEV_AUTH_APIKEYS` "gotcha" claims
+  the underscored `NPDEV_AUTH_API_KEYS` form -- Stage C's own actual spelling -- silently no-ops;
+  live testing on this session's machine shows BOTH spellings authenticate correctly, so the doc's
+  blanket claim is false at least on Windows) and `REG-155` (`Get-NPDevBuildRoot` resolves to a
+  wrong-but-plausible nested path, `<repo>\.claude\worktrees\Build\runtimehost-libs`, when the
+  workspace root is a git worktree living inside the canonical checkout -- exactly this session's
+  own operating mode -- worked around per-command with `$env:NPDEV_RUNTIMEHOST_LIBS_DIR`, not
+  fixed, since it is a pre-existing resolver gap unrelated to R7's auth/profile scope).
+
+  **A third finding from the same pass, filed separately as `REG-156` (MEDIUM, not blocking, not a
+  Stage B regression)**: `application-default.properties` sets no `npdev.auth.mode`, so
+  `NpdevAuthConfig`'s `@ConditionalOnProperty(havingValue="apikey")`-gated filter beans never
+  register under a bare, un-profiled boot even if a real key mapping is supplied directly --
+  `StartupValidator` alone would pass (it normalizes unset mode to `"apikey"` internally), but
+  nothing would then enforce `X-Api-Key`. Dead code before Stage B (an un-profiled boot always
+  implicitly became `dev`); Stage B's own design is what makes `default` reachable. No scripted
+  launcher can reach it today -- all pass an explicit profile -- so this does not block Stage B,
+  but it is a genuine validate/enforce split-brain worth its own fix.
+
+  **This item does NOT close.** `status` stays `OPEN`. Stage B's own mechanism (dropping the
+  implicit `dev` default, shipping a real fail-closed `application-prod.properties`, making
+  `_ops/Run-FinalApp.ps1` profile-explicit) is real and independently verified -- see the Verified
+  LIVE block above, and this session's own adversarial multi-agent review of this PR before merge,
+  which confirmed the mechanism against the actual source rather than trusting prose. But the
+  card's title -- "every generated app ships two published ADMIN API keys and boots on that
+  profile" -- is **still true** for one real, documented path: `Build-NpdevApp.ps1`/
+  `Build-ClaudeApp.ps1`, CLAUDE.md's own documented PRIMARY "Generate + build + run a FinalApp"
+  recipe, never calls `Ensure-NpdevApiKey` and boots with `application-dev.yml`'s live, published,
+  working `dev-key`/`api-dev` ADMIN mapping (`REG-152`, severity corrected HIGH 2026-08-13 -- see
+  that item, and its correction note above in this item's own Stage C section). Closing SEC-1 on
+  the strength of the `_ops/Run-FinalApp.ps1`/docker-compose path alone, while the platform's own
+  documented primary build/run recipe still ships a working published admin key, would be an
+  inaccurate claim in a security-tracking ledger -- worse than leaving the card open, since it
+  would cause a still-live vulnerability to be deprioritized as already fixed. This item stays OPEN
+  until REG-152 is actually fixed. Stage D (the migration surface) remains its own, separately
+  scoped, not-yet-started future step per the roadmap, gated on this item actually closing.

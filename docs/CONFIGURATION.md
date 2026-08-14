@@ -220,7 +220,16 @@ concept and skips this check entirely.
 
 Every property above ultimately resolves through Spring's normal
 `application.properties`/`application-<profile>.yml`/environment-variable layering. Generated
-apps ship several profile files (`application-default`, `application-dev`, `application-external-
-beta`, `application-wmsoffice`-style examples, etc.) — check
+apps ship several profile files (`application-default`, `application-dev`, `application-prod`,
+`application-external-beta`, `application-wmsoffice`-style examples, etc.) — check
 `NPDevRuntimeHost/src/main/resources/application*.{properties,yml}` for what a specific profile
 already sets before assuming you need to set something yourself.
+
+**`dev` is no longer the implicit Spring default profile (R7 Stage B, SEC-1).** Booting the jar
+with no `--spring.profiles.active` flag at all now activates Spring's own reserved `default`
+profile (`application-default.properties` — governed execution mode, no seeded auth keys) rather
+than silently running as `dev`, so an un-profiled boot fails closed at `#authentication` instead of
+quietly picking up `application-dev.yml`'s known key. Every supported launcher passes an explicit
+profile: `_ops/Run-FinalApp.ps1` defaults to `-Profile dev` (pass `-Profile prod` to boot against
+`application-prod.properties` instead), and `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1` already pass
+`--spring.profiles.active=dev,step0,trial` explicitly.

@@ -1,0 +1,78 @@
+id: REG-156
+title: >-
+  application-default.properties sets no npdev.auth.mode, so a bare un-profiled boot with a
+  supplied key can pass StartupValidator while the enforcing auth filter bean is never registered
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-13
+source: >-
+  MASTER-ROADMAP.md Step 12 (R7 Stage B, SEC-1). Found by this session's own adversarial review of
+  PR #65 (Stage B) before merge: a dedicated review dimension traced the actual bean-wiring
+  conditions for the auth filter against StartupValidator's own validation logic, rather than
+  trusting the PR's four live-verified scenarios to be exhaustive. Stage B's own design (removing
+  application.properties's implicit `spring.profiles.default=dev`) is what makes this gap newly
+  reachable -- before Stage B, an un-profiled boot always implicitly became `dev`, so Spring's bare
+  `default` profile was never actually exercised in practice.
+surface: runtimehost/auth
+files:
+  - NPDevRuntimeHost/src/main/resources/application-default.properties
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevAuthConfig.java
+detail: |
+  `NpdevAuthConfig`'s enforcing filter beans (`runtimeApiKeyAuthFilter` and its
+  `FilterRegistrationBean`, order -100, url `/*`) are gated by
+  `@ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "apikey")` with no
+  `matchIfMissing` -- if the literal Spring property `npdev.auth.mode` is never set, those beans
+  are simply never created, regardless of what else is configured.
+
+  `StartupValidator.validateAuth()` receives `npdev.auth.mode` via
+  `@Value("${npdev.auth.mode:}")` (wired in `NpdevObservabilityConfig`) and internally normalizes
+  an empty/unset mode to `"apikey"` before checking only that an `npdev.auth.api-keys` mapping is
+  present and well-formed.
+
+  `application-default.properties` (Spring's own reserved profile, `NPDevRuntimeHost/src/main/
+  resources/application-default.properties`) sets `npdev.runtime.*`/`npdev.execution.mode` but no
+  `npdev.auth.*` key at all -- unlike `application-dev.yml` (`npdev.auth.mode: apikey`) and R7
+  Stage B's own new `application-prod.properties` (`npdev.auth.mode=apikey`), both of which set the
+  literal property and so do not have this gap.
+
+  The combination this produces: an operator who boots the packaged jar directly (bypassing every
+  `_ops`/docker-compose launcher) with e.g. only `NPDEV_AUTH_APIKEYS=<key>=...` set and NO
+  `--spring.profiles.active` flag at all would pass `StartupValidator` (a mapping exists, and the
+  validator's own internal default treats unset mode as `apikey`) and the app would boot and report
+  healthy -- but `RuntimeApiKeyAuthFilter`'s bean would never be registered, because the literal
+  `npdev.auth.mode` property `@ConditionalOnProperty` checks was never actually set. Nothing would
+  enforce `X-Api-Key` on `/api/*` at all. That is the inverse of "fail closed": validation passes,
+  enforcement is silently absent.
+
+  Before R7 Stage B this was dead code in practice: `application.properties`'s
+  `spring.profiles.default=dev` meant an un-profiled boot always implicitly became `dev`, so
+  Spring's bare `default` profile was never actually reachable. Stage B is what makes an
+  un-profiled boot land there for real.
+
+  **Not a Stage B regression and not currently exploitable through any scripted path**: every
+  platform launcher (`_ops\Run-FinalApp.ps1`, `docker-compose` via `DockerDeploymentEmitter`,
+  `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1`) always passes an explicit `--spring.profiles.active`
+  value alongside any key, so none of them can reach the vulnerable combination today. This is a
+  latent gap surfaced by Stage B's design, reachable only by a hand-rolled deployment that follows
+  `docs/CONFIGURATION.md`'s "set `NPDEV_AUTH_APIKEYS`" advice without separately being told to also
+  pass an explicit profile.
+
+  Likely fix: either set `npdev.auth.mode=apikey` in `application-default.properties` too (matching
+  `dev`/`prod`), or give `NpdevAuthConfig`'s `@ConditionalOnProperty` a `matchIfMissing = true` (so
+  the filter registers whenever a key mapping exists, independent of whether the mode property was
+  explicitly set) -- the latter is likely the more robust fix since it closes the validate/enforce
+  split for ANY future profile that forgets to set `npdev.auth.mode`, not just this one. Not
+  designed further here; flagging the shape of the fix for whoever picks this up, matching this
+  session's own precedent for REG-151.
+guard:
+  kind: manual
+  ref: >-
+    boot the packaged jar directly with `--npdev.auth.api-keys=<key>=dev:developer:admin` (or the
+    NPDEV_AUTH_APIKEYS/NPDEV_AUTH_API_KEYS env var equivalent) and NO --spring.profiles.active flag
+    at all, then curl any /api/* endpoint with an arbitrary, wrong X-Api-Key value
+  asserts: >-
+    a wrong X-Api-Key value on an un-profiled boot with a real key configured is rejected
+    (401 invalid_api_key), not silently allowed through because the enforcing filter bean was never
+    registered
+  provenRed: false

@@ -925,9 +925,25 @@ exit $LASTEXITCODE
      * console still shows the boot live -- a run that only writes to a file looks hung. The
      * precedent is in this same emitter: {@code h2server.stdout.log} via
      * {@code -RedirectStandardOutput}.
+     *
+     * <p>R7 Stage B (profiles, SEC-1): the {@code java -jar} invocation used to pass no
+     * {@code --spring.profiles.active} flag at all, relying entirely on
+     * {@code application.properties}'s {@code spring.profiles.default=dev} to pick a profile
+     * implicitly. That default is now removed (see the comment on that property) so this script
+     * must say what it means instead of inheriting it by accident. {@code -Profile} defaults to
+     * {@code 'dev'} -- the exact profile the old implicit default resolved to -- so the everyday
+     * "just run this generated app locally" flow is byte-for-byte unchanged; passing
+     * {@code -Profile prod} boots the same jar against {@code application-prod.properties} instead,
+     * for locally exercising the profile the Docker deployment path
+     * ({@code DockerDeploymentEmitter}) already activates via {@code SPRING_PROFILES_ACTIVE}.
+     * {@code Ensure-NpdevApiKey} runs unconditionally either way, exactly as it does today -- prod
+     * has no seeded key of its own (see {@code application-prod.properties}), so it needs the same
+     * generated {@code secrets/api-key.env} key dev already relies on, or StartupValidator refuses
+     * to boot.
      */
     private static String runFinalAppScript(int serverPort) {
         return """
+param([string]$Profile = 'dev')
 $ErrorActionPreference = 'Stop'
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
 """ + DATA_ROOT_HELPER + """
@@ -948,7 +964,8 @@ Ensure-NpdevApiKey -AppRoot $appRoot
 # 2>&1 merges the JVM's stderr into the same stream, because a stack trace on stderr is exactly what
 # the person reading this file is looking for. Tee keeps the console live -- a run that only writes
 # to a file looks hung during the ~24s boot.
-java -jar (Join-Path $appRoot 'build\\libs\\FinalExec-0.1.0.jar') --server.port=%d 2>&1 |
+Write-Host "Active Spring profile: $Profile"
+java -jar (Join-Path $appRoot 'build\\libs\\FinalExec-0.1.0.jar') --server.port=%d "--spring.profiles.active=$Profile" 2>&1 |
   Tee-Object -FilePath $logFile
 exit $LASTEXITCODE
 """.formatted(serverPort);
@@ -1161,6 +1178,17 @@ pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Build-FinalApp.ps1
 ```powershell
 pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Run-FinalApp.ps1
 ```
+
+Boots with Spring profile `dev` by default (`application-dev.yml`). Pass `-Profile prod` to boot
+against `application-prod.properties` instead -- the same profile the Docker deployment path
+(`docker-compose.yml`) activates -- for exercising it locally:
+
+```powershell
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Run-FinalApp.ps1 -Profile prod
+```
+
+`prod` seeds no admin API key of its own; `Run-FinalApp.ps1` provisions/reuses the same
+`secrets/api-key.env` key either way (see `X-Api-Key` in the console output on first run).
 
 4. Smoke-test FinalApp
 

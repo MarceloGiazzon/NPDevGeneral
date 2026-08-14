@@ -138,11 +138,23 @@ the DDL by hand), declare `schemaLifecycle.ownership: "ExternallyManaged"` in `d
 NPDev then issues zero schema DDL against it and only verifies compatibility at boot. See
 `docs/SCHEMA_EVOLUTION.md#external-unmanaged-database`.
 
+## The `prod` Spring profile (R7 Stage B, SEC-1)
+
+`SPRING_PROFILES_ACTIVE` above defaults to `prod` (or `prod,postgres` for a Postgres-engine app),
+backed by `application-prod.properties` — deliberately minimal: it does not seed a storage mode (that
+comes from the `postgres` Spring profile + env vars, see `docs/CONFIGURATION.md
+#mode-and-profile-contract`) and does not seed an admin API key (unlike `application-dev.yml`'s known
+`api-dev`/`dev-key` pair, meant only for a local dev boot). Startup refuses to proceed until
+`NPDEV_AUTH_APIKEYS` is supplied — this compose file already enforces that
+(`${NPDEV_AUTH_APIKEYS:?NPDEV_AUTH_APIKEYS must be set in .env}`), so a container that boots at all
+has a real, operator-supplied key, never the dev default.
+
 ## Known gaps (deliberately out of scope for LNCH-7)
 
 - **Backup/restore**: not covered here — see LNCH-9.
 - **CI-driven image publishing**: this doc covers building/running locally; a registry-push
   pipeline is not part of LNCH-7.
 - **`docs/CONFIGURATION.md`** (referenced by `StartupValidator`'s config-error messages, e.g.
-  `#mode-and-profile-contract`, `#postgres-mode-required-variables`) does not exist yet — a
-  pre-existing gap, not introduced by this deployment work.
+  `#mode-and-profile-contract`, `#postgres-mode-required-variables`) now exists — this line
+  originally flagged it as missing; it was written after this doc and the cross-reference is
+  current as of R7 Stage B.
