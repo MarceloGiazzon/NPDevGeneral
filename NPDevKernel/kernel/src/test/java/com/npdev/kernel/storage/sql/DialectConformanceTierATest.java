@@ -370,6 +370,36 @@ class DialectConformanceTierATest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("dialects")
+    @DisplayName("L2: EVERY engine can skip already-locked rows when claiming a batch (R8c/RUN-2)")
+    void everyDialectCanSkipLockedRowsWhenClaiming(SqlDialect dialect) {
+        // R8c (RUN-2): the flow-resume claim's underlying primitive -- see
+        // StorageCapability#SKIP_LOCKED_READS for the per-engine evidence this asserts against.
+        dialect.require(StorageCapability.SKIP_LOCKED_READS);
+        String sql = dialect.selectForUpdateSkipLocked(
+                "execution_id", "npdev_flow_instance", "tenant_id = ?", "updated_at DESC", 5);
+        String upper = sql.toUpperCase(java.util.Locale.ROOT);
+        assertTrue(sql.contains("execution_id") && sql.contains("npdev_flow_instance")
+                && sql.contains("tenant_id = ?") && sql.contains("updated_at DESC"), sql);
+        if ("sqlserver".equals(dialect.name())) {
+            // No SKIP LOCKED keyword on this engine -- READPAST is the documented equivalent, and
+            // TOP (n) is a PREFIX, not a suffix, exactly like selectForUpdate's UPDLOCK hint above.
+            assertTrue(upper.contains("TOP (5)"), sql);
+            assertTrue(upper.contains("READPAST"), sql);
+            assertFalse(upper.contains("SKIP LOCKED"),
+                    "T-SQL has no SKIP LOCKED keyword: " + sql);
+            assertTrue(upper.indexOf("READPAST") < upper.indexOf("WHERE"),
+                    "the hint must precede the WHERE: " + sql);
+        } else {
+            assertTrue(upper.contains("FOR UPDATE SKIP LOCKED"), sql);
+            assertTrue(upper.contains("LIMIT 5"), sql);
+        }
+        IllegalArgumentException refusal = assertThrows(IllegalArgumentException.class,
+                () -> dialect.selectForUpdateSkipLocked("execution_id", "t", "1 = 1", "execution_id", 0));
+        assertTrue(refusal.getMessage().contains(dialect.name()), refusal.getMessage());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
     @DisplayName("R1: EVERY engine can rename a column, and one of them does not use ALTER TABLE")
     void everyDialectCanRenameAColumn(SqlDialect dialect) {
         // STOR-10 finding 5. ColumnRenamePass chose between TWO spellings with
@@ -572,6 +602,19 @@ class DialectConformanceTierATest {
         assertTrue(SqlServerDialect.INSTANCE.supports(StorageCapability.DDL_IN_TRANSACTION));
         assertTrue(!H2Dialect.INSTANCE.supports(StorageCapability.DDL_IN_TRANSACTION));
         assertTrue(!MySqlDialect.INSTANCE.supports(StorageCapability.DDL_IN_TRANSACTION));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("T3: SKIP_LOCKED_READS is declared true on every engine, unlike DDL_IN_TRANSACTION -- "
+            + "and it is not a guess (R8c/RUN-2)")
+    void skipLockedIsDeclaredTrueOnEveryEngine(SqlDialect dialect) {
+        // Unlike T2 above, this capability does NOT split the matrix -- every engine this platform
+        // supports answers yes, for a real per-engine reason documented on the enum constant itself
+        // (Postgres 9.5+, MySQL 8.0 GA, H2 2.2.220+, SQL Server's READPAST hint). Declared as a
+        // capability anyway, following DDL_IN_TRANSACTION's pattern, so a future fifth engine that
+        // lacks it fails loudly via require() rather than silently losing the double-resume guard.
+        assertTrue(dialect.supports(StorageCapability.SKIP_LOCKED_READS), dialect.name());
     }
 
     @ParameterizedTest(name = "{0}")

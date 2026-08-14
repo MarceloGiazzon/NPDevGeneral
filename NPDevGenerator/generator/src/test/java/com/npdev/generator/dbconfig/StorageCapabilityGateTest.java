@@ -65,6 +65,10 @@ class StorageCapabilityGateTest {
             @Override public String selectForUpdate(String columns, String table, String whereClause) {
                 throw new UnsupportedOperationException();
             }
+            @Override public String selectForUpdateSkipLocked(
+                    String columns, String table, String whereClause, String orderBy, int maxRows) {
+                throw new UnsupportedOperationException();
+            }
             @Override public String renameColumn(String table, String from, String to) {
                 throw new UnsupportedOperationException();
             }

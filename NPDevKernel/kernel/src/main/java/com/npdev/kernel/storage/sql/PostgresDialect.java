@@ -50,7 +50,9 @@ public final class PostgresDialect implements SqlDialect {
             StorageCapability.SERVER_SIDE_JOIN,
             StorageCapability.AGGREGATION_PIPELINE,
             StorageCapability.OPTIMISTIC_LOCKING,
-            StorageCapability.SNAPSHOT_RESTORE);
+            StorageCapability.SNAPSHOT_RESTORE,
+            // R8c: native "FOR UPDATE SKIP LOCKED" since Postgres 9.5 (2016).
+            StorageCapability.SKIP_LOCKED_READS);
 
     private final UpsertStrategy upsert = new PostgresUpsertStrategy();
     private final ReturningStrategy returning = new PostgresReturningStrategy();
@@ -119,6 +121,16 @@ public final class PostgresDialect implements SqlDialect {
     @Override
     public String selectForUpdate(String columns, String table, String whereClause) {
         return "SELECT " + columns + " FROM " + table + " WHERE " + whereClause + " FOR UPDATE";
+    }
+
+    @Override
+    public String selectForUpdateSkipLocked(
+            String columns, String table, String whereClause, String orderBy, int maxRows) {
+        if (maxRows <= 0) {
+            throw new IllegalArgumentException("engine 'postgres': maxRows must be positive, got " + maxRows);
+        }
+        return "SELECT " + columns + " FROM " + table + " WHERE " + whereClause
+                + " ORDER BY " + orderBy + " LIMIT " + maxRows + " FOR UPDATE SKIP LOCKED";
     }
 
     @Override

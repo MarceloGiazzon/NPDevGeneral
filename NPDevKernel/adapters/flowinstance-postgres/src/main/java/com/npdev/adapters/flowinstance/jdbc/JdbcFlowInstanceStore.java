@@ -9,6 +9,7 @@ import com.npdev.kernel.ports.ExecutionSummaryStore;
 import com.npdev.kernel.ports.FlowInstanceStore;
 import com.npdev.kernel.storage.sql.SqlDialect;
 import com.npdev.kernel.storage.sql.SqlDialects;
+import com.npdev.kernel.storage.sql.StorageCapability;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -26,6 +27,14 @@ import java.util.Optional;
 public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummaryStore {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
+
+    /**
+     * R8c (RUN-2): fallback lease when a caller passes a non-positive {@code leaseMillis} to
+     * {@link #claimWaitingEligibleToResume} -- 15x {@code ResumeSchedulerRunner}'s default 2s poll
+     * interval, long enough that a normal resume attempt finishes well within it, short enough that
+     * a claimant that crashes mid-resume does not block that row for long.
+     */
+    private static final long DEFAULT_CLAIM_LEASE_MILLIS = 30_000L;
 
     private final DataSource dataSource;
     private final ObjectMapper objectMapper;
@@ -181,6 +190,100 @@ public class JdbcFlowInstanceStore implements FlowInstanceStore, ExecutionSummar
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed querying resume-eligible waiting instances", exception);
+        }
+    }
+
+    /**
+     * R8c (RUN-2): the real claim, and the one override of {@link
+     * FlowInstanceStore#claimWaitingEligibleToResume}'s no-op default in this whole codebase. One
+     * transaction does both halves atomically -- {@code SELECT ... FOR UPDATE SKIP LOCKED} to pick
+     * the batch (so a competing claimant on another connection never blocks on, and never re-picks,
+     * a row this transaction is about to claim), then an {@code UPDATE} stamping {@code claimed_by}/
+     * {@code claimed_until} on exactly those rows, then commit. A row already claimed by someone
+     * else with an unexpired lease fails the {@code claimed_until} predicate and is invisible to
+     * this query entirely -- SKIP LOCKED only matters for the narrower race where two claimants
+     * reach the WHERE-eligible set at the same instant, before either has committed its UPDATE.
+     */
+    @Override
+    public List<FlowInstance> claimWaitingEligibleToResume(
+            String tenantId, long nowEpochMs, long leaseMillis, String claimantId, int limit) {
+        String effectiveTenantId = normalizeTenant(tenantId);
+        if (effectiveTenantId == null) {
+            return List.of();
+        }
+        int effectiveLimit = normalizeLimit(limit);
+        long effectiveLeaseMillis = leaseMillis > 0 ? leaseMillis : DEFAULT_CLAIM_LEASE_MILLIS;
+        // X0 rule: ask before building skip-locked SQL, rather than assume every future engine
+        // answers yes just because all four supported today do (StorageCapability#SKIP_LOCKED_READS).
+        dialect.require(StorageCapability.SKIP_LOCKED_READS);
+        String sql = dialect.selectForUpdateSkipLocked(
+                "execution_id, flow_name, correlation_id, status, current_step_index, "
+                        + "waiting_for_event_name, state_json, tenant_id, actor_id, created_at, updated_at, "
+                        + "resume_attempt_count, last_resume_at, last_resume_error_code, "
+                        + "next_eligible_resume_at, last_progress_at, last_error_kind, last_error_code, "
+                        + "last_error_message, failed_at",
+                "npdev_flow_instance",
+                "tenant_id = ? AND status = 'WAITING_EVENT' "
+                        + "AND (next_eligible_resume_at IS NULL OR next_eligible_resume_at <= ?) "
+                        + "AND (claimed_until IS NULL OR claimed_until < ?)",
+                dialect.nullsFirstAscending("next_eligible_resume_at") + ", updated_at DESC, execution_id ASC",
+                effectiveLimit);
+        Timestamp now = new Timestamp(nowEpochMs);
+        Timestamp leaseExpiry = new Timestamp(nowEpochMs + effectiveLeaseMillis);
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                List<FlowInstance> claimed = selectAndLockEligible(connection, sql, effectiveTenantId, now);
+                if (!claimed.isEmpty()) {
+                    markClaimed(connection, claimed, claimantId, leaseExpiry);
+                }
+                connection.commit();
+                return claimed;
+            } catch (SQLException failure) {
+                rollbackQuietly(connection);
+                throw new IllegalStateException("Failed claiming resume-eligible waiting instances", failure);
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed claiming resume-eligible waiting instances", exception);
+        }
+    }
+
+    private List<FlowInstance> selectAndLockEligible(
+            Connection connection, String sql, String tenantId, Timestamp now) throws SQLException {
+        try (PreparedStatement select = connection.prepareStatement(sql)) {
+            select.setString(1, tenantId);
+            select.setTimestamp(2, now);
+            select.setTimestamp(3, now);
+            try (ResultSet resultSet = select.executeQuery()) {
+                List<FlowInstance> out = new ArrayList<>();
+                while (resultSet.next()) {
+                    out.add(readInstance(resultSet));
+                }
+                return List.copyOf(out);
+            }
+        }
+    }
+
+    private void markClaimed(
+            Connection connection, List<FlowInstance> claimed, String claimantId, Timestamp leaseExpiry)
+            throws SQLException {
+        try (PreparedStatement update = connection.prepareStatement(
+                "UPDATE npdev_flow_instance SET claimed_by = ?, claimed_until = ? WHERE execution_id = ?")) {
+            for (FlowInstance instance : claimed) {
+                update.setString(1, claimantId);
+                update.setTimestamp(2, leaseExpiry);
+                update.setString(3, instance.executionId());
+                update.addBatch();
+            }
+            update.executeBatch();
+        }
+    }
+
+    private static void rollbackQuietly(Connection connection) {
+        try {
+            connection.rollback();
+        } catch (SQLException ignored) {
+            // best-effort cleanup only -- the claim attempt has already failed
         }
     }
 

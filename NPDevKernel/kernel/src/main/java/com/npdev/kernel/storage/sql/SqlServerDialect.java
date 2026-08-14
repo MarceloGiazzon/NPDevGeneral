@@ -74,7 +74,11 @@ public final class SqlServerDialect implements SqlDialect {
             StorageCapability.SERVER_SIDE_JOIN,
             StorageCapability.AGGREGATION_PIPELINE,
             StorageCapability.OPTIMISTIC_LOCKING,
-            StorageCapability.SNAPSHOT_RESTORE);
+            StorageCapability.SNAPSHOT_RESTORE,
+            // R8c: no SKIP LOCKED keyword, but WITH (..., READPAST) is the documented, long-
+            // standing equivalent -- it skips rows locked by another transaction rather than
+            // blocking on them, which is the semantic this capability names.
+            StorageCapability.SKIP_LOCKED_READS);
 
     private final UpsertStrategy upsert = new SqlServerUpsertStrategy();
     private final ReturningStrategy returning = new SqlServerReturningStrategy();
@@ -166,6 +170,19 @@ public final class SqlServerDialect implements SqlDialect {
         // check-then-act needs; ROWLOCK keeps it from escalating to the page or the table and
         // serialising callers that are not competing for the same row.
         return "SELECT " + columns + " FROM " + table + " WITH (UPDLOCK, ROWLOCK) WHERE " + whereClause;
+    }
+
+    @Override
+    public String selectForUpdateSkipLocked(
+            String columns, String table, String whereClause, String orderBy, int maxRows) {
+        if (maxRows <= 0) {
+            throw new IllegalArgumentException("engine 'sqlserver': maxRows must be positive, got " + maxRows);
+        }
+        // READPAST is T-SQL's SKIP LOCKED: it skips rows locked by another transaction rather than
+        // blocking on them. TOP (n) is a PREFIX of the select list, not a suffix of the statement
+        // -- the same reason selectForUpdate above builds the whole statement, not a suffix.
+        return "SELECT TOP (" + maxRows + ") " + columns + " FROM " + table
+                + " WITH (UPDLOCK, ROWLOCK, READPAST) WHERE " + whereClause + " ORDER BY " + orderBy;
     }
 
     @Override

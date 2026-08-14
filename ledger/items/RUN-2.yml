@@ -3,18 +3,101 @@ title: >-
   Flow resume has no lease/claim; concurrent resumers can double-execute
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R8c). Two instances running
   against one database can double-resume a flow -- no claim columns, no index, no SKIP LOCKED
   capability declared as an engine fact.
 surface: kernel/flow-engine
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/dbschema/NpdevFlowInstanceTable.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/FlowInstanceStore.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ResumeCoordinator.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/StorageCapability.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java
+  - NPDevKernel/adapters/flowinstance-postgres/src/main/java/com/npdev/adapters/flowinstance/jdbc/JdbcFlowInstanceStore.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java
+  - NPDevKernel/adapters/flowinstance-postgres/src/test/java/com/npdev/adapters/flowinstance/jdbc/JdbcFlowInstanceStoreClaimTest.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/SchemaRealizationEmitterInternalTableAdditiveIndexesTest.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/StorageCapabilityGateTest.java
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/adapters/flowinstance-postgres/src/test/java/com/npdev/adapters/flowinstance/jdbc/JdbcFlowInstanceStoreClaimTest.java#concurrentClaimsFromTwoRealThreadsNeverOverlap
+  asserts: >-
+    two real threads, two real JDBC connections, racing SELECT ... FOR UPDATE SKIP LOCKED against
+    one live H2 database claim 7+7=14 requests over 12 eligible rows and walk away with disjoint,
+    non-overlapping sets covering exactly the 12 rows -- the double-resume guarantee RUN-2 names.
+    Same class's #withoutClaimingConcurrentReadsWouldSeeTheSameRowsTwice is the RED control: the
+    OLD read path (findWaitingEligibleToResume, still what claimWaitingEligibleToResume's own
+    interface default delegates to) has no claim semantics and returns the SAME rows to two
+    independent callers every time, on the SAME production code this fix ships alongside.
+  provenRed: true
 detail: |
-  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8, sub-item R8c. Needs claim columns + index,
-  two new SqlDialect questions, a SKIP LOCKED capability following DDL_IN_TRANSACTION's
-  capability-absence pattern. FlowInstanceStore has 14 anonymous implementations in tests plus
-  NoopHolder -- any non-default interface method is a compile break across three modules.
-  Internal-table indexes have no additive-migration path today -- solve it or scope the claim to a
-  column-only design. MASTER-ROADMAP.md Track C (part of R8, not batched into a numbered step); not
-  in this session's scope (Steps 1-4).
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8, sub-item R8c. Full mechanism shipped, not
+  the column-only fallback -- the card's own stated blocker turned out to be already solved by
+  earlier-in-session work, verified rather than assumed:
+
+  1. THE BLOCKER, RE-INVESTIGATED AND FOUND ALREADY CLOSED. The card said "internal-table indexes
+     have no additive-migration path -- solve it or scope the claim to a column-only design." Reading
+     `SchemaRealizationEmitter.java` in full found the primitive already existed and was already
+     proven: `SqlDialect#guardedCreateIndex` is idempotent on all four engines (a per-engine catalog
+     existence check) and was ALREADY used for BUSINESS-table indexes in the very same
+     `R__npdev_schema_additive_columns.sql` repeatable migration. Internal tables had the column half
+     of this (`appendInternalTableAdditiveColumns`, added in an earlier session) but nothing wired the
+     SAME already-idempotent index guard to internal tables' `indexes()`. The fix is
+     `appendInternalTableAdditiveIndexes` (~25 lines, mirrors the columns method exactly) plus one
+     wiring line in `emitSchemaArtifacts`'s section 3. No new primitive needed -- PK-4/R8a-era work
+     had already built it, the card's 2026-08-12 framing was accurate for ITS moment but stale by the
+     time this session picked the card up.
+  2. Claim columns on `npdev_flow_instance` (`NpdevFlowInstanceTable`): `claimed_by` (TEXT, optional),
+     `claimed_until` (TIMESTAMP, optional) -- both land via the PRE-EXISTING additive-column path,
+     unchanged. New index `idx_inst_tenant_status_claimed (tenant_id, status, claimed_until)` lands
+     via the NEW additive-index path (item 1).
+  3. Two new `SqlDialect` questions, per the card, following `DDL_IN_TRANSACTION`'S capability-fact
+     pattern: `StorageCapability.SKIP_LOCKED_READS` (new enum value) and
+     `selectForUpdateSkipLocked(columns, table, whereClause, orderBy, maxRows)` (new interface
+     method, whole-statement like `selectForUpdate` -- SQL Server's lock hint sits before WHERE and
+     its row cap is a `TOP (n)` PREFIX, not a suffix). UNLIKE `DDL_IN_TRANSACTION`, this capability
+     does NOT split the matrix -- researched per engine rather than assumed splittable:
+       - Postgres: native `FOR UPDATE SKIP LOCKED` since 9.5 (2016).
+       - MySQL: native `FOR UPDATE SKIP LOCKED` since 8.0 GA (platform already targets 8.4 elsewhere).
+       - H2: native `FOR UPDATE SKIP LOCKED` (Oracle-style) since 2.2.220 (2023-07-04, confirmed via
+         the h2database GitHub issue #2985's own closing comment); this repo already pins 2.2.224,
+         which post-dates it -- confirmed against the ACTUAL pinned version in kernel/generator
+         build.gradle, not assumed.
+       - SQL Server: no SKIP LOCKED keyword, but `WITH (UPDLOCK, ROWLOCK, READPAST)` is the
+         documented, long-standing equivalent (READPAST skips rows locked by another transaction).
+     All four declare the capability true; the claim call site still calls
+     `dialect.require(StorageCapability.SKIP_LOCKED_READS)` before building the statement (X0 rule),
+     so a hypothetical future fifth engine without it fails loudly rather than silently losing the
+     guard.
+  4. `FlowInstanceStore`'s 14 anonymous test implementations + `NoopHolder` handled by giving the new
+     method a DEFAULT implementation (`claimWaitingEligibleToResume` delegates to
+     `findWaitingEligibleToResume` with no claiming) rather than making it abstract -- zero of the 15
+     existing implementations needed to change, confirmed by a clean `:kernel` + `:generator`
+     compile with no other source edits. Only `JdbcFlowInstanceStore` overrides it for real.
+  5. `ResumeCoordinator.resumeAllWaitingExecutions` (the scheduled sweep -- the actual double-resume
+     vector: `ResumeSchedulerRunner` polls every 2s by default and, pre-fix, called
+     `findWaitingEligibleToResume` with no claiming) now calls `claimWaitingEligibleToResume` with a
+     30s lease (15x the default poll interval) and a per-JVM random claimant id.
+  6. Live proof (H2, this session's local-test-cadence policy; real Postgres/MySQL/SqlServer run per
+     PR in CI): `SchemaRealizationEmitterInternalTableAdditiveIndexesTest` hand-builds
+     `npdev_flow_instance` in its EXACT pre-R8c shape (no claim columns/index) on a live H2 database,
+     runs ONLY the repeatable `R__` script (never the fresh-only `V1__`) via H2's `RunScript`, and
+     asserts via `INFORMATION_SCHEMA` that the claim columns and the claim index now exist --
+     "boot-once proves nothing" is respected: this is the UPGRADE path, not fresh creation.
+     `JdbcFlowInstanceStoreClaimTest` (4 tests, live H2) proves the claim mechanism itself: sequential
+     partitioning, crash-recovery re-claim after lease expiry, the RED control (unclaimed reads
+     overlap), and REAL two-thread concurrency (two JDBC connections, a `CountDownLatch` start gate,
+     7+7 requests over 12 rows) landing on exactly 12 disjoint claimed rows. `DialectConformanceTierATest`
+     gained two Tier A cases (all four dialects) for the new method/capability -- 125/125 pass.
+  7. R8d (deadlines) deliberately NOT attempted, per the card's own scope boundary.

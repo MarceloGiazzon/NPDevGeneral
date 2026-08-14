@@ -547,6 +547,17 @@ exists at the store/port layer without a wired endpoint. Today's actual operator
    through a generated REST action is itself a resume trigger (`TrustedSourceEmitter`-generated code
    publishes the event, then calls `resumeExecution` if the target instance is `WAITING_EVENT`).
 
+**Two instances polling the same database never double-resume the same waiting instance (R8c/RUN-2).**
+`resumeAllWaitingExecutions` claims before it resumes: `FlowInstanceStore.claimWaitingEligibleToResume`
+atomically marks each batch it returns (`claimed_by`/`claimed_until` on `npdev_flow_instance`, a 30s
+lease by default) via `SELECT ... FOR UPDATE SKIP LOCKED` (`SqlDialect.selectForUpdateSkipLocked`,
+`StorageCapability.SKIP_LOCKED_READS`), so a second poller racing the same eligible set gets a disjoint
+batch instead of re-selecting rows the first poller already committed to. A claimant that crashes
+mid-resume does not strand its batch — the lease expires and the row becomes claimable again. The
+plain (non-claiming) read path, `findWaitingEligibleToResume`, still exists and is what
+`claimWaitingEligibleToResume`'s default `FlowInstanceStore` implementation falls back to for any
+adapter that has not opted in; only `JdbcFlowInstanceStore` claims for real today.
+
 **A documented authorization gap, already dispositioned:** resume authorization is tenant-scoped, and
 — after `REG-45`'s disposition — also actor-scoped (the owner chose "require the originating actor").
 Identity does not survive suspension itself: event-driven and scheduler-triggered resumes run as

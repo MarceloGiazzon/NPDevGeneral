@@ -367,6 +367,38 @@ public interface SqlDialect {
     String selectForUpdate(String columns, String table, String whereClause);
 
     /**
+     * A {@code SELECT} that locks the rows it returns for update, SKIPPING any row a concurrent
+     * transaction already holds -- so N competing "claim a batch of work" readers partition the
+     * eligible rows instead of blocking behind each other or racing to claim the same ones.
+     *
+     * <p><b>R8c (RUN-2): the flow-resume claim.</b> Two NPDev instances polling one database for
+     * resumable flow instances must never both attempt to resume the same {@code
+     * npdev_flow_instance} row -- this is the primitive that makes that safe without an explicit
+     * coordination protocol between the instances. Requires {@link
+     * StorageCapability#SKIP_LOCKED_READS}; callers should {@link #require} it first (the X0 rule),
+     * even though every engine this platform supports today answers yes.
+     *
+     * <p><b>Built as a whole statement, not a suffix, for the same reason {@link #selectForUpdate}
+     * is.</b> SQL Server's lock hint sits between {@code FROM} and {@code WHERE}, not at the end,
+     * and its row cap ({@code TOP}) is a PREFIX of the select list rather than a suffix of the
+     * statement -- so unlike an ordinary paginated query, this cannot be assembled by appending a
+     * clause to caller-supplied SQL text.
+     *
+     * <p>Unlike {@link #selectForUpdate}, this always takes an explicit order and a row cap: a
+     * claim reader never wants a single row by key, it wants "the next N eligible rows", and claim
+     * order must be deterministic so two competing readers converge on disjoint batches instead of
+     * oscillating.
+     *
+     * @param columns     the select list, already safe
+     * @param table       the table name, already safe
+     * @param whereClause the predicate WITHOUT the {@code WHERE} keyword
+     * @param orderBy     the {@code ORDER BY} expression WITHOUT the {@code ORDER BY} keyword
+     * @param maxRows     how many rows this pass may claim at most
+     * @throws IllegalArgumentException if {@code maxRows} is not positive
+     */
+    String selectForUpdateSkipLocked(String columns, String table, String whereClause, String orderBy, int maxRows);
+
+    /**
      * A value ready to hand to {@code PreparedStatement.setObject} for THIS engine.
      *
      * <p>Today this settles exactly one question -- <b>how a {@code java.util.UUID} is bound</b> --

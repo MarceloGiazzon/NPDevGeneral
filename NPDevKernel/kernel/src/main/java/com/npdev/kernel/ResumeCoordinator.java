@@ -38,6 +38,25 @@ final class ResumeCoordinator {
     private static final int RESUME_MAX_ATTEMPTS = 20;
     private static final String FLOW_RESUME_IDEMPOTENCY_CAPABILITY = "__flow_resume";
 
+    /**
+     * R8c (RUN-2): one opaque id per JVM/classloader load, so every claim this process makes
+     * against {@link com.npdev.kernel.ports.FlowInstanceStore#claimWaitingEligibleToResume} is
+     * attributable to it. Never consulted for authorization -- purely a debugging/observability
+     * label recorded alongside the lease, the same role {@code MigrationClaimStore}'s instanceId
+     * plays for the (unrelated) schema-migration lock.
+     */
+    private static final String RESUMER_ID = java.util.UUID.randomUUID().toString();
+
+    /**
+     * R8c (RUN-2): how long a batch claim is held before another resumer may re-claim the same
+     * rows. {@code ResumeSchedulerRunner}'s default poll interval is 2s ({@code
+     * npdev.resume.pollMs}), so 30s is 15x that -- long enough that an ordinary resume attempt
+     * (which itself starts a fresh {@code RESUME_BASE_DELAY_MS}-scaled backoff only on FAILURE, not
+     * on success) finishes well inside the lease, short enough that a claimant which crashes
+     * mid-resume does not leave its batch unresumable for long.
+     */
+    private static final long RESUME_CLAIM_LEASE_MS = 30_000L;
+
     static FlowEngine.ResumeOutcome resumeWaitingExecutionsFor(
             KernelRunner runner,
             EventEnvelope envelope,
@@ -409,7 +428,14 @@ final class ResumeCoordinator {
 
         List<FlowInstance> eligible = new ArrayList<>();
         for (String tenant : tenants) {
-            eligible.addAll(runner.flowInstanceStore.findWaitingEligibleToResume(tenant, now, batchSize));
+            // R8c (RUN-2): claim, don't just read -- findWaitingEligibleToResume alone let two
+            // instances of this scheduled sweep, running against the SAME database, both select and
+            // then both resume the identical waiting instance. claimWaitingEligibleToResume's
+            // default implementation is this exact call with no claiming (unchanged behaviour for
+            // any FlowInstanceStore that hasn't opted in); JdbcFlowInstanceStore is the one
+            // implementation that makes the claim real.
+            eligible.addAll(runner.flowInstanceStore.claimWaitingEligibleToResume(
+                    tenant, now, RESUME_CLAIM_LEASE_MS, RESUMER_ID, batchSize));
         }
         eligible = eligible.stream()
                 .sorted(Comparator

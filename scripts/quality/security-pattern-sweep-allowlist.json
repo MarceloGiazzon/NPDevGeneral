@@ -1137,6 +1137,16 @@
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:120",
       "why": "Tenant-independent BY CONSTRUCTION, and the sweep is reading a template rather than a query. This is SqlDialect.selectForUpdate (STOR-9): the dialect is handed `columns`, `table` and the WHOLE `whereClause` by its caller and only decides WHERE the engine's row lock goes -- a suffix on H2/MySQL/Postgres, a WITH (UPDLOCK, ROWLOCK) table hint before the WHERE on SQL Server. It adds no predicate and removes none. Tenant scoping is the CALLER's, and both callers are tenant-independent on purpose: MigrationClaimStore locks the single canonical row of the instance-wide migration lock (there is one, for the whole database, by design), and JdbcBusinessConceptStore.findByIdForUpdate passes `id = ? AND tenant_id = ?` -- the tenant predicate IS there, in the caller, which is the only place that knows it. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
     },
+    "e8e107c7cb4a": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:138; NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:183; NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java:132",
+      "why": "R8c (RUN-2): SqlDialect.selectForUpdateSkipLocked -- see fingerprint a7f96d98b862's read-without-tenant-predicate entry for the full reasoning (same method, same call site, same closed set of arguments). `columns`, `table` and `orderBy` are hardcoded Java string literals at the ONE call site (JdbcFlowInstanceStore.claimWaitingEligibleToResume); `whereClause` is a hardcoded literal containing `?` placeholders whose VALUES are bound via PreparedStatement, never spliced; `maxRows` is an int clamped to [1,1000] by normalizeLimit before this call, never a caller-supplied string. Not model-author-reachable: there is no path from any model, request or user input to this text. Triaged 2026-08-14."
+    },
+    "4299147bde24": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:184",
+      "why": "R8c (RUN-2): the SQL Server shape of SqlDialect.selectForUpdateSkipLocked -- see fingerprint e8e107c7cb4a (the H2/MySQL/Postgres sibling) for the full reasoning, which applies identically. `TOP (maxRows)` and `WITH (UPDLOCK, ROWLOCK, READPAST)` are this engine's spelling of the same row-cap and skip-locked-row-lock every other shape also expresses; same caller, same closed set of hardcoded arguments, same bound values. Triaged 2026-08-14."
+    },
     "88bf8dac4f64": {
       "rule": "I4",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:71",
@@ -1276,6 +1286,16 @@
       "rule": "read-without-tenant-predicate",
       "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:120",
       "why": "Tenant-independent BY CONSTRUCTION, and the sweep is reading a template rather than a query. This is SqlDialect.selectForUpdate (STOR-9): the dialect is handed `columns`, `table` and the WHOLE `whereClause` by its caller and only decides WHERE the engine's row lock goes -- a suffix on H2/MySQL/Postgres, a WITH (UPDLOCK, ROWLOCK) table hint before the WHERE on SQL Server. It adds no predicate and removes none. Tenant scoping is the CALLER's, and both callers are tenant-independent on purpose: MigrationClaimStore locks the single canonical row of the instance-wide migration lock (there is one, for the whole database, by design), and JdbcBusinessConceptStore.findByIdForUpdate passes `id = ? AND tenant_id = ?` -- the tenant predicate IS there, in the caller, which is the only place that knows it. Triaged 2026-08-08, storage/OPEN_ITEMS_PLAN.md (STOR-7/STOR-9)."
+    },
+    "a7f96d98b862": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:138; NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:183; NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java:132",
+      "why": "R8c (RUN-2): SqlDialect.selectForUpdateSkipLocked -- selectForUpdate's (STOR-9, fingerprint 95ea619c7299/399bd24efbec) sibling for the flow-resume claim, same architecture and same reasoning. The dialect is handed `columns`, `table`, the WHOLE `whereClause` and `orderBy` by its ONE caller (JdbcFlowInstanceStore.claimWaitingEligibleToResume) and only decides WHERE the engine's row lock goes and how the row cap/SKIP LOCKED is spelled; it adds no predicate and removes none. Unlike selectForUpdate's two tenant-independent-by-design callers, this one genuinely IS tenant-scoped by its caller: the passed whereClause literally begins `tenant_id = ? AND status = 'WAITING_EVENT' AND ...`, bound via PreparedStatement -- the tenant predicate is there, in the only place that knows it. H2/MySQL/Postgres share this fingerprint because their method bodies are byte-identical (all three answer the row lock as a suffix); SqlServer's differs (fingerprint 49603d5fe9a0) because its lock is a table hint before the WHERE. Triaged 2026-08-14."
+    },
+    "49603d5fe9a0": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:184",
+      "why": "R8c (RUN-2): the SQL Server shape of SqlDialect.selectForUpdateSkipLocked -- see fingerprint a7f96d98b862 (the H2/MySQL/Postgres sibling) for the full reasoning, which applies identically here. This shape differs only in HOW the engine spells the same two things every other engine's shape also spells: `TOP (maxRows)` is a prefix of the select list (T-SQL has no suffix row cap) and `WITH (UPDLOCK, ROWLOCK, READPAST)` is a table hint before the WHERE (T-SQL has no FOR UPDATE outside a cursor and no SKIP LOCKED keyword; READPAST is the documented equivalent). Same caller, same tenant-scoped whereClause, same closed set of hardcoded literal arguments. Triaged 2026-08-14."
     },
     "96a328101b75": {
       "rule": "B2",

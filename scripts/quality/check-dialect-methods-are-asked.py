@@ -84,8 +84,25 @@ SEARCH_ROOTS = [
 # one (`requiresOrderByForPagination`) was DELETED from the interface, and the eight-minus-one that
 # remain are the seven entries below. None of them is an open chore.
 INTERNAL_ONLY = {
-    "require": "the dialects' own X0 guard -- a dialect that cannot honour a question throws rather "
-               "than returning another engine's answer. Called by the dialects, by design.",
+    # `require` graduated OFF this list, R8c (RUN-2, 2026-08-14) -- recorded here rather than
+    # silently deleted, per this file's own "an allowlist that asserts something untrue is worse
+    # than none" discipline.
+    #
+    # The entry used to read "the dialects' own X0 guard ... Called by the dialects, by design",
+    # which was ALREADY false the moment it was written: grepping every dialect-package source for
+    # `require(` before this change found zero callers anywhere, not even from within the package
+    # itself. `require(StorageCapability)` is a generic precondition helper -- it calls only
+    # `supports()` and `name()`, both engine-agnostic, and contains no dialect-specific SQL text of
+    # its own -- so there was never an architectural reason for it to be internal-only; the entry
+    # just predated any real caller.
+    #
+    # `JdbcFlowInstanceStore.claimWaitingEligibleToResume` (R8c's resume-claim) is the first one:
+    # `dialect.require(StorageCapability.SKIP_LOCKED_READS)` before building a SKIP LOCKED
+    # statement, the exact X0-rule usage `StorageCapability`'s own class javadoc prescribes
+    # ("SqlDialect#require(StorageCapability) is how a site asks"). That call lives in
+    # NPDevKernel/adapters/flowinstance-postgres, an ordinary production search root -- so `require`
+    # now has a real external caller and must be REMOVED from this allowlist, not just left with a
+    # stale reason, or this checker's own "callers + allowlisted = stale" rule (below) fails on it.
     "isReservedIdentifier": "the predicate behind identifier(). Callers ask identifier() and get "
                             "the decision for free; asking this directly would mean re-implementing "
                             "the quoting rule at the call site, which is the STOR-6 defect.",
