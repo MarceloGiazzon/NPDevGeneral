@@ -51,3 +51,71 @@ guard:
   ref: "generate a model importing NPDevContract/packs/identity/pack.json for real Postgres, build, boot -- currently fails Flyway migration with a syntax error at V1__npdev_schema_realization.sql's UserRolePermission unique-constraint guard"
   asserts: the identity pack's UserRolePermission composite-unique guard is valid, executable Postgres DDL
   provenRed: true
+correction: |
+  2026-08-14 (horizontal fix pass): root-caused. The bug is NOT in SchemaRealizationEmitter.java as
+  originally guessed -- that file only builds the raw `ALTER TABLE ... ADD CONSTRAINT ...
+  UNIQUE (...)`/`FOREIGN KEY (...)` text, deliberately WITHOUT a trailing semicolon, at all six of
+  its addConstraintIfMissing() call sites (appendAdditiveColumns' bond FK,
+  appendBusinessTableConstraints' connectable-anchor unique AND its LIFT-UNIQUE-P2 compound-unique,
+  appendExplicitIndexes' indexes:[]-declared unique, and appendBondConstraints'/
+  appendJunctionTableShapes' two FK sites) -- every one of the six relies on
+  `engine.dialect().guardedConstraintDdl(...)` to add the terminator, exactly the way H2Dialect,
+  MySqlDialect and SqlServerDialect's own guardedConstraintDdl methods each do
+  (`ddlStatement.endsWith(";") ? ddlStatement : ddlStatement + ";"`, or MySQL's `.strip()`
+  variant). **Only PostgresDialect.guardedConstraintDdl
+  (NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java, the method
+  starting at line 292) was missing that one line.** Confirmed by git archaeology: the pre-STOR-5
+  addConstraintIfMissing (SchemaRealizationEmitter.java, before commit 2ed5c3ae) had exactly one
+  shared normalization line
+  (`addConstraintSql.endsWith(";") ? addConstraintSql : addConstraintSql + ";"`) feeding BOTH the
+  H2 and the Postgres DO $$ arms. STOR-5 ("feat(storage): introduce SqlDialect and route all 41
+  dialect-bound sites", 2026-08-08) split that one method into four per-dialect methods and
+  correctly re-added the line to H2Dialect/MySqlDialect/SqlServerDialect, but dropped it from
+  PostgresDialect -- the DO $$ block's `%s` placeholder was wired straight to the unmodified
+  `ddlStatement` parameter.
+
+  **This makes the bug wider than the ledger's original framing.** It is not narrowly "3+-column
+  composite uniques" -- the PL/pgSQL `IF ... THEN <stmt> END IF;` block requires a semicolon
+  terminator on ANY statement inside it regardless of column count or constraint kind (UNIQUE or
+  FOREIGN KEY), and none of the six emitter call sites supply one. The identity pack's 3-column
+  UserRolePermission unique was simply the specific case the PK-2 two-engine proof happened to hit
+  first; a 1- or 2-column unique constraint, or any bond's FK constraint added via the
+  additive-migration path, reads as equally broken by this same code trace -- unconfirmed by a
+  fresh real-Postgres boot (deferred per this session's batch-verification plan), but not something
+  the original ledger text above should be read as having ruled out.
+
+  Also explains why no existing test caught it:
+  `PostgresDialectGoldenSqlTest.guardedConstraintDdlIsUnchanged` (NPDevKernel) passes an input
+  ddlStatement that ALREADY carries a trailing semicolon, so it never exercised the normalization
+  path; a sibling H2-only test, `guardedDdlTerminatesTheStatement`, checks H2's auto-termination
+  but had no Postgres counterpart. `DialectConformanceTierATest.guardedConstraintDdl`
+  (parameterized across all four dialects) passes a semicolon-less input but only asserts
+  `guarded.contains(ddl)`, which is true whether or not a semicolon follows.
+
+resolution: |
+  Fixed (2026-08-14, horizontal fix pass) -- status stays OPEN, see below for why.
+
+  Added the same `ddlStatement.endsWith(";") ? ddlStatement : ddlStatement + ";"` normalization to
+  PostgresDialect.guardedConstraintDdl, matching H2Dialect/MySqlDialect/SqlServerDialect exactly --
+  zero behavior change for any caller that already supplied a semicolon (none of
+  PostgresDialectGoldenSqlTest's existing assertions moved), and it now semicolon-terminates a bare
+  statement the same way H2/MySQL/SQL Server already did.
+
+  Test coverage added (DB-free, Tier A / golden-SQL style, no real database): a new
+  `postgresGuardedDdlTerminatesTheStatement` test in PostgresDialectGoldenSqlTest, symmetric with
+  the existing H2 one, closing exactly the coverage gap noted above. Ran narrowly (not the full
+  suite): `./gradlew.bat -p NPDevKernel --no-daemon :kernel:test --tests
+  "com.npdev.kernel.storage.sql.PostgresDialectGoldenSqlTest" --tests
+  "com.npdev.kernel.storage.sql.DialectConformanceTierATest"` -- BUILD SUCCESSFUL, the new test
+  plus all 125 DialectConformanceTierATest cases and every existing PostgresDialectGoldenSqlTest
+  case passed (0 failures, 0 errors).
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\NPDevKernel\kernel\src\main\java\com\npdev\kernel\storage\sql\PostgresDialect.java
+    D:\WorkSpace\NPDev\NPDev_General\NPDevKernel\kernel\src\test\java\com\npdev\kernel\storage\sql\PostgresDialectGoldenSqlTest.java
+
+  **Still open, deliberately not run here:** the real generate -> build -> boot proof against live
+  Postgres this item's `guard:` names (identity pack import, real Postgres, Flyway migration
+  succeeding). That is deferred to this session's consolidated batch-verification pass across all
+  fixes made in this pass, per explicit instruction -- status stays OPEN and `guard:` is untouched;
+  do not mark this DONE from the unit-test evidence alone.

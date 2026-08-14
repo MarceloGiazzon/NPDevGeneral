@@ -294,6 +294,15 @@ public final class PostgresDialect implements SqlDialect {
         // and H2 PostgreSQL-compatibility mode. pg_constraint/pg_class/pg_namespace are
         // PostgreSQL-only system catalogs and must not be used even in the Postgres-only path,
         // to keep both emitters byte-consistent and avoid drift when switching engines.
+        //
+        // REG-147: the statement sits inside a PL/pgSQL IF ... THEN <statement> END IF; block, where
+        // the semicolon is a mandatory statement terminator, not an optional trailing character --
+        // unlike a flat top-level script, PL/pgSQL will not tolerate a missing one even when the
+        // statement is the last thing before END IF. Every caller in SchemaRealizationEmitter builds
+        // its ALTER TABLE text WITHOUT a trailing ";" (the same raw text is also handed to H2/MySQL/
+        // SQL Server, whose own guardedConstraintDdl each normalize it below), so this dialect must
+        // normalize it too instead of assuming the caller already did.
+        String statement = ddlStatement.endsWith(";") ? ddlStatement : ddlStatement + ";";
         return """
                 DO $$
                 BEGIN
@@ -307,7 +316,7 @@ public final class PostgresDialect implements SqlDialect {
                     %s
                   END IF;
                 END $$;
-                """.formatted(escapeLiteral(constraintName), escapeLiteral(tableName), ddlStatement);
+                """.formatted(escapeLiteral(constraintName), escapeLiteral(tableName), statement);
     }
 
     private static String schemaPredicate(String schema) {
