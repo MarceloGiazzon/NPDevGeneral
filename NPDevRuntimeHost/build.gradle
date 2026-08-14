@@ -180,42 +180,70 @@ tasks.named('compileJava') {
     dependsOn tasks.named('verifyNpdevRuntimeHostLibs')
 }
 
+// R1 Stage 2 (MASTER-ROADMAP.md Track C item C3): 9 entries removed here after confirming, via a
+// real assembled-app `gradlew test` run (RED-then-GREEN, not just static reading), that they have
+// no blocker: PluginManifestLoaderTest, PluginPackageDescriptorLoaderTest,
+// RuntimePluginPackageRealizationServiceTest, RuntimePluginAdapterRegistryTest,
+// RuntimePluginPackageAdmissionEvaluatorTest, RuntimePluginPackageDiscoveryServiceTest,
+// RuntimePluginProfileResolverTest, SupportedRuntimeSurfacePackagingTest,
+// SupportedCoreControllerBlackBoxStandaloneTest.
+// A first attempt also removed 6 more entries that looked blocker-free from static analysis of
+// runtime-supported-controllers.json alone (their imported controllers/services are all in
+// allowedControllers/supportedCoreServiceComponents) -- but the real gradlew test run against the
+// assembled simple-contact-intake sample FAILED 11 tests across exactly those 6 files:
+// PermissionAwareUiMetadataServiceTest (4), PublicationChainTenantReferenceValidationTest (1),
+// RuntimeMetadataControllerStandaloneTest (1), RuntimeMetadataValidationControllerStandaloneTest (1),
+// RuntimePluginRuntimeRefResolverTest (1), RuntimeUiMetadataControllerStandaloneTest (3) -- all
+// model-fixture-coupled assertions (specific roles/fields/concepts) that don't match this sample's
+// model. They stay excluded below pending a fixture fix, which is out of scope for this stage.
+// ModelSyncStatusControllerStandaloneTest also stays excluded: it imports
+// ModelSyncStatusController/ModelSyncStatusService, both deferredControllers/non-default-pattern
+// classes compiled OUT of sourceSets.main by unsupportedRuntimeHostControllerSources/
+// unsupportedRuntimeHostServiceSources below regardless of runtime profile -- a real compile blocker,
+// confirmed against the live runtime-supported-controllers.json manifest.
+// R1 Stage 5 / D7 (MASTER-ROADMAP.md Track C item C3): 6 permanently-uncompilable test files
+// DELETED outright (not merely excluded) per D7's decision -- confirmed, not assumed:
+// Step02/04/05/06 (ReferencesEnumsDomainTypes/InvariantExplainability/ProviderOverlap/RoomOverlap)
+// each import com.npdev.generated.repositories.ExamRoomRepository, and a repo-wide search found
+// zero `ExamRoom` concepts in any model.json anywhere in the corpus -- that package can never exist
+// for any model this repo can currently generate. PanelRuntimeTest / RuntimeMetadataServiceTest used
+// RuntimeMetadataService's single-arg constructor (REG-103's exact shape) and asserted
+// fixture-specific values (namespace "canonical.clinicdemo", catalogCount==11, an "Appointment"
+// concept with specific tabs) that no corpus model backs anymore -- their own twin-pair rule
+// (test-exclusion-siblings, scripts/quality/twin-pair-registry.json) already required them excluded
+// TOGETHER, so deleting both keeps that rule's sibling-group check trivially satisfied (both absent).
 def modelSpecificGeneratedAppTests = [
         'com/finalexec/AsyncWaitResumeE2EIT.java',
         'com/finalexec/CanonicalDemoBusinessE2EIT.java',
         'com/finalexec/InvariantApiIntegrationTest.java',
         'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/ModelSyncStatusControllerStandaloneTest.java',
+        // R1 Stage 3 (MASTER-ROADMAP.md Track C item C3): tried reviving this one (of the 5
+        // full-boot @SpringBootTest surface tests) alone, per the card's "one at a time" rule --
+        // it FAILS for real: nonDefaultRuntimeProfileExposesSupportedCoreAndNonDefaultControllersOnly
+        // asserts RuntimePluginPackagesController/ModelSyncStatusController become active under the
+        // non-default runtime-surface profile, but RuntimeControllerAllowlistConfig (runtimehost-core)
+        // can only REMOVE bean definitions -- it can never add one back for a deferredControllers-listed
+        // controller whose .java file was already excluded from sourceSets.main by
+        // unsupportedRuntimeHostControllerSources (a compile-time gate keyed on allowedControllers only,
+        // with no non-default-profile carve-out). Filed as REG-163; stage stopped here per the card's
+        // "if one surfaces a real failure, stop and report" instruction -- the other 4 candidates were
+        // deliberately left untested this session.
         'com/finalexec/NonDefaultRuntimeSurfaceProfileIntegrationTest.java',
-        'com/finalexec/PanelRuntimeTest.java',
         'com/finalexec/PermissionAwareUiMetadataServiceTest.java',
         'com/finalexec/PublicationChainTenantReferenceValidationTest.java',
         'com/finalexec/PublicationRollbackE2EIT.java',
-        'com/finalexec/PluginManifestLoaderTest.java',
-        'com/finalexec/PluginPackageDescriptorLoaderTest.java',
         'com/finalexec/RuntimeMetadataControllerStandaloneTest.java',
-        'com/finalexec/RuntimeMetadataServiceTest.java',
         'com/finalexec/RuntimeMetadataValidationControllerStandaloneTest.java',
         'com/finalexec/RuntimePluginFilesystemDiscoveryIntegrationTest.java',
         'com/finalexec/RuntimePluginStatusControllerIntegrationTest.java',
-        'com/finalexec/RuntimePluginPackageRealizationServiceTest.java',
-        'com/finalexec/RuntimePluginAdapterRegistryTest.java',
-        'com/finalexec/RuntimePluginPackageAdmissionEvaluatorTest.java',
-        'com/finalexec/RuntimePluginPackageDiscoveryServiceTest.java',
-        'com/finalexec/RuntimePluginProfileResolverTest.java',
         'com/finalexec/RuntimePluginRuntimeRefResolverTest.java',
         'com/finalexec/RuntimeUiMetadataControllerStandaloneTest.java',
         'com/finalexec/SupportedCoreControllerBlackBoxIntegrationTest.java',
         'com/finalexec/SupportedRuntimeSurfaceAllowlistIntegrationTest.java',
-        'com/finalexec/SupportedRuntimeSurfacePackagingTest.java',
         'com/finalexec/Stage12UiModelRuntimeIT.java',
         'com/finalexec/Step01MultiConceptIntegrationTest.java',
-        'com/finalexec/Step02ReferencesEnumsDomainTypesIntegrationTest.java',
         'com/finalexec/Step03NestedJsonbIntegrationTest.java',
-        'com/finalexec/Step04InvariantExplainabilityIntegrationTest.java',
-        'com/finalexec/Step05ProviderOverlapIntegrationTest.java',
-        'com/finalexec/Step06RoomOverlapIntegrationTest.java',
-        'com/finalexec/SupportedCoreControllerBlackBoxStandaloneTest.java',
         'com/finalexec/TenantIsolationE2EIT.java'
 ]
 
@@ -224,6 +252,23 @@ def generatedRuntimeIntegrationTestSources = [
         'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/PublicationRollbackE2EIT.java',
         'com/finalexec/TenantIsolationE2EIT.java',
+        // R1 Stage 4 (MASTER-ROADMAP.md Track C item C3): 2 of the 6 remaining
+        // AbstractScenarioIntegrationTest subclasses -- confirmed via a real `integrationTest`
+        // compile+run against superuser-admin-console (the actual sample
+        // .github/workflows/npdev-ci-validation.yml's "RuntimeHost generated-app Postgres
+        // integration tests" step generates and runs integrationTest against, per that workflow's
+        // own NEW-1 comment) that they compile and pass there.
+        // The other 4 -- CanonicalDemoBusinessE2EIT, InvariantApiIntegrationTest,
+        // Step01MultiConceptIntegrationTest, Step03NestedJsonbIntegrationTest -- import
+        // com.npdev.generated.entities.{Patient,Provider,Appointment,InsuranceClaim} /
+        // repositories.{PatientRepository,ProviderRepository,AppointmentRepository,
+        // InsuranceClaimRepository}, none of which superuser-admin-console's model declares --
+        // confirmed as real `compileIntegrationTestJava` errors ("cannot find symbol") against
+        // that sample. Routing them here would BREAK the currently-passing CI integrationTest job,
+        // not fix a dead test, so they stay in modelSpecificGeneratedAppTests only (excluded from
+        // both test and integrationTest) pending a fixture that actually has these entities.
+        'com/finalexec/AsyncWaitResumeE2EIT.java',
+        'com/finalexec/Stage12UiModelRuntimeIT.java',
         // LNCH-1 Phase 7 (task 7.2): the Postgres Testcontainers twin of the H2 schema-evolution
         // proof matrix -- Docker-dependent (a real postgres:15-alpine container), so it belongs in
         // integrationTest (nightly, `-Dspring.profiles.active=test,postgres`), not the plain `test`
@@ -481,7 +526,16 @@ tasks.named('test') {
     if (generatedRuntimeMountPresent()) {
         dependsOn 'enforceSingleSchemaRealizationSource'
     }
-    useJUnitPlatform()
+    // R1 Stage 4 (MASTER-ROADMAP.md Track C item C3): every AbstractScenarioIntegrationTest
+    // subclass carries @Tag("integration"). Before this, `test` had NO excludeTags at all -- the
+    // ONLY thing keeping a tagged scenario test out of the plain `test` run was remembering to
+    // hand-list it in modelSpecificGeneratedAppTests above, which is exactly the kind of
+    // "one place updated, its twin forgotten" gap this repo's twin-pair rules exist to catch
+    // elsewhere. This makes the tag itself authoritative so a FUTURE AbstractScenarioIntegrationTest
+    // subclass can never silently leak into `test` even if someone forgets the hand-list.
+    useJUnitPlatform {
+        excludeTags 'integration'
+    }
     // Perf: forked test JVMs default to 512m and do NOT inherit org.gradle.jvmargs.
     // Deliberately no maxParallelForks here: these are Spring Boot slices sharing a
     // context and (under the postgres profile) Testcontainers DB state, so concurrent
