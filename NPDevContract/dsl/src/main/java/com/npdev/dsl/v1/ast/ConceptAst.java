@@ -8,6 +8,7 @@ public final class ConceptAst extends EntityAst {
     private final List<IndexAst> indexes;
     private final ConceptAccessAst access;
     private final String renamedFrom;
+    private final String satelliteOf;
 
     public ConceptAst(String name, List<FieldAst> fields, List<InvariantAst> invariants) {
         this(name, null, null, fields, invariants, List.of(), null, null, null, null, List.of());
@@ -141,11 +142,32 @@ public final class ConceptAst extends EntityAst {
             ConceptAccessAst access,
             String renamedFrom
     ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel, module, indexes, access, renamedFrom, null);
+    }
+
+    /** PK-6: declares this concept is a satellite extension of a base concept owned by another pack (see getSatelliteOf). */
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module,
+            List<IndexAst> indexes,
+            ConceptAccessAst access,
+            String renamedFrom,
+            String satelliteOf
+    ) {
         super(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
         this.access = access;
         this.renamedFrom = renamedFrom;
+        this.satelliteOf = satelliteOf;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -166,6 +188,11 @@ public final class ConceptAst extends EntityAst {
     /** The previous concept name this concept was renamed from, or null if this is not a declared rename. */
     public String getRenamedFrom() {
         return renamedFrom;
+    }
+
+    /** PK-6: the pack-qualified base concept this concept is a satellite extension of, or null if it declares none. */
+    public String getSatelliteOf() {
+        return satelliteOf;
     }
 
     public static ConceptAst fromLegacyEntity(EntityAst legacy) {

@@ -1,0 +1,30 @@
+{
+  "$schema": "../../../../../../NPDevContract/schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "clinical",
+  "version": "1.0.0",
+  "namespace": "com.npdev.clinical",
+  "description": "PK-6 probe (satellite concepts): an extension pack adding clinical fields to identity::User WITHOUT modifying the identity pack -- a satellite concept declared via satelliteOf, with its own 1:1 FK anchor bond, composed as a transitive dependency (identity is never $ref'd directly by the app model, only by this pack's own packs[]).",
+  "category": "other",
+  "author": "NPDev",
+  "packs": [
+    { "pack": "identity", "version": "^1.0" }
+  ],
+  "concepts": [
+    {
+      "name": "UserClinicalProfile",
+      "satelliteOf": "identity::User",
+      "ui": { "label": "User clinical profile" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "userId", "type": "reference", "required": true, "unique": true,
+          "reference": { "target": "identity::User", "onDelete": "cascade" },
+          "ui": { "label": "User" } },
+        { "name": "bloodType", "type": "string", "required": false, "maxLength": 10,
+          "ui": { "label": "Blood type" } },
+        { "name": "allergyNotes", "type": "string", "required": false, "maxLength": 500,
+          "ui": { "label": "Allergy notes" } }
+      ]
+    }
+  ]
+}

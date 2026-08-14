@@ -446,6 +446,81 @@ final class ConceptValidation {
     }
 
     /**
+     * PK-6 Step 1 (PACK-ROADMAP.md card PK-6, "satellite concepts"): a concept declaring
+     * {@code satelliteOf} is asserting a real 1:1 bond to a base concept owned by another pack, not
+     * just documenting intent. Three checks, all named errors (never a silent no-op, since the whole
+     * point of the marker is that composition/UI tooling can trust it):
+     * <ol>
+     *   <li>{@code satelliteOf} must be a pack-qualified reference ({@code "packId::Concept"}) -- a
+     *       satellite extends a concept owned by ANOTHER pack; a bare, unqualified name is almost
+     *       certainly a same-pack {@code extends}/{@code specializes} typo (both already occupy that
+     *       vocabulary for concept inheritance -- see the field's own doc for why {@code satelliteOf}
+     *       is a distinct keyword, not a reuse of {@code extends}).</li>
+     *   <li>The target must resolve to a real concept in this (fully pack-composed) model.</li>
+     *   <li>This concept must carry exactly one {@code type: reference} field whose
+     *       {@code reference.target} equals the same value, with {@code unique:true} AND
+     *       {@code required:true} -- the 1:1 anchor bond a satellite requires (bonds' own cardinality
+     *       rule: "unique port -> 1:1", {@code BONDS.md}). Zero such fields means the declared
+     *       satellite relationship has no real bond backing it; more than one is ambiguous about
+     *       which field IS the satellite's own anchor.</li>
+     * </ol>
+     * Deliberately does NOT re-validate that the reference field's target itself resolves or that
+     * {@code onDelete} is well-formed -- {@link ReferenceValidation#validateReferenceSemantics}
+     * already owns that, and duplicating it here would just be two checkers disagreeing eventually.
+     */
+    static void validateConceptSatelliteOf(
+            ModelAst effectiveModel,
+            Map<String, ConceptAst> entitiesByLower,
+            List<String> errors,
+            List<String> semanticWarnings
+    ) {
+        for (ConceptAst concept : effectiveModel.getConcepts()) {
+            String satelliteOf = concept.getSatelliteOf();
+            if (satelliteOf == null || satelliteOf.isBlank()) {
+                continue;
+            }
+            String normalizedTarget = normalize(satelliteOf);
+            String normalizedOwnName = normalize(concept.getName());
+
+            if (normalizedTarget.equals(normalizedOwnName)) {
+                errors.add("Concept " + concept.getName() + ": satelliteOf cannot target itself");
+                continue;
+            }
+            if (!satelliteOf.contains("::")) {
+                errors.add("Concept " + concept.getName()
+                        + ": satelliteOf \"" + satelliteOf + "\" must be a pack-qualified concept "
+                        + "reference (\"packId::ConceptName\") -- a satellite extends a concept owned "
+                        + "by another pack");
+                continue;
+            }
+            if (!entitiesByLower.containsKey(normalizedTarget)) {
+                errors.add("Concept " + concept.getName()
+                        + ": satelliteOf \"" + satelliteOf + "\" names a concept that does not exist "
+                        + "in the resolved model");
+                continue;
+            }
+
+            long anchorFieldCount = concept.getFields().stream()
+                    .filter(f -> "reference".equalsIgnoreCase(f.getType()))
+                    .filter(f -> f.getReferenceTarget() != null
+                            && normalize(f.getReferenceTarget()).equals(normalizedTarget))
+                    .filter(f -> f.isUnique() && f.isRequired())
+                    .count();
+            if (anchorFieldCount == 0) {
+                errors.add("Concept " + concept.getName()
+                        + ": satelliteOf \"" + satelliteOf + "\" declares a 1:1 satellite relationship "
+                        + "but no field on this concept has reference.target=\"" + satelliteOf
+                        + "\" with unique:true and required:true (the 1:1 anchor bond a satellite "
+                        + "requires)");
+            } else if (anchorFieldCount > 1) {
+                errors.add("Concept " + concept.getName()
+                        + ": satelliteOf \"" + satelliteOf + "\" is ambiguous -- more than one "
+                        + "unique+required reference field targets it");
+            }
+        }
+    }
+
+    /**
      * LNCH-1 §2.1 hygiene rules for the {@code renamedFrom} marker (checked once per field, for
      * every field regardless of type validity):
      * <ol>

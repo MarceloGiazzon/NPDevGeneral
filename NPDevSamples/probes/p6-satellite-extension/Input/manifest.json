@@ -1,0 +1,17 @@
+{
+  "id": "p6-satellite-extension",
+  "title": "p6-satellite-extension",
+  "complexity": "pack-probe",
+  "purpose": "PK-6 Step 1 probe (PACK-ROADMAP.md card PK-6, satellite concepts): the built-in identity pack composed with a throwaway extension pack ('clinical') that declares a satellite concept (satelliteOf: \"identity::User\") adding clinical fields to identity::User without modifying identity itself.",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo -- serves the PK-6 Step 1 live proof and nothing else.",
+    "identity is a TRANSITIVE dependency (declared only by packs/clinical/pack.json's own packs[]), never $ref'd directly by model.json -- also exercises PK-3's transitive resolution.",
+    "Built for scripts/proofs/run-pk6-satellite-extension-proof.py; not intended to be run by hand."
+  ],
+  "expectedOutcomes": [
+    "identity::User's physical table (identity_v1_users) is byte-identically shaped whether or not the clinical extension is composed.",
+    "clinical::UserClinicalProfile gets its own physical table (clinical_v1_user_clinical_profiles) with a unique FK to identity_v1_users.id, ON DELETE CASCADE.",
+    "A row inserted through identity::User's generated CRUD endpoint can be referenced by a row inserted through the satellite's own generated CRUD endpoint."
+  ]
+}

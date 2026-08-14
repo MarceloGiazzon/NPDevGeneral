@@ -272,6 +272,23 @@
       ]
     },
     {
+      "id": "satelliteof-ast-compiled-four-place",
+      "citedBy": "PACK-10 (PK-6 Step 1, satellite concepts)",
+      "description": "satelliteOf (a concept-level marker declaring a 1:1 satellite relationship to a base concept owned by another pack, PACK-ROADMAP.md card PK-6) needs the same live path the ast-compiled-four-place rule requires for roles[] -- parser, compiler, ModelResolver (BOTH of its ConceptAst-reconstructing sites, sanitizeConcept and mergeConcept -- a concept-level field is easy to drop at exactly this point, unlike a top-level array field), and the canonical writer+reader pair -- or a declared satellite marker survives parsing but silently never reaches SemanticValidator/the generator (REG-104's exact shape). Deliberately named 'satelliteOf', not 'extends': ConceptAst/model.schema.json's concept.extends already means single-model concept inheritance (field merging via ModelResolver.mergeConcept) -- reusing that keyword for a completely different cross-pack FK-bond marker would have collided with existing, load-bearing semantics.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "satelliteOf"
+      ],
+      "caseSensitive": false,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+      ]
+    },
+    {
       "id": "app-secrets-dir-spared-three-seams",
       "citedBy": "agent-proxy",
       "description": "The list of <FinalApp>/App directories that regeneration must NOT delete is decided independently in three places that all run during one build -- Build-NpdevApp.ps1's $SparedInsideApp, Build-ClaudeApp.ps1's copy of it, and FinalAppAssembler.PRESERVED_APP_DIRECTORIES. The Java layer runs LAST, so a directory added to a PowerShell list and not to the Java one is spared and then deleted again, silently, in the same build: exactly what happened to `logs` between MONITOR_PLAN D10 and the agent-proxy work. Anything holding state the generator cannot reproduce -- the database, the log archive, the operator-written secrets/agent-proxy.env -- must appear in all three.",
