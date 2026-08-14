@@ -1,11 +1,21 @@
 name: NPDev CI Validation
 
-# Manual + nightly: this heavy validation (full test matrix, Playwright, Postgres
-# Testcontainers, RuntimeHost integration) is too slow/expensive for every PR (up to 120min) --
-# see npdev-pr-gate.yml for the fast per-PR subset (LNCH-19's "on PR" requirement). This workflow
-# covers LNCH-19's "nightly -- full gates + sample generate->build->boot on Linux/Postgres" half
-# via the schedule trigger below (the Linux job's RuntimeHost integrationTest step already runs
-# the generated canonical-demo app for real against a Testcontainers Postgres instance).
+# Manual + nightly + PR: the Linux job below (full test matrix, Playwright*, Postgres
+# Testcontainers, RuntimeHost integration) stays too slow/expensive for every PR (up to 120min) --
+# see npdev-pr-gate.yml for the fast per-PR subset (LNCH-19's "on PR" requirement) -- but the
+# `ci-validation` job (Windows) is a DIFFERENT story: it is the ONLY place in the repo that invokes
+# six real quality-gate scripts (Runtime surface evidence, Generator gate, RuntimeHost gate, Editor
+# gate, Security hardening maturity evidence, Runtime security consistency evidence), and until
+# REG-161 (2026-08-14) this workflow had no `pull_request` trigger at all -- so those six gates had
+# never once validated a PR before merge in this repo's history, only a scheduled/post-merge run on
+# `main` that could itself silently get skipped by an earlier failing step (REG-158). `pull_request`
+# below now covers that job; see the `if:` on `linux-maturity-validation` for why that job alone
+# stays push/schedule/workflow_dispatch-only. (*Playwright setup/install actually lives in
+# `ci-validation`, not this Linux job -- pre-existing comment inaccuracy, not touched here.)
+# This workflow covers LNCH-19's "nightly -- full gates + sample generate->build->boot on
+# Linux/Postgres" half via the schedule trigger below (the Linux job's RuntimeHost integrationTest
+# step already runs the generated canonical-demo app for real against a Testcontainers Postgres
+# instance).
 on:
   workflow_dispatch:
   schedule:
@@ -17,6 +27,16 @@ on:
   # of this class so far (REG-136, REG-137, and these three) passes there and fails here.
   push:
     branches: [main]
+  # REG-161 (2026-08-14): added so `ci-validation`'s six real gate scripts finally run against a
+  # PR before merge, not only on a scheduled/post-merge push run to `main`. Deliberately added here
+  # (job-scoped via the `if:` below) rather than duplicating `ci-validation`'s setup steps (Java,
+  # Python, Node, Gradle/Playwright caches, RuntimeHost lib staging) into a new job/workflow -- this
+  # keeps the six gates' one existing definition as the only one, at the cost of also re-running
+  # `ci-validation`'s few PR-redundant-with-npdev-pr-gate.yml steps (DSL contract check, Script
+  # automation quality) on Windows, which is itself independently useful: several of that job's own
+  # comments document Windows-only failures (LegacyModelMigrationToolTest, REG-136/137) that a
+  # Linux-only PR gate cannot see.
+  pull_request:
 
 # R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2): least-privilege default -- both jobs build/test and
 # upload their own evidence artifacts, never writing to the repo/PR/release.
@@ -32,6 +52,15 @@ jobs:
     name: Linux post-Beta0 maturity validation
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    # REG-161 (2026-08-14): this job stays push/schedule/workflow_dispatch-only even though the
+    # workflow's `on:` block above now also triggers on `pull_request` (added so the sibling
+    # `ci-validation` job's six real gate scripts get real per-PR coverage). This job's own
+    # PR-relevant pieces (DSL, kernel inproc adapters, a Postgres-adapter subset, generator,
+    # RuntimeHost smoke) already run per-PR via npdev-pr-gate.yml; its PR-exclusive remainder (the
+    # other Postgres Testcontainers adapters, full maturity-report bootstrap, ~120min) is exactly
+    # the cost npdev-pr-gate.yml's own header comment says is too slow/expensive to duplicate on
+    # every PR, so it is excluded here rather than doubling that cost for no new coverage.
+    if: github.event_name != 'pull_request'
 
     defaults:
       run:
