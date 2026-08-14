@@ -48,9 +48,22 @@ detail: |
      separately named in this item's original text but sharing the exact same
      `findAllFromConceptStore()`/`ConceptGateway.list()` chain, so capping one capped both). The
      already-paginated `?page=&size=` path was already safe and is untouched.
-  4. BREAKING.md entry (2026-08-14) documents the behavior change: a concept with >1000 rows for a
+  4. `listBy{{capName}}` reference-finder methods (the auto-generated
+     `GET /api/{route}/by/{name}/{value}` foreign-key finder every bonded field gets) are
+     DELIBERATELY EXEMPT from the cap -- caught during review before merge: an early version of this
+     fix routed `listBy*` through the same capped helper `list()` uses, which is wrong because a
+     reference finder filters AFTER the fetch (`findAllFromConceptStore().stream().filter(matches
+     value)`) -- capping the fetch first would silently drop a legitimate match whose id sorts past
+     the cap, returning an incomplete or empty result with NO truncation signal at all (`listBy*`
+     returns a raw `List<T>`, not a `ConceptListSlice`, so there is no header channel either). Fixed
+     by giving `listBy*` its own unbounded helper (`findAllUnboundedFromConceptStore()`, the
+     pre-this-change `conceptGateway.list(...)` call, unchanged) rather than sharing the capped one --
+     R8a's stated scope was three specific unbounded-read paths, and reference finders were never one
+     of them, so this stays exactly as unbounded as it always was.
+  5. BREAKING.md entry (2026-08-14) documents the behavior change: a concept with >1000 rows for a
      tenant now returns a bounded, header-flagged response from the plain list endpoint instead of
-     everything: `npdev migrate` codemod N/A (runtime behavior, not a DSL/model construct).
+     everything: `npdev migrate` codemod N/A (runtime behavior, not a DSL/model construct). Reference
+     finders are explicitly called out as unaffected.
 
   Live proof: generated + built + booted `simple-product-h2local` (AppGen H2Local sample) with these
   changes, confirmed `GET /api/products` on an EMPTY table returns `X-List-Truncated: false` /
@@ -58,7 +71,12 @@ detail: |
   `GET /api/products` returns exactly 1000 records with `X-List-Truncated: true` /
   `X-List-Limit: 1000`. `DialectConformanceTierATest`/kernel unit build green throughout
   (`:kernel:compileJava`, `:kernel:compileTestJava` both succeed with the new
-  `ConceptStore`/`ConceptGateway`/`ConceptListSlice` types).
+  `ConceptStore`/`ConceptGateway`/`ConceptListSlice` types). Automated test coverage (new, added
+  alongside the listBy* fix): a kernel-level `DefaultConceptGateway` test proving the
+  1000/1001-row LIMIT boundary (`truncated=false` at exactly the cap, `truncated=true` and
+  `size()==maxRows` one row over), and a generator-level test rendering `service-base.mustache`
+  against a model with a reference field, asserting the emitted `listBy*` method calls
+  `findAllUnboundedFromConceptStore()` and never `findAllSliceFromConceptStore()`/the capped path.
 
   What remains open (item 4, the uniqueness pre-checks): `existsUniqueInConceptStore`/
   `existsUniqueCompoundInConceptStore` in service-base.mustache are UNCHANGED -- still a full

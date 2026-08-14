@@ -39,6 +39,13 @@ whitespace-trimmed comparison semantics do not translate cleanly to a portable i
 across all four engines without a real risk of silently changing which values collide; deferred as
 its own follow-up rather than forced under this pass).
 
+**Reference finders (`listBy*`, the auto-generated `GET /api/{route}/by/{name}/{value}` foreign-key
+lookup every bonded field gets) are also explicitly NOT capped.** They filter AFTER fetching, so
+capping their fetch would silently drop a legitimate match instead of just returning fewer rows —
+worse than the bug this change fixes, and with no way to signal it (`listBy*` returns a raw
+`List<{{entityName}}>`, not a `ConceptListSlice`). They keep calling the platform's original
+unbounded `conceptGateway.list(...)` fetch, byte-identical to before this change.
+
 ## 2026-08-13 — a pack-derived concept's physical table name depends on the pack's own id + major version, never the importing app's alias (PK-2)
 
 **What changes.** `packRef.as` overrides the LOGICAL namespace prefix only (`packId::Name` ->

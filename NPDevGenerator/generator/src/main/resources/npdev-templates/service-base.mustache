@@ -165,11 +165,22 @@ public class {{entityName}}ServiceBase {
     }
 
 {{#referenceFinders}}
+    /**
+     * RUN-1 (R8a): deliberately routed through {@link #findAllUnboundedFromConceptStore()}, NOT the
+     * capped {@link #findAllFromConceptStore()} that backs {@link #list()} -- a reference finder
+     * filters AFTER the fetch, so capping the fetch first would silently drop a legitimate match
+     * whose id happens to sort past the cap, with no truncation signal at all (this method still
+     * returns a raw {@code List<{{entityName}}>}, not a {@code ConceptListSlice}). R8a's own scope
+     * was three specific unbounded-read paths (the plain list() endpoint, the generic controller's
+     * free-text fallback, and the uniqueness pre-checks) -- reference finders were never one of
+     * them, so this stays unbounded rather than being silently, incorrectly capped as a side effect
+     * of sharing a helper method.
+     */
     public List<{{entityName}}> listBy{{capName}}(Object value) {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "LIST", generatedCrudExecutionContext());
 {{/kernelControlled}}
-        return findAllFromConceptStore().stream()
+        return findAllUnboundedFromConceptStore().stream()
                 .filter(entity -> uniqueValuesEqual(mapFromEntity(entity).get("{{name}}"), value))
                 .toList();
     }
@@ -831,11 +842,13 @@ public class {{entityName}}ServiceBase {
     }
 
     /**
-     * RUN-1 (R8a): the one place {@link #list()}/{@link #listCapped()}/{@code listBy*} finders all
-     * route through -- capped at {@code ConceptQuery.MAX_LIMIT} via
-     * {@link com.npdev.kernel.concepts.ConceptGateway#listCapped}, which still applies row-level
-     * {@code access.read} scoping the same way {@link #findByIdFromConceptStore} does (LNCH-13),
-     * now against the capped slice rather than the whole tenant table.
+     * RUN-1 (R8a): the one place {@link #list()}/{@link #listCapped()} route through -- capped at
+     * {@code ConceptQuery.MAX_LIMIT} via {@link com.npdev.kernel.concepts.ConceptGateway#listCapped},
+     * which still applies row-level {@code access.read} scoping the same way
+     * {@link #findByIdFromConceptStore} does (LNCH-13), now against the capped slice rather than the
+     * whole tenant table. Deliberately NOT used by {@code listBy*} reference finders below -- see
+     * {@link #findAllUnboundedFromConceptStore()}'s own javadoc for why capping a filter-after-fetch
+     * read would silently drop matches instead of just being slow.
      */
     private com.npdev.kernel.concepts.ConceptListSlice<{{entityName}}> findAllSliceFromConceptStore() {
         com.npdev.kernel.concepts.ConceptListSlice<ConceptRecord> slice = conceptGateway.listCapped(
@@ -847,6 +860,24 @@ public class {{entityName}}ServiceBase {
                 .map(this::entityFromRecord)
                 .toList();
         return new com.npdev.kernel.concepts.ConceptListSlice<>(entities, slice.truncated());
+    }
+
+    /**
+     * RUN-1 (R8a): the pre-R8a, still-unbounded {@code conceptGateway.list(...)} fetch -- kept
+     * ALIVE, on purpose, ONLY for {@code listBy*} reference finders (see that method's javadoc).
+     * Every REST-facing list surface (the plain {@code list()} endpoint, the generic concepts
+     * controller's free-text fallback) goes through the capped
+     * {@link #findAllSliceFromConceptStore()} instead; this method must never be wired to a new
+     * caller without re-deriving whether that caller can tolerate a silently-partial result the way
+     * a post-fetch equality filter can (it cannot signal truncation -- it returns a raw {@code List}).
+     */
+    private List<{{entityName}}> findAllUnboundedFromConceptStore() {
+        return conceptGateway.list(
+                new ConceptListRequest(CONCEPT_NAME, currentTenantId()),
+                generatedCrudExecutionContext()
+        ).stream()
+                .map(this::entityFromRecord)
+                .toList();
     }
 
     private {{entityName}} saveToConceptStore({{entityName}} entity) {
