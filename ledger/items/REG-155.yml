@@ -1,0 +1,70 @@
+id: REG-155
+title: >-
+  Get-NPDevBuildRoot resolves to a wrong-but-plausible nested path when the workspace root is a
+  git worktree living inside the canonical checkout, breaking runtimehost-libs discovery
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-13
+source: >-
+  MASTER-ROADMAP.md Step 12 (R7 Stage B, SEC-1). Hit live while building a freshly generated
+  npdev-canary app from this session's own isolated worktree
+  (`<repo>\.claude\worktrees\agent-<id>`): `_ops\Build-FinalApp.ps1` failed with "Missing NPDev
+  RuntimeHost libs manifest in
+  D:\WorkSpace\NPDev\NPDev_General\.claude\worktrees\Build\runtimehost-libs" -- a directory that
+  has never existed and was never going to. Worked around with
+  `$env:NPDEV_RUNTIMEHOST_LIBS_DIR = 'D:\WorkSpace\NPDev\Build\runtimehost-libs'` (the real, existing
+  shared cache) per the documented escape hatch, then proceeded with Stage B's own verification.
+  Filed separately because this is a pre-existing resolver gap unrelated to R7's auth/profile work,
+  not something this branch's changes touched or caused.
+surface: scripts/build-root-resolution
+files:
+  - scripts/npdev-common.ps1
+detail: |
+  `Get-NPDevBuildRoot` (`scripts/npdev-common.ps1:403-420`, the fixed-in-REG-144
+  content-based resolver: "identify the root by its CONTENTS, never its name") walks UP from the
+  workspace root for the nearest ancestor that directly contains `NPDevContract` + `NPDevGenerator`
+  + `NPDevKernel`, then returns `<that ancestor>'s PARENT> + "Build"`. For the canonical checkout
+  (`D:\WorkSpace\NPDev\NPDev_General`), the ancestor IS the checkout root and its parent is
+  `D:\WorkSpace\NPDev`, giving the correct `D:\WorkSpace\NPDev\Build`.
+
+  A git worktree of this same repo, checked out INSIDE the canonical checkout (e.g.
+  `<repo>\.claude\worktrees\agent-<id>`, the isolation mechanism this session itself runs under --
+  confirmed present via `EnterWorktree`/`ExitWorktree` tooling and prior session memory noting
+  "blind subagent worktrees" as a normal mode of operating on this project) ALSO directly contains
+  all three module directories (a worktree checks out the full tree). So the walk's very first
+  iteration matches -- on the WORKTREE directory itself, not the canonical checkout -- and its
+  parent is `<repo>\.claude\worktrees\`, not `D:\WorkSpace\NPDev`. The function silently returns
+  `D:\WorkSpace\NPDev\NPDev_General\.claude\worktrees\Build`, a directory that is wrong but exists
+  as a perfectly well-formed path, so nothing about the failure mode hints at the real cause --
+  confirmed live, reproduced exactly as described above before working around it.
+
+  This is the identical failure SHAPE REG-144 fixed (a build-root resolver producing a plausible
+  but wrong path with no error), but a NEW trigger REG-144's fix does not cover: REG-144 was about
+  matching by directory NAME across differently-named canonical clones; this is about a
+  content-based match succeeding correctly, but on the wrong ONE of two valid nested matches, when
+  a worktree of the repo lives inside the repo. `Get-NPDevRuntimeHostLibsDir`
+  (`scripts/npdev-common.ps1:357-363`) inherits the bug since it just joins "runtimehost-libs" onto
+  this function's answer. Not independently re-verified for the other ten places
+  `build-root-resolution-eleven-place` names (the five `build.gradle`/`build.gradle.template`
+  Groovy twins and `WorkspaceRootLocator.java`), but they are described as sharing the identical
+  "ancestor-with-three-module-dirs, then its parent" predicate, so the same worktree-nesting case
+  plausibly reproduces in all of them -- flagged here rather than assumed fixed just because
+  `$env:NPDEV_RUNTIMEHOST_LIBS_DIR`/`$env:NPDEV_BUILD_ROOT` happen to override this one PowerShell
+  call site.
+
+  Not fixed here -- unrelated to R7 Stage B's auth/profile scope, and a real fix needs a considered
+  design (e.g. stop at the FIRST ancestor match by default, but also detect ".git being a file
+  (worktree marker) rather than a directory" and prefer `git rev-parse --show-toplevel`'s answer,
+  or an explicit opt-out) rather than a quick patch to one of eleven pinned call sites while leaving
+  the other ten possibly still wrong.
+guard:
+  kind: manual
+  ref: >-
+    from inside a git worktree checked out under the canonical repo's own tree (e.g.
+    `git worktree add .claude/worktrees/probe`), run any script that calls Get-NPDevBuildRoot or
+    Get-NPDevRuntimeHostLibsDir with no override env var set, and inspect the path it prints/fails on
+  asserts: >-
+    the resolved build root equals the canonical checkout's shared Build directory
+    (D:\WorkSpace\NPDev\Build), not a path nested inside the worktree's own .claude\worktrees tree
+  provenRed: false
