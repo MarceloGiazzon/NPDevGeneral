@@ -70,3 +70,114 @@ detail: |
   gaining a way to receive the calling repo's root (or `Rebuild-And-Restage.ps1` doing its own
   copy-templates-first workaround), and (b) tracing `sync-runtimehost-libs.ps1`'s staleness
   comparison end-to-end under a worktree to find where it diverges from the directory it reports.
+
+  --- Fix pass addendum (2026-08-14): sub-issue 1 fixed, sub-issue 2 root-caused + mitigated ---
+
+  Both sub-issues addressed in `fix/reg-162-rebuild-worktree-staleness`, working from the SAME
+  worktree class this item was filed against. Full real rebuild-and-restage end-to-end verification
+  (the actual proof that a worktree edit reaches a running generated app) was deliberately deferred
+  to a later consolidated pass per this session's own instructions -- everything below is either a
+  code-read argument, an isolated PowerShell parse/logic check, or a live empirical dry-run of just
+  the path-resolution functions involved, run from this session's own real worktree
+  (`.claude\worktrees\agent-a03b49b98b37b7bd5`) and cross-checked against the canonical checkout and
+  a simulated CI-style nested checkout. No `gradlew` build was run.
+
+  SUB-ISSUE 1 -- FIXED. `Rebuild-And-Restage.ps1` already computed its own repo root correctly
+  (`$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path`, the same PSScriptRoot-relative
+  pattern REG-144 established) but never passed it on to the external prepare script. Step 2 now
+  calls `& $prepare -ProductRepo $repoRoot -RuntimeRoot $GeneratorRuntimeRoot` instead of
+  `& $prepare -RuntimeRoot $GeneratorRuntimeRoot` -- so the external script's own hardcoded
+  `'D:\WorkSpace\NPDev\NPDev_General'` default can never win regardless of where this repo is
+  checked out. (Read, but did not modify, `prepare-npdev-generator-runtime.ps1`'s own
+  `$ExternalBuildRoot` resolution at its lines 100-105: with no `-ProductRepo` override it falls back
+  to `$ProductRepo`'s own parent directory, which for a worktree lands on the SAME shadow
+  `<worktree>\..\Build` path sub-issue 2 chases below -- but that variable is only used there to
+  RE-DISCOVER where Gradle's OWN `:generator:installDist` just wrote its output, using the SAME
+  Parent-based logic NPDevGenerator's own build.gradle uses with no override passed either, so the
+  two sides still agree with each other even when both land on the shadow path -- confirmed by
+  reading NPDevGenerator/build.gradle's `resolveNpdevBuildRoot`. This makes the external script's own
+  scratch/intermediate build location a stray-disk-usage concern at worst, not a correctness bug --
+  the `-RuntimeRoot` final destination is untouched by it. Not proven live; not in scope to prove
+  live this session.)
+
+  SUB-ISSUE 2 -- ROOT CAUSE FOUND, FIX APPLIED, PLUS A SAFETY NET (defense-in-depth, since the exact
+  end-to-end mechanism that landed a jar specifically at the literal path
+  `...\.claude\worktrees\Build\runtimehost-libs` the original session reported was not traced
+  100% of the way through a live rebuild).
+
+  Root cause: `Get-NPDevBuildRoot` (scripts/npdev-common.ps1) walks UP from a workspace root looking
+  for the first ancestor directory that contains NPDevContract + NPDevGenerator + NPDevKernel, then
+  returns THAT ancestor's PARENT + "Build". A git worktree checked out under this repo
+  (`.claude\worktrees\<id>`) is a full checkout -- it legitimately contains its own copies of those
+  three directories, so it satisfies the predicate at the WORKTREE'S OWN root, one level earlier than
+  intended. Empirically confirmed live (no build; pure path resolution) from this session's own
+  worktree, BEFORE any fix:
+
+    Get-NPDevWorkspaceRoot(<worktree>\scripts\runtimehost) -> <worktree> itself (correct, expected --
+      the worktree IS a valid workspace root by the same predicate, and source code for a build must
+      come from here, not the canonical checkout, or a worktree's own edits would never be used)
+    Get-NPDevBuildRoot(<worktree>) -> D:\WorkSpace\NPDev\NPDev_General\.claude\worktrees\Build
+
+  That second line matches the original session's reported shadow path byte-for-byte. Since
+  `sync-runtimehost-libs.ps1` never threads `-WorkspaceRoot` through from `Rebuild-And-Restage.ps1`
+  and so resolves its own default the same way, this WRONG value becomes `$externalBuildRoot`,
+  gets passed as `-PnpdevBuildRoot=<shadow>` to the kernel/generator/runtimehost-core local jar
+  builds, AND gets written into `$env:NPDEV_BUILD_ROOT` (sync-runtimehost-libs.ps1 line 59) for the
+  rest of the PowerShell session -- an env var multiple build.gradle files (NPDevKernel,
+  NPDevGenerator, runtimehost-core; confirmed by reading all three) explicitly check as a fallback
+  BEFORE their own directory walk, and `NPDEV_RUNTIMEHOST_LIBS_DIR` (a sibling env var,
+  runtimehost-core/build.gradle's `resolveNpdevRuntimeLibsDir`, REG-137) is checked BEFORE the `-P`
+  gradle property even when one is passed explicitly. This gives a concrete, code-confirmed pathway
+  for a later, env-var-unaware Gradle invocation in the same session to silently land jars in the
+  shadow location -- but the individual gradle invocations THIS script itself makes were re-read and
+  found to pass explicit `-P` overrides consistently, so the exact call that produced the originally
+  reported literal `...\runtimehost-libs\kernel-0.1.0.jar` shadow copy was not pinned down to one
+  single line; it is very plausibly a downstream consumer of the leaked `$env:NPDEV_BUILD_ROOT`
+  and/or a stale `$env:NPDEV_RUNTIMEHOST_LIBS_DIR` left over from an earlier command in that session's
+  shell, neither of which this fix pass could reproduce without the deferred full rebuild.
+
+  Fix: `Get-NPDevBuildRoot` now keeps climbing PAST a matching ancestor instead of stopping at the
+  first one, and returns the OUTERMOST match's parent + "Build". A worktree nested under the
+  canonical checkout has exactly one further matching ancestor above it (the canonical checkout
+  itself), so climbing to it recovers the single shared `D:\WorkSpace\NPDev\Build` by construction,
+  under any worktree name or depth -- no "am I a worktree" special-casing needed. `Get-NPDevWorkspaceRoot`
+  itself was deliberately left UNCHANGED: it must keep resolving to the INNERMOST match (the worktree)
+  so that source-code paths (NPDevKernel, NPDevGenerator, NPDevContract) are read from the worktree's
+  own edited tree, not the canonical checkout -- only the shared BUILD OUTPUT location needed to widen
+  its search.
+
+  Verified live (path resolution only, no build) after the fix:
+    Get-NPDevBuildRoot(<worktree>)           -> D:\WorkSpace\NPDev\Build            (was: shadow, now FIXED)
+    Get-NPDevRuntimeHostLibsDir(<worktree>)  -> D:\WorkSpace\NPDev\Build\runtimehost-libs (FIXED)
+    Get-NPDevBuildRoot(<canonical checkout>) -> D:\WorkSpace\NPDev\Build            (unchanged, no regression)
+    Get-NPDevBuildRoot(<simulated CI checkout nested as .../NPDevGeneral/NPDevGeneral,
+      REG-144's own no-name-match case>)     -> .../NPDevGeneral/Build             (unchanged, matches
+                                                 REG-144's already-fixed expectation)
+
+  Safety net (added regardless of the above, since the full causal chain to the ORIGINAL session's
+  exact reported symptom was not conclusively closed): `sync-runtimehost-libs.ps1` now re-verifies,
+  right after staging, that every required jar actually sitting in `$runtimeHostLibs` is
+  byte-identical (SHA-256, size-checked first) to the source file `Sync-NPDevJars` itself recorded as
+  authoritative for that name. Any mismatch throws immediately with the jar name and both paths named
+  in the error -- non-zero exit, no silent "already current" success against a stale target. This
+  catches the exact reported failure shape (staged file quietly stays stale while the script reports
+  success) regardless of which upstream mechanism produced the divergence, including any leaked-env-var
+  path this session did not manage to reproduce directly. Unit-tested in isolation (matching-content
+  and stale-content cases both behave correctly); not exercised inside a real `-BuildLocalJars` run
+  this session.
+
+  Honest status: sub-issue 1 is fixed with high confidence (the change is small, direct, and the
+  external script's own documented parameter contract was read to confirm `-ProductRepo` is exactly
+  the right override). Sub-issue 2's TRUE root cause was found and fixed for the ONE confirmed,
+  reproduced mechanism (`Get-NPDevBuildRoot`'s wrong ancestor for a nested worktree) -- but that fix is
+  not proven to be the *complete* explanation for the original session's exact reported symptom, and
+  the safety net exists precisely because of that residual uncertainty. Status stays OPEN, not DONE:
+  the real closing proof is a full rebuild-and-restage cycle run from an actual worktree against a
+  real generated app, confirming both the generator jar and kernel/runtimehost jars reflect a fresh
+  worktree edit -- explicitly deferred, per this session's own instructions, to a later consolidated
+  verification pass.
+
+  Files changed (absolute):
+    D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Rebuild-And-Restage.ps1
+    D:\WorkSpace\NPDev\NPDev_General\scripts\npdev-common.ps1
+    D:\WorkSpace\NPDev\NPDev_General\scripts\runtimehost\sync-runtimehost-libs.ps1
