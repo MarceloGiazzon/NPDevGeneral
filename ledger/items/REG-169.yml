@@ -1,0 +1,117 @@
+id: REG-169
+title: >-
+  Generated concept UPDATE can null out tenant_id on the write JdbcBusinessConceptStore.dbRecord()
+  builds, because the trustworthy dedicated tenant_id value is set FIRST and then unconditionally
+  overwritten by any same-named entry the entity's own data map happens to carry
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Root-caused after the session's long-standing "known CI flake" --
+  HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.deletingOrReplacingARecordCascadesTheUnderlyingFileBytes()
+  -- broke pattern by failing TWICE in a row (original push-triggered npdev-ci-validation.yml run
+  plus one `gh run rerun --failed` retry) on `main` right after this session's 7-PR roadmap
+  reconciliation, instead of the single, non-repeating occurrence every earlier PR in this session
+  had shown. That break from pattern is what triggered actually root-causing it instead of retrying
+  a third time. Reproduced locally, twice, in isolation, on the fully-reconciled `main`:
+  `./gradlew.bat -p NPDevGenerator --no-daemon :generator:test --tests
+  "com.npdev.generator.emitters.HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest"
+  -PincludePackagedProofs --rerun-tasks`. **Confirmed pre-existing and unrelated to any of the 7
+  roadmap PRs merged this session** (#76-#82): every file in the real stack trace --
+  JdbcBusinessConceptStore.java, service-base.mustache, GeneratedCrudRuntimeSupport.java,
+  PostgresPersistenceCapabilityAdapter.java -- was checked via `git log`/`git show` against each of
+  the 7 merge diffs; none of the 7 touch save/saveVersioned/executeUpsert/dbRecord or the
+  update/updateFromSource code paths at all. This means every "known flake, verified via log
+  signature match" judgment call made across this entire session (dozens of times, on every PR) was
+  actually deferring a REAL bug rather than a runner-timing flake -- though since none of the 7 PRs'
+  own diffs touch the code involved, that does not retroactively put any of those 7 merges in
+  question; it is a separate, standing platform defect that happened to share a test name and error
+  shape every time.
+surface: kernel/concepts
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache
+detail: |
+  Real failure, from the preserved server boot log (evidence directory retained by temporarily
+  removing the test's `finally { deleteRecursively(runRoot); }` cleanup for one diagnostic run --
+  reverted afterward, not committed):
+
+    org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException: NULL not allowed for column "tenant_id"
+    MERGE INTO gc_proof_docs (id, tenant_id, attachment, version, row_version) KEY(id) VALUES (?, ?, ?, ?, ?)
+
+  This happens on the GC-P2 replace-cascade step -- upload a file, create a `GcProofDoc` referencing
+  it (passes), then PUT to replace its `attachment` field with a different file (fails at
+  `updateRecordAttachment`'s HTTP-500 assertion, line 275). GC-P1 (create, then delete) passes.
+
+  Confirmed call chain for the failing write: `GcProofDocController.update` ->
+  `GcProofDocControllerBase.updateBase` -> generated `GcProofDocServiceBase.updateFromSource` (lines
+  219-251) -> `saveWithIntegrityMapping(existing)` -> the `this::saveToConceptStore` callback (line
+  82, line 534-540) -> `conceptStore.save(new ConceptRecord(CONCEPT_NAME, id, currentTenantId(),
+  mapFromEntity(existing)))` -> `JdbcBusinessConceptStore.save` (line 598) -> `saveVersioned`/
+  `executeUpsert` (lines 611/619/662) -> the failing MERGE.
+
+  **The confirmed, code-read mechanism** (`JdbcBusinessConceptStore.dbRecord()`, lines 828-842):
+
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put(shape.idColumn(), coerceId(record.id()));
+    out.put("tenant_id", record.tenantId());          // <- correct value, from currentTenantId()
+    for (Map.Entry<String, Object> entry : record.data().entrySet()) {
+        String column = shape.columnByField().getOrDefault(entry.getKey().toLowerCase(...), toDbColumn(entry.getKey()));
+        out.put(column, entry.getValue());              // <- UNCONDITIONALLY overwrites, incl. tenant_id
+    }
+    return out;
+
+  The existing comment right above line 836 explains the class of bug this is *meant* to guard
+  against ("tenant_id ... must come from the ConceptRecord's own dedicated tenantId component, not
+  record.data() ... relying on record.data() alone ... would silently write NULL") but the guard
+  only holds as long as `record.data()` never itself contains a "tenantId"/"tenant_id" entry. It
+  does here: `record.data()` is `mapFromEntity(existing)` (generated `GcProofDocServiceBase.java`
+  line 604-606), a blanket `OBJECT_MAPPER.convertValue(entity, MAP_TYPE)` over the WHOLE entity --
+  every Jackson-visible property, not just DSL-declared fields -- so it includes whatever is
+  currently on the entity's own `tenantId` field, and that value clobbers the correctly-set one in
+  the very next loop iteration.
+
+  **Confirmed asymmetry, generated `GcProofDocServiceBase.java`:** `create()` explicitly re-stamps
+  the entity immediately before save (line 196: `e.setTenantId(currentTenantId());`, with a comment
+  explaining exactly why: CreateRequest DTOs never carry a caller-supplied tenantId). `update()`'s
+  `updateFromSource()` (lines 219-251) has no equivalent line anywhere -- `existing` comes straight
+  from `persistence.findById(id)` (line 222), gets mutated in place by
+  `runtimeSupport.applyUpdateFields(...)` (line 238), and is saved as-is. If `persistence.findById`
+  (`PersistenceCapability<GcProofDoc,UUID>`, backed by `PostgresPersistenceCapabilityAdapter`, used
+  for both Postgres and H2) does not hydrate `existing`'s `tenantId` Java field from the DB row it
+  reads (`rowToMap()` at PostgresPersistenceCapabilityAdapter.java lines 294-318/454-479 returns a
+  raw column-keyed map; whatever converts that map into the typed `GcProofDoc` for the
+  `PersistenceCapability` interface's typed return was not traced to its final line), `existing`'s
+  tenantId stays at the Java default (null) all the way through to `mapFromEntity`, producing the
+  clobber above.
+
+  **What is NOT yet confirmed**, and is the open half of this item: whether
+  `existing.getTenantId()` is actually null at the point `saveToConceptStore` runs (inferred from the
+  code shape and the observed NULL write, not directly instrumented/logged), and whether this is
+  truly universal to every generated concept's UPDATE or narrower to this test's specific shape
+  (e.g. something about a `file`/`JsonNode`-typed field). Ordinary record edits elsewhere in this
+  platform's history (WmsOffice, aggregate workbench, ControlPanel) have not visibly hit this, which
+  argues against a fully universal "every update, every concept" scope -- but `dbRecord()`'s
+  overwrite-before-data ordering is a real, provable defect either way: it has zero protection
+  against `record.data()` containing a same-named entry for any system-managed column
+  (`tenant_id`, and by the same logic potentially `id`), independent of how that entry gets there.
+
+  **Fix direction (not yet implemented):** re-order `dbRecord()` so the dedicated `id`/`tenant_id`
+  components are applied AFTER merging `record.data()`, not before -- the request-context-sourced
+  values (`record.tenantId()`, `record.id()`) should always win over anything the entity's own data
+  map happens to carry, by construction, rather than by the caller's data map never colliding with
+  those keys by convention. That closes the whole class of risk regardless of which upstream path
+  produces a stale/null value on the entity.
+guard:
+  kind: manual
+  ref: >-
+    ./gradlew.bat -p NPDevGenerator --no-daemon :generator:test --tests
+    "com.npdev.generator.emitters.HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest"
+    -PincludePackagedProofs --rerun-tasks
+  asserts: >-
+    deletingOrReplacingARecordCascadesTheUnderlyingFileBytes fails at updateRecordAttachment's HTTP
+    500 assertion; the packaged app's boot log (only preserved by locally removing the test's
+    finally-block cleanup) shows JdbcSQLIntegrityConstraintViolationException: NULL not allowed for
+    column "tenant_id" on the MERGE INTO gc_proof_docs upsert
+  provenRed: true
