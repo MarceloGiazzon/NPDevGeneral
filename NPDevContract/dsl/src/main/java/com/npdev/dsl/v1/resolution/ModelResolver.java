@@ -215,7 +215,8 @@ public final class ModelResolver {
                 concept.getModule(),
                 concept.getIndexes(),
                 concept.getAccess(),
-                concept.getRenamedFrom()
+                concept.getRenamedFrom(),
+                concept.getSatelliteOf()
         );
     }
 
@@ -288,7 +289,8 @@ public final class ModelResolver {
                 firstNonBlank(specialization.getModule(), base.getModule()),
                 mergedIndexes,
                 mergedAccess,
-                specialization.getRenamedFrom()
+                specialization.getRenamedFrom(),
+                specialization.getSatelliteOf()
         );
     }
 

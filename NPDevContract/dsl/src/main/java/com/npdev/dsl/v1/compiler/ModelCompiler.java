@@ -324,7 +324,8 @@ public final class ModelCompiler {
                             concept.getModule(),
                             compiledIndexes,
                             compiledAccess,
-                            concept.getRenamedFrom()
+                            concept.getRenamedFrom(),
+                            concept.getSatelliteOf()
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());

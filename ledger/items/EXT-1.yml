@@ -16,5 +16,24 @@ detail: |
   not merely declare it. MASTER-ROADMAP.md F4: R10 is merged with PACK-ROADMAP.md's PK-6 (extension
   packs) into one campaign, S8, because both touch GeneratedPluginMountPlan, the definition-directory
   mount, and the three runtime-supported-controllers.json enforcement points -- designing them
-  separately means designing the same extension model twice. Lands at Step 15 (PM5 milestone); not in
-  this session's scope (Steps 1-4).
+  separately means designing the same extension model twice. Lands at Step 15 (PM5 milestone).
+
+  2026-08-14 (step15-pk6-r10-extension branch): read GeneratedPluginMountPlan.java,
+  RuntimeControllerAllowlistConfig.java, runtime-supported-controllers.json, build.gradle.template's
+  unsupportedRuntimeHostControllerSources fileTree gate, and run-runtime-surface-evidence.ps1 (the
+  three enforcement points CLAUDE.md/the agent-proxy precedent name) as part of designing the full
+  PK-6+R10 campaign per F4. Confirmed the trap the card names: all three enforcement points key off
+  `com/finalexec/api` + the shared, byte-identical-per-app runtime-supported-controllers.json --
+  adding a plugin controller's name there would neither enable it (its source lives outside that
+  package) nor be safe (the manifest is supposed to describe the FIXED platform-owned surface, not a
+  per-app plugin). A real plugin:java-controller mount needs its own mechanism: a NEW mount kind on
+  GeneratedPluginMountPlan (today's only kind, JAVA_SOURCE, mounts a capability IMPLEMENTATION
+  invoked by reflection against an operation binding -- a raw @RestController is not that shape at
+  all and would need its own descriptor convention, its own copy-at-generation-time or extra-
+  sourceSet mount, the D9 security-wrapper codegen, AND the fourth enforcement point + twin-pair
+  rule the card demands), plus migrating the custom-screen mount out of its current single
+  PowerShell builder into a generator emitter. Genuinely XL on its own (the card's own effort key)
+  and architecturally distinct enough from PK-6's satellite-concepts mechanism (which shipped this
+  session, see PACK-10) that forcing both into one PR would have meant designing the same extension
+  model twice under time pressure rather than once, carefully -- deliberately deferred to its own
+  session/PR rather than rushed. Still not in scope; status remains OPEN.

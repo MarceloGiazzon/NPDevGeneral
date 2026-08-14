@@ -1,0 +1,15 @@
+{
+  "schemaVersion" : "npdev-lock.v1",
+  "packs" : {
+    "clinical" : {
+      "resolvedVersion" : "1.0.0",
+      "digest" : "sha256:31b4220767b7fae4a2adb61dc8725468c53cf905907489576c88f81ba8df820d",
+      "sourcePath" : "packs/clinical/pack.json"
+    },
+    "identity" : {
+      "resolvedVersion" : "1.0.0",
+      "digest" : "sha256:d7a0c49eb073adf57a191bd21c23c42869c3629843e8d9d1c7b921e5b87e0134",
+      "sourcePath" : "packs/identity/pack.json"
+    }
+  }
+}

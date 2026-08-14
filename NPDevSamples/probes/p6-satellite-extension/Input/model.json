@@ -1,0 +1,12 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "npdev.probes.p6satelliteextension",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "PK-6 Step 1 probe (satellite concepts): the built-in identity pack composed with a throwaway extension pack ('clinical') that declares a satellite concept (satelliteOf: \"identity::User\") adding clinical fields to identity::User WITHOUT modifying identity itself. Proves: identity::User's own physical table is unaffected, the satellite gets its own FK-linked table, and a row inserted through the base pack's generated CRUD endpoint can be referenced by a row inserted through the satellite's own generated CRUD endpoint."
+  },
+  "packs": [
+    { "$ref": "packs/clinical/pack.json" }
+  ]
+}

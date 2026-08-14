@@ -117,6 +117,7 @@ public final class SemanticValidator {
         Map<String, ConceptAst> entitiesByLower = ConceptValidation.indexEntities(effectiveModel.getConcepts(), errors);
         ConceptValidation.validateTableNameCollisions(effectiveModel, errors);
         ConceptValidation.validateConceptRenamedFrom(effectiveModel, entitiesByLower, errors, semanticWarnings);
+        ConceptValidation.validateConceptSatelliteOf(effectiveModel, entitiesByLower, errors, semanticWarnings);
 
         ConceptValidation.validateCapabilities(effectiveModel, errors);
         ConceptValidation.validateBindings(effectiveModel, errors);

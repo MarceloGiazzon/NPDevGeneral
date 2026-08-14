@@ -182,6 +182,10 @@
       "invocation": "manual-runbook",
       "documentedIn": "ledger/items/PACK-6.yml"
     },
+    "scripts/proofs/run-pk6-satellite-extension-proof.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "ledger/items/PACK-10.yml"
+    },
     "scripts/quality/Invoke-JsonSchemaValidation.ps1": {
       "invocation": "ci-gate"
     },

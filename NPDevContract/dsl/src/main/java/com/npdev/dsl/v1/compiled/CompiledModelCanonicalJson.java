@@ -528,6 +528,7 @@ public final class CompiledModelCanonicalJson {
             node.put("truthLevel", safe(concept.getTruthLevel()));
             node.put("module", safe(concept.getModule()));
             node.put("renamedFrom", safe(concept.getRenamedFrom()));
+            node.put("satelliteOf", safe(concept.getSatelliteOf()));
             node.set("ui", toPresentationMetadata(concept.getUi()));
 
             List<CompiledField> fields = new ArrayList<>(concept.getFields());
