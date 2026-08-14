@@ -1,0 +1,72 @@
+id: REG-162
+title: >-
+  Rebuild-And-Restage.ps1's two cache-refresh steps silently build from/stage to the wrong
+  directory when run from a git worktree, leaving the app's actual jar/generator cache stale
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Found while verifying RUN-1/R8a (a kernel + generator-template change) from an isolated git
+  worktree (`.claude/worktrees/<id>`), following CLAUDE.md's own recommended workflow
+  (`pwsh -File scripts/appgen/Rebuild-And-Restage.ps1 -AppFolder <appFolder>`, the "rebuild-app"
+  skill). The rebuilt app compiled against STALE code twice over -- once for the generator
+  templates, once for the kernel jar -- both times reporting success.
+surface: appgen/rebuild-pipeline
+files:
+  - scripts/appgen/Rebuild-And-Restage.ps1
+  - scripts/runtimehost/sync-runtimehost-libs.ps1
+detail: |
+  Two independent, compounding defects, both reproduced live on 2026-08-14 while rebuilding
+  `simple-product-h2local` from worktree `D:\WorkSpace\NPDev\NPDev_General\.claude\worktrees\
+  agent-ae322a63a08acbc26` (not the canonical `D:\WorkSpace\NPDev\NPDev_General` checkout):
+
+  1. GENERATOR ROOT hardcoded, not threaded through. `AppGen\generator-runtime\
+     prepare-npdev-generator-runtime.ps1` (lives OUTSIDE this repo, so its own file cannot be fixed
+     here) defaults `-ProductRepo` to the LITERAL string `'D:\WorkSpace\NPDev\NPDev_General'` --
+     exactly the REG-144 anti-pattern ("never hardcode D:\WorkSpace\... as a default"), just in a
+     script this repo does not own. `Rebuild-And-Restage.ps1`'s step 2 calls it as
+     `& $prepare -RuntimeRoot $GeneratorRuntimeRoot` with NO override for the source-repo location,
+     so every invocation from a worktree (or any differently-located checkout) silently builds and
+     packages the generator distribution from the WRONG source tree, reporting
+     "Runtime pack prepared successfully" with zero error. Verified: after editing three
+     `npdev-templates/*.mustache` files in the worktree and running the full wrapper, the refreshed
+     `generator-0.1.0.jar` at `AppGen\generator-runtime\current\lib\` contained the OLD, unedited
+     template text -- confirmed by extracting `npdev-templates/controller-base.mustache` from the
+     jar and diffing against both trees. Manually re-running
+     `prepare-npdev-generator-runtime.ps1 -ProductRepo <worktree path> -RuntimeRoot <same>` produced
+     the correct jar.
+  2. KERNEL/RUNTIMEHOST-CORE JAR STAGING lands in a worktree-scoped shadow directory even when
+     `-RuntimeHostLibsDir` is passed explicitly. `Rebuild-And-Restage.ps1` threads ONE consistent
+     `-RuntimeHostLibsDir` (default `D:\WorkSpace\NPDev\Build\runtimehost-libs`) to both
+     `sync-runtimehost-libs.ps1` (step 1) and `Build-NpdevApp.ps1` (step 3) specifically to avoid
+     the already-known `runtimehost-libs-dir-mismatch` class of bug. That part worked as designed --
+     but the resulting app STILL compiled against a stale kernel jar
+     (`ConceptGateway.listCapped`/`ConceptListSlice` from a same-session R8a edit were reported as
+     "cannot find symbol"). Investigation: `D:\WorkSpace\NPDev\Build\runtimehost-libs\kernel-0.1.0.jar`
+     stayed at its pre-session timestamp/size even though the sync step logged
+     "Copied 2 local jar(s); 44 already current. Path: D:\WorkSpace\NPDev\Build\runtimehost-libs" --
+     i.e. it reported writing to the CORRECT, explicitly-passed directory, but a freshly built
+     kernel-0.1.0.jar (right size, contains the new classes, confirmed via `jar tf`) was found
+     instead sitting in `D:\WorkSpace\NPDev\NPDev_General\.claude\worktrees\Build\runtimehost-libs`
+     -- a worktree-scoped shadow path that is never what any caller asked for. Same for
+     `runtimehost-core-0.1.0.jar`/`-sources.jar`. Root cause NOT fully isolated (this session did not
+     have budget to trace it through `sync-runtimehost-libs.ps1`'s "already current" staleness check
+     vs. its `Get-NPDevBuildRoot`-derived `$externalBuildRoot` jar-discovery path -- see that
+     script's lines ~26-57), only the reproducible symptom: the explicitly-requested target
+     directory is left stale while a correct copy silently lands somewhere else. Worked around by
+     manually copying the freshly built jars over the stale ones.
+
+  Net effect: `Rebuild-And-Restage.ps1` -- the wrapper CLAUDE.md itself recommends ("prefer this
+  one wrapper") specifically to prevent "my change had no effect" -- produces exactly that failure,
+  silently, with a fully green exit code, whenever run from a git worktree (or any checkout other
+  than the literal `D:\WorkSpace\NPDev\NPDev_General` path). Given this session's own working
+  arrangement (an isolated worktree per agent) is evidently a normal way this platform's sessions
+  run, this is not an edge case.
+
+  Not fixed here (found while verifying RUN-1/R8a's own kernel + template change, unrelated to
+  either R8a's or R8b's actual defects) -- flagging per this session's own instructions rather than
+  scope-creeping a fix into an unrelated PR. A real fix needs: (a) `prepare-npdev-generator-runtime.ps1`
+  gaining a way to receive the calling repo's root (or `Rebuild-And-Restage.ps1` doing its own
+  copy-templates-first workaround), and (b) tracing `sync-runtimehost-libs.ps1`'s staleness
+  comparison end-to-end under a worktree to find where it diverges from the directory it reports.

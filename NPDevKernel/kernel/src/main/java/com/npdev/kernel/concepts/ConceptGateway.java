@@ -24,6 +24,24 @@ public interface ConceptGateway {
     }
 
     /**
+     * RUN-1 (R8a): capped counterpart of {@link #list} -- applies the SAME tenant/permission/
+     * row-level enforcement as {@link #list}, but never returns more than {@code maxRows} records
+     * and reports (via {@link ConceptListSlice#truncated()}) whether more existed. The default
+     * evaluates {@link #list} in memory and trims -- exactly mirroring {@link #query}'s own default
+     * immediately above -- so any gateway gets correct (if not maximally efficient) behaviour for
+     * free; {@code DefaultConceptGateway} overrides it to push the cap down to
+     * {@link com.npdev.kernel.ports.ConceptStore#findAllCapped} instead of materializing the whole
+     * table first.
+     */
+    default ConceptListSlice<ConceptRecord> listCapped(ConceptListRequest request, ExecutionContext context, int maxRows) {
+        List<ConceptRecord> all = list(request, context);
+        if (all.size() <= maxRows) {
+            return new ConceptListSlice<>(all, false);
+        }
+        return new ConceptListSlice<>(all.subList(0, maxRows), true);
+    }
+
+    /**
      * Move 10 B1 (LC-B1): tenant- and permission-enforced grouped/aggregated query. The default
      * evaluates it in memory over {@link #list} results -- since {@code list} already applies
      * whatever row-level scoping the implementing gateway enforces BEFORE this aggregates over the

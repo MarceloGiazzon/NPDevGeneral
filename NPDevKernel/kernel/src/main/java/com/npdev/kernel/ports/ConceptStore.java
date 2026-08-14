@@ -3,6 +3,7 @@ package com.npdev.kernel.ports;
 import com.npdev.kernel.concepts.ConceptAggregateEngine;
 import com.npdev.kernel.concepts.ConceptAggregateQuery;
 import com.npdev.kernel.concepts.ConceptAggregateResult;
+import com.npdev.kernel.concepts.ConceptListSlice;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptQueryEngine;
@@ -75,5 +76,29 @@ public interface ConceptStore {
      */
     default ConceptAggregateResult aggregate(String tenantId, String conceptName, ConceptAggregateQuery query) {
         return ConceptAggregateEngine.apply(findAll(tenantId, conceptName), query);
+    }
+
+    /**
+     * RUN-1 (R8a): a hard ceiling on a single list()-shaped read, so a caller that only needs a
+     * bounded response -- generated CRUD's REST {@code list()} surface in particular -- never
+     * forces an entire tenant table into the JVM. {@link #findAll} keeps its existing unbounded
+     * contract for a caller that genuinely needs every row (a flow's {@code forEach} step, a
+     * reconciliation job); this is for a caller that serves a response and can signal truncation
+     * ({@link com.npdev.kernel.concepts.ConceptListSlice#truncated()}) instead of paying for
+     * completeness.
+     *
+     * <p>The default implementation still calls {@link #findAll} and trims in the JVM -- correct,
+     * and memory-safe for the CALLER, on the {@code *-inproc} adapters this default targets (same
+     * "correct for in-proc, real pushdown on JDBC" shape as {@link #query}/{@link #aggregate}
+     * above). A database-backed store (see {@code JdbcBusinessConceptStore}) overrides this to push
+     * a {@code LIMIT} into SQL, so the database itself never streams more than {@code maxRows + 1}
+     * rows for a single request.
+     */
+    default ConceptListSlice<ConceptRecord> findAllCapped(String tenantId, String conceptName, int maxRows) {
+        List<ConceptRecord> all = findAll(tenantId, conceptName);
+        if (all.size() <= maxRows) {
+            return new ConceptListSlice<>(all, false);
+        }
+        return new ConceptListSlice<>(all.subList(0, maxRows), true);
     }
 }

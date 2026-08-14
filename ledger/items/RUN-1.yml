@@ -3,8 +3,9 @@ title: >-
   Generated CRUD list endpoints are unbounded on three paths
 type: BUG
 severity: HIGH
-status: OPEN
+status: PARTIAL
 opened: 2026-08-12
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R8a). Three paths load an
   entire tenant's table into the JVM: no hard cap at the ConceptStore port, the generated
@@ -12,11 +13,65 @@ source: >-
   case-insensitive/whitespace-trimming while the DB unique index and SQL = are neither).
 surface: kernel/concept-store
 files:
-  - NPDevGenerator/.../npdev-templates/service-base.mustache
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/ConceptStore.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptGateway.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/DefaultConceptGateway.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptListSlice.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/AuditingConceptStoreDecorator.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/TenantControlledConceptStoreDecorator.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/controller-base.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-concept-crud-controller.mustache
 detail: |
-  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8, sub-item R8a (do first, lowest risk,
-  highest value). Add a hard cap at the ConceptStore port, cap the generated list(), signal truncation
-  via a REST header, replace the two full-tenant-scan uniqueness pre-checks with index-backed lookups.
-  MASTER-ROADMAP.md Track C item C4: "the scale ladder will surface these first, do it when it does" --
-  this session's Step 2a scale ladder (2 rungs, 26/100 concepts) may surface this; the fix itself is
-  not in this session's scope (Steps 1-4).
+  See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8, sub-item R8a. DONE: the hard cap + REST
+  truncation signal (items 1-3 of the card). OPEN, deliberately deferred: item 4, replacing the two
+  full-tenant-scan uniqueness pre-checks with index-backed lookups -- see "What remains open" below.
+
+  What shipped (verified against a real running app, `simple-product-h2local`, H2Local):
+  1. `ConceptStore.findAllCapped(tenantId, conceptName, maxRows)` -- a new default method (fetch +
+     trim, correct for *-inproc adapters) with a real SQL-pushdown override on
+     `JdbcBusinessConceptStore` (LIMIT maxRows+1 in one query, no COUNT(*) needed to detect
+     truncation) and forwarding overrides on both ConceptStore decorators (Auditing/
+     TenantControlled), matching the existing query()/aggregate() pushdown-forwarding pattern.
+  2. `ConceptGateway.listCapped(request, context, maxRows)` -- same shape one layer up, with a real
+     `DefaultConceptGateway` override that applies row-level access.read scoping to the CAPPED slice
+     (same accepted v1 boundary `query()` already documents for its own SQL-windowed page).
+  3. Generated `{{entityName}}ServiceBase.list()` is now genuinely bounded at
+     `ConceptQuery.MAX_LIMIT` (1000 rows, the platform's existing single-query ceiling -- reused
+     rather than inventing a new number) instead of unbounded; a new sibling `listCapped()` exposes
+     the truncation flag to the REST layer. `X-List-Truncated` / `X-List-Limit` response headers
+     (naming convention matches the existing `X-Correlation-Id`/`X-Tenant-Id` precedent -- no prior
+     truncation-signal header existed to follow) are set on BOTH the typed per-entity list endpoint
+     (`GET /api/{route}`) and the generic concepts controller's free-text-search fallback
+     (`GET /api/concepts/{conceptName}` when `filter` is set -- the OTHER unbounded path, not
+     separately named in this item's original text but sharing the exact same
+     `findAllFromConceptStore()`/`ConceptGateway.list()` chain, so capping one capped both). The
+     already-paginated `?page=&size=` path was already safe and is untouched.
+  4. BREAKING.md entry (2026-08-14) documents the behavior change: a concept with >1000 rows for a
+     tenant now returns a bounded, header-flagged response from the plain list endpoint instead of
+     everything: `npdev migrate` codemod N/A (runtime behavior, not a DSL/model construct).
+
+  Live proof: generated + built + booted `simple-product-h2local` (AppGen H2Local sample) with these
+  changes, confirmed `GET /api/products` on an EMPTY table returns `X-List-Truncated: false` /
+  `X-List-Limit: 1000`, then created 1005 Product rows via `POST /api/products` and confirmed
+  `GET /api/products` returns exactly 1000 records with `X-List-Truncated: true` /
+  `X-List-Limit: 1000`. `DialectConformanceTierATest`/kernel unit build green throughout
+  (`:kernel:compileJava`, `:kernel:compileTestJava` both succeed with the new
+  `ConceptStore`/`ConceptGateway`/`ConceptListSlice` types).
+
+  What remains open (item 4, the uniqueness pre-checks): `existsUniqueInConceptStore`/
+  `existsUniqueCompoundInConceptStore` in service-base.mustache are UNCHANGED -- still a full
+  `conceptStore.findAll(...)` scan per create/update. Investigated the replacement and found it is
+  genuinely more consequential than a mechanical swap: `uniqueValuesEqual` (a) trims + lowercases
+  when EITHER operand is a Java String, but (b) falls back to a cross-type `toString()`-comparison
+  for a non-String existing value against a String-typed incoming value (e.g. a numeric field
+  submitted as a JSON string via the untyped `create(Map)` path still collides with the DB's
+  numeric-typed stored value today). A portable SQL push-down that preserves this exactly, across
+  H2/Postgres/MySQL/SQL Server, for every DSL field type (string/numeric/date/datetime/enum/JSON),
+  is a real design question -- not something to force under this session's time budget alongside
+  R8a's other three items and R8b. Deliberately left OPEN per this session's own scope-discipline
+  instruction ("ship the read-capping/header-signal half cleanly... leave the uniqueness-precheck
+  replacement as an explicitly flagged follow-up"). No behavior change shipped here for this part --
+  the existing (memory-safety-unbounded, but semantically well-understood) pre-check is untouched,
+  so nothing regresses; it remains the ledger's open item for whoever picks up R8a's item 4 next.
