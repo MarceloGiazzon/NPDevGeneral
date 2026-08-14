@@ -168,9 +168,17 @@
 
   function readStoredInputs() {
     const storedApiKey = localStorage.getItem(STORAGE_KEYS.apiKey);
-    el.apiKey.value = storedApiKey === null ? DEFAULT_DEV_API_KEY : storedApiKey;
+    // R7 Stage D: DEFAULT_DEV_API_KEY is a static generation-time guess (the Spring `dev`
+    // profile's own known default) -- it is NOT the app's real key once launched via any of the
+    // platform's shipped launch pipelines, which now provision a random per-app key at boot
+    // (Ensure-NpdevApiKey, secrets/api-key.env) that overrides this default outright. Persisting
+    // a guess that usually no longer authenticates as if it were real produced a confusing
+    // "logged in" state that then 401s on every call; leave the field EMPTY and only hint at the
+    // default via the placeholder (still useful on an actual `dev`-profile boot with no
+    // override) -- api()/apiAllowError() already handle an empty key gracefully.
+    el.apiKey.value = storedApiKey === null ? "" : storedApiKey;
     if (storedApiKey === null) {
-      localStorage.setItem(STORAGE_KEYS.apiKey, DEFAULT_DEV_API_KEY);
+      el.apiKey.placeholder = "dev/smoke: " + DEFAULT_DEV_API_KEY;
     }
     el.apiBase.value = localStorage.getItem(STORAGE_KEYS.apiBase) || "";
     el.executeUseAdvanced.checked = localStorage.getItem(STORAGE_KEYS.executeUseAdvanced) === "true";

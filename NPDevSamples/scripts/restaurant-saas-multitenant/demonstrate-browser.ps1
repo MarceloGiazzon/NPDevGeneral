@@ -39,6 +39,10 @@ $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId "restaurant-sa
 $evidenceDir = Join-Path $sample.RunOutputRoot "browser"
 New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
 
+# R7 Stage D: routines fill #apiKey via valueFromCredential rather than a hardcoded literal --
+# resolve whatever key actually authenticates against THIS running app right now.
+$liveCreds = @{ apiKey = (Get-NpdevLiveApiKey -AppRoot $sample.AppRoot) }
+
 $routineDir = Join-Path $PSScriptRoot "browser-routines"
 $routines = Get-ChildItem -LiteralPath $routineDir -Filter "*.json" | Sort-Object Name
 if ($routines.Count -eq 0) { Fail "No browser routines found in $routineDir" }
@@ -58,8 +62,12 @@ try {
         $name = [System.IO.Path]::GetFileNameWithoutExtension($routine.Name)
         Info ("=== Routine: " + $name + " ===")
         $vars = @{ uniqueCode = $uniqueCode }
-        $result = Invoke-ScrapRoutine -Context $ctx -RoutinePath $routine.FullName -Variables $vars
-        Assert-RoutineGreen -Result $result -Label $name | Out-Null
+        $result = Invoke-ScrapRoutine -Context $ctx -RoutinePath $routine.FullName -Variables $vars -Credentials $liveCreds
+        # R7 Stage D: see the identical note in superuser-admin-console's demonstrate-browser.ps1 --
+        # the routine's own pre-fill page load is now genuinely unauthenticated (no more guessed
+        # devKeyHint auto-fill), which logs an expected one-time 401 burst before the explicit
+        # credential fill+reload takes effect.
+        Assert-RoutineGreen -Result $result -Label $name -AllowConsoleErrorSubstrings @("responded with a status of 401") | Out-Null
         Save-RoutineEvidence -Result $result -OutDir $evidenceDir -Name $name | Out-Null
         $results += [ordered]@{
             routine     = $name

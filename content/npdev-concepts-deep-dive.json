@@ -50,7 +50,7 @@
     {
       "level": 3,
       "title": "Gotchas",
-      "body": "\n- The response body wraps your `return` value inside `.output` — expect\n  `{ \"output\": { \"id\": \"...\", \"name\": \"...\", ... } }`, not the bare record.\n- Every call needs the `X-Api-Key` header (default `dev-key`, configurable in `config.json`\n  under `trialDefaults.apiKey`).\n\n**Going deeper:** `waitForEvent` above is the entry point to a full durable workflow engine — a flow\npaused on it survives a JVM restart and resumes exactly where it left off, with event correlation,\ncompensation on failure, and resumable loops. See `docs/FLOWS.md` for the complete mechanics.\n\n---\n"
+      "body": "\n- The response body wraps your `return` value inside `.output` — expect\n  `{ \"output\": { \"id\": \"...\", \"name\": \"...\", ... } }`, not the bare record.\n- Every call needs the `X-Api-Key` header. Its value is generated per app at first launch and\n  printed once to the console (also saved to `secrets\\api-key.env` inside the generated app) --\n  `config.json`'s `trialDefaults.apiKey` is only a pre-generation placeholder, not a working\n  credential once the app has actually been launched.\n\n**Going deeper:** `waitForEvent` above is the entry point to a full durable workflow engine — a flow\npaused on it survives a JVM restart and resumes exactly where it left off, with event correlation,\ncompensation on failure, and resumable loops. See `docs/FLOWS.md` for the complete mechanics.\n\n---\n"
     },
     {
       "level": 2,

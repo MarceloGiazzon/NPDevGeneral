@@ -125,8 +125,12 @@ gate builds:
 .\NPDevSamples\scripts\generate-sample-app.ps1 -SampleId simple-contact-intake -NPDevRoot .
 cd NPDevSamples\simple-contact-intake\Output\App
 .\gradlew.bat bootJar
-java -jar build\libs\FinalExec-0.1.0.jar --server.port=8080
+java -jar build\libs\FinalExec-0.1.0.jar --spring.profiles.active=dev --server.port=8080
 ```
+
+`--spring.profiles.active=dev` is required, not optional: an un-profiled boot lands on Spring's own
+reserved `default` profile instead, which seeds no API key at all, and the app refuses to start
+(`npdev.auth.api-keys must define at least one mapping when auth is enabled`).
 
 The cross-platform CLI equivalent produces the same buildable app tree — use `./npdev` on
 Linux/macOS, `npdev.bat` on Windows, and point `--output` at a directory **outside the repo** (per

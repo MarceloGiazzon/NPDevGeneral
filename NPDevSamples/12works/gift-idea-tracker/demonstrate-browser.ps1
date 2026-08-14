@@ -34,29 +34,36 @@ try {
     throw "The generated app is not reachable at $BaseUrl. Generate + start it first (see header comment). Details: $($_.Exception.Message)"
 }
 
+$samplesRoot = Normalize-AbsolutePath (Join-Path $PSScriptRoot "..\..")
+$sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId "12works\gift-idea-tracker"
+
+# R7 Stage D: resolve whatever key actually authenticates against THIS running app right now,
+# rather than hardcoding "dev-key" (Stage C's per-app random key replaces it once any of the
+# platform's three shipped launch pipelines is used to start this app).
+$liveApiKey = Get-NpdevLiveApiKey -AppRoot $sample.AppRoot
+$liveCreds = @{ apiKey = $liveApiKey }
+
 # Neither GiftIdea nor Person declares a server-side search field, so the UI's filter box
 # can't isolate this run's rows from earlier manual/automated test data -- wipe both tables
 # first so the routine's assertions are genuinely true on every rerun.
-$existingGiftIdeas = @(Invoke-RestMethod -Method Get -Uri ($BaseUrl + "/api/gift_ideas") -Headers @{ "X-API-Key" = "dev-key" } | ForEach-Object { $_ })
+$existingGiftIdeas = @(Invoke-RestMethod -Method Get -Uri ($BaseUrl + "/api/gift_ideas") -Headers @{ "X-API-Key" = $liveApiKey } | ForEach-Object { $_ })
 foreach ($g in $existingGiftIdeas) {
-    Invoke-RestMethod -Method Delete -Uri ($BaseUrl + "/api/gift_ideas/" + $g.id) -Headers @{ "X-API-Key" = "dev-key" } | Out-Null
+    Invoke-RestMethod -Method Delete -Uri ($BaseUrl + "/api/gift_ideas/" + $g.id) -Headers @{ "X-API-Key" = $liveApiKey } | Out-Null
 }
 if ($existingGiftIdeas.Count -gt 0) { Info ("Cleaned up " + $existingGiftIdeas.Count + " pre-existing GiftIdea row(s) before running.") }
 
-$existingPersons = @(Invoke-RestMethod -Method Get -Uri ($BaseUrl + "/api/persons") -Headers @{ "X-API-Key" = "dev-key" } | ForEach-Object { $_ })
+$existingPersons = @(Invoke-RestMethod -Method Get -Uri ($BaseUrl + "/api/persons") -Headers @{ "X-API-Key" = $liveApiKey } | ForEach-Object { $_ })
 foreach ($p in $existingPersons) {
-    Invoke-RestMethod -Method Delete -Uri ($BaseUrl + "/api/persons/" + $p.id) -Headers @{ "X-API-Key" = "dev-key" } | Out-Null
+    Invoke-RestMethod -Method Delete -Uri ($BaseUrl + "/api/persons/" + $p.id) -Headers @{ "X-API-Key" = $liveApiKey } | Out-Null
 }
 if ($existingPersons.Count -gt 0) { Info ("Cleaned up " + $existingPersons.Count + " pre-existing Person row(s) before running.") }
 
 $runStamp = (Get-Date).ToString("yyyyMMdd-HHmmss")
 $personName = "UITEST-PERSON-$runStamp"
-$person = Invoke-RestMethod -Method Post -Uri ($BaseUrl + "/api/persons") -Headers @{ "X-API-Key" = "dev-key" } -ContentType "application/json" `
+$person = Invoke-RestMethod -Method Post -Uri ($BaseUrl + "/api/persons") -Headers @{ "X-API-Key" = $liveApiKey } -ContentType "application/json" `
     -Body (@{ name = $personName; relationship = "Friend" } | ConvertTo-Json)
 Info ("Created test Person '" + $personName + "' (id " + $person.id + ") for the select-widget reference field.")
 
-$samplesRoot = Normalize-AbsolutePath (Join-Path $PSScriptRoot "..\..")
-$sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId "12works\gift-idea-tracker"
 $evidenceDir = Join-Path $sample.RunOutputRoot "browser"
 New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
 
@@ -79,8 +86,12 @@ try {
     foreach ($routine in $routines) {
         $name = [System.IO.Path]::GetFileNameWithoutExtension($routine.Name)
         Info ("=== Routine: " + $name + " ===")
-        $result = Invoke-ScrapRoutine -Context $ctx -RoutinePath $routine.FullName -Variables $sharedVars
-        Assert-RoutineGreen -Result $result -Label $name | Out-Null
+        $result = Invoke-ScrapRoutine -Context $ctx -RoutinePath $routine.FullName -Variables $sharedVars -Credentials $liveCreds
+        # R7 Stage D: see the identical note in superuser-admin-console's demonstrate-browser.ps1 --
+        # the routine's own pre-fill page load is now genuinely unauthenticated (no more guessed
+        # devKeyHint auto-fill), which logs an expected one-time 401 burst before the explicit
+        # credential fill+reload takes effect.
+        Assert-RoutineGreen -Result $result -Label $name -AllowConsoleErrorSubstrings @("responded with a status of 401") | Out-Null
         Save-RoutineEvidence -Result $result -OutDir $evidenceDir -Name $name | Out-Null
         $results += [ordered]@{
             routine     = $name

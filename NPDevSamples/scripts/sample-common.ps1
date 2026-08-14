@@ -105,6 +105,38 @@ function Get-NPDevWorkspaceRoot([string]$SamplesRoot) {
     return Normalize-AbsolutePath (Join-Path $SamplesRoot "..")
 }
 
+# R7 Stage D. Resolves the API key that ACTUALLY authenticates against a freshly generated app right
+# now, regardless of which of this platform's launch pathways started it: Stage C's
+# Ensure-NpdevApiKey (`<app>/secrets/api-key.env`, written once any of the three shipped launch
+# pipelines -- `_ops/Run-FinalApp.ps1`, `Build-NpdevApp.ps1`, `Build-ClaudeApp.ps1` -- runs) or,
+# absent that, the Spring `dev` profile's own accepted-risk static default (application-dev.yml),
+# which is what a raw `gradlew bootRun` -- e.g. run-sample-app.ps1, or this sample family's own
+# self-contained schema-evolution/promotion-lifecycle scripts, none of which call
+# Ensure-NpdevApiKey -- still leaves active. Neither `dev-key` nor `api-dev` is safe to hardcode
+# here: which one (if either) still authenticates depends entirely on how the target app was booted.
+#
+# ONE implementation of "what's the real key" (same instinct as R10, and MONITOR_PLAN's own
+# single-verdict rule): shells out to `npdev monitor probe`, which already carries this exact
+# fallback order (`npdev_monitor._read_live_api_key`, then the generation-time `plan.apiKey`) --
+# this function must never re-parse `secrets/api-key.env` or `config.json` itself, or it becomes a
+# second, potentially-drifting opinion.
+function Get-NpdevLiveApiKey([string]$AppRoot) {
+    $repoRoot = Normalize-AbsolutePath (Join-Path $PSScriptRoot "..\..")
+    $cli = Join-Path $repoRoot "NPDevCli\npdev_cli.py"
+    Ensure-File -PathValue $cli -Label "npdev CLI (npdev_cli.py)"
+    Ensure-Directory -PathValue $AppRoot -Label "Generated app root"
+    $json = & python $cli monitor probe --app-dir $AppRoot --json 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Fail ("'npdev monitor probe --app-dir " + $AppRoot + "' failed: " + ($json | Out-String).Trim())
+    }
+    $record = $json | ConvertFrom-Json
+    $apiKey = [string]$record.apiKey
+    if ([string]::IsNullOrWhiteSpace($apiKey)) {
+        Fail ("npdev monitor probe returned no apiKey for " + $AppRoot + ". Has this app actually been generated (config.json / resolved-db-plan.json present)?")
+    }
+    return $apiKey
+}
+
 function Resolve-NPDevSample([string]$SamplesRoot, [string]$SampleId) {
     if ([string]::IsNullOrWhiteSpace($SampleId)) {
         Fail "SampleId is required."

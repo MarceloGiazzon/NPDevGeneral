@@ -139,14 +139,21 @@ try {
     $appCtx = Start-SampleAppProcess -Label "v1"
     Assert-BootLogContains -AppCtx $appCtx -Needle "no stored schema fingerprint found" -Label "v1 boot (fresh database)"
 
+    # R7 Stage D: this script boots the app itself (raw gradlew, no Ensure-NpdevApiKey call), so
+    # resolve whatever key actually authenticates against THIS boot rather than hardcoding "api-dev".
+    $liveCreds = @{ apiKey = (Get-NpdevLiveApiKey -AppRoot $sample.AppRoot) }
+
     Info "=== Phase 2: populate one row through the real UI (the row whose survival proves no data loss) ==="
     Initialize-ScrapForAI -Root $ScrapForAIRoot | Out-Null
     $scrapCtx = Start-ScrapForAI -AppBaseUrl $appBaseUrl -Root $ScrapForAIRoot -Port $ScraperPort `
         -ArtifactDir (Join-Path "D:\WorkSpace\NPDev\Build\scrapforai-artifacts" $sampleId)
     $populateResult = Invoke-ScrapRoutine -Context $scrapCtx `
         -RoutinePath (Join-Path $PSScriptRoot "browser-routines\schema-evolution\01-populate-before.json") `
-        -Variables $sharedVars
-    Assert-RoutineGreen -Result $populateResult -Label "evo-01-populate-before" | Out-Null
+        -Variables $sharedVars -Credentials $liveCreds
+    # R7 Stage D: the routine's own pre-fill page load is now genuinely unauthenticated (no more
+    # guessed devKeyHint auto-fill), logging an expected one-time 401 burst before the explicit
+    # credential fill+reload takes effect.
+    Assert-RoutineGreen -Result $populateResult -Label "evo-01-populate-before" -AllowConsoleErrorSubstrings @("responded with a status of 401") | Out-Null
     Save-RoutineEvidence -Result $populateResult -OutDir $evidenceDir -Name "evo-01-populate-before" | Out-Null
     $results += [ordered]@{ routine = "evo-01-populate-before"; status = (Get-Prop $populateResult "status") }
     Stop-ScrapForAI $scrapCtx
@@ -179,13 +186,19 @@ try {
     Assert-BootLogContains -AppCtx $appCtx -Needle "skipping destructive recreation" -Label "(b) v2 boot took the safe-additive path"
     Assert-BootLogNotContains -AppCtx $appCtx -Needle "NPDev destructive schema recreation" -Label "(b) v2 boot"
 
+    # Re-resolve rather than reuse Phase 1's value: a fresh regenerate could in principle land a
+    # different key (Ensure-NpdevApiKey is idempotent per app root, but this stays correct even if
+    # that ever changes -- one implementation of "what's the real key", never assumed stable).
+    $liveCreds = @{ apiKey = (Get-NpdevLiveApiKey -AppRoot $sample.AppRoot) }
+
     Info "=== Phase 5: browser-verify no data loss + the new column is usable ==="
     $scrapCtx = Start-ScrapForAI -AppBaseUrl $appBaseUrl -Root $ScrapForAIRoot -Port $ScraperPort `
         -ArtifactDir (Join-Path "D:\WorkSpace\NPDev\Build\scrapforai-artifacts" $sampleId)
     $verifyResult = Invoke-ScrapRoutine -Context $scrapCtx `
         -RoutinePath (Join-Path $PSScriptRoot "browser-routines\schema-evolution\02-verify-after.json") `
-        -Variables $sharedVars
-    Assert-RoutineGreen -Result $verifyResult -Label "evo-02-verify-after" | Out-Null
+        -Variables $sharedVars -Credentials $liveCreds
+    # R7 Stage D: same note as evo-01-populate-before above.
+    Assert-RoutineGreen -Result $verifyResult -Label "evo-02-verify-after" -AllowConsoleErrorSubstrings @("responded with a status of 401") | Out-Null
     Save-RoutineEvidence -Result $verifyResult -OutDir $evidenceDir -Name "evo-02-verify-after" | Out-Null
     $results += [ordered]@{ routine = "evo-02-verify-after"; status = (Get-Prop $verifyResult "status") }
 }

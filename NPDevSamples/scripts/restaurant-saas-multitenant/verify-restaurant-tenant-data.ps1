@@ -1,10 +1,16 @@
 param(
     [string]$BaseUrl = "http://localhost:8093",
-    [string]$ApiKey = "api-dev"
+    # R7 Stage D: "" means "resolve the live key" (Get-NpdevLiveApiKey below) -- a hardcoded
+    # "api-dev" default stopped being reliably correct once Stage C's per-app random key can
+    # replace it, depending on how the target app was launched. Pass -ApiKey explicitly to force
+    # a specific value (e.g. a RED-proof against the old literal).
+    [string]$ApiKey = ""
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "..\sample-common.ps1")
 
 function Normalize-BaseUrl([string]$Value) {
     return $Value.TrimEnd("/")
@@ -38,6 +44,12 @@ try {
     Write-Host ("OK health: " + $health.status) -ForegroundColor Green
 } catch {
     throw "The generated app is not reachable at $BaseUrl. Start it with run-generated-app.ps1 first. Details: $($_.Exception.Message)"
+}
+
+if ([string]::IsNullOrWhiteSpace($ApiKey)) {
+    $samplesRoot = Normalize-AbsolutePath (Join-Path $PSScriptRoot "..\..")
+    $sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId "restaurant-saas-multitenant"
+    $ApiKey = Get-NpdevLiveApiKey -AppRoot $sample.AppRoot
 }
 
 $tenants = @(As-Array (Invoke-Get "tenants"))

@@ -256,7 +256,14 @@ function Invoke-ScrapRoutine {
     param(
         [Parameter(Mandatory = $true)][object]$Context,
         [Parameter(Mandatory = $true)][string]$RoutinePath,
-        [hashtable]$Variables = @{}   # merged over the routine's own variables (e.g. a per-run unique code)
+        [hashtable]$Variables = @{},    # merged over the routine's own variables (e.g. a per-run unique code)
+        [hashtable]$Credentials = @{}   # R7 Stage D: merged over the routine's own credentials (e.g. the
+                                         # app's live per-app API key -- see Get-NpdevLiveApiKey in
+                                         # sample-common.ps1). Same merge shape as -Variables; kept as a
+                                         # SEPARATE bucket (not folded into -Variables) because the engine
+                                         # redacts `credentials` values from evidence/logs
+                                         # (collectKnownSecretValues in ScrapForAILegacy), which `variables`
+                                         # does not -- a real API key belongs in this bucket, never that one.
     )
     Ensure-File -PathValue $RoutinePath -Label "Routine file"
     $routine = Get-Content -LiteralPath $RoutinePath -Raw | ConvertFrom-Json -Depth 30
@@ -275,12 +282,20 @@ function Invoke-ScrapRoutine {
     }
     foreach ($k in $Variables.Keys) { $mergedVars[$k] = $Variables[$k] }
 
+    # Merge routine-declared credentials with any runtime overrides, identically.
+    $mergedCreds = @{}
+    $declaredCreds = Get-Prop $routine "credentials"
+    if ($declaredCreds) {
+        foreach ($p in $declaredCreds.PSObject.Properties) { $mergedCreds[$p.Name] = $p.Value }
+    }
+    foreach ($k in $Credentials.Keys) { $mergedCreds[$k] = $Credentials[$k] }
+
     # Rebuild a clean request object (drop our private targetPath; inject targetUrl).
     $request = [ordered]@{ targetUrl = $targetUrl }
     if ($routine.PSObject.Properties.Name -contains "scenarioName") { $request.scenarioName = $routine.scenarioName }
     if ($routine.PSObject.Properties.Name -contains "options")      { $request.options      = $routine.options }
     if ($mergedVars.Count -gt 0)                                    { $request.variables    = $mergedVars }
-    if ($routine.PSObject.Properties.Name -contains "credentials")  { $request.credentials  = $routine.credentials }
+    if ($mergedCreds.Count -gt 0)                                    { $request.credentials  = $mergedCreds }
     $request.steps = $routine.steps
 
     Info ("Routine -> " + (Split-Path -Leaf $RoutinePath) + "  target=" + $targetUrl)

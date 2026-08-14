@@ -5,7 +5,7 @@
   "steps": [
     { "action": "goto", "url": "$targetUrl", "label": "Open the generated business UI" },
     { "action": "waitForSelector", "selector": "#apiKey", "state": "visible", "label": "Shell rendered" },
-    { "action": "fill", "selector": "#apiKey", "value": "api-dev", "label": "Enter the dev super-user API key" },
+    { "action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey", "label": "Enter the dev super-user API key" },
     { "action": "reload", "label": "Reload so the persisted key authenticates on bootstrap" },
     { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-__store__\"]", "state": "visible", "label": "Super-user nav rendered" },
     { "action": "assertTextContains", "selector": "#sideNav", "text": "Project", "label": "Ordinary business concept nav present" },

@@ -6,7 +6,7 @@
   "steps": [
     { "action": "goto", "url": "$targetUrl" },
     { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
-    { "action": "fill", "selector": "#apiKey", "value": "dev-key" },
+    { "action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey" },
     { "action": "reload" },
     { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-GiftIdea\"]", "state": "visible" },
 
