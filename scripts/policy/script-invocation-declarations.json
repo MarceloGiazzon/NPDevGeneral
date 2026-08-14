@@ -682,6 +682,9 @@
     },
     "scripts/quality/check-pack-diff-gate.py": {
       "invocation": "ci-gate"
+    },
+    "scripts/quality/check-done-item-guards.py": {
+      "invocation": "ci-gate"
     }
   }
 }
