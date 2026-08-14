@@ -1,11 +1,12 @@
 {
   "$schemaVersion": "npdev-coverage-baseline.v1",
-  "_comment": "R3 (MASTER-ROADMAP.md Step 9 / ledger QUAL-6). Ratchet floor per Java module, read/written by scripts/quality/check-coverage-ratchet.py. Every module starts at coveragePercent 0.0 / measuredOn null so the FIRST real measurement sets the floor rather than blocking a merge -- never hand-edit a coveragePercent upward; let the ratchet script do it from a real JaCoCo report. A DROP below the recorded value for a module that produced a fresh report this run is a gate failure; a module with no fresh report this run is reported as not-measured, never failed.",
+  "_comment": "R3 (MASTER-ROADMAP.md Step 9 / ledger QUAL-6) + Track C card C8 (2026-08-14), the editor+Python extension R3 explicitly deferred. Ratchet floor per module, read/written by scripts/quality/check-coverage-ratchet.py. A module NOT yet measured for real starts at coveragePercent 0.0 / measuredOn null so the FIRST real measurement sets the floor rather than blocking a merge -- never hand-edit a coveragePercent upward; let the ratchet script do it from a real report. A DROP below the recorded value for a module that produced a fresh report this run is a gate failure; a module with no fresh report this run is reported as not-measured, never failed. Each module now declares reportFormat (jacoco-xml / istanbul-json-summary / coverage-py-json) since the editor and Python tooling don't emit JaCoCo's XML shape -- see check-coverage-ratchet.py's module docstring for the three parsers.",
   "metric": "LINE",
   "modules": {
     "NPDevContract/dsl": {
       "coveragePercent": 0.0,
       "measuredOn": null,
+      "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "**/gradle/npdev-*/dsl/reports/jacoco/test/jacocoTestReport.xml",
         "NPDevContract/dsl/build/reports/jacoco/test/jacocoTestReport.xml"
@@ -15,6 +16,7 @@
     "NPDevGenerator/generator": {
       "coveragePercent": 0.0,
       "measuredOn": null,
+      "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "**/gradle/npdev-generator/generator/reports/jacoco/test/jacocoTestReport.xml"
       ],
@@ -24,6 +26,7 @@
       "coveragePercent": 0.0,
       "measuredOn": null,
       "aggregate": true,
+      "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "**/gradle/npdev-kernel/kernel/reports/jacoco/test/jacocoTestReport.xml",
         "**/gradle/npdev-kernel/adapters/*/reports/jacoco/test/jacocoTestReport.xml"
@@ -33,10 +36,47 @@
     "NPDevRuntimeHost": {
       "coveragePercent": 0.0,
       "measuredOn": null,
+      "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "scripts/reports/out/runtimehost-jacoco-test-report.xml"
       ],
       "note": "Only produced when the assembled sample app is built with -PenableCoverage=true (run-runtimehost-gate.ps1 does this and copies the report to the stable path above before its own build-cache cleanup runs). JaCoCo does NOT ship inside generated FinalApps by default -- see NPDevRuntimeHost/build.gradle.template's own gating comment."
+    },
+    "NPDevEditor/ui-react": {
+      "coveragePercent": 23.6074,
+      "measuredOn": "2026-08-14T14:52:32Z",
+      "reportFormat": "istanbul-json-summary",
+      "reportGlobs": [
+        "scripts/reports/out/vitest-coverage/coverage-summary.json"
+      ],
+      "note": "Track C C8. Produced by `npm test` (`vitest run --coverage`, @vitest/coverage-v8, json-summary reporter) -- unconditional, every run-frontend-gate.ps1 invocation (via the npmTest Gradle task), since ui-react's own test tooling never ships into a generated FinalApp (only the built dist/ bundle does). vitest.config.ts points reportsDirectory at scripts/reports/out/vitest-coverage (already .gitignore'd) specifically because run-frontend-gate.ps1's Find-GeneratedResidue and NPDevEditor/build.gradle's cleanUiReactGenerated both hard-fail on a 'coverage' directory inside ui-react -- see ROADMAP.md card R3's own warning. coverage.all=true + explicit include makes every src/**/*.{ts,tsx} file count in the denominator even if no test imports it, so this floor reflects the whole authoring surface (~254 files), not just the ~13 files under test today."
+    },
+    "NPDevCli": {
+      "coveragePercent": 30.2947,
+      "measuredOn": "2026-08-14T14:52:31Z",
+      "reportFormat": "coverage-py-json",
+      "reportGlobs": [
+        "scripts/reports/out/python-coverage/npdevcli-coverage.json"
+      ],
+      "note": "Track C C8. run-ai-knowledge-gate.ps1 step [18/35] already ran `python -m unittest discover -s NPDevCli/tests` (REG-110) -- now wrapped in `coverage run --source=NPDevCli --omit=NPDevCli/tests/*,NPDevCli/tests/fixtures/*` and reported via `coverage json`, so this runs (and is measured) even in the standalone ai-knowledge-gate.yml CI job, unlike the Java/editor modules above which need a real build/npm run first. coverage.py's 'statement coverage' is the same conceptual LINE metric as JaCoCo's, just named differently."
+    },
+    "NPDevMcp": {
+      "coveragePercent": 0.0,
+      "measuredOn": null,
+      "reportFormat": "coverage-py-json",
+      "reportGlobs": [
+        "scripts/reports/out/python-coverage/npdevmcp-coverage.json"
+      ],
+      "note": "Track C C8 investigated this and found NPDevMcp/server.py has NO dedicated automated test suite anywhere in the repo (git ls-files under NPDevMcp turns up only server.py + README.md) -- not silently skipped, an honestly-labelled pre-existing gap of the same shape as the kernel entry above. This module stays at the 0.0/null placeholder until a future card adds real tests to run under coverage.py; the reportGlobs path is reserved so that first measurement has somewhere to land without another baseline-schema edit."
+    },
+    "scripts": {
+      "coveragePercent": 0.0,
+      "measuredOn": null,
+      "reportFormat": "coverage-py-json",
+      "reportGlobs": [
+        "scripts/reports/out/python-coverage/scripts-coverage.json"
+      ],
+      "note": "Track C C8 investigated this and found the ~150 scripts/**/*.py files (mostly the check-*.py quality-gate scripts) have no unittest/pytest suite of their own -- each instead carries its own ad-hoc `--calibrate` self-test mode (20 of them, see run_calibration()-shaped functions), a different testing paradigm not wired to coverage.py. A handful of scripts/ files DO get incidentally exercised by NPDevCli/tests (e.g. test_engines.py imports scripts/quality/check-config-schema.py directly), which is exactly why this is its OWN placeholder entry rather than folded into NPDevCli's --source: lumping ~150 largely-untested linter scripts into NPDevCli's denominator would dilute that module's real, meaningful floor into a near-frozen near-zero number. Stays at 0.0/null, an honestly-labelled pre-existing gap, until a future card gives scripts/ its own real test suite."
     }
   }
 }

@@ -418,10 +418,23 @@ try {
     # evaluator both depend on had been live-verified exactly once (Move 13 P2) but had ZERO
     # automated regression coverage; REG-110's own closure named that residual explicitly. Stdlib
     # unittest, no live boot needed -- the HTTP calls are mocked.
-    Write-Host "[18/35] Checking NPDevCli's own test suite (acceptance runner + dsl-2 migration)..."
-    python -m unittest discover -s "NPDevCli/tests" -p "test_*.py" -v 2>&1 | Out-Host
+    #
+    # Track C card C8 (2026-08-14, ledger QUAL-6's R3 extension): wrapped in `coverage run` so this
+    # SAME invocation also feeds check-coverage-ratchet.py's [35/35] step below -- NPDevCli is the
+    # one coverage module measured for real even in the standalone ai-knowledge-gate.yml CI job,
+    # since (unlike the Java/editor modules) its real test suite already runs here. `coverage json`
+    # always writes a report from whatever ran, even if some tests failed, so a real regression is
+    # still visible to the ratchet rather than silently reading as not-measured.
+    Write-Host "[18/35] Checking NPDevCli's own test suite (acceptance runner + dsl-2 migration), under coverage.py..."
+    & $py -m coverage run --source="NPDevCli" --omit="NPDevCli/tests/*,NPDevCli/tests/fixtures/*" -m unittest discover -s "NPDevCli/tests" -p "test_*.py" -v 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) {
-        $failures += "NPDevCli/tests failed -- see output above (python -m unittest discover -s NPDevCli/tests)"
+        $failures += "NPDevCli/tests failed -- see output above (python -m coverage run -m unittest discover -s NPDevCli/tests)"
+    }
+    $npdevCliCoverageDir = "scripts/reports/out/python-coverage"
+    New-Item -ItemType Directory -Force -Path $npdevCliCoverageDir | Out-Null
+    & $py -m coverage json -o (Join-Path $npdevCliCoverageDir "npdevcli-coverage.json") 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "coverage.py could not write NPDevCli's coverage report -- see output above (python -m coverage json)"
     }
 
     # [19/35] Move 14 Phase E item E1 (U2): "a rule applied in one place, not mirrored to its twin"

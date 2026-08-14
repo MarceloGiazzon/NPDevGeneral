@@ -21,6 +21,11 @@ files:
   - NPDevRuntimeHost/build.gradle.template
   - scripts/quality/run-runtimehost-gate.ps1
   - scripts/quality/run-ai-knowledge-gate.ps1
+  - NPDevEditor/ui-react/vitest.config.ts
+  - NPDevEditor/ui-react/package.json
+  - NPDevEditor/ui-react/package-lock.json
+  - scripts/requirements.txt
+  - .gitignore
 detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R3 (Wave 1). run-frontend-gate.ps1 hard-fails
   on a "coverage" directory inside ui-react -- vitest output must be pointed outside ui-react or the
@@ -83,10 +88,69 @@ resolution: |
   Known, pre-existing gap NOT closed by this card: no CI gate invokes kernelQualityGate at all (it is
   an orphan Gradle task, unrelated to this card), so NPDevKernel/kernel's baseline stays at
   0.0/null until either a future gate wires it in or a developer runs it locally.
+
+  ---
+
+  Track C card C8 (2026-08-14) closed the deferred piece: editor + Python coverage, SAME ratchet
+  file/schema/gate step, no parallel system. check-coverage-ratchet.py now dispatches on a
+  per-module `reportFormat` (jacoco-xml / istanbul-json-summary / coverage-py-json) since neither
+  tool emits JaCoCo's XML shape -- ratchet SEMANTICS (not-measured vs regression vs ratchet-up)
+  are byte-for-byte identical across all three; only the parser differs. --calibrate grew from 7 to
+  9 controls (2 new: istanbul-json-summary and coverage-py-json each parse a known covered/total
+  fixture to the expected percentage) -- all 9 pass.
+
+  Editor: added `@vitest/coverage-v8` + vitest.config.ts `coverage` block (provider v8, reporter
+  ["text","json-summary"], `all: true` + explicit include so every src/**/*.{ts,tsx} file counts in
+  the denominator even if untouched -- mirrors the Gradle jacoco plugin's classDirectories default).
+  reportsDirectory points at scripts/reports/out/vitest-coverage (gitignored, outside ui-react) --
+  the exact trap this card's own text named (run-frontend-gate.ps1's Find-GeneratedResidue AND
+  NPDevEditor/build.gradle's cleanUiReactGenerated both hard-fail on a "coverage" dir inside
+  ui-react). package.json's "test" script now runs `vitest run --coverage` unconditionally (matches
+  the Java modules' "unconditional, nothing here ships into a generated FinalApp" precedent -- only
+  RuntimeHost's JaCoCo needed a flag). Verified live: ran `pwsh scripts/quality/run-frontend-gate.ps1`
+  end-to-end (real npm ci, vitest, vite build, cleanUiReactGenerated, editor-complexity-check) --
+  passed, residueCheck clean, coverage-summary.json survived the cleanup at its gitignored path.
+  13 test files / 79 tests, real measured floor 23.6074% LINE (623/2639).
+
+  NPDevCli: run-ai-knowledge-gate.ps1 step [18/35] (already running `unittest discover -s
+  NPDevCli/tests`, REG-110) now wraps that SAME invocation in `coverage run --source=NPDevCli
+  --omit=NPDevCli/tests/*,NPDevCli/tests/fixtures/*` and writes `coverage json` to
+  scripts/reports/out/python-coverage/npdevcli-coverage.json, read by [35/35] via reportFormat
+  "coverage-py-json". `coverage>=7.0` added to scripts/requirements.txt (same "refuse to silently
+  skip a missing validator" stance as the existing jsonschema entry). Verified live: 145 tests, all
+  pass, real measured floor 30.2947% LINE (1768/5836) across NPDevCli's 9 top-level modules.
+  NPDevCli is the one coverage module measured for real even in the standalone,
+  never-builds-anything ai-knowledge-gate.yml CI job, since its test suite already runs there.
+
+  NPDevMcp and scripts/ (the rest of "the Python tooling," per this card's own framing): investigated
+  and found NEITHER has a dedicated automated test suite anywhere in the repo -- NPDevMcp/server.py
+  is git-tracked alone with just a README, and scripts/'s ~150 check-*.py files each carry their own
+  ad-hoc --calibrate self-test mode instead (a different testing paradigm, not wired to coverage.py).
+  Deliberately NOT folded into NPDevCli's --source: a handful of scripts/ files DO get incidentally
+  imported by NPDevCli/tests (e.g. test_engines.py imports check-config-schema.py directly), but
+  lumping the other ~150 largely-untested files into that denominator would dilute NPDevCli's real,
+  meaningful floor toward a near-frozen near-zero number. Both get their own honestly-labelled
+  0.0/null placeholder entry instead -- same shape of pre-existing, not-fabricated gap as kernel's
+  own placeholder above, not silently dropped.
+
+  One unrelated bug found while live-testing the ratchet mechanism, filed separately: REG-168 (this
+  worktree's shared external Build directory carried leftover JaCoCo XML reports from unrelated
+  parallel Track C work; running check-coverage-ratchet.py with no arguments auto-discovered and
+  would have silently ratcheted the dsl/generator/kernel floors up from THAT stale, wrong-checkout
+  data had it not been caught and manually reverted before commit -- the script has no mechanism
+  tying a discovered report to the currently checked-out source).
 guard:
   kind: manual
   ref: pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1 (produces
-    scripts/reports/out/runtimehost-jacoco-test-report.xml); python scripts/quality/check-coverage-ratchet.py --calibrate
+    scripts/reports/out/runtimehost-jacoco-test-report.xml); pwsh -NoProfile -File
+    scripts/quality/run-frontend-gate.ps1 (produces scripts/reports/out/vitest-coverage/coverage-summary.json);
+    python -m coverage run --source=NPDevCli --omit=NPDevCli/tests/*,NPDevCli/tests/fixtures/* -m
+    unittest discover -s NPDevCli/tests -p test_*.py && python -m coverage json -o
+    scripts/reports/out/python-coverage/npdevcli-coverage.json; python
+    scripts/quality/check-coverage-ratchet.py --calibrate
   asserts: the RuntimeHost gate run produces a real JaCoCo XML report with a non-zero LINE counter,
-    and the ratchet script's 7 self-test controls all pass
+    the frontend gate run produces a real non-zero vitest json-summary report AND leaves no residue
+    inside ui-react, the NPDevCli suite (145 tests) passes under coverage.py and produces a real
+    non-zero coverage.json, and the ratchet script's 9 self-test controls (7 original + 2 for the
+    new formats) all pass
   provenRed: true
