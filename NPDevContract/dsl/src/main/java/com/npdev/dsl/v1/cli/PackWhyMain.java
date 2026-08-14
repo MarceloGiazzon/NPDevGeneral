@@ -3,6 +3,7 @@ package com.npdev.dsl.v1.cli;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.npdev.dsl.v1.pack.NetworkPolicy;
 import com.npdev.dsl.v1.parser.ModelSourceResolver;
 
 import java.io.IOException;
@@ -54,8 +55,9 @@ public final class PackWhyMain {
         String packId = packIdArg;
         try {
             Path modelPath = Path.of(modelArg);
+            // PK-5: DENIED -- why is always a fresh live computation but never fetches.
             ModelSourceResolver.PackCliResolution resolution =
-                    new ModelSourceResolver().resolvePackGraphForCli(modelPath);
+                    new ModelSourceResolver().resolvePackGraphForCli(modelPath, NetworkPolicy.DENIED);
             List<String> reasons = resolution.whyDescriptionsByPackId().get(packId);
             if (reasons == null) {
                 report.put("status", "failed");

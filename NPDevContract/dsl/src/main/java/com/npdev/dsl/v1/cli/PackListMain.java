@@ -2,6 +2,7 @@ package com.npdev.dsl.v1.cli;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.npdev.dsl.v1.pack.NetworkPolicy;
 import com.npdev.dsl.v1.pack.PackLockFile;
 import com.npdev.dsl.v1.parser.ModelSourceResolver;
 
@@ -59,8 +60,11 @@ public final class PackListMain {
             } else {
                 report.put("locked", false);
                 report.put("note", "not locked -- run 'npdev pack add'");
+                // PK-5: DENIED -- list never fetches, even for a from-based pack with no lock yet
+                // (that dry-run would fail naming "run pack add" for any remote entry, same as
+                // generate does; a live-computable graph of purely-local packs still works).
                 ModelSourceResolver.PackCliResolution resolution =
-                        new ModelSourceResolver().resolvePackGraphForCli(modelPath);
+                        new ModelSourceResolver().resolvePackGraphForCli(modelPath, NetworkPolicy.DENIED);
                 resolution.lockEntries().forEach((packId, locked) -> {
                     ObjectNode entry = packsNode.putObject(packId);
                     entry.put("resolvedVersion", locked.resolvedVersion());
