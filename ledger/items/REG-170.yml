@@ -1,0 +1,46 @@
+id: REG-170
+title: >-
+  IdentityProvisioning hardcodes pre-versioning table names (identity_users, identity_roles,
+  identity_user_roles), the same defect shape REG-160 fixed in WorkspaceMenuSeeder
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Found as a side effect while fixing REG-160 (`WorkspaceMenuSeeder` hardcoding the unversioned
+  `workspace_menus` instead of the generator's actual `workspace_v1_menus`). The same session's fix
+  for REG-160 searched for other classes with the identical defect shape and found this one; not
+  fixed there since it was out of that item's scope, filed separately per this session's
+  "unrelated bugs filed separately, never silently worked around" discipline.
+surface: runtimehost/identity
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/IdentityProvisioning.java
+detail: |
+  `IdentityProvisioning.java` hardcodes the literal, pre-PK-2, unversioned table names
+  `identity_users`, `identity_roles`, and `identity_user_roles`, the same way `WorkspaceMenuSeeder`
+  hardcoded `workspace_menus` before REG-160's fix. The generator's schema-realization SQL creates
+  these under pack-versioned names instead (`identity_v1_users`, `identity_v1_roles`,
+  `identity_v1_user_roles`, matching every other built-in-pack table's versioned convention).
+
+  Unlike `WorkspaceMenuSeeder` (an unconditional `ApplicationRunner` that crashes boot immediately
+  and so was caught live), this class is gated behind
+  `@ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "jwt")` — it likely has not been
+  exercised by a fresh-database live-boot test yet, so this has not been independently reproduced
+  live the way REG-160 was. Treat as PROBABLE, not confirmed, until someone generates a model with
+  `npdev.auth.mode=jwt` composing the identity pack, boots it fresh, and exercises whatever code
+  path in `IdentityProvisioning` runs at boot or first JWT-auth request.
+
+  Likely fix: same shape as REG-160's chosen fix — resolve the physical table name dynamically from
+  the compiled model (`CompiledModel.findConcept(...).map(CompiledConcept::getTableName)`) rather
+  than hardcoding a second, independently-drifting literal. REG-160's fix to `WorkspaceMenuSeeder`
+  is the direct precedent to follow.
+guard:
+  kind: manual
+  ref: >-
+    generate a model with npdev.auth.mode=jwt composing NPDevContract/packs/identity/pack.json,
+    delete any existing data/ directory, build, boot fresh, and exercise whatever
+    IdentityProvisioning code path runs at boot or on first JWT-authenticated request
+  asserts: >-
+    IdentityProvisioning's SQL resolves to the generator's actual identity_v1_* table names
+    instead of failing with a "table not found" error against the hardcoded pre-versioning literals
+  provenRed: false
