@@ -1,0 +1,49 @@
+id: REG-167
+title: >-
+  Author-supplied web assets and platform-generated static files share one Gradle resource
+  sourceSet with no reserved-name guard, so a same-named file collides undefined-winner
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Found by this session's adversarial review of PR #77 (R10 custom-screen mount migration) --
+  confirmed pre-existing in the mechanism PR #77 replaced too, not a regression introduced by the
+  migration.
+surface: generator/final-app-assembly
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java
+  - NPDevRuntimeHost/build.gradle.template
+detail: |
+  `NPDevRuntimeHost/build.gradle.template` (around lines 451-454) wires `src/main/resources` and
+  `npdev-generated/src/main/resources` as two `srcDir`s of the SAME Gradle resource sourceSet.
+  `FinalAppAssembler.mountWebAssets()` (the mechanism PR #77 introduced, mirroring the old
+  `Copy-Item`-based one it replaced) writes author-supplied web assets into
+  `<finalAppRoot>/src/main/resources/static/`; the platform-generated business-UI bundle
+  (`shell.js`, `shell.css`, `info.html`, `info.json`, `npdev-business-ui/*`) lives under
+  `<finalAppRoot>/npdev-generated/src/main/resources/static/`.
+
+  If an author's `web/` directory ever contains a file at the same relative path as one of those
+  reserved platform names, Gradle's resource processing hits a same-relative-path collision across
+  two source roots with no explicit `duplicatesStrategy` set -- the winner is undefined by
+  contract (Gradle's default is to warn and pick one, not to fail).
+
+  None of the four real reference apps currently using this mechanism (WmsOffice, Pigmentampa,
+  AuxScreen, and whichever else) hit this today -- verified no name overlaps exist in their real
+  `web/` trees. This is a latent gap, not a live failure.
+
+  Likely fix: `mountWebAssets()` should reject (fail loud, matching its existing
+  missing-root-throws-IOException precedent) any web-asset file whose relative path collides with a
+  reserved platform-generated name (`shell.js`, `shell.css`, `info.html`, `info.json`, anything
+  under `npdev-business-ui/`), rather than silently mounting it and letting Gradle's resource
+  merge order decide.
+guard:
+  kind: manual
+  ref: >-
+    author a web/ directory containing a file named info.html or shell.js, generate an app through
+    FinalAppAssembler.mountWebAssets(), inspect the assembled app's src/main/resources/static/ and
+    npdev-generated/src/main/resources/static/ for which file's content actually wins the build
+  asserts: >-
+    mountWebAssets() refuses generation with a named error for a reserved-filename collision,
+    rather than silently mounting a file that will collide undefined-winner at build time
+  provenRed: false

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "npdev-done-item-guard-policy.v1",
+  "rule": "Every ledger/items/*.yml with status: DONE must carry a guard: block (kind/ref/asserts/provenRed, see ledger/README.md) that scripts/quality/check-done-item-guards.py can verify RESOLVES -- a real test method, a real script/gradle-test-class, or (for kind: manual) a real repo-rooted path if one is named at all. A DONE claim with no guard is an assertion, not a proof.",
+  "why": "R11 (strategy-2026-08-12/ROADMAP.md): measured at card-authoring time, 178/178 tracked items were DONE, 154 claimed verification: VERIFIED_LIVE, and nothing anywhere re-tested any of them. Re-measured 2026-08-14 against the live ledger at the time this checker landed: 226 items, 195 DONE, and only 15 of those 195 carried a guard: block despite the field existing since 992d47a8. This policy freezes the 177 DONE-without-guard items that predate the checker (195 DONE minus the 3 backfilled in the same commit that added this file -- REG-142, REG-108, STOR-2, proving the ratchet resolves a real test, a real script, and a real script respectively) into a shrink-only legacy list, exactly scripts/policy/doc-inventory-policy.json's pattern pointed at a different quantity: a DONE item filed or re-closed from this commit forward cannot be added to it.",
+  "legacy": {
+    "frozenCount": 177,
+    "note": "Pre-ratchet DONE items with no guard: block, FROZEN 2026-08-14. This list may only SHRINK -- either by the item genuinely gaining a real guard (remove its id here and lower frozenCount in the same commit) or by the item ceasing to exist / ceasing to be DONE (same). Adding an id here is exactly what this policy exists to stop; check-done-item-guards.py's R1 fails the moment a NEW DONE-without-guard item appears, and its R3 fails the moment a listed id no longer needs the exemption (stale entry, not honestly removed).",
+    "ids": [
+      "MON-1", "MON-2", "MON-3", "MON-4", "MON-5", "MON-6", "MON-7", "MON-8",
+      "PORT-1", "PORT-2", "PORT-3", "PORT-4", "PORT-5",
+      "QUAL-1", "QUAL-2", "QUAL-3", "QUAL-4",
+      "REG-1", "REG-10", "REG-100", "REG-101", "REG-102", "REG-103", "REG-104", "REG-105",
+      "REG-106", "REG-107", "REG-109", "REG-11", "REG-110", "REG-111", "REG-112", "REG-113",
+      "REG-114", "REG-115", "REG-116", "REG-117", "REG-118", "REG-119", "REG-12", "REG-120",
+      "REG-121", "REG-122", "REG-123", "REG-124", "REG-125", "REG-126", "REG-127", "REG-128",
+      "REG-129", "REG-13", "REG-130", "REG-131", "REG-132", "REG-133", "REG-134", "REG-135",
+      "REG-136", "REG-137", "REG-138", "REG-139", "REG-14", "REG-140", "REG-141", "REG-143",
+      "REG-144", "REG-145", "REG-15", "REG-16-resid", "REG-16", "REG-17", "REG-18", "REG-19",
+      "REG-2", "REG-20", "REG-21", "REG-22", "REG-23", "REG-24", "REG-25", "REG-26", "REG-27",
+      "REG-28", "REG-29", "REG-3", "REG-30", "REG-31", "REG-32", "REG-33", "REG-34", "REG-35",
+      "REG-36", "REG-37", "REG-38", "REG-39", "REG-4", "REG-40", "REG-41", "REG-42", "REG-43",
+      "REG-44", "REG-45", "REG-46", "REG-47", "REG-48", "REG-49", "REG-5", "REG-50", "REG-51",
+      "REG-52", "REG-53", "REG-54", "REG-55", "REG-56", "REG-57", "REG-58", "REG-59", "REG-6",
+      "REG-60", "REG-61", "REG-62", "REG-63", "REG-64", "REG-65", "REG-66", "REG-67", "REG-68",
+      "REG-69", "REG-7", "REG-70", "REG-71", "REG-72", "REG-73", "REG-74", "REG-75", "REG-76",
+      "REG-77", "REG-78", "REG-79", "REG-8", "REG-80", "REG-81", "REG-82", "REG-83", "REG-84",
+      "REG-85", "REG-86", "REG-87", "REG-88", "REG-89", "REG-9", "REG-90", "REG-91", "REG-92",
+      "REG-93", "REG-94", "REG-95", "REG-96", "REG-97", "REG-98", "REG-99",
+      "RUN-3", "SEC-1",
+      "STOR-1", "STOR-10", "STOR-11", "STOR-12", "STOR-13", "STOR-14", "STOR-15", "STOR-3",
+      "STOR-4", "STOR-5", "STOR-6", "STOR-7", "STOR-8", "STOR-9"
+    ]
+  }
+}
