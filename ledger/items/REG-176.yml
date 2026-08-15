@@ -150,3 +150,20 @@ resolution: >-
   ran one packaged-proof test through the new `:generator:packagedProofTest -PincludePackagedProofs`
   task locally to confirm the wiring executes correctly end-to-end. Not yet re-verified against a
   live CI run with real GitHub Actions load (the next PR push against this branch is that proof).
+
+  **2026-08-15 follow-up: that live CI run found the fix was incomplete.** After this fix merged to
+  `main`, PR #93's branch merged `main` in and re-ran CI -- `:generator:packagedProofTest` (the new
+  serial task) failed with ALL 3 tests failing together (worse than the original 2-of-3), not the
+  0 expected. Root cause: `NPDevGenerator/gradle.properties` sets `org.gradle.parallel=true`, and
+  both workflow steps invoked `:generator:test :generator:behaviorTest :generator:packagedProofTest`
+  as THREE top-level tasks in a SINGLE `gradlew` command -- Gradle is free to schedule independent
+  top-level tasks concurrently under `--parallel`, so `packagedProofTest`'s own internal
+  `maxParallelForks=1` serialization did not stop it from running AT THE SAME TIME as `:generator:
+  test`'s own forked JVMs (`maxParallelForks=2`), which is arguably worse contention than the
+  original bug (up to 3 concurrent JVMs competing for boot resources instead of 2). Fixed by
+  splitting both workflow steps into two separate `gradlew` invocations -- the fast suite first,
+  then a wholly separate `./gradlew :generator:packagedProofTest` call after it completes,
+  guaranteeing no other Gradle task can be scheduled concurrently with the packaged-app boots. This
+  is a reasoned fix from a plausible, evidenced mechanism (Gradle's own documented cross-task
+  parallelism under `org.gradle.parallel=true`), not a repeat live confirmation that this exact
+  mechanism was the failure's cause -- the next CI run is what actually proves it.

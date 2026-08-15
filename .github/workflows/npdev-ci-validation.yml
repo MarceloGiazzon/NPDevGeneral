@@ -159,7 +159,12 @@ jobs:
         # other.
         timeout-minutes: 30
         run: |
-          ./gradlew :generator:test :generator:behaviorTest :generator:packagedProofTest --no-daemon --console=plain
+          ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
+          # REG-176 follow-up: see npdev-pr-gate.yml's identical step for the full reasoning --
+          # org.gradle.parallel=true lets Gradle run separate top-level tasks concurrently even
+          # within one invocation, so packagedProofTest needs its own separate gradlew call to
+          # guarantee nothing else contends for CPU/Docker/port resources during its boots.
+          ./gradlew :generator:packagedProofTest --no-daemon --console=plain
 
       # A failing generator test printed only "AssertionFailedError at <File>.java:458" -- the
       # assertion MESSAGE (which for the packaged-app proofs is the full output of the command that

@@ -148,7 +148,16 @@ jobs:
         timeout-minutes: 30
         run: |
           sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
-          ./gradlew :generator:test :generator:behaviorTest :generator:packagedProofTest --no-daemon --console=plain
+          ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
+          # REG-176 follow-up: NPDevGenerator/gradle.properties sets org.gradle.parallel=true, so a
+          # single invocation naming both :generator:test and :generator:packagedProofTest as
+          # top-level tasks let Gradle schedule them CONCURRENTLY (independent tasks, same project)
+          # even though packagedProofTest serializes its own 3 tests internally -- reproduced live
+          # (all 3 packaged-proof tests failed together, worse than the original 2-of-3 contention
+          # this task split was meant to fix). A wholly separate invocation, after the fast suite
+          # has already finished, is the only way to guarantee no concurrent Gradle task competes
+          # for the same CPU/Docker/port resources during the packaged-app boots.
+          ./gradlew :generator:packagedProofTest --no-daemon --console=plain
 
       # G2 (docs/CLOSEOUT_PLAN.md): the corpus-parse gate proves every DSL feature PARSES; nothing
       # proved any of them actually EMIT. dsl-conformance-max was "validated, not run" until this
