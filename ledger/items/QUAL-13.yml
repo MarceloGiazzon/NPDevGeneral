@@ -4,8 +4,10 @@ title: >-
   RuntimeHost regression (BT-1's non-executable gradlew) reaches main before any Manager signal
 type: PROCESS
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-15
+closed: 2026-08-15
+verification: VERIFIED_LIVE
 source: >-
   third-person-readiness-2026-08-15/FOLLOWUP-PLAN.md §3. Same underlying dormancy commit 772b2e66
   already documented for this workflow's own last-main-run date (`ef1d9bb8`), read alongside its
@@ -39,23 +41,26 @@ detail: |
   PR, twice** (once per pushed commit -- run `31897579019` then `31899355387`), "Manager --selftest
   in a bare container" and "Manager --selftest with a real engine (DB toolbox)" both green each
   time. That fires via the pre-existing rule (this PR touches `.github/workflows/manager-harness.yml`
-  itself, already in the paths list before this fix) -- real evidence the workflow itself still
-  works end to end, but not yet evidence for the specific new `NPDevRuntimeHost/**`/`**/gradlew`
-  rule this item adds, which this PR does not exercise (it touches neither path in isolation).
+  itself, already in the paths list before this fix), so it does not yet prove the specific NEW
+  `NPDevRuntimeHost/**`/`**/gradlew` rule on its own.
+
+  **2026-08-15 (closeout, throwaway verification PR #101): the new rule is now directly proven.**
+  Opened a disposable PR (`verify/qual-13-runtimehost-paths-trigger`) whose only change is a
+  comment added to `NPDevRuntimeHost/src/main/resources/application-dev.yml` -- deliberately NOT
+  touching the workflow file, so any trigger here is evidence for the new rule specifically. Both
+  `manager-harness.yml` jobs fired and passed (run `31902871951`: "Manager --selftest in a bare
+  container" and "with a real engine (DB toolbox)", both green). Closed PR #101 without merging and
+  deleted its branch once the observation was made -- it existed only to produce this evidence.
 guard:
   kind: manual
   ref: >-
-    cat .github/workflows/manager-harness.yml | grep -A6 'pull_request:' (or: open a PR touching
-    only NPDevRuntimeHost/**, confirm "NPDev Manager harness" appears as a required/observed check)
+    PR #101 (closed, unmerged, branch deleted) -- run 31902871951 shows both manager-harness jobs
+    firing on a change that touches only NPDevRuntimeHost/**, not the workflow file
   asserts: >-
-    a pull_request touching NPDevRuntimeHost/** (with no NPDevManager/** change) triggers this
-    workflow, where before this fix it would not have
+    a pull_request touching NPDevRuntimeHost/** (with no NPDevManager/** change, no workflow file
+    change) triggers this workflow, where before this fix it would not have
   provenRed: true
   # RED already proven: BT-1's PR (#14) touched NPDevRuntimeHost/runtimehost-core/gradlew and
   # matched none of the pre-fix paths; commit 772b2e66 independently confirms this workflow's last
-  # main-branch run predates PRs #83-#98. This branch's own PR touches
-  # .github/workflows/manager-harness.yml itself, which was ALREADY in the pre-fix paths list --
-  # so this PR's own run proves the workflow still fires, but not specifically the new
-  # NPDevRuntimeHost/**/**/gradlew rule (this branch touches neither). That narrower claim stays
-  # unverified by this PR; the next real PR touching only NPDevRuntimeHost/** is the actual proof.
-  # Held at PARTIAL for that reason, not because this PR's own run is expected to fail.
+  # main-branch run predates PRs #83-#98. GREEN now directly proven via throwaway PR #101 (run
+  # 31902871951), which isolates the new rule from the pre-existing "workflow file changed" one.
