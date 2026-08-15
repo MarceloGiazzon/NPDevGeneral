@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import shutil
 import signal
 import subprocess
@@ -89,11 +90,54 @@ def log(message: str) -> None:
     print(f"[engine-proof] {message}", flush=True)
 
 
-# The `dev` profile's built-in convenience credential, the same one the acceptance runner and
-# YOUR_FIRST_APP.md use. Without it every write returns 401 `missing_api_key` -- found by dry-running
-# this script against h2local before spending a CI minute on it, which is the whole reason a proof
-# gets a local rehearsal even when the thing it proves needs CI.
-API_KEY = "dev-key"
+# T1/C2 (application-dev.yml): `dev` no longer seeds a known key -- StartupValidator refuses to boot
+# without one supplied externally. This used to be the `dev` profile's old built-in convenience
+# credential; `App.start()` now overwrites it via `ensure_api_key()` before every boot, the same
+# contract every other launcher on this platform follows (OperationalRunbookEmitter's
+# Ensure-NpdevApiKey / ensure_npdev_api_key). The placeholder below is never actually sent -- it
+# exists so a caller that reads API_KEY before any app has booted gets an obviously-wrong value
+# rather than None.
+API_KEY = "unset-call-ensure_api_key-first"
+
+
+def ensure_api_key(app_root: Path) -> str:
+    """Provision (or reuse) `<app_root>/secrets/api-key.env` and export it into this process's
+    environment, exactly like every other launcher on this platform (OperationalRunbookEmitter's
+    Ensure-NpdevApiKey / ensure_npdev_api_key -- same file, same `NPDEV_AUTH_API_KEYS=<key>=
+    dev:developer:admin` line, same "present but unusable is treated as absent" rule from REG-157).
+
+    `App.start()` below spawns `java -jar` with no explicit `env=`, so it inherits whatever this
+    process's environment already has -- mutating `os.environ` here, before that Popen call, is
+    what makes the boot see the key with no other plumbing. Returns the bare credential (the part
+    before the mapping's own `=`) for the `X-Api-Key` header `http()` sends.
+    """
+    secrets_dir = app_root / "secrets"
+    key_file = secrets_dir / "api-key.env"
+    needs_generation = True
+    if key_file.exists():
+        for raw_line in key_file.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                needs_generation = False
+                break
+    if needs_generation:
+        secrets_dir.mkdir(parents=True, exist_ok=True)
+        key_file.write_text(
+            f"NPDEV_AUTH_API_KEYS={secrets.token_hex(32)}=dev:developer:admin", encoding="utf-8")
+
+    live_key = None
+    for raw_line in key_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        if name == "NPDEV_AUTH_API_KEYS":
+            os.environ["NPDEV_AUTH_API_KEYS"] = value
+            os.environ["NPDEV_AUTH_APIKEYS"] = value
+            live_key = value.split("=", 1)[0]
+    if live_key is None:
+        raise SystemExit(f"{key_file} carries no usable NPDEV_AUTH_API_KEYS mapping")
+    return live_key
 
 
 def http(method: str, url: str, body: dict | None = None, timeout: int = 30):
@@ -234,6 +278,8 @@ class App:
         return f"http://127.0.0.1:{self.port}"
 
     def start(self, boot_timeout: int) -> None:
+        global API_KEY
+        API_KEY = ensure_api_key(self.app_root)
         log(f"starting {self.jar.name} on port {self.port}")
         handle = self.log_path.open("a", encoding="utf-8")
         self.process = subprocess.Popen(

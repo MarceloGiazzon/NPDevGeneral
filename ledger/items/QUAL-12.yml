@@ -1,0 +1,80 @@
+id: QUAL-12
+title: >-
+  "Engine support (application level)"'s paths filter skipped 15 consecutive merges (PRs #83-#98);
+  a non-executable gradlew from BT-1 survived undetected all the way to a release tag
+type: PROCESS
+severity: HIGH
+status: PARTIAL
+opened: 2026-08-15
+source: >-
+  third-person-readiness-2026-08-15/FOLLOWUP-PLAN.md §3, corroborated independently by commit
+  772b2e66's own commit message (already merged to main): "neither Engine support (last run
+  2026-08-12, 0c8a6ff8) nor Manager harness (last main run ef1d9bb8) executed for any of PRs
+  #83-#98". Same dormancy CLASS as REG-161 (six other gates with no pull_request trigger, filed and
+  fixed 2026-08-14) -- found again, on a sibling workflow, one day later.
+surface: ci/workflows
+files:
+  - .github/workflows/engine-support.yml
+detail: |
+  `.github/workflows/engine-support.yml` triggers only on `push: tags: ['*']` and
+  `workflow_dispatch` -- a deliberate choice (see the workflow's own header comment) made when its
+  runtime was unknown, reasoning "promoting it to a branch push trigger is still a decision to make
+  once its runtime is known". That decision was never revisited. Between its last real run
+  (2026-08-12, `0c8a6ff8`) and `beta1.18`'s tag, 15 merges landed with zero coverage from this
+  workflow, including `4d5b94d8` (BT-1, the RuntimeHost jar split) which committed
+  `NPDevRuntimeHost/runtimehost-core/gradlew` as mode 100644 (non-executable) -- the sole cause of
+  all three `beta1.18` tag failures (Engine support itself, Manager harness, and Publish
+  RuntimeHost Libs releasing 4 of 6 assets). The workflow that would have caught this on the very
+  next push after BT-1 landed did not run again until the tag, twelve+ days and 15 merges later.
+
+  `beta1.19`'s own PR (#98, "fix: close published-key handover blocker (T1), POSIX launcher twin
+  (T3/T4)") also removed the `dev` profile's seeded API key -- a change this exact workflow's E3/E4/
+  E5 jobs boot generated apps against and would have caught breaking (`run-engine-app-proof.py`'s
+  hardcoded `dev-key` no longer authenticating), except it never ran on that PR either, for the
+  identical paths-filter/no-pull_request reason. The workflow that should have caught PR #98's own
+  regression is the workflow this item is about.
+
+  **Fixed 2026-08-15**, same branch as `QUAL-13`/`QUAL-14`/`REG-182`. Took Step 2.2's recommended
+  option: added a post-merge `push: branches: [main]` trigger alongside the existing `tags: ['*']`
+  and `workflow_dispatch` (left both of those in place -- tags still need a run pinned at the exact
+  release sha per the workflow's own RC-gate reasoning, and `workflow_dispatch` still lets anyone
+  force an ordinary-commit run). Not `pull_request`: this workflow generates+builds+boots a Spring
+  app per engine against real Docker-hosted MySQL/SQL Server/Postgres containers, minutes not
+  seconds -- the same cost tradeoff `REG-161` weighed for its own six gates, but the header
+  comment's own words ("promoting it to a BRANCH push trigger... once its runtime is known") point
+  at push, not pull_request, once that runtime is known. Post-merge costs one run per merge instead
+  of one per PR, and would have caught BT-1 within a single merge instead of fifteen.
+
+  **2026-08-15 (PR #100, live verification): the underlying defect this item is actually about --
+  the Engine gate itself being red -- is now directly proven fixed, not just plausible.** Since
+  `engine-support.yml` has no `pull_request` trigger, this branch's own PR could not exercise it
+  automatically; dispatched it by hand instead (`gh workflow run engine-support.yml --ref
+  fix/qual-12-13-14-engine-gate-and-dormancy -f engine=all`, run `31897619206`). All 7 jobs passed:
+  E3/E4/E5 app-on-engine for mysql/sqlserver/postgres, E15 toolbox parity, E10 charset fixture,
+  E9+E12 config gate, E8 external library -- the exact workflow whose two most recent runs before
+  this one (the `beta1.18` and `beta1.19` tag pushes) both FAILED. `REG-182`'s fix (the key
+  provisioning `run-engine-app-proof.py` needed) is what turned that red to green; a second commit
+  on this branch (CodeQL/coverage fix-up, `0d9686b5`) touched neither `run-engine-app-proof.py` nor
+  anything else on the app-on-engine boot path, so this result still describes current `HEAD`.
+
+  **What remains genuinely unobserved, and why this stays PARTIAL rather than DONE:** the `push:
+  branches: [main]` trigger itself has not fired yet -- that requires an actual merge to `main`,
+  which this session does not perform (the user's own call). The YAML syntax is standard and the
+  risk of it silently not firing is low, but this repo's own discipline (see `REG-161`'s own
+  "batch-verification pass," which stayed at a fix-only status until 5 real per-PR runs were
+  observed) is to promote to DONE only once the trigger is actually seen firing, not once it looks
+  correct. The next merge to `main` is that observation.
+guard:
+  kind: manual
+  ref: >-
+    gh run list --workflow=engine-support.yml --limit 3 -- after the next merge to main, confirm a
+    push-triggered run appears for the merge commit
+  asserts: >-
+    the workflow runs on every push to main, not only on a tag or a manual dispatch -- observed
+    directly on a real merge, not inferred from the YAML alone
+  provenRed: true
+  # RED proven twice over before this fix: commit 772b2e66's own message states the workflow did
+  # not run for PRs #83-#98; the beta1.18/beta1.19 tag runs immediately preceding this branch's own
+  # dispatch (31897619206) both failed. GREEN proven for the underlying defect (all 7 jobs, dispatch
+  # run above) but NOT yet for the push:main trigger mechanism itself -- that is the one piece still
+  # held open, deliberately, rather than asserted from the YAML.

@@ -14,7 +14,20 @@
     "maxStaleness values: 'every-run' (T0 -- re-evaluated on every invocation, staleness is meaningless),",
     "'1-wave', '1-move', '7-days' (also read as any release/tag/publish action, whichever is sooner).",
     "",
-    "Rule (Sec.7.3.5): deadlines are only ever shortened, never extended, to make something pass."
+    "Rule (Sec.7.3.5): deadlines are only ever shortened, never extended, to make something pass.",
+    "",
+    "General rule (QUAL-12/13/14, 2026-08-15): a gate with a `paths:` filter -- or no trigger at all",
+    "besides workflow_dispatch -- is DORMANT for every change outside that filter. This ledger only",
+    "tracks entry points that DO run somewhere; it cannot see a check that runs nowhere at all, which",
+    "is exactly the shape QUAL-12 (engine-support.yml, 15 merges with zero coverage, including the",
+    "commit that shipped BT-1's non-executable gradlew), QUAL-13 (manager-harness.yml's paths never",
+    "named NPDevRuntimeHost/**, the module the same workflow's own jobs boot against) and QUAL-14",
+    "(firstrun-harness's run-readme.sh, invoked by no workflow at all until this date) each were. If a",
+    "workflow protects an artifact (a release, an installer, a generated app), it needs a post-merge",
+    "or scheduled trigger as well -- a paths filter alone means the first time it runs may be the tag.",
+    "There is no NPDev_General doc named VERIFICATION-CADENCE.md; this file and its _comment array are",
+    "the closest durable, machine-adjacent home for this rule, so it lives here rather than in a new",
+    "process document (CLAUDE.md's doc-inventory gate bans those)."
   ],
   "schemaVersion": "npdev-verification-cadence.v1",
   "checks": [

@@ -1,0 +1,111 @@
+id: REG-182
+title: >-
+  `npdev run app` and `npdev dev` -- the platform's own flagship one-command paths -- spawn
+  `java -jar ... --spring.profiles.active=dev` with no API-key provisioning at all, so both die
+  inside StartupValidator the moment a key is not already present in the ambient environment
+type: BUG
+severity: HIGH
+status: PARTIAL
+opened: 2026-08-15
+source: >-
+  third-person-readiness-2026-08-15/FOLLOWUP-PLAN.md Step 1.1's own instruction ("a mechanical
+  enumeration, not another estimate... every launcher classified by reading it") -- but the plan's
+  own `grep -rn "\-jar" scripts/ NPDevSamples/scripts/ .github/` scoped the search to three
+  directories and missed `NPDevCli/` entirely. Running the same grep unscoped surfaced this.
+surface: cli/run-boot
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/dev_loop.py
+detail: |
+  T1/C2 (`application-dev.yml`) removed the `dev` profile's seeded admin key; `StartupValidator`
+  now refuses to boot without one supplied externally via `NPDEV_AUTH_API_KEYS`/
+  `NPDEV_AUTH_APIKEYS`. Every SUPPORTED launcher on this platform provisions one first --
+  `_ops/Run-FinalApp.ps1`, `Build-NpdevApp.ps1`/`Build-ClaudeApp.ps1` (REG-152), the sample
+  scripts (`Ensure-NpdevSampleApiKey`) -- except two: `npdev_cli.py`'s `run_app()` BOOT phase
+  (`npdev run app`, the one-shot generate+build+boot command, README's Quickstart and
+  `docs/YOUR_FIRST_APP.md`'s documented path) and `dev_loop.py`'s `boot()` (`npdev dev`, the watch
+  loop, also README-documented). Both call `subprocess.Popen([java, "-jar", ...,
+  "--spring.profiles.active=dev", ...])` with no `env=` override and never touch
+  `secrets/api-key.env` or set either env var anywhere in either file (confirmed by grep: zero
+  matches for `NPDEV_AUTH_API_KEYS|api-key\.env|secrets.token` in either file before this fix).
+
+  **Impact:** on any machine where the ambient shell does not already happen to export
+  `NPDEV_AUTH_API_KEYS` (true for essentially every third-person run, and for CI), the JVM child
+  process exits immediately inside `StartupValidator.validateAuth()` with no key configured.
+  `npdev run app --json` reports this as a generic `BOOT_FAILED`/`BOOT_TIMEOUT` diagnostic with no
+  hint that a missing key is the cause -- indistinguishable from a real product defect to anyone
+  hitting it, which is exactly the failure mode PORT-series items were filed to eliminate for other
+  launchers. `npdev dev` behaves identically: `boot()` returns `None`, `run_cycle` reports "boot
+  failed -- see <log>", and the log names no key-related cause.
+
+  **Why nothing had caught this yet:** `scripts/quality/firstrun-harness/run-readme.sh` is the one
+  instrument that exercises both commands end-to-end (`./npdev run app` in its section 4, `npdev
+  dev` in its section 9) -- and per `QUAL-14`, nothing invokes that harness in CI at all, so it had
+  never run since T1/C2 landed. No other test in the repo boots a generated app through either
+  command.
+
+  **Fixed 2026-08-15**, in the same branch as `QUAL-12`/`QUAL-13`/`QUAL-14`. Added
+  `npdev_cli.ensure_api_key(app_root)` -- same file, same `NPDEV_AUTH_API_KEYS=<key>=
+  dev:developer:admin` line, same "present-but-unusable treated as absent" rule (REG-157) as every
+  other launcher's provisioner, deliberately re-implemented rather than imported across the
+  NPDevCli/scripts-quality boundary (this platform's own established convention: PowerShell's
+  `Ensure-NpdevApiKey` (`OperationalRunbookEmitter.java`) and `Ensure-NpdevSampleApiKey`
+  (`sample-common.ps1`) are already two independent, intentionally self-contained implementations
+  of the identical algorithm). `run_app()`'s BOOT phase calls it before the `Popen`, and its JSON
+  result carries the PATH to `secrets/api-key.env` as `apiKeyFile` so a caller (e.g. `run-readme.sh`)
+  can resolve the live key without guessing. `dev_loop.boot()` calls the same function via the
+  already-established dependency-injected `cli` module reference (the identical pattern
+  `cli.java_launcher()` already uses for W1.3), and the watch loop's `Output` prints the provisioned
+  key once, to stderr, on the first successful boot only (never to stdout, which is `npdev run
+  app`'s and `npdev dev`'s structured/event-stream output channel).
+
+  Deliberately did NOT print from `ensure_api_key()` itself: `npdev run app` always prints its
+  final JSON result to stdout as its entire output contract (`print(json.dumps(result, indent=2))`,
+  unconditional, not gated on a `--json` flag) -- a banner from inside the shared function would
+  have corrupted that for every caller that parses it, which is exactly how `run-readme.sh`
+  consumes it (`RUN_APP_JSON=$(...)`, then `python3 -c` on the captured string).
+
+  **2026-08-15 (PR #100 review, before merge): the first draft carried the raw key itself as
+  `result["apiKey"]`, not a file pointer.** CodeQL (`py/clear-text-logging-sensitive-data`) caught
+  this correctly on the PR's own first CI run: `run_app()`'s result is unconditionally printed to
+  stdout, so putting the live credential in it is exactly a clear-text-log sink -- 3 high-severity
+  alerts, one per `print(json.dumps(result, ...))` call site whose result shape could carry it
+  (`run app`, `acceptance run`, `loop run`). Changed to `apiKeyFile` (the path, never the value) in
+  the same PR; `run-readme.sh` updated to call `ensure_npdev_api_key` (idempotent -- it re-reads the
+  file `npdev run app` already provisioned rather than re-provisioning) instead of parsing `apiKey`
+  out of the captured JSON.
+
+  **2026-08-15 (PR #100, live verification): unit-level correctness is now proven in real Linux
+  CI, not just locally.** Added `NPDevCli/tests/test_ensure_api_key.py` -- `ensure_api_key()`
+  (fresh generation, idempotent reuse, REG-157-shape regeneration, different apps get different
+  keys) and `dev_loop.boot()`'s ordering (a spy `cli` proves `ensure_api_key` runs BEFORE the
+  `java -jar` `Popen`, not just that it exists somewhere in the file). PR #100's "AI knowledge
+  substrate gate" job (Linux, run `31899355415`) ran the full 159-test `NPDevCli/tests` suite,
+  including these 5, and passed. `test_java_launcher.py`'s pre-existing 6/6 also stayed green (the
+  RED-shape `DevLoopBootWithoutJavaTest` still returns before reaching the new call).
+
+  **What remains genuinely unobserved:** an actual `npdev run app`/`npdev dev` boot against a real
+  generated app, end to end -- unit tests prove the provisioning call happens in the right order
+  with the right file contract, but not that the whole chain (provision -> env var -> Spring reads
+  it -> StartupValidator accepts it -> app actually serves) works together against a real JVM. That
+  is exactly what `run-readme.sh` sections 4 and 9 do, and per `QUAL-14`, the workflow that would
+  run them cannot be dispatched pre-merge (a GitHub platform limitation on new workflow_dispatch
+  files, not a defect here) -- so this integration-level proof is deferred to the first post-merge
+  run. Held at PARTIAL, not DONE, for that reason -- see `QUAL-14`.
+guard:
+  kind: script
+  ref: >-
+    scripts/quality/firstrun-harness/run-readme.sh sections 4 ("npdev run app") and 9 ("npdev dev
+    -- the watch loop"), via the workflow QUAL-14 adds
+  asserts: >-
+    both sections reach READY / "ready in ...s" against a real generated app with no key-related
+    boot failure, and their authenticated REST calls (now using the provisioned key, not a
+    hardcoded 'dev-key') succeed
+  provenRed: true
+  # RED proven by direct code reading, not a captured run: subprocess.Popen call sites in both
+  # npdev_cli.py's run_app() and dev_loop.py's boot(), pre-fix, carried no env= override and no
+  # secrets/api-key.env read/write anywhere in either file (grep, cited above) -- and
+  # application-dev.yml's own comment states StartupValidator refuses to boot without one. A live
+  # RED capture was not taken separately because reproducing it costs a full generate+build+boot
+  # cycle for a result the source already proves; the GREEN side (the CI run this guard names) is
+  # the cheaper, real proof to spend that cycle on.

@@ -1,0 +1,61 @@
+id: QUAL-13
+title: >-
+  "NPDev Manager harness" never runs pre-merge for a change outside NPDevManager/**, so a
+  RuntimeHost regression (BT-1's non-executable gradlew) reaches main before any Manager signal
+type: PROCESS
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-08-15
+source: >-
+  third-person-readiness-2026-08-15/FOLLOWUP-PLAN.md §3. Same underlying dormancy commit 772b2e66
+  already documented for this workflow's own last-main-run date (`ef1d9bb8`), read alongside its
+  `pull_request.paths` filter.
+surface: ci/workflows
+files:
+  - .github/workflows/manager-harness.yml
+detail: |
+  `.github/workflows/manager-harness.yml` triggers on `push: tags: ['*']`,
+  `pull_request: paths: ['NPDevManager/**', 'scripts/quality/manager-harness/**',
+  '.github/workflows/manager-harness.yml']`, a nightly `schedule`, and `workflow_dispatch`. The
+  nightly bounds the worst case to 24h, which is real coverage -- but nothing in this workflow's
+  trigger set fires PRE-MERGE for a change to `NPDevRuntimeHost/**` itself, even though the
+  workflow's own job builds and boots a real generated app's Manager-driven path against exactly
+  that code. BT-1 (the RuntimeHost jar split that committed a non-executable `gradlew`) is the
+  concrete case: it touched `NPDevRuntimeHost/**`, matched none of this workflow's `paths`, and so
+  got zero signal from this workflow at PR time -- only the nightly (which ran green earlier that
+  day, before the regression existed) and the `beta1.18` tag (twelve+ days later) ever exercised it
+  against the changed code, and by the tag both this workflow's jobs failed.
+
+  **Fixed 2026-08-15**, same branch as `QUAL-12`/`QUAL-14`/`REG-182`. Added `NPDevRuntimeHost/**`
+  and `**/gradlew` to the `pull_request.paths` list. `**/gradlew` specifically because BT-1's own
+  defect was a file-mode change, not a content change under `NPDevRuntimeHost/**` in the usual
+  sense -- a future gradlew permission regression anywhere in the repo (any of the six tracked
+  wrapper copies CLAUDE.md names) now trips this workflow's `pull_request` trigger directly, not
+  only through a path both patterns happen to share. Left the nightly `schedule` in place
+  unchanged: it already bounds the worst case, and this fix closes the PRE-merge hole specifically,
+  not the whole cadence.
+
+  **2026-08-15 (PR #100, live verification): both `manager-harness.yml` jobs ran and passed on this
+  PR, twice** (once per pushed commit -- run `31897579019` then `31899355387`), "Manager --selftest
+  in a bare container" and "Manager --selftest with a real engine (DB toolbox)" both green each
+  time. That fires via the pre-existing rule (this PR touches `.github/workflows/manager-harness.yml`
+  itself, already in the paths list before this fix) -- real evidence the workflow itself still
+  works end to end, but not yet evidence for the specific new `NPDevRuntimeHost/**`/`**/gradlew`
+  rule this item adds, which this PR does not exercise (it touches neither path in isolation).
+guard:
+  kind: manual
+  ref: >-
+    cat .github/workflows/manager-harness.yml | grep -A6 'pull_request:' (or: open a PR touching
+    only NPDevRuntimeHost/**, confirm "NPDev Manager harness" appears as a required/observed check)
+  asserts: >-
+    a pull_request touching NPDevRuntimeHost/** (with no NPDevManager/** change) triggers this
+    workflow, where before this fix it would not have
+  provenRed: true
+  # RED already proven: BT-1's PR (#14) touched NPDevRuntimeHost/runtimehost-core/gradlew and
+  # matched none of the pre-fix paths; commit 772b2e66 independently confirms this workflow's last
+  # main-branch run predates PRs #83-#98. This branch's own PR touches
+  # .github/workflows/manager-harness.yml itself, which was ALREADY in the pre-fix paths list --
+  # so this PR's own run proves the workflow still fires, but not specifically the new
+  # NPDevRuntimeHost/**/**/gradlew rule (this branch touches neither). That narrower claim stays
+  # unverified by this PR; the next real PR touching only NPDevRuntimeHost/** is the actual proof.
+  # Held at PARTIAL for that reason, not because this PR's own run is expected to fail.

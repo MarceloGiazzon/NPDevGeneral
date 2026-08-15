@@ -344,8 +344,7 @@
       "invocation": "orchestrated"
     },
     "scripts/quality/firstrun-harness/run-readme.sh": {
-      "invocation": "manual-runbook",
-      "documentedIn": "scripts/quality/firstrun-harness/README.md"
+      "invocation": "ci-gate"
     },
     "scripts/quality/fix-statezip-visible-timestamps.ps1": {
       "invocation": "manual-runbook",
