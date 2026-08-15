@@ -169,8 +169,8 @@ dependencies {
     testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
     testImplementation 'org.testcontainers:postgresql:1.21.4'
     testImplementation 'org.postgresql:postgresql:42.7.4'
-    testImplementation 'org.flywaydb:flyway-core:10.10.0'
-    testImplementation 'org.flywaydb:flyway-database-postgresql:10.10.0'
+    testImplementation 'org.flywaydb:flyway-core:13.2.0'
+    testImplementation 'org.flywaydb:flyway-database-postgresql:13.2.0'
 
     // HARDEN-OBJSTORE-P4: live packaged-app proof needs a real MinIO endpoint + an S3 client to
     // assert bytes landed in the bucket under the tenant prefix.
