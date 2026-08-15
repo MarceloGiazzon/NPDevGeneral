@@ -196,8 +196,8 @@ tasks.named('run') {
 // expensive. The answer is not to delete them; it is to stop paying for them on every local run.
 //
 //   ./gradlew :generator:test                          fast tests only (local default)
-//   ./gradlew :generator:test -PincludePackagedProofs   the full thing
-//   CI                                                  always the full thing
+//   ./gradlew :generator:packagedProofTest -PincludePackagedProofs   the full thing, serially
+//   CI                                                  always the full thing (both tasks)
 //
 // CI is detected by the CI env var, which GitHub Actions always sets -- so no workflow needed
 // changing, and no workflow can forget. The exclusion is deliberately LOUD (see doFirst below): a
@@ -215,27 +215,48 @@ def packagedProofCount = fileTree(dir: 'src/test/java', include: '**/*.java')
 
 tasks.named('test') {
     useJUnitPlatform {
-        if (!packagedProofsIncluded) {
-            excludeTags 'packaged-proof'
-        }
+        excludeTags 'packaged-proof'
     }
     // Perf: forked test JVMs default to 512m and do NOT inherit org.gradle.jvmargs.
-    // maxParallelForks is held at 2 (not 4): this suite drives Testcontainers/MinIO
-    // and also packages and boots whole generated FinalApps (which bind ports),
-    // so concurrent forks contend. Raise only with evidence the suite stays green.
     maxHeapSize = '2g'
     maxParallelForks = 2
     jvmArgs '-XX:+UseParallelGC'
 
     doFirst {
         if (packagedProofsIncluded) {
-            logger.lifecycle("[packaged-proof] RUNNING ${packagedProofCount} packaged-app proof " +
-                    'test(s) (generate + build + boot a real FinalApp -- minutes each).')
+            logger.lifecycle("[packaged-proof] ${packagedProofCount} packaged-app proof test(s) " +
+                    'run separately via :generator:packagedProofTest (serial, minutes each).')
         } else {
             logger.lifecycle("[packaged-proof] SKIPPED ${packagedProofCount} packaged-app proof " +
-                    'test(s) (local run); CI runs them. Run them here with -PincludePackagedProofs.')
+                    'test(s) (local run); CI runs them via :generator:packagedProofTest. Run them ' +
+                    'here with -PincludePackagedProofs.')
         }
     }
+}
+
+// REG-176 (2026-08-15): these three were run INSIDE the shared `test` task (maxParallelForks=2),
+// contending with each other for CPU/Docker/port resources on the same runner -- reliably
+// reproduced blowing their own 6-minute per-test health-check timeout (waitForHealth/
+// ConnectException) on TWO independent GitHub Actions jobs (npdev-pr-gate.yml's "PR gate" and
+// npdev-ci-validation.yml's "Generator gate"), both on the same commit, back to back. A bare
+// `main` dispatch of the identical job at a quieter moment passed clean, confirming this is
+// contention-shaped, not a code defect in the tests themselves. Isolating them into their own
+// task with maxParallelForks=1 trades wall-clock time (they now run one at a time) for not
+// spuriously failing PRs that never touch the code these tests exercise.
+tasks.register('packagedProofTest', Test) {
+    description = 'REG-176/storage-PLAN-W2: the three *PackagedGeneratedAppRuntimeProofTest ' +
+            'classes, isolated from the fast `test` task and run SERIALLY so they stop ' +
+            'contending with each other for CPU/Docker/port resources under CI load.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'packaged-proof'
+    }
+    maxHeapSize = '2g'
+    maxParallelForks = 1
+    jvmArgs '-XX:+UseParallelGC'
+    onlyIf { packagedProofsIncluded }
 }
 
 tasks.register('behaviorTest', Test) {

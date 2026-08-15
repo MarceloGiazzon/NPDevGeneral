@@ -141,10 +141,14 @@ jobs:
 
       - name: Generator unit tests
         working-directory: NPDevGenerator
-        timeout-minutes: 20
+        # REG-176: packagedProofTest now runs the 3 packaged-app-boot proofs SERIALLY
+        # (maxParallelForks=1, generator/build.gradle) instead of contending for 2 forks with each
+        # other -- budget raised from 20 to 30min for the added serial wall-clock, not because any
+        # single test got slower.
+        timeout-minutes: 30
         run: |
           sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
-          ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
+          ./gradlew :generator:test :generator:behaviorTest :generator:packagedProofTest --no-daemon --console=plain
 
       # G2 (docs/CLOSEOUT_PLAN.md): the corpus-parse gate proves every DSL feature PARSES; nothing
       # proved any of them actually EMIT. dsl-conformance-max was "validated, not run" until this
