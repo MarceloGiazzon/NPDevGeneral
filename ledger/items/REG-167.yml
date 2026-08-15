@@ -4,8 +4,22 @@ title: >-
   sourceSet with no reserved-name guard, so a same-named file collides undefined-winner
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-15
+verification: UNIT_TESTED
+resolution: >-
+  `FinalAppAssembler` now declares `RESERVED_WEB_ASSET_FILES` (shell.js, shell.css, info.html,
+  info.json) and `RESERVED_WEB_ASSET_DIRECTORIES` (npdev-business-ui/, npdev-workbench/) and calls a
+  new `requireNoReservedWebAssetCollision(webAssetsRoot)` from `mountWebAssets()` right after the
+  existing `requireDirectory` check -- walks the author's web/ tree and throws a single `IOException`
+  naming every colliding relative path, matching the method's existing fail-loud precedent, before
+  any web asset is copied.
+
+  New test `FinalAppAssemblerTest.refusesWebAssetsCollidingWithReservedPlatformStaticNames` (a real
+  web/ dir with an `info.html` and a `shell.js` file, run through the real `mountWebAssets()`) --
+  asserts the call throws naming both collisions, and that neither colliding file was ever written to
+  `<finalAppRoot>/src/main/resources/static/`. `:generator:test` green, 2026-08-14/15.
 source: >-
   Found by this session's adversarial review of PR #77 (R10 custom-screen mount migration) --
   confirmed pre-existing in the mechanism PR #77 replaced too, not a regression introduced by the
@@ -13,6 +27,7 @@ source: >-
 surface: generator/final-app-assembly
 files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/assembly/FinalAppAssemblerTest.java
   - NPDevRuntimeHost/build.gradle.template
 detail: |
   `NPDevRuntimeHost/build.gradle.template` (around lines 451-454) wires `src/main/resources` and

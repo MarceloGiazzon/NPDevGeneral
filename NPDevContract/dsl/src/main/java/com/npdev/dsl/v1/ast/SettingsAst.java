@@ -1,5 +1,6 @@
 package com.npdev.dsl.v1.ast;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -24,7 +25,11 @@ public final class SettingsAst {
     }
 
     public String getLocale() { return locale; }
-    public Map<String, String> getStrings() { return Map.copyOf(strings); }
+    // REG-146: was Map.copyOf(strings) -- JDK's ImmutableCollections deliberately randomizes
+    // iteration order per JVM run (a JEP 269 hash-flood mitigation), discarding the LinkedHashMap
+    // insertion order the constructor above built, the same defect PlatformStrings.DEFAULTS had.
+    // Collections.unmodifiableMap preserves real insertion order while staying just as immutable.
+    public Map<String, String> getStrings() { return Collections.unmodifiableMap(strings); }
     public Integer getPageRows() { return pageRows; }
     public String getDateFormat() { return dateFormat; }
 }

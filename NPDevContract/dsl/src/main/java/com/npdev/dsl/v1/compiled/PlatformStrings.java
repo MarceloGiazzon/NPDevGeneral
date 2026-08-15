@@ -1,5 +1,6 @@
 package com.npdev.dsl.v1.compiled;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -31,7 +32,17 @@ public final class PlatformStrings {
         d.put("action.save", "Save");
         d.put("action.delete", "Delete");
         d.put("action.new", "New");
-        DEFAULTS = Map.copyOf(d);
+        // REG-146: Map.copyOf(d) here (rather than Collections.unmodifiableMap) is what actually
+        // made this nondeterministic -- JDK's ImmutableCollections implementation deliberately
+        // randomizes iteration order per JVM run (a JEP 269 hash-flood mitigation), discarding the
+        // LinkedHashMap insertion order built above despite reading as ordered at this call site.
+        // CompiledSettings.getStrings() (a LinkedHashMap seeded from these DEFAULTS, app overrides
+        // merged on top) inherited that randomized order, which BusinessUiEmitter then serializes
+        // verbatim into every generated app's workbench-page.html.mustache i18n blob --
+        // byte-different output between two back-to-back generations of the identical model.
+        // Collections.unmodifiableMap preserves the LinkedHashMap's real insertion order while
+        // staying just as immutable to callers.
+        DEFAULTS = Collections.unmodifiableMap(d);
     }
 
     private PlatformStrings() {

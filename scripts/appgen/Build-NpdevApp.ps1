@@ -824,7 +824,20 @@ function Ensure-NpdevApiKey {
   param([string]$AppRoot)
   $secretsDir = Join-Path $AppRoot 'secrets'
   $keyFile = Join-Path $secretsDir 'api-key.env'
-  if (-not (Test-Path -LiteralPath $keyFile)) {
+  # REG-157: a PRE-EXISTING keyFile that produces no usable mapping (empty, or no non-comment
+  # line contains '=') used to be trusted as-is -- $env:NPDEV_AUTH_API_KEYS stayed unset, and the
+  # caller's own header-parsing .Split('=', 2)[0] crashed with an uncaught null-reference a few
+  # lines later. Treat "present but unusable" the same as "absent": regenerate.
+  $needsGeneration = -not (Test-Path -LiteralPath $keyFile)
+  if (-not $needsGeneration) {
+    $hasUsableMapping = $false
+    foreach ($rawLine in (Get-Content -LiteralPath $keyFile)) {
+      $line = $rawLine.Trim()
+      if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) { $hasUsableMapping = $true; break }
+    }
+    $needsGeneration = -not $hasUsableMapping
+  }
+  if ($needsGeneration) {
     if (-not (Test-Path -LiteralPath $secretsDir)) { New-Item -ItemType Directory -Force -Path $secretsDir | Out-Null }
     $bytes = New-Object byte[] 24
     [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
