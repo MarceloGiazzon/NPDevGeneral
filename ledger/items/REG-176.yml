@@ -167,3 +167,28 @@ resolution: >-
   is a reasoned fix from a plausible, evidenced mechanism (Gradle's own documented cross-task
   parallelism under `org.gradle.parallel=true`), not a repeat live confirmation that this exact
   mechanism was the failure's cause -- the next CI run is what actually proves it.
+
+  **2026-08-15 second follow-up: the isolated-invocation fix ALSO did not clear CI.** The next run
+  (fully isolated `./gradlew :generator:packagedProofTest`, nothing else in that invocation) still
+  failed with all 3 tests timing out on `waitForHealth`. This rules out cross-task Gradle
+  parallelism as the (sole) cause. Cross-checked against a bare `main` dispatch made earlier the
+  same session (05:32, before any of these changes existed) that completed the WHOLE "PR gate" job,
+  packaged-app boots included, in 7m44s -- and against running one of the same three tests locally
+  on this exact combined code state (`HardenGcDeleteReplaceCascade...`, full REG-170/156/166/163/
+  177/179/175/176/178 changes present), which passed cleanly. Both together point at CI-runner
+  boot/IO performance varying over the course of this session (healthy early, degraded on every
+  later run checked) rather than a code regression in any of this session's changes -- but this is
+  inferred from the pattern, not independently proven (e.g. by directly inspecting a GitHub Actions
+  status-page incident for this window).
+
+  Applied one more, more conservative hardening as a result: raised each of the three tests' own
+  health-check deadline (6min -> 8min for `HardenGcDeleteReplaceCascade`/`TrustedSourceEmitter`'s
+  named `HEALTH_TIMEOUT`; 2min -> 8min for `HardenObjstoreFileUpload`'s own inline deadline, which
+  was a full 4 minutes shorter than its two siblings' and the more likely reason it was consistently
+  the last/worst of the three to fail) and raised both workflow files' "Generator unit tests" step
+  budget (30->45min) and `npdev-pr-gate.yml`'s own job-level timeout (60->90min) so a genuine
+  worst-case across all three tests' new ceilings still fits. This raises the ceiling the tests are
+  allowed to wait against slow infrastructure; it does not fix a specific proven root cause, because
+  none was proven past "not test-level contention, not a code regression" -- if failures persist
+  after this, the next step is checking GitHub's own status history for this time window rather than
+  further test/workflow changes.

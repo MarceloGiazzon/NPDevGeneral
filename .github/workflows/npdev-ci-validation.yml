@@ -156,8 +156,8 @@ jobs:
         working-directory: NPDevGenerator
         # REG-176: packagedProofTest runs the 3 packaged-app-boot proofs SERIALLY
         # (maxParallelForks=1, generator/build.gradle) instead of contending for 2 forks with each
-        # other.
-        timeout-minutes: 30
+        # other. Each test's own HEALTH_TIMEOUT was also raised 6->8min as defense-in-depth.
+        timeout-minutes: 45
         run: |
           ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
           # REG-176 follow-up: see npdev-pr-gate.yml's identical step for the full reasoning --
