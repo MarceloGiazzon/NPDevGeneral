@@ -1,0 +1,59 @@
+id: QUAL-12
+title: >-
+  "Engine support (application level)"'s paths filter skipped 15 consecutive merges (PRs #83-#98);
+  a non-executable gradlew from BT-1 survived undetected all the way to a release tag
+type: PROCESS
+severity: HIGH
+status: PARTIAL
+opened: 2026-08-15
+source: >-
+  third-person-readiness-2026-08-15/FOLLOWUP-PLAN.md §3, corroborated independently by commit
+  772b2e66's own commit message (already merged to main): "neither Engine support (last run
+  2026-08-12, 0c8a6ff8) nor Manager harness (last main run ef1d9bb8) executed for any of PRs
+  #83-#98". Same dormancy CLASS as REG-161 (six other gates with no pull_request trigger, filed and
+  fixed 2026-08-14) -- found again, on a sibling workflow, one day later.
+surface: ci/workflows
+files:
+  - .github/workflows/engine-support.yml
+detail: |
+  `.github/workflows/engine-support.yml` triggers only on `push: tags: ['*']` and
+  `workflow_dispatch` -- a deliberate choice (see the workflow's own header comment) made when its
+  runtime was unknown, reasoning "promoting it to a branch push trigger is still a decision to make
+  once its runtime is known". That decision was never revisited. Between its last real run
+  (2026-08-12, `0c8a6ff8`) and `beta1.18`'s tag, 15 merges landed with zero coverage from this
+  workflow, including `4d5b94d8` (BT-1, the RuntimeHost jar split) which committed
+  `NPDevRuntimeHost/runtimehost-core/gradlew` as mode 100644 (non-executable) -- the sole cause of
+  all three `beta1.18` tag failures (Engine support itself, Manager harness, and Publish
+  RuntimeHost Libs releasing 4 of 6 assets). The workflow that would have caught this on the very
+  next push after BT-1 landed did not run again until the tag, twelve+ days and 15 merges later.
+
+  `beta1.19`'s own PR (#98, "fix: close published-key handover blocker (T1), POSIX launcher twin
+  (T3/T4)") also removed the `dev` profile's seeded API key -- a change this exact workflow's E3/E4/
+  E5 jobs boot generated apps against and would have caught breaking (`run-engine-app-proof.py`'s
+  hardcoded `dev-key` no longer authenticating), except it never ran on that PR either, for the
+  identical paths-filter/no-pull_request reason. The workflow that should have caught PR #98's own
+  regression is the workflow this item is about.
+
+  **Fixed 2026-08-15**, same branch as `QUAL-13`/`QUAL-14`/`REG-182`. Took Step 2.2's recommended
+  option: added a post-merge `push: branches: [main]` trigger alongside the existing `tags: ['*']`
+  and `workflow_dispatch` (left both of those in place -- tags still need a run pinned at the exact
+  release sha per the workflow's own RC-gate reasoning, and `workflow_dispatch` still lets anyone
+  force an ordinary-commit run). Not `pull_request`: this workflow generates+builds+boots a Spring
+  app per engine against real Docker-hosted MySQL/SQL Server/Postgres containers, minutes not
+  seconds -- the same cost tradeoff `REG-161` weighed for its own six gates, but the header
+  comment's own words ("promoting it to a BRANCH push trigger... once its runtime is known") point
+  at push, not pull_request, once that runtime is known. Post-merge costs one run per merge instead
+  of one per PR, and would have caught BT-1 within a single merge instead of fifteen.
+guard:
+  kind: manual
+  ref: >-
+    cat .github/workflows/engine-support.yml | grep -A3 '^on:' (or gh api
+    repos/:owner/:repo/actions/workflows/engine-support.yml/runs -- check the run list includes a
+    push-triggered entry for the merge commit of this branch's own PR)
+  asserts: >-
+    the workflow runs on every push to main, not only on a tag or a manual dispatch -- observed
+    directly on this branch's own PR/merge, not inferred from the YAML alone
+  provenRed: true
+  # RED already proven, twice over, before this fix: commit 772b2e66's own message (merged to main
+  # ahead of this item) states the workflow did not run for PRs #83-#98; this branch's own push (see
+  # QUAL-14's guard) is the GREEN half -- held at PARTIAL until that run is observed, not asserted.

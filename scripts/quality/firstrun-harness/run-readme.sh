@@ -156,6 +156,64 @@ skip() {
 
 die() { c_red "HARNESS ERROR: $*"; exit 2; }
 
+# ensure_npdev_api_key <app-root>
+#
+# T1/C2 (application-dev.yml): the `dev` profile no longer seeds a known admin key -- StartupValidator
+# refuses to boot without one supplied externally. Every launcher this platform ships provisions one
+# via OperationalRunbookEmitter's Ensure-NpdevApiKey (PowerShell) / ensure_npdev_api_key (POSIX,
+# API_KEY_PROVISIONER_SH) before its first raw `java -jar`. This harness boots jars directly in four
+# places (sections 3, 5, 8x2) and, until now, provisioned nothing -- every one of those boots died
+# inside StartupValidator with no key, and the "dev-key" literal used to probe the app afterwards was
+# stale on top of that (it authenticated only while application-dev.yml still seeded it).
+#
+# Same file, same contract as the generator's own provisioner: idempotent, a present-but-unusable
+# file (REG-157: empty, or no non-comment line contains '=') treated as absent, printed once. Kept as
+# a local twin rather than sourced from the generated app (this harness runs before any app exists),
+# same reasoning OperationalRunbookEmitter gives for keeping its two provisioners self-contained.
+ensure_npdev_api_key() {
+  app_root="$1"
+  secrets_dir="$app_root/secrets"
+  key_file="$secrets_dir/api-key.env"
+  needs_generation=1
+  if [ -f "$key_file" ]; then
+    while IFS= read -r raw_line || [ -n "$raw_line" ]; do
+      line=$(printf '%s' "$raw_line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      case "$line" in
+        ''|'#'*) ;;
+        *=*) needs_generation=0; break ;;
+      esac
+    done < "$key_file"
+  fi
+  if [ "$needs_generation" = "1" ]; then
+    mkdir -p "$secrets_dir"
+    if command -v openssl >/dev/null 2>&1; then
+      key=$(openssl rand -hex 32)
+    else
+      key=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
+    fi
+    printf 'NPDEV_AUTH_API_KEYS=%s=dev:developer:admin' "$key" > "$key_file"
+  fi
+  NPDEV_LIVE_API_KEY=""
+  while IFS= read -r raw_line || [ -n "$raw_line" ]; do
+    line=$(printf '%s' "$raw_line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    case "$line" in
+      ''|'#'*) ;;
+      *=*)
+        name=${line%%=*}
+        value=${line#*=}
+        if [ -n "$name" ]; then
+          export "$name=$value"
+          if [ "$name" = "NPDEV_AUTH_API_KEYS" ]; then
+            export NPDEV_AUTH_APIKEYS="$value"
+            # The key is the part before the FIRST '=' of the value (key=tenantId:actorId:roles).
+            NPDEV_LIVE_API_KEY=${value%%=*}
+          fi
+        fi
+        ;;
+    esac
+  done < "$key_file"
+}
+
 # The extractor: markdown -> the commands a reader would actually type. It has its own unit tests
 # (scripts/quality/check-firstrun-extractor.py, in the AI knowledge gate) because its extraction
 # has now been wrong three different ways -- a bare `npdev`, an example OUTPUT block run as shell,
@@ -501,15 +559,19 @@ else
        "insert './gradlew bootJar' before any run instruction"
 fi
 
-# probe_editor_surface <base-url>
+# probe_editor_surface <base-url> <api-key>
 # The three product checks that need a LIVE app: the editor screen every generated app ships, every
 # chunk the generator claims to have copied, and the JSON shape the editor's default tab renders
 # from. Extracted into a function because their host moved: they used to hang off the app README's
 # quickstart built, and README's documented run path is now a watch loop this harness defers. They
 # are product checks, not documentation checks -- so they run against the app section 4 boots, which
 # does not depend on which flow README happens to document this month.
+#
+# <api-key> is the caller's job to resolve, not this function's: `dev` no longer seeds a known key
+# (T1/C2), so a hardcoded 'dev-key' here would 401 against any app booted after that change -- ask
+# `npdev run app`'s own --json result for the one it actually generated instead.
 probe_editor_surface() {
-  local base="$1"
+  local base="$1" api_key="$2"
 
   # editor/ANALYSIS.md E4: the editor ships inside every generated app at /npdev-ui-react/ --
   # a broken screen there is a first-impression defect (the Manager's own hand-off is "open
@@ -561,7 +623,7 @@ probe_editor_surface() {
   # JSON responses. Hit the same endpoint the default tab's own first render depends on and check
   # the shape directly -- this is the harness-level check REG-139 says was missing.
   local editor_draft
-  editor_draft=$(curl -sS "$base/api/admin/model/editor/draft" -H 'X-Api-Key: dev-key' 2>/dev/null)
+  editor_draft=$(curl -sS "$base/api/admin/model/editor/draft" -H "X-Api-Key: $api_key" 2>/dev/null)
   if printf '%s' "$editor_draft" | python3 -c "
 import json, sys
 try:
@@ -618,8 +680,10 @@ elif [ -z "$JAR" ]; then
        "consequence of W1/W2 above"
 else
   pass "app-jar-exists ($(basename "$JAR"))"
+  APP_ROOT="$(dirname "$(dirname "$(dirname "$JAR")")")"
+  ensure_npdev_api_key "$APP_ROOT"
   echo "  starting: java -jar $JAR --spring.profiles.active=dev --server.port=$APP_PORT"
-  ( cd "$(dirname "$(dirname "$(dirname "$JAR")")")" \
+  ( cd "$APP_ROOT" \
     && java -jar "$JAR" --spring.profiles.active=dev --server.port="$APP_PORT" ) >"$APP_LOG" 2>&1 &
   APP_PID=$!
 
@@ -690,7 +754,11 @@ fi
 # `_RUN_APP_CHILD_PROCESS = None` comment in npdev_cli._run_app), so this is the harness's one
 # reliable live app, whatever README currently documents. The editor/REG-139 probes ride on it.
 if [ "${RUN_APP_OK:-0}" = "1" ]; then
-  probe_editor_surface "http://localhost:$RUN_APP_PORT"
+  # C2 ("npdev run app" JSON result carries the key it actually provisioned, since ensure_api_key()
+  # landed in npdev_cli.py) -- not a hardcoded 'dev-key', which stopped authenticating the moment
+  # application-dev.yml stopped seeding it.
+  RUN_APP_API_KEY=$(printf '%s' "$RUN_APP_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('apiKey') or '')" 2>/dev/null)
+  probe_editor_surface "http://localhost:$RUN_APP_PORT" "$RUN_APP_API_KEY"
 else
   skip "editor responds at /npdev-ui-react/ and references its own bundle" \
        "npdev run app did not reach READY, so there is no live app to probe (see the failure above)"
@@ -776,7 +844,10 @@ else
     fail "change-a-field: jar exists after rebuild" "no build/libs/*.jar under $CAF_OUT"
   else
     pass "change-a-field: jar exists after rebuild"
-    ( cd "$(dirname "$(dirname "$(dirname "$CAF_JAR")")")" \
+    CAF_APP_ROOT="$(dirname "$(dirname "$(dirname "$CAF_JAR")")")"
+    ensure_npdev_api_key "$CAF_APP_ROOT"
+    CAF_API_KEY="$NPDEV_LIVE_API_KEY"
+    ( cd "$CAF_APP_ROOT" \
       && java -jar "$CAF_JAR" --spring.profiles.active=dev --server.port="$CAF_PORT" ) >/work/caf-app.log 2>&1 &
     CAF_PID=$!
 
@@ -793,7 +864,7 @@ else
       pass "change-a-field: app responds after regenerate+rebuild+restart"
 
       CAF_CREATE=$(curl -sS -X POST "http://localhost:$CAF_PORT/api/providers" \
-        -H 'X-Api-Key: dev-key' -H 'Content-Type: application/json' \
+        -H "X-Api-Key: $CAF_API_KEY" -H 'Content-Type: application/json' \
         -d '{"npi":"1234567890","fullName":"Harness Test Provider","specialty":"Testing","phone":"555-0100"}' 2>>"$LOG")
 
       if printf '%s' "$CAF_CREATE" | grep -q '"phone"[[:space:]]*:[[:space:]]*"555-0100"'; then
@@ -804,7 +875,7 @@ else
         printf '%s' "$CAF_CREATE" | tail -c 500 | sed 's/^/          | /'
       fi
 
-      CAF_LIST=$(curl -sS "http://localhost:$CAF_PORT/api/providers" -H 'X-Api-Key: dev-key' 2>>"$LOG")
+      CAF_LIST=$(curl -sS "http://localhost:$CAF_PORT/api/providers" -H "X-Api-Key: $CAF_API_KEY" 2>>"$LOG")
       if printf '%s' "$CAF_LIST" | grep -q '"phone"[[:space:]]*:[[:space:]]*"555-0100"'; then
         pass "change-a-field: new field survives a GET (not just an echo)"
       else
@@ -999,13 +1070,18 @@ with open('$YFA_WORK/model.json', 'w', encoding='utf-8') as f:
     if [ -n "$S4" ]; then run_cmd_list "your-first-app step4" <<< "$S4"
     else fail "your-first-app step4: block present" "no sh block found under step 4"; fi
 
-    # Step 4's real "does it run" proof -- boot the built jar and hit the documented dev-key path.
+    # Step 4's real "does it run" proof -- boot the built jar and hit the documented REST API,
+    # authenticated with whatever key ensure_npdev_api_key actually provisioned (T1/C2: `dev` no
+    # longer seeds a known 'dev-key').
     YFA_JAR=$(find "$YFA_APP" -name '*.jar' -path '*build/libs*' 2>/dev/null | head -1)
     if [ -z "$YFA_JAR" ]; then
       fail "your-first-app step4: jar exists after build" "no build/libs/*.jar under $YFA_APP"
     else
       pass "your-first-app step4: jar exists after build"
-      ( cd "$(dirname "$(dirname "$(dirname "$YFA_JAR")")")" \
+      YFA_APP_ROOT="$(dirname "$(dirname "$(dirname "$YFA_JAR")")")"
+      ensure_npdev_api_key "$YFA_APP_ROOT"
+      YFA_API_KEY="$NPDEV_LIVE_API_KEY"
+      ( cd "$YFA_APP_ROOT" \
         && java -jar "$YFA_JAR" --spring.profiles.active=dev --server.port="$YFA_PORT" ) >/work/yfa-app.log 2>&1 &
       YFA_PID=$!
       YFA_UP=0
@@ -1019,12 +1095,12 @@ with open('$YFA_WORK/model.json', 'w', encoding='utf-8') as f:
       if [ "$YFA_UP" = "1" ]; then
         pass "your-first-app step4: app responds on :$YFA_PORT"
         YFA_BOOK=$(curl -sS -X POST "http://localhost:$YFA_PORT/api/books" \
-          -H 'X-Api-Key: dev-key' -H 'Content-Type: application/json' \
+          -H "X-Api-Key: $YFA_API_KEY" -H 'Content-Type: application/json' \
           -d '{"title":"The Hobbit","isbn":"9780345339683","copies":1}' 2>>"$LOG")
         if printf '%s' "$YFA_BOOK" | grep -q '"title"[[:space:]]*:[[:space:]]*"The Hobbit"'; then
-          pass "your-first-app step4: dev-key creates a Book over the documented REST API"
+          pass "your-first-app step4: creates a Book over the documented REST API"
         else
-          fail "your-first-app step4: dev-key creates a Book over the documented REST API" \
+          fail "your-first-app step4: creates a Book over the documented REST API" \
                "see $LOG"; printf '%s' "$YFA_BOOK" | tail -c 500 | sed 's/^/          | /'
         fi
       else
@@ -1056,7 +1132,12 @@ with open('$YFA_WORK/model.json', 'w', encoding='utf-8') as f:
       fail "your-first-app step5: jar exists after rebuild" "no build/libs/*.jar under $YFA_APP"
     else
       pass "your-first-app step5: jar exists after rebuild"
-      ( cd "$(dirname "$(dirname "$(dirname "$YFA_JAR2")")")" \
+      YFA_APP_ROOT2="$(dirname "$(dirname "$(dirname "$YFA_JAR2")")")"
+      # Idempotent: regeneration spares secrets/ (CLAUDE.md's three-seams rule), so this reuses
+      # step 4's key -- re-provisioning is still correct if that ever changes.
+      ensure_npdev_api_key "$YFA_APP_ROOT2"
+      YFA_API_KEY="$NPDEV_LIVE_API_KEY"
+      ( cd "$YFA_APP_ROOT2" \
         && java -jar "$YFA_JAR2" --spring.profiles.active=dev --server.port="$YFA_PORT" ) >/work/yfa-app2.log 2>&1 &
       YFA_PID2=$!
       YFA_UP2=0
@@ -1069,7 +1150,7 @@ with open('$YFA_WORK/model.json', 'w', encoding='utf-8') as f:
       done
       if [ "$YFA_UP2" = "1" ]; then
         pass "your-first-app step5: app responds after regenerate+rebuild+restart"
-        YFA_LIST=$(curl -sS "http://localhost:$YFA_PORT/api/books" -H 'X-Api-Key: dev-key' 2>>"$LOG")
+        YFA_LIST=$(curl -sS "http://localhost:$YFA_PORT/api/books" -H "X-Api-Key: $YFA_API_KEY" 2>>"$LOG")
         if printf '%s' "$YFA_LIST" | grep -q '"publishedYear"'; then
           pass "your-first-app step5: publishedYear field reachable via REST"
         else

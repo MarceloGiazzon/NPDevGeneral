@@ -52,8 +52,8 @@
       "note": "Track C C8. Produced by `npm test` (`vitest run --coverage`, @vitest/coverage-v8, json-summary reporter) -- unconditional, every run-frontend-gate.ps1 invocation (via the npmTest Gradle task), since ui-react's own test tooling never ships into a generated FinalApp (only the built dist/ bundle does). vitest.config.ts points reportsDirectory at scripts/reports/out/vitest-coverage (already .gitignore'd) specifically because run-frontend-gate.ps1's Find-GeneratedResidue and NPDevEditor/build.gradle's cleanUiReactGenerated both hard-fail on a 'coverage' directory inside ui-react -- see ROADMAP.md card R3's own warning. coverage.all=true + explicit include makes every src/**/*.{ts,tsx} file count in the denominator even if no test imports it, so this floor reflects the whole authoring surface (~254 files), not just the ~13 files under test today."
     },
     "NPDevCli": {
-      "coveragePercent": 31.4701,
-      "measuredOn": "2026-08-15T14:05:53Z",
+      "coveragePercent": 31.8329,
+      "measuredOn": "2026-08-15T17:00:52Z",
       "reportFormat": "coverage-py-json",
       "reportGlobs": [
         "scripts/reports/out/python-coverage/npdevcli-coverage.json"

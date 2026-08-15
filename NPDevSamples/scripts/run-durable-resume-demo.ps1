@@ -31,8 +31,9 @@ $profiles = Get-ConfigString -Config $config -Path @("runtime", "springProfile")
 $baseUrl = "http://localhost:$port"
 # R7 Stage D: resolved below, once the app has been generated (Get-NpdevLiveApiKey needs
 # _ops/resolved-db-plan.json, which generate-sample-app.ps1 has not written yet at this point).
-# This script boots the app itself (raw java -jar, no Ensure-NpdevApiKey call), so a hardcoded
-# "dev-key" is no longer a safe assumption -- ask what actually authenticates instead.
+# This script boots the app itself (raw java -jar), so a hardcoded "dev-key" is no longer a safe
+# assumption -- ask what actually authenticates instead. Stale note removed 2026-08-15: this DOES
+# call Ensure-NpdevSampleApiKey (below, once $appRoot exists) before that boot -- see T1/C2.
 $apiKey = $null
 
 $logDir = Join-Path $sample.OutputRoot "RunOutput"

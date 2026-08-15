@@ -229,6 +229,10 @@ def boot(options: DevOptions, jar: Path, cli) -> AppProcess | None:
                   "Install a JDK 17+ or set JAVA_HOME; `npdev doctor` shows what NPDev can find.\n")
         log.close()
         return None
+    # T1/C2: `dev` no longer seeds a known key -- StartupValidator refuses to boot without one
+    # supplied externally. Same injected-`cli` reasoning as `java_launcher()` two lines above: one
+    # implementation in npdev_cli.py, called from both of this platform's raw-`java -jar` boot sites.
+    cli.ensure_api_key(options.output)
     log = open(options.app_log, "w", encoding="utf-8")  # noqa: SIM115  (owned by AppProcess)
     proc = subprocess.Popen(
         [java, "-jar", str(jar),
@@ -559,6 +563,17 @@ def dev(args: argparse.Namespace, cli) -> int:
         holder["app"] = app
         if result.ok:
             out.ready(result, options.port)
+            # Printed once, on the first successful boot only -- every later cycle in this same
+            # `npdev dev` process reuses the same secrets/api-key.env, so repeating it on every save
+            # would just be noise. Same "print once, X-Api-Key: <key>" courtesy every other launcher
+            # on this platform already gives (OperationalRunbookEmitter's Ensure-NpdevApiKey).
+            key_file = options.output / "secrets" / "api-key.env"
+            if key_file.exists():
+                for raw_line in key_file.read_text(encoding="utf-8").splitlines():
+                    line = raw_line.strip()
+                    if line.startswith("NPDEV_AUTH_API_KEYS=") and "=" in line[len("NPDEV_AUTH_API_KEYS="):]:
+                        out.note(f"X-Api-Key: {line.split('=', 2)[1]}  (saved to {key_file})")
+                        break
         while not stop.requested:
             changed = wait_for_change(watch_set(options, cli), stop)
             if stop.requested or not changed:
