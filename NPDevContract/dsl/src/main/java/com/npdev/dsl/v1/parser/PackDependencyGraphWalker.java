@@ -585,12 +585,28 @@ final class PackDependencyGraphWalker {
             // key yet) does NOT mean "already current" -- that would silently skip replaying real
             // history for a pre-existing database sitting at the pack's original version, the exact
             // failure this card exists to prevent. The only version an untracked database could
-            // possibly be at is the chain's own provably-first-ever version (see
-            // PackMigrationChain.earliestFromVersion's own doc for why this is safe for a fresh
-            // install too).
-            PackVersion fromVersion = migratedVersionRaw.isBlank()
-                    ? chain.earliestFromVersion()
-                    : PackVersion.parse(migratedVersionRaw);
+            // possibly be at is the pack's own provably-first-ever version.
+            //
+            // REG-151: prefer the pack's own firstPublishedVersion anchor (pinned/immutable once
+            // written by PackPublishGate.withFirstPublishedVersionAnchor) over
+            // PackMigrationChain.earliestFromVersion() -- the latter is only correct while the
+            // chain's OWN earliest hop is still present; a hand-edit that truncates/removes it (
+            // bypassing the publish gate) would make earliestFromVersion() silently report a LATER,
+            // wrong origin, and composition would under-compose without ever detecting the gap. The
+            // anchor is independent of the chain's current content, so composing from it still finds
+            // the (now-missing) earliest hop absent and correctly refuses via the same
+            // PackMigrationComposer.compose refusal path the tracked case already relies on. Falls
+            // back to earliestFromVersion() only for a pack published before this field existed and
+            // not yet re-published since.
+            String firstPublishedRaw = ModelSourceResolver.textOrBlank(packNode.get("firstPublishedVersion"));
+            PackVersion fromVersion;
+            if (!migratedVersionRaw.isBlank()) {
+                fromVersion = PackVersion.parse(migratedVersionRaw);
+            } else if (!firstPublishedRaw.isBlank()) {
+                fromVersion = PackVersion.parse(firstPublishedRaw);
+            } else {
+                fromVersion = chain.earliestFromVersion();
+            }
 
             PackMigrationComposer.Result result = PackMigrationComposer.compose(packId, chain, fromVersion, toVersion);
             if (result instanceof PackMigrationComposer.Refused refused) {

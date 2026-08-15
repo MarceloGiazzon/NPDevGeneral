@@ -151,6 +151,60 @@ class PackMigrationChainResolutionTest {
     }
 
     @Test
+    void untrackedPackWithAPinnedAnchorAndATruncatedChainRefusesInsteadOfSilentlyUnderComposing()
+            throws Exception {
+        // REG-151: the chain's OWN earliest hop (1.0.0 -> 2.0.0) has been removed/truncated -- e.g. by
+        // a hand-edit that bypasses PackPublishGate's chain-immutability check -- but
+        // firstPublishedVersion was pinned back when the chain was still intact, at "1.0.0". No
+        // npdev.lock (untracked). Before REG-151's fix, the untracked fallback derived fromVersion
+        // from PackMigrationChain.earliestFromVersion(), which -- reading the ALREADY-TRUNCATED
+        // chain -- would report "2.0.0" (the new, wrong "earliest" hop) and silently compose only the
+        // 2.0.0 -> 3.0.0 range, never detecting that 1.0.0 -> 2.0.0's rename was skipped. With the fix,
+        // the pinned anchor (independent of the chain's current content) is used instead, so
+        // composition correctly looks for a hop starting at 1.0.0, finds none, and refuses.
+        write("packs/identity/pack.json", """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "identity",
+                  "version": "3.0.0",
+                  "firstPublishedVersion": "1.0.0",
+                  "migrations": {
+                    "2.0.0 -> 3.0.0": [ { "op": "addField", "concept": "User", "field": "notes" } ]
+                  },
+                  "concepts": [
+                    { "name": "User", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true },
+                      { "name": "displayName", "type": "string" },
+                      { "name": "notes", "type": "string" }
+                    ] }
+                  ]
+                }
+                """);
+        Path model = write("model.json", MODEL_IMPORTING_IDENTITY);
+        // Deliberately no npdev.lock -- untracked.
+
+        IOException e = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(e.getMessage().contains("no migration chain entry starts at version 1.0.0"), e.getMessage());
+    }
+
+    @Test
+    void untrackedPackWithNoAnchorYetStillFallsBackToEarliestFromVersionForBackwardCompatibility()
+            throws Exception {
+        // A pack published before REG-151's firstPublishedVersion field existed, never re-published
+        // since -- no anchor to fall back on, so the untracked case still uses
+        // PackMigrationChain.earliestFromVersion() exactly as before. This is the residual gap
+        // REG-151 leaves open for such a pack (only closed once it is republished with --write, which
+        // backfills the anchor) -- documented here, not silently assumed.
+        write("packs/identity/pack.json", IDENTITY_V3_WITH_CHAIN);
+        Path model = write("model.json", MODEL_IMPORTING_IDENTITY);
+
+        ResolvedModelSource source = new ModelSourceResolver().resolve(model);
+
+        JsonNode displayName = fieldNamed(userConcept(source), "displayName");
+        assertEquals("name", displayName.get("renamedFrom").asText());
+    }
+
+    @Test
     void aPackWithNoMigrationsObjectAtAllIsCompletelyUntouched() throws Exception {
         write("packs/identity/pack.json", """
                 {
