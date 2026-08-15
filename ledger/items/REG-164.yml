@@ -5,8 +5,10 @@ title: >-
   though nothing about the pack changed
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Found while running scripts/quality/validate-corpus.py as part of R10 (EXT-1) verification --
   unrelated to plugin:java-controller, filed separately per this session's "unrelated bugs filed

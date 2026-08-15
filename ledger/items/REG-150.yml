@@ -4,8 +4,10 @@ title: >-
   recognized" the moment node_modules isn't already present
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-13
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Found while implementing R4 Part A (MASTER-ROADMAP.md Step 9 / ledger QUAL-7): wiring
   run-editor-complexity-check.ps1 into run-frontend-gate.ps1 (its first real gate, per QUAL-7 -- it
@@ -47,3 +49,11 @@ guard:
   asserts: the script installs its own dependencies and passes, rather than failing with "vitest is
     not recognized"
   provenRed: true
+
+resolution: |
+  2026-08-14: added a self-install step (npm ci if node_modules is absent) immediately before the
+  frontend test/build calls. Verified against the EXACT guard condition, not simulated: node_modules
+  did not exist on disk at all when this was run. `pwsh -File
+  scripts/quality/run-editor-complexity-check.ps1` self-installed ("added 103 packages"), then ran
+  to completion with `overallStatus: passed` in the written report -- no "vitest is not recognized"
+  failure.
