@@ -1,5 +1,7 @@
 package com.finalexec.auth;
 
+import com.finalexec.auth.IdentityProvisioning.IdentityTableNames;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
@@ -30,17 +32,20 @@ public class BootstrapAdminController {
     private static final String ADMIN_ROLE_NAME = "ADMIN";
 
     private final DataSource dataSource;
+    private final IdentityTableNames identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
 
     public BootstrapAdminController(
             DataSource dataSource,
+            CompiledModel compiledModel,
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn
     ) {
         this.dataSource = dataSource;
+        this.identityTables = IdentityTableNames.resolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -64,17 +69,18 @@ public class BootstrapAdminController {
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try {
-                if (IdentityProvisioning.countUsersInTenant(connection, tenantId) > 0) {
+                if (IdentityProvisioning.countUsersInTenant(connection, identityTables, tenantId) > 0) {
                     connection.rollback();
                     return ResponseEntity.status(409).body(Map.of("error", "tenant_already_bootstrapped"));
                 }
 
                 UUID userId = UUID.randomUUID();
-                IdentityProvisioning.insertIdentityUser(connection, userId, username, displayName, request.email(), tenantId);
+                IdentityProvisioning.insertIdentityUser(
+                        connection, identityTables, userId, username, displayName, request.email(), tenantId);
 
                 UUID roleId = IdentityProvisioning.findOrCreateRole(
-                        connection, tenantId, ADMIN_ROLE_NAME, "Bootstrapped administrator role");
-                IdentityProvisioning.insertUserRole(connection, userId, roleId, tenantId);
+                        connection, identityTables, tenantId, ADMIN_ROLE_NAME, "Bootstrapped administrator role");
+                IdentityProvisioning.insertUserRole(connection, identityTables, userId, roleId, tenantId);
 
                 IdentityProvisioning.insertCredential(
                         connection, credentialTable, credentialUserIdColumn, credentialPasswordColumn,

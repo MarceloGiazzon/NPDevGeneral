@@ -1,6 +1,8 @@
 package com.finalexec.controlpanel;
 
 import com.finalexec.auth.IdentityProvisioning;
+import com.finalexec.auth.IdentityProvisioning.IdentityTableNames;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,6 +38,7 @@ public class ControlPanelAdminUserController {
 
     private final ObjectProvider<DataSource> dataSourceProvider;
     private final RuntimeContextService runtimeContextService;
+    private final IdentityTableNames identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -43,12 +46,14 @@ public class ControlPanelAdminUserController {
     public ControlPanelAdminUserController(
             ObjectProvider<DataSource> dataSourceProvider,
             RuntimeContextService runtimeContextService,
+            CompiledModel compiledModel,
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn
     ) {
         this.dataSourceProvider = dataSourceProvider;
         this.runtimeContextService = runtimeContextService;
+        this.identityTables = IdentityTableNames.resolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -86,17 +91,19 @@ public class ControlPanelAdminUserController {
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try {
-                if (IdentityProvisioning.usernameTaken(connection, tenantId, username)) {
+                if (IdentityProvisioning.usernameTaken(connection, identityTables, tenantId, username)) {
                     connection.rollback();
                     return ResponseEntity.status(409).body(Map.of("error", "username_taken"));
                 }
 
                 UUID userId = UUID.randomUUID();
-                IdentityProvisioning.insertIdentityUser(connection, userId, username, displayName, request.email(), tenantId);
+                IdentityProvisioning.insertIdentityUser(
+                        connection, identityTables, userId, username, displayName, request.email(), tenantId);
 
                 UUID roleId = IdentityProvisioning.findOrCreateRole(
-                        connection, tenantId, ADMIN_ROLE_NAME, "Created via ControlPanel /api/admin/tenant-admins");
-                IdentityProvisioning.insertUserRole(connection, userId, roleId, tenantId);
+                        connection, identityTables, tenantId, ADMIN_ROLE_NAME,
+                        "Created via ControlPanel /api/admin/tenant-admins");
+                IdentityProvisioning.insertUserRole(connection, identityTables, userId, roleId, tenantId);
 
                 IdentityProvisioning.insertCredential(
                         connection, credentialTable, credentialUserIdColumn, credentialPasswordColumn,

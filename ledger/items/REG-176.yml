@@ -92,6 +92,16 @@ detail: |
   `cache: gradle` temporarily to see if the failure disappears -- neither attempted here to keep this
   investigation scoped, since REG-176 is not one of the user's requested 16-item backlog and further
   chase risks scope creep away from that actual ask.
+
+  2026-08-15 further update: the SAME job ("PR gate (DSL/kernel/generator/RuntimeHost smoke, Linux)")
+  came back GREEN on PR #92 (run 31859706350, 7m15s) with no changes to the workflow file or to
+  runtimehost-core/build.gradle.template between that run and the RED one on PR #91 -- confirming
+  this is INTERMITTENT, not a stable, always-reproducing failure (which weakens, but does not
+  disprove, the Gradle-cache-staleness hypothesis above: a cache hit/miss would plausibly vary
+  run-to-run). Still unresolved which run is the "true" state; downgrading urgency accordingly since
+  it is not blocking every PR after all, but the underlying cause (why a cache/build artifact would
+  sometimes omit `com.finalexec.db`/`com.finalexec.scheduler`/`com.finalexec.npdev.*`) remains
+  unexplained and could recur unpredictably.
 guard:
   kind: manual
   ref: gh workflow run npdev-pr-gate.yml --ref main

@@ -1,0 +1,70 @@
+id: REG-177
+title: >-
+  LoginController hardcodes the literal, pre-PK-2 identity_users table name in its own login-lookup
+  SQL -- the same defect shape REG-160/REG-170 fixed elsewhere, but a call site those items' own
+  scoped file lists explicitly excluded
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-15
+source: >-
+  Found while implementing REG-170 (IdentityProvisioning's identical defect) in this session's
+  batch-fix pass. REG-170's own ledger text lists its "full call-site scope, confirmed by grep" as
+  exactly 4 files (BootstrapAdminController, CreateUserController,
+  ControlPanelTenantUsersController, ControlPanelAdminUserController) -- LoginController is not
+  among them, and a direct grep of LoginController.java after REG-170's fix confirms it still
+  carries its own, independent instance of the same bug.
+surface: runtimehost/identity
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/LoginController.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/controlpanel/TenantAutoRegistrationRunner.java
+detail: |
+  `LoginController.java:127` hardcodes `"SELECT id, active, token_version FROM identity_users WHERE
+  username = ? AND tenant_id = ? "` as a raw string literal -- not even behind a configurable
+  `@Value` default the way `ControlPanelTenantUsersController`'s own `userTable`/`usernameColumn`
+  fields are (`@Value("${npdev.auth.login.user-table:identity_users}")`, itself only a fallback
+  default, never actually overridden anywhere in the generator/mustache templates per a repo-wide
+  grep -- see this item's "related, deferred" note below). The generator's schema-realization SQL
+  creates the identity pack's tables under pack-versioned names instead (`identity_v1_users`,
+  matching every other built-in-pack table's versioned convention, per REG-160/REG-170's own
+  confirmed findings against real generated schema).
+
+  This is the actual LOGIN path (`LoginController` is what a real user's login POST hits), not an
+  admin-provisioning-only path like REG-170's four call sites -- arguably higher real-world exposure
+  than REG-170, since every JWT-mode app's login flow depends on this exact query resolving.
+
+  Table-naming is CONFIRMED conditional, not universal -- checked two different real generated apps'
+  own `V1__npdev_schema_realization.sql` on this machine: `superuser-admin-console` (REG-170's own
+  cited evidence) creates `identity_v1_users`, but `reg39-healthy-control` creates plain
+  `identity_users` (unversioned) for the identical identity pack concept. So this literal is
+  ACCIDENTALLY correct for some apps and silently wrong for others, depending on which identity pack
+  major version was actually composed -- worse than a uniformly-wrong literal, since it would pass
+  casual testing against whichever app happens to compose the version that matches the hardcoded
+  name.
+
+  Related, wider pattern -- CONFIRMED LIVE, not just reasoned about (upgraded from the original
+  "deferred, noticed but not filed" note below): the `npdev.auth.login.user-table`/`username-column`/
+  `credential-table`/etc. `@Value(...:default)` properties shared across `LoginController`,
+  `ControlPanelTenantUsersController`, and `TenantAutoRegistrationRunner` all fall back to pre-PK-2
+  unversioned literal defaults (`identity_users`, `username`, `usuarios`, ...) with no generator/
+  mustache-template wiring found anywhere in the repo that ever actually overrides them for a
+  pack-versioned deployment. Live-reproduced 2026-08-15 while verifying REG-170: generated, built,
+  and booted `superuser-admin-console` (real identity pack composition, schema confirmed
+  `identity_v1_users`) with a real API key -- the app started, but logged
+  `[TenantAutoRegistrationRunner] Skipped: could not reconcile tenant registry (Table
+  "identity_users" not found; ...)` at startup, a real, live, reproduced instance of this exact
+  defect shape in a THIRD file REG-170's own scope never touched. `TenantAutoRegistrationRunner`
+  degrades non-fatally (logs and skips, per its own "belt-and-suspenders" design -- see
+  `IdentityProvisioning.ensureTenantRegistered`'s javadoc), which is why the app still boots
+  successfully despite the error; `LoginController`'s own instance (this item's main scope) does NOT
+  degrade gracefully -- a real login attempt would fail outright.
+guard:
+  kind: manual
+  ref: >-
+    generate a model with npdev.auth.mode=jwt composing NPDevContract/packs/identity/pack.json,
+    build, boot fresh, and POST valid credentials to the login endpoint
+  asserts: >-
+    LoginController's user lookup resolves against whatever pack-versioned table name the compiled
+    model actually reports for identity::User, not a hardcoded literal that is only accidentally
+    correct for apps composing the specific pack version that happens to match it
+  provenRed: false

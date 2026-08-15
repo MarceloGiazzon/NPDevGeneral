@@ -4,8 +4,21 @@ title: >-
   supplied key can pass StartupValidator while the enforcing auth filter bean is never registered
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-13
+closed: 2026-08-15
+verification: VERIFIED_LIVE
+resolution: >-
+  `NpdevAuthConfig`'s `runtimeApiKeyAuthFilter`/`runtimeApiKeyAuthFilterRegistration` beans now carry
+  `@ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "apikey", matchIfMissing = true)`
+  -- the filter now registers whenever `npdev.auth.mode` is unset (closing the gap for ANY future
+  profile that forgets to set it, not just `application-default.properties`), while any EXPLICIT
+  value (including a different mode) still correctly overrides it. Live-reproduced the exact guard
+  scenario 2026-08-15: booted the packaged jar directly with only `--npdev.auth.api-keys=...` set and
+  NO `--spring.profiles.active` flag ("No active profile set, falling back to 1 default profile:
+  default" confirmed in the boot log) -- a wrong `X-Api-Key` and a missing one both returned 401, and
+  the correct key passed the filter (404 on an intentionally nonexistent route, not 401), proving the
+  enforcing filter bean really is registered and active on the bare default profile.
 source: >-
   MASTER-ROADMAP.md Step 12 (R7 Stage B, SEC-1). Found by this session's own adversarial review of
   PR #65 (Stage B) before merge: a dedicated review dimension traced the actual bean-wiring

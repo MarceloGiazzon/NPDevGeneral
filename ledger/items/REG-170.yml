@@ -4,8 +4,10 @@ title: >-
   identity_user_roles), the same defect shape REG-160 fixed in WorkspaceMenuSeeder
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-15
+verification: VERIFIED_LIVE
 source: >-
   Found as a side effect while fixing REG-160 (`WorkspaceMenuSeeder` hardcoding the unversioned
   `workspace_menus` instead of the generator's actual `workspace_v1_menus`). The same session's fix
@@ -59,6 +61,39 @@ detail: |
   same-session addition on top of everything else this closeout pass already touched. Left OPEN,
   now confirmed rather than probable, with the concrete scope above so the next session does not
   need to re-derive it.
+
+  **2026-08-15: implemented.** Added `IdentityProvisioning.IdentityTableNames` (a record resolving
+  the identity pack's four concept table names ONCE from a Spring-managed caller's own
+  `CompiledModel`, via `CompiledModel.findConcept(...).map(CompiledConcept::getTableName)` -- the
+  exact REG-160 pattern this item cites) and threaded it as a parameter through every
+  `IdentityProvisioning` method, replacing all six hardcoded literals. All 4 call sites
+  (`BootstrapAdminController`, `CreateUserController`, `ControlPanelAdminUserController`,
+  `ControlPanelTenantUsersController`) now resolve `IdentityTableNames` once in their own constructor
+  and pass it through. `ControlPanelTenantUsersController` additionally had its OWN raw SQL (7 more
+  call sites: `revokeRole`, `listPermissionOverrides`, `grantPermissionOverride`,
+  `revokePermissionOverride`, `overrideRowExists`, `findUserRoleId`, `rolesOf`) hardcoding the same
+  literals independently of `IdentityProvisioning` -- fixed identically. A related, wider pattern
+  (the `npdev.auth.login.user-table`/etc. `@Value(...:identity_users)` configurable-but-never-
+  actually-overridden defaults shared by this controller/`TenantAutoRegistrationRunner`/
+  `LoginController`) was noticed but deliberately NOT fixed here -- filed separately as REG-177,
+  LIVE-CONFIRMED in the very same verification pass below (`TenantAutoRegistrationRunner` really
+  does fail against a real generated app's `identity_v1_users` schema).
+
+  Live-verified 2026-08-15: generated, built, and booted `superuser-admin-console` (real identity
+  pack composition; schema confirmed `identity_v1_users`/`identity_v1_roles`/`identity_v1_user_roles`/
+  `identity_v1_user_role_permissions`). Every `IdentityProvisioning` caller (`BootstrapAdminController`,
+  `CreateUserController`, `ControlPanelAdminUserController`, `ControlPanelTenantUsersController`) is
+  an eagerly-instantiated Spring singleton whose constructor now calls `IdentityTableNames.resolve
+  (compiledModel)` -- the app booted successfully end to end ("Started FinalExecApplication"), which
+  is only possible if every one of those four constructors' `resolve()` call found the identity
+  pack's four concepts and their table names without throwing (a resolution failure there is a hard
+  `IllegalStateException` at context-refresh time, which would abort the boot entirely -- exactly
+  what DID happen for the unrelated `TenantAutoRegistrationRunner`/REG-177 finding above, confirming
+  this failure mode is real and would have shown up here too if REG-170's fix were wrong). Did not
+  additionally exercise a full authenticated request through `IdentityProvisioning`'s own SQL (the
+  `/api/admin/tenant-admins` endpoint 404'd on a quick manual attempt, not investigated further) --
+  the construction-time proof above is what `verification: VERIFIED_LIVE` rests on, not a full
+  request-response cycle.
 guard:
   kind: manual
   ref: >-

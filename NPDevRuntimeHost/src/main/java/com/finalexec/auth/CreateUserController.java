@@ -1,5 +1,7 @@
 package com.finalexec.auth;
 
+import com.finalexec.auth.IdentityProvisioning.IdentityTableNames;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -39,6 +41,7 @@ public class CreateUserController {
 
     private final DataSource dataSource;
     private final RuntimeContextService runtimeContextService;
+    private final IdentityTableNames identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -48,6 +51,7 @@ public class CreateUserController {
     public CreateUserController(
             DataSource dataSource,
             RuntimeContextService runtimeContextService,
+            CompiledModel compiledModel,
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn,
@@ -56,6 +60,7 @@ public class CreateUserController {
     ) {
         this.dataSource = dataSource;
         this.runtimeContextService = runtimeContextService;
+        this.identityTables = IdentityTableNames.resolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -91,17 +96,18 @@ public class CreateUserController {
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try {
-                if (IdentityProvisioning.usernameTaken(connection, tenantId, username)) {
+                if (IdentityProvisioning.usernameTaken(connection, identityTables, tenantId, username)) {
                     connection.rollback();
                     return ResponseEntity.status(409).body(Map.of("error", "username_taken"));
                 }
 
                 UUID userId = UUID.randomUUID();
-                IdentityProvisioning.insertIdentityUser(connection, userId, username, displayName, request.email(), tenantId);
+                IdentityProvisioning.insertIdentityUser(
+                        connection, identityTables, userId, username, displayName, request.email(), tenantId);
 
                 UUID roleId = IdentityProvisioning.findOrCreateRole(
-                        connection, tenantId, roleName, "Created via /api/auth/create-user");
-                IdentityProvisioning.insertUserRole(connection, userId, roleId, tenantId);
+                        connection, identityTables, tenantId, roleName, "Created via /api/auth/create-user");
+                IdentityProvisioning.insertUserRole(connection, identityTables, userId, roleId, tenantId);
 
                 IdentityProvisioning.insertCredential(
                         connection, credentialTable, credentialUserIdColumn, credentialPasswordColumn,
