@@ -4,8 +4,10 @@ title: >-
   missing its own earliest hop
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-13
+closed: 2026-08-15
+verification: UNIT_TESTED
 source: >-
   MASTER-ROADMAP.md Step 11 (PK-4 Stage C/D, PACK-6). Found while designing the real end-to-end
   migration-chain proof's RED control, before writing any proof code -- reasoning through what the
@@ -47,6 +49,28 @@ detail: |
   `PackPublishGate`'s existing immutability check the same way individual hops already are -- rather
   than deriving the origin from whatever hops happen to currently be observable. Not designed here;
   flagging the shape of the fix for whoever picks this up.
+
+  **2026-08-15: implemented, exactly the sketched design.** Added `firstPublishedVersion` (a plain
+  scalar string) to `pack.schema.json` (both copies). `PackPublishGate` gained
+  `checkFirstPublishedVersionImmutability` (refuses any publish that changes or removes an
+  already-pinned anchor, the same style as its existing chain-immutability check) and
+  `withFirstPublishedVersionAnchor` (auto-stamps the anchor on `--write`, backfilling from the old
+  pack's own chain's earliest hop if one exists, or its own `version` if there's no chain yet --
+  wired into `PackPublishMain`'s existing `--write` flow). `PackDependencyGraphWalker`'s untracked-
+  pack fallback now prefers this anchor over `PackMigrationChain.earliestFromVersion()`, falling back
+  to the old behavior only for a pack published before this field existed and not yet re-published.
+
+  Real bug caught and fixed while verifying: the new field was initially silently dropped by
+  `ModelSourceResolver.resolvePackRoot` -- exactly the REG-108 "schema-validates then silently
+  vanishes" hazard its own `packs[]`/`requires`/`migrations` comment already documents, since a new
+  pack-root field needs to be threaded through the same `PACK_ROOT_SCALAR_KEYS`/`MODEL_ARRAY_KEYS`
+  set this repo's own convention requires. Added `firstPublishedVersion` to `PACK_ROOT_SCALAR_KEYS`
+  (the right list for a plain scalar, unlike `migrations`' own dedicated passthrough line) -- the RED
+  control this item's own guard describes (an untracked, truncated-chain pack with a PINNED anchor)
+  failed with "expected IOException but nothing was thrown" before this second fix, and passes after.
+  New test `untrackedPackWithAPinnedAnchorAndATruncatedChainRefusesInsteadOfSilentlyUnderComposing`
+  is that exact RED control, now green; a sibling test documents the residual gap for a pack
+  published before this field existed. `:dsl:test` green (745 tests), 2026-08-15.
 guard:
   kind: manual
   ref: >-
@@ -58,4 +82,4 @@ guard:
   asserts: >-
     an untracked pack whose chain is missing its own earliest hop is detected and refused, not
     silently under-composed
-  provenRed: false
+  provenRed: true
