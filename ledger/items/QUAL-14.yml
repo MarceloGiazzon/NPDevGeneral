@@ -4,8 +4,10 @@ title: >-
   path, following it literally on a machine that starts with nothing -- is invoked by no workflow
 type: GAP
 severity: HIGH
-status: PARTIAL
+status: DONE
 opened: 2026-08-15
+closed: 2026-08-15
+verification: VERIFIED_LIVE
 source: third-person-readiness-2026-08-15/FOLLOWUP-PLAN.md §3.
 surface: ci/workflows
 files:
@@ -59,17 +61,24 @@ detail: |
   Consequence: this workflow's actual EXECUTION cannot be observed before merge, only its
   existence/config. The first real proof is either the first nightly run (`0 6 * * *`) or a manual
   dispatch, both only possible once this PR merges to `main`.
+
+  **2026-08-15 (closeout): dispatched for real, twice, once PR #100 merged.** First dispatch (run
+  `31902763478`) executed correctly end to end -- proving the wiring itself -- and found a real,
+  pre-existing bug on its very first execution (`REG-183`: two checks silently broken since before
+  this session, undiscoverable until something finally ran this harness). Fixed `REG-183`, pushed
+  to `main`, re-dispatched (run `31904390987`): **GREEN. 85 checks run, 0 failures, 1 pre-existing
+  accepted failure, 2 expected skips -- "a bare machine can follow README.md end to end."** This is
+  exactly the outcome this item exists to make possible: a real instrument, actually running,
+  actually catching something real on day one.
 guard:
   kind: manual
   ref: >-
-    gh run list --workflow=firstrun-harness.yml --limit 5 (or the Actions tab for "First-run
-    harness (executable README)") -- only checkable after this PR merges to main
+    gh run list --workflow=firstrun-harness.yml --limit 5 -- shows runs 31902763478 (found
+    REG-183) and 31904390987 (green after the fix)
   asserts: >-
-    the workflow exists, is invocable via workflow_dispatch, and its nightly schedule produces a
-    real run within 24h of this fix merging -- not merely that the YAML parses
+    the workflow exists, is invocable via workflow_dispatch, and actually executes the harness
+    end to end
   provenRed: true
   # RED proven directly: grep of every .github/workflows/*.yml file for run-readme.sh /
-  # firstrun-harness, zero matches, before this fix. GREEN cannot be observed pre-merge (see the
-  # 404 above -- a GitHub platform limitation on new workflow_dispatch-only files, not a defect in
-  # this fix) -- held at PARTIAL until the first post-merge run is observed, and REG-182 stays
-  # PARTIAL for the same reason (this harness's sections 4 and 9 are that item's own guard).
+  # firstrun-harness, zero matches, before this fix. GREEN now directly observed: two real
+  # dispatched runs, the second one clean (85/85, 0 failures).

@@ -4,8 +4,10 @@ title: >-
   documents-login-key and documents-app-url silently fail forever regardless of what README says
 type: BUG
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-15
+closed: 2026-08-15
+verification: VERIFIED_LIVE
 source: >-
   QUAL-14's own first-ever CI run of scripts/quality/firstrun-harness/run-readme.sh (workflow
   `firstrun-harness.yml`, run 31902763478, dispatched on `main` right after PR #100 merged) --
@@ -47,10 +49,9 @@ detail: |
   name Python 3 as a requirement) still leaves both variables empty and both checks correctly
   failing for the RIGHT reason, rather than papering over that case too.
 
-  Verification status: fix applied and locally reasoned through (the guard clause and re-render
-  call have been reviewed against the exact staleness mechanism found), but not yet proven by a
-  fresh dispatched run -- that is the next step, and this item will be updated with the real run id
-  once observed.
+  Verified live: pushed directly to `main` (`4d0d3fa9`) and re-dispatched `firstrun-harness.yml`
+  (run `31904390987`) -- both `documents-login-key` and `documents-app-url` now PASS, and the whole
+  run finished clean: 85 checks, 0 failures, 1 pre-existing accepted failure, 2 expected skips.
 guard:
   kind: script
   ref: scripts/quality/firstrun-harness/run-readme.sh (documents-login-key / documents-app-url checks)
@@ -60,5 +61,5 @@ guard:
   provenRed: true
   # RED proven directly: run 31902763478 (before this fix) failed both checks with README_TEXT and
   # GETTING_STARTED_TEXT confirmed empty by direct code reading, while the real content indisputably
-  # contains both strings (grepped README.md/content/readme.json directly). GREEN not yet observed --
-  # held at PARTIAL until a fresh dispatched run confirms both checks pass.
+  # contains both strings (grepped README.md/content/readme.json directly). GREEN proven directly:
+  # run 31904390987 (after this fix) shows both PASS.
