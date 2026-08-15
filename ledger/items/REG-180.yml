@@ -5,10 +5,8 @@ title: >-
   exploitable via any documented launch path
 type: GAP
 severity: LOW
-status: DONE
+status: OPEN
 opened: 2026-08-15
-closed: 2026-08-15
-verification: NOT_VERIFIED
 source: >-
   Found incidentally while investigating a reported com.finalexec.controlpanel 404 (see REG-179's
   own source note -- that 404 did not reproduce; this is a different thing found along the way
@@ -48,6 +46,21 @@ detail: |
   is intentionally profile-scoped (e.g. only meant to matter for some deployment mode that always
   uses the true Spring default profile) and document that explicitly rather than leaving it to be
   rediscovered.
+
+  **2026-08-15: option (a) tried and reverted -- it breaks a real, separately-enforced invariant.**
+  `scripts/quality/run-runtime-surface-evidence.ps1` fails the RuntimeHost gate for any
+  `allowedControllers` entry whose source file is not under `com/finalexec/api` (CLAUDE.md: "A new
+  supported controller belongs in `com.finalexec.api`... three enforcement points read that
+  manifest and only that package satisfies all three"). `com.finalexec.controlpanel.*` controllers
+  are NOT under that package, so adding them to `allowedControllers` reproduces immediately in CI
+  (`NPDev segmented CI validation`'s "Runtime surface evidence" step, "Runtime surface evidence
+  failed: allowlist"). Confirmed live, reverted the same day. Option (a) as originally scoped is
+  not actually available without ALSO either moving ControlPanel controllers into
+  `com.finalexec.api` (a real package move, its own can of worms -- ControlPanel is SUPERUSER-admin
+  surface, not the generic runtime API) or adding a second, `com.finalexec.api`-independent
+  allowlist mechanism for non-API packages that also need enforcement-profile-independence. Neither
+  attempted here. Option (b) (confirm/document as intentionally profile-scoped) is now the more
+  likely real fix, not yet done.
 guard:
   kind: manual
   ref: >-
@@ -57,16 +70,3 @@ guard:
     the endpoint does not silently 404 due to RuntimeControllerAllowlistConfig stripping an
     unlisted-but-intended-to-be-supported controller package
   provenRed: false
-resolution: >-
-  Implemented this item's own likely-fix option (a): added all 6 `com.finalexec.controlpanel`
-  controllers (`ControlPanelAdminUserController`, `ControlPanelRolesController`,
-  `ControlPanelSchedulesController`, `ControlPanelTenantUsersController`,
-  `SchemaAcknowledgmentController`, `SchemaImpactController`) to `allowedControllers` in
-  `runtime-supported-controllers.json`, so the allowlist is correct regardless of which profile the
-  `npdev.runtime.supported-surface-enforced` flag ever gets moved onto in the future -- removing the
-  landmine at its source rather than only documenting it.
-
-  Not live-verified in this pass (the guard's own un-profiled-boot repro was not re-run) -- the
-  change is a pure allowlist-membership addition with no code-path changes, validated by JSON
-  syntax only. `verification: NOT_VERIFIED` reflects that honestly rather than claiming a live
-  proof that wasn't performed.
