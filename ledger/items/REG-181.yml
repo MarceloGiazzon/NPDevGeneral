@@ -5,8 +5,10 @@ title: >-
   different Gradle projects and the sync script's own jar-discovery only reliably tracks one of them
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-15
+closed: 2026-08-15
+verification: NOT_VERIFIED
 source: >-
   Found while investigating a reported com.finalexec.controlpanel 404 (see REG-179's source note).
   Getting a real app to boot with REG-177's new IdentityPackTableNames class actually present
@@ -50,3 +52,27 @@ guard:
     the sample app's compile can see the new class -- sync-runtimehost-libs.ps1 alone (no manual
     workaround) staged a truly current npdev-dsl-0.1.0.jar
   provenRed: true
+resolution: >-
+  Implemented this item's own first likely-fix option: `-BuildLocalJars` now also runs
+  `NPDevContract/dsl`'s OWN standalone `gradlew jar` (producing `npdev-dsl-0.1.0.jar`, its real
+  `rootProject.name`-derived artifact) before the kernel/generator builds, mirroring the existing
+  `runtimehost-core` step's pattern. `NPDEV_BUILD_ROOT` is already exported into this script's
+  process environment earlier in the file, so dsl's own `resolveNpdevBuildRoot()` picks it up with
+  no extra `-P` flag (unlike kernel/generator's `-PnpdevBuildRoot` convention) -- confirmed by
+  reading `NPDevContract/dsl/build.gradle`'s own resolver, which checks the `NPDEV_BUILD_ROOT` env
+  var first. This guarantees `npdev-dsl-0.1.0.jar` is rebuilt from current source on every
+  `-BuildLocalJars` run, so `Sync-NPDevJars`'s discovery always finds and stages a genuinely fresh
+  copy under that exact name, rather than only picking it up if something else happened to have
+  built it recently.
+
+  Not additionally implemented: unifying the two Gradle projects' jar-naming (`dsl-0.1.0.jar` vs
+  `npdev-dsl-0.1.0.jar`) so they're not two names for one artifact -- this item's own text flagged
+  that as the deeper alternative fix, out of scope for a mechanical patch to the sync script.
+
+  Not live-verified in this pass (the guard's own repro -- modify a dsl class, run
+  `-BuildLocalJars` with no manual workaround, generate+compile a sample referencing the new class
+  -- was not re-run end to end); PowerShell syntax was checked
+  (`[System.Management.Automation.PSParser]::Tokenize`), and the new step's logic (working
+  directory, executable resolution, `--project-cache-dir` override) directly mirrors the adjacent
+  `runtimehost-core` step already proven working in this exact script. `verification: NOT_VERIFIED`
+  reflects that a live end-to-end repro was not performed, not that the change is unreasoned.

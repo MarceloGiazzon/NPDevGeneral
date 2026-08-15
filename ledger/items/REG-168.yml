@@ -5,8 +5,10 @@ title: >-
   unrelated build/checkout/worktree silently sets or ratchets the recorded floor
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-15
+verification: UNIT_TESTED
 source: >-
   Found while live-verifying Track C card C8 (ledger QUAL-6's R3 extension: editor + Python
   coverage) -- unrelated to that card's own scope, filed separately per this session's "unrelated
@@ -77,3 +79,29 @@ guard:
     the unbuilt module's coveragePercent/measuredOn change anyway, sourced from a report this
     invocation did not produce
   provenRed: true
+resolution: >-
+  Implemented angle (a) from this item's own detail (the "more complete" one): a new
+  `_newest_source_mtime(repo_root, module_name)` walks the module's own source directory
+  (`repo_root / module_name`, e.g. `NPDevContract/dsl`) and returns the newest file mtime found,
+  skipping build/dependency-cache noise (`.git`, `.gradle`, `build`, `node_modules`, `dist`,
+  `__pycache__`, `.pytest_cache`, `out`). `measure_module` now takes the module name and, for
+  auto-discovered reports only (an explicit `--report MODULE=PATH` override still bypasses this --
+  the caller is vouching for freshness directly), drops any candidate report older than that
+  newest-source mtime before picking the "newest report" or aggregating, printing which reports it
+  skipped and why. A module whose directory can't be resolved (synthetic/calibration names) skips
+  the check rather than false-positiving on "stale."
+
+  This directly closes the trigger case (case 1, shared multi-worktree Build directories) whenever
+  the sibling worktree's report predates THIS worktree's own current source, and fully closes case 2
+  (single-checkout staleness: build once, then edit/revert without rebuilding -- the edited source
+  file's mtime is newer than the stale report by construction). Angle (b) (scoping the external
+  build root to be worktree-private) was NOT additionally implemented -- (a) alone is a strictly
+  stronger, source-content-aware check that subsumes what (b) would buy for the multi-worktree case,
+  per this item's own "so (a) is the more complete fix" conclusion.
+
+  Verified: `--calibrate` (`python scripts/quality/check-coverage-ratchet.py --calibrate`) extended
+  with two new controls proving the exact mechanism -- a report artificially touched OLDER than its
+  module's newest source file is rejected (not-measured), and the same report touched NEWER is
+  accepted and its percentage used. All 12 calibration controls (10 pre-existing + 2 new) pass; the
+  real `scripts/policy/coverage-baseline.json` is untouched by calibration (fixture-only, confirmed
+  via `git status`).
