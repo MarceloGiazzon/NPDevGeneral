@@ -1,5 +1,7 @@
 package com.npdev.dsl.v1.ast;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -11,6 +13,11 @@ import java.util.Map;
  */
 public record WorkbenchActionApplyToAst(String collection, String mode, Map<String, String> map) {
     public WorkbenchActionApplyToAst {
-        map = map == null ? Map.of() : Map.copyOf(map);
+        // REG-146: was Map.copyOf(map) -- JDK's ImmutableCollections deliberately randomizes
+        // iteration order per JVM run (a JEP 269 hash-flood mitigation), discarding the source
+        // map's real insertion order and making compiled-model.json's applyTo.map serialization
+        // nondeterministic between generation runs. Collections.unmodifiableMap over a fresh
+        // LinkedHashMap preserves that order while staying just as immutable/defensively-copied.
+        map = map == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(map));
     }
 }

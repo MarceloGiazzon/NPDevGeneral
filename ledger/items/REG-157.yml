@@ -5,8 +5,22 @@ title: >-
   null-reference instead of regenerating or failing cleanly
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-15
+verification: VERIFIED_LIVE
+resolution: >-
+  All three duplicated call sites (`OperationalRunbookEmitter.smokeTestScript()`,
+  `Build-NpdevApp.ps1`'s and `Build-ClaudeApp.ps1`'s `Ensure-NpdevApiKey`) now compute
+  `$needsGeneration` from BOTH file-absence and, when the file IS present, whether any non-comment
+  line contains `=` -- "present but unusable" is now treated the same as "absent" and regenerates,
+  matching the fix already designed in the item's own detail.
+
+  Live-reproduced the guard directly, 2026-08-15: pre-created an empty secrets/api-key.env, loaded
+  the fixed `Ensure-NpdevApiKey` from Build-NpdevApp.ps1 in isolation, called it against that dir --
+  it regenerated a fresh usable `NPDEV_AUTH_API_KEYS=...` mapping instead of leaving the file empty
+  (which previously left the env var unset and crashed the caller's `.Split('=', 2)[0]` a few lines
+  later).
 source: >-
   MASTER-ROADMAP.md Step 12 (R7, SEC-1/REG-152). Found by this session's own adversarial review
   of PR #66 (the REG-152 fix) before merge: a review dimension reproduced the failure path live

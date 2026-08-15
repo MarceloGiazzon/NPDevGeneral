@@ -248,6 +248,42 @@ class FinalAppAssemblerTest {
         assertEquals(2, result.webAssetsFilesCopied());
     }
 
+    /**
+     * REG-167: an author's web/ directory containing a file at the same relative path as a
+     * platform-reserved static/ name (shell.js, or anything under npdev-business-ui/) must refuse
+     * assembly with a named error, rather than silently mounting a file that would collide
+     * undefined-winner at build time (Gradle's default merge behavior for two srcDirs of the same
+     * resource sourceSet).
+     */
+    @Test
+    void refusesWebAssetsCollidingWithReservedPlatformStaticNames() throws Exception {
+        Path workspace = Files.createTempDirectory("npdev-final-app-assembly-webassets-collision-");
+        Path host = workspace.resolve("RuntimeHost");
+        Path artifact = workspace.resolve("ArtifactNP");
+        Path finalApp = workspace.resolve("FinalExec");
+        Path webAssets = workspace.resolve("web");
+
+        write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
+        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+        write(webAssets.resolve("shell.js"), "// author's own, unrelated shell.js\n");
+        write(webAssets.resolve("npdev-business-ui/index.html"), "<html>author collision</html>\n");
+
+        FinalAppAssembler assembler = new FinalAppAssembler();
+        FinalAppAssembler.Options options = new FinalAppAssembler.Options(
+                host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17, webAssets
+        );
+        java.io.IOException failure = org.junit.jupiter.api.Assertions.assertThrows(
+                java.io.IOException.class, () -> assembler.assemble(options));
+        assertTrue(failure.getMessage().contains("shell.js"));
+        assertTrue(failure.getMessage().contains("npdev-business-ui/index.html"));
+        // mountWebAssets runs near the end of assemble() (after the RuntimeHost/artifact copies),
+        // so the app dir legitimately exists by the time this refuses -- but neither colliding
+        // author file was ever mounted into static/.
+        assertFalse(Files.exists(finalApp.resolve("src/main/resources/static/shell.js")));
+        assertFalse(Files.exists(finalApp.resolve("src/main/resources/static/npdev-business-ui")));
+    }
+
     /** A caller that declares webAssetsRoot but points it at nothing is a caller bug -- fails loud,
      *  same discipline every other explicit path option here (runtimeHostRoot, generatedArtifactRoot)
      *  already requires via {@code requireDirectory}, rather than silently mounting nothing. */
