@@ -46,6 +46,21 @@ detail: |
   is intentionally profile-scoped (e.g. only meant to matter for some deployment mode that always
   uses the true Spring default profile) and document that explicitly rather than leaving it to be
   rediscovered.
+
+  **2026-08-15: option (a) tried and reverted -- it breaks a real, separately-enforced invariant.**
+  `scripts/quality/run-runtime-surface-evidence.ps1` fails the RuntimeHost gate for any
+  `allowedControllers` entry whose source file is not under `com/finalexec/api` (CLAUDE.md: "A new
+  supported controller belongs in `com.finalexec.api`... three enforcement points read that
+  manifest and only that package satisfies all three"). `com.finalexec.controlpanel.*` controllers
+  are NOT under that package, so adding them to `allowedControllers` reproduces immediately in CI
+  (`NPDev segmented CI validation`'s "Runtime surface evidence" step, "Runtime surface evidence
+  failed: allowlist"). Confirmed live, reverted the same day. Option (a) as originally scoped is
+  not actually available without ALSO either moving ControlPanel controllers into
+  `com.finalexec.api` (a real package move, its own can of worms -- ControlPanel is SUPERUSER-admin
+  surface, not the generic runtime API) or adding a second, `com.finalexec.api`-independent
+  allowlist mechanism for non-API packages that also need enforcement-profile-independence. Neither
+  attempted here. Option (b) (confirm/document as intentionally profile-scoped) is now the more
+  likely real fix, not yet done.
 guard:
   kind: manual
   ref: >-

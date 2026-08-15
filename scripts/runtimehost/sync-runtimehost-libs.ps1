@@ -31,6 +31,17 @@ else {
 }
 $kernelRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevKernel"
 $generatorRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevGenerator"
+# REG-181: NPDevContract/dsl is built TWICE, under two different jar names, by two different Gradle
+# projects -- NPDevKernel's/NPDevGenerator's own `:dsl` subproject reference produces
+# `dsl-0.1.0.jar` as a side effect of THEIR builds below, but the generated app's own
+# verifyNpdevRuntimeHostLibs task requires `npdev-dsl-0.1.0.jar` specifically (dsl's OWN standalone
+# `rootProject.name`, per its settings.gradle) -- a name nothing in this script used to build.
+# Without this step, `npdev-dsl-0.1.0.jar` was only ever staged if something ELSE, outside this
+# script, happened to have built it recently; a stale copy from a prior run would sit unnoticed and
+# unrefreshed indefinitely, since $sourceByName tracks jar names independently and never treats
+# `dsl-0.1.0.jar`'s freshness as proof of `npdev-dsl-0.1.0.jar`'s.
+$dslRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevContract\dsl"
+$dslGradleWrapper = Get-NPDevGradleWrapperExecutable $dslRoot
 # BT-1: runtimehost-core is the app-INDEPENDENT half of RuntimeHost (scripts/proofs/
 # classify_runtimehost_sources.py's 262-file split), built as its own independent Gradle project --
 # NOT an `include 'adapters:...'` subproject of NPDevKernel, because NPDevRuntimeHost itself is a
@@ -44,6 +55,7 @@ $generatorGradleWrapper = Get-NPDevGradleWrapperExecutable $generatorRoot
 $runtimeHostCoreGradleWrapper = Get-NPDevGradleWrapperExecutable $runtimeHostCoreRoot
 
 New-Item -ItemType Directory -Force -Path $runtimeHostLibs | Out-Null
+Ensure-NPDevFile $dslGradleWrapper "Contract/dsl Gradle wrapper"
 Ensure-NPDevFile $kernelGradleWrapper "Kernel Gradle wrapper"
 Ensure-NPDevFile $generatorGradleWrapper "Generator Gradle wrapper"
 Ensure-NPDevFile $runtimeHostCoreGradleWrapper "RuntimeHost-core Gradle wrapper"
@@ -198,9 +210,19 @@ if ($BuildLocalJars) {
     # before the build even starts ("Cannot convert URL '...' to a file"). --project-cache-dir is the
     # one reliable override; derive it from the SAME $externalBuildRoot this script already computed
     # portably above, so this is a no-op on the author's own machine and portable everywhere else.
+    $dslProjectCacheDir = Join-Path $externalBuildRoot "gradle-project-caches\dsl-standalone"
     $kernelProjectCacheDir = Join-Path $externalBuildRoot "gradle-project-caches\kernel"
     $generatorProjectCacheDir = Join-Path $externalBuildRoot "gradle-project-caches\generator"
     $runtimeHostCoreProjectCacheDir = Join-Path $externalBuildRoot "gradle-project-caches\runtimehost-core"
+
+    # REG-181: dsl's OWN standalone build (produces npdev-dsl-0.1.0.jar) -- see the variable
+    # declarations above for why this can't be skipped in favor of kernel's/generator's own `:dsl`
+    # subproject reference (that produces a differently-named jar, dsl-0.1.0.jar, that the generated
+    # app's verifyNpdevRuntimeHostLibs task does not accept). NPDEV_BUILD_ROOT is already exported
+    # into this process's environment (above), so dsl's own resolveNpdevBuildRoot() picks it up with
+    # no -P flag needed, unlike kernel/generator's convention.
+    Write-NPDevInfo "Building local Contract/dsl standalone jar for RuntimeHost staging (npdevBuildRoot=$externalBuildRoot)"
+    Invoke-NPDevCommandStreaming -WorkingDirectory $dslRoot -Executable $dslGradleWrapper -Arguments @("jar", "--project-cache-dir", $dslProjectCacheDir, "--no-daemon", "--console=plain")
 
     Write-NPDevInfo "Building local Kernel/Contract runtime jars for RuntimeHost staging (npdevBuildRoot=$externalBuildRoot)"
     Invoke-NPDevCommandStreaming -WorkingDirectory $kernelRoot -Executable $kernelGradleWrapper -Arguments @("jar", "-PnpdevBuildRoot=$externalBuildRoot", "--project-cache-dir", $kernelProjectCacheDir, "--no-daemon", "--console=plain")
