@@ -5,8 +5,10 @@ title: >-
   repointed at superuser-admin-console, which has neither
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Found in the same investigation as REG-171 (why "Linux post-Beta0 maturity validation" failed on
   the fully-reconciled main, run 31840753060). A second, separate, unrelated failure in the same
@@ -56,3 +58,31 @@ guard:
     and editorDraft_endpoint_is_reachable all pass against whichever sample app this CI step actually
     generates and boots
   provenRed: true
+
+resolution: |
+  2026-08-14 (closeout batch-verification pass): took option (a), updating the test's expectations
+  to match superuser-admin-console's real model, rather than (b) (a dedicated flow-bearing fixture
+  for this one test) -- verified live first (curled /api/admin/ui-model, /api/admin/model/export,
+  /api/admin/model/editor/draft against a real fresh boot) rather than guessing the real response
+  shapes:
+
+    - uiModel_endpoint_returns_model_derived_field_metadata: concept-name assertions swapped from
+      Patient/Appointment to Project/Note (the real concepts); the fieldsWithUi >= 6 threshold was
+      left unchanged since the real response has 7 (4 Project fields + 3 Note fields, confirmed via
+      curl).
+    - modelExport_endpoint_returns_flow_definitions: superuser-admin-console declares no flows at
+      all, so the export genuinely omits the "flows" key entirely (confirmed by curl -- zero
+      matches for "flows" in the raw response). The hardcoded ScheduleAppointmentRunnerV2/>=1 flow
+      assertions are replaced with a structural check (flows, if present, must be an array) --
+      flow-export CONTENT is covered elsewhere (durable-workflow-demo, dsl-conformance-max); this
+      test's remaining job is verifying the endpoint's shape stays well-formed for whichever sample
+      is under test.
+    - editorDraft_endpoint_is_reachable: live curl found the real response shape was never
+      {concepts, flows} at all, on any sample -- it's {namespace, dslVersion, version, entities},
+      confirmed empty ("entities": []) on a fresh boot with no editor session yet. The original
+      assertions were checking for keys that don't exist in this endpoint's actual contract, not
+      just canonical-demo-specific values -- REG-172's own filing undersold this as "content
+      mismatch." Rewritten to assert on the real keys.
+
+  Verified via the same real Postgres integration-test run as REG-171/REG-173: BUILD SUCCESSFUL,
+  40/40 tests passed, including all three of this class's tests.

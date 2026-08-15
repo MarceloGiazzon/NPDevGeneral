@@ -5,8 +5,10 @@ title: >-
   overwritten by any same-named entry the entity's own data map happens to carry
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Root-caused after the session's long-standing "known CI flake" --
   HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.deletingOrReplacingARecordCascadesTheUnderlyingFileBytes()
@@ -106,10 +108,14 @@ detail: |
 
   2026-08-14 (horizontal fix pass): implemented on branch `fix/reg-169-tenant-id-clobber` -- exactly
   the re-ordering above, `id`/`tenant_id` now applied after the `record.data()` merge loop, not
-  before. Not yet re-verified against the real repro (the packaged-proof test in `guard.ref` below)
-  as part of this change -- that run is deferred to a consolidated verification pass across this
-  session's whole batch of fixes, per an explicit user instruction to fix first and batch-verify
-  once at the end rather than per item. Status stays OPEN until that pass confirms GREEN.
+  before.
+
+  **2026-08-14 (closeout batch-verification pass): the deferred packaged-proof rerun now done.**
+  `./gradlew.bat -p NPDevGenerator --no-daemon :generator:test --tests
+  "com.npdev.generator.emitters.HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest"
+  -PincludePackagedProofs --rerun-tasks` -- BUILD SUCCESSFUL, all packaged-app proof tests in the
+  class passed (the GC-P2 replace-cascade step this item's guard names included), confirming the
+  re-ordering fix actually closes the real repro, not just the reasoning.
 guard:
   kind: manual
   ref: >-

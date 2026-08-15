@@ -4,8 +4,10 @@ title: >-
   unrelated to any change on this branch
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-13
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Discovered while checking PR #63's (R7 Stage C, SEC-1) CI status. The repo's bare "CodeQL"
   default-setup check (distinct from the workflow-based CodeQL Actions for java-kotlin/
@@ -106,11 +108,26 @@ detail: |
   and the same call was re-run to confirm it now prints `<redacted>`. That is real RED/GREEN evidence
   for the vulnerability class, independent of CodeQL.
 
-  **Still open, deliberately**: this PR has not been re-scanned by CodeQL's default-setup check yet
-  (that only runs against `main`/PRs per its own schedule, distinct from the workflow-based CodeQL
-  Actions checks this repo also runs). Confirming the specific 4 alerts (numbers #5/#6/#7/#8) actually
-  clear post-merge is the real remaining verification, not assumed here -- that is a DIFFERENT claim
-  than "the leak was real", which this session did independently confirm (see above).
+  **2026-08-14 (closeout batch-verification pass): confirmed via `gh api
+  repos/.../code-scanning/alerts`.** All four traced alerts (#5/#6/#7/#8) report `"state": "fixed"`,
+  `"fixed_at": "2026-08-14T21:02:09Z"` -- the exact post-merge re-scan confirmation this item's
+  `guard:` asked for.
+
+  **New, separate finding surfaced by that same query, filed rather than silently noted**: the
+  same scan now also lists FOUR NEW open alerts (#27-30), same rule
+  (`py/clear-text-logging-sensitive-data`), at the SAME two sink lines this fix touched
+  (`_print_result`'s `json.dumps(safe_result, ...)`/`print(_human_summary(safe_result))`, and the
+  `explore` dispatcher's equivalent) -- but now wrapping `safe_result = npdev_monitor.redact
+  (result)`, not the raw `result`. Read as a CodeQL sanitizer-recognition limitation, not a real
+  regression: `redact()` is an ordinary function CodeQL's dataflow analysis does not know
+  neutralizes the tainted value, so taint tracking continues through its return value regardless of
+  what the function body actually does. This reads as a static-analysis false positive, not a
+  functional regression, because the actual runtime behavior was independently confirmed correct
+  BEFORE this alert query ever ran: `CliPrintRedaction`'s unit tests and the synthetic-input smoke
+  script (both described above) directly observed the real key replaced with `<redacted>` in the
+  process's actual stdout. Filed as a new, separate, LOW-severity item rather than treated as part
+  of this item's own scope, since it is a distinct claim (a static tool's blind spot) from what this
+  item was ever about (a real clear-text leak, now fixed and behaviorally verified).
 guard:
   kind: manual
   ref: >-

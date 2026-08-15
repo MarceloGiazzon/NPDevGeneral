@@ -1,0 +1,69 @@
+id: QUAL-10
+title: >-
+  check-ledger-status-reverse-freshness.py's original rule (R1) only reads production-source
+  COMMENTS -- it never consulted git, so it was blind to 6 live fixed-but-OPEN items whose commits
+  never left a matching comment behind
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-14
+closed: 2026-08-14
+verification: VERIFIED_LIVE
+source: >-
+  2026-08-14 closeout session, responding to `NPDev_General__OutsideRepo/session-summary-2026-08-14/
+  CLOSEOUT_PLAN.md` finding F2. The prior session's own horizontal fix pass (2026-08-13/14) left six
+  items (REG-147/153/160/161/162/169) `status: OPEN` with a landed, merged fix and a full
+  `resolution:` block each -- and even edited this exact checker (REG-160's own fix commit,
+  eb7fddd1) without the checker catching any of the six, including the one it was itself part of.
+surface: quality/ledger-freshness
+files:
+  - scripts/quality/check-ledger-status-reverse-freshness.py
+detail: |
+  Root cause: the checker's original (now "R1") rule only ever reads PRODUCTION SOURCE COMMENTS for
+  evidence a fix landed -- it never consults git history at all. A fix that lands in a mustache
+  template, a PowerShell script, a JSON test fixture, or a workflow YAML (every one of the six real
+  misses) leaves no "// STOR-13"-style comment behind for R1 to find, regardless of how thoroughly
+  the fix is documented in the commit message or the ledger item's own `resolution:` block.
+
+  Added a second, independent rule, R2 ("landed-fix-by-history"): fail for an OPEN item whose own
+  `ledger/items/<ID>.yml` was MODIFIED (not merely filed) by a commit that also touched production
+  source (anything outside `ledger/`, `docs/`, `scripts/quality/`).
+
+  The "modified, not merely filed" qualifier is load-bearing, not incidental, and was itself found
+  by measurement, not assumed from the introducing plan's text: a cruder first version (fire on
+  ANY commit touching the item's file, added or modified, plus production source) matched the six
+  real misses but ALSO fired on REG-146, REG-148 and PACK-9 -- three items genuinely still open.
+  Root cause: this repo merges every PR to `main` squashed, which collapses a branch's own internal
+  commit boundaries (a `chore(ledger): file N items` step distinct from the `feat(...)` step that
+  prompted it) into ONE commit on `main`. `git show --name-status` on each of those three items'
+  one-and-only ledger-file commit confirmed it: git status 'A' (added), never revisited. Every one
+  of the six real misses shows the opposite shape: an 'A' commit that files it (often the SAME
+  squashed PR, e.g. REG-146/147/148 were all added by one PK-3 merge commit), then a LATER, SEPARATE
+  commit -- a dedicated fix -- that MODIFIES ('M') the same file. Requiring 'M' is what a squash
+  merge cannot erase, because it is still true, on `main`, that the fix landed in a commit distinct
+  from the one that first created the row, however many of that commit's own original sub-commits
+  got flattened into it.
+
+  Honest limit, stated in the script's own docstring: R2 is a heuristic over commit topology, not a
+  proof. A firing means "reconcile this row" (go read what the commit did), not "this item is
+  closed" -- confirmed by its own real-repo run, which correctly flagged PACK-9 (a real, substantive
+  partial-progress edit worth reading, ultimately still legitimately OPEN with narrowed scope) and
+  REG-155 (a same-commit env-var-name TYPO FIX inside the ledger prose itself, unrelated to the
+  item's actual described bug -- though REG-155 turned out to be independently fixed by REG-162's
+  own code change, found and closed during the same session, for unrelated reasons).
+
+  `--calibrate` controls (three, matching the measured shapes): filed-and-fixed in ONE commit with
+  no later revisit (a real limitation R2 accepts and documents rather than hides -- MUST stay
+  quiet), filed only alongside an unrelated feature in one commit (MUST stay quiet), filed in one
+  commit and fixed in a later separate commit (every real miss's own shape -- MUST fire). Verified
+  live against this repo's actual git history, not just the synthetic controls: R2 correctly fires
+  on all six real misses (pre-fix) and does not fire on RUN-5 (genuinely filed-only, never
+  revisited).
+guard:
+  kind: script
+  ref: python scripts/quality/check-ledger-status-reverse-freshness.py --calibrate
+  asserts: >-
+    R1's two controls and R2's three controls all pass; a real (non-calibrate) run against this
+    repo's actual history fires on all of REG-147/153/160/161/162/169 while they are OPEN, and does
+    not fire on RUN-5
+  provenRed: true

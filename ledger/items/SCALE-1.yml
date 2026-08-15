@@ -111,3 +111,22 @@ guard:
     scripts/policy/scale-proof-baseline.json; 260/520 wired into
     .github/workflows/nightly-scale-ladder.yml's matrix but not yet exercised by any real run.
   provenRed: false
+
+resolution: |
+  2026-08-14 (closeout batch-verification pass): triggered the workflow for real for the first time
+  (`gh workflow run nightly-scale-ladder.yml`, run 31847929413 -- it had never fired on its own
+  `schedule:` trigger since merging). Result, real and worth recording even though it complicates
+  rather than resolves this item: ALL FIVE rungs failed, including 26/50/100 -- the same three rungs
+  this item's own text says passed cleanly when run locally on 2026-08-14. Every rung fails at the
+  SAME phase ("build"), which is evidence against a scale-specific cause (260/520 were expected to
+  be the risky ones, not 26). Root cause NOT found: `run-scale-proof.ps1`'s "build" phase captures
+  the Gradle build's own failure output into the JSON report rather than streaming it to the GHA
+  log, so the CI log shows a 45-second gap between "-- build --" and "build failed 41854 ms" with
+  ZERO diagnostic detail visible from the log alone -- itself a real, separate gap (a CI failure
+  with no visible cause defeats the point of running it in CI at all). Not chased further this
+  session, per this whole plan's own "don't over-investigate an unasked-for signal" discipline --
+  but flagged HONESTLY rather than left for the next reader to discover the hard way: this item's
+  "one nightly run settles it" framing was optimistic. The real settling still needs (a) fetching
+  the failed run's own uploaded artifact/report for the actual Gradle error (not done here), and
+  (b) fixing `run-scale-proof.ps1` to surface build failures in the CI log directly, both of which
+  are follow-up work, not this closeout pass's own scope.

@@ -6,8 +6,10 @@ title: >-
   without ever being checked by them, pre- or post-merge
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Surfaced by this session's own adversarial review of PR #67 (REG-158, a narrow
   script-automation-quality reporting-contract fix) before merge. The review's "downstream-skip"
@@ -111,15 +113,19 @@ detail: |
   timing is observed, narrowing to a subset of the six gates (or moving the two overlapping steps
   out) is the next lever, not reverting the trigger.
 
-  **Verification method used, and its limit:** `python -c "import yaml; yaml.safe_load(...)"`
-  confirms the file parses and that `on.pull_request` is present with a `None` (bare-trigger)
-  value, `on.push` is unchanged, `jobs.linux-maturity-validation.if` reads exactly
-  `"github.event_name != 'pull_request'"`, and `jobs.ci-validation.if` is absent -- plus a full
-  manual read-through of the diff. This proves the YAML is syntactically valid and shaped as
-  intended; it does NOT prove the six gates actually pass, or even actually run, against a real PR
-  -- that is what this PR opening against `main` will demonstrate for the first time, and is why
-  `status` stays OPEN rather than DONE. `guard:` below is intentionally untouched -- it still
-  describes the pre-fix grep-based detection, not a description of the fix's own verification.
+  **2026-08-14 (closeout batch-verification pass): the real per-PR run this item's own text named
+  as the actual proof has now happened, repeatedly.** Once this fix merged to `main`, five real
+  PRs (fix/reg-147, fix/reg-153, fix/reg-160, fix/reg-162, feat/pack-2-origin-provenance) each
+  triggered a real `pull_request` event on `npdev-ci-validation.yml`. Checked run `31838849114`
+  (the fix/reg-147 PR) directly via `gh api .../actions/runs/.../jobs`: the `ci-validation` job
+  ("NPDev segmented CI validation") ran on `pull_request` and succeeded, and its step list shows
+  every one of the six gate scripts by name -- Runtime surface evidence, Generator gate / prepare
+  RuntimeHost sample output, Security hardening maturity evidence, Runtime security consistency
+  evidence, RuntimeHost gate, Editor gate -- all `"conclusion": "success"`. The sibling
+  `linux-maturity-validation` job ("Linux post-Beta0 maturity validation") shows `"conclusion":
+  "skipped"` on the same run, confirming the `if: github.event_name != 'pull_request'` guard also
+  works as intended. This is exactly the guard's own `asserts` line, observed directly rather than
+  inferred from YAML shape.
 guard:
   kind: manual
   ref: >-

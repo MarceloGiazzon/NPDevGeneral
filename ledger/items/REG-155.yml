@@ -4,8 +4,10 @@ title: >-
   git worktree living inside the canonical checkout, breaking runtimehost-libs discovery
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-13
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   MASTER-ROADMAP.md Step 12 (R7 Stage B, SEC-1). Hit live while building a freshly generated
   npdev-canary app from this session's own isolated worktree
@@ -58,6 +60,21 @@ detail: |
   (worktree marker) rather than a directory" and prefer `git rev-parse --show-toplevel`'s answer,
   or an explicit opt-out) rather than a quick patch to one of eleven pinned call sites while leaving
   the other ten possibly still wrong.
+
+  **2026-08-14 (closeout batch-verification pass): fixed as a side effect of REG-162, and confirmed
+  live for this item's own exact guard.** REG-162's investigation into `Rebuild-And-Restage.ps1`'s
+  worktree staleness independently found and fixed the SAME `Get-NPDevBuildRoot` root cause this
+  item describes (a git worktree matching the "contains NPDevContract+Generator+Kernel" predicate
+  at its OWN root, one level earlier than the canonical checkout) -- `Get-NPDevBuildRoot` now keeps
+  climbing past a matching ancestor to the OUTERMOST match instead of stopping at the first one.
+  Verified directly against this item's own guard, live, from a real worktree
+  (`.claude\worktrees\reg162-verify`, created via `EnterWorktree`): sourced `scripts
+  \npdev-common.ps1` and called `Get-NPDevBuildRoot`/`Get-NPDevRuntimeHostLibsDir` with no override
+  env var set -- both resolved to the correct shared `D:\WorkSpace\NPDev\Build` /
+  `D:\WorkSpace\NPDev\Build\runtimehost-libs`, not a path nested inside the worktree's own
+  `.claude\worktrees` tree. `Get-NPDevWorkspaceRoot` (deliberately unchanged by REG-162) still
+  correctly resolved to the worktree itself, confirming source-code paths are unaffected. See
+  `ledger/items/REG-162.yml` for the fuller rebuild-and-restage proof this same fix underwent.
 guard:
   kind: manual
   ref: >-
