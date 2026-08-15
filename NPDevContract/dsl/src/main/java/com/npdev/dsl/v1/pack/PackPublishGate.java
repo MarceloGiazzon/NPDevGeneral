@@ -73,6 +73,9 @@ public final class PackPublishGate {
 
         String chainViolation = checkChainImmutability(oldPack, newPack);
         if (chainViolation == null) {
+            chainViolation = checkFirstPublishedVersionImmutability(oldPack, newPack);
+        }
+        if (chainViolation == null) {
             chainViolation = checkChainDiffConsistency(newPack, oldVersion, newVersion, diffResult);
         }
         if (chainViolation != null) {
@@ -120,6 +123,26 @@ public final class PackPublishGate {
                         + "this publish changes its content -- a released version's migration chain must never be "
                         + "altered after the fact.";
             }
+        }
+        return null;
+    }
+
+    /**
+     * REG-151: once a pack has a {@code firstPublishedVersion} anchor (pinned by {@link
+     * #withFirstPublishedVersionAnchor}), it is immutable -- exactly like an already-published
+     * migrations hop. Without this, a hand-edit could silently rewrite the trust anchor itself,
+     * defeating the whole point of having one independent of the chain's own current content.
+     */
+    private static String checkFirstPublishedVersionImmutability(JsonNode oldPack, JsonNode newPack) {
+        String oldAnchor = textOrEmpty(oldPack, "firstPublishedVersion");
+        if (oldAnchor.isBlank()) {
+            return null;
+        }
+        String newAnchor = textOrEmpty(newPack, "firstPublishedVersion");
+        if (!oldAnchor.equals(newAnchor)) {
+            return "Refusing publish: firstPublishedVersion ('" + oldAnchor + "') was already published and is "
+                    + "immutable, but this publish " + (newAnchor.isBlank() ? "removes it" : "changes it to '"
+                    + newAnchor + "'") + " -- a pack's true first-published-version anchor must never change.";
         }
         return null;
     }
@@ -239,6 +262,37 @@ public final class PackPublishGate {
         String key = oldVersion + " -> " + newVersion;
         if (!migrations.has(key)) {
             migrations.putArray(key);
+        }
+        return copy;
+    }
+
+    /**
+     * REG-151: mirrors {@link #withEmptyMigrationChainEntry}'s "auto-populate on --write" shape, but
+     * for the {@code firstPublishedVersion} trust anchor. If {@code newPack} already carries the
+     * anchor (propagated unchanged from {@code oldPack}, per {@link
+     * #checkFirstPublishedVersionImmutability}), returns it untouched. Otherwise pins it for the
+     * first time: backfilled from {@code oldPack}'s own migrations chain's earliest hop if one
+     * exists (the chain was intact as of THIS publish, so its current earliest `from` is the best
+     * available evidence of the true origin), or -- for a pack with no chain yet -- {@code oldPack}'s
+     * own current version (this publish is the first one to add a hop at all, so the version being
+     * published FROM is, by definition, the pack's first-ever version). Never call this for a
+     * refused decision; callers only call this after confirming {@link Decision#allowed()}.
+     */
+    public static ObjectNode withFirstPublishedVersionAnchor(JsonNode oldPack, JsonNode newPack) {
+        if (newPack == null || !newPack.isObject()) {
+            throw new IllegalArgumentException("newPack must be a JSON object");
+        }
+        ObjectNode copy = ((ObjectNode) newPack).deepCopy();
+        if (!textOrEmpty(copy, "firstPublishedVersion").isBlank()) {
+            return copy;
+        }
+        String anchor = textOrEmpty(oldPack, "firstPublishedVersion");
+        if (anchor.isBlank()) {
+            PackMigrationChain oldChain = PackMigrationChain.parse(oldPack == null ? null : oldPack.get("migrations"));
+            anchor = oldChain.hops().isEmpty() ? textOrEmpty(oldPack, "version") : oldChain.earliestFromVersion().toString();
+        }
+        if (!anchor.isBlank()) {
+            copy.put("firstPublishedVersion", anchor);
         }
         return copy;
     }

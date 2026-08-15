@@ -380,4 +380,110 @@ class PackPublishGateTest {
         assertFalse(decision.allowed());
         assertTrue(decision.message().contains("malformed"), decision.message());
     }
+
+    // ---- REG-151: firstPublishedVersion trust anchor ---------------------------------------------
+
+    @Test
+    void changingAnAlreadyPinnedFirstPublishedVersionRefuses() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "firstPublishedVersion": "1.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
+                """);
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.1",
+                  "firstPublishedVersion": "1.5.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
+                """);
+
+        PackPublishGate.Decision decision = PackPublishGate.evaluate(oldPack, newPack);
+
+        assertFalse(decision.allowed());
+        assertTrue(decision.message().toLowerCase().contains("immutable"), decision.message());
+        assertTrue(decision.message().contains("1.0.0"), decision.message());
+    }
+
+    @Test
+    void removingAnAlreadyPinnedFirstPublishedVersionRefuses() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "firstPublishedVersion": "1.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
+                """);
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.1",
+                  "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
+                """);
+
+        PackPublishGate.Decision decision = PackPublishGate.evaluate(oldPack, newPack);
+
+        assertFalse(decision.allowed());
+        assertTrue(decision.message().toLowerCase().contains("removes it"), decision.message());
+    }
+
+    @Test
+    void propagatingThePinnedFirstPublishedVersionUnchangedIsAllowed() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "firstPublishedVersion": "1.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
+                """);
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.1",
+                  "firstPublishedVersion": "1.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
+                """);
+
+        PackPublishGate.Decision decision = PackPublishGate.evaluate(oldPack, newPack);
+
+        assertTrue(decision.allowed(), decision.message());
+    }
+
+    @Test
+    void withFirstPublishedVersionAnchor_backfillsFromTheChainsEarliestHopWhenNoAnchorYetExists() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
+                """);
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.1",
+                  "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
+                """);
+
+        JsonNode updated = PackPublishGate.withFirstPublishedVersionAnchor(oldPack, newPack);
+
+        assertEquals("1.0.0", updated.get("firstPublishedVersion").asText());
+    }
+
+    @Test
+    void withFirstPublishedVersionAnchor_usesOldPacksOwnVersionWhenThereIsNoChainYet() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [] }
+                """);
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0", "concepts": [] }
+                """);
+
+        JsonNode updated = PackPublishGate.withFirstPublishedVersionAnchor(oldPack, newPack);
+
+        assertEquals("1.0.0", updated.get("firstPublishedVersion").asText());
+    }
+
+    @Test
+    void withFirstPublishedVersionAnchor_leavesAnAlreadyPresentAnchorUntouched() {
+        JsonNode oldPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "firstPublishedVersion": "1.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
+                """);
+        JsonNode newPack = pack("""
+                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.1",
+                  "firstPublishedVersion": "1.0.0",
+                  "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
+                """);
+
+        JsonNode updated = PackPublishGate.withFirstPublishedVersionAnchor(oldPack, newPack);
+
+        assertEquals("1.0.0", updated.get("firstPublishedVersion").asText());
+    }
 }

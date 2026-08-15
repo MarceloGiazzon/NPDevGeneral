@@ -1,0 +1,88 @@
+id: REG-178
+title: >-
+  Generated FinalApp REST responses for /api/generated/actions|procedures|flows/* have JSON
+  "result"/"input" field order that changes on every app restart -- Map.copyOf's JEP 269
+  randomization baked into TrustedAction*/TrustedFlow* template source, not just a generation-time
+  text-diff issue
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-15
+closed: 2026-08-15
+verification: UNIT_TESTED
+source: >-
+  Found while auditing REG-175's ~77 Map.copyOf/Set.copyOf sites in NPDevContract/dsl and
+  NPDevGenerator/generator (a parallel background-agent triage of the generator/emitters subset).
+  REG-175 itself was framed as generation-time determinism only ("does generating the same model
+  twice back-to-back produce byte-identical output" -- check-deterministic-generation.ps1's own
+  question). This finding is a different failure mode: several of the ~77 sites are not the
+  generator's OWN code but literal Java source TEXT emitted verbatim into every generated FinalApp
+  as com.npdev.generated.trusted.* classes -- their Map.copyOf calls run at the GENERATED APP's own
+  runtime, not at generation time, so the question is not "do two generations differ" but "does one
+  running app's own REST responses stay stable."
+surface: generator/trusted-runtime-determinism
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/TrustedActionSupportTemplates.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/TrustedFlowSupportTemplates.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/TrustedActionKernelRunnerTemplate.java
+detail: |
+  `TrustedActionSupportTemplates.java`/`TrustedFlowSupportTemplates.java` are Java source TEXT
+  BLOCKS (`"""..."""` string literals) that `TrustedSourceEmitter` writes verbatim into every
+  generated FinalApp under `com.npdev.generated.trusted.*`. Several of those literal classes froze
+  a caller-supplied `Map<String, Object>` via `Map.copyOf(new LinkedHashMap<>(x))` -- the exact
+  REG-146 shape, except the randomized-order map is built and iterated inside the GENERATED APP's
+  own JVM at REQUEST-HANDLING time, not inside the generator's JVM at generation time.
+
+  `java.util.ImmutableCollections`' JEP 269 hash-flood mitigation re-salts on every JVM start, so a
+  map's iteration order is STABLE while one process stays up but changes on every restart. Traced
+  end-to-end (background-agent audit, verified against `TrustedSourceControllerTemplate.java`'s
+  `.body(response.toMap())` calls): `GeneratedActionExecutionResponse.result` /
+  `GeneratedActionCapabilityResult.result` / `GeneratedFlowExecutionResponse.result` are returned
+  directly as the JSON body of `POST /api/generated/actions/{actionName}/run`,
+  `/api/generated/procedures/{procedureName}`, `/api/generated/flows/{flowName}/start`, and
+  `.../events/{eventName}` -- so every one of these endpoints' `result` field key order is
+  nondeterministic ACROSS RESTARTS for any real generated app whose handler returns 2+ result keys.
+  `GeneratedActionExecutionRequest.input` / `GeneratedFlowExecutionRequest.input` are nested into
+  published event/audit payloads the same way. `TrustedActionKernelRunnerTemplate.
+  withSideEffectCountingStatus` re-froze an already-built `LinkedHashMap` the same way, undoing its
+  own order preservation.
+
+  Two sibling sites in the same audit (`TrustedActionRegistryTemplate.BY_ACTION_NAME` /
+  `TrustedFlowSupportTemplates.GeneratedFlowRegistry.BY_FLOW_NAME`) are NOT affected -- both are only
+  ever read via a keyed `.get(name)` lookup inside the generated app, never iterated, so their
+  Map.copyOf randomization has no observable effect. Left as-is; the fix is scoped to the 7
+  confirmed sites that actually reach serialized/published output.
+guard:
+  kind: manual
+  ref: >-
+    generate simple-contact-intake (or any sample composing trusted actions/flows), build, boot,
+    call POST /api/generated/actions/{actionName}/run with a handler returning 2+ result keys,
+    capture the JSON response body, restart the app, call again, diff the two response bodies'
+    "result" key order
+  asserts: >-
+    the JSON "result"/"input" key order in a generated app's trusted-action/flow REST responses is
+    the caller/handler's own insertion order, stable across app restarts -- not re-randomized by
+    java.util.ImmutableCollections on every JVM start
+  provenRed: false
+resolution: >-
+  Swapped all 7 confirmed sites from `Map.copyOf(...)` to `Collections.unmodifiableMap(new
+  LinkedHashMap<>(...))` (REG-146's established pattern) inside the literal template text:
+  `TrustedActionSupportTemplates.generatedActionExecutionRequestSource/
+  generatedActionExecutionResponseSource/generatedActionCapabilityResultSource/
+  generatedActionCapabilityAdapterSource` (4 sites), `TrustedFlowSupportTemplates.
+  generatedFlowExecutionRequestSource/generatedFlowExecutionResponseSource` (2 sites), and
+  `TrustedActionKernelRunnerTemplate`'s `withSideEffectCountingStatus` (1 site) -- each template's
+  own embedded `import` block gained `java.util.Collections` alongside its existing
+  `java.util.LinkedHashMap`/`java.util.Map` imports.
+
+  Verified: since these edits are Java source TEXT (string literals from the generator's own
+  perspective), `:generator:compileJava` succeeding does NOT prove the emitted text itself is valid
+  Java -- verification requires actually generating and compiling the emitted
+  `com.npdev.generated.trusted.*` classes. Ran the full `:generator:test` suite (345 tests, all
+  green), which includes `TrustedSourceEmitterGeneratedActionTest`/
+  `TrustedSourceEmitterGeneratedActionJdbcEvidenceTest` and other tests that generate real sample
+  output and compile it -- confirms the edited template text compiles correctly as part of a real
+  generated app. Not additionally live-verified via an actual app-restart REST diff (the guard
+  above) in this pass -- unit/generation-test coverage confirms the emitted code is syntactically
+  and behaviorally sound (LinkedHashMap-backed, order-preserving), but the specific "two restarts,
+  diff the JSON" live proof was not run.

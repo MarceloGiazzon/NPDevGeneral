@@ -92,6 +92,7 @@ final class TrustedActionSupportTemplates {
         return """
                 package com.npdev.generated.trusted;
 
+                import java.util.Collections;
                 import java.util.LinkedHashMap;
                 import java.util.Map;
 
@@ -105,7 +106,12 @@ final class TrustedActionSupportTemplates {
                         executionId = clean(executionId);
                         correlationId = clean(correlationId);
                         idempotencyKey = clean(idempotencyKey);
-                        input = input == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(input));
+                        // REG-175/REG-146: input is nested into published event/audit payloads --
+                        // Map.copyOf's JEP 269 iteration-order randomization (re-salted every JVM
+                        // start) meant a generated app's event JSON had scrambled key order that
+                        // changed on every restart. Collections.unmodifiableMap preserves the
+                        // caller's insertion order instead.
+                        input = input == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(input));
                     }
 
                     public static GeneratedActionExecutionRequest from(Map<String, Object> body) {
@@ -133,6 +139,7 @@ final class TrustedActionSupportTemplates {
         return """
                 package com.npdev.generated.trusted;
 
+                import java.util.Collections;
                 import java.util.LinkedHashMap;
                 import java.util.Map;
 
@@ -171,7 +178,11 @@ final class TrustedActionSupportTemplates {
                         correlationStatus = clean(correlationStatus);
                         message = clean(message);
                         error = clean(error);
-                        result = result == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(result));
+                        // REG-175/REG-146: returned directly as the JSON body of POST
+                        // /api/generated/actions/{actionName}/run -- Map.copyOf's JEP 269
+                        // iteration-order randomization meant this response's "result" field order
+                        // changed on every app restart.
+                        result = result == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(result));
                     }
 
                     public Map<String, Object> toMap() {
@@ -248,6 +259,7 @@ final class TrustedActionSupportTemplates {
         return """
                 package com.npdev.generated.trusted;
 
+                import java.util.Collections;
                 import java.util.LinkedHashMap;
                 import java.util.Map;
 
@@ -262,7 +274,10 @@ final class TrustedActionSupportTemplates {
                 ) {
                     public GeneratedActionCapabilityResult {
                         status = clean(status);
-                        result = result == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(result));
+                        // REG-175/REG-146: flows unchanged into the same response "result" field as
+                        // GeneratedActionExecutionResponse -- Map.copyOf's JEP 269 iteration-order
+                        // randomization meant this varied on every app restart.
+                        result = result == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(result));
                         message = clean(message);
                         error = clean(error);
                     }
@@ -309,6 +324,7 @@ final class TrustedActionSupportTemplates {
                 import com.npdev.kernel.ports.CapabilityAdapter;
 
                 import java.util.ArrayList;
+                import java.util.Collections;
                 import java.util.LinkedHashMap;
                 import java.util.List;
                 import java.util.Map;
@@ -373,7 +389,10 @@ final class TrustedActionSupportTemplates {
                         }
                         try {
                             Map<String, Object> rawResult = request.descriptor().handler().invoke(request.procedureContext());
-                            Map<String, Object> safeResult = rawResult == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(rawResult));
+                            // REG-175/REG-146: the earliest link in the chain that reaches the JSON
+                            // response's "result" field -- Map.copyOf's JEP 269 iteration-order
+                            // randomization meant this varied on every app restart.
+                            Map<String, Object> safeResult = rawResult == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(rawResult));
                             GeneratedActionCapabilityDispatcherFactory.handlerInvoked();
                             return CapabilityResult.success(GeneratedActionCapabilityResult.ok(safeResult));
                         } catch (RuntimeException exception) {

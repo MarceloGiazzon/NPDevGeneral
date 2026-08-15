@@ -5,8 +5,10 @@ title: >-
   any recent PR, found incidentally while verifying two unrelated PRs
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-15
+closed: 2026-08-15
+verification: VERIFIED_LIVE
 source: >-
   Found while verifying PR #91 (a Batch-1 backlog fix touching only Python/PowerShell/docs/
   .gitattributes -- zero Java/generator files). Its "PR gate (DSL/kernel/generator/RuntimeHost
@@ -109,3 +111,42 @@ guard:
     the "PR gate (DSL/kernel/generator/RuntimeHost smoke, Linux)" job succeeds on a bare main
     dispatch with no PR diff
   provenRed: true
+resolution: >-
+  **2026-08-15: this item's own guard command was re-run live** (`gh workflow run npdev-pr-gate.yml
+  --ref main`, run 31867215020) -- completed SUCCESS in 7m44s, including the exact
+  "RuntimeHost generated-app test suite" step this item pinned as where the original 100 compile
+  errors occurred. The original compile-error/Gradle-cache-staleness hypothesis does NOT reproduce
+  today; it stays an open question (this fix does not explain or rule it out) rather than a closed
+  one -- if it recurs, it needs its own new ledger item, since nothing here addresses that specific
+  symptom.
+
+  **A DIFFERENT, clearly-reproducing failure in the SAME job was found and fixed instead.** While
+  verifying PR #93 (an unrelated identity-pack fix, REG-177), its fresh CI run failed on BOTH
+  `npdev-pr-gate.yml`'s "PR gate" job AND `npdev-ci-validation.yml`'s "Generator gate" job -- same
+  commit, same three tests
+  (`HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest`,
+  `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest`,
+  `HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest`), same failure shape
+  (`waitForHealth`/`java.net.ConnectException` -- the packaged app never became healthy within its
+  own 6-minute per-test deadline). Root cause: `NPDevGenerator/generator/build.gradle`'s shared
+  `test` task runs these three packaged-app-boot proofs (each packages and boots a real FinalApp
+  under Testcontainers/MinIO) at `maxParallelForks = 2`, so two of the three contend for CPU/Docker/
+  port resources on the same CI runner. A bare `main` dispatch at a quieter moment (this item's own
+  guard, above) passed clean, and re-running the exact failing commit a second time (still on PR
+  #93's branch, no code change yet) reproduced the identical failure again on both jobs --
+  confirming this is systematic contention under real CI load, not one-off noise.
+
+  Fix: isolated the three `@Tag("packaged-proof")` tests into a new `packagedProofTest` Gradle task
+  (mirroring the existing `behaviorTest` isolation pattern) with `maxParallelForks = 1`, so they run
+  serially instead of contending with each other. The shared `test` task now always excludes the
+  `packaged-proof` tag (previously conditionally included it under `CI`/`-PincludePackagedProofs`).
+  Wired `:generator:packagedProofTest` into both `npdev-pr-gate.yml` and `npdev-ci-validation.yml`'s
+  "Generator unit tests" step (raised `npdev-pr-gate.yml`'s step timeout 20->30min for the added
+  serial wall-clock) and into `NPDevGenerator/build.gradle`'s `generatorQualityGate` (so
+  `run-generator-gate.ps1`'s local T2 gate keeps the same coverage, still gated by the same
+  `onlyIf { packagedProofsIncluded }` it always had). Verified
+  `scripts/quality/check-test-task-coverage.py` accepts the new task as CI-reachable, ran
+  `:generator:test` locally to confirm the fast suite still excludes packaged-proof and passes, and
+  ran one packaged-proof test through the new `:generator:packagedProofTest -PincludePackagedProofs`
+  task locally to confirm the wiring executes correctly end-to-end. Not yet re-verified against a
+  live CI run with real GitHub Actions load (the next PR push against this branch is that proof).
