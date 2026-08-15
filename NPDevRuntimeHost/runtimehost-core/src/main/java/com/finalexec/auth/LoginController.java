@@ -23,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -47,7 +48,10 @@ public class LoginController {
 
     private final DataSource dataSource;
     private final ObjectMapper objectMapper;
-    private final IdentityPackTableNames identityTables;
+    // REG-177 fix: graceful tryResolve, not the throwing resolve() -- this bean is only gated on
+    // npdev.auth.mode=jwt, NOT on the identity pack being composed, so an app that sets jwt auth
+    // mode without ever composing the identity pack must still boot (guarded per-request instead).
+    private final Optional<IdentityPackTableNames> identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -81,7 +85,7 @@ public class LoginController {
     ) throws Exception {
         this.dataSource = dataSource;
         this.objectMapper = objectMapper;
-        this.identityTables = IdentityPackTableNames.resolve(compiledModel);
+        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -127,6 +131,13 @@ public class LoginController {
         if (throttle.isLocked(tenantId, username, clientIp)) {
             return tooManyAttempts(tenantId, username, clientIp);
         }
+
+        if (identityTables.isEmpty()) {
+            // This app runs npdev.auth.mode=jwt but never composed the identity pack -- there is no
+            // identity_users table for this endpoint to authenticate against at all.
+            return ResponseEntity.status(503).body(Map.of("error", "identity_pack_not_composed"));
+        }
+        IdentityPackTableNames identityTables = this.identityTables.get();
 
         try (Connection connection = dataSource.getConnection()) {
             String userSql = "SELECT id, active, token_version FROM " + identityTables.usersTable()

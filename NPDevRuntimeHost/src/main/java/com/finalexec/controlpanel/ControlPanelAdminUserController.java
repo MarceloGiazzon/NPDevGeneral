@@ -20,6 +20,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -38,7 +39,13 @@ public class ControlPanelAdminUserController {
 
     private final ObjectProvider<DataSource> dataSourceProvider;
     private final RuntimeContextService runtimeContextService;
-    private final IdentityPackTableNames identityTables;
+    // REG-177/REG-179 fix: resolved with the GRACEFUL tryResolve (not resolve), and only unwrapped
+    // per-request (see requireIdentityTables()) -- this bean is registered unconditionally in every
+    // generated app regardless of whether it composes the identity pack, so the eager, throwing
+    // IdentityPackTableNames.resolve(...) this used to call here crashed Spring context startup for
+    // any app without one (confirmed live: BeanCreationException -> IllegalStateException on a
+    // generated sample with no identity::User concept at all).
+    private final Optional<IdentityPackTableNames> identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -53,7 +60,7 @@ public class ControlPanelAdminUserController {
     ) {
         this.dataSourceProvider = dataSourceProvider;
         this.runtimeContextService = runtimeContextService;
-        this.identityTables = IdentityPackTableNames.resolve(compiledModel);
+        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -77,6 +84,12 @@ public class ControlPanelAdminUserController {
                     "ControlPanel unavailable in InMemory mode -- requires a physical database "
                             + "(H2Local/H2Server/Postgres).");
         }
+        if (identityTables.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "ControlPanel unavailable -- this app does not compose the identity pack.");
+        }
+        // Shadows the Optional field with the unwrapped value for the rest of this method.
+        IdentityPackTableNames identityTables = this.identityTables.get();
 
         String tenantId = request.tenantId() == null ? null : request.tenantId().trim();
         String username = request.username() == null ? null : request.username().trim();

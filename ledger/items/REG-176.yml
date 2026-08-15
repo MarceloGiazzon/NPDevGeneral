@@ -192,3 +192,21 @@ resolution: >-
   none was proven past "not test-level contention, not a code regression" -- if failures persist
   after this, the next step is checking GitHub's own status history for this time window rather than
   further test/workflow changes.
+
+  **2026-08-15 third follow-up: found the actual cause, and it WAS a code regression -- just not
+  in this item's own commits.** A dedicated local reproduction (temporarily disabling the tests'
+  own evidence-cleanup `finally` block to preserve a real boot log, then reverting that test-source
+  change) caught the real error: `BeanCreationException` -> `IllegalStateException` from
+  `IdentityPackTableNames.resolve(...)` being called eagerly, at Spring bean-construction time, by
+  two `com.finalexec.controlpanel` controllers that REG-177 (a DIFFERENT item, also on this same
+  branch) had just wired up -- both are registered unconditionally in every generated app, and all
+  three packaged-proof test fixtures compose no identity pack at all, so the app's whole
+  `ApplicationContext` failed to start. This explains everything this item's own investigation
+  found confusing: why the timeout ceiling never mattered (the process crashed at startup, it
+  never had a chance to become slow), why isolating the Gradle invocation didn't help (nothing to
+  do with task scheduling), and why a same-day bare `main` dispatch passed while this branch never
+  did (`main` didn't have REG-177's regression). See REG-177's own ledger entry for the fix. This
+  item's own two hardening changes (serial `packagedProofTest` task, higher health-check ceilings)
+  address a real, independently-confirmed contention issue (verified clean on PR #95 before REG-177
+  ever touched this branch) and are being KEPT, not reverted -- they're correct improvements in
+  their own right, they just were not sufficient to explain or fix THIS branch's specific failures.

@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -32,7 +33,11 @@ public class BootstrapAdminController {
     private static final String ADMIN_ROLE_NAME = "ADMIN";
 
     private final DataSource dataSource;
-    private final IdentityPackTableNames identityTables;
+    // REG-177 fix: graceful tryResolve, not the throwing resolve() -- this bean is only gated on
+    // npdev.auth.mode=jwt, NOT on the identity pack being composed, so an app that sets jwt auth
+    // mode without ever composing the identity pack must still boot (guarded per-request instead,
+    // mirroring the ControlPanel controllers' fix for the same regression).
+    private final Optional<IdentityPackTableNames> identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -45,7 +50,7 @@ public class BootstrapAdminController {
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn
     ) {
         this.dataSource = dataSource;
-        this.identityTables = IdentityPackTableNames.resolve(compiledModel);
+        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -65,6 +70,10 @@ public class BootstrapAdminController {
                 || password == null || password.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "missing_required_field"));
         }
+        if (identityTables.isEmpty()) {
+            return ResponseEntity.status(503).body(Map.of("error", "identity_pack_not_composed"));
+        }
+        IdentityPackTableNames identityTables = this.identityTables.get();
 
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);

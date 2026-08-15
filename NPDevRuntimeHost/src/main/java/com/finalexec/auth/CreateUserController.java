@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -41,7 +42,10 @@ public class CreateUserController {
 
     private final DataSource dataSource;
     private final RuntimeContextService runtimeContextService;
-    private final IdentityPackTableNames identityTables;
+    // REG-177 fix: graceful tryResolve, not the throwing resolve() -- this bean is only gated on
+    // npdev.auth.mode=jwt, NOT on the identity pack being composed, so an app that sets jwt auth
+    // mode without ever composing the identity pack must still boot (guarded per-request instead).
+    private final Optional<IdentityPackTableNames> identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -60,7 +64,7 @@ public class CreateUserController {
     ) {
         this.dataSource = dataSource;
         this.runtimeContextService = runtimeContextService;
-        this.identityTables = IdentityPackTableNames.resolve(compiledModel);
+        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -92,6 +96,11 @@ public class CreateUserController {
                 || password == null || password.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "missing_required_field"));
         }
+        if (identityTables.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "identity_pack_not_composed");
+        }
+        IdentityPackTableNames identityTables = this.identityTables.get();
 
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);

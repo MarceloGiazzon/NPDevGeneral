@@ -144,3 +144,37 @@ resolution: >-
   live HTTP check separately surfaced an UNRELATED, pre-existing 404 on `com.finalexec.controlpanel`
   routes (also observed identically during REG-170's own live verification) -- not chased further,
   out of this item's scope.
+
+  **2026-08-15 correction: this item's own fix introduced a real regression, found and fixed
+  during REG-176's CI investigation.** Five controller constructors this item touched
+  (`ControlPanelAdminUserController`, `ControlPanelTenantUsersController`,
+  `CreateUserController`, `LoginController`, `BootstrapAdminController`) called the THROWING
+  `IdentityPackTableNames.resolve(compiledModel)` eagerly at construction time. Two of them
+  (`ControlPanelAdminUserController`/`ControlPanelTenantUsersController`) are registered
+  UNCONDITIONALLY in every generated app -- ControlPanel is not gated on the identity pack being
+  composed. For any generated app that does not compose the identity pack (the three
+  `*PackagedGeneratedAppRuntimeProofTest` generator fixtures being the concrete case that caught
+  this), `resolve()` threw `IllegalStateException` during Spring bean construction, which is a hard
+  `ApplicationContext` startup failure -- the app process never got far enough to open its health
+  endpoint at all. This masqueraded as a CI timing/contention flake for several iterations of
+  REG-176's own investigation (see that item's ledger) before being root-caused with a real,
+  locally-reproduced boot-log stack trace: `BeanCreationException` -> `IllegalStateException:
+  IdentityPackTableNames: compiled model has no usable table name for concept 'identity::User'`.
+
+  Fixed by switching all 5 constructors to the graceful `tryResolve(...)` (returning
+  `Optional<IdentityPackTableNames>`), unwrapped per-request via a `requireIdentityTables()`-style
+  guard (503 when absent) mirroring the class's own pre-existing `requireDataSource()` pattern --
+  the same two-mode design (`resolve()` throws for callers ONLY EVER active when the pack is
+  guaranteed present; `tryResolve()` for callers that run regardless) `IdentityPackTableNames`'s own
+  javadoc already documented, which this item's ORIGINAL implementation simply applied to the wrong
+  bucket for these 5 controllers -- they are not identity-pack-gated the way `LoginController`'s
+  jwt-mode gate or `TenantAutoRegistrationRunner`'s design made throwing safe elsewhere in this same
+  item's work. `ControlPanelTenantUsersController.list()`'s roles column now honors the class's own
+  documented contract ("if the app doesn't have [identity-pack role tables], users are returned
+  with an empty role list") even when the pack is fully absent, not just when the tables exist but
+  are empty.
+
+  Verified: reran all three previously-crashing `*PackagedGeneratedAppRuntimeProofTest` tests
+  locally after the fix -- all pass, with real evidence of a clean boot (health `UP`) and each
+  test's own full functional proof succeeding end to end. `run-runtimehost-gate.ps1` (compile +
+  test) also run clean post-fix.
