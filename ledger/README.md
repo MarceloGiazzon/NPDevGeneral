@@ -26,9 +26,14 @@ id: REG-61                      # required, matches the filename
 title: One-line summary          # required
 type: GAP | BUG | PROCESS | BOUNDARY   # required
 severity: LOW | MEDIUM | HIGH | P0 | P1 | null   # null only for type: BOUNDARY
-status: OPEN | PARTIAL | DONE    # required -- the single source of truth
+status: OPEN | PARTIAL | DONE | WONTFIX | OBSOLETE   # required -- the single source of truth
 opened: 2026-07-28               # required, ISO date
-closed: 2026-07-28               # required iff status: DONE
+closed: 2026-07-28               # required iff status: DONE | WONTFIX | OBSOLETE
+decision: one-line reason        # required iff status: WONTFIX | OBSOLETE -- WONTFIX means a real,
+                                  # confirmed gap deliberately not fixed (state why); OBSOLETE means
+                                  # the item itself no longer applies (superseded, duplicate, the
+                                  # surface it described was removed) -- never used to mean "fixed",
+                                  # that's DONE
 verification: NOT_VERIFIED | UNIT_TESTED | VERIFIED_LIVE   # optional
 source: where/how this was found         # required
 surface: component tag, e.g. runtimehost/schema-lifecycle  # required

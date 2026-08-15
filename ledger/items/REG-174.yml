@@ -1,0 +1,54 @@
+id: REG-174
+title: >-
+  CodeQL's clear-text-logging-sensitive-data query does not recognize npdev_monitor.redact() as a
+  sanitizer, so REG-153's fix left 4 new open alerts at the same two (now-safe) print sites
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-14
+source: >-
+  Found while confirming REG-153's guard (alert numbers #5/#6/#7/#8 report fixed_at post-merge) via
+  `gh api repos/.../code-scanning/alerts`. The same query also listed 4 new open alerts (#27-30),
+  same rule, at the same two sink lines REG-153's fix touched.
+surface: cli/npdev_cli
+files:
+  - NPDevCli/npdev_cli.py
+detail: |
+  REG-153 fixed a real clear-text credential leak by having `_print_result` and the `explore`
+  dispatcher call `npdev_monitor.redact(result)` before printing, confirmed behaviorally correct by
+  both `CliPrintRedaction`'s unit tests and an independent RED/GREEN synthetic-input smoke check
+  (stash the fix, confirm the real leak, pop the stash, confirm `<redacted>`).
+
+  CodeQL's `py/clear-text-logging-sensitive-data` query re-scanned `main` post-merge and correctly
+  marked the four ORIGINAL alerts (#5-8) as `fixed`. But it also opened four NEW alerts (#27-30) at
+  the identical two sink lines (`_print_result`'s `print(json.dumps(safe_result, ...))` /
+  `print(_human_summary(safe_result))`, and the `explore` dispatcher's equivalent pair) -- now
+  wrapping `safe_result = npdev_monitor.redact(result)` instead of the raw `result`. CodeQL's
+  taint-tracking evidently treats `redact()`'s return value as still tainted by its argument,
+  because `redact()` is an ordinary function with no CodeQL-recognized sanitizer annotation/pattern
+  -- the analysis has no way to know the function body actually strips the sensitive field.
+
+  Not treated as a real regression: the runtime behavior was independently verified correct BEFORE
+  this alert query ever ran (see REG-153's own resolution). This is a static-analysis blind spot,
+  not a functional gap -- filed separately per this repo's "unrelated bugs filed separately, never
+  silently worked around" discipline, since leaving 4 open CodeQL alerts unexplained would itself
+  read as unresolved technical debt to the next person who checks the code-scanning tab.
+
+  Likely fix, not designed further here: either (a) add a CodeQL custom sanitizer model recognizing
+  `npdev_monitor.redact()` as neutralizing its argument (the general, durable fix, needs a
+  `.github/codeql/` custom query pack), or (b) restructure the two call sites so the redaction
+  happens closer to the actual field construction rather than as a final pass over the whole dict
+  (may or may not change what CodeQL infers -- not verified), or (c) add a documented, justified
+  CodeQL alert dismissal (via the GitHub UI or `codeql-suppress` comment convention) for these 4
+  specific alert numbers, with a comment linking this item. Whoever picks this up should start by
+  reading CodeQL's actual traced dataflow path for one of the 4 alerts (same technique REG-153's own
+  2026-08-14 addendum used) to confirm the sanitizer-recognition theory before choosing a fix.
+guard:
+  kind: manual
+  ref: >-
+    gh api repos/MarceloGiazzon/NPDevGeneral/code-scanning/alerts --paginate -q '.[] | select
+    (.most_recent_instance.location.path == "NPDevCli/npdev_cli.py" and .state=="open")'
+  asserts: >-
+    zero open py/clear-text-logging-sensitive-data alerts remain on NPDevCli/npdev_cli.py (either
+    via a recognized sanitizer or a documented, justified dismissal)
+  provenRed: true

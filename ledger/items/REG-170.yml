@@ -23,17 +23,42 @@ detail: |
   `identity_v1_user_roles`, matching every other built-in-pack table's versioned convention).
 
   Unlike `WorkspaceMenuSeeder` (an unconditional `ApplicationRunner` that crashes boot immediately
-  and so was caught live), this class is gated behind
-  `@ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "jwt")` — it likely has not been
-  exercised by a fresh-database live-boot test yet, so this has not been independently reproduced
-  live the way REG-160 was. Treat as PROBABLE, not confirmed, until someone generates a model with
-  `npdev.auth.mode=jwt` composing the identity pack, boots it fresh, and exercises whatever code
-  path in `IdentityProvisioning` runs at boot or first JWT-auth request.
+  and so was caught live), `IdentityProvisioning` itself is a plain static utility class with no
+  Spring lifecycle at all -- the jwt-mode gating this item describes is actually on its CALLERS
+  (confirmed by reading them: `BootstrapAdminController` and `CreateUserController` both carry
+  `@ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "jwt")`; a minor correction to
+  this item's own original text, not a change to the finding).
 
-  Likely fix: same shape as REG-160's chosen fix — resolve the physical table name dynamically from
-  the compiled model (`CompiledModel.findConcept(...).map(CompiledConcept::getTableName)`) rather
-  than hardcoding a second, independently-drifting literal. REG-160's fix to `WorkspaceMenuSeeder`
-  is the direct precedent to follow.
+  **2026-08-14 (closeout batch-verification pass): CONFIRMED, upgraded from PROBABLE.** Did not need
+  a full jwt-mode live boot to settle this -- a direct comparison against REAL generated schema
+  already on disk from this same session's REG-147/REG-160 verification work (`superuser-admin-
+  console`'s `V1__npdev_schema_realization.sql`) shows the generator creates exactly
+  `identity_v1_users`, `identity_v1_roles`, `identity_v1_user_roles`, `identity_v1_user_role_
+  permissions`, `identity_v1_password_reset_tokens` -- confirming the mismatch is real and static,
+  independent of whether the jwt-mode code path has ever actually run. Every one of
+  `IdentityProvisioning`'s six methods (`countUsersInTenant`, `usernameTaken`, `insertIdentityUser`
+  x2, `findOrCreateRole`, `insertUserRole`) will fail with "table not found" the first time any
+  caller invokes them against a real generated app.
+
+  **Full call-site scope, confirmed by grep (broader than this item's own original text implied --
+  "BootstrapAdminController, CreateUserController, and the ControlPanel's cross-tenant admin-user
+  creation" turned out to be 4 files, not fewer)**:
+    NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/BootstrapAdminController.java
+    NPDevRuntimeHost/src/main/java/com/finalexec/auth/CreateUserController.java
+    NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java
+    NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelAdminUserController.java
+
+  **Fix-now vs defer decision (2026-08-14 closeout triage): DEFER, not fix-now, despite being
+  confirmed HIGH.** REG-160's precedent resolves the table name ONCE at Spring bean CONSTRUCTION
+  time (dependency-injected `CompiledModel`). `IdentityProvisioning` is a stateless static utility
+  with no Spring lifecycle of its own and 4 independent Spring-managed callers -- the equivalent fix
+  needs the resolved table names threaded from each caller's own `CompiledModel` (already available
+  to Spring-managed controllers) through to `IdentityProvisioning`'s method signatures, touching 4
+  call sites plus the utility class itself. That is a real, mechanical, low-risk refactor by the
+  same pattern REG-160 already established -- but genuinely a multi-file change, not a same-day
+  same-session addition on top of everything else this closeout pass already touched. Left OPEN,
+  now confirmed rather than probable, with the concrete scope above so the next session does not
+  need to re-derive it.
 guard:
   kind: manual
   ref: >-
@@ -43,4 +68,4 @@ guard:
   asserts: >-
     IdentityProvisioning's SQL resolves to the generator's actual identity_v1_* table names
     instead of failing with a "table not found" error against the hardcoded pre-versioning literals
-  provenRed: false
+  provenRed: true

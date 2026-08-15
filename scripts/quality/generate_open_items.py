@@ -36,7 +36,7 @@ from npdev_ai_common import build_root  # noqa: E402
 REQUIRED_FIELDS = ("id", "title", "type", "severity", "status", "opened", "source", "surface", "detail")
 VALID_TYPES = {"GAP", "BUG", "PROCESS", "BOUNDARY"}
 VALID_SEVERITIES = {"LOW", "MEDIUM", "HIGH", "P0", "P1", None}
-VALID_STATUSES = {"OPEN", "PARTIAL", "DONE"}
+VALID_STATUSES = {"OPEN", "PARTIAL", "DONE", "WONTFIX", "OBSOLETE"}
 VALID_VERIFICATION = {"NOT_VERIFIED", "UNIT_TESTED", "VERIFIED_LIVE", None}
 
 
@@ -75,8 +75,10 @@ def validate_item(item: dict, path: Path) -> list[str]:
         errors.append("severity: null is only valid for type: BOUNDARY")
     if item.get("status") not in VALID_STATUSES:
         errors.append(f"status '{item.get('status')}' not in {sorted(VALID_STATUSES)}")
-    if item.get("status") == "DONE" and not item.get("closed"):
-        errors.append("status: DONE requires a 'closed' date")
+    if item.get("status") in {"DONE", "WONTFIX", "OBSOLETE"} and not item.get("closed"):
+        errors.append(f"status: {item.get('status')} requires a 'closed' date")
+    if item.get("status") in {"WONTFIX", "OBSOLETE"} and not item.get("decision"):
+        errors.append(f"status: {item.get('status')} requires a 'decision' one-line reason")
     if item.get("verification") not in VALID_VERIFICATION:
         errors.append(f"verification '{item.get('verification')}' not in {sorted(v for v in VALID_VERIFICATION if v)}")
     if "guard" in item and item["guard"] is not None:
@@ -143,8 +145,11 @@ def render(items: list[dict]) -> str:
     # id, so the 2 open items were buried somewhere inside 128 closed ones instead of leading. This
     # still generates the FULL record (nothing is dropped) -- it just leads with what's actionable
     # and pushes the closed archive behind a <details> fold instead of leading with it.
-    open_items = sorted((i for i in items if i["status"] != "DONE"), key=lambda i: i["id"])
-    done_items = sorted((i for i in items if i["status"] == "DONE"), key=lambda i: i["id"])
+    # WONTFIX/OBSOLETE are closed dispositions, not open work -- grouping them with OPEN/PARTIAL
+    # would silently re-inflate the one open-count this whole generator exists to keep honest.
+    CLOSED_STATUSES = {"DONE", "WONTFIX", "OBSOLETE"}
+    open_items = sorted((i for i in items if i["status"] not in CLOSED_STATUSES), key=lambda i: i["id"])
+    done_items = sorted((i for i in items if i["status"] in CLOSED_STATUSES), key=lambda i: i["id"])
 
     lines = [
         "# Open Items — generated",
