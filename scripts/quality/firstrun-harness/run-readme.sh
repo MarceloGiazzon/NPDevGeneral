@@ -418,6 +418,20 @@ for tool_spec in "java:Java 17" "python3:Python 3"; do
   fi
 done
 
+# REG-183: $README_TEXT/$GETTING_STARTED_TEXT were rendered at line ~340, BEFORE this section
+# installed python3 -- render_content_doc shells out to python3, so on this deliberately bare image
+# that produced silent empty strings. PREREQ_LINE (just above) already has its own documented
+# python3-free fallback for the ONE early read; these two variables themselves were never
+# refreshed, so every LATER check that reads them (documents-login-key, documents-app-url, both in
+# section 3) failed unconditionally regardless of what README/GETTING_STARTED actually say. Found
+# live on this harness's first-ever CI run (QUAL-14). Re-render now that python3 is confirmed
+# present -- guarded, so a genuine "README doesn't name Python 3" defect still leaves both empty and
+# both later checks correctly failing for the RIGHT reason, rather than papering over that case too.
+if command -v python3 >/dev/null 2>&1; then
+  README_TEXT=$(render_content_doc content/readme.json)
+  GETTING_STARTED_TEXT=$(render_content_doc content/getting-started.json)
+fi
+
 # Java must specifically be 17 -- the single most common newcomer failure.
 if command -v java >/dev/null 2>&1; then
   JV=$(java -version 2>&1 | head -1)

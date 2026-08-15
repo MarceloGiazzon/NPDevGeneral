@@ -1,0 +1,64 @@
+id: REG-183
+title: >-
+  run-readme.sh renders README_TEXT/GETTING_STARTED_TEXT once, before python3 is installed --
+  documents-login-key and documents-app-url silently fail forever regardless of what README says
+type: BUG
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-08-15
+source: >-
+  QUAL-14's own first-ever CI run of scripts/quality/firstrun-harness/run-readme.sh (workflow
+  `firstrun-harness.yml`, run 31902763478, dispatched on `main` right after PR #100 merged) --
+  found within minutes of the harness executing in CI for the first time since it was written,
+  exactly the kind of bug QUAL-14 exists to catch.
+surface: ci/firstrun-harness
+files:
+  - scripts/quality/firstrun-harness/run-readme.sh
+detail: |
+  `README_TEXT=$(render_content_doc content/readme.json)` and the `GETTING_STARTED_TEXT` sibling
+  run at line 340, in section 0, BEFORE section 1 (line 345 onward) installs python3 --
+  `render_content_doc` shells out to `python3 -c ...`, so on the harness's deliberately bare image
+  (no python3 preinstalled) this silently produces an EMPTY string for both variables. The harness's
+  own comment at line 351 acknowledges this is expected for the ONE use that follows immediately
+  (`PREREQ_LINE`, which has a documented, working fallback to `grep_content_line`, a python3-free
+  parser) -- but `$README_TEXT`/`$GETTING_STARTED_TEXT` themselves are never re-populated after
+  python3 becomes available a few lines later, so every LATER read of those two variables still sees
+  the stale empty string from before python3 existed.
+
+  Two checks read them, both much later (section 3, well after python3 is installed):
+  `documents-login-key` (greps for `SUPER_USER_KEY`) and `documents-app-url` (greps for
+  `localhost:[0-9]{4}`). Both FAIL unconditionally, on every run, regardless of what README.md/
+  GETTING_STARTED.md actually say -- confirmed live: both strings ARE present in the real
+  `content/readme.json` (`SUPER_USER_KEY.txt` at README.md:43, `localhost:8080` at README.md:37/53),
+  and replaying the harness's own `render_content_doc` function locally (with python3 actually
+  available) renders them correctly. This is a pure staleness bug in the harness, not a real
+  documentation gap -- the opposite of what the failure message claims.
+
+  Consequence: two of this harness's checks were permanently, silently broken since whenever this
+  staleness was introduced -- and nothing could have caught it, because nothing ever ran this
+  harness in CI before `QUAL-14` (2026-08-15). A harness that always fails the same two checks for
+  the wrong reason teaches whoever reads its output to stop trusting (or stop reading) those two
+  lines, which is the same failure class this repo's `check-*` self-tests exist to prevent
+  elsewhere.
+
+  **Fixed 2026-08-15.** Re-render both variables once python3 is confirmed present, right after
+  section 1's own `prereq-present: Python 3` check (the natural place: it already answers "is
+  python3 here now"). Guarded on `command -v python3` so a genuine doc defect (README failing to
+  name Python 3 as a requirement) still leaves both variables empty and both checks correctly
+  failing for the RIGHT reason, rather than papering over that case too.
+
+  Verification status: fix applied and locally reasoned through (the guard clause and re-render
+  call have been reviewed against the exact staleness mechanism found), but not yet proven by a
+  fresh dispatched run -- that is the next step, and this item will be updated with the real run id
+  once observed.
+guard:
+  kind: script
+  ref: scripts/quality/firstrun-harness/run-readme.sh (documents-login-key / documents-app-url checks)
+  asserts: >-
+    both checks read real, non-empty README/GETTING_STARTED content and pass when the strings are
+    genuinely present -- proven by a real dispatched run, not inferred from the diff
+  provenRed: true
+  # RED proven directly: run 31902763478 (before this fix) failed both checks with README_TEXT and
+  # GETTING_STARTED_TEXT confirmed empty by direct code reading, while the real content indisputably
+  # contains both strings (grepped README.md/content/readme.json directly). GREEN not yet observed --
+  # held at PARTIAL until a fresh dispatched run confirms both checks pass.
