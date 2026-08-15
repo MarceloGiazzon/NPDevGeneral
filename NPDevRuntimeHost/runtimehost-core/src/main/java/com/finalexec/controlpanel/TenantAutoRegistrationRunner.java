@@ -1,8 +1,9 @@
 package com.finalexec.controlpanel;
 
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.kernel.dbschema.NpdevTenantTable;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -12,6 +13,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.Optional;
 
 /**
  * Self-healing companion to {@code com.finalexec.auth.IdentityProvisioning.ensureTenantRegistered}
@@ -36,22 +38,32 @@ import java.time.Instant;
 public class TenantAutoRegistrationRunner implements ApplicationRunner {
 
     private final ObjectProvider<DataSource> dataSourceProvider;
-    private final String userTable;
+    // REG-177: resolved ONCE at construction from the already-available compiledModel, replacing a
+    // previous @Value("${npdev.auth.login.user-table:identity_users}") default that (a) hardcoded
+    // the pre-versioning literal and (b) was semantically wrong regardless -- this reconciles the
+    // BUILT-IN identity pack's own table (the same one IdentityProvisioning writes to), not an
+    // app's separately-configurable bonded credential table (LoginController's credentialTable is
+    // the right place for that). Empty when this app doesn't compose the identity pack at all.
+    private final Optional<IdentityPackTableNames> identityTables;
 
     public TenantAutoRegistrationRunner(
             ObjectProvider<DataSource> dataSourceProvider,
-            @Value("${npdev.auth.login.user-table:identity_users}") String userTable
+            CompiledModel compiledModel
     ) {
         this.dataSourceProvider = dataSourceProvider;
-        this.userTable = userTable;
+        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
     }
 
     @Override
     public void run(ApplicationArguments args) {
+        if (identityTables.isEmpty()) {
+            return;
+        }
         DataSource dataSource = dataSourceProvider.getIfAvailable();
         if (dataSource == null) {
             return;
         }
+        String userTable = identityTables.get().usersTable();
         String sql = "INSERT INTO " + NpdevTenantTable.NAME
                 + " (tenant_id, display_name, status, created_at_ms) "
                 + "SELECT DISTINCT u.tenant_id, u.tenant_id, 'ACTIVE', ? FROM " + userTable + " u "

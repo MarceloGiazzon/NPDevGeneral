@@ -1,6 +1,8 @@
 package com.finalexec.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.runtime.support.IdentityRoleLookup;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -45,6 +48,10 @@ public class LoginController {
 
     private final DataSource dataSource;
     private final ObjectMapper objectMapper;
+    // REG-177 fix: graceful tryResolve, not the throwing resolve() -- this bean is only gated on
+    // npdev.auth.mode=jwt, NOT on the identity pack being composed, so an app that sets jwt auth
+    // mode without ever composing the identity pack must still boot (guarded per-request instead).
+    private final Optional<IdentityPackTableNames> identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -58,6 +65,7 @@ public class LoginController {
             DataSource dataSource,
             ObjectMapper objectMapper,
             ResourceLoader resourceLoader,
+            CompiledModel compiledModel,
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn,
@@ -77,6 +85,7 @@ public class LoginController {
     ) throws Exception {
         this.dataSource = dataSource;
         this.objectMapper = objectMapper;
+        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -123,8 +132,16 @@ public class LoginController {
             return tooManyAttempts(tenantId, username, clientIp);
         }
 
+        if (identityTables.isEmpty()) {
+            // This app runs npdev.auth.mode=jwt but never composed the identity pack -- there is no
+            // identity_users table for this endpoint to authenticate against at all.
+            return ResponseEntity.status(503).body(Map.of("error", "identity_pack_not_composed"));
+        }
+        IdentityPackTableNames identityTables = this.identityTables.get();
+
         try (Connection connection = dataSource.getConnection()) {
-            String userSql = "SELECT id, active, token_version FROM identity_users WHERE username = ? AND tenant_id = ?";
+            String userSql = "SELECT id, active, token_version FROM " + identityTables.usersTable()
+                    + " WHERE username = ? AND tenant_id = ?";
             String userId;
             int tokenVersion;
             try (PreparedStatement ps = connection.prepareStatement(userSql)) {
@@ -167,7 +184,7 @@ public class LoginController {
             }
 
             throttle.recordSuccess(tenantId, username);
-            Set<String> roles = IdentityRoleLookup.rolesFor(dataSource, tenantId, username);
+            Set<String> roles = IdentityRoleLookup.rolesFor(dataSource, identityTables, tenantId, username);
             JwtSigner signer = new JwtSigner(objectMapper, privateKey, issuer, audience, expirySeconds);
             String token = signer.sign(tenantId, username, roles, tokenVersion);
 

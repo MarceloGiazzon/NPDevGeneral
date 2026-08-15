@@ -37,7 +37,10 @@ jobs:
     # 6m14s figure above): persistence+idempotency+bulkhead together = 39.6s, vs. B21's own
     # previously-recorded ~34s for persistence+idempotency alone -- bulkhead's marginal cost is a few
     # seconds, consistent with reusing one already-started container. 60 min leaves ample headroom.
-    timeout-minutes: 60
+    # REG-176 (2026-08-15): raised 60->90 after the "Generator unit tests" step's own budget grew
+    # to 45min (packaged-proof tests isolated + given a higher per-test health-check ceiling) -- the
+    # job-level timeout must accommodate a genuine worst case across ALL steps, not just this one.
+    timeout-minutes: 90
 
     defaults:
       run:
@@ -143,12 +146,22 @@ jobs:
         working-directory: NPDevGenerator
         # REG-176: packagedProofTest now runs the 3 packaged-app-boot proofs SERIALLY
         # (maxParallelForks=1, generator/build.gradle) instead of contending for 2 forks with each
-        # other -- budget raised from 20 to 30min for the added serial wall-clock, not because any
-        # single test got slower.
-        timeout-minutes: 30
+        # other. Each test's own HEALTH_TIMEOUT was also raised 6->8min as defense-in-depth --
+        # budget here raised 30->45min so a genuine worst-case (all 3 needing their full window)
+        # still fits comfortably.
+        timeout-minutes: 45
         run: |
           sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
-          ./gradlew :generator:test :generator:behaviorTest :generator:packagedProofTest --no-daemon --console=plain
+          ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
+          # REG-176 follow-up: NPDevGenerator/gradle.properties sets org.gradle.parallel=true, so a
+          # single invocation naming both :generator:test and :generator:packagedProofTest as
+          # top-level tasks let Gradle schedule them CONCURRENTLY (independent tasks, same project)
+          # even though packagedProofTest serializes its own 3 tests internally -- reproduced live
+          # (all 3 packaged-proof tests failed together, worse than the original 2-of-3 contention
+          # this task split was meant to fix). A wholly separate invocation, after the fast suite
+          # has already finished, is the only way to guarantee no concurrent Gradle task competes
+          # for the same CPU/Docker/port resources during the packaged-app boots.
+          ./gradlew :generator:packagedProofTest --no-daemon --console=plain
 
       # G2 (docs/CLOSEOUT_PLAN.md): the corpus-parse gate proves every DSL feature PARSES; nothing
       # proved any of them actually EMIT. dsl-conformance-max was "validated, not run" until this

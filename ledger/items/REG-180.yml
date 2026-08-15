@@ -1,0 +1,57 @@
+id: REG-180
+title: >-
+  RuntimeControllerAllowlistConfig's ControlPanel-endpoint enforcement only activates on Spring's
+  reserved "default" profile, which no real launcher ever uses -- a dormant landmine, not currently
+  exploitable via any documented launch path
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-15
+source: >-
+  Found incidentally while investigating a reported com.finalexec.controlpanel 404 (see REG-179's
+  own source note -- that 404 did not reproduce; this is a different thing found along the way
+  while ruling out "is the allowlist stripping these controllers" as the cause).
+surface: runtimehost/controller-allowlist
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/RuntimeControllerAllowlistConfig.java
+  - NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json
+  - NPDevRuntimeHost/src/main/resources/application-default.properties
+detail: |
+  `RuntimeControllerAllowlistConfig` would strip every `com.finalexec.controlpanel.*` controller --
+  none of them appear in `allowedControllers`/`deferredControllers` in
+  `runtime-supported-controllers.json`. Its enforcement bean is gated
+  `@ConditionalOnProperty(havingValue="true")` on `npdev.runtime.supported-surface-enforced`, which
+  is only set `true` in `application-default.properties`. Per that file's own R7 Stage B comment,
+  Spring's reserved `default` profile (and this properties file) only activates on a FULLY
+  UN-PROFILED boot. Every real launcher checked (`Run-FinalApp.ps1`, `Build-NpdevApp.ps1`, sample
+  apps' own `run-sample-app.ps1`) passes an explicit `--spring.profiles.active=dev,...`, so
+  `application-default.properties` never loads and the allowlist postprocessor bean is never
+  created on any real, documented boot path today.
+
+  Confirmed live: booted `superuser-admin-console` with its normal `dev,trial` profile and hit
+  `com.finalexec.controlpanel.*` endpoints with DEBUG-level Spring MVC routing logs on -- the
+  routes registered and were reached normally, consistent with the enforcement bean never having
+  activated.
+
+  This is a real, currently-DORMANT landmine, not a live bug: if anyone ever boots an app
+  un-profiled, or if a future change ports the "supported surface enforced" flag onto an explicit
+  profile (dev/trial/prod) rather than the reserved default one, every ControlPanel endpoint would
+  silently start 404ing with no error anywhere pointing at the cause -- exactly the "a suite that
+  silently skips its most valuable [thing] is exactly how a gate stops running without anyone
+  noticing" pattern this repo's own CLAUDE.md warns about elsewhere (re: packaged-proof tests).
+
+  Likely fix, not designed further here: either (a) explicitly add `com.finalexec.controlpanel.*`
+  to `allowedControllers` in `runtime-supported-controllers.json` so it's correct regardless of
+  which profile the enforcement flag ever gets moved onto, or (b) confirm this enforcement mechanism
+  is intentionally profile-scoped (e.g. only meant to matter for some deployment mode that always
+  uses the true Spring default profile) and document that explicitly rather than leaving it to be
+  rediscovered.
+guard:
+  kind: manual
+  ref: >-
+    boot a generated app with NO --spring.profiles.active flag at all (a genuinely un-profiled
+    boot), then GET a com.finalexec.controlpanel endpoint
+  asserts: >-
+    the endpoint does not silently 404 due to RuntimeControllerAllowlistConfig stripping an
+    unlisted-but-intended-to-be-supported controller package
+  provenRed: false

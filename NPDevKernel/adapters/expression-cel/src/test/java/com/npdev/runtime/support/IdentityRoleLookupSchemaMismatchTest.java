@@ -1,5 +1,6 @@
 package com.npdev.runtime.support;
 
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class IdentityRoleLookupSchemaMismatchTest {
 
     private static final String TENANT = "tenantx";
+    // Matches this test's own setUp() table names -- a pure JDBC-level unit test with no
+    // CompiledModel/generator involved. Only usersTable() is ever read by tokenVersion().
+    private static final IdentityPackTableNames TABLES = new IdentityPackTableNames(
+            "identity_users", "identity_roles", "identity_user_roles", "identity_user_role_permissions");
 
     private DataSource dataSource;
     private CapturingHandler capturingHandler;
@@ -60,7 +65,7 @@ class IdentityRoleLookupSchemaMismatchTest {
             s.execute("INSERT INTO identity_users VALUES ('" + UUID.randomUUID() + "','alice',TRUE,'" + TENANT + "')");
         }
 
-        int version = IdentityRoleLookup.tokenVersion(dataSource, TENANT, "alice");
+        int version = IdentityRoleLookup.tokenVersion(dataSource, TABLES, TENANT, "alice");
 
         assertEquals(0, version, "the never-throws contract must hold even against a stale schema");
         assertTrue(capturingHandler.records.stream().anyMatch(r ->
@@ -78,7 +83,7 @@ class IdentityRoleLookupSchemaMismatchTest {
             s.execute("INSERT INTO identity_users VALUES ('" + userId + "','alice',TRUE,'" + TENANT + "',7)");
         }
 
-        int version = IdentityRoleLookup.tokenVersion(dataSource, TENANT, "alice");
+        int version = IdentityRoleLookup.tokenVersion(dataSource, TABLES, TENANT, "alice");
 
         assertEquals(7, version);
         assertFalse(capturingHandler.records.stream().anyMatch(r -> r.getLevel() == Level.SEVERE),

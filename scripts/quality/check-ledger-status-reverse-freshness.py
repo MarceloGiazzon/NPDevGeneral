@@ -175,6 +175,18 @@ ACCEPTED_R2: dict[str, str] = {
         "IdentityProvisioning bug. Same shape as PACK-9 above: a legitimate 'reconcile this row' "
         "firing whose reconciliation is already done and the conclusion is 'still open'."
     ),
+    "REG-176": (
+        "The commit R2 names (f494e21588, the Batch 3 runtimehost PR #93 commit) genuinely MODIFIED "
+        "REG-176.yml -- but the edit added a 2026-08-15 root-cause narrowing (a Gradle-cache-"
+        "staleness hypothesis, pinned to the exact failing step) and a follow-up note that the SAME "
+        "job came back GREEN on a later PR with no code change, i.e. confirmed intermittent -- "
+        "explicitly 'downgrading urgency accordingly since it is not blocking every PR after all, "
+        "but the underlying cause... remains unexplained.' Not a fix; the item's own text says so. "
+        "The commit's production-source changes (REG-170/156/166/163's runtimehost fixes) are "
+        "unrelated to REG-176's own CI-infrastructure question. Same shape as PACK-9/REG-170 above: "
+        "a legitimate 'reconcile this row' firing whose reconciliation is already done and the "
+        "conclusion is 'still open, still unexplained.'"
+    ),
 }
 
 # R2: same "checkers describe gaps for a living" exemption R1's PRODUCTION_ROOTS encodes, spelled as

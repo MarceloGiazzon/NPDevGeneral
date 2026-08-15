@@ -32,10 +32,24 @@ class SupportedRuntimeSurfacePackagingTest {
         assertPackaged("com.finalexec.api.internal.SemanticBehaviorWriteBackController");
 
         assertNotPackaged("com.finalexec.HelloController");
-        assertNotPackaged("com.finalexec.api.internal.ModelSyncStatusController");
         assertNotPackaged("com.finalexec.api.experimental.FlowBuilderController");
-        assertNotPackaged("com.finalexec.api.internal.RuntimePluginPackagesController");
-        assertNotPackaged("com.finalexec.api.internal.RuntimeRefreshController");
+        // REG-163: deferredControllers are now COMPILED (allowedControllers UNION deferredControllers)
+        // so RuntimeControllerAllowlistConfig's runtime bean-removal filter has a real bean to remove
+        // under the default profile and a real one to KEEP under non-default/experimental --
+        // previously they were compiled out of sourceSets.main entirely, making the non-default
+        // profile permanently dead code regardless of what ran at runtime. "Packaged" (present on the
+        // compiled classpath) is no longer the same question as "active under the default profile";
+        // this test only ever asked the former. RuntimePluginPackagesController/RuntimeRefreshController/
+        // ModelSyncStatusController all compile cleanly under the new gate, so they move here.
+        assertPackaged("com.finalexec.api.internal.RuntimePluginPackagesController");
+        assertPackaged("com.finalexec.api.internal.RuntimeRefreshController");
+        assertPackaged("com.finalexec.api.internal.ModelSyncStatusController");
+        // RuntimeTopologyExplorerController is ALSO deferredControllers-listed, but stays excluded
+        // for an unrelated reason: RuntimeTopologyExplorerService (its own dependency, below) itself
+        // construct-injects FlowBuilderService/GovernanceWorkspaceService, both under
+        // com/finalexec/npdev/service/experimental/ -- FinalAppAssembler never copies that directory
+        // into ANY generated app, so the dependency chain is genuinely unsatisfiable, not merely
+        // profile-gated. Confirmed live: compiling it produces a real "cannot find symbol".
         assertNotPackaged("com.finalexec.api.internal.RuntimeTopologyExplorerController");
     }
 
@@ -81,11 +95,16 @@ class SupportedRuntimeSurfacePackagingTest {
         assertPackaged("com.finalexec.npdev.service.internal.SemanticBehaviorWriteBackCanonicalizationService");
 
         assertNotPackaged("com.finalexec.npdev.service.experimental.FlowBuilderService");
-        assertNotPackaged("com.finalexec.npdev.service.internal.ModelSyncStatusService");
         assertNotPackaged("com.finalexec.npdev.service.experimental.PreviewReferenceResolver");
         assertNotPackaged("com.finalexec.npdev.service.experimental.TemplateLibraryManagementService");
+        // REG-163: see the sibling controller test's own comment -- nonDefaultServicePatterns
+        // services are now compiled so the profile they exist for is reachable at all.
+        assertPackaged("com.finalexec.npdev.service.internal.ModelSyncStatusService");
+        assertPackaged("com.finalexec.npdev.service.internal.TenantOperationalAdministrationService");
+        // RuntimeTopologyExplorerService itself stays excluded: it construct-injects
+        // FlowBuilderService/GovernanceWorkspaceService (experimental, never copied into any
+        // generated app), so its own dependency is genuinely unsatisfiable, not merely profile-gated.
         assertNotPackaged("com.finalexec.npdev.service.internal.RuntimeTopologyExplorerService");
-        assertNotPackaged("com.finalexec.npdev.service.internal.TenantOperationalAdministrationService");
     }
 
     private static void assertPackaged(String className) {

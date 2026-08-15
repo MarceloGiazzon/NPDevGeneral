@@ -2,6 +2,7 @@ package com.finalexec.controlpanel;
 
 import com.finalexec.auth.IdentityPackSchemaException;
 import com.finalexec.auth.IdentityProvisioning;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.finalexec.auth.PasswordHasher;
 import com.finalexec.auth.SqlSchemaErrors;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -39,6 +40,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -64,6 +66,13 @@ public class ControlPanelTenantUsersController {
     private final CapabilityRegistry capabilityRegistry;
     private final CapabilityDispatcher capabilityDispatcher;
     private final CompiledModel compiledModel;
+    // REG-177/REG-179 fix: resolved with the GRACEFUL tryResolve (not resolve). This bean is
+    // registered unconditionally in every generated app regardless of whether it composes the
+    // identity pack -- the eager, throwing IdentityPackTableNames.resolve(...) this used to call
+    // here crashed Spring context startup (BeanCreationException -> IllegalStateException) for any
+    // app without one. Unwrapped per-request via requireIdentityTables(), mirroring the existing
+    // requireDataSource() guard already used throughout this class.
+    private final Optional<IdentityPackTableNames> identityTables;
     private final AuditLogStore auditLogStore;
     private final String userTable;
     private final String userIdColumn;
@@ -80,7 +89,7 @@ public class ControlPanelTenantUsersController {
             CapabilityDispatcher capabilityDispatcher,
             CompiledModel compiledModel,
             AuditLogStore auditLogStore,
-            @Value("${npdev.auth.login.user-table:identity_users}") String userTable,
+            @Value("${npdev.auth.login.user-table:}") String userTable,
             @Value("${npdev.auth.login.user-id-column:id}") String userIdColumn,
             @Value("${npdev.auth.login.username-column:username}") String usernameColumn,
             @Value("${npdev.auth.login.display-name-column:display_name}") String displayNameColumn,
@@ -93,8 +102,21 @@ public class ControlPanelTenantUsersController {
         this.capabilityRegistry = capabilityRegistry;
         this.capabilityDispatcher = capabilityDispatcher;
         this.compiledModel = compiledModel;
+        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
         this.auditLogStore = auditLogStore;
-        this.userTable = userTable;
+        // REG-179: npdev.auth.login.user-table's literal default (formerly "identity_users") is
+        // never actually set by any generator/mustache-template wiring for a real app (REG-177's own
+        // finding) -- it was silently wrong for any app whose identity pack is version-qualified
+        // (the normal case, e.g. identity_v1_users), causing this controller's 6 raw-SQL call sites
+        // to 500 against a real schema. An explicit override still wins (the documented "custom user
+        // table" feature this class's own javadoc describes), but the fallback is now the identity
+        // pack's own resolved table name instead of a stale pre-versioning literal. When this app
+        // doesn't compose the identity pack at all, fall back to the same pre-REG-179 literal --
+        // every endpoint that actually needs the identity tables is guarded by
+        // requireIdentityTables() and never reaches SQL built from this value in that case.
+        this.userTable = (userTable == null || userTable.isBlank())
+                ? this.identityTables.map(IdentityPackTableNames::usersTable).orElse("identity_users")
+                : userTable;
         this.userIdColumn = userIdColumn;
         this.usernameColumn = usernameColumn;
         this.displayNameColumn = displayNameColumn;
@@ -122,7 +144,13 @@ public class ControlPanelTenantUsersController {
                         row.put("userId", userId);
                         row.put("username", rs.getString(2));
                         row.put("displayName", rs.getString(3));
-                        row.put("roles", rolesOf(connection, userId, tenantId));
+                        // Class javadoc's own documented contract: "if the app doesn't have [the
+                        // identity-pack role tables], users are returned with an empty role list" --
+                        // this is the read side, so it stays available (unlike the write endpoints
+                        // below) even when this app never composed the identity pack at all.
+                        row.put("roles", identityTables.isPresent()
+                                ? rolesOf(connection, identityTables.get(), userId, tenantId)
+                                : List.of());
                         row.put("hasPassword", hasCredential(connection, userId, tenantId));
                         users.add(row);
                     }
@@ -252,13 +280,16 @@ public class ControlPanelTenantUsersController {
                     "declaredRoles", compiledModel.getRoles().stream().map(CompiledRole::name).toList()));
         }
         DataSource dataSource = requireDataSource();
+        IdentityPackTableNames identityTables = requireIdentityTables();
         try (Connection connection = dataSource.getConnection()) {
             Object userId = findUserId(connection, tenantId, username);
             if (userId == null) {
                 return ResponseEntity.status(404).body(Map.of("error", "user_not_found"));
             }
-            UUID roleId = IdentityProvisioning.findOrCreateRole(connection, tenantId, declaredRole.name(), null);
-            IdentityProvisioning.insertUserRole(connection, UUID.fromString(String.valueOf(userId)), roleId, tenantId);
+            UUID roleId = IdentityProvisioning.findOrCreateRole(
+                    connection, identityTables, tenantId, declaredRole.name(), null);
+            IdentityProvisioning.insertUserRole(
+                    connection, identityTables, UUID.fromString(String.valueOf(userId)), roleId, tenantId);
             auditRoleChange(requester, tenantId, username, declaredRole.name(), "role.grant");
             return ResponseEntity.ok(Map.of("ok", true, "username", username, "role", declaredRole.name()));
         } catch (Exception exception) {
@@ -280,6 +311,7 @@ public class ControlPanelTenantUsersController {
     ) {
         ExecutionContext requester = requireSuperUser(httpRequest);
         DataSource dataSource = requireDataSource();
+        IdentityPackTableNames identityTables = requireIdentityTables();
         try (Connection connection = dataSource.getConnection()) {
             Object userId = findUserId(connection, tenantId, username);
             if (userId == null) {
@@ -287,8 +319,8 @@ public class ControlPanelTenantUsersController {
             }
             int deleted;
             try (PreparedStatement ps = connection.prepareStatement(
-                    "DELETE FROM identity_user_roles WHERE user_id = ? AND tenant_id = ? AND role_id = "
-                            + "(SELECT id FROM identity_roles WHERE name = ? AND tenant_id = ?)")) {
+                    "DELETE FROM " + identityTables.userRolesTable() + " WHERE user_id = ? AND tenant_id = ? AND role_id = "
+                            + "(SELECT id FROM " + identityTables.rolesTable() + " WHERE name = ? AND tenant_id = ?)")) {
                 ps.setObject(1, UUID.fromString(String.valueOf(userId)));
                 ps.setString(2, tenantId);
                 ps.setString(3, role);
@@ -326,14 +358,15 @@ public class ControlPanelTenantUsersController {
             return ResponseEntity.badRequest().body(Map.of("error", "role_not_declared_by_model"));
         }
         DataSource dataSource = requireDataSource();
+        IdentityPackTableNames identityTables = requireIdentityTables();
         try (Connection connection = dataSource.getConnection()) {
-            UUID userRoleId = findUserRoleId(connection, tenantId, username, declaredRole.name());
+            UUID userRoleId = findUserRoleId(connection, identityTables, tenantId, username, declaredRole.name());
             if (userRoleId == null) {
                 return ResponseEntity.status(404).body(Map.of("error", "role_not_assigned_to_user"));
             }
             List<String> permissions = new ArrayList<>();
             try (PreparedStatement ps = connection.prepareStatement(
-                    "SELECT permission FROM identity_user_role_permissions "
+                    "SELECT permission FROM " + identityTables.userRolePermissionsTable() + " "
                             + "WHERE user_role_id = ? AND tenant_id = ? ORDER BY permission")) {
                 ps.setObject(1, userRoleId);
                 ps.setString(2, tenantId);
@@ -389,15 +422,16 @@ public class ControlPanelTenantUsersController {
                     "declaredCeiling", declaredRole.grants()));
         }
         DataSource dataSource = requireDataSource();
+        IdentityPackTableNames identityTables = requireIdentityTables();
         try (Connection connection = dataSource.getConnection()) {
-            UUID userRoleId = findUserRoleId(connection, tenantId, username, declaredRole.name());
+            UUID userRoleId = findUserRoleId(connection, identityTables, tenantId, username, declaredRole.name());
             if (userRoleId == null) {
                 return ResponseEntity.status(404).body(Map.of("error", "role_not_assigned_to_user"));
             }
-            if (!overrideRowExists(connection, tenantId, userRoleId, permission.name())) {
+            if (!overrideRowExists(connection, identityTables, tenantId, userRoleId, permission.name())) {
                 try (PreparedStatement ps = connection.prepareStatement(
-                        "INSERT INTO identity_user_role_permissions (id, user_role_id, permission, tenant_id) "
-                                + "VALUES (?, ?, ?, ?)")) {
+                        "INSERT INTO " + identityTables.userRolePermissionsTable()
+                                + " (id, user_role_id, permission, tenant_id) VALUES (?, ?, ?, ?)")) {
                     ps.setObject(1, UUID.randomUUID());
                     ps.setObject(2, userRoleId);
                     ps.setString(3, permission.name());
@@ -434,14 +468,15 @@ public class ControlPanelTenantUsersController {
             return ResponseEntity.badRequest().body(Map.of("error", "role_not_declared_by_model"));
         }
         DataSource dataSource = requireDataSource();
+        IdentityPackTableNames identityTables = requireIdentityTables();
         try (Connection connection = dataSource.getConnection()) {
-            UUID userRoleId = findUserRoleId(connection, tenantId, username, declaredRole.name());
+            UUID userRoleId = findUserRoleId(connection, identityTables, tenantId, username, declaredRole.name());
             if (userRoleId == null) {
                 return ResponseEntity.status(404).body(Map.of("error", "role_not_assigned_to_user"));
             }
             int deleted;
             try (PreparedStatement ps = connection.prepareStatement(
-                    "DELETE FROM identity_user_role_permissions "
+                    "DELETE FROM " + identityTables.userRolePermissionsTable() + " "
                             + "WHERE user_role_id = ? AND permission = ? AND tenant_id = ?")) {
                 ps.setObject(1, userRoleId);
                 ps.setString(2, permission.trim().toUpperCase(java.util.Locale.ROOT));
@@ -480,13 +515,14 @@ public class ControlPanelTenantUsersController {
         return false;
     }
 
-    private UUID findUserRoleId(Connection connection, String tenantId, String username, String roleName)
+    private UUID findUserRoleId(
+            Connection connection, IdentityPackTableNames identityTables, String tenantId, String username, String roleName)
             throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT ur.id FROM identity_user_roles ur "
-                        + "JOIN identity_users u ON u.id = ur.user_id "
-                        + "JOIN identity_roles r ON r.id = ur.role_id "
-                        + "WHERE u.username = ? AND u.tenant_id = ? AND ur.tenant_id = ? "
+                "SELECT ur.id FROM " + identityTables.userRolesTable() + " ur "
+                        + "JOIN " + userTable + " u ON u.id = ur.user_id "
+                        + "JOIN " + identityTables.rolesTable() + " r ON r.id = ur.role_id "
+                        + "WHERE u." + usernameColumn + " = ? AND u.tenant_id = ? AND ur.tenant_id = ? "
                         + "AND r.name = ? AND r.tenant_id = ?")) {
             ps.setString(1, username);
             ps.setString(2, tenantId);
@@ -499,10 +535,12 @@ public class ControlPanelTenantUsersController {
         }
     }
 
-    private boolean overrideRowExists(Connection connection, String tenantId, UUID userRoleId, String permissionName)
+    private boolean overrideRowExists(
+            Connection connection, IdentityPackTableNames identityTables, String tenantId, UUID userRoleId, String permissionName)
             throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT 1 FROM identity_user_role_permissions WHERE user_role_id = ? AND permission = ? AND tenant_id = ?")) {
+                "SELECT 1 FROM " + identityTables.userRolePermissionsTable()
+                        + " WHERE user_role_id = ? AND permission = ? AND tenant_id = ?")) {
             ps.setObject(1, userRoleId);
             ps.setString(2, permissionName);
             ps.setString(3, tenantId);
@@ -621,10 +659,11 @@ public class ControlPanelTenantUsersController {
         }
     }
 
-    private List<String> rolesOf(Connection connection, String userId, String tenantId) {
+    private List<String> rolesOf(Connection connection, IdentityPackTableNames identityTables, String userId, String tenantId) {
         List<String> roles = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT r.name FROM identity_user_roles ur JOIN identity_roles r ON r.id = ur.role_id"
+                "SELECT r.name FROM " + identityTables.userRolesTable() + " ur JOIN "
+                        + identityTables.rolesTable() + " r ON r.id = ur.role_id"
                         + " WHERE ur.user_id = ? AND ur.tenant_id = ? ORDER BY r.name")) {
             ps.setObject(1, UUID.fromString(userId));
             ps.setString(2, tenantId);
@@ -676,5 +715,14 @@ public class ControlPanelTenantUsersController {
                             + "(H2Local/H2Server/Postgres).");
         }
         return dataSource;
+    }
+
+    /** Same shape as {@link #requireDataSource()}: this whole controller is meaningless without the
+     * identity pack (it reads/writes identity_users/identity_roles/... rows), but the pack being
+     * absent is a normal, supported app configuration (internal.tables=false) -- so a request that
+     * needs it gets a clear 503, not the bean-construction-time crash this class used to have. */
+    private IdentityPackTableNames requireIdentityTables() {
+        return identityTables.orElseThrow(() -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "ControlPanel unavailable -- this app does not compose the identity pack."));
     }
 }

@@ -52,7 +52,12 @@ class NonDefaultRuntimeSurfaceProfileIntegrationTest {
                 continue;
             }
             Package beanPackage = beanType.getPackage();
-            if (beanPackage == null || !"com.finalexec.api".equals(beanPackage.getName())) {
+            // REG-163: every controller this test checks (RuntimePluginPackagesController,
+            // ModelSyncStatusController, RuntimeRefreshController, BetaOnboardingController) lives
+            // under a com.finalexec.api SUBpackage (.internal/.experimental), never the bare
+            // com.finalexec.api package itself -- an exact-equals check here can never match any of
+            // them, a second, independent bug this test's own revival surfaced.
+            if (beanPackage == null || !beanPackage.getName().startsWith("com.finalexec.api")) {
                 continue;
             }
             if (beanType.getSimpleName().endsWith("Controller")) {
@@ -67,7 +72,12 @@ class NonDefaultRuntimeSurfaceProfileIntegrationTest {
         for (HandlerMethod handlerMethod : handlerMapping.getHandlerMethods().values()) {
             Class<?> beanType = handlerMethod.getBeanType();
             Package beanPackage = beanType.getPackage();
-            if (beanPackage == null || !"com.finalexec.api".equals(beanPackage.getName())) {
+            // REG-163: every controller this test checks (RuntimePluginPackagesController,
+            // ModelSyncStatusController, RuntimeRefreshController, BetaOnboardingController) lives
+            // under a com.finalexec.api SUBpackage (.internal/.experimental), never the bare
+            // com.finalexec.api package itself -- an exact-equals check here can never match any of
+            // them, a second, independent bug this test's own revival surfaced.
+            if (beanPackage == null || !beanPackage.getName().startsWith("com.finalexec.api")) {
                 continue;
             }
             if (beanType.getSimpleName().endsWith("Controller")) {

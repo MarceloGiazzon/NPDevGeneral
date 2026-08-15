@@ -150,3 +150,63 @@ resolution: >-
   ran one packaged-proof test through the new `:generator:packagedProofTest -PincludePackagedProofs`
   task locally to confirm the wiring executes correctly end-to-end. Not yet re-verified against a
   live CI run with real GitHub Actions load (the next PR push against this branch is that proof).
+
+  **2026-08-15 follow-up: that live CI run found the fix was incomplete.** After this fix merged to
+  `main`, PR #93's branch merged `main` in and re-ran CI -- `:generator:packagedProofTest` (the new
+  serial task) failed with ALL 3 tests failing together (worse than the original 2-of-3), not the
+  0 expected. Root cause: `NPDevGenerator/gradle.properties` sets `org.gradle.parallel=true`, and
+  both workflow steps invoked `:generator:test :generator:behaviorTest :generator:packagedProofTest`
+  as THREE top-level tasks in a SINGLE `gradlew` command -- Gradle is free to schedule independent
+  top-level tasks concurrently under `--parallel`, so `packagedProofTest`'s own internal
+  `maxParallelForks=1` serialization did not stop it from running AT THE SAME TIME as `:generator:
+  test`'s own forked JVMs (`maxParallelForks=2`), which is arguably worse contention than the
+  original bug (up to 3 concurrent JVMs competing for boot resources instead of 2). Fixed by
+  splitting both workflow steps into two separate `gradlew` invocations -- the fast suite first,
+  then a wholly separate `./gradlew :generator:packagedProofTest` call after it completes,
+  guaranteeing no other Gradle task can be scheduled concurrently with the packaged-app boots. This
+  is a reasoned fix from a plausible, evidenced mechanism (Gradle's own documented cross-task
+  parallelism under `org.gradle.parallel=true`), not a repeat live confirmation that this exact
+  mechanism was the failure's cause -- the next CI run is what actually proves it.
+
+  **2026-08-15 second follow-up: the isolated-invocation fix ALSO did not clear CI.** The next run
+  (fully isolated `./gradlew :generator:packagedProofTest`, nothing else in that invocation) still
+  failed with all 3 tests timing out on `waitForHealth`. This rules out cross-task Gradle
+  parallelism as the (sole) cause. Cross-checked against a bare `main` dispatch made earlier the
+  same session (05:32, before any of these changes existed) that completed the WHOLE "PR gate" job,
+  packaged-app boots included, in 7m44s -- and against running one of the same three tests locally
+  on this exact combined code state (`HardenGcDeleteReplaceCascade...`, full REG-170/156/166/163/
+  177/179/175/176/178 changes present), which passed cleanly. Both together point at CI-runner
+  boot/IO performance varying over the course of this session (healthy early, degraded on every
+  later run checked) rather than a code regression in any of this session's changes -- but this is
+  inferred from the pattern, not independently proven (e.g. by directly inspecting a GitHub Actions
+  status-page incident for this window).
+
+  Applied one more, more conservative hardening as a result: raised each of the three tests' own
+  health-check deadline (6min -> 8min for `HardenGcDeleteReplaceCascade`/`TrustedSourceEmitter`'s
+  named `HEALTH_TIMEOUT`; 2min -> 8min for `HardenObjstoreFileUpload`'s own inline deadline, which
+  was a full 4 minutes shorter than its two siblings' and the more likely reason it was consistently
+  the last/worst of the three to fail) and raised both workflow files' "Generator unit tests" step
+  budget (30->45min) and `npdev-pr-gate.yml`'s own job-level timeout (60->90min) so a genuine
+  worst-case across all three tests' new ceilings still fits. This raises the ceiling the tests are
+  allowed to wait against slow infrastructure; it does not fix a specific proven root cause, because
+  none was proven past "not test-level contention, not a code regression" -- if failures persist
+  after this, the next step is checking GitHub's own status history for this time window rather than
+  further test/workflow changes.
+
+  **2026-08-15 third follow-up: found the actual cause, and it WAS a code regression -- just not
+  in this item's own commits.** A dedicated local reproduction (temporarily disabling the tests'
+  own evidence-cleanup `finally` block to preserve a real boot log, then reverting that test-source
+  change) caught the real error: `BeanCreationException` -> `IllegalStateException` from
+  `IdentityPackTableNames.resolve(...)` being called eagerly, at Spring bean-construction time, by
+  two `com.finalexec.controlpanel` controllers that REG-177 (a DIFFERENT item, also on this same
+  branch) had just wired up -- both are registered unconditionally in every generated app, and all
+  three packaged-proof test fixtures compose no identity pack at all, so the app's whole
+  `ApplicationContext` failed to start. This explains everything this item's own investigation
+  found confusing: why the timeout ceiling never mattered (the process crashed at startup, it
+  never had a chance to become slow), why isolating the Gradle invocation didn't help (nothing to
+  do with task scheduling), and why a same-day bare `main` dispatch passed while this branch never
+  did (`main` didn't have REG-177's regression). See REG-177's own ledger entry for the fix. This
+  item's own two hardening changes (serial `packagedProofTest` task, higher health-check ceilings)
+  address a real, independently-confirmed contention issue (verified clean on PR #95 before REG-177
+  ever touched this branch) and are being KEPT, not reverted -- they're correct improvements in
+  their own right, they just were not sufficient to explain or fix THIS branch's specific failures.

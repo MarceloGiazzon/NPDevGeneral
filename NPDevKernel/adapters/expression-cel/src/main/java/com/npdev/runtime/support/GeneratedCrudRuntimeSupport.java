@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledEvent;
 import com.npdev.dsl.v1.compiled.CompiledEventField;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -252,6 +253,10 @@ public final class GeneratedCrudRuntimeSupport {
     private final AuditLogStore auditLogStore;
     private final PermissionEvaluator permissionEvaluator;
     private final IdempotencyStore idempotencyStore;
+    // REG-177: resolved ONCE at construction (not per-request) from the already-available
+    // compiledModel -- empty when this app doesn't compose the identity pack at all
+    // (internal.tables=false is a normal, supported configuration here, not an error).
+    private final Optional<IdentityPackTableNames> identityTables;
     private ConceptGateway conceptGateway;
 
     // Fallback existence check for cross-concept reference validation when there is no
@@ -381,6 +386,7 @@ public final class GeneratedCrudRuntimeSupport {
         this.auditLogStore = auditLogStore == null ? AuditLogStore.noop() : auditLogStore;
         this.permissionEvaluator = permissionEvaluator == null ? PermissionEvaluator.allowAll() : permissionEvaluator;
         this.idempotencyStore = idempotencyStore == null ? IdempotencyStore.noop() : idempotencyStore;
+        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
         initializeOrchestrationSubscribers();
     }
 
@@ -2408,7 +2414,9 @@ public final class GeneratedCrudRuntimeSupport {
             // authoritative over the principal's claim-roles -- same supplement-with-fallback contract
             // the RuntimeHost IdentityAwareContextResolver applies, kept consistent across both
             // context-resolution paths via the shared IdentityRoleLookup.
-            Set<String> identityRoles = IdentityRoleLookup.rolesFor(dataSource, tenantId, actorId);
+            Set<String> identityRoles = identityTables.isEmpty()
+                    ? Set.of()
+                    : IdentityRoleLookup.rolesFor(dataSource, identityTables.get(), tenantId, actorId);
             Set<String> roles = identityRoles.isEmpty() ? parseRoles(claims.get("roles")) : identityRoles;
             ExecutionContext context = ExecutionContext.of(tenantId, actorId);
             return roles.isEmpty() ? context : context.withRoles(roles);
@@ -2420,7 +2428,10 @@ public final class GeneratedCrudRuntimeSupport {
     private boolean isTokenRevoked(Object rawTokenVersion, String tenantId, String actorId) {
         // REG-23: delegate to the single shared decision point (IdentityRoleLookup.isTokenRevoked) so
         // both claim->context paths agree, including the config-driven rejection of legacy tv-less tokens.
-        return IdentityRoleLookup.isTokenRevoked(rawTokenVersion, dataSource, tenantId, actorId);
+        if (identityTables.isEmpty()) {
+            return false;
+        }
+        return IdentityRoleLookup.isTokenRevoked(rawTokenVersion, dataSource, identityTables.get(), tenantId, actorId);
     }
 
     private Map<String, Object> normalizePayloadForValidation(

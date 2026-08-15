@@ -559,7 +559,10 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
     private static void waitForHealth(int port, Path evidenceRoot) throws Exception {
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
         URI uri = URI.create("http://localhost:" + port + "/actuator/health");
-        Instant deadline = Instant.now().plus(Duration.ofMinutes(2));
+        // REG-176: was 2 minutes -- much shorter than this file's sibling
+        // *PackagedGeneratedAppRuntimeProofTest classes' own 6(->8)-minute HEALTH_TIMEOUT, and the
+        // most likely reason this specific test timed out first/most often under real CI load.
+        Instant deadline = Instant.now().plus(Duration.ofMinutes(8));
         Exception last = null;
         while (Instant.now().isBefore(deadline)) {
             try {

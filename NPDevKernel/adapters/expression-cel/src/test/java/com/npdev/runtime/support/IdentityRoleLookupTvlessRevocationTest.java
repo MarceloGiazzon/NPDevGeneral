@@ -23,7 +23,7 @@ class IdentityRoleLookupTvlessRevocationTest {
     @Test
     void tvlessTokenIsNotRevokedWhenCutoverUnset() {
         System.clearProperty(IdentityRoleLookup.REJECT_TVLESS_AFTER_PROPERTY);
-        assertFalse(IdentityRoleLookup.isTokenRevoked(null, null, "acme", "alice"),
+        assertFalse(IdentityRoleLookup.isTokenRevoked(null, null, null, "acme", "alice"),
                 "tv-less token must stay accepted when the cutover is unset (backward compatible)");
     }
 
@@ -31,7 +31,7 @@ class IdentityRoleLookupTvlessRevocationTest {
     void tvlessTokenIsRevokedAfterPastCutover() {
         System.setProperty(IdentityRoleLookup.REJECT_TVLESS_AFTER_PROPERTY,
                 Instant.now().minus(1, ChronoUnit.HOURS).toString());
-        assertTrue(IdentityRoleLookup.isTokenRevoked(null, null, "acme", "alice"),
+        assertTrue(IdentityRoleLookup.isTokenRevoked(null, null, null, "acme", "alice"),
                 "tv-less token must be revoked once the cutover instant has passed");
     }
 
@@ -39,14 +39,14 @@ class IdentityRoleLookupTvlessRevocationTest {
     void tvlessTokenIsNotRevokedBeforeFutureCutover() {
         System.setProperty(IdentityRoleLookup.REJECT_TVLESS_AFTER_PROPERTY,
                 Instant.now().plus(1, ChronoUnit.HOURS).toString());
-        assertFalse(IdentityRoleLookup.isTokenRevoked(null, null, "acme", "alice"),
+        assertFalse(IdentityRoleLookup.isTokenRevoked(null, null, null, "acme", "alice"),
                 "tv-less token must stay accepted until the cutover instant is reached");
     }
 
     @Test
     void malformedCutoverFailsOpen() {
         System.setProperty(IdentityRoleLookup.REJECT_TVLESS_AFTER_PROPERTY, "not-a-date");
-        assertFalse(IdentityRoleLookup.isTokenRevoked(null, null, "acme", "alice"),
+        assertFalse(IdentityRoleLookup.isTokenRevoked(null, null, null, "acme", "alice"),
                 "a malformed cutover must fail OPEN here (StartupValidator/bridge rejects it at boot)");
     }
 }

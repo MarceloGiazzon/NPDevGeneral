@@ -1,5 +1,7 @@
 package com.npdev.runtime.support;
 
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
+
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -10,8 +12,7 @@ import java.util.Set;
 import java.util.logging.Logger;
 
 /**
- * Resolves the roles assigned to an actor in the built-in identity pack
- * (identity_users / identity_roles / identity_user_roles), tenant-scoped.
+ * Resolves the roles assigned to an actor in the built-in identity pack, tenant-scoped.
  *
  * <p>Shared so that BOTH context-resolution paths apply identity-backed roles uniformly: the
  * RuntimeHost {@code IdentityAwareContextResolver} (admin / business-UI controllers) and
@@ -19,22 +20,30 @@ import java.util.logging.Logger;
  * checks). Returns an empty set -- meaning "no identity backing, keep the caller's claim-roles" --
  * when the actor is unknown, the user is inactive, the tenant doesn't match, or the identity tables
  * are absent ({@code internal.tables=false}). Never throws.</p>
+ *
+ * <p>REG-177: table names are now caller-supplied (an {@link IdentityPackTableNames}, resolved ONCE
+ * by each caller from its own already-available {@code CompiledModel}) instead of hardcoded literals
+ * ({@code identity_users}/{@code identity_roles}/{@code identity_user_roles}) -- the generator's
+ * schema-realization SQL creates these under pack-versioned names (e.g. {@code identity_v1_users}),
+ * the same defect shape REG-160/REG-170 already fixed elsewhere. This class cannot resolve the
+ * table names itself: it is a {@code NPDevKernel} adapter and has no {@code CompiledModel} of its
+ * own to query, only whatever the caller passes in.</p>
  */
 public final class IdentityRoleLookup {
 
     private static final Logger LOG = Logger.getLogger(IdentityRoleLookup.class.getName());
 
-    private static final String ROLE_QUERY = """
+    private static final String ROLE_QUERY_TEMPLATE = """
             SELECT r.name
-            FROM identity_users u
-            JOIN identity_user_roles ur ON ur.user_id = u.id
-            JOIN identity_roles r ON r.id = ur.role_id
+            FROM %s u
+            JOIN %s ur ON ur.user_id = u.id
+            JOIN %s r ON r.id = ur.role_id
             WHERE u.username = ? AND u.tenant_id = ? AND u.active = TRUE
               AND ur.tenant_id = ? AND r.tenant_id = ?
             """;
 
-    private static final String TOKEN_VERSION_QUERY = """
-            SELECT token_version FROM identity_users WHERE username = ? AND tenant_id = ? AND active = TRUE
+    private static final String TOKEN_VERSION_QUERY_TEMPLATE = """
+            SELECT token_version FROM %s WHERE username = ? AND tenant_id = ? AND active = TRUE
             """;
 
     private IdentityRoleLookup() {
@@ -52,13 +61,14 @@ public final class IdentityRoleLookup {
      * this feature existed (no {@code tv} claim) is never affected; a caller with a {@code tv} claim
      * only fails the comparison once the stored version has genuinely been bumped past it.</p>
      */
-    public static int tokenVersion(DataSource dataSource, String tenantId, String actorId) {
-        if (dataSource == null || actorId == null || actorId.isBlank()) {
+    public static int tokenVersion(DataSource dataSource, IdentityPackTableNames tables, String tenantId, String actorId) {
+        if (dataSource == null || tables == null || actorId == null || actorId.isBlank()) {
             return 0;
         }
         String tenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId;
+        String query = TOKEN_VERSION_QUERY_TEMPLATE.formatted(tables.usersTable());
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(TOKEN_VERSION_QUERY)) {
+             PreparedStatement statement = connection.prepareStatement(query)) {
             statement.setString(1, actorId);
             statement.setString(2, tenant);
             try (ResultSet resultSet = statement.executeQuery()) {
@@ -106,7 +116,8 @@ public final class IdentityRoleLookup {
      * malformed cutover fails OPEN (treated as unset) — {@code StartupValidator} rejects a malformed
      * value at boot so it never reaches here.
      */
-    public static boolean isTokenRevoked(Object rawTokenVersion, DataSource dataSource, String tenantId, String actorId) {
+    public static boolean isTokenRevoked(
+            Object rawTokenVersion, DataSource dataSource, IdentityPackTableNames tables, String tenantId, String actorId) {
         if (rawTokenVersion == null) {
             return rejectTvlessTokensNow();
         }
@@ -116,7 +127,7 @@ public final class IdentityRoleLookup {
         } catch (NumberFormatException malformed) {
             return false;
         }
-        return claimedVersion != tokenVersion(dataSource, tenantId, actorId);
+        return claimedVersion != tokenVersion(dataSource, tables, tenantId, actorId);
     }
 
     private static boolean rejectTvlessTokensNow() {
@@ -132,13 +143,14 @@ public final class IdentityRoleLookup {
         }
     }
 
-    public static Set<String> rolesFor(DataSource dataSource, String tenantId, String actorId) {
-        if (dataSource == null || actorId == null || actorId.isBlank()) {
+    public static Set<String> rolesFor(DataSource dataSource, IdentityPackTableNames tables, String tenantId, String actorId) {
+        if (dataSource == null || tables == null || actorId == null || actorId.isBlank()) {
             return Set.of();
         }
         String tenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId;
+        String query = ROLE_QUERY_TEMPLATE.formatted(tables.usersTable(), tables.userRolesTable(), tables.rolesTable());
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(ROLE_QUERY)) {
+             PreparedStatement statement = connection.prepareStatement(query)) {
             statement.setString(1, actorId);
             statement.setString(2, tenant);
             statement.setString(3, tenant);

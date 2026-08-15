@@ -218,18 +218,13 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/InvariantApiIntegrationTest.java',
         'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/ModelSyncStatusControllerStandaloneTest.java',
-        // R1 Stage 3 (MASTER-ROADMAP.md Track C item C3): tried reviving this one (of the 5
-        // full-boot @SpringBootTest surface tests) alone, per the card's "one at a time" rule --
-        // it FAILS for real: nonDefaultRuntimeProfileExposesSupportedCoreAndNonDefaultControllersOnly
-        // asserts RuntimePluginPackagesController/ModelSyncStatusController become active under the
-        // non-default runtime-surface profile, but RuntimeControllerAllowlistConfig (runtimehost-core)
-        // can only REMOVE bean definitions -- it can never add one back for a deferredControllers-listed
-        // controller whose .java file was already excluded from sourceSets.main by
-        // unsupportedRuntimeHostControllerSources (a compile-time gate keyed on allowedControllers only,
-        // with no non-default-profile carve-out). Filed as REG-163; stage stopped here per the card's
-        // "if one surfaces a real failure, stop and report" instruction -- the other 4 candidates were
-        // deliberately left untested this session.
-        'com/finalexec/NonDefaultRuntimeSurfaceProfileIntegrationTest.java',
+        // REG-163: NonDefaultRuntimeSurfaceProfileIntegrationTest REVIVED 2026-08-15 -- the compile-
+        // time gate it was blocked on (unsupportedRuntimeHostControllerSources/
+        // unsupportedRuntimeHostServiceSources keyed on allowedControllers only) now compiles
+        // allowedControllers UNION deferredControllers, and a second, independent bug in the test's
+        // OWN package filter (exact-equals "com.finalexec.api" could never match a
+        // com.finalexec.api.internal/.experimental controller) was fixed alongside it. Passes for
+        // real against the assembled simple-contact-intake sample, not merely compiles.
         'com/finalexec/PermissionAwareUiMetadataServiceTest.java',
         'com/finalexec/PublicationChainTenantReferenceValidationTest.java',
         'com/finalexec/PublicationRollbackE2EIT.java',
@@ -278,8 +273,25 @@ def generatedRuntimeIntegrationTestSources = [
 
 def runtimeSurfaceManifest = new JsonSlurper().parse(file('src/main/resources/npdev/runtime-supported-controllers.json'))
 def supportedCoreControllerNames = (runtimeSurfaceManifest.allowedControllers ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
+// REG-163: deferredControllers must be COMPILED (allowedControllers UNION deferredControllers), not
+// excluded outright -- RuntimeControllerAllowlistConfig's runtime filter (npdev.runtime.surface
+// -profile=non-default|experimental) can only REMOVE an already-registered bean definition, never
+// add one back for a class that was compiled out of sourceSets.main entirely. Before this fix, the
+// compile-time gate was strictly NARROWER than the runtime one it exists only to backstop, making
+// deferredControllers/the non-default profile permanently dead code regardless of profile.
+def deferredControllerNames = (runtimeSurfaceManifest.deferredControllers ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
+def compiledControllerNames = (supportedCoreControllerNames + deferredControllerNames).toSet()
 def supportedCoreServiceNames = (runtimeSurfaceManifest.supportedCoreServiceComponents ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
 def supportedCoreServicePatterns = (runtimeSurfaceManifest.supportedCoreServicePatterns ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
+// REG-163: the analogous gap for services -- nonDefaultServicePatterns/experimentalServicePatterns
+// name the services a deferredControllers-listed controller needs at runtime under the non-default/
+// experimental profile; without compiling them too, a deferred controller would compile but fail to
+// wire (its own dependency missing), which is no more usable than not compiling at all.
+def experimentalServicePatterns = (runtimeSurfaceManifest.experimentalServicePatterns ?: [])
+        .collect { it.toString().trim() }.findAll { !it.isEmpty() }
+def deferredServicePatterns = ((runtimeSurfaceManifest.nonDefaultServicePatterns ?: [])
+        + experimentalServicePatterns)
+        .collect { it.toString().trim() }.findAll { !it.isEmpty() }
 
 def toRelativeSourcePath = { File sourceFile ->
     relativeJavaSourcePath(javaSourceRoot, sourceFile)
@@ -336,22 +348,81 @@ def matchesSupportedPattern = { String simpleName, List<String> patterns ->
     }
 }
 
-def unsupportedRuntimeHostControllerSources = fileTree('src/main/java/com/finalexec/api') {
-    include '**/*Controller.java'
-}.files.collect(toRelativeSourcePath)
-        .findAll { sourcePath ->
-            String simpleName = sourcePath.tokenize('/').last().replace('.java', '')
-            !supportedCoreControllerNames.contains(simpleName)
-        }
+// REG-163 (found while verifying the fix above): a nonDefaultServicePatterns-matching service can
+// itself reference an experimentalServicePatterns-matching class as a compile-time dependency (e.g.
+// RuntimeTopologyExplorerService/CapabilityIntegrationPanelService both construct-inject
+// FlowBuilderService/GovernanceWorkspaceService). That dependency can never be satisfied in ANY
+// generated app: FinalAppAssembler's own UNSUPPORTED_RUNTIME_HOST_SERVICE_SOURCES hardcodes
+// com/finalexec/npdev/service/experimental/*.java as excluded at COPY time, unconditionally -- a
+// separate enforcement point this compile-time gate has no visibility into, so the file is simply
+// never present to compile against, regardless of what this manifest says. Compiling the referencing
+// file anyway (per the deferredServicePatterns union above) trades a correct exclusion for a real
+// "cannot find symbol" compile failure -- confirmed live against the assembled simple-contact-intake
+// sample. Detected the same way generatedRuntimeDependentMainSources/testsReferencingExcludedMainSources
+// already detect a text-level dependency on excluded content, rather than hardcoding file names.
+// A bare word-boundary scan over the RAW file text (needed -- these dependencies are referenced as
+// unqualified simple names with no import statement at all, since the file was never actually
+// compilable to begin with) would false-positive on a class name mentioned only in a // or /* */
+// comment (confirmed live: TenantOperationalAdministrationService's own comment referencing
+// TemplateLibraryManagementService, an unrelated experimental class, wrongly excluded it). Strip
+// comments first -- deliberately simple (no string-literal-aware handling), matching this file's
+// existing "good enough for real source, not a full Java parser" bar elsewhere.
+def stripJavaComments = { String text ->
+    text.replaceAll(/(?s)\/\*.*?\*\//, ' ').replaceAll(/(?m)\/\/[^\n]*/, ' ')
+}
+
+def referencesAnExperimentalService = { File sourceFile ->
+    if (experimentalServicePatterns.isEmpty()) {
+        return false
+    }
+    String text = stripJavaComments(sourceFile.text)
+    experimentalServicePatterns.any { pattern ->
+        StringBuilder regex = new StringBuilder()
+        pattern.each { ch -> regex.append(ch == '*' ? '\\w*' : java.util.regex.Pattern.quote(String.valueOf(ch))) }
+        text =~ /\b${regex}\b/
+    }
+}
 
 def unsupportedRuntimeHostServiceSources = fileTree('src/main/java/com/finalexec/npdev/service') {
     include '**/*.java'
-}.files.collect(toRelativeSourcePath)
-        .findAll { sourcePath ->
-            String simpleName = sourcePath.tokenize('/').last().replace('.java', '')
-            !supportedCoreServiceNames.contains(simpleName) &&
-                    !matchesSupportedPattern(simpleName, supportedCoreServicePatterns)
+}.files
+        .findAll { sourceFile ->
+            String simpleName = sourceFile.name.replace('.java', '')
+            boolean notInAnyCompiledSet = !supportedCoreServiceNames.contains(simpleName) &&
+                    !matchesSupportedPattern(simpleName, supportedCoreServicePatterns) &&
+                    !matchesSupportedPattern(simpleName, deferredServicePatterns)
+            notInAnyCompiledSet || referencesAnExperimentalService(sourceFile)
         }
+        .collect(toRelativeSourcePath)
+
+// REG-163: computed AFTER unsupportedRuntimeHostServiceSources on purpose -- a deferredControllers-
+// listed controller (e.g. RuntimeTopologyExplorerController) can itself construct-inject a service
+// that just got excluded above for its OWN unsatisfiable experimental dependency
+// (RuntimeTopologyExplorerService). Same transitive problem one level up: compiling the controller
+// anyway just moves the "cannot find symbol" failure from the service to its caller. Reuses the same
+// text-level word-boundary detection against the now-final excluded-service simple names, exactly
+// like generatedRuntimeDependentMainSources/testsReferencingExcludedMainSources already do for the
+// generated-runtime-mount-absent case.
+def excludedServiceSimpleNames = unsupportedRuntimeHostServiceSources
+        .collect { it.tokenize('/').last().replace('.java', '') }
+        .toSet()
+
+def referencesAnExcludedService = { File sourceFile ->
+    if (excludedServiceSimpleNames.isEmpty()) {
+        return false
+    }
+    String text = stripJavaComments(sourceFile.text)
+    excludedServiceSimpleNames.any { simpleName -> text =~ /\b${java.util.regex.Pattern.quote(simpleName)}\b/ }
+}
+
+def unsupportedRuntimeHostControllerSources = fileTree('src/main/java/com/finalexec/api') {
+    include '**/*Controller.java'
+}.files
+        .findAll { sourceFile ->
+            String simpleName = sourceFile.name.replace('.java', '')
+            !compiledControllerNames.contains(simpleName) || referencesAnExcludedService(sourceFile)
+        }
+        .collect(toRelativeSourcePath)
 
 sourceSets {
     main {
