@@ -32,7 +32,13 @@
     "CredentialAdminController",
     "FileUploadController",
     "DocumentRenderController",
-    "SemanticBehaviorWriteBackController"
+    "SemanticBehaviorWriteBackController",
+    "ControlPanelAdminUserController",
+    "ControlPanelRolesController",
+    "ControlPanelSchedulesController",
+    "ControlPanelTenantUsersController",
+    "SchemaAcknowledgmentController",
+    "SchemaImpactController"
   ],
   "deferredControllers": [
     "HelloController",

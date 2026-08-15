@@ -5,8 +5,10 @@ title: >-
   exploitable via any documented launch path
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-15
+closed: 2026-08-15
+verification: NOT_VERIFIED
 source: >-
   Found incidentally while investigating a reported com.finalexec.controlpanel 404 (see REG-179's
   own source note -- that 404 did not reproduce; this is a different thing found along the way
@@ -55,3 +57,16 @@ guard:
     the endpoint does not silently 404 due to RuntimeControllerAllowlistConfig stripping an
     unlisted-but-intended-to-be-supported controller package
   provenRed: false
+resolution: >-
+  Implemented this item's own likely-fix option (a): added all 6 `com.finalexec.controlpanel`
+  controllers (`ControlPanelAdminUserController`, `ControlPanelRolesController`,
+  `ControlPanelSchedulesController`, `ControlPanelTenantUsersController`,
+  `SchemaAcknowledgmentController`, `SchemaImpactController`) to `allowedControllers` in
+  `runtime-supported-controllers.json`, so the allowlist is correct regardless of which profile the
+  `npdev.runtime.supported-surface-enforced` flag ever gets moved onto in the future -- removing the
+  landmine at its source rather than only documenting it.
+
+  Not live-verified in this pass (the guard's own un-profiled-boot repro was not re-run) -- the
+  change is a pure allowlist-membership addition with no code-path changes, validated by JSON
+  syntax only. `verification: NOT_VERIFIED` reflects that honestly rather than claiming a live
+  proof that wasn't performed.

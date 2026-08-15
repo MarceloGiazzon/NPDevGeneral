@@ -77,6 +77,34 @@ from pathlib import Path
 
 BASELINE_PATH = "scripts/policy/coverage-baseline.json"
 
+# REG-168: directories never worth scanning for "did this module's source change" -- build output,
+# dependency caches, VCS metadata. Not exhaustive by design; a false negative here (an excluded dir
+# that actually held a real source edit) only makes the staleness check slightly less strict, never
+# wrong in the dangerous direction (it would still catch changes anywhere else in the module).
+_SOURCE_SCAN_EXCLUDED_DIR_PARTS = {
+    ".git", ".gradle", "build", "node_modules", "dist", "__pycache__", ".pytest_cache", "out",
+}
+
+
+def _newest_source_mtime(repo_root: Path, module_name: str) -> float | None:
+    """REG-168: newest mtime among a module's own source files, so a coverage report can be checked
+    for staleness against the source tree actually on disk -- not just trusted because it exists.
+    Returns None (meaning "can't determine, don't block") if the module directory doesn't exist or
+    has no files under it; callers must treat that as "skip the staleness check," not "stale."""
+    module_dir = repo_root / module_name
+    if not module_dir.is_dir():
+        return None
+    newest: float | None = None
+    for p in module_dir.rglob("*"):
+        if not p.is_file():
+            continue
+        if any(part in _SOURCE_SCAN_EXCLUDED_DIR_PARTS for part in p.relative_to(module_dir).parts[:-1]):
+            continue
+        mtime = p.stat().st_mtime
+        if newest is None or mtime > newest:
+            newest = mtime
+    return newest
+
 
 def _repo_root(explicit: str | None) -> Path:
     """Identify the repo by its CONTENTS, never by its directory name (REG-144)."""
@@ -237,12 +265,15 @@ def _find_reports(repo_root: Path, globs: list[str]) -> list[Path]:
 
 
 def measure_module(
-    repo_root: Path, module_cfg: dict, override_path: str | None
+    repo_root: Path, module_cfg: dict, override_path: str | None, module_name: str | None = None
 ) -> tuple[float | None, str | None]:
     """Returns (percent, evidence) or (None, None) if not measured this run."""
     report_format = module_cfg.get("reportFormat", DEFAULT_REPORT_FORMAT)
 
     if override_path:
+        # An explicit --report MODULE=PATH is the caller vouching for freshness directly --
+        # the staleness check below exists specifically for auto-discovery's ambiguity, which
+        # doesn't apply here.
         p = Path(override_path)
         if not p.is_file():
             return None, None
@@ -252,6 +283,25 @@ def measure_module(
     candidates = _find_reports(repo_root, globs)
     if not candidates:
         return None, None
+
+    # REG-168: a discovered report may predate the source it's supposed to measure -- shared
+    # multi-worktree Build directories, or a stale report surviving a checkout/revert without a
+    # rebuild. Drop any candidate older than the module's own newest source file rather than
+    # silently trusting it. source_mtime is None (skip the check) when the module directory can't
+    # be resolved at all, e.g. a synthetic/calibration module name.
+    source_mtime = _newest_source_mtime(repo_root, module_name) if module_name else None
+    if source_mtime is not None:
+        fresh = [c for c in candidates if c.stat().st_mtime >= source_mtime]
+        for stale in candidates:
+            if stale not in fresh:
+                print(
+                    f"    (REG-168: skipping stale report for {module_name}: {stale} predates "
+                    "the module's newest source file)",
+                    file=sys.stderr,
+                )
+        candidates = fresh
+        if not candidates:
+            return None, None
 
     if module_cfg.get("aggregate", False):
         pct = sum_line_coverage(candidates, report_format)
@@ -319,7 +369,7 @@ def main(argv: list[str]) -> int:
     for name in sorted(modules):
         cfg = modules[name]
         recorded = float(cfg.get("coveragePercent", 0.0))
-        pct, evidence = measure_module(repo_root, cfg, overrides.get(name))
+        pct, evidence = measure_module(repo_root, cfg, overrides.get(name), name)
         if pct is None:
             print(f"  - {name}: not measured this run (floor stays {recorded}%)")
             continue
@@ -464,6 +514,36 @@ def run_calibration() -> int:
         pass4d = pct_coveragepy is not None and abs(pct_coveragepy - 25.0) < 1e-6
         print(f"  [{'PASS' if pass4d else 'FAIL'}] coverage-py-json format parses totals.covered_lines/num_statements (17/68 -> measured: {pct_coveragepy})")
         ok = ok and pass4d
+
+        # Control 4e (REG-168): a report that PREDATES the module's own newest source file is
+        # rejected as stale (not-measured), even though it exists and glob-matches -- this is the
+        # real regression this item fixed (a leftover report from an unrelated build/worktree/
+        # checkout silently ratcheting the floor). A report NEWER than the source is still accepted.
+        stale_module_dir = tmp / "stale-module"
+        stale_report = make_xml(stale_module_dir / "report.xml", covered=90, missed=10)
+        source_file = stale_module_dir / "src" / "Main.java"
+        source_file.parent.mkdir(parents=True, exist_ok=True)
+        source_file.write_text("class Main {}", encoding="utf-8")
+        # Force the report to be OLDER than the source file it's supposed to measure, regardless of
+        # filesystem timestamp resolution or how fast this test runs.
+        report_time = source_file.stat().st_mtime - 3600
+        os.utime(stale_report, (report_time, report_time))
+        pct_stale, _ = measure_module(
+            tmp, {"reportGlobs": ["stale-module/report.xml"]}, None, "stale-module"
+        )
+        pass4e_stale = pct_stale is None
+        print(f"  [{'PASS' if pass4e_stale else 'FAIL'}] a report older than its module's newest source file is rejected as stale (measured: {pct_stale})")
+        ok = ok and pass4e_stale
+
+        # Same fixture, report now touched to be NEWER than the source -- must be accepted.
+        fresh_time = source_file.stat().st_mtime + 3600
+        os.utime(stale_report, (fresh_time, fresh_time))
+        pct_fresh, _ = measure_module(
+            tmp, {"reportGlobs": ["stale-module/report.xml"]}, None, "stale-module"
+        )
+        pass4e_fresh = pct_fresh is not None and abs(pct_fresh - 90.0) < 1e-6
+        print(f"  [{'PASS' if pass4e_fresh else 'FAIL'}] the same report, touched newer than the source, is accepted (measured: {pct_fresh})")
+        ok = ok and pass4e_fresh
 
         # Control 5: ratchet logic itself -- feed a fixture repo through main()'s measurement path
         # via an explicit --report override, on a throwaway baseline file, and confirm both the
