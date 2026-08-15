@@ -1,0 +1,101 @@
+id: REG-176
+title: >-
+  npdev-pr-gate.yml's "PR gate" job fails on a clean dispatch of main itself (100 compile errors,
+  ControlPanel controllers cannot resolve runtimehost-core classes) -- pre-existing, unrelated to
+  any recent PR, found incidentally while verifying two unrelated PRs
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-15
+source: >-
+  Found while verifying PR #91 (a Batch-1 backlog fix touching only Python/PowerShell/docs/
+  .gitattributes -- zero Java/generator files). Its "PR gate (DSL/kernel/generator/RuntimeHost
+  smoke, Linux)" check failed with 100 Java compile errors, reproduced identically on a rerun.
+  Isolated to main itself, not the PR: `gh workflow run npdev-pr-gate.yml --ref main` (a plain
+  workflow_dispatch, no PR diff at all) reproduced the SAME failure on main alone.
+surface: ci/runtimehost-core-classpath
+files:
+  - .github/workflows/npdev-pr-gate.yml
+  - NPDevRuntimeHost/build.gradle.template
+  - NPDevRuntimeHost/runtimehost-core
+detail: |
+  The job generates `simple-contact-intake` and runs `gradlew compileJava` (or equivalent) against
+  the assembled app. 100 errors, all "cannot find symbol" / "package X does not exist", concentrated
+  in `com.finalexec.controlpanel.*` (ControlPanelSchedulesController, SchemaAcknowledgmentController,
+  SchemaImpactController) and `com.finalexec.api.internal.*` (RollbackExecutionController,
+  PublicationTransactionRecordController, PublicationRollbackExecutorController,
+  SourceMutationAuditRecordController) plus `com.finalexec.execution.DirectExecutionGateway`.
+  Missing packages named directly in the errors: `com.finalexec.db` (and its nested
+  SchemaLifecycleExecutor, PendingSchemaAcknowledgmentStore, MigrationMarkStore,
+  SchemaDropSnapshotRestorer, CrossEngineDataPromotion), `com.finalexec.scheduler`,
+  `com.finalexec.npdev.dto`, `com.finalexec.npdev.service.internal`.
+
+  Confirmed NOT a controller-allowlist exclusion (`unsupportedRuntimeHostControllerSources` in
+  `build.gradle.template` only scans `src/main/java/com/finalexec/api/**/*Controller.java` --
+  `com.finalexec.controlpanel.*` is a different package, never touched by that filter; ControlPanel
+  controllers are always compiled, no allowlist gate). Confirmed NOT a service-allowlist exclusion
+  either (`unsupportedRuntimeHostServiceSources` only scans `src/main/java/com/finalexec/npdev/
+  service`, and none of the missing packages -- `com.finalexec.db`, `com.finalexec.scheduler`,
+  `com.finalexec.npdev.dto` -- live under that root).
+
+  `SchemaLifecycleExecutor.java` (confirmed via `find`) lives in
+  `NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/` -- the PRECOMPILED-JAR module
+  (BT-1: "244 files now ship as a precompiled runtimehost-core jar"), not the app's own
+  source-copied tree. The job's `sync-runtimehost-libs.ps1 -BuildLocalJars` step reported "Copied 0
+  local jar(s); 44 already current" -- meaning it DID rebuild from current source (per
+  `-BuildLocalJars`) and its own safety-net comparison (REG-162) found the result byte-identical to
+  what was already staged, so the persisted jar is not simply stale relative to source. Whether the
+  runtimehost-core JAR itself fails to package `com.finalexec.db`/`com.finalexec.scheduler`/
+  `com.finalexec.npdev.dto`/`com.finalexec.npdev.service.internal` (a packaging/build-script gap in
+  runtimehost-core's own build.gradle), or whether the assembled app's generated build.gradle simply
+  doesn't declare the jar as a compile-scope dependency correctly, was NOT determined -- root cause
+  not isolated past this point.
+
+  Practical impact: `npdev-pr-gate.yml`'s "PR gate" job fails for ANY PR today, regardless of that
+  PR's own diff (confirmed by reproducing on a bare `main` dispatch with zero code changes). This is
+  a DIFFERENT job from `npdev-ci-validation.yml`'s "Linux post-Beta0 maturity validation" (which IS
+  currently green on `main`, confirmed 2026-08-15 via a real push-triggered run) -- so this is not a
+  second instance of the REG-171/172/173 masking pattern, but a separate, real gap specific to
+  npdev-pr-gate.yml's own build path.
+
+  Likely fix, not designed further here: (1) diff runtimehost-core's build.gradle output jar
+  contents (`jar tf kernel-0.1.0.jar` / the runtimehost-core jar) against what
+  `classify_runtimehost_sources.py`'s app-independent classification expects, to confirm whether
+  `com.finalexec.db`/`com.finalexec.scheduler`/`com.finalexec.npdev.dto`/
+  `com.finalexec.npdev.service.internal` are supposed to be in it at all; (2) if they are, trace why
+  this specific CI environment's build/packaging step omits them; (3) if the classpath wiring is the
+  actual gap, check the assembled app's generated `build.gradle`'s `dependencies { }` block for a
+  missing/misscoped runtimehost-core jar reference.
+
+  2026-08-15 follow-up (PR #91's run, job 94940834236): pinned the failure to the LAST step,
+  "RuntimeHost generated-app test suite" (`./gradlew test -PnpdevRuntimeHostLibsDir=.../
+  NPDev_General__OutsideRepo/runtimehost-libs`) -- confirmed `com.finalexec.db`/
+  `com.finalexec.scheduler`/`com.finalexec.npdev.*` all genuinely live under `runtimehost-core/src/
+  main/java/com/finalexec/` (no build.gradle sourceSet exclusion), so the module's own OWN jar
+  build is not intentionally omitting them, and a local `runtimehost-core` build+jar in this exact
+  working tree DOES include them (verified via `:compileJava` succeeding, all classes present).
+  The preceding "Sync RuntimeHost libs" step logged "Copied 0 local jar(s); 44 already current" --
+  suspicious on what GitHub Actions documents as an ephemeral fresh-VM-per-job runner, UNLESS
+  `actions/setup-java@v4`'s `cache: gradle` (line 70 of this workflow) restored a stale `~/.gradle`
+  build-cache entry for runtimehost-core's `:jar` task from a PRIOR run predating some source change,
+  and `sync-runtimehost-libs.ps1`'s own staleness check then judged the destination copy
+  "already current" against that stale artifact rather than the true current source. Traced the
+  `-PnpdevRuntimeHostLibsDir` override through `build.gradle.template`'s `resolveNpdevRuntimeLibsDir`
+  (REG-137: env var checked first, then `gradleProperty`) -- `NPDEV_RUNTIMEHOST_LIBS_DIR` is not set
+  anywhere in this workflow, so the explicit `-P` SHOULD win over whatever `FinalAppAssembler#
+  appendRuntimeHostLibsDirDefault` baked into the generated app's own gradle.properties (which
+  resolves to a DIFFERENT directory, `$NPDEV_BUILD_ROOT/runtimehost-libs`, since no
+  `NPDEV_RUNTIMEHOST_LIBS_DIR` env var is set at generation time either) -- standard Gradle CLI-vs-
+  file property precedence, not verified against a live CI repro. The Gradle-cache-staleness
+  hypothesis is the strongest lead not yet tested; a live repro would need either a cache-cleared CI
+  rerun (`gh cache list`/`gh cache delete` for this repo, then re-dispatch) or removing
+  `cache: gradle` temporarily to see if the failure disappears -- neither attempted here to keep this
+  investigation scoped, since REG-176 is not one of the user's requested 16-item backlog and further
+  chase risks scope creep away from that actual ask.
+guard:
+  kind: manual
+  ref: gh workflow run npdev-pr-gate.yml --ref main
+  asserts: >-
+    the "PR gate (DSL/kernel/generator/RuntimeHost smoke, Linux)" job succeeds on a bare main
+    dispatch with no PR diff
+  provenRed: true

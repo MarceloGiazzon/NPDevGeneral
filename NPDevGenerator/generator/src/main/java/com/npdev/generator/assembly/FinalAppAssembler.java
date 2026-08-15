@@ -161,11 +161,21 @@ public final class FinalAppAssembler {
      * the flag, same discipline {@code --runtimeHostTemplate} and every other explicit path option
      * here already requires) -- fails loud rather than silently mounting nothing.
      */
+    // REG-167: reserved relative paths under static/ that the platform's own generated bundle
+    // writes unconditionally (BusinessUiEmitter, InfoPageEmitter) into the SAME static/ tree
+    // mountWebAssets copies into -- see those classes' own literal path strings. Two of the four
+    // reserved names are whole DIRECTORIES (npdev-business-ui/, npdev-workbench/) rather than a
+    // fixed file list, because npdev-workbench/<panel>.html is emitted once per model panel and so
+    // cannot be enumerated statically here.
+    private static final Set<String> RESERVED_WEB_ASSET_FILES = Set.of("shell.js", "shell.css", "info.html", "info.json");
+    private static final Set<String> RESERVED_WEB_ASSET_DIRECTORIES = Set.of("npdev-business-ui", "npdev-workbench");
+
     private static int mountWebAssets(Options options) throws IOException {
         if (options.webAssetsRoot() == null) {
             return 0;
         }
         requireDirectory(options.webAssetsRoot(), "Web assets root");
+        requireNoReservedWebAssetCollision(options.webAssetsRoot());
         Path staticDir = options.finalAppRoot()
                 .resolve("src")
                 .resolve("main")
@@ -173,6 +183,35 @@ public final class FinalAppAssembler {
                 .resolve("static");
         CopyStats stats = copyTree(options.webAssetsRoot(), staticDir, CopyMode.WEB_ASSETS, options);
         return stats.filesCopied();
+    }
+
+    /**
+     * REG-167: refuse loudly, before copying anything, if an author's web/ directory contains a
+     * file at the same relative path as one of the platform's own reserved static/ names --
+     * previously this silently mounted the colliding file and let Gradle's resource-merge order
+     * decide the winner (undefined by contract), which could as easily clobber the platform's
+     * shell.js/info.html as the author's own asset.
+     */
+    private static void requireNoReservedWebAssetCollision(Path webAssetsRoot) throws IOException {
+        List<String> collisions = new ArrayList<>();
+        Files.walkFileTree(webAssetsRoot, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                String relative = webAssetsRoot.relativize(file).toString().replace('\\', '/');
+                String topLevel = relative.contains("/") ? relative.substring(0, relative.indexOf('/')) : relative;
+                if (RESERVED_WEB_ASSET_FILES.contains(relative) || RESERVED_WEB_ASSET_DIRECTORIES.contains(topLevel)) {
+                    collisions.add(relative);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        if (!collisions.isEmpty()) {
+            throw new IOException(
+                    "Web assets root contains file(s) colliding with reserved platform-generated static/ names "
+                            + "(reserved files: " + RESERVED_WEB_ASSET_FILES + "; reserved directories: "
+                            + RESERVED_WEB_ASSET_DIRECTORIES + "): " + collisions
+                            + " -- rename the author-supplied file(s) or remove the collision");
+        }
     }
 
     private static void validate(Options options) throws IOException {
