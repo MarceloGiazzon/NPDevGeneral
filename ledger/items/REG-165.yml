@@ -5,8 +5,10 @@ title: >-
   from a real model-content failure
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-14
+verification: UNIT_TESTED
 source: >-
   Found while investigating an R8c-unrelated failing test (dsl module's
   LegacyModelMigrationToolTest, itself a false alarm caused by this worktree's own corrupted
@@ -78,3 +80,16 @@ guard:
     ERR_MODULE_NOT_FOUND text) rather than the current bare "canonical model schema validation
     failed" with no detail clause
   provenRed: true
+
+resolution: |
+  2026-08-14: both fixes from this item's own "Likely fix" implemented. (1) `validate_json_schema`
+  now checks `node_modules/ajv/index.js` specifically, not just node_modules' bare existence, before
+  deciding to skip `npm install` -- a corrupted/partial install self-heals instead of being trusted.
+  (2) when the validator's stdout is empty (the "{}" fallback) and its errors array is therefore
+  empty too, the CliError now surfaces `stderr`'s own error line instead of a bare "canonical model
+  schema validation failed". New `NPDevCli/tests/test_validate_json_schema.py` (3 tests, mocking
+  subprocess.run so no real node/npm is needed): a crashed-subprocess case asserts the stderr text
+  reaches the error message; a genuine-validation-failure case asserts field-level detail is NOT
+  replaced by the stderr fallback (guards against the fallback masking real errors); a
+  corrupted-ajv-install case asserts exactly one npm install is triggered. All 3 pass, and the full
+  NPDevCli suite (154 tests) is unaffected.

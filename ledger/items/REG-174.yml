@@ -4,8 +4,10 @@ title: >-
   sanitizer, so REG-153's fix left 4 new open alerts at the same two (now-safe) print sites
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Found while confirming REG-153's guard (alert numbers #5/#6/#7/#8 report fixed_at post-merge) via
   `gh api repos/.../code-scanning/alerts`. The same query also listed 4 new open alerts (#27-30),
@@ -52,3 +54,11 @@ guard:
     zero open py/clear-text-logging-sensitive-data alerts remain on NPDevCli/npdev_cli.py (either
     via a recognized sanitizer or a documented, justified dismissal)
   provenRed: true
+
+resolution: |
+  2026-08-14: took option (c) -- documented dismissal, not a custom CodeQL sanitizer model (bigger,
+  separate effort; not worth it for 2 call sites). Dismissed all 4 alerts (#27-30) via
+  `gh api -X PATCH repos/.../code-scanning/alerts/<n>` with `dismissed_reason: "false positive"` and
+  a comment naming REG-174 and the confirming evidence (CliPrintRedaction's tests +
+  REG-153's own RED/GREEN smoke check). Verified via the guard's own query: zero open
+  py/clear-text-logging-sensitive-data alerts remain on npdev_cli.py.

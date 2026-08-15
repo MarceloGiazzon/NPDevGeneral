@@ -246,9 +246,15 @@ def validate_json_schema(schema: Path, instance: Path) -> dict:
     validator_root = root / "scripts" / "quality" / "json-schema-validator"
     validator_script = validator_root / "validate-json-schema.mjs"
     node_modules = validator_root / "node_modules"
+    # REG-165: a PRESENT-but-broken node_modules (e.g. an interrupted npm install leaving
+    # node_modules/ajv/ with only a LICENSE file, no index.js) previously passed this check --
+    # Test-Path only looked at the directory, never a specific declared dependency -- so it was
+    # never repaired, and every subsequent command failed the same undiagnosable way. Check the one
+    # entry point the validator script actually imports, not just the directory's existence.
+    ajv_entry = node_modules / "ajv" / "index.js"
     if not validator_script.exists():
         raise CliError(f"JSON Schema validator wrapper not found: {validator_script}")
-    if not node_modules.exists():
+    if not node_modules.exists() or not ajv_entry.exists():
         npm = shutil.which("npm.cmd" if os.name == "nt" else "npm") or shutil.which("npm")
         if not npm:
             raise CliError("npm is required to install the canonical JSON Schema validator dependencies")
@@ -283,6 +289,18 @@ def validate_json_schema(schema: Path, instance: Path) -> dict:
             for error in errors[:5]
             if isinstance(error, dict)
         )
+        if not detail and completed.stderr.strip():
+            # REG-165: the Node subprocess crashing before it ever printed its JSON result (a
+            # missing dependency, a syntax error in the validator script, any uncaught exception)
+            # previously fell back to output="{}" -- status None, errors [] -- which read as
+            # BYTE-IDENTICAL to "0 errors, still failed" from a genuinely invalid model. Surface the
+            # crash text so a broken validator reads as a broken validator, not an unexplained
+            # schema failure. Prefer a line naming an Error type over a bare stack frame ("    at
+            # ...") -- Node's own uncaught-exception format puts the message before the trace, but a
+            # stack frame alone is not a useful error message on its own.
+            stderr_lines = [line.strip() for line in completed.stderr.strip().splitlines() if line.strip()]
+            error_line = next((line for line in stderr_lines if "Error" in line), None)
+            detail = f"validator subprocess crashed: {error_line or stderr_lines[-1]}"
         raise CliError("canonical model schema validation failed" + (f": {detail}" if detail else ""))
     return result
 
