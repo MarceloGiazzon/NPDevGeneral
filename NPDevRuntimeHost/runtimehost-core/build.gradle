@@ -109,7 +109,7 @@ dependencies {
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.postgresql:postgresql:42.7.4'
     implementation 'com.networknt:json-schema-validator:1.5.6'
-    implementation platform('software.amazon.awssdk:bom:2.28.11')
+    implementation platform('software.amazon.awssdk:bom:2.52.0')
     implementation 'software.amazon.awssdk:s3'
 
     // Kernel/dsl/adapter classes referenced directly by these app-independent files
