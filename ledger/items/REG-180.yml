@@ -61,6 +61,29 @@ detail: |
   allowlist mechanism for non-API packages that also need enforcement-profile-independence. Neither
   attempted here. Option (b) (confirm/document as intentionally profile-scoped) is now the more
   likely real fix, not yet done.
+
+  **2026-08-15, same day: a third option tried and reverted before shipping -- `matchIfMissing=true`
+  on the enforcement bean's `@ConditionalOnProperty`.** Proposed by
+  `third-person-readiness-2026-08-15/PLAN.md` (T5/C4) on the theory that it would just close the
+  dormant un-profiled-boot gap and align with `NpdevObservabilityConfig`'s `@Value(...:true)` default
+  for the same property. Traced through `RuntimeSurfaceManifest.allowsController` before merging:
+  `npdev.runtime.surface-profile` is set ONLY by `application-default.properties`, so on every REAL
+  launch profile (dev/prod/trial -- none of which set it) `allowsController` falls back to the
+  manifest's `defaultSurfaceProfile` ('supported-core') and strips every controller not in
+  `allowedControllers`, which per this item's own finding above is ALL SIX
+  `com.finalexec.controlpanel.*` controllers. So `matchIfMissing=true` does not narrowly close the
+  un-profiled gap -- it makes the enforcement bean active on every profile, and since
+  `npdev.runtime.surface-profile` is unset everywhere except the one profile file nobody loads, the
+  practical effect is identical everywhere: the entire ControlPanel/SUPERUSER admin surface would
+  silently 404 on every real boot, not just the dormant one. Never shipped; caught by tracing the
+  manifest logic before running the plan's own verification build, not found live. Confirms this
+  needs real design (option (b), or a companion allowlist mechanism for non-`com.finalexec.api`
+  packages) -- there is no longer-missing default value in either direction that fixes this safely.
+
+  Per `ANALYSIS.md`'s own T5 finding (same plan): this item's severity should be reconsidered now
+  that R7 Stage B moved the un-profiled boot from "impossible" to "the shortest command a third party
+  might try" (a bare `java -jar ... ` with no `--spring.profiles.active` flag). Re-rating deferred to
+  whoever next picks this up with full context -- not changed here alongside an unrelated plan.
 guard:
   kind: manual
   ref: >-
