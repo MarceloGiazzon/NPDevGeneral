@@ -167,6 +167,14 @@ ACCEPTED_R2: dict[str, str] = {
         "row), not a false positive -- accepted because the reconciliation is already done and the "
         "conclusion is 'still open', not a code or rule change."
     ),
+    "REG-170": (
+        "The commit R2 names (3e17e37a, the 2026-08-14 closeout PR #90 squash-merge) genuinely "
+        "MODIFIED REG-170.yml -- but the edit was 'CONFIRMED, upgraded from PROBABLE, and scoped to "
+        "4 files, deferred' (a triage upgrade), not a fix, and the commit's production-source "
+        "changes were for REG-171/172/173 in the SAME squashed PR, unrelated to REG-170's own "
+        "IdentityProvisioning bug. Same shape as PACK-9 above: a legitimate 'reconcile this row' "
+        "firing whose reconciliation is already done and the conclusion is 'still open'."
+    ),
 }
 
 # R2: same "checkers describe gaps for a living" exemption R1's PRODUCTION_ROOTS encodes, spelled as

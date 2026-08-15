@@ -4,8 +4,10 @@ title: >-
   worktree with a stale link fails the gate for content nobody committed
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-13
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Found incidentally during MASTER-ROADMAP.md Step 6 (PK-2) verification, while running the full T2
   gate suite (run-all-gates.ps1) with a second background agent's `.claude/worktrees/Build` worktree
@@ -40,3 +42,11 @@ guard:
   ref: "run scripts/quality/check-markdown-links.py (or run-ai-knowledge-gate.ps1) while a `.claude/worktrees/<name>` git worktree with a stale relative markdown link exists on disk -- it fails the gate citing the worktree's copy, not any file tracked on the branch actually being verified"
   asserts: check-markdown-links.py only scans git-tracked .md files, matching its own docstring
   provenRed: true
+
+resolution: |
+  2026-08-14: `find_markdown_files` now enumerates via `git ls-files -z -- '*.md'` instead of
+  `Path.rglob`, matching the docstring's own "tracked" claim literally. New `--calibrate` control:
+  a real temp git repo with one tracked and one untracked .md file (the untracked one carrying a
+  broken link, simulating the exact worktree shape this item reproduced) -- confirms only the
+  tracked file is scanned. `python scripts/quality/check-markdown-links.py --calibrate` passes (3/3
+  controls); a real run against this repo (287 files) still reports 0 broken links.

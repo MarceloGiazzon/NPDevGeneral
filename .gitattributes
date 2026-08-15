@@ -38,6 +38,12 @@ Dockerfile.*    text eol=lf
 # Python: conventionally LF, and several of these carry a shebang and are COPY'd into containers.
 *.py            text eol=lf
 
+# Pack manifests are content-addressed (PackLockFile.sha256 hashes the raw bytes). A Windows
+# checkout's default core.autocrlf=true silently changes those bytes without changing the content,
+# so npdev.lock's recorded digest (committed from a checkout without that conversion) reads as
+# stale on a default Git-for-Windows clone even with zero real edits. REG-164.
+pack.json       text eol=lf
+
 # ---------------------------------------------------------------------------------------------
 # WINDOWS-NATIVE -- CRLF is correct here. PowerShell in particular is happiest with it, and these
 # are never executed by a Linux kernel.
