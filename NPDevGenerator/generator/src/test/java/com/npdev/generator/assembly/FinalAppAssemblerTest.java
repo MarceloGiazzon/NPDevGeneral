@@ -120,6 +120,18 @@ class FinalAppAssemblerTest {
         assertFalse(readmeContent.contains("Provide the template runtime shell"));
         assertTrue(readmeContent.contains("demo.sample"));
         assertTrue(readmeContent.contains("1.0"));
+        // T1 (Handover Hardening Plan, 2026-08-15 Step 2): writeAppReadme was referenced only by
+        // FinalAppAssembler itself -- nothing exercised the emitted README before this test. It used
+        // to tell every reader to run `java -jar ... --spring.profiles.active=dev`, which never calls
+        // Ensure-NpdevApiKey, leaving application-dev.yml's published api-dev/dev-key ADMIN pair live.
+        assertFalse(readmeContent.contains("api-dev"), "emitted README must never publish the api-dev credential");
+        assertFalse(readmeContent.contains("dev-key"), "emitted README must never publish the dev-key credential");
+        assertFalse(readmeContent.contains("--spring.profiles.active=dev"),
+                "emitted README must never show an un-keyed dev boot -- dev now fails closed with no key supplied");
+        assertTrue(readmeContent.contains("_ops/Run-FinalApp.ps1"),
+                "emitted README must point at the launcher that provisions a real admin API key");
+        assertTrue(readmeContent.contains("_ops/run-final-app.sh"),
+                "emitted README must offer the POSIX launcher twin too");
         assertFalse(Files.exists(finalApp.resolve("PROJECT_DIGEST.md")));
         assertFalse(Files.exists(finalApp.resolve("MIGRATION_DIGEST.md")));
         assertFalse(Files.exists(finalApp.resolve("NO_BUILD_ARTIFACTS.policy")));
