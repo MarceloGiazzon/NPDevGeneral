@@ -182,9 +182,104 @@ function Ensure-NpdevApiKey {
     if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
       $parts = $line.Split('=', 2)
       $name = $parts[0].Trim()
-      if ($name) { Set-Item -Path ("env:" + $name) -Value $parts[1].Trim() }
+      if ($name) {
+        Set-Item -Path ("env:" + $name) -Value $parts[1].Trim()
+        # T4: two spellings of the same Spring property coexist in this codebase --
+        # NPDEV_AUTH_API_KEYS (what this function writes) and NPDEV_AUTH_APIKEYS (the canonical
+        # dashes-removed env form docs/.env.example use). Exporting both is one line and removes the
+        # question of which one Spring's relaxed binding actually accepts.
+        if ($name -eq 'NPDEV_AUTH_API_KEYS') { Set-Item -Path 'env:NPDEV_AUTH_APIKEYS' -Value $parts[1].Trim() }
+      }
     }
   }
+}
+""";
+
+    /**
+     * T3: the POSIX twin of {@link #API_KEY_PROVISIONER} -- same file, same contract
+     * (idempotent, "present but unusable" treated as absent per REG-157, printed once), a CSPRNG key
+     * ({@code openssl rand -hex 32}, falling back to {@code /dev/urandom} when openssl is not on
+     * PATH) instead of .NET's RandomNumberGenerator. Exports both env spellings, same as the
+     * PowerShell original.
+     */
+    private static final String API_KEY_PROVISIONER_SH = """
+
+ensure_npdev_api_key() {
+  app_root="$1"
+  secrets_dir="$app_root/secrets"
+  key_file="$secrets_dir/api-key.env"
+  needs_generation=1
+  if [ -f "$key_file" ]; then
+    while IFS= read -r raw_line || [ -n "$raw_line" ]; do
+      line=$(printf '%s' "$raw_line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      case "$line" in
+        ''|'#'*) ;;
+        *=*) needs_generation=0; break ;;
+      esac
+    done < "$key_file"
+  fi
+  if [ "$needs_generation" = "1" ]; then
+    mkdir -p "$secrets_dir"
+    if command -v openssl >/dev/null 2>&1; then
+      key=$(openssl rand -hex 32)
+    else
+      key=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \\n')
+    fi
+    printf 'NPDEV_AUTH_API_KEYS=%s=dev:developer:admin' "$key" > "$key_file"
+    echo ''
+    echo '=========================================================================='
+    echo 'Generated a new admin API key for this app (printed once, saved to:'
+    echo "  $key_file"
+    echo "X-Api-Key: $key"
+    echo '=========================================================================='
+    echo ''
+  fi
+  while IFS= read -r raw_line || [ -n "$raw_line" ]; do
+    line=$(printf '%s' "$raw_line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    case "$line" in
+      ''|'#'*) ;;
+      *=*)
+        name=${line%%=*}
+        value=${line#*=}
+        if [ -n "$name" ]; then
+          export "$name=$value"
+          # T4: same reasoning as the PowerShell original -- export both spellings so the question of
+          # which one Spring's relaxed binding accepts never has to be answered.
+          if [ "$name" = "NPDEV_AUTH_API_KEYS" ]; then export NPDEV_AUTH_APIKEYS="$value"; fi
+        fi
+        ;;
+    esac
+  done < "$key_file"
+}
+""";
+
+    /**
+     * T3: the POSIX twin of {@link #SECRETS_ENV_LOADER}. Same contract -- absent file is not an
+     * error, and only the loaded variable NAMES are ever printed, never their values.
+     */
+    private static final String SECRETS_ENV_LOADER_SH = """
+
+load_npdev_agent_proxy_env() {
+  app_root="$1"
+  secrets_env="$app_root/secrets/agent-proxy.env"
+  if [ -f "$secrets_env" ]; then
+    loaded_names=''
+    while IFS= read -r raw_line || [ -n "$raw_line" ]; do
+      line=$(printf '%s' "$raw_line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      case "$line" in
+        ''|'#'*) ;;
+        *=*)
+          name=${line%%=*}
+          value=${line#*=}
+          if [ -n "$name" ]; then
+            export "$name=$value"
+            if [ -n "$loaded_names" ]; then loaded_names="$loaded_names, $name"; else loaded_names="$name"; fi
+          fi
+          ;;
+      esac
+    done < "$secrets_env"
+    echo "Loaded secret(s) from $secrets_env: $loaded_names"
+  fi
 }
 """;
 
@@ -295,6 +390,7 @@ function Test-NpdevServerReachable {
         write(opsRoot.resolve("Status-Environment.ps1"), statusEnvironmentScript());
         write(opsRoot.resolve("Build-FinalApp.ps1"), buildFinalAppScript());
         write(opsRoot.resolve("Run-FinalApp.ps1"), runFinalAppScript(serverPort));
+        writeExecutable(opsRoot.resolve("run-final-app.sh"), runFinalAppScriptPosix(serverPort));
         write(opsRoot.resolve("Smoke-Test.ps1"), smokeTestScript());
         write(opsRoot.resolve("Print-DbConnectionInfo.ps1"), printDbConnectionInfoScript());
         write(opsRoot.resolve("Reset-Environment.ps1"), resetEnvironmentScript());
@@ -984,6 +1080,53 @@ exit $LASTEXITCODE
 """.formatted(serverPort);
     }
 
+    /**
+     * T3: the POSIX twin of {@link #runFinalAppScript}, emitted alongside it as {@code
+     * _ops/run-final-app.sh} -- same contract (idempotent key provisioning, both env spellings,
+     * app-relative logging to {@code logs/app-<UTC timestamp>.log}), so a Linux/macOS tester is not
+     * routed to the raw-{@code java} escape hatch (T1) purely because {@code pwsh} was never on
+     * their PATH.
+     *
+     * <p>The port is substituted as a plain token, not via {@code String.formatted} -- unlike the
+     * PowerShell original, the shared POSIX helper functions genuinely use {@code %} ({@code printf
+     * '%s'}, {@code ${line%%=*}} parameter-expansion trimming), and running the whole concatenated
+     * script through {@code String.formatted} would consume those as format specifiers instead of
+     * leaving the shell script alone.
+     *
+     * <p>Kept to plain POSIX {@code sh} -- no bash-only arrays or {@code [[ ]]} -- so {@code sh -n}
+     * parses it, which is what the plan's local verification checks; the real Linux boot is the
+     * existing Linux CI job's job, not this machine's.
+     */
+    private static String runFinalAppScriptPosix(int serverPort) {
+        String script = """
+#!/bin/sh
+# NPDev generated FinalApp launcher -- POSIX twin of Run-FinalApp.ps1. Usage: ./run-final-app.sh [profile]
+set -e
+PROFILE="${1:-dev}"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+APP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+cd "$APP_ROOT"
+
+# D10 source 1 (POSIX twin): 'logs' sits beside 'data' inside the app and is spared by the same rule
+# that spares 'data' on regeneration -- a rebuild that destroys the evidence of why the last run
+# failed is a rebuild that destroys the only thing worth having.
+LOG_DIR="$APP_ROOT/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/app-$(date -u +%Y%m%dT%H%M%SZ).log"
+echo "Logging this run to $LOG_FILE"
+""" + API_KEY_PROVISIONER_SH + """
+ensure_npdev_api_key "$APP_ROOT"
+""" + SECRETS_ENV_LOADER_SH + """
+load_npdev_agent_proxy_env "$APP_ROOT"
+
+# 2>&1 merges the JVM's stderr into the same stream, and tee keeps the console live -- a run that
+# only writes to a file looks hung during the ~24s boot.
+echo "Active Spring profile: $PROFILE"
+java -jar "$APP_ROOT/build/libs/FinalExec-0.1.0.jar" --server.port=__NPDEV_SERVER_PORT__ "--spring.profiles.active=$PROFILE" 2>&1 | tee "$LOG_FILE"
+""";
+        return script.replace("__NPDEV_SERVER_PORT__", Integer.toString(serverPort));
+    }
+
     private static String smokeTestScript() {
         return """
 $ErrorActionPreference = 'Stop'
@@ -1170,61 +1313,76 @@ Write-Host "Environment reset for $($plan.appId)."
 Run every command below **from this `_ops` directory** -- it lives inside the app it operates, so
 the paths are relative to it and stay correct wherever you copy the app to.
 
-```powershell
+`pwsh` is the cross-platform PowerShell binary name (Windows, Linux and macOS all install it as
+`pwsh`, never `pwsh.exe` off Windows). Steps 1, 2, 4, 5, 6 and 7 are PowerShell-only today; step 3
+(Run FinalApp) also has a POSIX shell twin, `run-final-app.sh`, for a machine with no PowerShell at
+all.
+
+```sh
 cd <this app>/_ops
 ```
 
 1. Create environment
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Create-Environment.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Create-Environment.ps1
 ```
 
 2. Build FinalApp
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Build-FinalApp.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Build-FinalApp.ps1
 ```
 
 3. Run FinalApp
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Run-FinalApp.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Run-FinalApp.ps1
 ```
 
-Boots with Spring profile `dev` by default (`application-dev.yml`). Pass `-Profile prod` to boot
-against `application-prod.properties` instead -- the same profile the Docker deployment path
-(`docker-compose.yml`) activates -- for exercising it locally:
+or, with no PowerShell on PATH:
+
+```sh
+./run-final-app.sh
+```
+
+Boots with Spring profile `dev` by default (`application-dev.yml`). Pass `-Profile prod` (PowerShell)
+or a `prod` argument (POSIX) to boot against `application-prod.properties` instead -- the same
+profile the Docker deployment path (`docker-compose.yml`) activates -- for exercising it locally:
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Run-FinalApp.ps1 -Profile prod
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Run-FinalApp.ps1 -Profile prod
 ```
 
-`prod` seeds no admin API key of its own; `Run-FinalApp.ps1` provisions/reuses the same
-`secrets/api-key.env` key either way (see `X-Api-Key` in the console output on first run).
+```sh
+./run-final-app.sh prod
+```
+
+`prod` seeds no admin API key of its own; either launcher provisions/reuses the same
+`secrets/api-key.env` key regardless of profile (see `X-Api-Key` in the console output on first run).
 
 4. Smoke-test FinalApp
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Smoke-Test.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Smoke-Test.ps1
 ```
 
 5. Open DBeaver
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Print-DbConnectionInfo.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Print-DbConnectionInfo.ps1
 ```
 
 6. Stop environment
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Stop-Environment.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Stop-Environment.ps1
 ```
 
 7. Reset environment if needed
 
 ```powershell
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -File ./Reset-Environment.ps1 -Confirm I_UNDERSTAND_DB_DATA_WILL_BE_DELETED
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Reset-Environment.ps1 -Confirm I_UNDERSTAND_DB_DATA_WILL_BE_DELETED
 ```
 
 ## Building somewhere the NPDev jar cache is not
@@ -1273,6 +1431,26 @@ $env:NPDEV_RUNTIMEHOST_LIBS = '<your runtimehost-libs directory>'
 
     private static void write(Path path, String content) throws Exception {
         Files.writeString(path, content.replace("\n", System.lineSeparator()), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * T3: for the POSIX launcher only -- {@code write()}'s {@code System.lineSeparator()} would bake
+     * CRLF into a shebang'd file when this generator runs on Windows, and a shell reads {@code
+     * #!/bin/sh\r} as a request for an interpreter literally named {@code /bin/sh<CR>}, which does
+     * not exist. LF is forced unconditionally, independent of the generating machine.
+     *
+     * <p>Then sets the POSIX exec bit where the filesystem has one. Windows NTFS has none --
+     * {@code Files.getFileAttributeView} returns {@code null} there rather than throwing -- so this
+     * is a no-op on the machine most of this generator's development happens on; the Linux CI job
+     * (plan §5) is what proves the bit actually lands where it matters.
+     */
+    private static void writeExecutable(Path path, String content) throws Exception {
+        Files.writeString(path, content.replace("\r\n", "\n"), StandardCharsets.UTF_8);
+        var posixView = Files.getFileAttributeView(path, java.nio.file.attribute.PosixFileAttributeView.class);
+        if (posixView != null) {
+            Files.setPosixFilePermissions(path,
+                    java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
     }
 
     private static void writeJson(Path path, Object value) throws Exception {

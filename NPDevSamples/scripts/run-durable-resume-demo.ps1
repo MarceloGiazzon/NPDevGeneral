@@ -71,6 +71,9 @@ Info "=== Step 0: generate + build ==="
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { Fail "Sample generation failed" }
 
 $appRoot = $sample.AppRoot
+# T1/C2: application-dev.yml no longer seeds a known key, so provision one before this script's
+# own raw java boot below -- Start-Process inherits this session's environment.
+Ensure-NpdevSampleApiKey -AppRoot $appRoot
 $apiKey = Get-NpdevLiveApiKey -AppRoot $appRoot
 $gradlew = Get-NPDevGradleWrapperExecutable $appRoot
 Ensure-File -PathValue $gradlew -Label "Generated app Gradle wrapper"

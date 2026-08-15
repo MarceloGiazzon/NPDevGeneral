@@ -169,6 +169,9 @@ try {
 
     Info "=== Generate + boot ==="
     & (Join-Path $scriptsRoot "generate-sample-app.ps1") -SampleId $sampleId | Out-Null
+    # T1/C2: application-dev.yml no longer seeds a known key, so provision one before this script's
+    # own raw gradlew boot below -- Start-Process inherits this session's environment.
+    Ensure-NpdevSampleApiKey -AppRoot $sample.AppRoot
     $appCtx = Start-SampleAppProcess -Label "promotion"
 
     # R7 Stage D: this script boots the app itself (raw gradlew, no Ensure-NpdevApiKey call), so

@@ -27,6 +27,17 @@ public class RuntimeControllerAllowlistConfig {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Bean
+    // REG-180/T5: PLAN.md (third-person-readiness-2026-08-15) proposed matchIfMissing=true here so
+    // this enforces on every profile instead of only the dormant Spring 'default' one. Tried and
+    // REVERTED -- verified against runtime-supported-controllers.json before shipping (never live,
+    // caught in review): npdev.runtime.surface-profile is set ONLY by application-default.properties,
+    // so on every REAL launch profile (dev/prod/trial, none of which set it) allowsController() falls
+    // back to the manifest's own defaultSurfaceProfile ('supported-core') and strips every controller
+    // not in allowedControllers -- which is ALL SIX com.finalexec.controlpanel.* controllers (REG-180
+    // already established this). matchIfMissing=true would therefore make every real boot silently
+    // 404 the entire ControlPanel/SUPERUSER admin surface, not just the one nobody uses. Left OPEN;
+    // see REG-180's own ledger entry for the (already-tried-and-reverted) allowedControllers option
+    // and why a real fix needs more design than a one-line default flip in either direction.
     @ConditionalOnProperty(name = SUPPORTED_SURFACE_PROPERTY, havingValue = "true")
     static BeanDefinitionRegistryPostProcessor supportedRuntimeControllerAllowlistPostProcessor(
             Environment environment
