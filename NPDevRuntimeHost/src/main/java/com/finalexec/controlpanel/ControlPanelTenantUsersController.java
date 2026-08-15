@@ -82,7 +82,7 @@ public class ControlPanelTenantUsersController {
             CapabilityDispatcher capabilityDispatcher,
             CompiledModel compiledModel,
             AuditLogStore auditLogStore,
-            @Value("${npdev.auth.login.user-table:identity_users}") String userTable,
+            @Value("${npdev.auth.login.user-table:}") String userTable,
             @Value("${npdev.auth.login.user-id-column:id}") String userIdColumn,
             @Value("${npdev.auth.login.username-column:username}") String usernameColumn,
             @Value("${npdev.auth.login.display-name-column:display_name}") String displayNameColumn,
@@ -97,7 +97,14 @@ public class ControlPanelTenantUsersController {
         this.compiledModel = compiledModel;
         this.identityTables = IdentityPackTableNames.resolve(compiledModel);
         this.auditLogStore = auditLogStore;
-        this.userTable = userTable;
+        // REG-179: npdev.auth.login.user-table's literal default (formerly "identity_users") is
+        // never actually set by any generator/mustache-template wiring for a real app (REG-177's own
+        // finding) -- it was silently wrong for any app whose identity pack is version-qualified
+        // (the normal case, e.g. identity_v1_users), causing this controller's 6 raw-SQL call sites
+        // to 500 against a real schema. An explicit override still wins (the documented "custom user
+        // table" feature this class's own javadoc describes), but the fallback is now the identity
+        // pack's own resolved table name instead of a stale pre-versioning literal.
+        this.userTable = (userTable == null || userTable.isBlank()) ? identityTables.usersTable() : userTable;
         this.userIdColumn = userIdColumn;
         this.usernameColumn = usernameColumn;
         this.displayNameColumn = displayNameColumn;

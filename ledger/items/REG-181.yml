@@ -1,0 +1,52 @@
+id: REG-181
+title: >-
+  sync-runtimehost-libs.ps1 can leave a stale npdev-dsl-0.1.0.jar staged after a "successful"
+  -BuildLocalJars restage, because NPDevContract/dsl is built and named two different ways by two
+  different Gradle projects and the sync script's own jar-discovery only reliably tracks one of them
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-15
+source: >-
+  Found while investigating a reported com.finalexec.controlpanel 404 (see REG-179's source note).
+  Getting a real app to boot with REG-177's new IdentityPackTableNames class actually present
+  required working around this bug by hand (building NPDevContract/dsl's own standalone gradlew jar
+  directly) -- a normal `sync-runtimehost-libs.ps1 -BuildLocalJars` restage was not sufficient.
+surface: build-tooling/runtimehost-libs-sync
+files:
+  - scripts/runtimehost/sync-runtimehost-libs.ps1
+detail: |
+  `NPDevContract/dsl`'s sources are compiled into a jar by TWO different, independent Gradle
+  projects with two different artifact names: `NPDevKernel`'s and `NPDevGenerator`'s own `:dsl`
+  subproject references produce `dsl-0.1.0.jar`, while `NPDevContract/dsl`'s OWN standalone
+  `gradlew jar` (its real, canonical build) produces `npdev-dsl-0.1.0.jar`. The generated app's
+  `verifyNpdevRuntimeHostLibs` task requires `npdev-dsl-0.1.0.jar` specifically (per
+  `runtimehost-libs-manifest.json`'s `requiredStagedJars`).
+
+  `sync-runtimehost-libs.ps1 -BuildLocalJars` invokes `NPDevKernel`'s and `NPDevGenerator`'s own
+  gradlew (producing/refreshing `dsl-0.1.0.jar` as a side effect of their own `:dsl` subproject
+  dependency) and `NPDevRuntimeHost/runtimehost-core`'s gradlew, but never invokes
+  `NPDevContract/dsl`'s OWN standalone gradlew directly -- so `npdev-dsl-0.1.0.jar` is only ever
+  refreshed if something ELSE, outside this script, happens to have built it recently and left it
+  under `NPDevContract/dsl/build/libs/` (or the external Gradle build root) for `Sync-NPDevJars`'s
+  scan to pick up. When that hasn't happened, the script's own REG-162 content-hash safety net
+  (`stagedContentMismatches`) does not fire -- it only compares a jar it DECIDED to copy against its
+  own source of truth, and a `npdev-dsl-0.1.0.jar` the script's discovery pass never found at all
+  (because nothing recently built it) is simply left as whatever was already staged from a prior
+  run, reported as "already current" alongside genuinely-current jars with no distinction.
+
+  Not deeply root-caused past this point -- worth its own investigation into whether the fix belongs
+  in `sync-runtimehost-libs.ps1` (add an explicit `NPDevContract/dsl` standalone `gradlew jar`
+  invocation under `-BuildLocalJars`, mirroring the runtimehost-core step) or in unifying the two
+  Gradle projects' jar-naming so `dsl-0.1.0.jar`/`npdev-dsl-0.1.0.jar` aren't two names for
+  (supposedly) the same artifact in the first place.
+guard:
+  kind: manual
+  ref: >-
+    modify a class in NPDevContract/dsl, run `sync-runtimehost-libs.ps1 -BuildLocalJars` with NO
+    other manual NPDevContract/dsl build step, then generate+compile a sample app referencing the
+    new class
+  asserts: >-
+    the sample app's compile can see the new class -- sync-runtimehost-libs.ps1 alone (no manual
+    workaround) staged a truly current npdev-dsl-0.1.0.jar
+  provenRed: true
