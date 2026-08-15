@@ -1,0 +1,63 @@
+id: REG-175
+title: >-
+  Map.copyOf/Set.copyOf is used ~60 times across the DSL AST/compiled layers and the generator's
+  trusted-action templates to "freeze" a map/set built from a LinkedHashMap -- every one of those
+  call sites discards deterministic iteration order the same way PlatformStrings.DEFAULTS and
+  SettingsAst.getStrings() did (REG-146), and any of them COULD be a latent second instance
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-15
+source: >-
+  Found while root-causing REG-146 (Workbench i18n key-order nondeterminism). The actual defect was
+  two specific `Map.copyOf(...)` call sites (PlatformStrings.DEFAULTS, SettingsAst.getStrings()) --
+  JDK's ImmutableCollections implementation deliberately randomizes iteration order for maps/sets
+  built via Map.copyOf/Set.copyOf/Map.of/Set.of (a JEP 269 hash-flood mitigation), discarding
+  whatever LinkedHashMap insertion order the caller built. `grep -rn "Map\.copyOf\|Set\.copyOf"`
+  across NPDevContract/dsl and NPDevGenerator/generator turned up ~60 more call sites with the
+  identical shape (`x = x == null ? Map.of() : Map.copyOf(x)`), none audited here.
+surface: dsl/determinism
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters
+detail: |
+  `check-deterministic-generation.ps1` reports 0 differing files as of its last measured run
+  (2026-08-09, 786 files), so none of these ~60 other sites are CURRENTLY known to produce
+  observably different generated output between two back-to-back generations of any tested sample.
+  That is weaker evidence than it sounds: REG-146 itself was invisible to the DEFAULT
+  check-deterministic-generation.ps1 sample (`simple-contact-intake`, no Workbench usage) and was
+  only found because a DIFFERENT sample (`dsl-conformance-max`, real pack imports) happened to
+  exercise the one code path where the randomized order became visible in emitted output. A site
+  whose map (a) has 2+ entries in some real model AND (b) gets serialized/iterated into
+  order-sensitive output (JSON, generated source text, a hash/fingerprint) is a candidate for the
+  same defect; a site whose map is always empty/singleton in practice, or whose consumer sorts/
+  re-orders before use, is not actually affected regardless of the randomization.
+
+  NOT triaged site-by-site here -- that is real work (~60 sites, each needs its actual downstream
+  consumer traced to know if order is observable), and REG-146's own fix (swap the two confirmed
+  sites from `Map.copyOf`/an unordered wrapper to `Collections.unmodifiableMap` over the existing
+  LinkedHashMap, preserving immutability with zero behavior change for every other caller) is the
+  template for fixing any site this triage confirms is really affected.
+
+  Likely fix, not designed further: (a) triage the ~60 sites for whether their map/set is ever
+  iterated into order-sensitive output before their process reaches any hashing/serialization step,
+  fixing the confirmed ones with the same swap REG-146 used; or (b) a repo-wide policy/checker (a
+  new `check-*.py`, mirroring `check-dialect-sites.py`'s "no dialect-bound construct outside one
+  package" enforcement) that flags any `Map.copyOf`/`Set.copyOf` call whose argument's static type
+  wasn't already `Map.of()`/`Set.of()` (i.e. a genuine "freeze a mutable map" call, not a
+  no-op-on-an-already-immutable-value one) as needing an explicit determinism review -- the second
+  option is more durable (catches the NEXT one before it ships) but is real new-checker work, not a
+  quick sweep.
+guard:
+  kind: manual
+  ref: >-
+    for each Map.copyOf/Set.copyOf call site found by `grep -rn "Map\.copyOf\|Set\.copyOf"` across
+    NPDevContract/dsl/src/main/java and NPDevGenerator/generator/src/main/java, trace whether its
+    result is ever serialized/iterated into order-sensitive generated output, and whether the input
+    can legitimately have 2+ entries in a real model
+  asserts: >-
+    every site whose map/set both (a) can have 2+ real entries and (b) reaches order-sensitive
+    output uses an order-preserving immutable wrapper (Collections.unmodifiableMap/-Set), not
+    Map.copyOf/Set.copyOf
+  provenRed: false

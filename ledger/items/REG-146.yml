@@ -3,8 +3,29 @@ title: >-
   Workbench i18n string map key order is nondeterministic, breaking check-deterministic-generation.ps1 for dsl-conformance-max
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-13
+closed: 2026-08-15
+verification: VERIFIED_LIVE
+resolution: >-
+  Three independent `Map.copyOf(x)` call sites, all discarding the LinkedHashMap insertion order
+  JDK's `ImmutableCollections` deliberately randomizes per JVM run (JEP 269 hash-flood mitigation):
+  `PlatformStrings.DEFAULTS`, `SettingsAst.getStrings()` (both found in the original investigation),
+  plus a THIRD site found while re-verifying the fix -- `WorkbenchActionApplyToAst.map` (a workbench
+  action's `applyTo.map` field, e.g. `{"sku": "$resultado.id", "quantity": "1"}` in
+  dsl-conformance-max's model) -- still reproduced the exact same class of failure
+  (compiled-model.json content-differs between two back-to-back generations) even after the first two
+  sites were fixed, because `ModelCompiler`'s `sortByKey(...)` normalization at line ~1604 does not
+  apply to this field. All three fixed identically: swap `Map.copyOf(x)` for
+  `Collections.unmodifiableMap(new LinkedHashMap<>(x))` (or, where a private field was already a
+  defensive LinkedHashMap copy, just `Collections.unmodifiableMap(field)`) -- preserves real
+  insertion order while staying just as immutable. The other ~60 `Map.copyOf`/`Set.copyOf` sites
+  found by the same grep remain untriaged, tracked separately as REG-175 (this fix's existence is the
+  template for closing any of those confirmed to be similarly affected).
+
+  Re-verified live 2026-08-15: `check-deterministic-generation.ps1 -SampleId dsl-conformance-max`
+  reproduced RED on the pre-fix tree, then GREEN 3 consecutive times after all three sites were
+  fixed (SHA-256 of compiled-model.json identical across back-to-back generations each time).
 source: >-
   Found incidentally during MASTER-ROADMAP.md Step 6 (PK-2) verification, while running
   check-deterministic-generation.ps1 -SampleId dsl-conformance-max as an additional regression check
@@ -15,6 +36,9 @@ source: >-
 surface: generator/workbench-emission
 files:
   - NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/PlatformStrings.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/SettingsAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/WorkbenchActionApplyToAst.java
 detail: |
   check-deterministic-generation.ps1 -SampleId dsl-conformance-max fails reproducibly (not
   intermittently -- reproduced 3 times in a row): src/main/resources/npdev/compiled-model.json,
