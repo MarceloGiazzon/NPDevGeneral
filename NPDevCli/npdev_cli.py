@@ -1782,7 +1782,7 @@ def run_app(args: argparse.Namespace) -> dict:
                               "see which Java NPDev can find.",
             ))
             return result
-        live_api_key = ensure_api_key(final_app_out)
+        ensure_api_key(final_app_out)
         with open(log_path, "w", encoding="utf-8") as log_file:
             boot_proc = subprocess.Popen(
                 [java, "-jar", str(jar_path), f"--server.port={args.port}",
@@ -1823,7 +1823,12 @@ def run_app(args: argparse.Namespace) -> dict:
         result["phase"] = "READY"
         result["ok"] = True
         result["baseUrl"] = base_url
-        result["apiKey"] = live_api_key
+        # A POINTER, not the credential itself (CodeQL py/clear-text-logging-sensitive-data,
+        # caught in PR #100 review): this JSON is unconditionally printed to stdout by main()
+        # below, which is exactly a clear-text log sink. A caller that needs to authenticate reads
+        # the file this names -- the same file every other launcher on this platform already
+        # provisions into, so nothing new is exposed that `secrets/api-key.env` didn't already hold.
+        result["apiKeyFile"] = str(final_app_out / "secrets" / "api-key.env")
         _write_run_app_progress(final_app_out, result["phase"])
         _RUN_APP_CHILD_PROCESS = None  # READY: intentionally leave it running, not this run's to kill
         return result

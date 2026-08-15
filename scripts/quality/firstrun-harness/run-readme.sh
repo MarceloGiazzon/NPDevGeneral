@@ -754,11 +754,15 @@ fi
 # `_RUN_APP_CHILD_PROCESS = None` comment in npdev_cli._run_app), so this is the harness's one
 # reliable live app, whatever README currently documents. The editor/REG-139 probes ride on it.
 if [ "${RUN_APP_OK:-0}" = "1" ]; then
-  # C2 ("npdev run app" JSON result carries the key it actually provisioned, since ensure_api_key()
-  # landed in npdev_cli.py) -- not a hardcoded 'dev-key', which stopped authenticating the moment
-  # application-dev.yml stopped seeding it.
-  RUN_APP_API_KEY=$(printf '%s' "$RUN_APP_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('apiKey') or '')" 2>/dev/null)
-  probe_editor_surface "http://localhost:$RUN_APP_PORT" "$RUN_APP_API_KEY"
+  # T1/C2: not a hardcoded 'dev-key', which stopped authenticating the moment application-dev.yml
+  # stopped seeding it. `npdev run app` already provisioned RUN_APP_OUT/secrets/api-key.env (via
+  # npdev_cli.ensure_api_key(), same file every launcher on this platform uses) -- read it directly
+  # rather than round-tripping the credential through --json's stdout, which is a clear-text-log
+  # sink (CodeQL py/clear-text-logging-sensitive-data flagged exactly that in this PR's first draft,
+  # where the key was carried as RUN_APP_JSON's own "apiKey" field). ensure_npdev_api_key is
+  # idempotent, so calling it again here just reads the existing file.
+  ensure_npdev_api_key "$RUN_APP_OUT"
+  probe_editor_surface "http://localhost:$RUN_APP_PORT" "$NPDEV_LIVE_API_KEY"
 else
   skip "editor responds at /npdev-ui-react/ and references its own bundle" \
        "npdev run app did not reach READY, so there is no live app to probe (see the failure above)"

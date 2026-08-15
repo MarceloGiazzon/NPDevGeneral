@@ -52,18 +52,28 @@ detail: |
   `Ensure-NpdevApiKey` (`OperationalRunbookEmitter.java`) and `Ensure-NpdevSampleApiKey`
   (`sample-common.ps1`) are already two independent, intentionally self-contained implementations
   of the identical algorithm). `run_app()`'s BOOT phase calls it before the `Popen`, and its JSON
-  result now carries the live key as `apiKey` so a caller (e.g. `run-readme.sh`) can make an
-  authenticated request against the app it just booted instead of guessing. `dev_loop.boot()` calls
-  the same function via the already-established dependency-injected `cli` module reference (the
-  identical pattern `cli.java_launcher()` already uses for W1.3), and the watch loop's `Output`
-  prints the provisioned key once, to stderr, on the first successful boot only (never to stdout,
-  which is `npdev run app`'s and `npdev dev`'s structured/event-stream output channel).
+  result carries the PATH to `secrets/api-key.env` as `apiKeyFile` so a caller (e.g. `run-readme.sh`)
+  can resolve the live key without guessing. `dev_loop.boot()` calls the same function via the
+  already-established dependency-injected `cli` module reference (the identical pattern
+  `cli.java_launcher()` already uses for W1.3), and the watch loop's `Output` prints the provisioned
+  key once, to stderr, on the first successful boot only (never to stdout, which is `npdev run
+  app`'s and `npdev dev`'s structured/event-stream output channel).
 
   Deliberately did NOT print from `ensure_api_key()` itself: `npdev run app` always prints its
   final JSON result to stdout as its entire output contract (`print(json.dumps(result, indent=2))`,
   unconditional, not gated on a `--json` flag) -- a banner from inside the shared function would
   have corrupted that for every caller that parses it, which is exactly how `run-readme.sh`
-  consumes it (`RUN_APP_JSON=$(...)`, then `jq`/`python3 -c` on the captured string).
+  consumes it (`RUN_APP_JSON=$(...)`, then `python3 -c` on the captured string).
+
+  **2026-08-15 (PR #100 review, before merge): the first draft carried the raw key itself as
+  `result["apiKey"]`, not a file pointer.** CodeQL (`py/clear-text-logging-sensitive-data`) caught
+  this correctly on the PR's own first CI run: `run_app()`'s result is unconditionally printed to
+  stdout, so putting the live credential in it is exactly a clear-text-log sink -- 3 high-severity
+  alerts, one per `print(json.dumps(result, ...))` call site whose result shape could carry it
+  (`run app`, `acceptance run`, `loop run`). Changed to `apiKeyFile` (the path, never the value) in
+  the same PR; `run-readme.sh` updated to call `ensure_npdev_api_key` (idempotent -- it re-reads the
+  file `npdev run app` already provisioned rather than re-provisioning) instead of parsing `apiKey`
+  out of the captured JSON.
 
   Verification status: local only so far (Python syntax check, `python -m unittest
   tests.test_java_launcher` still 6/6 green -- the RED-shape `DevLoopBootWithoutJavaTest` returns
