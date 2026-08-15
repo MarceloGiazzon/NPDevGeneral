@@ -5,8 +5,6 @@ title: >-
   reach
 type: GAP
 severity: MEDIUM
-status: OPEN
-opened: 2026-08-14
 source: >-
   Found while investigating RUN-4/R8d (Track C, branch track-c-r8d-capability-deadlines): scanning
   NPDevKernel/adapters/ for "real network-calling adapters" surfaced file-store-objectstore alongside
@@ -16,9 +14,27 @@ source: >-
   CapabilityDispatcher/KernelRunner's capability-execution path and RUN-4's fix (adapter-level
   deadlines on the two CapabilityAdapter network adapters) does not cover it.
 surface: kernel/file-store
+status: DONE
+opened: 2026-08-14
+closed: 2026-08-15
+verification: UNIT_TESTED
+resolution: >-
+  `NpdevFileStoreConfig.objectStoreFileStoreContract` now injects three `@Value`-configurable
+  parameters (`apiCallTimeoutMs:60000`, `apiCallAttemptTimeoutMs:20000`, `maxRetries:2`) and passes
+  them to the `S3ClientBuilder` via `.overrideConfiguration(ClientOverrideConfiguration.builder()
+  .apiCallTimeout(...).apiCallAttemptTimeout(...).retryPolicy(RetryPolicy.builder(RetryMode.STANDARD)
+  .numRetries(...).build()).build())` -- closing the "no configured deadline" gap with the exact
+  mechanism this item's own detail sketched. New test
+  `NpdevFileStoreConfigTest` (`runtimehost-core/src/test`) proves it for real rather than merely
+  compiling: a genuine hanging `ServerSocket` (accepts a TCP connection, never responds) stood in as
+  the S3 endpoint, `objectStoreFileStoreContract(...)` called directly with short timeouts -- the
+  call fails in bounded time (not hanging forever) and the hanging socket recorded at least one real
+  accepted connection, proving the client actually tried and was bounded by the configured deadline
+  rather than some other unrelated failure. `:runtimehost-core:test` green, 2026-08-15.
 files:
   - NPDevKernel/adapters/file-store-objectstore/src/main/java/com/npdev/adapters/filestore/objectstore/S3ObjectStoreFileStoreAdapter.java
   - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/NpdevFileStoreConfig.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/config/NpdevFileStoreConfigTest.java
 detail: |
   `NpdevFileStoreConfig.objectStoreFileStoreContract` builds its `S3Client` with only
   `.region(...)`, `.serviceConfiguration(...)`, an optional `.endpointOverride(...)`, and a
@@ -50,3 +66,11 @@ detail: |
   above. `webhook-inproc` (`InProcWebhookCapabilityAdapter`) was also checked and ruled OUT: despite
   its port implying network I/O, it is a genuine in-memory stub (appends to an `ArrayList`, no
   socket/HTTP call anywhere) with nothing to time out.
+guard:
+  kind: script
+  ref: "cd NPDevRuntimeHost/runtimehost-core && ./gradlew test --tests com.finalexec.config.NpdevFileStoreConfigTest"
+  asserts: >-
+    a real hanging ServerSocket standing in as the S3 endpoint causes objectStoreFileStoreContract's
+    S3 calls to fail in bounded time (not hang forever), proving apiCallTimeout/apiCallAttemptTimeout
+    are actually wired and enforced, not merely present in source
+  provenRed: false

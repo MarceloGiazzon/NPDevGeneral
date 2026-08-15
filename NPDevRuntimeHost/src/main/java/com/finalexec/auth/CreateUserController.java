@@ -1,5 +1,7 @@
 package com.finalexec.auth;
 
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -39,6 +42,10 @@ public class CreateUserController {
 
     private final DataSource dataSource;
     private final RuntimeContextService runtimeContextService;
+    // REG-177 fix: graceful tryResolve, not the throwing resolve() -- this bean is only gated on
+    // npdev.auth.mode=jwt, NOT on the identity pack being composed, so an app that sets jwt auth
+    // mode without ever composing the identity pack must still boot (guarded per-request instead).
+    private final Optional<IdentityPackTableNames> identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -48,6 +55,7 @@ public class CreateUserController {
     public CreateUserController(
             DataSource dataSource,
             RuntimeContextService runtimeContextService,
+            CompiledModel compiledModel,
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn,
@@ -56,6 +64,7 @@ public class CreateUserController {
     ) {
         this.dataSource = dataSource;
         this.runtimeContextService = runtimeContextService;
+        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -87,21 +96,27 @@ public class CreateUserController {
                 || password == null || password.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "missing_required_field"));
         }
+        if (identityTables.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "identity_pack_not_composed");
+        }
+        IdentityPackTableNames identityTables = this.identityTables.get();
 
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try {
-                if (IdentityProvisioning.usernameTaken(connection, tenantId, username)) {
+                if (IdentityProvisioning.usernameTaken(connection, identityTables, tenantId, username)) {
                     connection.rollback();
                     return ResponseEntity.status(409).body(Map.of("error", "username_taken"));
                 }
 
                 UUID userId = UUID.randomUUID();
-                IdentityProvisioning.insertIdentityUser(connection, userId, username, displayName, request.email(), tenantId);
+                IdentityProvisioning.insertIdentityUser(
+                        connection, identityTables, userId, username, displayName, request.email(), tenantId);
 
                 UUID roleId = IdentityProvisioning.findOrCreateRole(
-                        connection, tenantId, roleName, "Created via /api/auth/create-user");
-                IdentityProvisioning.insertUserRole(connection, userId, roleId, tenantId);
+                        connection, identityTables, tenantId, roleName, "Created via /api/auth/create-user");
+                IdentityProvisioning.insertUserRole(connection, identityTables, userId, roleId, tenantId);
 
                 IdentityProvisioning.insertCredential(
                         connection, credentialTable, credentialUserIdColumn, credentialPasswordColumn,

@@ -50,11 +50,12 @@ public class NpdevAuthConfig {
     @Bean
     @ConditionalOnMissingBean(AuthenticatedContextResolver.class)
     public AuthenticatedContextResolver authenticatedContextResolver(
-            org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider
+            org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider,
+            CompiledModel compiledModel
     ) {
         // Base resolver decodes the principal (api-key / JWT) into tenant + actor + claim-roles;
         // the identity-aware wrapper lets the persistent identity pack override roles when populated.
-        return new IdentityAwareContextResolver(new JwtAuthenticatedContextResolver(), dataSourceProvider);
+        return new IdentityAwareContextResolver(new JwtAuthenticatedContextResolver(), dataSourceProvider, compiledModel);
     }
 
     @Bean
@@ -116,8 +117,18 @@ public class NpdevAuthConfig {
         return bean;
     }
 
+    // REG-156: matchIfMissing = true on both apikey-mode beans below. Without it, a bare/un-profiled
+    // boot (npdev.auth.mode never set by ANY property file -- application-default.properties didn't
+    // set it, and this profile is only reachable at all since Stage B removed the old implicit
+    // spring.profiles.default=dev) passed StartupValidator (which already normalizes an unset mode
+    // to "apikey" internally) while these beans, gated by the literal property being SET, never
+    // registered at all -- fail-open, not fail-closed: a supplied key validated at startup but no
+    // filter ever enforced it against the wrong one. matchIfMissing=true only fires when the
+    // property is genuinely ABSENT; an explicit npdev.auth.mode=jwt (or any other value) still wins
+    // and correctly leaves these OFF, so dev/prod/jwt profiles that already set the property are
+    // unaffected.
     @Bean
-    @ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "apikey")
+    @ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "apikey", matchIfMissing = true)
     public RuntimeApiKeyAuthFilter runtimeApiKeyAuthFilter(
             @Value("${npdev.auth.api-keys:}") String encodedMappings,
             CredentialRegistryService credentialRegistryService
@@ -128,7 +139,7 @@ public class NpdevAuthConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "apikey")
+    @ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "apikey", matchIfMissing = true)
     public FilterRegistrationBean<RuntimeApiKeyAuthFilter> runtimeApiKeyAuthFilterRegistration(
             RuntimeApiKeyAuthFilter runtimeApiKeyAuthFilter,
             RuntimeSettings runtimeSettings

@@ -156,10 +156,15 @@ jobs:
         working-directory: NPDevGenerator
         # REG-176: packagedProofTest runs the 3 packaged-app-boot proofs SERIALLY
         # (maxParallelForks=1, generator/build.gradle) instead of contending for 2 forks with each
-        # other.
-        timeout-minutes: 30
+        # other. Each test's own HEALTH_TIMEOUT was also raised 6->8min as defense-in-depth.
+        timeout-minutes: 45
         run: |
-          ./gradlew :generator:test :generator:behaviorTest :generator:packagedProofTest --no-daemon --console=plain
+          ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
+          # REG-176 follow-up: see npdev-pr-gate.yml's identical step for the full reasoning --
+          # org.gradle.parallel=true lets Gradle run separate top-level tasks concurrently even
+          # within one invocation, so packagedProofTest needs its own separate gradlew call to
+          # guarantee nothing else contends for CPU/Docker/port resources during its boots.
+          ./gradlew :generator:packagedProofTest --no-daemon --console=plain
 
       # A failing generator test printed only "AssertionFailedError at <File>.java:458" -- the
       # assertion MESSAGE (which for the packaged-app proofs is the full output of the command that

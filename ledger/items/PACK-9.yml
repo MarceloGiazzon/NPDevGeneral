@@ -28,3 +28,34 @@ detail: |
   write "requires role admin" once and have that reference resolve, at the point of use, to
   WHATEVER concrete role name the composing app actually mapped onto "admin". Rewriting the
   pack's own internal references to consume the app's binding is the remaining work.
+
+  2026-08-15 scoping pass (research only, no code changes -- deliberately NOT implemented in this
+  session's 16-item batch-fix pass; this item needs a design conversation first, not a mechanical
+  fix): role-name strings appear in two structurally different shapes, both needing to be covered --
+  (1) STRUCTURED fields, a small closed set (`RoleAst`/`CompiledRole`, `PanelAst.visibility`'s
+  existing `"role:ADMIN"` convention parsed by `TrustedSourceManifest.requiredRoleFromVisibility()`,
+  `ActionMetadataAst.permissionHint`); (2) EXPRESSION-EMBEDDED, open-ended and NOT machine-
+  enumerable -- `ConceptAccessAst.access.read/write` and any `visibleWhen`/`enabledWhen` condition
+  can embed a role check as a free-form string in the model's expression language (evaluated against
+  `$user.roles`), with no dedicated "role literal" token to find/rewrite mechanically. The generator
+  derives a THIRD layer purely for codegen (`TrustedProcedure/TrustedPanel/.../ManifestEntry.
+  requiredRole` in `NPDevGenerator/.../trustedsource/model/`), consumed at runtime by exactly one
+  real sink: `ExecutionContext.hasRole(String)` (`NPDevKernel/kernel/.../ExecutionContext.java:100`).
+
+  The EXISTING `requires.roles`/`provides.roles` mechanism
+  (`ModelSourceResolver.checkPackRequirements`) is a pure PRESENCE check -- `Set<String>` exact-match,
+  refusing when a required name has no matching provides entry. There is NO `Map<String,String>`
+  (logical name -> app's concrete name) anywhere in the resolution/compiled pipeline; a real binding
+  table would need to be built from scratch, not reused. No existing DSL syntax distinguishes a
+  binding-reference from a literal role name anywhere in the codebase (the closest thing, `visibility`'s
+  `"role:X"` prefix, still has `X` be a literal, no indirection) -- new syntax would need inventing for
+  both the structured-field case and, separately, an expression-language function (e.g. a `role('admin')`
+  call) for the free-form case. `PACK-ARCHITECTURE.md` P13 (`__OutsideRepo/strategy-2026-08-12/`)
+  designed only the presence/refusal half already shipped; no design exists yet for the internal-
+  rewrite half.
+
+  **Verdict: NOT small/mechanical.** Two separable problems (rename a structured field vs. rewrite
+  literals inside free-form expressions), no reusable binding table, no syntax convention to build on
+  -- genuinely needs new DSL syntax plus a real design decision (how a pack author writes a binding
+  reference, how the expression language distinguishes it from a literal, how/when the rewrite pass
+  runs relative to compilation) before implementation, not a quick pass alongside smaller items.
