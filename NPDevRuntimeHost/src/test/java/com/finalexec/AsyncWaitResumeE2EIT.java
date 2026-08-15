@@ -2,6 +2,7 @@ package com.finalexec;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.workspace.WorkspaceMenuSeeder;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.Test;
@@ -9,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.net.URISyntaxException;
@@ -40,6 +42,19 @@ class AsyncWaitResumeE2EIT extends AbstractScenarioIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    // REG-171 follow-up: this test dynamically overrides npdev.compiled-model.path to a narrow
+    // async-wait/resume-only fixture that declares no workspace::Menu concept, while the assembled
+    // app's classpath (shared with every other RuntimeHost test) still carries
+    // npdev-seed/workspace-menu-seed.json. WorkspaceMenuSeeder's @ConditionalOnResource only checks
+    // that classpath resource, so its real constructor still runs and hard-fails resolving a table
+    // name for a concept this fixture model never declares (REG-160's "should be unreachable" case,
+    // reachable here because this test's compiled model and the app's classpath resources
+    // legitimately diverge, unlike any real generated app). Irrelevant to what this test verifies,
+    // so it's mocked out rather than either weakening REG-160's intentional hard-fail or bloating
+    // this fixture with an unrelated concept.
+    @MockitoBean
+    private WorkspaceMenuSeeder workspaceMenuSeeder;
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {

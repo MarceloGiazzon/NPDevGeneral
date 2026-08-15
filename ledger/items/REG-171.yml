@@ -6,8 +6,10 @@ title: >-
   one step earlier
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Found investigating why "Linux post-Beta0 maturity validation" failed on the fully-reconciled
   main (run 31840753060, commit 80d6baf0) right after this session's 7-PR fix batch merged. Broke
@@ -74,3 +76,14 @@ guard:
     startup with "Adapter 'inmemory' for capability 'persistence' ... is not declared in active
     plugin manifest"
   provenRed: true
+
+resolution: |
+  2026-08-14 (closeout batch-verification pass): fixed exactly as this item's own "Fix" section
+  proposed -- changed "adapter": "inmemory" to "adapter": "memory" in both
+  async-wait-resume-model.json (DSL source) and async-wait-resume-compiled-model.json (compiled
+  form). Verified against a real generated app's Postgres integration-test suite
+  (superuser-admin-console, `-Dspring.profiles.active=test,postgres`, real Testcontainers Postgres):
+  BUILD SUCCESSFUL, 40/40 integration tests passed, including
+  waitingExecutionCompletesAfterEventPublicationAndResume. The original "Adapter 'inmemory'..." error
+  no longer occurs. A second, unrelated defect (REG-173) surfaced only once this fix let Spring
+  context construction proceed far enough to reach it -- fixed separately in the same pass.

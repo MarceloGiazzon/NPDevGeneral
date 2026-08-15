@@ -3,8 +3,12 @@ title: >-
   expression-cel has no CEL dependency; the name misleads
 type: GAP
 severity: LOW
-status: OPEN
+status: WONTFIX
 opened: 2026-08-12
+closed: 2026-08-14
+decision: >-
+  Rename's real blast radius is bigger than "one-line" once measured -- not worth the risk for a
+  purely cosmetic naming issue. Revisit if the module is touched for an unrelated reason anyway.
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R8, "also here" note). The
   expression-cel adapter module has no CEL dependency anywhere in any build file -- the name is the
@@ -16,3 +20,14 @@ detail: |
   See __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R8. One-line fix: rename the module. Not a
   rewrite of the engine (that's a separate, unasked-for project, explicitly out of scope per
   ROADMAP.md §3). MASTER-ROADMAP.md Track C (part of R8); not in this session's scope (Steps 1-4).
+
+  **2026-08-14 (closeout triage): WONTFIX, measured before deciding.** The "one-line fix" framing
+  undersold the real blast radius: `grep -rl "expression-cel"` across NPDevKernel/scripts/.github
+  turns up 19 files, and the live (non-stale-report) ones alone are `NPDevKernel/settings.gradle`
+  (module declaration), three `scripts/policy/*.json` allowlists/registries, and a quality script --
+  before even touching the module's own directory name, its Java package
+  (`com.npdev.adapters.expression.cel`), or the many OTHER ledger items' `files:` fields that cite
+  `NPDevKernel/adapters/expression-cel/...` as a path (REG-166, RUN-4, BUILD-2 among them). A
+  mechanical rename across that surface, done carelessly at the tail of an already-large session, is
+  a worse trade than leaving a LOW-severity, purely-cosmetic misleading name in place a while longer.
+  Zero functional impact either way -- the module works correctly; only its name misleads.

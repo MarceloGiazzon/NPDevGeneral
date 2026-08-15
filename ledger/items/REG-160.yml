@@ -5,8 +5,10 @@ title: >-
   built-in workspace pack with a menu seed crashes on first boot
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Found while doing R7 Stage D's live-verification (generating, building and booting
   `superuser-admin-console` fresh to prove the migrated browser-routine credential mechanism
@@ -119,11 +121,26 @@ detail: |
   major-version bump free to silently reintroduce this same class of bug, where resolving through
   `CompiledModel` self-heals with it instead.
 
-  **Not yet re-verified live** -- per this session's explicit instruction, the real fresh-boot proof
-  this item's own `guard` below describes (generate `superuser-admin-console`, delete `data/`, build,
-  boot via `_ops\Run-FinalApp.ps1 -Profile dev,trial`, confirm `/actuator/health` responds instead of
-  crashing) is deferred to a later consolidated verification pass across this session's whole batch of
-  fixes, not performed as part of this change. `status` stays `OPEN` until that proof actually runs.
+  **2026-08-14 (closeout batch-verification pass): the deferred fresh-boot proof now run for real.**
+  Generated `superuser-admin-console` fresh (no pre-existing `Output/` tree at all -- confirmed
+  before generating), built it (`gradlew bootJar`), then booted via `_ops\Run-FinalApp.ps1 -Profile
+  dev,trial` against a genuinely fresh H2 database (no prior `data/` directory). `/actuator/health`
+  responded `{"status":"UP", ...}` within seconds, including `"db":{"status":"UP", ...}` -- the
+  exact crash this item describes (`Table "workspace_menus" not found` aborting
+  `ApplicationRunner` startup) did not occur.
+
+  **A second, related defect surfaced by continuing verification past this item's own guard**:
+  running this app's full Postgres integration-test suite (`AsyncWaitResumeE2EIT`, part of the
+  batch-verification pass covering REG-171) hit a NEW `WorkspaceMenuSeeder`-originated failure --
+  not the original bug, but this fix's own `resolveMenuTable`'s hard-fail firing for real, in a
+  legitimate scenario its own javadoc called "should be unreachable": a test that dynamically
+  overrides `npdev.compiled-model.path` to a narrow fixture model lacking `workspace::Menu`, while
+  the assembled app's classpath still carries `workspace-menu-seed.json` (from the SAME app's real,
+  full model), so `@ConditionalOnResource` still activates the bean against a compiled model that
+  doesn't match. Filed and fixed separately as REG-173 (test-side fix: mock out
+  `WorkspaceMenuSeeder` in that one test, since it is irrelevant to what the test verifies and
+  REG-160's hard-fail is correct policy for every real generated app) -- this item's own fix and
+  guard are unaffected; REG-173 documents why on its own.
 
   Also worth flagging for whoever picks it up next (out of this item's own scope, not fixed here):
   `IdentityProvisioning`

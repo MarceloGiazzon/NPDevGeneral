@@ -1,0 +1,63 @@
+id: REG-173
+title: >-
+  WorkspaceMenuSeeder's REG-160 hard-fail is reachable in a real RuntimeHost integration test whose
+  Spring context legitimately swaps in a compiled model lacking workspace::Menu while the classpath
+  still carries the full app's seed resource
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-08-14
+closed: 2026-08-14
+verification: VERIFIED_LIVE
+source: >-
+  Found during the 2026-08-14 closeout batch-verification pass, while running
+  superuser-admin-console's real Postgres integration-test suite to prove REG-171's fix.
+  AsyncWaitResumeE2EIT started failing at Spring context startup with a DIFFERENT error than
+  REG-171's own (which the fix had just resolved) -- traced to WorkspaceMenuSeeder.java:107, the
+  IllegalStateException REG-160's own fix added.
+surface: runtimehost/workspace
+files:
+  - NPDevRuntimeHost/src/test/java/com/finalexec/AsyncWaitResumeE2EIT.java
+detail: |
+  `AsyncWaitResumeE2EIT` (extends `AbstractScenarioIntegrationTest`) dynamically overrides
+  `npdev.compiled-model.path` to a narrow, dedicated fixture
+  (`npdev/async-wait-resume-compiled-model.json`) that declares no `workspace::Menu` concept at
+  all -- it exists purely to test async flow wait/resume behavior. But the ASSEMBLED app's
+  classpath (shared by every RuntimeHost integration test in the same generated app) still carries
+  `npdev-seed/workspace-menu-seed.json`, written by BusinessUiEmitter because the app's REAL model
+  (superuser-admin-console's) composes the workspace pack. `WorkspaceMenuSeeder`'s
+  `@ConditionalOnResource(resources = "classpath:npdev-seed/workspace-menu-seed.json")` only checks
+  classpath resource presence, not which compiled model is actually active for a given test's
+  context -- so the bean still activates, its constructor still calls
+  `resolveMenuTable(compiledModel)` against the swapped-in fixture model, and REG-160's own hard-fail
+  ("this should be unreachable") fires for real:
+
+    java.lang.IllegalStateException: WorkspaceMenuSeeder: compiled model has no usable table name
+    for concept 'workspace::Menu' -- this seeder is only active when the workspace pack's Menu
+    concept is composed, so this should be unreachable
+
+  Confirmed this is genuinely test-fixture-specific, not a real production defect: a real generated
+  app's own compiled model and its own classpath resources are always generated together and can
+  never diverge this way (the classpath resource only exists BECAUSE that same model composed the
+  concept). The divergence is possible only because `AbstractScenarioIntegrationTest`-style tests
+  can override `npdev.compiled-model.path` independently of what got compiled onto the classpath --
+  a deliberate test-authoring pattern (narrow, focused fixtures) that happens to collide with this
+  one seeder's assumption.
+
+  Fix: mocked `WorkspaceMenuSeeder` out of `AsyncWaitResumeE2EIT`'s Spring context via
+  `@MockitoBean` (`org.springframework.test.context.bean.override.mockito.MockitoBean`, the current
+  Spring Boot 3.5 replacement for the deprecated `@MockBean`) -- Spring substitutes a Mockito mock
+  for the bean before normal instantiation, so the real constructor (and its
+  `resolveMenuTable` call) never runs. Deliberately NOT a change to `WorkspaceMenuSeeder` itself:
+  REG-160's hard-fail is correct, intentional policy for every real generated app (a genuine
+  platform inconsistency should abort boot loudly, not degrade silently), and this defect is
+  reachable only through this one test's own model-override pattern -- weakening the seeder's
+  behavior platform-wide to accommodate one test's fixture shape would reintroduce exactly the kind
+  of silent, undiagnosable degradation REG-160 was written to prevent.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/AsyncWaitResumeE2EIT.java#waitingExecutionCompletesAfterEventPublicationAndResume
+  asserts: >-
+    the test's Spring context boots successfully and the full wait/resume scenario completes,
+    without WorkspaceMenuSeeder's constructor ever running against the test's narrow fixture model
+  provenRed: true

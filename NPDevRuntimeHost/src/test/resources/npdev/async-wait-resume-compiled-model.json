@@ -201,7 +201,7 @@
     "adapter" : "inproc"
   }, {
     "capability" : "persistence",
-    "adapter" : "inmemory"
+    "adapter" : "memory"
   } ],
   "events" : [ {
     "name" : "EmailVerified",

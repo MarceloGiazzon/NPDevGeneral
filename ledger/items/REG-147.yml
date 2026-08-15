@@ -3,8 +3,10 @@ title: >-
   Composite-unique-constraint guard DDL for a 3+ column unique is missing a semicolon, breaking Postgres boot
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-13
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Found incidentally during MASTER-ROADMAP.md Step 6 (PK-2) verification, while running the real
   two-engine (H2 + Postgres) generate->build->boot proof required by that card. The H2 half of the
@@ -114,8 +116,23 @@ resolution: |
     D:\WorkSpace\NPDev\NPDev_General\NPDevKernel\kernel\src\main\java\com\npdev\kernel\storage\sql\PostgresDialect.java
     D:\WorkSpace\NPDev\NPDev_General\NPDevKernel\kernel\src\test\java\com\npdev\kernel\storage\sql\PostgresDialectGoldenSqlTest.java
 
-  **Still open, deliberately not run here:** the real generate -> build -> boot proof against live
-  Postgres this item's `guard:` names (identity pack import, real Postgres, Flyway migration
-  succeeding). That is deferred to this session's consolidated batch-verification pass across all
-  fixes made in this pass, per explicit instruction -- status stays OPEN and `guard:` is untouched;
-  do not mark this DONE from the unit-test evidence alone.
+  **2026-08-14 (closeout batch-verification pass): the deferred live-Postgres proof now run for
+  real.** Regenerated `NPDevSamples/superuser-admin-console` with `db.definition.json`'s `database.
+  engine` set to `Postgres` (temporarily, for this proof only -- the sample's checked-in definition
+  stays `H2Local`), confirmed the emitted `V1__npdev_schema_realization.sql` now carries the exact
+  `DO $$ ... END $$;` guard block this item describes for `identity_v1_user_role_permissions`'
+  composite unique (`tenant_id, user_role_id, permission`), semicolon present after the `ALTER
+  TABLE` line. Ran the app's real `integrationTest` suite (`-Dspring.profiles.active=test,postgres`,
+  `AbstractScenarioIntegrationTest`'s `@Testcontainers`-managed real Postgres instance, not H2) --
+  BUILD SUCCESSFUL, 40/40 tests green, meaning Flyway actually executed this exact DO $$ block
+  against a real Postgres server as part of every one of those 40 test classes' context boot.
+  This is a stronger proof than the guard's own literal "generate, build, boot" ask (an
+  `@SpringBootTest` context boot IS a real boot, and 40 independent contexts each re-ran the full
+  migration). Confirmed this genuinely exercises the fixed code path, not a false negative: an
+  identical run against the SAME app generated with the H2Local engine (this sample's normal,
+  checked-in configuration) also passed 40/40 -- but inspection showed H2Local's schema SQL uses a
+  completely different, dialect-specific `DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT` shape with
+  no `DO $$` block at all (H2's own `guardedConstraintDdl`, a different code path from Postgres'),
+  so that first run, while genuinely green, would NOT have exercised `PostgresDialect
+  .guardedConstraintDdl` at all -- confirming why the Postgres-engine regeneration above was
+  necessary rather than assuming the profile swap alone was sufficient.

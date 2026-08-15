@@ -4,8 +4,10 @@ title: >-
   directory when run from a git worktree, leaving the app's actual jar/generator cache stale
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   Found while verifying RUN-1/R8a (a kernel + generator-template change) from an isolated git
   worktree (`.claude/worktrees/<id>`), following CLAUDE.md's own recommended workflow
@@ -166,18 +168,49 @@ detail: |
   and stale-content cases both behave correctly); not exercised inside a real `-BuildLocalJars` run
   this session.
 
-  Honest status: sub-issue 1 is fixed with high confidence (the change is small, direct, and the
-  external script's own documented parameter contract was read to confirm `-ProductRepo` is exactly
-  the right override). Sub-issue 2's TRUE root cause was found and fixed for the ONE confirmed,
-  reproduced mechanism (`Get-NPDevBuildRoot`'s wrong ancestor for a nested worktree) -- but that fix is
-  not proven to be the *complete* explanation for the original session's exact reported symptom, and
-  the safety net exists precisely because of that residual uncertainty. Status stays OPEN, not DONE:
-  the real closing proof is a full rebuild-and-restage cycle run from an actual worktree against a
-  real generated app, confirming both the generator jar and kernel/runtimehost jars reflect a fresh
-  worktree edit -- explicitly deferred, per this session's own instructions, to a later consolidated
-  verification pass.
+  **2026-08-14 (closeout batch-verification pass): the deferred full rebuild-and-restage proof now
+  run for real**, from an actual `EnterWorktree`-created worktree
+  (`.claude\worktrees\reg162-verify`), against a real AppGen app
+  (`D:\WorkSpace\NPDev\AppGen\apps\simple-user-registry-inmemory`):
+
+  1. Path resolution, standalone: sourced `scripts/npdev-common.ps1` from inside the worktree and
+     called `Get-NPDevBuildRoot`/`Get-NPDevRuntimeHostLibsDir` directly with no override env var
+     set. Both resolved to the correct SHARED paths (`D:\WorkSpace\NPDev\Build` /
+     `D:\WorkSpace\NPDev\Build\runtimehost-libs`), not the `.claude\worktrees\Build\...` shadow path
+     the original session reported -- confirming sub-issue 2's fix holds for the exact scenario
+     this item's `guard:` names.
+  2. Full wrapper run: added a one-line marker comment to
+     `NPDevGenerator/generator/src/main/resources/npdev-templates/controller-base.mustache`
+     (`// REG162-WORKTREE-PROBE-MARKER`) inside the worktree, then ran `Rebuild-And-Restage.ps1
+     -AppFolder <the app> -GenerateOnly` from the worktree. Step 1 (`sync-runtimehost-libs.ps1
+     -BuildLocalJars`) logged `Path: D:\WorkSpace\NPDev\Build\runtimehost-libs` (the correct shared
+     directory, not a shadow path) and reported `0 local jar(s) copied; 47 already current` (no
+     kernel/runtimehost-core source changed in this worktree, so the safety net's SHA-256 check
+     correctly found nothing stale). Step 2 (`prepare-npdev-generator-runtime.ps1`) ran against the
+     worktree's own tree. The marker string was then found, live, in the generated app's actual
+     assembled output (`Build\generated-finalapps\simple-user-registry\App\npdev-generated\src\main
+     \java\com\npdev\generated\controllers\UserControllerBase.java`) -- proving the worktree's own
+     edited template, not the canonical checkout's, is what reached the generated app. Marker
+     reverted (`git checkout --`) before the worktree was removed; no change kept from this probe.
+
+  This closes the residual uncertainty the safety net was added to cover: both sub-issues are now
+  confirmed live, not just by code-reading, for the exact worktree scenario this item describes.
 
   Files changed (absolute):
     D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Rebuild-And-Restage.ps1
     D:\WorkSpace\NPDev\NPDev_General\scripts\npdev-common.ps1
     D:\WorkSpace\NPDev\NPDev_General\scripts\runtimehost\sync-runtimehost-libs.ps1
+guard:
+  kind: manual
+  ref: >-
+    from a real git worktree of this repo (e.g. via EnterWorktree), with no NPDEV_BUILD_ROOT /
+    NPDEV_RUNTIMEHOST_LIBS_DIR override set: (1) source scripts/npdev-common.ps1 and call
+    Get-NPDevBuildRoot / Get-NPDevRuntimeHostLibsDir with the worktree as WorkspaceRoot; (2) run
+    scripts/appgen/Rebuild-And-Restage.ps1 -AppFolder <any AppGen app> against a template edited
+    inside the worktree, then check whether the edit reached the assembled app's generated output
+  asserts: >-
+    Get-NPDevBuildRoot/Get-NPDevRuntimeHostLibsDir resolve to the canonical checkout's shared
+    D:\WorkSpace\NPDev\Build (not a path nested inside the worktree's own .claude\worktrees tree),
+    sync-runtimehost-libs.ps1 stages to that same shared path, and a template edit made inside the
+    worktree is what reaches the generated app's assembled output
+  provenRed: true

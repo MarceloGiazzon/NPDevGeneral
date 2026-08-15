@@ -1,0 +1,43 @@
+id: QUAL-11
+title: >-
+  main was left red on two filed-but-unfixed test bugs (REG-171/172) with no owner, for hours,
+  after the session that found and filed them explicitly declined to fix them
+type: PROCESS
+severity: MEDIUM
+status: DONE
+opened: 2026-08-14
+closed: 2026-08-14
+verification: VERIFIED_LIVE
+source: >-
+  `NPDev_General__OutsideRepo/session-summary-2026-08-14/CLOSEOUT_PLAN.md` finding F3/QUAL-11
+  (suggested id). The prior session's own commit `c2e77672` ("file REG-171/REG-172, two
+  pre-existing test bugs REG-169 was masking") filed both items and moved on, per that session's own
+  §9 process note about not over-investigating an unasked-for signal -- correct as far as it went,
+  but left `main` red on "Linux post-Beta0 maturity validation" (run 31844310776, 21:52 UTC) with no
+  fix and no owner.
+surface: process/ci-ownership
+detail: |
+  The pattern this item exists to name: filing a CI failure as a ledger item is necessary but not
+  sufficient -- if nothing then fixes it in the same pass (or hands it to someone who will,
+  promptly), the default branch stays red, and every signal downstream of it (a contributor's local
+  T2 gate comparison, a release-readiness check, anyone reading `main`'s badge) degrades for as long
+  as it sits there. The prior session's own §9 was right that further UNPROMPTED investigation past
+  "confirm it's a pre-existing test-fixture bug, not a real platform defect" would have been scope
+  creep on an unrelated task. The lesson is symmetric, not a contradiction: don't over-investigate an
+  unasked-for signal, AND don't leave the default branch red once you have the diagnosis in hand --
+  the second half is what was missing.
+
+  Closed in the same session that filed this item: REG-171 (adapter-name fixture typo) and REG-172
+  (stale canonical-demo assertions) were both fixed and verified live (real Postgres integration-test
+  run, 40/40 green) as part of the 2026-08-14 closeout pass -- see those items' own resolution
+  text. A third, related defect (REG-173) surfaced only once REG-171's fix let the Spring context
+  construction proceed far enough to reach it, and was fixed in the same pass.
+guard:
+  kind: manual
+  ref: >-
+    gh run list --workflow=npdev-ci-validation.yml --limit 1 --json conclusion -q
+    '.[0].conclusion' (or the Actions tab for "Linux post-Beta0 maturity validation")
+  asserts: >-
+    the next push-triggered run of "Linux post-Beta0 maturity validation" on main succeeds (or fails
+    for a reason unrelated to REG-171/172/173)
+  provenRed: true
