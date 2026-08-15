@@ -86,7 +86,12 @@ public final class ModelSourceResolver {
             "pack",
             "namespace",
             "version",
-            "description"
+            "description",
+            // REG-151: same "schema-validates then silently vanishes" hazard resolvePackRoot's own
+            // packs[]/requires/migrations comment already documents (REG-108's shape) -- a plain
+            // scalar string, so PACK_ROOT_SCALAR_KEYS (not a dedicated passthrough line) is the
+            // right fix, unlike migrations' keyed-object shape below.
+            "firstPublishedVersion"
     );
     private static final Set<String> PACK_FRAGMENT_FORBIDDEN_KEYS = Set.of(
             "$schema",

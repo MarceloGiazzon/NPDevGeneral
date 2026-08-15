@@ -99,12 +99,28 @@ public final class PackPublishMain {
             return;
         }
 
-        if (write && decision.shouldWriteEmptyMigrationEntry()) {
-            String oldVersion = oldPack.get("version").asText();
-            String newVersion = newPack.get("version").asText();
-            JsonNode updated = PackPublishGate.withEmptyMigrationChainEntry(newPack, oldVersion, newVersion);
-            writePack(newArg, updated);
-            System.err.println("Wrote empty migration chain entry '" + oldVersion + " -> " + newVersion + "' into " + newArg);
+        if (write) {
+            JsonNode updated = newPack;
+            boolean changed = false;
+            if (decision.shouldWriteEmptyMigrationEntry()) {
+                String oldVersion = oldPack.get("version").asText();
+                String newVersion = newPack.get("version").asText();
+                updated = PackPublishGate.withEmptyMigrationChainEntry(updated, oldVersion, newVersion);
+                System.err.println("Wrote empty migration chain entry '" + oldVersion + " -> " + newVersion + "' into " + newArg);
+                changed = true;
+            }
+            // REG-151: stamp/propagate the firstPublishedVersion trust anchor on every successful
+            // --write, not only when a migration entry is also written -- a pack with no chain yet
+            // still needs its anchor pinned the first time it publishes at all.
+            JsonNode beforeAnchor = updated;
+            updated = PackPublishGate.withFirstPublishedVersionAnchor(oldPack, updated);
+            if (!updated.equals(beforeAnchor)) {
+                System.err.println("Wrote firstPublishedVersion anchor '" + updated.get("firstPublishedVersion").asText() + "' into " + newArg);
+                changed = true;
+            }
+            if (changed) {
+                writePack(newArg, updated);
+            }
         }
         System.exit(0);
     }
