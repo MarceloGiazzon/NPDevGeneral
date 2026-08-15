@@ -4,8 +4,10 @@ title: >-
   form silently no-ops -- live testing shows both spellings actually work
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-13
+closed: 2026-08-14
+verification: VERIFIED_LIVE
 source: >-
   MASTER-ROADMAP.md Step 12 (R7 Stage B, SEC-1). Found while verifying Stage B's application-prod
   boot path live: `docs/CONFIGURATION.md`'s "Gotcha: environment-variable name mangling" section
@@ -61,3 +63,12 @@ guard:
     both env var spellings authenticate correctly for npdev.auth.api-keys; docs/CONFIGURATION.md
     is corrected (or the underscored form is proven to fail in some other environment, e.g. Linux)
   provenRed: false
+
+resolution: |
+  2026-08-14: took the "docs corrected" half of the guard's disjunction (the live dual-spelling
+  test was already run and reported, 2026-08-13, in this item's own detail above -- not re-run
+  here). Rewrote the CONFIGURATION.md gotcha to state what was actually observed: NPDEV_AUTH_APIKEYS
+  is canonical (matches the generated docker-compose.yml), NPDEV_AUTH_API_KEYS also works for THIS
+  property on Windows/Java 17 but that has not been re-checked on Linux, and other hyphenated
+  npdev.* properties (the JWT key-path ones) were never re-tested at all -- their own "silently
+  no-ops" claims are left standing rather than generalizing this property's result to them.

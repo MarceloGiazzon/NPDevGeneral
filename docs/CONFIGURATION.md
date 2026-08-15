@@ -28,13 +28,22 @@ them up is the single most common startup failure:
   engine will still fail — there's no DataSource bean to satisfy it, regardless of what's in your
   `.env`.
 
-**Gotcha: environment-variable name mangling.** Spring Boot's relaxed env-var binding strips
-hyphens from property names entirely rather than mapping them to underscores. `npdev.auth.
-api-keys` binds from the environment variable `NPDEV_AUTH_APIKEYS` — **not** the more intuitive
-`NPDEV_AUTH_API_KEYS`, which silently no-ops (the property stays unset, and you get a confusing
-"api-keys must define at least one mapping" error even though you *did* set something, just under
-the wrong name). Any hyphenated `npdev.*` property has this same trap — when in doubt, check the
-generated `docker-compose.yml` for the exact env var name the platform itself uses.
+**Gotcha: environment-variable name mangling — narrower than it first looks (REG-154).** Spring
+Boot's relaxed env-var binding strips hyphens from property names, so `npdev.auth.api-keys` binds
+from `NPDEV_AUTH_APIKEYS`. The generated `docker-compose.yml`/`.env.example` use exactly this
+canonical form, so treat it as the one to set. **This note used to claim the more intuitive
+`NPDEV_AUTH_API_KEYS` (underscore before `KEYS`) "silently no-ops" — tested directly against a
+running app (Windows/PowerShell, Java 17) on 2026-08-13 and found FALSE for this property: both
+spellings correctly override the default.** Likely mechanism (not independently verified against
+Spring Framework source): `npdev.auth.api-keys` is read via a plain `@Value("${npdev.auth.
+api-keys:}")`, not a `@ConfigurationProperties` binding, and the underlying
+`SystemEnvironmentPropertySource` tries several name transformations on its own, independently of
+the documented relaxed-binding rule. Not re-checked on Linux, so a real platform-specific gap for
+THIS property can't be fully ruled out — and other hyphenated `npdev.*` properties (e.g. the JWT
+key-path ones below) have not been re-tested at all, so treat their own "silently no-ops" claims as
+still standing until someone checks. When in doubt, check the generated `docker-compose.yml` for
+the exact env var name the platform itself uses, and prefer it regardless of which spelling
+happens to also work.
 
 ## Request-and-runtime safety limits
 
@@ -72,9 +81,9 @@ Only checked when `npdev.auth.enabled` (default `true`).
 
 ### `apikey` mode
 
-- **`npdev.auth.api-keys`** — required, must contain at least one `key=tenantOrRole` mapping.
-  Remember the env-var name-mangling gotcha above: the environment variable is
-  `NPDEV_AUTH_APIKEYS`, not `NPDEV_AUTH_API_KEYS`.
+- **`npdev.auth.api-keys`** — required, must contain at least one `key=tenantOrRole` mapping. The
+  canonical environment variable is `NPDEV_AUTH_APIKEYS` (see the gotcha above — `NPDEV_AUTH_API_KEYS`
+  also works for this specific property, but prefer the canonical form).
 
 ### `jwt` mode
 

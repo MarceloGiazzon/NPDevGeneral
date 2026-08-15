@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -40,10 +41,29 @@ INLINE_CODE_PATTERN = re.compile(r"`[^`\n]*`")
 
 
 def find_markdown_files(root: Path) -> list[Path]:
+    # REG-148: this used to be a raw root.rglob("*.md") -- a real filesystem walk, contradicting
+    # this module's own docstring ("walk every tracked .md file"). A git worktree checked out under
+    # .claude/worktrees/ (gitignored, a normal location for parallel background-agent work) is a
+    # real directory on disk, so its own .md files -- including ones on a stale/in-progress commit
+    # with a genuinely broken relative link -- got swept into the scan and failed the gate for
+    # content nobody committed to any branch actually being verified. git ls-files makes "tracked"
+    # the literal enumeration mechanism, not just a claim in a comment.
+    result = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "ls-files", "-z", "--", "*.md"],
+        capture_output=True, text=True, check=True,
+    )
+    resolved_root = root.resolve()
     files = []
-    for p in root.rglob("*.md"):
+    for rel in result.stdout.split("\0"):
+        if not rel:
+            continue
+        p = (REPO_ROOT / rel).resolve()
         if any(part in EXCLUDED_DIR_NAMES for part in p.parts):
             continue
+        try:
+            p.relative_to(resolved_root)
+        except ValueError:
+            continue  # outside the requested --root scope
         files.append(p)
     return sorted(files)
 
@@ -122,6 +142,34 @@ def calibrate() -> int:
         print("Calibration -- must catch a broken relative link, ignore URLs/anchors/code:")
         report("well-formed file (real link + anchor + URL + code-span/block distractors)", good, expect_fail=False)
         report("file with a genuinely broken relative link", bad, expect_fail=True)
+
+    # REG-148: find_markdown_files must enumerate git-TRACKED files only -- an untracked file (the
+    # exact shape of a stray .claude/worktrees/ checkout) must never be scanned, however broken its
+    # links are.
+    with tempfile.TemporaryDirectory(prefix="npdev-md-link-calibrate-git-") as tmp:
+        tmp_path = Path(tmp)
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.email", "calibrate@example.invalid"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.name", "calibrate"], cwd=tmp_path, check=True)
+        (tmp_path / "tracked.md").write_text("# Tracked\n", encoding="utf-8")
+        subprocess.run(["git", "add", "tracked.md"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+        (tmp_path / "untracked.md").write_text(
+            "See [missing](does-not-exist.md).\n", encoding="utf-8",
+        )
+
+        global REPO_ROOT
+        real_repo_root = REPO_ROOT
+        REPO_ROOT = tmp_path
+        try:
+            found = {p.name for p in find_markdown_files(tmp_path)}
+        finally:
+            REPO_ROOT = real_repo_root
+
+        passed = found == {"tracked.md"}
+        ok = ok and passed
+        print(f"  [{'PASS' if passed else 'FAIL'}] find_markdown_files enumerates tracked files only "
+              f"(found: {sorted(found)})")
 
     if not ok:
         print("\nFAIL: at least one control did not behave as required.", file=sys.stderr)

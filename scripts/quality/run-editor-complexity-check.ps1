@@ -150,6 +150,25 @@ foreach ($panel in @("BusinessWorkspacePanel", "RuntimeRefreshPanel")) {
 }
 $unusedPanelRemovalCount = $removedDeferredRoutes.Count
 
+# REG-150: this script has always assumed node_modules is already populated from normal local
+# usage. run-frontend-gate.ps1's own Gradle tasks are finalizedBy cleanUiReactGenerated, which
+# deletes node_modules as part of its no-residue policy -- so a fresh clone, or any run right after
+# that cleanup, previously failed immediately with "'vitest' is not recognized". Self-install here
+# (npm ci is a fast no-op when node_modules is already current) rather than relying on the caller
+# to remember a separate install step.
+if (-not (Test-Path -LiteralPath (Join-Path $uiRoot "node_modules") -PathType Container)) {
+    Push-Location -LiteralPath $uiRoot
+    try {
+        npm ci
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm ci failed (exit $LASTEXITCODE) installing NPDevEditor/ui-react dependencies"
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+
 $frontendTest = Invoke-CommandCapture `
     -Name "frontend-tests" `
     -WorkingDirectory $uiRoot `
