@@ -44,16 +44,37 @@ detail: |
   comment's own words ("promoting it to a BRANCH push trigger... once its runtime is known") point
   at push, not pull_request, once that runtime is known. Post-merge costs one run per merge instead
   of one per PR, and would have caught BT-1 within a single merge instead of fifteen.
+
+  **2026-08-15 (PR #100, live verification): the underlying defect this item is actually about --
+  the Engine gate itself being red -- is now directly proven fixed, not just plausible.** Since
+  `engine-support.yml` has no `pull_request` trigger, this branch's own PR could not exercise it
+  automatically; dispatched it by hand instead (`gh workflow run engine-support.yml --ref
+  fix/qual-12-13-14-engine-gate-and-dormancy -f engine=all`, run `31897619206`). All 7 jobs passed:
+  E3/E4/E5 app-on-engine for mysql/sqlserver/postgres, E15 toolbox parity, E10 charset fixture,
+  E9+E12 config gate, E8 external library -- the exact workflow whose two most recent runs before
+  this one (the `beta1.18` and `beta1.19` tag pushes) both FAILED. `REG-182`'s fix (the key
+  provisioning `run-engine-app-proof.py` needed) is what turned that red to green; a second commit
+  on this branch (CodeQL/coverage fix-up, `0d9686b5`) touched neither `run-engine-app-proof.py` nor
+  anything else on the app-on-engine boot path, so this result still describes current `HEAD`.
+
+  **What remains genuinely unobserved, and why this stays PARTIAL rather than DONE:** the `push:
+  branches: [main]` trigger itself has not fired yet -- that requires an actual merge to `main`,
+  which this session does not perform (the user's own call). The YAML syntax is standard and the
+  risk of it silently not firing is low, but this repo's own discipline (see `REG-161`'s own
+  "batch-verification pass," which stayed at a fix-only status until 5 real per-PR runs were
+  observed) is to promote to DONE only once the trigger is actually seen firing, not once it looks
+  correct. The next merge to `main` is that observation.
 guard:
   kind: manual
   ref: >-
-    cat .github/workflows/engine-support.yml | grep -A3 '^on:' (or gh api
-    repos/:owner/:repo/actions/workflows/engine-support.yml/runs -- check the run list includes a
-    push-triggered entry for the merge commit of this branch's own PR)
+    gh run list --workflow=engine-support.yml --limit 3 -- after the next merge to main, confirm a
+    push-triggered run appears for the merge commit
   asserts: >-
     the workflow runs on every push to main, not only on a tag or a manual dispatch -- observed
-    directly on this branch's own PR/merge, not inferred from the YAML alone
+    directly on a real merge, not inferred from the YAML alone
   provenRed: true
-  # RED already proven, twice over, before this fix: commit 772b2e66's own message (merged to main
-  # ahead of this item) states the workflow did not run for PRs #83-#98; this branch's own push (see
-  # QUAL-14's guard) is the GREEN half -- held at PARTIAL until that run is observed, not asserted.
+  # RED proven twice over before this fix: commit 772b2e66's own message states the workflow did
+  # not run for PRs #83-#98; the beta1.18/beta1.19 tag runs immediately preceding this branch's own
+  # dispatch (31897619206) both failed. GREEN proven for the underlying defect (all 7 jobs, dispatch
+  # run above) but NOT yet for the push:main trigger mechanism itself -- that is the one piece still
+  # held open, deliberately, rather than asserted from the YAML.

@@ -46,17 +46,30 @@ detail: |
   `release_candidate.py` (the same tag-time gate `engine-support.yml`'s own header comment
   describes for itself) -- out of scope for this branch's "one CI cycle" budget; worth deciding
   once this workflow has a few real nightly runs behind it.
+
+  **2026-08-15 (PR #100): attempted to prove this live and hit a GitHub platform limitation, not a
+  defect in this fix.** `gh workflow run firstrun-harness.yml --ref
+  fix/qual-12-13-14-engine-gate-and-dormancy` returned `HTTP 404: workflow firstrun-harness.yml not
+  found on the default branch` -- `workflow_dispatch` only becomes callable for a brand-new
+  workflow FILE once that file exists on the repository's default branch (`main`), even when
+  targeting a different `--ref`. There is no way to manually dispatch a not-yet-merged workflow
+  from a branch; this is documented GitHub Actions behaviour, not something this branch's YAML got
+  wrong (`.github/workflows/firstrun-harness.yml` itself parses as valid YAML and its sibling
+  `engine-support.yml`/`manager-harness.yml` dispatches worked normally on this same branch).
+  Consequence: this workflow's actual EXECUTION cannot be observed before merge, only its
+  existence/config. The first real proof is either the first nightly run (`0 6 * * *`) or a manual
+  dispatch, both only possible once this PR merges to `main`.
 guard:
   kind: manual
   ref: >-
     gh run list --workflow=firstrun-harness.yml --limit 5 (or the Actions tab for "First-run
-    harness (executable README)")
+    harness (executable README)") -- only checkable after this PR merges to main
   asserts: >-
     the workflow exists, is invocable via workflow_dispatch, and its nightly schedule produces a
     real run within 24h of this fix merging -- not merely that the YAML parses
   provenRed: true
   # RED proven directly: grep of every .github/workflows/*.yml file for run-readme.sh /
-  # firstrun-harness, zero matches, before this fix. GREEN proof is a dispatched run of the new
-  # workflow on this branch (see this session's own PR/branch activity) -- held at PARTIAL until
-  # that run is observed, and REG-182 stays PARTIAL for the same reason (this harness's sections 4
-  # and 9 are that item's own guard).
+  # firstrun-harness, zero matches, before this fix. GREEN cannot be observed pre-merge (see the
+  # 404 above -- a GitHub platform limitation on new workflow_dispatch-only files, not a defect in
+  # this fix) -- held at PARTIAL until the first post-merge run is observed, and REG-182 stays
+  # PARTIAL for the same reason (this harness's sections 4 and 9 are that item's own guard).

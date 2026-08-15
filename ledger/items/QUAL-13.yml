@@ -34,6 +34,14 @@ detail: |
   only through a path both patterns happen to share. Left the nightly `schedule` in place
   unchanged: it already bounds the worst case, and this fix closes the PRE-merge hole specifically,
   not the whole cadence.
+
+  **2026-08-15 (PR #100, live verification): both `manager-harness.yml` jobs ran and passed on this
+  PR, twice** (once per pushed commit -- run `31897579019` then `31899355387`), "Manager --selftest
+  in a bare container" and "Manager --selftest with a real engine (DB toolbox)" both green each
+  time. That fires via the pre-existing rule (this PR touches `.github/workflows/manager-harness.yml`
+  itself, already in the paths list before this fix) -- real evidence the workflow itself still
+  works end to end, but not yet evidence for the specific new `NPDevRuntimeHost/**`/`**/gradlew`
+  rule this item adds, which this PR does not exercise (it touches neither path in isolation).
 guard:
   kind: manual
   ref: >-

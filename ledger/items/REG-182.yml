@@ -75,15 +75,23 @@ detail: |
   file `npdev run app` already provisioned rather than re-provisioning) instead of parsing `apiKey`
   out of the captured JSON.
 
-  Verification status: local only so far (Python syntax check, `python -m unittest
-  tests.test_java_launcher` still 6/6 green -- the RED-shape `DevLoopBootWithoutJavaTest` returns
-  before reaching the new call, confirmed by reading the ordering -- and a standalone smoke test of
-  `ensure_api_key()`: fresh generation, idempotent reuse, and REG-157-shape regeneration all
-  produced the expected `NPDEV_AUTH_API_KEYS`/`NPDEV_AUTH_APIKEYS` env values). Not yet proven by an
-  actual `npdev run app`/`npdev dev` boot against a real generated app -- that is exactly what
-  `run-readme.sh` sections 4 and 9 do, and `QUAL-14`'s new nightly/`workflow_dispatch` workflow is
-  the first thing that will run them since T1/C2 shipped. Held at PARTIAL, not DONE, until that
-  run is observed green (or fails for an unrelated, understood reason) -- see `QUAL-14`.
+  **2026-08-15 (PR #100, live verification): unit-level correctness is now proven in real Linux
+  CI, not just locally.** Added `NPDevCli/tests/test_ensure_api_key.py` -- `ensure_api_key()`
+  (fresh generation, idempotent reuse, REG-157-shape regeneration, different apps get different
+  keys) and `dev_loop.boot()`'s ordering (a spy `cli` proves `ensure_api_key` runs BEFORE the
+  `java -jar` `Popen`, not just that it exists somewhere in the file). PR #100's "AI knowledge
+  substrate gate" job (Linux, run `31899355415`) ran the full 159-test `NPDevCli/tests` suite,
+  including these 5, and passed. `test_java_launcher.py`'s pre-existing 6/6 also stayed green (the
+  RED-shape `DevLoopBootWithoutJavaTest` still returns before reaching the new call).
+
+  **What remains genuinely unobserved:** an actual `npdev run app`/`npdev dev` boot against a real
+  generated app, end to end -- unit tests prove the provisioning call happens in the right order
+  with the right file contract, but not that the whole chain (provision -> env var -> Spring reads
+  it -> StartupValidator accepts it -> app actually serves) works together against a real JVM. That
+  is exactly what `run-readme.sh` sections 4 and 9 do, and per `QUAL-14`, the workflow that would
+  run them cannot be dispatched pre-merge (a GitHub platform limitation on new workflow_dispatch
+  files, not a defect here) -- so this integration-level proof is deferred to the first post-merge
+  run. Held at PARTIAL, not DONE, for that reason -- see `QUAL-14`.
 guard:
   kind: script
   ref: >-
