@@ -2286,6 +2286,16 @@
       "rule": "sql-string-building",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java:633",
       "why": "Not model-author-reachable in the sense the pattern warns about: table names come from identityTables (an IdentityTableNames, resolved once in this controller's own constructor from its already-injected CompiledModel bean) or, for findUserRoleId/rolesOf's user-table join, the controller's own pre-existing, separately-configurable userTable/usernameColumn fields (@Value(\"${npdev.auth.login.user-table:identity_users}\") etc., unchanged by REG-170 -- already covered by this same posture before this fix). Every actual VALUE in these statements is bound via PreparedStatement.setString/setObject; only identifiers are spliced, which is unavoidable since JDBC bind parameters can only parameterize values, never identifiers -- same posture as JdbcBusinessConceptStore's own compiled-model-derived table splicing (fingerprint 3cce05597d93) and REG-160's WorkspaceMenuSeeder fix. New fingerprint because REG-170 replaced the previous hardcoded literals with this dynamic resolution. Triaged 2026-08-15, REG-170 (docs/SECURITY_PATTERN_SWEEP_2026-07.md 4.13)."
+    },
+    "877b5e5187f8": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/LoginController.java:132",
+      "why": "Not model-author-reachable in the sense the pattern warns about: table name comes from identityTables (an IdentityPackTableNames, resolved once in this controller's own constructor from its already-injected CompiledModel bean) -- the exact same compiled-model source of truth the generator itself used to CREATE this table, never a caller-, request-, or runtime-supplied value. Every actual VALUE in this statement is bound via PreparedStatement.setString; only the table identifier is spliced, which is unavoidable since JDBC bind parameters can only parameterize values, never identifiers -- same posture as JdbcBusinessConceptStore's own compiled-model-derived table splicing (fingerprint 3cce05597d93) and REG-160/REG-170's identical fixes. New fingerprint because REG-177 replaced the previous hardcoded literal (identity_users) with this dynamic resolution. Triaged 2026-08-15, REG-177 (docs/SECURITY_PATTERN_SWEEP_2026-07.md 4.14)."
+    },
+    "c8629d8e9204": {
+      "rule": "swallowed-security-exception",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/IdentityPackTableNames.java:68",
+      "why": "REG-39's own rule applied here: the catch block now logs SEVERE before returning Optional.empty() (matching IdentityRoleLookup.tokenVersion/IdentityPermissionOverrideLookup.overridesFor/LoginController's own identical 'log loudly, then fail open' posture for a schema mismatch). This specific catch only fires when identity::User IS composed but another identity-pack concept (Role/UserRole/UserRolePermission) is missing or table-name-less -- a genuinely inconsistent, partially-composed identity pack, distinct from the earlier, silent, correct no-op when identity::User is absent entirely (an app that simply never composed the identity pack at all). Triaged 2026-08-15, REG-177 (docs/SECURITY_PATTERN_SWEEP_2026-07.md 4.14)."
     }
   }
 }

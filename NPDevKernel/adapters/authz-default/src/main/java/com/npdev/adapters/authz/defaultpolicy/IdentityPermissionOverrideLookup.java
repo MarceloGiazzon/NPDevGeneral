@@ -1,5 +1,7 @@
 package com.npdev.adapters.authz.defaultpolicy;
 
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
+
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -28,17 +30,22 @@ import java.util.logging.Logger;
  * role's declared {@code grants} at the point of decision, so a row that somehow named a permission
  * outside the ceiling (a bug, a hand-edited row, a downgraded model) can never grant more than the
  * ceiling allows no matter what this lookup returns.</p>
+ *
+ * <p>REG-177: table names are caller-supplied (an {@code IdentityPackTableNames}, resolved once by
+ * the caller from its own {@code CompiledModel}) instead of hardcoded literals -- the generator's
+ * schema-realization SQL creates these under pack-versioned names (e.g. {@code identity_v1_users}),
+ * the same defect shape REG-160/REG-170/REG-177's other sites already fixed.</p>
  */
 final class IdentityPermissionOverrideLookup {
 
     private static final Logger LOG = Logger.getLogger(IdentityPermissionOverrideLookup.class.getName());
 
-    private static final String OVERRIDE_QUERY = """
+    private static final String OVERRIDE_QUERY_TEMPLATE = """
             SELECT r.name, p.permission
-            FROM identity_users u
-            JOIN identity_user_roles ur ON ur.user_id = u.id
-            JOIN identity_roles r ON r.id = ur.role_id
-            JOIN identity_user_role_permissions p ON p.user_role_id = ur.id
+            FROM %s u
+            JOIN %s ur ON ur.user_id = u.id
+            JOIN %s r ON r.id = ur.role_id
+            JOIN %s p ON p.user_role_id = ur.id
             WHERE u.username = ? AND u.tenant_id = ? AND u.active = TRUE
               AND ur.tenant_id = ? AND r.tenant_id = ? AND p.tenant_id = ?
             """;
@@ -53,13 +60,16 @@ final class IdentityPermissionOverrideLookup {
      * this feature, or is mid-migration, behaves exactly as it did before C2 existed: no restriction).
      * Never throws.
      */
-    static Map<String, Set<String>> overridesFor(DataSource dataSource, String tenantId, String actorId) {
-        if (dataSource == null || actorId == null || actorId.isBlank()) {
+    static Map<String, Set<String>> overridesFor(
+            DataSource dataSource, IdentityPackTableNames tables, String tenantId, String actorId) {
+        if (dataSource == null || tables == null || actorId == null || actorId.isBlank()) {
             return Map.of();
         }
         String tenant = tenantId == null || tenantId.isBlank() ? "default" : tenantId;
+        String query = OVERRIDE_QUERY_TEMPLATE.formatted(
+                tables.usersTable(), tables.userRolesTable(), tables.rolesTable(), tables.userRolePermissionsTable());
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(OVERRIDE_QUERY)) {
+             PreparedStatement statement = connection.prepareStatement(query)) {
             statement.setString(1, actorId);
             statement.setString(2, tenant);
             statement.setString(3, tenant);

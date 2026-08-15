@@ -1,6 +1,6 @@
 package com.finalexec.auth;
 
-import com.finalexec.auth.IdentityProvisioning.IdentityTableNames;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -32,7 +32,7 @@ public class BootstrapAdminController {
     private static final String ADMIN_ROLE_NAME = "ADMIN";
 
     private final DataSource dataSource;
-    private final IdentityTableNames identityTables;
+    private final IdentityPackTableNames identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -45,7 +45,7 @@ public class BootstrapAdminController {
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn
     ) {
         this.dataSource = dataSource;
-        this.identityTables = IdentityTableNames.resolve(compiledModel);
+        this.identityTables = IdentityPackTableNames.resolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;

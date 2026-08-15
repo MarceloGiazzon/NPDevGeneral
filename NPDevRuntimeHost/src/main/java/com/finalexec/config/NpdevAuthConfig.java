@@ -50,11 +50,12 @@ public class NpdevAuthConfig {
     @Bean
     @ConditionalOnMissingBean(AuthenticatedContextResolver.class)
     public AuthenticatedContextResolver authenticatedContextResolver(
-            org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider
+            org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider,
+            CompiledModel compiledModel
     ) {
         // Base resolver decodes the principal (api-key / JWT) into tenant + actor + claim-roles;
         // the identity-aware wrapper lets the persistent identity pack override roles when populated.
-        return new IdentityAwareContextResolver(new JwtAuthenticatedContextResolver(), dataSourceProvider);
+        return new IdentityAwareContextResolver(new JwtAuthenticatedContextResolver(), dataSourceProvider, compiledModel);
     }
 
     @Bean

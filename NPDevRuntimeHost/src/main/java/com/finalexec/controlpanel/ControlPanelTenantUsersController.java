@@ -2,7 +2,7 @@ package com.finalexec.controlpanel;
 
 import com.finalexec.auth.IdentityPackSchemaException;
 import com.finalexec.auth.IdentityProvisioning;
-import com.finalexec.auth.IdentityProvisioning.IdentityTableNames;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.finalexec.auth.PasswordHasher;
 import com.finalexec.auth.SqlSchemaErrors;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -65,7 +65,7 @@ public class ControlPanelTenantUsersController {
     private final CapabilityRegistry capabilityRegistry;
     private final CapabilityDispatcher capabilityDispatcher;
     private final CompiledModel compiledModel;
-    private final IdentityTableNames identityTables;
+    private final IdentityPackTableNames identityTables;
     private final AuditLogStore auditLogStore;
     private final String userTable;
     private final String userIdColumn;
@@ -95,7 +95,7 @@ public class ControlPanelTenantUsersController {
         this.capabilityRegistry = capabilityRegistry;
         this.capabilityDispatcher = capabilityDispatcher;
         this.compiledModel = compiledModel;
-        this.identityTables = IdentityTableNames.resolve(compiledModel);
+        this.identityTables = IdentityPackTableNames.resolve(compiledModel);
         this.auditLogStore = auditLogStore;
         this.userTable = userTable;
         this.userIdColumn = userIdColumn;

@@ -5,8 +5,10 @@ title: >-
   scoped file lists explicitly excluded
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-15
+closed: 2026-08-15
+verification: UNIT_TESTED
 source: >-
   Found while implementing REG-170 (IdentityProvisioning's identical defect) in this session's
   batch-fix pass. REG-170's own ledger text lists its "full call-site scope, confirmed by grep" as
@@ -16,8 +18,25 @@ source: >-
   carries its own, independent instance of the same bug.
 surface: runtimehost/identity
 files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/IdentityPackTableNames.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/IdentityProvisioning.java
   - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/LoginController.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/IdentityAwareContextResolver.java
   - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/controlpanel/TenantAutoRegistrationRunner.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/auth/BootstrapAdminController.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/auth/CreateUserController.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelAdminUserController.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevAuthConfig.java
+  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java
+  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
+  - NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/defaultpolicy/IdentityPermissionOverrideLookup.java
+  - NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/defaultpolicy/DefaultExecutionAuthorizationPolicy.java
+  - NPDevKernel/adapters/authz-default/src/test/java/com/npdev/adapters/authz/defaultpolicy/IdentityPermissionOverrideLookupTest.java
+  - NPDevKernel/adapters/expression-cel/src/test/java/com/npdev/runtime/support/IdentityRoleLookupTvlessRevocationTest.java
+  - NPDevKernel/adapters/expression-cel/src/test/java/com/npdev/runtime/support/IdentityRoleLookupSchemaMismatchTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/auth/IdentityAwareContextResolverTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/auth/LoginControllerTest.java
 detail: |
   `LoginController.java:127` hardcodes `"SELECT id, active, token_version FROM identity_users WHERE
   username = ? AND tenant_id = ? "` as a raw string literal -- not even behind a configurable
@@ -68,3 +87,60 @@ guard:
     model actually reports for identity::User, not a hardcoded literal that is only accidentally
     correct for apps composing the specific pack version that happens to match it
   provenRed: false
+resolution: >-
+  **2026-08-15: implemented -- scope grew significantly during investigation.** Fixing
+  `LoginController` alone surfaced two MORE files with the identical defect shape, both more
+  severe than `LoginController` itself: `IdentityRoleLookup.java` (`NPDevKernel/adapters/
+  expression-cel`) is, by its own javadoc, "THE single revocation decision point" for role
+  resolution and token-revocation on EVERY authenticated request (called from both RuntimeHost's
+  `IdentityAwareContextResolver` and the generated-CRUD kernel path's `GeneratedCrudRuntimeSupport`),
+  and `IdentityPermissionOverrideLookup.java` (`NPDevKernel/adapters/authz-default`) is the same
+  shape for fine-grained permission overrides, called from `DefaultExecutionAuthorizationPolicy`.
+  Both hardcoded `identity_users`/`identity_roles`/`identity_user_roles`/
+  `identity_user_role_permissions` -- meaning role-based authorization silently degraded to
+  claim-roles-only (empty identity-backed roles, `token_version` always 0, no permission overrides
+  ever applied) for ANY app whose identity pack is version-qualified, on EVERY request, with no
+  error anywhere.
+
+  Added `IdentityPackTableNames` (`NPDevContract/dsl`, not `NPDevRuntimeHost`) as the one shared
+  resolver every caller can reach without a wrong-direction module dependency -- two of the callers
+  are `NPDevKernel` adapters that cannot depend on `NPDevRuntimeHost`. Replaces
+  `IdentityProvisioning`'s own nested `IdentityTableNames` record from REG-170 (now a thin
+  `import` at all 8 of that item's call sites). Two resolution modes: `resolve()` (throws,
+  unchanged from REG-170 -- for callers only ever active when the identity pack is guaranteed
+  present) and a new `tryResolve()` (returns `Optional`, for callers that run on EVERY request
+  regardless of whether an app composes the identity pack at all -- `internal.tables=false` is a
+  normal, supported configuration, not an error). `IdentityRoleLookup`/
+  `IdentityPermissionOverrideLookup`'s static methods now take table names as parameters (built
+  into their SQL via `String.formatted(...)` templates) instead of hardcoding literals;
+  `GeneratedCrudRuntimeSupport`/`IdentityAwareContextResolver`/`DefaultExecutionAuthorizationPolicy`
+  each resolve `Optional<IdentityPackTableNames>` ONCE at construction (not per-request) and fail
+  open (empty roles/no revocation/no overrides) exactly as before when absent.
+  `TenantAutoRegistrationRunner` dropped its own semantically-wrong
+  `@Value("${npdev.auth.login.user-table:identity_users}")` default entirely (that property was
+  never actually about the built-in identity pack's own table -- it was conflating it with a
+  DIFFERENT, legitimate configuration point, an app's separately-bondable credential table).
+
+  Verifying this surfaced one further real bug, fixed in the same pass: the security-pattern
+  sweep's own `swallowed-security-exception` rule correctly caught `IdentityPackTableNames.
+  tryResolve`'s `catch (IllegalStateException)` silently returning empty for a genuinely
+  inconsistent, partially-composed identity pack (distinct from the normal, silent "pack not
+  composed at all" case) -- fixed by logging SEVERE first, matching REG-39's established posture
+  used everywhere else in this exact codebase.
+
+  **Verification, precisely what was and wasn't proven live:** every affected module compiles and
+  its full test suite passes -- `:dsl:test`, `:adapters:expression-cel:test`,
+  `:adapters:authz-default:test`, `runtimehost-core`'s own test suite, and the full assembled-app
+  `gradlew test` (557 tests) against `simple-contact-intake`. `TenantAutoRegistrationRunner`'s own
+  fix is LIVE-PROVEN: generated, built, and booted `superuser-admin-console` (real identity pack
+  composition, schema confirmed `identity_v1_users`) -- the previously-observed
+  `[TenantAutoRegistrationRunner] Skipped: could not reconcile tenant registry (Table
+  "identity_users" not found...)` boot-log error is GONE. `LoginController`/`IdentityRoleLookup`/
+  `IdentityPermissionOverrideLookup`'s own fixes were NOT additionally re-proven via a live HTTP
+  request in this pass (a full jwt-mode boot + login POST, or a real role/permission-override
+  round-trip against `superuser-admin-console`'s live `identity_v1_*` tables) -- the unit-test
+  coverage exercises the exact same SQL against a real H2 schema matching real generated table
+  names, which is strong but not identical evidence to an end-to-end HTTP proof. Attempting the
+  live HTTP check separately surfaced an UNRELATED, pre-existing 404 on `com.finalexec.controlpanel`
+  routes (also observed identically during REG-170's own live verification) -- not chased further,
+  out of this item's scope.

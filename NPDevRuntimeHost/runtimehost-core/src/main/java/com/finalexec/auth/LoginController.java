@@ -1,6 +1,8 @@
 package com.finalexec.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.runtime.support.IdentityRoleLookup;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,6 +47,7 @@ public class LoginController {
 
     private final DataSource dataSource;
     private final ObjectMapper objectMapper;
+    private final IdentityPackTableNames identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -58,6 +61,7 @@ public class LoginController {
             DataSource dataSource,
             ObjectMapper objectMapper,
             ResourceLoader resourceLoader,
+            CompiledModel compiledModel,
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn,
@@ -77,6 +81,7 @@ public class LoginController {
     ) throws Exception {
         this.dataSource = dataSource;
         this.objectMapper = objectMapper;
+        this.identityTables = IdentityPackTableNames.resolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -124,7 +129,8 @@ public class LoginController {
         }
 
         try (Connection connection = dataSource.getConnection()) {
-            String userSql = "SELECT id, active, token_version FROM identity_users WHERE username = ? AND tenant_id = ?";
+            String userSql = "SELECT id, active, token_version FROM " + identityTables.usersTable()
+                    + " WHERE username = ? AND tenant_id = ?";
             String userId;
             int tokenVersion;
             try (PreparedStatement ps = connection.prepareStatement(userSql)) {
@@ -167,7 +173,7 @@ public class LoginController {
             }
 
             throttle.recordSuccess(tenantId, username);
-            Set<String> roles = IdentityRoleLookup.rolesFor(dataSource, tenantId, username);
+            Set<String> roles = IdentityRoleLookup.rolesFor(dataSource, identityTables, tenantId, username);
             JwtSigner signer = new JwtSigner(objectMapper, privateKey, issuer, audience, expirySeconds);
             String token = signer.sign(tenantId, username, roles, tokenVersion);
 

@@ -1,7 +1,7 @@
 package com.finalexec.controlpanel;
 
 import com.finalexec.auth.IdentityProvisioning;
-import com.finalexec.auth.IdentityProvisioning.IdentityTableNames;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
@@ -38,7 +38,7 @@ public class ControlPanelAdminUserController {
 
     private final ObjectProvider<DataSource> dataSourceProvider;
     private final RuntimeContextService runtimeContextService;
-    private final IdentityTableNames identityTables;
+    private final IdentityPackTableNames identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -53,7 +53,7 @@ public class ControlPanelAdminUserController {
     ) {
         this.dataSourceProvider = dataSourceProvider;
         this.runtimeContextService = runtimeContextService;
-        this.identityTables = IdentityTableNames.resolve(compiledModel);
+        this.identityTables = IdentityPackTableNames.resolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;

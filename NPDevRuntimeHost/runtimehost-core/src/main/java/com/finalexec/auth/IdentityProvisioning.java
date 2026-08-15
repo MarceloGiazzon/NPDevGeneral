@@ -1,7 +1,6 @@
 package com.finalexec.auth;
 
-import com.npdev.dsl.v1.compiled.CompiledConcept;
-import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -17,48 +16,21 @@ import java.util.UUID;
  * {@link BootstrapAdminController}, {@link CreateUserController}, and the ControlPanel's
  * cross-tenant admin-user/tenant-users controllers. Callers own the transaction (commit/rollback).
  *
- * <p>Physical table names are resolved from the compiled model ({@link IdentityTableNames#resolve})
+ * <p>Physical table names are resolved from the compiled model ({@link IdentityPackTableNames#resolve})
  * rather than hardcoded, because they are pack-versioned (e.g. {@code identity_v1_users} today) and
  * the generator, not this class, owns that naming scheme -- see REG-160 (the identical fix, applied
  * first to {@code WorkspaceMenuSeeder}) and REG-170 (this class's own instance of the same defect
- * shape).</p>
+ * shape). {@code IdentityPackTableNames} itself lives in {@code NPDevContract/dsl}, not here --
+ * REG-177 found the identical defect in two {@code NPDevKernel} adapters
+ * ({@code IdentityRoleLookup}, {@code IdentityPermissionOverrideLookup}) that cannot depend on
+ * {@code NPDevRuntimeHost}, so the shared type moved to the one module every caller can reach.</p>
  */
 public final class IdentityProvisioning {
 
     private IdentityProvisioning() {
     }
 
-    /**
-     * REG-170: resolves the identity pack's four concept table names ONCE per caller (a Spring
-     * controller resolves this in its own constructor, from its already-injected
-     * {@code CompiledModel} bean, and passes the result to every {@code IdentityProvisioning} call)
-     * instead of each of this class's methods hardcoding a second, independently-drifting literal.
-     * Throws {@code IllegalStateException} if a concept is missing -- unreachable for any controller
-     * actually gated on the identity pack being composed, so a hard failure here indicates a genuine
-     * platform inconsistency, not a normal runtime condition (the same policy REG-160 established).
-     */
-    public record IdentityTableNames(String usersTable, String rolesTable, String userRolesTable,
-                                      String userRolePermissionsTable) {
-        public static IdentityTableNames resolve(CompiledModel compiledModel) {
-            return new IdentityTableNames(
-                    resolveTable(compiledModel, "identity::User"),
-                    resolveTable(compiledModel, "identity::Role"),
-                    resolveTable(compiledModel, "identity::UserRole"),
-                    resolveTable(compiledModel, "identity::UserRolePermission"));
-        }
-
-        private static String resolveTable(CompiledModel compiledModel, String conceptName) {
-            return compiledModel.findConcept(conceptName)
-                    .map(CompiledConcept::getTableName)
-                    .filter(name -> name != null && !name.isBlank())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "IdentityProvisioning: compiled model has no usable table name for concept '"
-                                    + conceptName + "' -- every caller of this class is only active when the "
-                                    + "identity pack is composed, so this should be unreachable"));
-        }
-    }
-
-    public static int countUsersInTenant(Connection connection, IdentityTableNames tables, String tenantId)
+    public static int countUsersInTenant(Connection connection, IdentityPackTableNames tables, String tenantId)
             throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT COUNT(*) FROM " + tables.usersTable() + " WHERE tenant_id = ?")) {
@@ -70,7 +42,7 @@ public final class IdentityProvisioning {
         }
     }
 
-    public static boolean usernameTaken(Connection connection, IdentityTableNames tables, String tenantId,
+    public static boolean usernameTaken(Connection connection, IdentityPackTableNames tables, String tenantId,
                                          String username) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT COUNT(*) FROM " + tables.usersTable() + " WHERE tenant_id = ? AND username = ?")) {
@@ -83,7 +55,7 @@ public final class IdentityProvisioning {
         }
     }
 
-    public static void insertIdentityUser(Connection connection, IdentityTableNames tables, UUID userId,
+    public static void insertIdentityUser(Connection connection, IdentityPackTableNames tables, UUID userId,
                                            String username, String displayName, String tenantId) throws Exception {
         insertIdentityUser(connection, tables, userId, username, displayName, null, tenantId);
     }
@@ -94,7 +66,7 @@ public final class IdentityProvisioning {
      * should pass a real value when the registration flow collected one, since it's the only way
      * {@link PasswordResetController} can find someone to email.
      */
-    public static void insertIdentityUser(Connection connection, IdentityTableNames tables, UUID userId,
+    public static void insertIdentityUser(Connection connection, IdentityPackTableNames tables, UUID userId,
                                            String username, String displayName, String email, String tenantId)
             throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
@@ -150,7 +122,7 @@ public final class IdentityProvisioning {
         }
     }
 
-    public static UUID findOrCreateRole(Connection connection, IdentityTableNames tables, String tenantId,
+    public static UUID findOrCreateRole(Connection connection, IdentityPackTableNames tables, String tenantId,
                                          String roleName, String description) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT id FROM " + tables.rolesTable() + " WHERE name = ? AND tenant_id = ?")) {
@@ -175,7 +147,7 @@ public final class IdentityProvisioning {
         return roleId;
     }
 
-    public static void insertUserRole(Connection connection, IdentityTableNames tables, UUID userId, UUID roleId,
+    public static void insertUserRole(Connection connection, IdentityPackTableNames tables, UUID userId, UUID roleId,
                                        String tenantId) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT INTO " + tables.userRolesTable() + " (id, user_id, role_id, tenant_id) VALUES (?, ?, ?, ?)")) {
