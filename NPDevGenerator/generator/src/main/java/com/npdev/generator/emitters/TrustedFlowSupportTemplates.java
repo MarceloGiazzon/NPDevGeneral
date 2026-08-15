@@ -50,6 +50,7 @@ final class TrustedFlowSupportTemplates {
         return """
                 package com.npdev.generated.trusted;
 
+                import java.util.Collections;
                 import java.util.LinkedHashMap;
                 import java.util.Map;
 
@@ -63,7 +64,10 @@ final class TrustedFlowSupportTemplates {
                         executionId = clean(executionId);
                         correlationId = clean(correlationId);
                         idempotencyKey = clean(idempotencyKey);
-                        input = input == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(input));
+                        // REG-175/REG-146: nested into published event/audit payloads --
+                        // Map.copyOf's JEP 269 iteration-order randomization (re-salted every JVM
+                        // start) meant this event JSON's key order changed on every app restart.
+                        input = input == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(input));
                     }
 
                     public static GeneratedFlowExecutionRequest from(Map<String, Object> body) {
@@ -105,6 +109,7 @@ final class TrustedFlowSupportTemplates {
         return """
                 package com.npdev.generated.trusted;
 
+                import java.util.Collections;
                 import java.util.LinkedHashMap;
                 import java.util.Map;
 
@@ -151,7 +156,11 @@ final class TrustedFlowSupportTemplates {
                         evidenceViewerUrl = clean(evidenceViewerUrl);
                         message = clean(message);
                         error = clean(error);
-                        result = result == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(result));
+                        // REG-175/REG-146: returned directly as the JSON body of POST
+                        // /api/generated/flows/{flowName}/start and .../events/{eventName} --
+                        // Map.copyOf's JEP 269 iteration-order randomization meant this response's
+                        // "result" field order changed on every app restart.
+                        result = result == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(result));
                     }
 
                     public Map<String, Object> toMap() {

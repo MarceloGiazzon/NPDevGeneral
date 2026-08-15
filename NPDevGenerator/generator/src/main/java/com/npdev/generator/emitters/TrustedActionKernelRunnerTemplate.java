@@ -31,6 +31,7 @@ final class TrustedActionKernelRunnerTemplate {
                 import org.springframework.stereotype.Service;
 
                 import java.util.ArrayList;
+                import java.util.Collections;
                 import java.util.LinkedHashMap;
                 import java.util.List;
                 import java.util.Map;
@@ -549,7 +550,11 @@ final class TrustedActionKernelRunnerTemplate {
                         }
                         Map<String, Object> out = new LinkedHashMap<>(result == null ? Map.of() : result);
                         out.put("sideEffectCountingStatus", sideEffectCountingStatus);
-                        return Map.copyOf(out);
+                        // REG-175/REG-146: returns straight into the action-execution response's
+                        // "result" field -- Map.copyOf's JEP 269 iteration-order randomization meant
+                        // this varied on every app restart. `out` is already a LinkedHashMap built
+                        // in `result`'s own order plus one appended key; unmodifiableMap preserves it.
+                        return Collections.unmodifiableMap(out);
                     }
 
                     private static String firstNonBlank(String... values) {

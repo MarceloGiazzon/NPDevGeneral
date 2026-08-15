@@ -6,8 +6,10 @@ title: >-
   SettingsAst.getStrings() did (REG-146), and any of them COULD be a latent second instance
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-15
+closed: 2026-08-15
+verification: UNIT_TESTED
 source: >-
   Found while root-causing REG-146 (Workbench i18n key-order nondeterminism). The actual defect was
   two specific `Map.copyOf(...)` call sites (PlatformStrings.DEFAULTS, SettingsAst.getStrings()) --
@@ -61,3 +63,57 @@ guard:
     output uses an order-preserving immutable wrapper (Collections.unmodifiableMap/-Set), not
     Map.copyOf/Set.copyOf
   provenRed: false
+resolution: >-
+  **2026-08-15: complete site-by-site audit performed** (3 parallel research passes covering
+  NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast, .../compiled + .../settings + .../parser +
+  .../compiler + .../pack + .../schemaevolution + .../expr, and NPDevGenerator/generator/src/main/
+  java) -- 79 call sites total (up from the "~60" first-grep estimate; the extra sites are settings/
+  parser/pack/schemaevolution/expr locations the original grep count did not separately tally).
+
+  **The audit found one dominant, load-bearing safety mechanism**: nearly every `metadata`/
+  `explainability`/`params`/`data`/`set`/`select` field on a `Compiled*` DSL record is routed
+  through `ModelCompiler.sortObjectMap()` (alphabetical) before ever reaching a `Compiled*` record,
+  and `CompiledModelCanonicalJson.toObjectMap()` re-sorts via `TreeMap` again before JSON
+  serialization -- both silently absorb whatever iteration-order randomization `Map.copyOf` produced,
+  making 52 of the 79 sites SAFE regardless of the JEP 269 behavior REG-146 fixed. A further 8 sites
+  in the generator are SAFE because their only consumers do keyed `.get()` lookups or explicitly
+  sort before emitting. 0 sites were UNCERTAIN after tracing.
+
+  **19 sites were AFFECTED** -- real instances of REG-146's exact defect shape, all sharing the same
+  root cause: they bypass both safety nets (a raw `entrySet()`/`Map.copyOf` copy reaching
+  serialized/emitted output with no sort anywhere in the chain). Fixed all 19, split across two
+  ledger items since 7 of them turned out to be a materially different bug class:
+
+  - **12 sites fixed under this item** (generation-time determinism, REG-175's original scope):
+    `AutoPanelSurfaceAst.regions/visibleWhen/bandPickers/uiState` and `SelectorAst.returnMapping`
+    (NPDevContract/dsl/.../ast/), `CompiledAutoPanelSurface.regions/visibleWhen/bandPickers/uiState`
+    and `RenameResolution.Result.explainedRenames` (NPDevContract/dsl/.../compiled/ and
+    .../schemaevolution/), and `AuthoringMergeGate.MergeResult.elementsFromOurs/elementsFromTheirs`
+    (NPDevGenerator/.../authoring/). All swapped `Map.copyOf`/`Set.copyOf` for
+    `Collections.unmodifiableMap/-Set(new LinkedHashMap/LinkedHashSet<>(x))`, REG-146's own fix
+    pattern -- confirmed the full AutoPanelSurfaceAst -> ModelCompiler -> CompiledAutoPanelSurface ->
+    CompiledModelCanonicalJson chain preserves order end-to-end after both AST- and Compiled-layer
+    sites were fixed (ModelCompiler's own copy step already used order-preserving `LinkedHashMap`
+    construction; only the two record constructors' own freezing calls needed the swap).
+    `visibleWhen` is not theoretical: `NPDevSamples/dsl-conformance-max/Input/model.json` already
+    declares 2 real keys ("lines", "lines.notes") for one surface, so this site produced
+    observably different `compiled-model.json` bytes across generations before this fix.
+    `regions`/`bandPickers`/`uiState` are mechanism-identical but dormant in the two real corpora
+    checked (NPDevSamples, AppGen/apps/_official/WmsOffice) -- only ever authored with 1 entry
+    today, so fixed defensively ahead of the first model that adds a 2nd.
+  - **7 sites are a DIFFERENT bug class, filed and fixed separately as REG-178**: literal Java
+    source TEXT emitted verbatim into every generated FinalApp
+    (`TrustedActionSupportTemplates`/`TrustedFlowSupportTemplates`/`TrustedActionKernelRunnerTemplate`),
+    where the `Map.copyOf` runs at the GENERATED APP's own runtime, not at generation time -- so the
+    observable defect is a live app's REST response field order changing across restarts, not a
+    generation-time text diff. See REG-178 for the full writeup; not enumerated further here to keep
+    this item's own scope (generation-time determinism) clean.
+
+  **Verification**: `NPDevContract/dsl` (`compileJava` + full `test`) and `NPDevGenerator/generator`
+  (`compileJava` + full `test`, 345 tests) both green after all 12 of this item's edits.
+  `scripts/hygiene/check-deterministic-generation.ps1` re-run post-fix (2026-08-15). Not captured:
+  a live BEFORE/AFTER pair specifically isolating `AutoPanelSurfaceAst.visibleWhen`'s confirmed-real
+  nondeterminism (the audit traced it statically with high confidence -- unsorted entrySet iteration
+  plus a real 2-entry corpus model -- but did not additionally run dsl-conformance-max generation
+  twice pre-fix to capture the differing bytes before applying the fix), so `guard.provenRed` stays
+  `false` honestly rather than claiming a RED state that was reasoned about, not reproduced.

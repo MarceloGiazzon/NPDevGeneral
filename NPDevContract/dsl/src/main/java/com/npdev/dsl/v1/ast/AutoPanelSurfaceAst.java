@@ -1,5 +1,7 @@
 package com.npdev.dsl.v1.ast;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -33,10 +35,15 @@ public record AutoPanelSurfaceAst(
         computed = computed == null ? List.of() : List.copyOf(computed);
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
         derivedFields = derivedFields == null ? List.of() : List.copyOf(derivedFields);
-        regions = regions == null ? Map.of() : Map.copyOf(regions);
+        // REG-175/REG-146: regions/visibleWhen/bandPickers/uiState reach CompiledModelCanonicalJson's
+        // toRegions/toVisibleWhen/toBandPickers/toUiState, which entrySet()-iterate straight into
+        // compiled-model.json with no sort -- unlike this class's own `metadata` field, which
+        // ModelCompiler routes through a sorting helper before it ever reaches JSON. Map.copyOf's
+        // JEP 269 iteration-order randomization was reaching emitted output for these four.
+        regions = regions == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(regions));
         actions = actions == null ? List.of() : List.copyOf(actions);
-        visibleWhen = visibleWhen == null ? Map.of() : Map.copyOf(visibleWhen);
-        bandPickers = bandPickers == null ? Map.of() : Map.copyOf(bandPickers);
-        uiState = uiState == null ? Map.of() : Map.copyOf(uiState);
+        visibleWhen = visibleWhen == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(visibleWhen));
+        bandPickers = bandPickers == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(bandPickers));
+        uiState = uiState == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(uiState));
     }
 }
