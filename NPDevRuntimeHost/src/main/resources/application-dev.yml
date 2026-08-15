@@ -13,6 +13,9 @@ npdev:
     # exactly what _ops/Run-FinalApp.ps1 / _ops/run-final-app.sh's Ensure-NpdevApiKey already
     # provisions per app into secrets/api-key.env before every boot.
 
+# QUAL-13 verification: comment-only change under NPDevRuntimeHost/**, no workflow file touched --
+# proves manager-harness.yml's new pull_request.paths entry fires on its own. Throwaway; this PR is
+# not meant to merge.
 logging:
   level:
     org.springframework.web: DEBUG
