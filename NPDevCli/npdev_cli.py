@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shlex
 import signal
 import subprocess
@@ -1781,6 +1782,7 @@ def run_app(args: argparse.Namespace) -> dict:
                               "see which Java NPDev can find.",
             ))
             return result
+        ensure_api_key(final_app_out)
         with open(log_path, "w", encoding="utf-8") as log_file:
             boot_proc = subprocess.Popen(
                 [java, "-jar", str(jar_path), f"--server.port={args.port}",
@@ -1821,6 +1823,12 @@ def run_app(args: argparse.Namespace) -> dict:
         result["phase"] = "READY"
         result["ok"] = True
         result["baseUrl"] = base_url
+        # A POINTER, not the credential itself (CodeQL py/clear-text-logging-sensitive-data,
+        # caught in PR #100 review): this JSON is unconditionally printed to stdout by main()
+        # below, which is exactly a clear-text log sink. A caller that needs to authenticate reads
+        # the file this names -- the same file every other launcher on this platform already
+        # provisions into, so nothing new is exposed that `secrets/api-key.env` didn't already hold.
+        result["apiKeyFile"] = str(final_app_out / "secrets" / "api-key.env")
         _write_run_app_progress(final_app_out, result["phase"])
         _RUN_APP_CHILD_PROCESS = None  # READY: intentionally leave it running, not this run's to kill
         return result
@@ -2342,6 +2350,57 @@ def java_launcher() -> str | None:
         if candidate.exists():
             return str(candidate)
     return shutil.which("java")
+
+
+def ensure_api_key(app_root: Path) -> str:
+    """Provision (or reuse) `<app_root>/secrets/api-key.env` and export it into this process's
+    environment, before the BOOT phase below (and `dev_loop.boot`, injected with this module the
+    same way it is with `java_launcher`) spawns `java -jar`.
+
+    T1/C2 (application-dev.yml): the `dev` profile no longer seeds a known admin key --
+    StartupValidator refuses to boot until one is supplied externally via
+    NPDEV_AUTH_API_KEYS/NPDEV_AUTH_APIKEYS. Every launcher this platform ships already provisions
+    one this way (OperationalRunbookEmitter's Ensure-NpdevApiKey / ensure_npdev_api_key) except this
+    one -- `npdev run app` and `npdev dev` are the platform's own flagship one-command paths
+    (README's Quickstart, docs/YOUR_FIRST_APP.md), and until this function existed neither ever
+    wrote or read `secrets/api-key.env`, so both died inside StartupValidator with no key the moment
+    C2 shipped. Same file, same `NPDEV_AUTH_API_KEYS=<key>=dev:developer:admin` line, same
+    "present-but-unusable is treated as absent" rule (REG-157) as every other launcher -- neither the
+    generated app's own `_ops` toolbox nor a human ever needs to know which launcher wrote the file.
+
+    Both spellings are set directly on `os.environ`, not returned via an `env=` dict, because the
+    BOOT phase's `subprocess.Popen` (and `dev_loop.boot`'s) already inherit the ambient environment
+    with no explicit `env=` override -- mutating here is the smallest change that reaches both.
+    Returns the bare credential (the part before the mapping's own `=`) for a caller that wants to
+    make an authenticated request against the app it just started.
+    """
+    secrets_dir = app_root / "secrets"
+    key_file = secrets_dir / "api-key.env"
+    needs_generation = True
+    if key_file.exists():
+        for raw_line in key_file.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                needs_generation = False
+                break
+    if needs_generation:
+        secrets_dir.mkdir(parents=True, exist_ok=True)
+        key_file.write_text(
+            f"NPDEV_AUTH_API_KEYS={secrets.token_hex(32)}=dev:developer:admin", encoding="utf-8")
+
+    live_key = None
+    for raw_line in key_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        if name == "NPDEV_AUTH_API_KEYS":
+            os.environ["NPDEV_AUTH_API_KEYS"] = value
+            os.environ["NPDEV_AUTH_APIKEYS"] = value
+            live_key = value.split("=", 1)[0]
+    if live_key is None:
+        raise SystemExit(f"{key_file} carries no usable NPDEV_AUTH_API_KEYS mapping")
+    return live_key
 
 
 def _managed_jdk() -> bool:

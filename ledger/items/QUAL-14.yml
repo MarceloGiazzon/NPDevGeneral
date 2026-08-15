@@ -1,0 +1,75 @@
+id: QUAL-14
+title: >-
+  The first-run harness -- the only executable test of the documented README/YOUR_FIRST_APP.md
+  path, following it literally on a machine that starts with nothing -- is invoked by no workflow
+type: GAP
+severity: HIGH
+status: PARTIAL
+opened: 2026-08-15
+source: third-person-readiness-2026-08-15/FOLLOWUP-PLAN.md §3.
+surface: ci/workflows
+files:
+  - .github/workflows/firstrun-harness.yml
+  - scripts/quality/firstrun-harness/run-readme.sh
+  - scripts/policy/script-invocation-declarations.json
+detail: |
+  `scripts/quality/firstrun-harness/run-readme.sh` -- a ~1400-line executable README, built by
+  `firstrun-helpers/PLAN.md` (2026-08-04, `REG-128/129/136`) and extended repeatedly since --
+  clones a bare checkout, follows README/YOUR_FIRST_APP.md's own documented commands literally, and
+  fails the moment a documented step does not work or a needed step is not documented. It is,
+  by a wide margin, the single best third-person instrument this repo has: everything else that
+  exercises a generated app assumes the platform's own dev machine already has Java/Python/Gradle
+  caches/etc. This harness assumes NOTHING. And nothing invokes it: grepped every `.github/
+  workflows/*.yml` for `run-readme.sh` and `firstrun-harness` -- zero matches. Its own Dockerfile
+  and README document how to run it BY HAND; `scripts/policy/script-invocation-declarations.json`
+  correctly classifies it `manual-runbook`, which is honest about today's reality but means no CI
+  event of any kind has run it since it was written.
+
+  Consequence, concretely: `REG-182` (this branch, filed alongside this item) -- `npdev run app`
+  and `npdev dev` both silently failing to boot under the fail-closed `dev` profile -- is exactly
+  the class of regression only this harness's sections 4 and 9 would have caught, and it shipped
+  invisibly for however long T1/C2 has been on `main` because nothing ever ran those sections
+  again after they were written.
+
+  **Fixed 2026-08-15**, same branch as `QUAL-12`/`QUAL-13`/`REG-182`. Added
+  `.github/workflows/firstrun-harness.yml`: `schedule` (nightly, `0 6 * * *`, offset from the
+  existing `manager-harness`/`nightly-scale-ladder` cron slots to avoid runner contention) +
+  `workflow_dispatch: {}`. Deliberately NOT per-PR: the harness builds a container from nothing and
+  follows the full README end to end -- minutes, not seconds, the same "builder stage compiles from
+  scratch, no persistent cache mount" cost `manager-harness.yml`'s own header comment already gives
+  for choosing tag/nightly/dispatch over `pull_request` for a sibling harness with an identical
+  shape. `LOCAL_SRC=1`-style mounted-checkout mode was not used for the CI job; the workflow instead
+  builds the harness image from `scripts/quality/firstrun-harness/Dockerfile` against a real clone
+  of this repo, matching what a genuine third person would experience (the harness's entire point).
+
+  Not fixed here, left as documented follow-on: promoting this workflow to `REQUIRED_WORKFLOWS` in
+  `release_candidate.py` (the same tag-time gate `engine-support.yml`'s own header comment
+  describes for itself) -- out of scope for this branch's "one CI cycle" budget; worth deciding
+  once this workflow has a few real nightly runs behind it.
+
+  **2026-08-15 (PR #100): attempted to prove this live and hit a GitHub platform limitation, not a
+  defect in this fix.** `gh workflow run firstrun-harness.yml --ref
+  fix/qual-12-13-14-engine-gate-and-dormancy` returned `HTTP 404: workflow firstrun-harness.yml not
+  found on the default branch` -- `workflow_dispatch` only becomes callable for a brand-new
+  workflow FILE once that file exists on the repository's default branch (`main`), even when
+  targeting a different `--ref`. There is no way to manually dispatch a not-yet-merged workflow
+  from a branch; this is documented GitHub Actions behaviour, not something this branch's YAML got
+  wrong (`.github/workflows/firstrun-harness.yml` itself parses as valid YAML and its sibling
+  `engine-support.yml`/`manager-harness.yml` dispatches worked normally on this same branch).
+  Consequence: this workflow's actual EXECUTION cannot be observed before merge, only its
+  existence/config. The first real proof is either the first nightly run (`0 6 * * *`) or a manual
+  dispatch, both only possible once this PR merges to `main`.
+guard:
+  kind: manual
+  ref: >-
+    gh run list --workflow=firstrun-harness.yml --limit 5 (or the Actions tab for "First-run
+    harness (executable README)") -- only checkable after this PR merges to main
+  asserts: >-
+    the workflow exists, is invocable via workflow_dispatch, and its nightly schedule produces a
+    real run within 24h of this fix merging -- not merely that the YAML parses
+  provenRed: true
+  # RED proven directly: grep of every .github/workflows/*.yml file for run-readme.sh /
+  # firstrun-harness, zero matches, before this fix. GREEN cannot be observed pre-merge (see the
+  # 404 above -- a GitHub platform limitation on new workflow_dispatch-only files, not a defect in
+  # this fix) -- held at PARTIAL until the first post-merge run is observed, and REG-182 stays
+  # PARTIAL for the same reason (this harness's sections 4 and 9 are that item's own guard).
