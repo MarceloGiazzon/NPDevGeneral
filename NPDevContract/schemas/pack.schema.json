@@ -335,6 +335,11 @@
           ]
         }
       }
+    },
+    "firstPublishedVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "REG-151: the pack's own true first-ever-published version, pinned once by `npdev pack publish --write` (either at this pack's first publish under this field's existence, backfilled from its migrations chain's own earliest hop, or -- for a pack with no chain yet -- copied from its own current `version`) and immutable thereafter, exactly like a migrations hop (see PackPublishGate's chain-immutability check). Exists as a trust anchor independent of the migrations chain's own current content: PackDependencyGraphWalker's untracked-pack fallback prefers this field over PackMigrationChain.earliestFromVersion() (which can be fooled if the chain's own earliest hop is later removed/truncated by a hand-edit that bypasses the publish gate)."
     }
   },
   "additionalProperties": false
