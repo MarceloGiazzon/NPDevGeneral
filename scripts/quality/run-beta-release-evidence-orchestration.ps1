@@ -75,9 +75,6 @@ $producers = @(
     [pscustomobject]@{ name = "trusted-source-beta0-proof"; stage = 1
         script = "scripts/quality/run-trusted-source-beta0-proof.ps1"
         reports = @("trusted-source-beta0-proof-report.json") }
-    [pscustomobject]@{ name = "frontend-gate"; stage = 1
-        script = "scripts/quality/run-frontend-gate.ps1"
-        reports = @("frontend-gate-report.json") }
 
     # ---- stage 2: build / boot / container -------------------------------------------------------
     [pscustomobject]@{ name = "runtimehost-staged-jar-preflight"; stage = 2

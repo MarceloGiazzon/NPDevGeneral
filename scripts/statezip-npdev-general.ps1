@@ -30,7 +30,6 @@ if ([string]::IsNullOrWhiteSpace($Stamp)) {
 
 $subprojectScripts = @(
     @{ Name = "NPDevContract"; Path = Join-Path $PSScriptRoot "statezip-npdev-contract.ps1" },
-    @{ Name = "NPDevEditor"; Path = Join-Path $PSScriptRoot "statezip-npdev-editor.ps1" },
     @{ Name = "NPDevGenerator"; Path = Join-Path $PSScriptRoot "statezip-npdev-generator.ps1" },
     @{ Name = "NPDevKernel"; Path = Join-Path $PSScriptRoot "statezip-npdev-kernel.ps1" },
     @{ Name = "NPDevRuntimeHost"; Path = Join-Path $PSScriptRoot "statezip-npdev-runtimehost.ps1" },

@@ -632,7 +632,6 @@ public final class GeneratorMain {
         Path current = start;
         while (current != null) {
             if (Files.isDirectory(current.resolve("NPDevContract"))
-                    && Files.isDirectory(current.resolve("NPDevEditor"))
                     && Files.isDirectory(current.resolve("NPDevGenerator"))
                     && Files.isDirectory(current.resolve("NPDevKernel"))
                     && Files.isDirectory(current.resolve("NPDevRuntimeHost"))
