@@ -652,8 +652,11 @@ the same `maxLoopIterations` safety cap procedures use.
   were added (extended `FlowStepsTable.tsx` and `modelDocumentTypes.ts` in place), so no
   `ui-boundary.json` registration was needed.
 - **What:** The flow designer offers a `forEach` node with a collection binding and a nested body.
-- **Where:** [`FlowStepsTable.tsx`](../../../NPDevEditor/ui-react/src/authoring/editors/flows/FlowStepsTable.tsx);
-  [`modelDocumentTypes.ts`](../../../NPDevEditor/ui-react/src/authoring/editors/modelDocumentTypes.ts).
+- **Where:** `NPDevEditor/ui-react/src/authoring/editors/flows/FlowStepsTable.tsx`;
+  `NPDevEditor/ui-react/src/authoring/editors/modelDocumentTypes.ts`. (Plain paths, not links:
+  `NPDevEditor` was parked out of this repository on 2026-08-17 — see `BREAKING.md` — so these
+  resolve in the parked tree, not here. This doc is archived historical narrative; the paths are
+  kept for the record rather than for navigation.)
 - **Why:** Full-stack reach.
 - **Definition of Done:** authoring a loop in the flow builder round-trips to a working, resumable
   flow.
