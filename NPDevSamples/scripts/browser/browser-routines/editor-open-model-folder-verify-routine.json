@@ -1,0 +1,30 @@
+{
+  "scenarioName": "editor-open-model-folder-verify",
+  "targetPath": "/npdev-ui-react/#/authoring/exchange",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "http://localhost:5173/npdev-ui-react/#/authoring/exchange", "label": "Open the Import/Export authoring route" },
+    { "action": "waitForLoadState", "state": "networkidle", "label": "Let the lazy authoring chunk finish loading" },
+    {
+      "action": "evaluate",
+      "name": "installFakePicker",
+      "script": "var BASE = 'http://127.0.0.1:8935/wmsoffice-def'; function makeDir(prefix, name) { return { kind: 'directory', name: name, async getDirectoryHandle(childName) { return makeDir(prefix + childName + '/', childName); }, async getFileHandle(childName) { var url = BASE + '/' + prefix + childName; var res = await fetch(url); if (!res.ok) { throw new Error('not found: ' + url); } var text = await res.text(); return { kind: 'file', name: childName, async getFile() { return new File([text], childName, { type: 'application/json' }); } }; } }; } window.showDirectoryPicker = async function () { return makeDir('', 'wmsoffice-def'); }; return { installed: typeof window.showDirectoryPicker === 'function' };",
+      "label": "Replace showDirectoryPicker with a fake backed by real fetches to the copied WmsOffice definition folder"
+    },
+    {
+      "action": "evaluate",
+      "name": "clickOpenFolder",
+      "script": "var openBtn = Array.from(document.querySelectorAll('button')).find(function (b) { return b.textContent.trim() === 'Open a model folder'; }); if (openBtn) { openBtn.click(); } return { clicked: !!openBtn };",
+      "label": "Click Open a model folder (real component code, real resolver, fake OS picker only)"
+    },
+    { "action": "waitForTimeout", "timeoutMs": 2500, "label": "Let the async $ref resolution + re-render settle" },
+    { "action": "screenshot", "name": "after_folder_import", "label": "Screen after opening the WmsOffice folder" },
+    {
+      "action": "evaluate",
+      "name": "afterState",
+      "script": "var buttons = Array.from(document.querySelectorAll('button')); var statusCard = document.body.innerText; return { hasUnnamed: statusCard.indexOf('(unnamed)') !== -1, hasEntidade: statusCard.indexOf('Entidade') !== -1, hasArmazem: statusCard.indexOf('Armazem') !== -1, bodyTextLength: statusCard.length };",
+      "label": "Check whether real concept names now appear and no (unnamed) placeholders remain"
+    },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

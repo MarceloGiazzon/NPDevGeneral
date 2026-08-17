@@ -1,0 +1,49 @@
+{
+  "scenarioName": "wmsoffice-trusted-source-demo",
+  "targetPath": "/login.html",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl", "label": "Open the real login page" },
+    { "action": "waitForSelector", "selector": "#username", "state": "visible", "label": "Login form rendered" },
+    { "action": "fill", "selector": "#base", "value": "http://127.0.0.1:8100", "label": "Same-origin base" },
+    { "action": "fill", "selector": "#username", "value": "admin" },
+    { "action": "fill", "selector": "#password", "value": "admin123" },
+    { "action": "fill", "selector": "#tenant", "value": "trial" },
+    { "action": "click", "selector": "#loginBtn", "label": "Submit real login" },
+    { "action": "waitForSelector", "selector": "#tokenBox", "state": "visible", "label": "Login succeeded, token stored in localStorage" },
+
+    { "action": "goto", "url": "http://127.0.0.1:8100/entidades-trusted", "label": "Navigate to trusted panel #1" },
+    { "action": "waitForSelector", "selector": "#createBtn", "state": "visible", "label": "Entidades panel rendered" },
+    {
+      "action": "evaluate", "name": "entidades_before",
+      "script": "return document.querySelectorAll('#rows tr').length;",
+      "label": "Count rows before"
+    },
+    { "action": "click", "selector": "#createBtn", "label": "Click Registrar Nova Entidade" },
+    { "action": "waitForTimeout", "timeoutMs": 1500, "label": "Let the callProcedure POST + reload settle" },
+    {
+      "action": "evaluate", "name": "entidades_after",
+      "script": "return { rows: document.querySelectorAll('#rows tr').length, status: document.querySelector('#status').textContent };",
+      "label": "Count rows after + read status text"
+    },
+    { "action": "screenshot", "name": "entidades_after_click", "label": "Entidades panel after clicking Registrar" },
+
+    { "action": "goto", "url": "http://127.0.0.1:8100/produtos-trusted", "label": "Navigate to trusted panel #2" },
+    { "action": "waitForSelector", "selector": "#createBtn", "state": "visible", "label": "Produtos panel rendered" },
+    {
+      "action": "evaluate", "name": "produtos_before",
+      "script": "return document.querySelectorAll('#rows tr').length;",
+      "label": "Count rows before"
+    },
+    { "action": "click", "selector": "#createBtn", "label": "Click Registrar Novo Produto" },
+    { "action": "waitForTimeout", "timeoutMs": 1500, "label": "Let the callProcedure POST + reload settle" },
+    {
+      "action": "evaluate", "name": "produtos_after",
+      "script": "return { rows: document.querySelectorAll('#rows tr').length, status: document.querySelector('#status').textContent };",
+      "label": "Count rows after + read status text"
+    },
+    { "action": "screenshot", "name": "produtos_after_click", "label": "Produtos panel after clicking Registrar" },
+
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}
