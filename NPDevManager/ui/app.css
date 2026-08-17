@@ -69,6 +69,14 @@ body {
   border-bottom: 2px solid transparent;
 }
 .tab:hover { color: var(--fg); }
+.manager-version {
+  margin-left: auto;
+  align-self: center;
+  padding-right: 14px;
+  color: var(--muted);
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+}
 .tab.active {
   color: var(--accent);
   border-bottom-color: var(--accent);

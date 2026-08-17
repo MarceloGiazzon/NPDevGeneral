@@ -29,6 +29,7 @@
     <button class="tab" data-screen="versions">Versions</button>
     <button class="tab" data-screen="scrap">Scrap Manager</button>
     <button class="tab" data-screen="prompter">Prompter</button>
+    <span id="manager-version" class="manager-version" title="NPDev Manager version"></span>
   </nav>
 
   <main>
@@ -402,7 +403,30 @@
       <div class="pane" style="margin-top:14px" id="prompter-answer-pane" hidden>
         <h3>Response</h3>
         <pre class="runout" id="prompter-answer" style="max-height:420px"></pre>
-        <button class="btn ghost" id="prompter-copy-answer" style="margin-top:10px">📋 COPY RESPONSE</button>
+        <div class="statusbar" style="margin-top:10px">
+          <button class="btn ghost" id="prompter-copy-answer">📋 COPY RESPONSE</button>
+          <button class="btn" id="prompter-validate">3 · VALIDATE</button>
+        </div>
+      </div>
+
+      <div class="pane" style="margin-top:14px" id="prompter-validate-pane" hidden>
+        <h3>Validation</h3>
+        <p class="subtitle" id="prompter-validate-status">—</p>
+        <div id="prompter-diagnostics"></div>
+      </div>
+
+      <div class="pane" style="margin-top:14px" id="prompter-apply-pane" hidden>
+        <h3>Apply</h3>
+        <p class="subtitle">
+          Overwrites the app's real <code>model.json</code> (a timestamped backup is kept alongside it).
+        </p>
+        <div class="statusbar">
+          <button class="btn" id="prompter-apply">4 · APPLY TO MODEL</button>
+          <label class="subtitle" style="margin:0">
+            <input type="checkbox" id="prompter-build-after-apply"> build after import
+          </label>
+          <span class="subtitle" id="prompter-apply-status" style="margin-left:auto">—</span>
+        </div>
       </div>
     </section>
   </main>
