@@ -1,0 +1,48 @@
+{
+  "scenarioName": "app-tree-v2-categories-and-array-labels",
+  "targetPath": "/app-tree-v2.html",
+  "options": {
+    "headless": true,
+    "screenshots": "always",
+    "collectDomOnFailure": true
+  },
+  "steps": [
+    {
+      "action": "goto",
+      "url": "$targetUrl",
+      "label": "Open the advanced app-tree page (static, no auth)"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#tree",
+      "state": "visible",
+      "label": "Tree data loaded and top-level sections rendered"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 800,
+      "label": "Let the fetch+render finish settling"
+    },
+    {
+      "action": "evaluate",
+      "name": "tree_check",
+      "script": "function textsOf(sel){return Array.from(document.querySelectorAll(sel)).map(function(e){return e.textContent.trim();});} function topLi(name){return Array.from(document.querySelectorAll('#tree > li')).find(function(li){var k=li.querySelector(':scope > .row > .key'); return k && k.textContent.trim()===name;});} function directFolderKeys(li){return li?Array.from(li.querySelectorAll(':scope > ul.children > li > .row.folder > .key')).map(function(e){return e.textContent.trim();}):[];} var folderKeys=textsOf('.row.folder > .key'); var leafKeys=textsOf('.row.leaf > .key'); var leafVals=textsOf('.row.leaf > .val'); var bracket=/^\\[\\d+\\]:?$/; var bracketFolders=folderKeys.filter(function(k){return bracket.test(k);}); var bracketLeaves=leafKeys.filter(function(k){return bracket.test(k);}); var topSections=textsOf('#tree > li > .row > .key'); var objectsLi=topLi('Objects'); var objectBuckets=directFolderKeys(objectsLi); var procLi=objectsLi?Array.from(objectsLi.querySelectorAll(':scope > ul.children > li')).find(function(li){var k=li.querySelector(':scope > .row > .key'); return k && k.textContent.trim()==='Procedures';}):null; var procKeys=directFolderKeys(procLi).concat(Array.from(procLi?procLi.querySelectorAll(':scope > ul.children > li > .row.leaf > .key'):[]).map(function(e){return e.textContent.trim();})); var trustedProcLi=procLi?Array.from(procLi.querySelectorAll(':scope > ul.children > li')).find(function(li){var k=li.querySelector(':scope > .row > .key'); return k && k.textContent.trim()==='Trusted procedure source';}):null; var trustedProcFiles=directFolderKeys(trustedProcLi); var seedsLi=topLi('Tests'); var seedsFolder=seedsLi?Array.from(seedsLi.querySelectorAll(':scope ul.children li > .row.folder > .key')).map(function(e){return e.textContent.trim();}).filter(function(k){return k.indexOf('warehouse')>=0||k.indexOf('entidade')>=0||k.indexOf('armazem')>=0||k.indexOf('area')>=0;}):[]; var grantsLeaf=leafVals.filter(function(v){return v==='EXECUTE_FLOW'||v==='READ_EXECUTIONS'||v==='READ_FLOW_DEFINITIONS';}); return JSON.stringify({totalFolders:folderKeys.length,totalLeaves:leafKeys.length,bracketFolders:bracketFolders,bracketLeaves:bracketLeaves,topSections:topSections,objectBuckets:objectBuckets,procedureKeys:procKeys,trustedProcedureFiles:trustedProcFiles,seedsRelatedLabels:seedsFolder.slice(0,15),grantsFoundAsPlainValues:grantsLeaf});",
+      "label": "Categories present, array items labelled, no leftover [n] placeholders"
+    },
+    {
+      "action": "click",
+      "selector": "#expandAll",
+      "label": "Expand everything for the screenshot"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 500,
+      "label": "Let layout settle after expand"
+    },
+    {
+      "action": "screenshot",
+      "name": "shot_app_tree_v2_expanded",
+      "label": "Full expanded advanced tree"
+    }
+  ]
+}

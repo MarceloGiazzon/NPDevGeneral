@@ -1,0 +1,24 @@
+{
+  "scenarioName": "er-diagram-drag-verify",
+  "targetPath": "/wmsoffice-bonds-diagram.html",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "http://127.0.0.1:8934/wmsoffice-bonds-diagram.html", "label": "Open the CLI-generated ER diagram" },
+    { "action": "waitForSelector", "selector": "#er-diagram-tables > g:nth-child(1)", "state": "visible", "label": "Tables rendered client-side from embedded JSON" },
+    { "action": "screenshot", "name": "before_drag", "label": "Diagram before drag" },
+    {
+      "action": "evaluate",
+      "name": "before",
+      "script": "var g = document.querySelector('#er-diagram-tables > g:nth-child(1)'); var conn = document.querySelector('#er-diagram-connectors path'); return { transform: g.getAttribute('transform'), connectorPath: conn ? conn.getAttribute('d') : null };",
+      "label": "Capture first table's transform and first connector's path before drag"
+    },
+    {
+      "action": "evaluate",
+      "name": "dragResult",
+      "script": "var g = document.querySelector('#er-diagram-tables > g:nth-child(1)'); var rect = g.getBoundingClientRect(); var startX = rect.left + 10, startY = rect.top + 10; var dx = 180, dy = 140; function fire(type, x, y) { g.dispatchEvent(new PointerEvent(type, { pointerId: 1, clientX: x, clientY: y, bubbles: true, cancelable: true })); } fire('pointerdown', startX, startY); fire('pointermove', startX + dx, startY + dy); fire('pointerup', startX + dx, startY + dy); var conn = document.querySelector('#er-diagram-connectors path'); return { transform: g.getAttribute('transform'), connectorPath: conn ? conn.getAttribute('d') : null };",
+      "label": "Dispatch real PointerEvents (pointerdown/move/up) simulating a drag of 180,140 and re-read state"
+    },
+    { "action": "screenshot", "name": "after_drag", "label": "Diagram after drag" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}
