@@ -22,7 +22,6 @@ function Get-NPDevWorkspaceRoot([string]$ScriptRoot) {
     while (-not [string]::IsNullOrWhiteSpace($current)) {
         $isWorkspaceRoot = (Test-Path -LiteralPath (Join-Path $current ".npdev-root") -PathType Leaf) `
             -and (Test-Path -LiteralPath (Join-Path $current "NPDevContract") -PathType Container) `
-            -and (Test-Path -LiteralPath (Join-Path $current "NPDevEditor") -PathType Container) `
             -and (Test-Path -LiteralPath (Join-Path $current "NPDevGenerator") -PathType Container) `
             -and (Test-Path -LiteralPath (Join-Path $current "NPDevKernel") -PathType Container) `
             -and (Test-Path -LiteralPath (Join-Path $current "NPDevRuntimeHost") -PathType Container) `

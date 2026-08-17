@@ -107,11 +107,31 @@ $jwtFilterMissingPatterns = @(Get-Bucket2MissingPatterns -PathValue $JwtFilterPa
     "missing_bearer_token",
     "validateAndExtractClaims"
 ))
+# The filter-registration assertion is COVERAGE-AT-LEAST, not a literal string.
+#
+# It used to pin the exact call `bean.addUrlPatterns("/api/*", "/api/v1/*")`. That made the check
+# fail in the one direction it should never fail: when someone WIDENS authentication coverage. The
+# trusted-source JWT fix did exactly that -- a panel's own page/state/procedure routes live at
+# arbitrary per-app paths under /generated/**, never under /api/*, so they reached no filter at all
+# and a jwt-mode app had no way to authenticate them. The fix registers "/*" instead, which is a
+# strict superset of the two patterns this check was written to guarantee, and the check reported
+# that improvement as a security regression.
+#
+# So: accept either the original /api pair OR any broader registration that subsumes it. "/*"
+# matches every path, so it covers /api/* and /api/v1/* by construction. NARROWING (e.g. dropping to
+# "/api/v1/*" alone, or removing the registration) still fails, which is the direction that matters.
+$authConfigContent = if (Test-Path -LiteralPath $AuthConfigPath -PathType Leaf) { Get-Content -LiteralPath $AuthConfigPath -Raw } else { "" }
+$jwtFilterCoversApiRoutes = (
+    $authConfigContent -match 'bean\.addUrlPatterns\("/\*"\)' -or
+    $authConfigContent -match 'bean\.addUrlPatterns\("/api/\*", "/api/v1/\*"\)'
+)
 $authConfigMissingPatterns = @(Get-Bucket2MissingPatterns -PathValue $AuthConfigPath -Patterns @(
     'ConditionalOnProperty\(name = "npdev\.auth\.mode", havingValue = "jwt"\)',
-    'bean\.addUrlPatterns\("/api/\*", "/api/v1/\*"\)',
     'bean\.setEnabled\(runtimeSettings\.authEnabled\(\)\)'
 ))
+if (-not $jwtFilterCoversApiRoutes) {
+    $authConfigMissingPatterns += 'bean.addUrlPatterns covering at least "/api/*" and "/api/v1/*" (either that exact pair, or a broader "/*")'
+}
 $runtimeSettingsMissingPatterns = @(Get-Bucket2MissingPatterns -PathValue $RuntimeModeConfigPath -Patterns @(
     '@Value\("\$\{npdev\.auth\.enabled:true\}"\) boolean authEnabled'
 ))

@@ -69,7 +69,6 @@ $gates = @(
     [pscustomobject]@{ Name = "aiKnowledge"; Script = "scripts/quality/run-ai-knowledge-gate.ps1"; Why = "static instrument checks + all check-*.py"; Tier = "T2" }
     [pscustomobject]@{ Name = "generator";   Script = "scripts/quality/run-generator-gate.ps1";    Why = "codegen engine"; Tier = "T2" }
     [pscustomobject]@{ Name = "runtimeHost"; Script = "scripts/quality/run-runtimehost-gate.ps1";  Why = "assembled sample app + its test suite"; Tier = "T2" }
-    [pscustomobject]@{ Name = "frontend";    Script = "scripts/quality/run-frontend-gate.ps1";     Why = "authoring UI"; Tier = "T2" }
     [pscustomobject]@{ Name = "betaRelease"; Script = "scripts/quality/run-beta-release-gate.ps1"; Why = "aggregate release checks"; Tier = "T3" }
 )
 
