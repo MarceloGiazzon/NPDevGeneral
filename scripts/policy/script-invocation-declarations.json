@@ -76,6 +76,9 @@
     "scripts/appgen/New-AppTreePage.ps1": {
       "invocation": "orchestrated"
     },
+    "scripts/appgen/New-AppTreePageV2.ps1": {
+      "invocation": "orchestrated"
+    },
     "scripts/appgen/New-ControlPanelPage.ps1": {
       "invocation": "orchestrated"
     },

@@ -187,6 +187,60 @@
             "unit": "mb"
           }
         }
+      },
+      {
+        "schemaVersion": "npdev-scale-proof-report.v2",
+        "generatedAt": "2026-08-17T09:47:23.4471572Z",
+        "concepts": 26,
+        "status": "passed",
+        "phases": {
+          "synthesize": {
+            "status": "passed",
+            "durationMs": 105,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\26\\Input\\model.json"
+          },
+          "generate": {
+            "status": "passed",
+            "durationMs": 6147,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\26\\Output\\App"
+          },
+          "ddl": {
+            "status": "passed",
+            "durationMs": 12,
+            "message": "41 CREATE TABLE statement(s) in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\26\\Output\\ArtifactNP\\src\\main\\resources\\db\\schema-realization\\V1__npdev_schema_realization.sql",
+            "value": 41,
+            "unit": "count"
+          },
+          "build": {
+            "status": "passed",
+            "durationMs": 36016,
+            "message": "exit 0"
+          },
+          "boot": {
+            "status": "passed",
+            "durationMs": 31576,
+            "message": "http://127.0.0.1:18226/actuator/health"
+          },
+          "firstRequest": {
+            "status": "passed",
+            "durationMs": 136,
+            "message": "http://127.0.0.1:18226/api/runtime/metadata/ui/panels/ScaleProofPanel -- status 200: {\"endpointVersion\":\"1.0.0\",\"surfaceType\":\"panel-runtime\",\"operation\":\"loadPanel\",\"panelName\":\"ScaleProofPanel\",\"route\":\"/scale-proof/synthetic\",\"title\":\"Scale proof\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"ruleProfile\":\"interactive\",\"governedDataAccess\":\"ConceptGateway\",\"dataSources\":[{\"name\":\"allRows\",\"concept\":\"SyntheticConcept0001\",\"query\":\"AllSyntheticConcept0001\",\"procedure\":\"\",\"parentDataSource\":\"\",\"childField\":\"\",\"rowOps\":[],\"addFormFields\":[],\"recordCount\":0,\"fallback\":false}],\"data\":{\"allRows\":[]},\"fields\":[{\"field\":\"label\"},{\"field\":\"sequence\"}],\"fieldBindings\":[{\"field\":\"label\",\"dataSource\":\"allRows\",\"sourceField\":\"label\",\"editable\":false,\"label\":\"\",\"order\":null},{\"field\":\"sequence\",\"dataSource\":\"allRows\",\"sourceField\":\"sequence\",\"editable\":false,\"label\":\"\",\"order\":null}],\"actions\":[],\"metadata\":{},\"fallbackUi\":false,\"layout\":{\"type\":\"table\",\"fields\":[\"label\",\"sequence\"]},\"gatewayTrace\":[{\"timestampMs\":1786960042213,\"operation\":\"LIST\",\"conceptName\":\"SyntheticConcept0001\",\"id\":\"*\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"outcome\":\"SUCCESS\",\"reasonCode\":\"allowed\",\"ruleProfiles\":[\"always\",\"interactive\",\"query\"],\"defaultsApplied\":[],\"derivedValuesApplied\":[],\"lifecycleTransition\":null,\"explanation\":\"allowed\",\"details\":{\"operation\":\"LIST\",\"decisionOutcome\":\"queryRestrictionsExplicit\",\"rulesEvaluated\":[{\"rule\":\"expressionInvariant1\",\"outcome\":\"notAppliedToQueryOperation\",\"allowed\":true,\"expression\":\"label != null && label != ''\"},{\"rule\":\"SyntheticConcept0001LabelRequired\",\"outcome\":\"notAppliedToQueryOperation\",\"allowed\":true,\"expression\":\"label != null && label != ''\"}],\"concept\":\"SyntheticConcept0001\"}}]}"
+          },
+          "latency": {
+            "status": "passed",
+            "durationMs": 10,
+            "message": "avg 9.7ms / p95 12ms over 20 request(s) against http://127.0.0.1:18226/api/runtime/metadata/ui/panels/ScaleProofPanel (0 failed)",
+            "value": 9.7,
+            "unit": "ms"
+          },
+          "memory": {
+            "status": "passed",
+            "durationMs": 0,
+            "message": "peak RSS sampled across boot polling + firstRequest + latency (point samples, not a continuous profiler)",
+            "value": 690.7,
+            "unit": "mb"
+          }
+        }
       }
     ],
     "100": [
@@ -494,6 +548,170 @@
             "durationMs": 0,
             "message": "peak RSS sampled across boot polling + firstRequest + latency (point samples, not a continuous profiler)",
             "value": 883.0,
+            "unit": "mb"
+          }
+        }
+      }
+    ],
+    "260": [
+      {
+        "schemaVersion": "npdev-scale-proof-report.v2",
+        "generatedAt": "2026-08-17T09:40:13.7864004Z",
+        "concepts": 260,
+        "status": "failed",
+        "phases": {
+          "synthesize": {
+            "status": "passed",
+            "durationMs": 105,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\260\\Input\\model.json"
+          },
+          "generate": {
+            "status": "passed",
+            "durationMs": 27917,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\260\\Output\\App"
+          },
+          "ddl": {
+            "status": "passed",
+            "durationMs": 22,
+            "message": "275 CREATE TABLE statement(s) in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\260\\Output\\ArtifactNP\\src\\main\\resources\\db\\schema-realization\\V1__npdev_schema_realization.sql",
+            "value": 275,
+            "unit": "count"
+          },
+          "build": {
+            "status": "passed",
+            "durationMs": 69068,
+            "message": "exit 0"
+          },
+          "boot": {
+            "status": "failed",
+            "durationMs": 35124,
+            "message": "http://127.0.0.1:18460/actuator/health"
+          },
+          "firstRequest": {
+            "status": "skipped",
+            "durationMs": 0,
+            "message": "boot did not pass"
+          },
+          "latency": {
+            "status": "skipped",
+            "durationMs": 0,
+            "message": "boot did not pass"
+          },
+          "memory": {
+            "status": "passed",
+            "durationMs": 0,
+            "message": "peak RSS sampled while polling boot (boot never reached UP)",
+            "value": 671.4,
+            "unit": "mb"
+          }
+        }
+      },
+      {
+        "schemaVersion": "npdev-scale-proof-report.v2",
+        "generatedAt": "2026-08-17T09:43:20.286991Z",
+        "concepts": 260,
+        "status": "passed",
+        "phases": {
+          "synthesize": {
+            "status": "passed",
+            "durationMs": 80,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\260\\Input\\model.json"
+          },
+          "generate": {
+            "status": "passed",
+            "durationMs": 12650,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\260\\Output\\App"
+          },
+          "ddl": {
+            "status": "passed",
+            "durationMs": 17,
+            "message": "275 CREATE TABLE statement(s) in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\260\\Output\\ArtifactNP\\src\\main\\resources\\db\\schema-realization\\V1__npdev_schema_realization.sql",
+            "value": 275,
+            "unit": "count"
+          },
+          "build": {
+            "status": "passed",
+            "durationMs": 27118,
+            "message": "exit 0"
+          },
+          "boot": {
+            "status": "passed",
+            "durationMs": 32973,
+            "message": "http://127.0.0.1:18460/actuator/health"
+          },
+          "firstRequest": {
+            "status": "passed",
+            "durationMs": 216,
+            "message": "http://127.0.0.1:18460/api/runtime/metadata/ui/panels/ScaleProofPanel -- status 200: {\"endpointVersion\":\"1.0.0\",\"surfaceType\":\"panel-runtime\",\"operation\":\"loadPanel\",\"panelName\":\"ScaleProofPanel\",\"route\":\"/scale-proof/synthetic\",\"title\":\"Scale proof\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"ruleProfile\":\"interactive\",\"governedDataAccess\":\"ConceptGateway\",\"dataSources\":[{\"name\":\"allRows\",\"concept\":\"SyntheticConcept0001\",\"query\":\"AllSyntheticConcept0001\",\"procedure\":\"\",\"parentDataSource\":\"\",\"childField\":\"\",\"rowOps\":[],\"addFormFields\":[],\"recordCount\":0,\"fallback\":false}],\"data\":{\"allRows\":[]},\"fields\":[{\"field\":\"label\"},{\"field\":\"sequence\"}],\"fieldBindings\":[{\"field\":\"label\",\"dataSource\":\"allRows\",\"sourceField\":\"label\",\"editable\":false,\"label\":\"\",\"order\":null},{\"field\":\"sequence\",\"dataSource\":\"allRows\",\"sourceField\":\"sequence\",\"editable\":false,\"label\":\"\",\"order\":null}],\"actions\":[],\"metadata\":{},\"fallbackUi\":false,\"layout\":{\"fields\":[\"label\",\"sequence\"],\"type\":\"table\"},\"gatewayTrace\":[{\"timestampMs\":1786959798751,\"operation\":\"LIST\",\"conceptName\":\"SyntheticConcept0001\",\"id\":\"*\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"outcome\":\"SUCCESS\",\"reasonCode\":\"allowed\",\"ruleProfiles\":[\"always\",\"interactive\",\"query\"],\"defaultsApplied\":[],\"derivedValuesApplied\":[],\"lifecycleTransition\":null,\"explanation\":\"allowed\",\"details\":{\"rulesEvaluated\":[{\"outcome\":\"notAppliedToQueryOperation\",\"rule\":\"expressionInvariant1\",\"expression\":\"label != null && label != ''\",\"allowed\":true},{\"outcome\":\"notAppliedToQueryOperation\",\"rule\":\"SyntheticConcept0001LabelRequired\",\"expression\":\"label != null && label != ''\",\"allowed\":true}],\"decisionOutcome\":\"queryRestrictionsExplicit\",\"operation\":\"LIST\",\"concept\":\"SyntheticConcept0001\"}}]}"
+          },
+          "latency": {
+            "status": "passed",
+            "durationMs": 13,
+            "message": "avg 12.8ms / p95 15ms over 20 request(s) against http://127.0.0.1:18460/api/runtime/metadata/ui/panels/ScaleProofPanel (0 failed)",
+            "value": 12.8,
+            "unit": "ms"
+          },
+          "memory": {
+            "status": "passed",
+            "durationMs": 0,
+            "message": "peak RSS sampled across boot polling + firstRequest + latency (point samples, not a continuous profiler)",
+            "value": 943.6,
+            "unit": "mb"
+          }
+        }
+      }
+    ],
+    "520": [
+      {
+        "schemaVersion": "npdev-scale-proof-report.v2",
+        "generatedAt": "2026-08-17T09:46:06.2656851Z",
+        "concepts": 520,
+        "status": "passed",
+        "phases": {
+          "synthesize": {
+            "status": "passed",
+            "durationMs": 220,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\520\\Input\\model.json"
+          },
+          "generate": {
+            "status": "passed",
+            "durationMs": 20116,
+            "message": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\520\\Output\\App"
+          },
+          "ddl": {
+            "status": "passed",
+            "durationMs": 24,
+            "message": "535 CREATE TABLE statement(s) in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\scale-proof\\520\\Output\\ArtifactNP\\src\\main\\resources\\db\\schema-realization\\V1__npdev_schema_realization.sql",
+            "value": 535,
+            "unit": "count"
+          },
+          "build": {
+            "status": "passed",
+            "durationMs": 84135,
+            "message": "exit 0"
+          },
+          "boot": {
+            "status": "passed",
+            "durationMs": 39915,
+            "message": "http://127.0.0.1:18720/actuator/health"
+          },
+          "firstRequest": {
+            "status": "passed",
+            "durationMs": 127,
+            "message": "http://127.0.0.1:18720/api/runtime/metadata/ui/panels/ScaleProofPanel -- status 200: {\"endpointVersion\":\"1.0.0\",\"surfaceType\":\"panel-runtime\",\"operation\":\"loadPanel\",\"panelName\":\"ScaleProofPanel\",\"route\":\"/scale-proof/synthetic\",\"title\":\"Scale proof\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"ruleProfile\":\"interactive\",\"governedDataAccess\":\"ConceptGateway\",\"dataSources\":[{\"name\":\"allRows\",\"concept\":\"SyntheticConcept0001\",\"query\":\"AllSyntheticConcept0001\",\"procedure\":\"\",\"parentDataSource\":\"\",\"childField\":\"\",\"rowOps\":[],\"addFormFields\":[],\"recordCount\":0,\"fallback\":false}],\"data\":{\"allRows\":[]},\"fields\":[{\"field\":\"label\"},{\"field\":\"sequence\"}],\"fieldBindings\":[{\"field\":\"label\",\"dataSource\":\"allRows\",\"sourceField\":\"label\",\"editable\":false,\"label\":\"\",\"order\":null},{\"field\":\"sequence\",\"dataSource\":\"allRows\",\"sourceField\":\"sequence\",\"editable\":false,\"label\":\"\",\"order\":null}],\"actions\":[],\"metadata\":{},\"fallbackUi\":false,\"layout\":{\"type\":\"table\",\"fields\":[\"label\",\"sequence\"]},\"gatewayTrace\":[{\"timestampMs\":1786959964984,\"operation\":\"LIST\",\"conceptName\":\"SyntheticConcept0001\",\"id\":\"*\",\"tenantId\":\"dev\",\"actorId\":\"developer\",\"outcome\":\"SUCCESS\",\"reasonCode\":\"allowed\",\"ruleProfiles\":[\"always\",\"interactive\",\"query\"],\"defaultsApplied\":[],\"derivedValuesApplied\":[],\"lifecycleTransition\":null,\"explanation\":\"allowed\",\"details\":{\"rulesEvaluated\":[{\"rule\":\"expressionInvariant1\",\"expression\":\"label != null && label != ''\",\"allowed\":true,\"outcome\":\"notAppliedToQueryOperation\"},{\"rule\":\"SyntheticConcept0001LabelRequired\",\"expression\":\"label != null && label != ''\",\"allowed\":true,\"outcome\":\"notAppliedToQueryOperation\"}],\"decisionOutcome\":\"queryRestrictionsExplicit\",\"operation\":\"LIST\",\"concept\":\"SyntheticConcept0001\"}}]}"
+          },
+          "latency": {
+            "status": "passed",
+            "durationMs": 14,
+            "message": "avg 14ms / p95 23ms over 20 request(s) against http://127.0.0.1:18720/api/runtime/metadata/ui/panels/ScaleProofPanel (0 failed)",
+            "value": 14.0,
+            "unit": "ms"
+          },
+          "memory": {
+            "status": "passed",
+            "durationMs": 0,
+            "message": "peak RSS sampled across boot polling + firstRequest + latency (point samples, not a continuous profiler)",
+            "value": 910.1,
             "unit": "mb"
           }
         }

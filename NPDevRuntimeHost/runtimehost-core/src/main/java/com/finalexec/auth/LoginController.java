@@ -9,6 +9,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -193,7 +195,24 @@ public class LoginController {
             body.put("tokenType", "Bearer");
             body.put("expiresInSeconds", expirySeconds);
             body.put("roles", roles);
-            return ResponseEntity.ok(body);
+            // A plain browser page navigation (typing a URL, clicking a link) never carries a
+            // custom Authorization header -- only a cookie rides along automatically. Without this,
+            // an arbitrary role-gated page route (a trusted-source panel's own declared route,
+            // which this shared controller cannot special-case) had no way to ever authenticate a
+            // top-level GET, even though the JSON token above already made fetch()-driven calls
+            // work fine. HttpOnly so client JS/XSS can't read it (the JSON token above still covers
+            // that use case); SameSite=Strict so it never rides along on a cross-site request,
+            // keeping this additive rather than a new CSRF surface; Secure mirrors the inbound
+            // request's own scheme so local http dev still works while a TLS-terminated deployment
+            // gets the flag automatically.
+            ResponseCookie sessionCookie = ResponseCookie.from("npdev_jwt", token)
+                    .httpOnly(true)
+                    .secure(httpRequest != null && httpRequest.isSecure())
+                    .sameSite("Strict")
+                    .path("/")
+                    .maxAge(expirySeconds)
+                    .build();
+            return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, sessionCookie.toString()).body(body);
         } catch (SQLException schemaCandidate) {
             // REG-39: a stale built-in-pack copy of the identity pack (missing the token_version
             // column platform code reads unconditionally, or any other column it depends on) must
