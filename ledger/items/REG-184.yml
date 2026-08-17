@@ -1,0 +1,80 @@
+id: REG-184
+title: >-
+  NPDevContract/dsl/gradle.properties still hardcodes org.gradle.projectcachedir to a
+  D:/WorkSpace/NPDev/Build/... Windows path -- REG-136 fixed the same bug in root/generator/kernel
+  gradle.properties but explicitly left dsl out of scope, and that scope decision went stale once
+  sync-runtimehost-libs.ps1 grew a direct gradlew call into NPDevContract/dsl, breaking the
+  Docker/Linux blocking proof job of the ai-beta-gate workflow on every dispatch
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-17
+closed: 2026-08-17
+verification: VERIFIED_LIVE
+source: >-
+  User dispatched ai-beta-gate.yml on main (run 32039014083). The "Docker/Linux blocking proof" job
+  failed in 5m29s inside the Docker container's run-ai-beta-gate.ps1 -> sync-runtimehost-libs.ps1
+  step, with `/workspace/NPDevContract/dsl/gradlew jar --project-cache-dir
+  /Build/gradle-project-caches/dsl-standalone --no-daemon --console=plain` failing:
+
+      FAILURE: Build failed with an exception.
+      * What went wrong:
+      Cannot convert URL 'D:/WorkSpace/NPDev/Build/gradle-project-caches/dsl' to a file.
+
+  Pulled the job's uploaded docker-linux-proof-reports artifact (docker-run.stderr.log) to see the
+  real Gradle failure -- the live job's own truncated "last log line" progress tracker never showed
+  it.
+surface: ci/gradle-invocation, build-tooling/gradle-portability
+files:
+  - NPDevContract/dsl/gradle.properties
+detail: |
+  REG-136 (2026-08-04) removed the same hardcoded `org.gradle.projectcachedir=D:/WorkSpace/...` line
+  from root gradle.properties, NPDevGenerator/gradle.properties, and NPDevKernel/gradle.properties,
+  because Gradle reads org.gradle.projectcachedir from gradle.properties as a START PARAMETER during
+  bootstrap, before any `--project-cache-dir` CLI override or `-P`/env override can take effect -- so
+  a dev-machine-only Windows path there breaks every gradlew invocation on any other machine/OS,
+  regardless of what override is passed alongside it.
+
+  REG-136's own detail note explicitly judged `NPDevContract/dsl` and `NPDevEditor` out of scope:
+  "their own gradle.properties is not read by anything in the documented newcomer path" -- true at
+  the time, because the CLI's `:NPDevContract:dsl:*` Gradle tasks all route through the ROOT
+  wrapper/gradle.properties (`gradle_project_cache_args("root")` in npdev_cli.py), never through
+  `NPDevContract/dsl`'s own gradlew.
+
+  That stopped being true without anyone revisiting the scope decision: `sync-runtimehost-libs.ps1`
+  (used by `scripts/quality/run-ai-beta-gate.ps1`, which the ai-beta-gate.yml Docker/Linux blocking
+  proof job runs inside a Linux container) invokes `$dslGradleWrapper` directly --
+  `NPDevContract/dsl/gradlew jar --project-cache-dir $dslProjectCacheDir --no-daemon
+  --console=plain` -- which DOES read `NPDevContract/dsl/gradle.properties` directly. On Linux, the
+  checked-in `D:/WorkSpace/NPDev/Build/gradle-project-caches/dsl` value is invalid, so Gradle fails
+  at bootstrap exactly the REG-136 way, before the script's own portable `--project-cache-dir`
+  override can prevent it.
+
+  This file had also been recreated with the hardcoded value after REG-136 closed (commit
+  fd7f8c86 "entity->concept rename + cleanup + Gradle cache redirect", later re-affirmed by
+  55e7298b "commit the local Gradle tuning and record that CI does not use it" -- which was
+  correct about the OTHER nine files that commit touched, but dsl's `sync-runtimehost-libs.ps1`
+  usage means CI DOES exercise this one).
+
+  Fixed 2026-08-17: removed the hardcoded `org.gradle.projectcachedir` line from
+  NPDevContract/dsl/gradle.properties, replaced with the same REG-136-style guard comment the
+  sibling files (root/generator/kernel) already carry, naming sync-runtimehost-libs.ps1's
+  `--project-cache-dir` pass-through as the mechanism that now redirects the cache instead.
+
+  Verified live: reproduced the exact failing command locally
+  (`NPDevContract/dsl/gradlew help --project-cache-dir <portable-path> --no-daemon
+  --console=plain`) -- failed with the identical "Cannot convert URL 'D:/...' to a file" error
+  before the fix, BUILD SUCCESSFUL after it, with zero `.gradle` directory left inside
+  NPDevContract/dsl.
+guard:
+  kind: script
+  ref: NPDevContract/dsl/gradle.properties (absence of org.gradle.projectcachedir) + scripts/runtimehost/sync-runtimehost-libs.ps1's --project-cache-dir pass-through
+  asserts: >-
+    `NPDevContract/dsl/gradlew jar --project-cache-dir <portable-path>` succeeds on any OS, proven
+    by reproducing the exact CI failure locally and confirming BUILD SUCCESSFUL once the conflicting
+    checked-in value is removed
+  provenRed: true
+  # RED proven directly: ai-beta-gate.yml run 32039014083's "Docker/Linux blocking proof" job,
+  # docker-run.stderr.log shows the exact "Cannot convert URL 'D:/WorkSpace/NPDev/Build/gradle-
+  # project-caches/dsl' to a file" failure. GREEN to be confirmed by re-dispatching the same
+  # workflow after this fix lands on main.
