@@ -15,9 +15,39 @@ export type SemanticGraphEdge = {
   warning?: boolean;
 };
 
+/** One column in an ER-diagram table box -- one row per concept field. */
+export type ErColumn = {
+  name: string;
+  type: string;
+  isPrimaryKey: boolean;
+  isForeignKey: boolean;
+  required: boolean;
+};
+
+/** One concept rendered as an ER-diagram table box. */
+export type ErTable = {
+  id: string;
+  name: string;
+  columns: ErColumn[];
+};
+
+/** One reference field rendered as a connector line between two ER-diagram tables.
+ *  `fromTable`/`fromColumn` is always the "many" (FK-owning) side; `toTable` is the referenced
+ *  ("one", unless `manyToMany`) side, anchored on its `via` column (defaults to its primary key). */
+export type ErRelationship = {
+  id: string;
+  fromTable: string;
+  fromColumn: string;
+  toTable: string;
+  toColumn: string;
+  manyToMany: boolean;
+};
+
 export type SemanticGraphModel = {
   nodes: SemanticGraphNode[];
   edges: SemanticGraphEdge[];
+  erTables: ErTable[];
+  erRelationships: ErRelationship[];
 };
 
 export function buildSemanticGraph(
@@ -26,6 +56,8 @@ export function buildSemanticGraph(
 ): SemanticGraphModel {
   const nodes: SemanticGraphNode[] = [];
   const edges: SemanticGraphEdge[] = [];
+  const erTables: ErTable[] = [];
+  const erRelationships: ErRelationship[] = [];
 
   for (const entity of document.concepts ?? []) {
     nodes.push({
@@ -33,6 +65,18 @@ export function buildSemanticGraph(
       label: entity.name,
       kind: "concept",
       summary: `${entity.truthLevel ?? "T1"} · ${entity.fields.length} fields, ${(entity.invariants ?? []).length} invariants`
+    });
+
+    erTables.push({
+      id: entity.name,
+      name: entity.name,
+      columns: entity.fields.map((field) => ({
+        name: field.name,
+        type: field.type ?? "string",
+        isPrimaryKey: field.id === true,
+        isForeignKey: field.type === "reference" && Boolean(field.reference?.target),
+        required: field.required === true || field.id === true
+      }))
     });
 
     for (const field of entity.fields.filter((entry) => entry.type === "reference" && entry.reference?.target)) {
@@ -50,6 +94,19 @@ export function buildSemanticGraph(
         ].filter(Boolean).join(" · "),
         warning: upwardTruthEdge
       });
+
+      if (target) {
+        const anchorName = field.reference?.via ?? "id";
+        const anchorColumn = target.fields.find((entry) => entry.name === anchorName);
+        erRelationships.push({
+          id: `${entity.name}.${field.name}->${field.reference?.target}`,
+          fromTable: entity.name,
+          fromColumn: field.name,
+          toTable: field.reference?.target ?? "",
+          toColumn: anchorColumn ? anchorColumn.name : anchorName,
+          manyToMany: field.reference?.multiple === true
+        });
+      }
     }
   }
 
@@ -118,7 +175,7 @@ export function buildSemanticGraph(
     }
   }
 
-  return { nodes, edges };
+  return { nodes, edges, erTables, erRelationships };
 }
 
 function truthRank(level?: string): number {

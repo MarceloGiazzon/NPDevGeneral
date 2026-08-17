@@ -8,6 +8,7 @@ import type {
   ModelImportResult,
   SavedBundleSnapshot
 } from "./bundleTypes";
+import { findUnresolvedRef, resolveSplitModelFromDirectory, SplitModelResolutionError } from "./splitModelResolver";
 
 const STORAGE_KEY = "npdev.authoring.bundleSnapshots.v1";
 
@@ -160,11 +161,47 @@ export async function importModelFromFile(modelFile: File | null): Promise<Model
     };
   }
 
+  // The model splits its concepts/flows/etc. across sibling `$ref`-linked files (e.g. an AppGen
+  // app definition) -- a single <input type=file> only ever sees the one picked file, so every
+  // `{"$ref": "concepts/Entidade.json"}` entry would otherwise be taken as a literal concept with
+  // no `name`, producing as many identically-unnamed concepts as there are refs. Fail fast here
+  // instead of silently importing that; "Open a model folder" below can resolve it.
+  const unresolvedRef = findUnresolvedRef(parsedModel.value as unknown as Record<string, unknown>);
+  if (unresolvedRef) {
+    return {
+      ok: false,
+      message: `${modelFile.name} splits its "${unresolvedRef.key}" across linked files (starting at "${unresolvedRef.ref}"). Use "Open a model folder" below instead, so the linked files can be resolved.`
+    };
+  }
+
   return {
     ok: true,
     document: toInternalModelDocument(parsedModel.value as LegacyCompatibleModelDocument),
     modelFileName: modelFile.name
   };
+}
+
+// Companion to importModelFromFile: opens a whole app-definition FOLDER (via the File System
+// Access API) instead of one file, so a model.json that splits itself across sibling `$ref`-linked
+// files (concepts/<Name>.json, packs/<name>/pack.json, ...) can actually be composed -- a plain
+// file input has no way to reach those sibling files at all.
+export async function importModelFromDirectory(
+  directoryHandle: FileSystemDirectoryHandle,
+  modelFileName = "model.json"
+): Promise<ModelImportResult> {
+  try {
+    const resolved = await resolveSplitModelFromDirectory(directoryHandle, modelFileName);
+    return {
+      ok: true,
+      document: toInternalModelDocument(resolved as unknown as LegacyCompatibleModelDocument),
+      modelFileName: `${directoryHandle.name}/${modelFileName}`
+    };
+  } catch (error) {
+    if (error instanceof SplitModelResolutionError) {
+      return { ok: false, message: error.message };
+    }
+    throw error;
+  }
 }
 
 export function buildImportedModelSession(document: AuthoringModelDocument, label: string): AuthoringDocumentSession {
@@ -204,18 +241,10 @@ export function downloadBundle(bundle: AuthoringBundle, bundleLabel: string): vo
   }
 }
 
+// Not declared on lib.dom's ambient Window -- FileSystemDirectoryHandle/FileSystemFileHandle
+// themselves are (full read + write surface), only the picker entry point is missing.
 type FileSystemWindow = Window & {
-  showDirectoryPicker?: () => Promise<{
-    getFileHandle: (
-      name: string,
-      options: { create: boolean }
-    ) => Promise<{
-      createWritable: () => Promise<{
-        write: (content: string) => Promise<void>;
-        close: () => Promise<void>;
-      }>;
-    }>;
-  }>;
+  showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
 };
 
 export async function saveBundleToChosenDirectory(

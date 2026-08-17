@@ -2,6 +2,19 @@ import type { AuthoringConfigDocument } from "../config/configDocumentTypes";
 import type { AuthoringModelDocument } from "../editors/modelDocumentTypes";
 import type { AuthoringBundle, SemanticDiffChange, SemanticDiffSummary } from "../io/bundleTypes";
 
+/**
+ * Disambiguates repeated names (including several unnamed-yet draft rows, which all carry
+ * `undefined`) so every change gets a distinct path -- without this, two unnamed concepts both
+ * produce path "concepts.undefined", which collide as React keys in SemanticDiffPanel and cause
+ * one of the two changes to be silently dropped from the rendered list.
+ */
+function uniquePath(pathPrefix: string, value: string, seen: Map<string, number>): string {
+  const label = value ?? "(unnamed)";
+  const occurrence = seen.get(label) ?? 0;
+  seen.set(label, occurrence + 1);
+  return occurrence === 0 ? `${pathPrefix}.${label}` : `${pathPrefix}.${label}#${occurrence + 1}`;
+}
+
 function appendNameDiffs(
   title: string,
   pathPrefix: string,
@@ -12,21 +25,23 @@ function appendNameDiffs(
   const afterSet = new Set(afterValues);
   const changes: SemanticDiffChange[] = [];
 
+  const addedSeen = new Map<string, number>();
   for (const value of afterValues) {
     if (!beforeSet.has(value)) {
       changes.push({
         kind: "added",
-        path: `${pathPrefix}.${value}`,
+        path: uniquePath(pathPrefix, value, addedSeen),
         after: value
       });
     }
   }
 
+  const removedSeen = new Map<string, number>();
   for (const value of beforeValues) {
     if (!afterSet.has(value)) {
       changes.push({
         kind: "removed",
-        path: `${pathPrefix}.${value}`,
+        path: uniquePath(pathPrefix, value, removedSeen),
         before: value
       });
     }
