@@ -187,7 +187,7 @@ python scripts/quality/check-register-consistency.py
 pwsh -NoProfile -File scripts/quality/run-ai-knowledge-gate.ps1
 ```
 
-Module-specific gates (`run-generator-gate.ps1`, `run-runtimehost-gate.ps1`, `run-frontend-gate.ps1`)
+Module-specific gates (`run-generator-gate.ps1`, `run-runtimehost-gate.ps1`)
 live in `scripts/quality/` — run the one for whatever you touched. The PR gate on GitHub runs the
 core subset automatically; the full set is documented in `CLAUDE.md`.
 

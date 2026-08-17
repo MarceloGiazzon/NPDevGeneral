@@ -6,8 +6,7 @@
     "NPDevKernel\\kernel\\src\\main",
     "NPDevKernel\\adapters\\expression-cel\\src\\main",
     "NPDevGenerator\\generator\\src\\main",
-    "NPDevRuntimeHost\\src\\main",
-    "NPDevEditor\\ui-react\\src"
+    "NPDevRuntimeHost\\src\\main"
   ],
   "terms": [
     {

@@ -5,6 +5,30 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-17 — `NPDevEditor` is no longer part of this repository
+
+**What changes.** The authoring editor's source tree (`NPDevEditor/`, its standalone Gradle build
+and the `ui-react` npm project) has been parked outside this repo while other work takes priority.
+Nothing about a generated app changes: the editor still ships in every FinalApp at
+`/npdev-ui-react/`, served from the **built bundle committed under**
+`NPDevGenerator/generator/src/main/resources/npdev-templates/static-react/`, which the generator
+copies in exactly as before. That bundle is now a frozen input with no in-repo producer.
+
+**Who is affected.** Anyone who built the editor from source in this repo. `npm run dev` inside
+`NPDevEditor/ui-react` is no longer available here. Removed alongside it: the `frontend` gate
+(`run-all-gates.ps1` now runs three T2 gates, not four), `run-editor-gate.ps1`,
+`run-editor-complexity-check.ps1`, `run-frontend-gate*.ps1`, `Setup-EditorNodeModules.ps1`,
+`statezip-npdev-editor.ps1`, and `check-generated-bundle-freshness.py` (its only declared
+source→artefact pair was the editor's; with no source tree the question it asked has no subject,
+and leaving it running against an empty pair list would have passed vacuously).
+
+The npm-audit CI job and its dependabot entry were **retargeted, not deleted** — they now cover
+`scripts/quality/json-schema-validator`, the remaining npm project with a committed lockfile, so
+that security posture is preserved rather than silently lost.
+
+**No codemod.** This changes no model DSL, no generated code layout and no runtime API, so there is
+nothing for `npdev migrate` to rewrite.
+
 ## 2026-08-14 — the generated CRUD `list()` REST endpoint no longer returns an unbounded table (RUN-1/R8a)
 
 **What changes.** `GET /api/{route}` (the typed per-entity list endpoint) and `GET

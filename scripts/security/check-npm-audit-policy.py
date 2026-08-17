@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""npm audit gate for NPDevEditor/ui-react, enforcing scripts/policy/frontend-npm-audit-policy.json.
+"""npm audit gate for this repo's npm projects, enforcing scripts/policy/frontend-npm-audit-policy.json.
+
+TARGET, and why it changed
+--------------------------
+The original and only target was NPDevEditor/ui-react. That module was parked out of the repo
+(see BREAKING.md), so the default is now scripts/quality/json-schema-validator -- the remaining
+npm project that carries a committed package-lock.json. The policy itself is about severity
+floors, not about which project is being audited, so it is unchanged.
 
 WHY THIS EXISTS
 ---------------
@@ -158,7 +165,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--repo-root", default=None, help="Override repo root (mainly for testing).")
     parser.add_argument(
         "--project-dir",
-        default="NPDevEditor/ui-react",
+        default="scripts/quality/json-schema-validator",
         help="Directory containing package-lock.json (repo-relative unless absolute).",
     )
     parser.add_argument(

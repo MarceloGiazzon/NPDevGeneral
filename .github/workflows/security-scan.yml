@@ -3,7 +3,7 @@ name: Security scan
 # R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2). Two independent scans that had zero coverage before
 # this workflow: static analysis (CodeQL, across the three languages this repo actually ships --
 # java-kotlin for the DSL/generator/kernel/adapters/RuntimeHost, javascript-typescript for
-# NPDevEditor/ui-react + NPDevManager's UI, python for NPDevCli/NPDevMcp/scripts) and dependency
+# NPDevManager's UI + scripts/quality/json-schema-validator, python for NPDevCli/NPDevMcp/scripts) and dependency
 # vulnerability scanning for the editor's npm project (scripts/security/check-npm-audit-policy.py,
 # reading the previously-orphaned scripts/policy/frontend-npm-audit-policy.json).
 #
@@ -64,7 +64,7 @@ jobs:
           category: "/language:${{ matrix.language }}"
 
   npm-audit:
-    name: npm audit policy (NPDevEditor/ui-react)
+    name: npm audit policy (scripts/quality/json-schema-validator)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -83,4 +83,4 @@ jobs:
 
       # --package-lock-only: reads package-lock.json directly, no `npm ci`/install needed first.
       - name: Check npm audit against frontend-npm-audit-policy.json
-        run: python scripts/security/check-npm-audit-policy.py --project-dir NPDevEditor/ui-react
+        run: python scripts/security/check-npm-audit-policy.py --project-dir scripts/quality/json-schema-validator
