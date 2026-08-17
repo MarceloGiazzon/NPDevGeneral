@@ -9,7 +9,6 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
-    clean-on-validation-error: true
     clean-disabled: false
 
 npdev:
@@ -21,3 +20,9 @@ npdev:
     enabled: false
   scheduler:
     enabled: false
+  # Same reasoning as application-postgres.yml's identical override: this profile always connects
+  # to a fixed-name H2 in-memory database (npdev_test, above), never whatever db.definition.json
+  # resolved for the real app -- so DatabaseIdentityStartupValidator's identity check is equally
+  # meaningless here and must be skipped, not just for the postgres profile.
+  trial:
+    database-override: true
