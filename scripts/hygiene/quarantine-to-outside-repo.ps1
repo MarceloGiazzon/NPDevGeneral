@@ -92,8 +92,6 @@ if ([System.IO.Path]::GetFullPath($QuarantineRoot).StartsWith($repoWithSep, [Sys
 # has. Every module gets a .gradle when Gradle runs in it; every sample gets an Output when
 # generated.
 $EPHEMERAL_PATTERNS = @(
-    "NPDevEditor/ui-react/node_modules",
-    "NPDevEditor/ui-react/dist",
     ".gradle",              # repo root
     "*/.gradle",            # every module: Contract, Generator, Kernel, RuntimeHost, ...
     "NPDevSamples/*/Output",

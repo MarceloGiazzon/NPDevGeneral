@@ -197,7 +197,6 @@
       "files": [
         "build.gradle",
         "NPDevContract/dsl/build.gradle",
-        "NPDevEditor/build.gradle",
         "NPDevGenerator/build.gradle",
         "NPDevKernel/build.gradle",
         "NPDevRuntimeHost/runtimehost-core/build.gradle",
