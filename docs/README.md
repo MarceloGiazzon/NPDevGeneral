@@ -77,7 +77,7 @@ run the commands below to render a local copy into the external Build root.
 
 `OPEN_ITEMS.md` (`ledger/items/*.yml` → `python scripts/quality/generate_open_items.py`) ·
 `OPEN_GAPS_AND_ROADMAP.md` (`ledger/gaps.yml` → `python scripts/docs/generate_gaps_roadmap.py`) ·
-[SECURITY_PATTERN_SWEEP_2026-07.md](SECURITY_PATTERN_SWEEP_2026-07.md)
+[SECURITY_PATTERN_SWEEP_2026-07.md](archive/SECURITY_PATTERN_SWEEP_2026-07.md) (archived — dated point-in-time sweep)
 
 ## Front matter
 

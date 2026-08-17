@@ -47,4 +47,4 @@ written after exactly that happened on this project — see `docs/CLOSEOUT_PLAN.
 
 Adversarial review history and known accepted boundaries:
 `docs/OPEN_ITEMS.md` (generated, not committed — `python scripts/quality/generate_open_items.py`),
-[`docs/SECURITY_PATTERN_SWEEP_2026-07.md`](docs/SECURITY_PATTERN_SWEEP_2026-07.md).
+[`docs/archive/SECURITY_PATTERN_SWEEP_2026-07.md`](docs/archive/SECURITY_PATTERN_SWEEP_2026-07.md).
