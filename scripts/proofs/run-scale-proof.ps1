@@ -316,6 +316,32 @@ if (-not $overallFailed) {
     if (-not $buildOk) { $overallFailed = $true }
 }
 
+# -- API key provisioning (SCALE-2) ----------------------------------------------------------------
+# This launcher never provisioned one, and it hardcoded "dev-key" in its own request headers. That
+# was invisible for as long as the ladder failed earlier: the 260/520 rungs died in `build` (the
+# 255-parameter ceiling), so `boot` never ran and nobody saw that it could not have worked either.
+# With the build fixed, boot failed immediately on StartupValidator's
+#   "npdev.auth.api-keys must define at least one mapping when auth is enabled"
+# -- the check f11bf212 ("provision API keys on every launcher") added. That commit fixed the
+# launchers it knew about; this proof was not one of them, because it was already red for a
+# different reason and so produced no new evidence when it stayed red.
+#
+# Same file format and env-var contract as Build-NpdevApp.ps1's Ensure-NpdevApiKey and
+# OperationalRunbookEmitter.API_KEY_PROVISIONER: secrets\api-key.env holding
+# NPDEV_AUTH_API_KEYS=<key>=dev:developer:admin. bootRun is launched by Start-Process below, which
+# inherits this process's environment, so setting it here is what reaches the app.
+$scaleProofApiKey = $null
+if (-not $overallFailed) {
+    $secretsDir = Join-Path $appRoot "secrets"
+    if (-not (Test-Path -LiteralPath $secretsDir)) { New-Item -ItemType Directory -Force -Path $secretsDir | Out-Null }
+    $keyFile = Join-Path $secretsDir "api-key.env"
+    $keyBytes = New-Object byte[] 24
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($keyBytes)
+    $scaleProofApiKey = ([Convert]::ToBase64String($keyBytes) -replace '[^a-zA-Z0-9]', '')
+    Set-Content -LiteralPath $keyFile -Value ("NPDEV_AUTH_API_KEYS=" + $scaleProofApiKey + "=dev:developer:admin") -Encoding UTF8 -NoNewline
+    $env:NPDEV_AUTH_API_KEYS = $scaleProofApiKey + "=dev:developer:admin"
+}
+
 # -- Phase: boot + firstRequest + latency + memory ------------------------------------------------
 if (-not $overallFailed) {
     Write-Host "-- boot --"
@@ -361,8 +387,10 @@ if (-not $overallFailed) {
             $firstRequestDetail = ""
             try {
                 # Matches scripts/ai/Invoke-AiRestSmokeVerifier.ps1's own default headers -- every
-                # REST endpoint here is behind RuntimeApiKeyAuthFilter, dev profile's key is "dev-key".
-                $panelResponse = Invoke-WebRequest -Uri $panelUri -TimeoutSec 15 -SkipHttpErrorCheck -Headers @{ "X-NPDEV-API-Key" = "dev-key"; "X-API-Key" = "dev-key" }
+                # REST endpoint here is behind RuntimeApiKeyAuthFilter. The key is the one this run
+                # provisioned above -- NOT a hardcoded "dev-key", which no longer authenticates
+                # anything now that StartupValidator requires a real npdev.auth.api-keys mapping.
+                $panelResponse = Invoke-WebRequest -Uri $panelUri -TimeoutSec 15 -SkipHttpErrorCheck -Headers @{ "X-NPDEV-API-Key" = $scaleProofApiKey; "X-API-Key" = $scaleProofApiKey }
                 $firstRequestOk = [int]$panelResponse.StatusCode -eq 200
                 $firstRequestDetail = "status " + [int]$panelResponse.StatusCode + ": " + (Convert-ResponseContentToString $panelResponse.Content)
             }
@@ -382,7 +410,7 @@ if (-not $overallFailed) {
                 for ($i = 0; $i -lt $LatencyRequestCount; $i++) {
                     $reqSw = [System.Diagnostics.Stopwatch]::StartNew()
                     try {
-                        $latencyResponse = Invoke-WebRequest -Uri $panelUri -TimeoutSec 15 -SkipHttpErrorCheck -Headers @{ "X-NPDEV-API-Key" = "dev-key"; "X-API-Key" = "dev-key" }
+                        $latencyResponse = Invoke-WebRequest -Uri $panelUri -TimeoutSec 15 -SkipHttpErrorCheck -Headers @{ "X-NPDEV-API-Key" = $scaleProofApiKey; "X-API-Key" = $scaleProofApiKey }
                         $reqSw.Stop()
                         if ([int]$latencyResponse.StatusCode -eq 200) {
                             $latencies.Add([double]$reqSw.ElapsedMilliseconds) | Out-Null

@@ -114,7 +114,7 @@ from generate_open_items import load_items  # noqa: E402  (reuses the one ledger
 # either informal prose or a per-app generated artifact this repo never tracks -- see HONEST LIMIT.
 REPO_TOP_LEVEL_DIRS = (
     "scripts/", "NPDevContract/", "NPDevGenerator/", "NPDevKernel/", "NPDevRuntimeHost/",
-    "NPDevEditor/", "NPDevSamples/", "NPDevCli/", "NPDevMcp/", "NPDevManager/",
+    "NPDevSamples/", "NPDevCli/", "NPDevMcp/", "NPDevManager/",
     "ledger/", "docs/", ".github/", "knowledge/", "schemas/", "content/",
 )
 

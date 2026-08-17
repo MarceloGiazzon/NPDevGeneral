@@ -44,9 +44,13 @@ detail: |
   the same self-sufficiency every other npm-invoking gate script in this repo already has.
 guard:
   kind: manual
-  ref: cd NPDevEditor/ui-react && rm -rf node_modules && cd ../.. && pwsh -NoProfile -File
-    scripts/quality/run-editor-complexity-check.ps1
-  asserts: the script installs its own dependencies and passes, rather than failing with "vitest is
+  ref: >-
+    NOT RE-RUNNABLE FROM THIS REPOSITORY as of 2026-08-17 -- the editor module and the
+    complexity-check script it names were parked out together (see BREAKING.md). The guard was
+    executed and passed against the exact stated precondition before the move; it is recorded here
+    as history, and deliberately names no repo-rooted path, because naming one that cannot resolve
+    would be a dangling claim rather than a guard.
+  asserts: the script installed its own dependencies and passed, rather than failing with "vitest is
     not recognized"
   provenRed: true
 
