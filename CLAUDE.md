@@ -51,7 +51,7 @@ app definitions and build output live **outside** it (see Layers below).
 | `NPDevKernel/kernel` | Java | Runtime: `KernelRunner` (also hosts the durable flow engine — see `docs/FLOWS.md`), `FlowEngine` port, CapabilityDispatcher, EventStore |
 | `NPDevKernel/adapters/*` | Java | Pluggable adapters, `*-inproc` (dev) / `*-postgres` (prod) pairs; plus `expression-cel`, `auth-context-jwt`, `authz-default`, `persistence-postgres`, … |
 | `NPDevRuntimeHost` | Java/Spring | Spring Boot template **copied into every generated FinalApp** — not a built product subproject. Login/bootstrap/ControlPanel controllers live here (`com.finalexec.*`) |
-| `NPDevEditor/ui-react` | TS/React | Authoring UI — real surface is `src/authoring/` (~15.6k LOC); `src/workbench/` is a thin shell. Tests: 7 vitest files + 1 Playwright spec (`e2e/editor-core.spec.ts`) |
+| ~~`NPDevEditor/ui-react`~~ | — | **PARKED OUT OF THIS REPO 2026-08-17** (see `BREAKING.md`). The editor still ships in every generated app at `/npdev-ui-react/`, from the built bundle committed under `npdev-templates/static-react/` — that bundle is now a frozen input with no in-repo producer. Do not look for editor source here. |
 | `NPDevSamples` | JSON/PS1 | Reference sample apps + browser-verification harness |
 | `NPDevCli` / `NPDevMcp` | Python | Model-validation CLI / MCP server for AI authoring |
 | `golden-ai-scenarios`, `schemas/ai` | JSON | AI safety/verification fixtures + schemas |
@@ -98,14 +98,15 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `Start-App.ps1` / `Stop-App.ps1` / `Start-Environment.ps1` (starts H2Server TCP).
 - **Validate a model:** `:NPDevContract:dsl:validateModel -PmodelPath=<p> -PreportOut=<p>`.
 - **Quality gates — "all gates green" means ONE command:**
-  `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1` (T2). It runs four gates by default, in
+  `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1` (T2). It runs **three** gates by default
+  (it was four until `frontend` was removed with `NPDevEditor` on 2026-08-17 — see `BREAKING.md`), in
   this order, and keeps going past a failure so you see every red in one run:
-  `run-ai-knowledge-gate.ps1` (static — no build, no boot; hosts 31 of the 32
-  `scripts/quality/check-*.py` across 40 numbered checks — the one exception,
+  `run-ai-knowledge-gate.ps1` (static — no build, no boot; hosts 30 of the 31
+  `scripts/quality/check-*.py` across 36 numbered checks — the one exception,
   `check-dsl-reference-output-floor.py`, runs in `run-generator-gate.ps1` because it needs a build.
   **Measured 811 s / ~13.5 min on 2026-08-08**, not the "seconds" this line used to claim;
   budget for it) → `run-generator-gate.ps1`
-  → `run-runtimehost-gate.ps1` → `run-frontend-gate.ps1`. `run-beta-release-gate.ps1` (release
+  → `run-runtimehost-gate.ps1`. `run-beta-release-gate.ps1` (release
   posture, T3) is **deferred by default** since the Fast Lane plan's item 4 — pass
   `-IncludeReleaseGate` or `-Only betaRelease` to run it too. Run one gate with `-Only aiKnowledge`.
   **Never report "gates green" from a single gate** — that claim was made in three consecutive move
@@ -148,8 +149,8 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
 - **Maintainer skills** (tracked, un-ignored under `.claude/skills/`): `rebuild-app` (three-cache
   refresh via `scripts/appgen/Rebuild-And-Restage.ps1`) and `verify-in-browser` (ScrapForAI).
 - **Other manual verification scripts, not wired into any gate:** `scripts/quality/run-boundary-lock-check.ps1`
-  (controller/UI-component/deprecated-schema-alias classification vs. reality — run it by hand after
-  adding a controller class or a `NPDevEditor/ui-react/src` component) and
+  (controller/deprecated-schema-alias classification vs. reality — run it by hand after
+  adding a controller class; its UI-component half went with `NPDevEditor`) and
   `scripts/proofs/run-item20-postgres-proof.ps1` (a one-off real-Postgres repro for a specific closed
   item; kept for re-running against a suspected regression, not part of any regular cadence).
   `scripts/proofs/classify_runtimehost_sources.py` (BT-1a — standalone app-coupled-vs-app-independent

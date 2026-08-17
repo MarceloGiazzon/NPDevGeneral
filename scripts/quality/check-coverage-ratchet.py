@@ -10,10 +10,12 @@ plugin -- see each build.gradle's own comment for why RuntimeHost's is gated beh
 build.gradle.template ships into a generated FinalApp; the platform-internal builds never do).
 
 Track C card C8 (2026-08-14) extended this same ratchet -- same file, same schema, same gate step --
-to the two ecosystems R3 explicitly deferred: the editor (`NPDevEditor/ui-react`, `@vitest/coverage-v8`
-via `npm test` -> `vitest run --coverage`, `json-summary` reporter) and NPDevCli
+to the two ecosystems R3 explicitly deferred: the editor (`NPDevEditor/ui-react`) and NPDevCli
 (`coverage.py` wrapping the SAME `python -m unittest discover -s NPDevCli/tests` invocation
-run-ai-knowledge-gate.ps1 already ran). Neither tool emits JaCoCo's XML shape, so each module now
+run-ai-knowledge-gate.ps1 already ran). NPDevEditor/ui-react was later parked out of the repo
+(see BREAKING.md), so its `istanbul-json-summary` entry is gone from coverage-baseline.json; the
+format dispatch below is retained because it costs nothing and the module may return.
+Neither tool emits JaCoCo's XML shape, so each module now
 declares a `reportFormat` (`jacoco-xml` / `istanbul-json-summary` / `coverage-py-json`) and this
 script dispatches to the matching parser -- the RATCHET SEMANTICS below are identical across all
 three formats; only the bytes-on-disk differ. See coverage-baseline.json's own per-module notes for
@@ -39,8 +41,8 @@ WHERE REPORTS COME FROM
 ------------------------
 This script is wired into run-ai-knowledge-gate.ps1, which is static by design (no Gradle, no npm
 install, no boot). Reports only exist here because an EARLIER step in the same `run-all-gates.ps1`
-invocation (run-generator-gate.ps1 for dsl/generator, run-runtimehost-gate.ps1 for RuntimeHost,
-run-frontend-gate.ps1 for the editor) already ran the real test command, and each tool's own
+invocation (run-generator-gate.ps1 for dsl/generator, run-runtimehost-gate.ps1 for RuntimeHost)
+already ran the real test command, and each tool's own
 report-writing left a file on disk: JaCoCo's `finalizedBy jacocoTestReport` wiring in each
 build.gradle, vitest's `coverage.reporter: ["text","json-summary"]` in vitest.config.ts, or (for
 NPDevCli) run-ai-knowledge-gate.ps1's OWN step [18/35] running the suite under `coverage run` before

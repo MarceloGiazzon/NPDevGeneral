@@ -126,10 +126,6 @@
       "invocation": "manual-runbook",
       "documentedIn": "docs/WORKSPACE_CLEANUP_POLICY.md"
     },
-    "scripts/hygiene/Setup-EditorNodeModules.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/WORKSPACE_CLEANUP_POLICY.md"
-    },
     "scripts/hygiene/Test-GradleWrapperConsistency.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/WORKSPACE_CLEANUP_POLICY.md"
@@ -258,9 +254,6 @@
       "documentedIn": "docs/adr/ADR-0009-external-ai-delegation.md"
     },
     "scripts/quality/check-firstrun-extractor.py": {
-      "invocation": "ci-gate"
-    },
-    "scripts/quality/check-generated-bundle-freshness.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-ledger-status-reverse-freshness.py": {
@@ -432,12 +425,6 @@
     "scripts/quality/run-docker-linux-proof.ps1": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/run-editor-complexity-check.ps1": {
-      "invocation": "orchestrated"
-    },
-    "scripts/quality/run-editor-gate.ps1": {
-      "invocation": "ci-gate"
-    },
     "scripts/quality/run-engine-app-proof.py": {
       "invocation": "ci-gate"
     },
@@ -457,13 +444,6 @@
     },
     "scripts/quality/run-final-regression-coverage-audit.ps1": {
       "invocation": "orchestrated"
-    },
-    "scripts/quality/run-frontend-gate-tests.ps1": {
-      "invocation": "orchestrated"
-    },
-    "scripts/quality/run-frontend-gate.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/FRONTEND_GATE_REPRODUCIBILITY.md"
     },
     "scripts/quality/run-generator-gate.ps1": {
       "invocation": "ci-gate"
@@ -635,9 +615,6 @@
       "invocation": "ci-gate"
     },
     "scripts/statezip-npdev-contract.ps1": {
-      "invocation": "orchestrated"
-    },
-    "scripts/statezip-npdev-editor.ps1": {
       "invocation": "orchestrated"
     },
     "scripts/statezip-npdev-general.ps1": {

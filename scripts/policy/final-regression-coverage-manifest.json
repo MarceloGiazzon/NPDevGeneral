@@ -50,32 +50,6 @@
       ]
     },
     {
-      "id": "frontend-gate-success-failure-tests",
-      "description": "Frontend gate has success and failure regression coverage.",
-      "finalEntrypoints": [
-        "scripts/quality/run-frontend-gate-tests.ps1",
-        "scripts/quality/run-frontend-gate.ps1"
-      ],
-      "reports": [
-        {
-          "path": "scripts/reports/out/frontend-gate-tests-report.json",
-          "schemaVersion": "npdev-frontend-gate-test-report.v1",
-          "statusProperty": "overallStatus",
-          "passValue": "passed",
-          "requiredTestedReportBasenames": [
-            "success-report.json",
-            "failure-report.json"
-          ]
-        },
-        {
-          "path": "scripts/reports/out/frontend-gate-report.json",
-          "schemaVersion": "npdev-frontend-gate-report.v1",
-          "statusProperty": "overallStatus",
-          "passValue": "passed"
-        }
-      ]
-    },
-    {
       "id": "strict-sample-matrix-semantics",
       "description": "Release-blocking samples use strict sample matrix semantics.",
       "finalEntrypoints": [

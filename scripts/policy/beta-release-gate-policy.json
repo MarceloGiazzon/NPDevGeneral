@@ -211,13 +211,6 @@
       "passValue": "passed"
     },
     {
-      "name": "frontend-gate",
-      "path": "scripts/reports/out/frontend-gate-report.json",
-      "schemaVersion": "npdev-frontend-gate-report.v1",
-      "statusProperty": "overallStatus",
-      "passValue": "passed"
-    },
-    {
       "name": "ai-schema-validation",
       "path": "scripts/reports/out/ai-schema-validation-report.json",
       "schemaVersion": "npdev-ai-schema-validation-report.v1",

@@ -106,7 +106,7 @@ jobs:
       # its portable default project cache.
       - name: Neutralize dev-machine gradle projectcachedir (portability)
         run: |
-          for f in gradle.properties NPDevContract/dsl/gradle.properties NPDevEditor/gradle.properties NPDevGenerator/gradle.properties NPDevKernel/gradle.properties NPDevRuntimeHost/gradle.properties; do
+          for f in gradle.properties NPDevContract/dsl/gradle.properties NPDevGenerator/gradle.properties NPDevKernel/gradle.properties NPDevRuntimeHost/gradle.properties; do
             [ -f "$f" ] && sed -i '/org\.gradle\.projectcachedir/d' "$f" || true
           done
 
@@ -450,7 +450,7 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: |
-            NPDevEditor/ui-react/package-lock.json
+            scripts/quality/json-schema-validator/package-lock.json
 
       # Root-3 fix (2026-07-24): LegacyModelMigrationToolTest runs `npdev migrate`, which validates via
       # the in-repo Node JSON-schema validator and, if its node_modules is absent (gitignored → absent
@@ -475,27 +475,11 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~\AppData\Local\ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('NPDevEditor/ui-react/package-lock.json') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-
-
-      - name: Install Playwright Chromium
-        working-directory: NPDevEditor/ui-react
-        timeout-minutes: 15
-        run: |
-          npm ci
-          npm exec playwright install chromium
-
       - name: Preflight Gradle wrappers
         timeout-minutes: 10
         run: |
           $projects = @(
             "NPDevContract\dsl",
-            "NPDevEditor",
             "NPDevGenerator",
             "NPDevKernel",
             "NPDevRuntimeHost"
@@ -633,13 +617,6 @@ jobs:
         run: |
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\quality\run-runtimehost-gate.ps1" `
-            -WorkspaceRoot "$env:NPDEV_WORKSPACE"
-
-      - name: Editor gate
-        timeout-minutes: 35
-        run: |
-          & pwsh -NoProfile -ExecutionPolicy Bypass `
-            -File "$env:NPDEV_WORKSPACE\scripts\quality\run-editor-gate.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE"
 
       - name: Upload CI evidence
