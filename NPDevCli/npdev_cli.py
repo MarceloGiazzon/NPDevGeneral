@@ -32,6 +32,9 @@ import npdev_engines
 # parser-construction time. Stdlib-only inside (R9), so this import cannot fail on a machine that
 # has the CLI zip and nothing else.
 import npdev_monitor
+# `inspect bonds --diagram` renders the SAME bonds/concepts inspect_bonds() already computed as a
+# self-contained SVG/HTML page. Stdlib-only inside, same rule as the two imports above.
+import npdev_diagram
 
 VERSION = "0.9.0"
 # REG-130: the three numbers a bug report could cite, none of them derived from the others.
@@ -345,8 +348,34 @@ MODEL_ARRAY_KEYS = {
     "ruleProfiles",
     "procedures",
     "panels",
+    # The 10 real schema array keys this Python whitelist had drifted from -- the exact REG-108
+    # failure shape the docstring above already warns about (a THIRD independent copy of "which
+    # top-level keys exist", now caught stale against NPDevContract/schemas/model.schema.json's
+    # real top-level key list). Found 2026-08-15 when `inspect bonds` refused a real model
+    # (WmsOffice) over its `aggregates` key. roles/propertyScopes/properties are the exact three
+    # REG-108 named on the Java side; conversions/documents/guidePages/aggregates/autoPanels/
+    # selectors/contexts were never added here at all.
+    "conversions",
+    "documents",
+    "guidePages",
+    "aggregates",
+    "autoPanels",
+    "selectors",
+    "roles",
+    "propertyScopes",
+    "properties",
+    "contexts",
 }
-ROOT_SCALAR_KEYS = {"$schema", "schemaVersion", "dslVersion", "namespace", "model", "version"}
+ROOT_SCALAR_KEYS = {
+    "$schema", "schemaVersion", "dslVersion", "namespace", "model", "version",
+    # Same drift fix as MODEL_ARRAY_KEYS above, for the object-shaped (not array-shaped) top-level
+    # keys. `packs` deliberately stays here rather than joining MODEL_ARRAY_KEYS: its entries are
+    # `{"$ref": ..., "as": "alias"}`, which `ref_value`'s strict `{"$ref"} `-only shape check would
+    # reject -- so it is accepted and passed through raw (no pack-concept composition attempted),
+    # not resolved as a fragment array. Composing pack-contributed concepts into `inspect bonds`'s
+    # output is a separate, larger feature, not implied by just accepting the key at all.
+    "packs", "provides", "externalAi", "settings",
+}
 FRAGMENT_KEYS = MODEL_ARRAY_KEYS | {"metadata", "fragments"}
 
 
@@ -415,6 +444,14 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None) ->
         if isinstance(value, dict):
             ref_value(value, label)
             for child_key, child_value in value.items():
+                if child_key == "packs":
+                    # Pack references are `{"$ref": ..., "as": "alias"}` -- a deliberately
+                    # different, wider shape than this resolver's generic fragment-composition
+                    # `{"$ref"}`-only convention (ref_value's own strict check above), because a
+                    # pack import needs its local alias recorded alongside the path. Not part of
+                    # this resolver's fragment graph at all (see ROOT_SCALAR_KEYS's own note on
+                    # `packs`), so it must not be walked as if it were.
+                    continue
                 validate_refs(child_value, f"{label}/{child_key}")
         elif isinstance(value, list):
             for index, child in enumerate(value):
@@ -634,6 +671,22 @@ def inspect_bonds(args: argparse.Namespace) -> None:
         },
         args.output,
     )
+
+    diagram_path = getattr(args, "diagram", None)
+    if diagram_path:
+        # model.json's own filename stem is just "model" for every app -- prefer the model's
+        # declared namespace, then the app directory name (parent of definition/model.json), and
+        # only fall back to the file stem if neither is available.
+        model_label = (
+            model.get("namespace")
+            or model_path.parent.parent.name
+            or model_path.stem
+        )
+        html = npdev_diagram.render_bonds_diagram_html(concepts, bonds, model_label=str(model_label))
+        target = Path(diagram_path).expanduser()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(html, encoding="utf-8")
+        print(str(target))
 
 
 def find_anchor(concept: dict | None, via: str) -> dict | None:
@@ -1409,6 +1462,59 @@ def _align_config_database(config_path: Path, engine: dict, database_name: str, 
     config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
 
+def _emit_static_pages(repo_root_path: Path, final_app_out: Path, config_path: Path) -> None:
+    """control-panel.html, app-tree.html, app-tree-v2.html, agent-prompter.html and
+    properties.html -- InfoPageEmitter's info.html links to all five unconditionally, but
+    GeneratorMain itself only emits info.html. AppGen's Build-NpdevApp.ps1/Build-ClaudeApp.ps1
+    always run the matching scripts/appgen/New-*Page.ps1 as a post-generation step (cheap: reads
+    model.json/config.json only, no live app/DB needed); `npdev generate app`/`npdev dev` never
+    did, so every app made through this path had five dead links on its own info.html. Mirrors
+    those builders' calls exactly, run from this repo checkout the same way they are.
+    """
+    shell = _find_powershell()
+    if shell is None:
+        print("npdev: skipping control-panel.html/app-tree.html/app-tree-v2.html/"
+              "agent-prompter.html/properties.html -- no PowerShell found (looked for `pwsh`, "
+              "then `powershell`). info.html's links to these pages will 404 until PowerShell 7 "
+              "(https://aka.ms/powershell) is installed and this app is regenerated.",
+              file=sys.stderr)
+        return
+
+    static_dir = final_app_out / "src" / "main" / "resources" / "static"
+    app_folder = config_path.parent
+    app_id = final_app_out.name
+    try:
+        cfg = json.loads(config_path.read_text(encoding="utf-8"))
+        app_id = str(cfg.get("scenario", {}).get("name") or app_id)
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    scripts_dir = repo_root_path / "scripts" / "appgen"
+    # Port baked into control-panel.html only matters for its file:// fallback (same-origin '' is
+    # used whenever the page is actually served) -- 8080 matches this command's own printed
+    # "3. Open: http://localhost:8080" default dev step, not a live/resolved port.
+    pages = [
+        ("control-panel.html", scripts_dir / "New-ControlPanelPage.ps1",
+         ["-StaticDir", str(static_dir), "-AppId", app_id, "-Port", "8080",
+          "-OutRoot", str(final_app_out)]),
+        ("app-tree.html", scripts_dir / "New-AppTreePage.ps1",
+         ["-AppFolder", str(app_folder), "-StaticDir", str(static_dir), "-AppId", app_id]),
+        ("app-tree-v2.html", scripts_dir / "New-AppTreePageV2.ps1",
+         ["-AppFolder", str(app_folder), "-StaticDir", str(static_dir), "-AppId", app_id]),
+        ("agent-prompter.html", scripts_dir / "New-AgentPrompterPage.ps1",
+         ["-StaticDir", str(static_dir), "-AppId", app_id]),
+        ("properties.html", scripts_dir / "New-PropertiesAdminPage.ps1",
+         ["-StaticDir", str(static_dir), "-AppId", app_id]),
+    ]
+    for label, script, script_args in pages:
+        command = [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), *script_args]
+        completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "unknown error").strip()
+            raise CliError(f"failed to emit {label}: {detail}")
+        print(f"npdev: emitted {label}", file=sys.stderr)
+
+
 def run_generate(args: argparse.Namespace) -> None:
     root = repo_root()
     generator_root = root / "NPDevGenerator"
@@ -1474,6 +1580,8 @@ def run_generate(args: argparse.Namespace) -> None:
             ("Generation OK.", "[3/4] emitting the application ..."),
             ("Final app assembly OK.", "[4/4] assembling the final app ..."),
         ])
+
+    _emit_static_pages(root, final_app_out, config)
 
     # W3 (FIRST_IMPRESSION_PLAN.md I3): `generate app` used to end with assembly diagnostics and
     # nothing else -- a newcomer had a directory full of files and no stated next step. Print one
@@ -1917,7 +2025,13 @@ def _generate_phase_captured(
         except _DeadlineExceeded:
             return False, "GENERATE exceeded the overall --timeout budget."
         output = (completed.stdout or "") + (completed.stderr or "")
-        return completed.returncode == 0, output
+        if completed.returncode != 0:
+            return False, output
+        try:
+            _emit_static_pages(root, final_app_out, config)
+        except CliError as exc:
+            return False, output + f"\n{exc}"
+        return True, output
 
 
 def _find_jar(app_root: Path) -> Path | None:
@@ -6118,6 +6232,10 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_bonds_parser = inspect_sub.add_parser("bonds")
     inspect_bonds_parser.add_argument("--model", required=True)
     inspect_bonds_parser.add_argument("--output")
+    inspect_bonds_parser.add_argument(
+        "--diagram",
+        help="Also render the same bonds as a self-contained ER-diagram HTML page at this path.",
+    )
 
     inspect_app_parser = inspect_sub.add_parser("app")
     inspect_app_parser.add_argument("--model", required=True)

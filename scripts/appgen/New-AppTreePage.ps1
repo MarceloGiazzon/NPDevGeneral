@@ -4,9 +4,10 @@
 
 .DESCRIPTION
   Standalone, run-on-demand companion to New-AppInfoPage.ps1. Reads an app's own
-  definition/ folder (NOT the generator's staged/compiled output) and writes a JSON
-  document plus an HTML page that renders the ENTIRE app definition as an expand/collapse
-  tree -- read-only, no editing.
+  definition (its definition/ subfolder for an AppGen app, or a flat model.json/config.json
+  at $AppFolder itself for an installer/`npdev dev`-created app -- auto-detected, see below;
+  NOT the generator's staged/compiled output) and writes a JSON document plus an HTML page
+  that renders the ENTIRE app definition as an expand/collapse tree -- read-only, no editing.
 
   Design premise: ALL of an app's definition should be visible in the tree. Rather than
   hand-pick a handful of sections, this script:
@@ -44,7 +45,15 @@ function Read-JsonFile {
   Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -Depth 100
 }
 
+# Two known app layouts: AppGen apps keep model.json/config.json/etc. under a definition/
+# subfolder (concepts split one-per-file, packs/, capabilities/, ...); installer/`npdev dev`-created
+# apps (e.g. C:\NPDev_Install\Apps\<id>) keep them flat at the app root, no definition/ subfolder at
+# all. Auto-detect rather than requiring a flag: prefer definition/model.json when it exists, fall
+# back to a flat model.json at $AppFolder itself.
 $Definition = Join-Path $AppFolder 'definition'
+if (-not (Test-Path -LiteralPath (Join-Path $Definition 'model.json'))) {
+  $Definition = $AppFolder
+}
 $ModelPath  = Join-Path $Definition 'model.json'
 $ConfigPath = Join-Path $Definition 'config.json'
 foreach ($p in @($AppFolder, $Definition, $ModelPath)) {
