@@ -5,7 +5,7 @@
 > circuit, bulkhead, flow-instance, persistence) and the RuntimeHost stores that back them
 > (`SchemaLifecycleExecutor`, `MigrationClaimStore`, `MigrationMarkStore`, `PublicationStateStore`).
 > **Plan:** [`ONE_PLAN_CLOSE_EVERYTHING.md`](ONE_PLAN_CLOSE_EVERYTHING.md) §4.2 ·
-> **Steered by:** [`SECURITY_PATTERN_SWEEP_2026-07.md`](../../SECURITY_PATTERN_SWEEP_2026-07.md) §4.4
+> **Steered by:** [`SECURITY_PATTERN_SWEEP_2026-07.md`](../SECURITY_PATTERN_SWEEP_2026-07.md) §4.4
 
 ---
 

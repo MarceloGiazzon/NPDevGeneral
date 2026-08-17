@@ -1,7 +1,7 @@
 # Security pattern sweep — 2026-07 triage
 
 > **Run:** 2026-07-25 · **Branch:** `beta1-vision-spine` · **Tool:** `scripts/quality/security-pattern-sweep.py`
-> **Purpose:** the mechanical pass required by [`ONE_PLAN_CLOSE_EVERYTHING.md`](archive/programme-history/ONE_PLAN_CLOSE_EVERYTHING.md) §2.1,
+> **Purpose:** the mechanical pass required by [`ONE_PLAN_CLOSE_EVERYTHING.md`](programme-history/ONE_PLAN_CLOSE_EVERYTHING.md) §2.1,
 > run once across all four unreviewed surfaces. **This document is the input to sessions 2 and 3** —
 > its job is to say *where the deep review should concentrate*, not to replace it.
 
