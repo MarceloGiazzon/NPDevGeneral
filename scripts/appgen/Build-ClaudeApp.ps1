@@ -611,6 +611,13 @@ Write-Step "Emitted ControlPanel page: http://localhost:$ServerPort/control-pane
   -AppFolder $AppFolder -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId 'claude-support-desk'
 Write-Step "Emitted app tree page: http://localhost:$ServerPort/app-tree.html"
 
+# New-AppTreePageV2.ps1 is a deliberate sibling fork of New-AppTreePage.ps1 (categorized,
+# better-labeled), not a replacement -- both outputs coexist. It was never wired into any
+# builder, so app-tree-v2.html only existed after a manual run; emit it here too, same inputs.
+& (Join-Path $PSScriptRoot 'New-AppTreePageV2.ps1') `
+  -AppFolder $AppFolder -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId 'claude-support-desk'
+Write-Step "Emitted app tree v2 page: http://localhost:$ServerPort/app-tree-v2.html"
+
 & (Join-Path $PSScriptRoot 'New-AgentPrompterPage.ps1') `
   -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId 'claude-support-desk'
 Write-Step "Emitted Agent Prompter page: http://localhost:$ServerPort/agent-prompter.html"

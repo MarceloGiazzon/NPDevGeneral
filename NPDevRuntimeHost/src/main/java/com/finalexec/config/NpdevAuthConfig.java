@@ -186,7 +186,14 @@ public class NpdevAuthConfig {
     ) {
         FilterRegistrationBean<JwtBearerAuthFilter> bean = new FilterRegistrationBean<>();
         bean.setFilter(jwtBearerAuthFilter);
-        bean.addUrlPatterns("/api/*", "/api/v1/*");
+        // Was "/api/*", "/api/v1/*" only -- a trusted-source panel's own page/state/procedure
+        // routes (arbitrary per-app paths under /generated/** plus the panel's own declared route)
+        // never reached this filter at all, so a JWT-mode app had NO way to authenticate them
+        // (RuntimeApiKeyAuthFilter isn't registered outside apikey mode either). Widened to match
+        // RuntimeApiKeyAuthFilter's universal "/*" registration; JwtBearerAuthFilter.shouldNotFilter
+        // still only actually validates when an Authorization header is present or the path is
+        // /api/*, so this does not change behavior for unauthenticated requests to ordinary pages.
+        bean.addUrlPatterns("/*");
         bean.setOrder(-100);
         bean.setEnabled(runtimeSettings.authEnabled());
         return bean;
