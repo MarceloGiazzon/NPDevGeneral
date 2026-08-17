@@ -1505,6 +1505,72 @@ button.authoring-validation-card {
   color: #47698b;
 }
 
+.authoring-preview-card__empty {
+  margin: 0;
+  color: #5f7388;
+}
+
+.authoring-semantic-graph {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.authoring-view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  width: fit-content;
+  border: 1px solid #d5e1ef;
+  border-radius: 999px;
+  background: #eef4fb;
+}
+
+.authoring-view-toggle__tab {
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #163f86;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.authoring-view-toggle__tab--active {
+  background: #163f86;
+  color: #fff;
+}
+
+.authoring-er-diagram {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.authoring-er-diagram__scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid #eef2f8;
+  border-radius: 12px;
+  background: #fbfdff;
+  padding: 8px;
+}
+
+.authoring-er-diagram__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12px;
+  color: #5f7388;
+}
+
+.authoring-er-diagram__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .authoring-preview-form-grid,
 .authoring-preview-layout-grid {
   display: grid;

@@ -21,6 +21,7 @@ import {
 import SemanticDiffPanel from "./SemanticDiffPanel";
 import PipelineHandoffSection from "./PipelineHandoffSection";
 import ModelOnlyImportSection from "./ModelOnlyImportSection";
+import ModelFolderImportSection from "./ModelFolderImportSection";
 
 type ImportExportWorkspaceProps = {
   documentSession: AuthoringDocumentSession | null;
@@ -177,6 +178,7 @@ export default function ImportExportWorkspace({
       </section>
 
       <ModelOnlyImportSection onImportModel={onReplaceDocumentSession} onStatusMessage={setStatusMessage} />
+      <ModelFolderImportSection onImportModel={onReplaceDocumentSession} onStatusMessage={setStatusMessage} />
 
       <section className="authoring-editor-section">
         <div className="authoring-editor-section__header">
