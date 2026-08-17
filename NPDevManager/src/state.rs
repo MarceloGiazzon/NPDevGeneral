@@ -222,6 +222,13 @@ pub struct AppState {
     /// R2: the exploration engine outlives individual requests by design, so it gets an EXPLICIT
     /// lifecycle -- a status chip and a stop button -- rather than being left to leak.
     pub engine: Mutex<Option<crate::npdev::RunningProcess>>,
+    /// The MODEL directory `start_dev` is currently watching, if any. `npdev dev` rebuilds and runs
+    /// the SAME `<dir>-app` FinalApp that `start_app` can launch directly, and both hold the same
+    /// embedded (non-server-mode) H2 file open -- a second opener does not queue, it crashes the
+    /// boot with "The file is locked". Tracked here so `start_app`/`start_dev` can refuse the second
+    /// launch with a clear reason instead of letting the collision happen and reporting a bare
+    /// "stopped" the user has no way to explain.
+    pub dev_app_dir: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -230,6 +237,7 @@ impl AppState {
             manager: Mutex::new(ManagerState::load()),
             running: Mutex::new(HashMap::new()),
             engine: Mutex::new(None),
+            dev_app_dir: Mutex::new(None),
         }
     }
 }

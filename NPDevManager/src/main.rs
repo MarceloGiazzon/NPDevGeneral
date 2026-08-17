@@ -443,6 +443,19 @@ fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
 /// single log view can honestly display.
 const RUN_SCREEN_KEY: &str = "__run_screen__";
 
+/// `npdev init <d>` generates a FinalApp into the sibling `<d>-app` -- so a model directory and its
+/// built app share one H2 data file. Compares path strings only (trailing separator + case
+/// normalised); good enough to catch the same-window collision this exists to prevent, not a
+/// general path-equality oracle.
+fn norm_path(p: &str) -> String {
+    p.trim_end_matches(['\\', '/']).to_ascii_lowercase()
+}
+
+fn model_dir_of_app(app_dir: &str) -> Option<String> {
+    let normalized = app_dir.trim_end_matches(['\\', '/']);
+    normalized.strip_suffix("-app").map(|s| s.to_string())
+}
+
 #[tauri::command]
 async fn start_dev(app: tauri::AppHandle, state: State<'_, AppState>, app_dir: String, port: u16) -> Result<(), String> {
     {
@@ -450,14 +463,22 @@ async fn start_dev(app: tauri::AppHandle, state: State<'_, AppState>, app_dir: S
         if running.contains_key(RUN_SCREEN_KEY) {
             return Err("dev is already running -- stop it first".to_string());
         }
+        let built_app_dir = format!("{}-app", app_dir.trim_end_matches(['\\', '/']));
+        if running.keys().any(|k| norm_path(k) == norm_path(&built_app_dir)) {
+            return Err(format!(
+                "the app built from this model ({built_app_dir}) is already running from the Apps/Run \
+                 tab -- stop it first. Both hold the same database file and a second opener crashes on boot."
+            ));
+        }
     }
     let java_home = resolve_java_home(&state);
     let python = resolve_python_exe(&state).await?;
     let cli = resolve_npdev_cli(&state)?;
     log::info(format!("start_dev app_dir={app_dir} port={port}"));
-    let running = npdev::start_dev_streaming(app, python, cli, java_home, PathBuf::from(app_dir), port).await?;
+    let running = npdev::start_dev_streaming(app, python, cli, java_home, PathBuf::from(&app_dir), port).await?;
     if let Some(proc) = running {
         state.running.lock().expect("lock poisoned").insert(RUN_SCREEN_KEY.to_string(), proc);
+        *state.dev_app_dir.lock().expect("lock poisoned") = Some(app_dir);
     }
     Ok(())
 }
@@ -469,6 +490,7 @@ async fn stop_dev(state: State<'_, AppState>) -> Result<(), String> {
         log::info("stop_dev");
         npdev::stop_running_process(proc).await?;
     }
+    *state.dev_app_dir.lock().expect("lock poisoned") = None;
     Ok(())
 }
 
@@ -599,10 +621,44 @@ async fn run_ops_script(
     Ok(())
 }
 
+/// Windows-only: finds `java.exe` processes whose command line names this app directory (the shape
+/// every generated `Run-FinalApp.ps1` launches: `java -jar <appRoot>\build\libs\...jar`) and force-
+/// stops them, returning the PIDs killed. `Stop-Environment.ps1` manages the DATABASE only -- for a
+/// docker-backed engine or H2's own TCP server it has a real process to stop, but for the common
+/// default (`profile.kind == "embedded"`, a plain H2 FILE) it has nothing to do and exits 0 with
+/// "No background environment service to stop", which reads as success while the app's own JVM
+/// keeps serving untouched. This is what actually stops that JVM when this window did not start it
+/// (a previous Manager session, a terminal, or a Manager instance that was closed and relaunched).
+#[cfg(windows)]
+fn kill_external_app_processes(app_dir: &str) -> Vec<u32> {
+    let needle = app_dir.replace('\'', "''");
+    let script = format!(
+        "Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | \
+         Where-Object {{ $_.CommandLine -and $_.CommandLine.Contains('{needle}') }} | \
+         ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $_.ProcessId }}"
+    );
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output();
+    match output {
+        Ok(o) => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .filter_map(|l| l.trim().parse::<u32>().ok())
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+#[cfg(not(windows))]
+fn kill_external_app_processes(_app_dir: &str) -> Vec<u32> {
+    Vec::new()
+}
+
 /// Stop an app the Monitor can see. Two cases, and conflating them is how an orphan is born:
 /// a process THIS Manager started is killed as a tree; anything else -- started by a terminal, by a
 /// previous Manager session, by the app's own script -- is stopped through the app's own
-/// `Stop-Environment` runbook, because that is the thing that knows how.
+/// `Stop-Environment` runbook for its DATABASE, plus a direct kill of its own JVM (see
+/// `kill_external_app_processes`) since Stop-Environment does not know how for an embedded H2 app.
 #[tauri::command]
 async fn stop_app(
     app: tauri::AppHandle,
@@ -616,7 +672,17 @@ async fn stop_app(
         return Ok(serde_json::json!({"ok": true, "how": "killed the process tree this window started"}));
     }
     log::info(format!("stop_app (via the app's own runbook) {app_dir}"));
-    run_ops_script(app, state, app_dir, "stop-environment".to_string(), None).await?;
+    run_ops_script(app, state, app_dir.clone(), "stop-environment".to_string(), None).await?;
+    let killed = kill_external_app_processes(&app_dir);
+    if !killed.is_empty() {
+        log::info(format!("stop_app force-stopped external JVM(s) {killed:?} for {app_dir}"));
+        return Ok(serde_json::json!({
+            "ok": true,
+            "how": format!(
+                "ran the app's own Stop-Environment script (database only) and force-stopped its JVM directly (pid {killed:?}) -- this window did not start it"
+            ),
+        }));
+    }
     Ok(serde_json::json!({
         "ok": true,
         "how": "ran the app's own Stop-Environment script -- this window did not start it",
@@ -630,6 +696,17 @@ async fn start_app(app: tauri::AppHandle, state: State<'_, AppState>, app_dir: S
         let running = state.running.lock().expect("lock poisoned");
         if running.contains_key(&key) {
             return Err("this app is already running from this window".to_string());
+        }
+    }
+    if let Some(model_dir) = model_dir_of_app(&app_dir) {
+        let dev_dir = state.dev_app_dir.lock().expect("lock poisoned").clone();
+        if let Some(dev_dir) = dev_dir {
+            if norm_path(&dev_dir) == norm_path(&model_dir) {
+                return Err(format!(
+                    "dev mode is running against this app's model ({dev_dir}, Run tab) -- stop it \
+                     first. Both hold the same database file and a second opener crashes on boot."
+                ));
+            }
         }
     }
     let java_home = resolve_java_home(&state);
@@ -903,6 +980,23 @@ fn manager_home_path() -> String {
     state::manager_home().to_string_lossy().to_string()
 }
 
+#[tauri::command]
+fn manager_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// What changed in the CURRENT version -- shown as the version chip's tooltip, so someone looking
+/// at the tab bar knows what shipped without leaving the Manager. Update this string alongside
+/// `Cargo.toml`'s and `tauri.conf.json`'s `version` on every bump; it deliberately describes only
+/// the current version, not a full changelog (that's `git log`).
+#[tauri::command]
+fn manager_version_description() -> String {
+    "0.2.0: Prompter can validate an AI-proposed model.json against the real DSL validator, apply \
+     it to the app's model.json (with an automatic timestamped backup), and optionally regenerate \
+     + build the app afterward."
+        .to_string()
+}
+
 // -------------------------------------------------------------------------------------------
 // Phase E: the Assistant.
 //
@@ -1166,6 +1260,25 @@ fn delete_prompter_profile(state: State<'_, AppState>, id: String) -> Result<(),
 /// nowhere, and this is app data like every other.
 #[tauri::command]
 async fn prompter_app_context(state: State<'_, AppState>, app_dir: String) -> Result<Value, String> {
+    // Prefer the actual model source on disk -- full fields (a running app's app-tree.json may be
+    // absent, and info.json carries names+routes only, never fields). `npdev init <d>` generates
+    // into the sibling `<d>-app`, so this is the SAME mapping `model_dir_of_app` already uses to
+    // prevent the Run/Monitor same-database collision -- reused, not reinvented.
+    if let Some(model_dir) = model_dir_of_app(&app_dir) {
+        let model_path = PathBuf::from(&model_dir).join("model.json");
+        if let Ok(text) = std::fs::read_to_string(&model_path) {
+            if let Ok(model) = serde_json::from_str::<Value>(&text) {
+                let app_name = model.get("namespace").and_then(|n| n.as_str()).unwrap_or("").to_string();
+                return Ok(serde_json::json!({
+                    "appName": app_name,
+                    "source": "model.json",
+                    "modelPath": model_path.to_string_lossy(),
+                    "context": model,
+                }));
+            }
+        }
+    }
+
     let probe = monitor_probe(state, app_dir, Some(true)).await?;
     let app_name = probe
         .get("info")
@@ -1253,6 +1366,83 @@ async fn prompter_generate(
         "http" => prompter_generate_via_http(&profile, &model, effort.as_deref(), &prompt).await,
         other => Err(format!("unknown provider kind '{other}' -- expected 'command' or 'http'")),
     }
+}
+
+/// Validates a candidate model.json the Prompter got back from an AI answer, BEFORE anything
+/// touches the app's real model. Writes the candidate to a scratch file (never the app's own
+/// model.json) and runs it through the real DSL validator -- the exact typed
+/// npdev-validation-report.v2 an AI-authoring loop would self-correct against.
+#[tauri::command]
+async fn validate_prompter_model(state: State<'_, AppState>, candidate: Value) -> Result<Value, String> {
+    let candidate_path =
+        std::env::temp_dir().join(format!("npdev-prompter-candidate-{}.json", std::process::id()));
+    std::fs::write(
+        &candidate_path,
+        serde_json::to_string_pretty(&candidate).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("could not write candidate model: {e}"))?;
+
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    let java_home = resolve_java_home(&state);
+    let result =
+        npdev::run_validate_model(&python, &cli, java_home.as_deref(), &candidate_path.to_string_lossy()).await;
+    let _ = std::fs::remove_file(&candidate_path);
+    result
+}
+
+/// Overwrites the app's real model.json with a VALIDATED candidate, after an explicit typed
+/// confirmation -- the same discipline `db reset` already applies (`main.rs` B5 note above):
+/// a button is far easier to press than a token is to type, so the window has to be at least as
+/// careful as the terminal. The previous model.json is preserved as a timestamped backup rather
+/// than deleted; this command never runs the validator itself, callers are expected to have
+/// called `validate_prompter_model` first and refused to reach here on a failed result.
+#[tauri::command]
+fn apply_prompter_model(app_dir: String, candidate: Value, confirm: String) -> Result<Value, String> {
+    const TOKEN: &str = "I_UNDERSTAND_THIS_OVERWRITES_MODEL_JSON";
+    if confirm != TOKEN {
+        return Err("confirmation token did not match -- model.json was not touched".to_string());
+    }
+    let model_dir = model_dir_of_app(&app_dir)
+        .ok_or_else(|| "not an npdev-init app (no '<name>-app' suffix on its directory)".to_string())?;
+    let model_path = PathBuf::from(&model_dir).join("model.json");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs();
+    let backup_path = PathBuf::from(&model_dir).join(format!("model.json.bak-{stamp}"));
+    if model_path.exists() {
+        std::fs::copy(&model_path, &backup_path)
+            .map_err(|e| format!("could not back up the existing model.json: {e}"))?;
+    }
+    std::fs::write(
+        &model_path,
+        serde_json::to_string_pretty(&candidate).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("could not write model.json: {e}"))?;
+    log::info(format!("apply_prompter_model wrote {} (backup {})", model_path.display(), backup_path.display()));
+    Ok(serde_json::json!({
+        "modelPath": model_path.to_string_lossy(),
+        "backupPath": backup_path.to_string_lossy(),
+    }))
+}
+
+/// Regenerates a FinalApp's generated source from its (just-applied) model.json. Wraps
+/// `npdev::run_generate_app`, which until now only `--selftest` called (`selftest.rs`) -- the
+/// generation step itself already preserves `data`/`logs`/`secrets` (FinalAppAssembler), so this
+/// is a thin pipe, not new business logic. Callers pair this with `run_ops_script(..,
+/// "build-finalapp", ..)` to actually compile it -- that ops script only builds the ALREADY
+/// generated source, it does not regenerate.
+#[tauri::command]
+async fn generate_app_from_model(state: State<'_, AppState>, app_dir: String) -> Result<(), String> {
+    let model_dir = model_dir_of_app(&app_dir)
+        .ok_or_else(|| "not an npdev-init app (no '<name>-app' suffix on its directory)".to_string())?;
+    let model = format!("{model_dir}/model.json");
+    let config = format!("{model_dir}/config.json");
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    let java_home = resolve_java_home(&state);
+    npdev::run_generate_app(&python, &cli, java_home.as_deref(), &model, &config, &app_dir).await
 }
 
 async fn prompter_generate_via_command(
@@ -1510,6 +1700,8 @@ fn main() {
             set_current_version,
             remove_installed_version,
             manager_home_path,
+            manager_version,
+            manager_version_description,
             // The Monitor (Phase B)
             monitor_scan,
             monitor_probe,
@@ -1544,6 +1736,9 @@ fn main() {
             prompter_profiles,
             save_prompter_profile,
             delete_prompter_profile,
+            validate_prompter_model,
+            apply_prompter_model,
+            generate_app_from_model,
             prompter_app_context,
             prompter_generate,
             assistant_compose,

@@ -21,6 +21,7 @@ const prompterState = {
   appDir: null,
   context: null,
   profiles: [],
+  validatedCandidate: null,
 };
 
 function pEsc(value) {
@@ -32,7 +33,7 @@ function pEsc(value) {
 function pStatus(message, bad) {
   const el = document.getElementById("prompter-status");
   el.textContent = message;
-  el.style.color = bad ? "var(--bad)" : "";
+  el.style.color = bad ? "var(--fail)" : "";
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -118,8 +119,10 @@ function buildPrompterPrompt() {
     'app is described by a JSON "model": concepts (entities with typed fields), flows ' +
     '(multi-step server-side operations), pages and a menu. Below is the current model for an ' +
     `app called "${appName}", followed by what I want changed.\n\n` +
-    'Please respond with the specific JSON changes needed (new or modified concepts, fields, or ' +
-    'flows), explained clearly enough for me to apply by hand.\n' +
+    'Respond with ONLY the complete, updated model.json -- the entire file, valid and ready to ' +
+    'save as-is, with the requested change already applied. Do not output a diff, a patch, an ' +
+    'explanation, or any text outside the JSON. Leave every concept, field and flow not mentioned ' +
+    'below byte-for-byte unchanged.\n' +
     contextBlock +
     `\n=== What I want ===\n${ask}\n`;
 
@@ -321,6 +324,12 @@ async function sendPrompt() {
     document.getElementById("prompter-answer").textContent =
       result.text || "(the provider returned no text)";
     document.getElementById("prompter-answer-pane").hidden = false;
+    // A new answer invalidates any earlier validation/apply state -- both panes reset rather than
+    // showing a stale report or letting Apply write a candidate that was never checked against this
+    // answer.
+    prompterState.validatedCandidate = null;
+    document.getElementById("prompter-validate-pane").hidden = true;
+    document.getElementById("prompter-apply-pane").hidden = true;
     pStatus(`answered by ${profile.label || profile.id}`);
   } catch (e) {
     pStatus(`send failed: ${e}`, true);
@@ -339,6 +348,156 @@ async function copyText(text, message) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Validate + Apply
+//
+// The prompt now asks for a COMPLETE model.json (see buildPrompterPrompt above), so the answer
+// text is a candidate file, not something to merge by hand. Validate checks it against the real
+// DSL validator before anything touches disk; Apply only becomes available once that check has
+// passed, and writes exactly the candidate that was validated -- never a re-parse of the answer
+// box at apply time, so what gets checked is what gets written.
+// ---------------------------------------------------------------------------------------------
+
+const MODEL_APPLY_CONFIRMATION = "I_UNDERSTAND_THIS_OVERWRITES_MODEL_JSON";
+
+/// Mirrors the lenient extraction `npdev_cli.py`'s `_extract_json_object` already does
+/// server-side for AI routine answers: a provider that wraps its JSON in prose or a fenced code
+/// block is the common case, not the exception.
+function extractCandidateModel(text) {
+  const trimmed = (text || "").trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch (e) {
+    // fall through
+  }
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) {
+    try {
+      return JSON.parse(fenced[1].trim());
+    } catch (e) {
+      // fall through
+    }
+  }
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    try {
+      return JSON.parse(trimmed.slice(start, end + 1));
+    } catch (e) {
+      // fall through
+    }
+  }
+  return null;
+}
+
+function renderValidationReport(report) {
+  const statusEl = document.getElementById("prompter-validate-status");
+  const color = { passed: "var(--pass)", warning: "var(--warn)", failed: "var(--fail)" }[report.status] || "";
+  statusEl.style.color = color;
+  statusEl.textContent =
+    `${report.status} -- ${report.summary?.errors ?? 0} error(s), ${report.summary?.warnings ?? 0} warning(s)`;
+
+  const host = document.getElementById("prompter-diagnostics");
+  const diagnostics = report.diagnostics || [];
+  host.innerHTML = diagnostics.length
+    ? diagnostics
+        .map((d) => {
+          const sevColor = { error: "var(--fail)", warning: "var(--warn)" }[d.severity] || "var(--muted)";
+          return `<div class="runrow">
+            <span class="chip" style="color:${sevColor}">${pEsc(d.severity)}</span>
+            <span>${pEsc(d.message)}</span>
+            ${d.path ? `<span class="subtitle">${pEsc(d.path)}</span>` : ""}
+            ${d.suggestedFix ? `<span class="subtitle">fix: ${pEsc(d.suggestedFix)}</span>` : ""}
+          </div>`;
+        })
+        .join("")
+    : "";
+}
+
+async function validatePrompterAnswer() {
+  const validateBtn = document.getElementById("prompter-validate");
+  const answerText = document.getElementById("prompter-answer").textContent;
+  const candidate = extractCandidateModel(answerText);
+  document.getElementById("prompter-validate-pane").hidden = false;
+  document.getElementById("prompter-apply-pane").hidden = true;
+  prompterState.validatedCandidate = null;
+  if (!candidate) {
+    document.getElementById("prompter-validate-status").style.color = "var(--fail)";
+    document.getElementById("prompter-validate-status").textContent =
+      "could not find a complete JSON object in the response -- nothing to validate";
+    document.getElementById("prompter-diagnostics").innerHTML = "";
+    return;
+  }
+  validateBtn.disabled = true;
+  document.getElementById("prompter-validate-status").style.color = "";
+  document.getElementById("prompter-validate-status").textContent = "validating…";
+  try {
+    const report = await pInvoke("validate_prompter_model", { candidate });
+    renderValidationReport(report);
+    if (report.status !== "failed") {
+      prompterState.validatedCandidate = candidate;
+      document.getElementById("prompter-apply-pane").hidden = false;
+      document.getElementById("prompter-apply-status").textContent = "—";
+    }
+  } catch (e) {
+    document.getElementById("prompter-validate-status").style.color = "var(--fail)";
+    document.getElementById("prompter-validate-status").textContent = `validation failed to run: ${e}`;
+    document.getElementById("prompter-diagnostics").innerHTML = "";
+  } finally {
+    validateBtn.disabled = false;
+  }
+}
+
+async function applyPrompterModel() {
+  const applyStatus = document.getElementById("prompter-apply-status");
+  if (!prompterState.appDir) {
+    applyStatus.textContent = "no app selected";
+    return;
+  }
+  if (!prompterState.validatedCandidate) {
+    applyStatus.textContent = "validate the response first";
+    return;
+  }
+  // A click, not a typed token: the backup this command always takes first is what makes a
+  // one-click Yes/No proportionate here, unlike the DB-reset button's typed confirmation (that one
+  // deletes data with no backup at all). The Rust side still independently requires the exact
+  // token below -- this dialog is the only thing that got simpler, not the safety check itself.
+  const confirmed = confirm(
+    "This OVERWRITES this app's real model.json (a timestamped backup is kept alongside it).\n\n" +
+      `${prompterState.appDir}\n\nApply the validated model now?`
+  );
+  if (!confirmed) {
+    applyStatus.textContent = "not confirmed -- model.json was not touched";
+    return;
+  }
+
+  const applyBtn = document.getElementById("prompter-apply");
+  applyBtn.disabled = true;
+  applyStatus.textContent = "applying…";
+  try {
+    const result = await pInvoke("apply_prompter_model", {
+      appDir: prompterState.appDir,
+      candidate: prompterState.validatedCandidate,
+      confirm: MODEL_APPLY_CONFIRMATION,
+    });
+    applyStatus.textContent = `applied -- previous model backed up to ${result.backupPath}`;
+
+    if (document.getElementById("prompter-build-after-apply").checked) {
+      applyStatus.textContent += " -- regenerating…";
+      await pInvoke("generate_app_from_model", { appDir: prompterState.appDir });
+      applyStatus.textContent += " -- building…";
+      await pInvoke("run_ops_script", { appDir: prompterState.appDir, script: "build-finalapp" });
+      // build-finalapp streams `ops-event`, which only the Monitor screen listens for -- jump there
+      // so the user watches the real build instead of it running invisibly behind this tab.
+      if (window.__npdevShowScreen) window.__npdevShowScreen("monitor");
+    }
+  } catch (e) {
+    applyStatus.textContent = `apply failed: ${e}`;
+  } finally {
+    applyBtn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------------------------
 
@@ -350,6 +509,9 @@ function initPrompter() {
   });
   document.getElementById("prompter-app").addEventListener("change", async (e) => {
     prompterState.appDir = e.target.value;
+    // A validated candidate is scoped to the app it was checked against.
+    prompterState.validatedCandidate = null;
+    document.getElementById("prompter-apply-pane").hidden = true;
     await loadPrompterContext();
   });
   document.getElementById("prompter-profile").addEventListener("change", onProfileChanged);
@@ -366,6 +528,8 @@ function initPrompter() {
     copyText(document.getElementById("prompter-answer").textContent, "response copied")
   );
   document.getElementById("prompter-send").addEventListener("click", sendPrompt);
+  document.getElementById("prompter-validate").addEventListener("click", validatePrompterAnswer);
+  document.getElementById("prompter-apply").addEventListener("click", applyPrompterModel);
 
   const modal = document.getElementById("prompter-modal");
   document.getElementById("prompter-providers").addEventListener("click", () => {
