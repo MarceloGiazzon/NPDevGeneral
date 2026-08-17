@@ -161,8 +161,15 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   synthesize→generate→ddl→build→boot→firstRequest→latency→memory (all 8 measurements written to
   `scripts/policy/scale-proof-baseline.json`, schema `schemas/ai/scale-proof-report.schema.json`),
   wired to run nightly via `.github/workflows/nightly-scale-ladder.yml` (`schedule:` + `workflow_dispatch`)
-  — H2 only, 520 is informational per the card (CI runner physics, not an NPDev limit, is expected to
-  bound it first).
+  — H2 only. **The card used to say 520 was informational because "CI runner physics, not an NPDev
+  limit, is expected to bound it first". That was measured false (SCALE-2, 2026-08-17):** the binding
+  constraint was NPDev's own generated code. `GeneratedConceptCrudController` took one constructor
+  parameter per concept, and the JVM caps a method at 255 (JVMS 4.3.3), so 255+ concepts emitted an
+  app that did not *compile* — a hard model-size ceiling, not a performance curve, reached long
+  before any runner resource limit. **The ladder had been red on 260/520 every night since its first
+  run and nobody had opened a failed run**, so a never-green ladder was being read as headroom. If
+  this ladder is red, open the artifact (`scale-proof-rung-<n>` → `Output/App/scale-proof-*.log`)
+  before assuming the runner is at fault.
 - **After changing kernel/adapter Java, restage jars before regenerating an app:**
   `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars`. **The defaults now agree**
   (both resolve to `D:\WorkSpace\NPDev\Build\runtimehost-libs` via `Get-NPDevRuntimeHostLibsDir`,
