@@ -31,6 +31,11 @@ detail: |
   rule profile) finds zero matches -- neither file writes them anymore. No dedicated automated guard
   test exists for this specific check (the roundtrip loss-detector test covers EDIT-1's scope, not
   this one), so this is closed on direct source inspection, not a test run.
+
+  2026-08-17: NPDevEditor was parked out of this repository (see BREAKING.md). The files and guard
+  below name paths that no longer resolve here; they resolve in the parked tree. This item stays
+  DONE -- the fix shipped and was verified before the move -- but its guard can no longer be re-run
+  from this repo.
 guard:
   kind: manual
   ref: >-

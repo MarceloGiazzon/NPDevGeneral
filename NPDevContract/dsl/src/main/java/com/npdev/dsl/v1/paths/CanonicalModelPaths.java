@@ -9,7 +9,6 @@ public final class CanonicalModelPaths {
     private static final Path FALLBACK = Path.of("model.json").toAbsolutePath().normalize();
     private static final String[] SPLIT_WORKSPACE_MARKERS = {
             "NPDevContract",
-            "NPDevEditor",
             "NPDevGenerator",
             "NPDevKernel",
             "NPDevRuntimeHost",
