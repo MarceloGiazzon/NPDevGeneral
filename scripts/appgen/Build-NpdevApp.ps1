@@ -1235,6 +1235,13 @@ Write-Step "Emitted ControlPanel page: http://localhost:$ServerPort/control-pane
   -AppFolder $AppFolder -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId $AppId
 Write-Step "Emitted app tree page: http://localhost:$ServerPort/app-tree.html"
 
+# New-AppTreePageV2.ps1 is a deliberate sibling fork of New-AppTreePage.ps1 (categorized,
+# better-labeled), not a replacement -- both outputs coexist. It was never wired into any
+# builder, so app-tree-v2.html only existed after a manual run; emit it here too, same inputs.
+& (Join-Path $PSScriptRoot 'New-AppTreePageV2.ps1') `
+  -AppFolder $AppFolder -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId $AppId
+Write-Step "Emitted app tree v2 page: http://localhost:$ServerPort/app-tree-v2.html"
+
 # info.html links to agent-prompter.html unconditionally too -- same reasoning as app-tree.html
 # above. Cheap: no per-app data at generation time, everything it shows is fetched at page-load
 # from app-tree.json/info.json.
