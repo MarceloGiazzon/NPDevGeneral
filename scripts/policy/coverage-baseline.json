@@ -34,8 +34,8 @@
       "note": "Aggregate across :kernel and every :adapters:* subproject (36 of them), summed by check-coverage-ratchet.py from whichever per-subproject XML reports exist -- there is no dedicated CI gate that runs kernelQualityGate today (a pre-existing gap this card does not close), so this stays at the placeholder until someone runs it (locally: gradlew kernelQualityGate -PenableCoverage is not needed here, kernel never ships into a generated app)."
     },
     "NPDevRuntimeHost": {
-      "coveragePercent": 0.0,
-      "measuredOn": null,
+      "coveragePercent": 17.1529,
+      "measuredOn": "2026-08-17T14:31:17Z",
       "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "scripts/reports/out/runtimehost-jacoco-test-report.xml"
@@ -43,8 +43,8 @@
       "note": "Only produced when the assembled sample app is built with -PenableCoverage=true (run-runtimehost-gate.ps1 does this and copies the report to the stable path above before its own build-cache cleanup runs). JaCoCo does NOT ship inside generated FinalApps by default -- see NPDevRuntimeHost/build.gradle.template's own gating comment."
     },
     "NPDevCli": {
-      "coveragePercent": 31.7479,
-      "measuredOn": "2026-08-15T17:13:41Z",
+      "coveragePercent": 34.2739,
+      "measuredOn": "2026-08-17T14:30:59Z",
       "reportFormat": "coverage-py-json",
       "reportGlobs": [
         "scripts/reports/out/python-coverage/npdevcli-coverage.json"
