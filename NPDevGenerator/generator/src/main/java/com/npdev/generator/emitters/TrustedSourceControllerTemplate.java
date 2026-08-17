@@ -441,13 +441,28 @@ final class TrustedSourceControllerTemplate {
                   }
                   return npdevFlowUiValue(response, keys[0]);
                 }
-                function npdevFlowUiHeaders() {
-                  const headers = { 'Content-Type': 'application/json' };
-                  const apiKey = window.NPDevApiKey || (window.localStorage && window.localStorage.getItem('npdev.apiKey')) || '';
-                  if (apiKey) {
-                    headers['X-Api-Key'] = apiKey;
+                function npdevAuthHeaders(base) {
+                  // Mirrors shell.js's TOKEN_STORAGE_KEYS/authHeaders: this script has no reliable
+                  // way to know whether the app is running in jwt or apiKey mode, so it stores/reads
+                  // the same credential under the same shared keys and sends it as BOTH headers --
+                  // whichever auth filter is actually active picks up the one it understands.
+                  const headers = base || {};
+                  const token = window.NPDevApiKey
+                    || (window.localStorage && (
+                      window.localStorage.getItem('npdev.shell.token')
+                      || window.localStorage.getItem('npdev.businessUi.apiKey')
+                      || window.localStorage.getItem('npdev.apiKey')
+                    ))
+                    || '';
+                  if (token) {
+                    headers['Authorization'] = 'Bearer ' + token;
+                    headers['X-Api-Key'] = token;
                   }
                   return headers;
+                }
+                window.NPDev.authHeaders = npdevAuthHeaders;
+                function npdevFlowUiHeaders() {
+                  return npdevAuthHeaders({ 'Content-Type': 'application/json' });
                 }
                 async function npdevFlowUiPost(url, payload) {
                   const response = await fetch(url, {
@@ -561,11 +576,7 @@ final class TrustedSourceControllerTemplate {
                 };
                 // Item 17 Flow UI Visibility bridge end
                 window.NPDev.callProcedure = async function(name, payload) {
-                  const headers = { 'Content-Type': 'application/json' };
-                  const apiKey = window.NPDevApiKey || (window.localStorage && window.localStorage.getItem('npdev.apiKey')) || '';
-                  if (apiKey) {
-                    headers['X-Api-Key'] = apiKey;
-                  }
+                  const headers = npdevAuthHeaders({ 'Content-Type': 'application/json' });
                   const response = await fetch('/generated/procedures/' + encodeURIComponent(name), {
                     method: 'POST',
                     headers,
