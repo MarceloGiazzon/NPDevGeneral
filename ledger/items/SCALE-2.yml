@@ -1,0 +1,57 @@
+id: SCALE-2
+title: >-
+  Generated apps could not compile above 254 concepts -- JVM 255-parameter ceiling
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-17
+closed: 2026-08-17
+verification: VERIFIED_LIVE
+source: >-
+  Found by reading the R9 nightly ladder's own artifacts after it had been red every night since it
+  was created (2026-08-14). The workflow was wired and running; nobody had opened a failed run.
+surface: generator/business-ui
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-concept-crud-controller.mustache
+  - scripts/proofs/run-scale-proof.ps1
+  - scripts/policy/scale-proof-baseline.json
+detail: |
+  `business-concept-crud-controller.mustache` emitted GeneratedConceptCrudController with ONE
+  constructor parameter per concept (`{{className}}Service {{serviceVariable}}`), plus an
+  ApplicationContext tacked on at the end and never used. The JVM caps a method at 255 parameters
+  (JVMS 4.3.3), so any model with 255+ concepts generated an app that did not COMPILE:
+
+      GeneratedConceptCrudController.java:35: error: too many parameters
+
+  Measured on the 260-concept rung: 261 parameters. This is a hard ceiling on model size, not a
+  performance curve -- 254 concepts builds, 255 does not, and the failure is a compile error in
+  generated code that no amount of machine resource fixes.
+
+  FIX. The constructor now takes only the ApplicationContext and resolves each service from it, and
+  each concept gets its own `register_<serviceVariable>` method instead of one growing constructor
+  body. The second half matters independently: a single method's bytecode is capped at 64 KB
+  (JVMS 4.7.3) and the per-concept metadata/field registration block is exactly what grows with the
+  model, so fixing only the parameter count would have traded `too many parameters` for
+  `code too large` at a slightly larger model.
+
+  SECOND DEFECT, found only because the first was fixed. With the build passing, boot failed
+  immediately on StartupValidator's "npdev.auth.api-keys must define at least one mapping when auth
+  is enabled". run-scale-proof.ps1 never provisioned an API key and hardcoded "dev-key" in its own
+  request headers. Commit f11bf212 ("provision API keys on every launcher") had fixed the launchers
+  it knew about; this one was missed, and being already-red for the compile reason meant it produced
+  no new signal when it stayed red. The proof now provisions a real key (same secrets\api-key.env
+  format and NPDEV_AUTH_API_KEYS contract as Build-NpdevApp.ps1's Ensure-NpdevApiKey) and uses it.
+
+  THE CLAIM THIS DISPROVES. CLAUDE.md and the R9 card both said 520 was informational because
+  "CI runner physics, not an NPDev limit, is expected to bound it first". That was wrong in the
+  direction that matters: the binding constraint was NPDev's own generated code at 255 concepts,
+  reached long before any runner resource limit, and it was a compile error rather than degradation.
+  A ladder that had never once gone green was being read as evidence of headroom.
+guard:
+  kind: script
+  ref: pwsh -NoProfile -File scripts/proofs/run-scale-proof.ps1 -Concepts 260
+  asserts: >-
+    a 260-concept synthesized model completes all 8 measurements (synthesize/generate/ddl/build/
+    boot/firstRequest/latency/memory) -- in particular that the generated app COMPILES, which is
+    what the 255-parameter constructor made impossible
+  provenRed: true

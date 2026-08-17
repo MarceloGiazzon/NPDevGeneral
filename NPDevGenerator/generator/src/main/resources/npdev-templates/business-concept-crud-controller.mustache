@@ -32,14 +32,33 @@ public class GeneratedConceptCrudController {
 
     private final Map<String, ConceptBinding<?>> concepts;
 
-    public GeneratedConceptCrudController(
-{{#concepts}}
-            {{className}}Service {{serviceVariable}},
-{{/concepts}}
-            org.springframework.context.ApplicationContext unused
-    ) {
+    // SCALE-2. This constructor used to take one `{{className}}Service` parameter per concept, with
+    // the ApplicationContext tacked on unused at the end. That is a hard ceiling, not a slow path:
+    // the JVM allows at most 255 method parameters (JVMS 4.3.3), so a model with 255+ concepts
+    // emitted an app that would not COMPILE -- `error: too many parameters`. Measured on the R9
+    // nightly ladder: 26/50/100 concepts built, 260 (261 parameters) and 520 did not, every night
+    // from the ladder's first run. Resolving each service from the context instead makes the
+    // parameter count constant at one.
+    //
+    // Each concept also gets its OWN register_* method rather than one giant constructor body,
+    // because a single method's bytecode is capped at 64 KB (JVMS 4.7.3) and the per-concept
+    // metadata/field registration block is what grows with the model. Keeping the constructor to N
+    // small call statements moves that ceiling far out of reach as well; fixing only the parameter
+    // count would have traded `too many parameters` for `code too large` at a slightly larger model.
+    public GeneratedConceptCrudController(org.springframework.context.ApplicationContext context) {
         Map<String, ConceptBinding<?>> bindings = new LinkedHashMap<>();
 {{#concepts}}
+        register_{{serviceVariable}}(context, bindings);
+{{/concepts}}
+        this.concepts = Collections.unmodifiableMap(bindings);
+    }
+
+{{#concepts}}
+    private static void register_{{serviceVariable}}(
+            org.springframework.context.ApplicationContext context,
+            Map<String, ConceptBinding<?>> bindings
+    ) {
+        {{className}}Service {{serviceVariable}} = context.getBean({{className}}Service.class);
         ConceptMetadata {{serviceVariable}}Metadata = new ConceptMetadata(
                 "{{conceptName}}",
                 "{{displayName}}",
@@ -71,9 +90,9 @@ public class GeneratedConceptCrudController {
                 {{serviceVariable}}::delete,
                 {{serviceVariable}}::page
         ));
-{{/concepts}}
-        this.concepts = Collections.unmodifiableMap(bindings);
     }
+
+{{/concepts}}
 
     @GetMapping("/{conceptName}")
     public ResponseEntity<?> list(
