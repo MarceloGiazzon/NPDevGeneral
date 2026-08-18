@@ -1,34 +1,85 @@
 id: XREF-3
-title: >-
-  Nothing cascades a declared rename to referencing objects -- `npdev migrate rename` stamps
-  `renamedFrom` and leaves every panel, query and procedure pointing at the old name
+title: Nothing cascades a declared rename to referencing objects -- `npdev migrate rename` stamps `renamedFrom`
+  and leaves every panel, query and procedure pointing at the old name
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-17
-source: >-
-  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M9. `run_migrate_rename`
-  (NPDevCli/npdev_cli.py:733-791) was read in full: it finds the concept, finds the field, stamps
-  `renamedFrom`, renames, schema-validates, writes. It never touches `panels`, `procedures`,
-  `queries`, `flows`, `aggregates`, or any expression string.
+source: 'XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M9. `run_migrate_rename` (NPDevCli/npdev_cli.py:733-791)
+  was read in full: it finds the concept, finds the field, stamps `renamedFrom`, renames, schema-validates,
+  writes. It never touches `panels`, `procedures`, `queries`, `flows`, `aggregates`, or any expression
+  string.'
 surface: cli/migrate
 files:
-  - NPDevCli/npdev_cli.py
-detail: |
-  Renaming a field is the operation most likely to orphan references, and it is the one operation
+- NPDevCli/npdev_cli.py
+detail: 'Renaming a field is the operation most likely to orphan references, and it is the one operation
+
   the platform offers a tool for -- a tool that does exactly the half that does not break anything
+
   and none of the half that does. Because REG-185 makes orphans silent, the result validates
+
   `passed` and fails at runtime.
 
+
   Precedent that this is a real production bug class: REG-117 (DONE) -- `workspace::Preference` was
+
   renamed to `PropertyValue` and the panel referencing it silently vanished from the nav. One
+
   instance fixed; the mechanism untouched.
 
-  Fix: `--cascade`, driven by XREF-1's `path` (a structural edit at a known JSON pointer, never a
+
+  Fix: `--cascade`, driven by XREF-1''s `path` (a structural edit at a known JSON pointer, never a
+
   blind string replace across the file). The refusals matter more than the rewrite:
+
   any `UNDECIDABLE` edge naming the old field -> refuse and list them; trusted-source assets
+
   (`metadata.trustedSourceEntrypoint`) are hash-pinned external files -> refuse and name the
+
   manifest entry; pack-contributed members whose source file is outside the model root -> refuse.
+
   Never rewrite a file while knowingly leaving a reference the tool could not see. Dry-run by
+
   default as today; `--write` applies, schema-validates, then runs the REG-185 check and refuses to
+
   write if it introduced a new orphan.
+
+  '
+closed: '2026-08-18'
+verification: VERIFIED_LIVE
+resolution: '`npdev migrate rename --cascade` rewrites every reference at the structural `path` the index
+
+  reports, never by string replacement -- proven by the field''s own `ui.label` surviving a
+
+  rename of the field.
+
+
+  Three safety properties, in order of importance: it REFUSES and changes nothing when any
+
+  reference is one it cannot follow (an UNDECIDABLE expression naming the old field, a
+
+  hash-pinned trusted-source asset, a pack-contributed member outside the model root); it
+
+  re-indexes the CANDIDATE file before writing and refuses if any reference to the old name
+
+  survived or a new orphan appeared, so a bug in the rewriting fails closed; and it is
+
+  dry-run by default.
+
+
+  Live proof rebuilding the incident that started the plan
+
+  (`__OutsideRepo/xref3-cascade-proof/`): without --cascade the rename introduces 7 orphans
+
+  that `validate model` now catches; with it, 7 sites are rewritten and the model validates
+
+  clean; and a model carrying `$ui.birthDay == ''x''` is refused with the file untouched.
+
+  '
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_rename_cascade.py
+  asserts: each site shape rewrites correctly and the field's own ui.label does not; an UNDECIDABLE reference,
+    a hash-pinned asset and a pack-contributed member each refuse; a rewrite that changes nothing raises
+    rather than reporting success
+  provenRed: true

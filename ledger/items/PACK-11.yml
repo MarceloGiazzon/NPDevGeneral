@@ -1,39 +1,75 @@
 id: PACK-11
-title: >-
-  A pack cannot declare `aggregates`/`autoPanels`/`documents`/`selectors`, and `guidePages` is
-  half-wired -- the composer would merge it but `pack.schema.json` refuses the file
+title: A pack cannot declare `aggregates`/`autoPanels`/`documents`/`selectors`, and `guidePages` is half-wired
+  -- the composer would merge it but `pack.schema.json` refuses the file
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-17
-source: >-
-  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M7, machine-diffing the three key lists.
-  Proven with a live RED: adding `guidePages` to `packs/labeling/pack.json` gives
-  `status: failed, errors: 1 - $: property 'guidePages' is not defined in the schema and the schema
-  does not allow additional properties`.
+source: 'XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M7, machine-diffing the three key lists.
+  Proven with a live RED: adding `guidePages` to `packs/labeling/pack.json` gives `status: failed, errors:
+  1 - $: property ''guidePages'' is not defined in the schema and the schema does not allow additional
+  properties`.'
 surface: dsl/pack-composition
 files:
-  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ModelSourceResolver.java
-  - NPDevContract/schemas/pack.schema.json
-  - NPDevContract/dsl/src/main/resources/schema/pack.schema.json
-detail: |
-  Machine-diffed:
+- NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ModelSourceResolver.java
+- NPDevContract/schemas/pack.schema.json
+- NPDevContract/dsl/src/main/resources/schema/pack.schema.json
+detail: "Machine-diffed:\n\n    array keys MISSING from Java MODEL_ARRAY_KEYS : aggregates, autoPanels,\
+  \ documents, selectors\n    array keys MISSING from pack.schema.json      : aggregates, autoPanels,\
+  \ documents, selectors, guidePages\n\n`guidePages` is the asymmetry -- `ModelSourceResolver.java:62`\
+  \ would merge it, but the schema's\n`additionalProperties: false` rejects the file before the composer\
+  \ runs. The other four are\nmissing from both, which is REG-108's X0 shape: relaxing the schema alone\
+  \ would make the file\naccepted and the content vanish SILENTLY.\n\nPer CLAUDE.md's four-place rule\
+  \ each of the 5 keys needs all four places, so the order is load\nbearing: composer support (place 1)\
+  \ lands before or with the schema relaxation (place 2). Place 3\n(`ModelResolver.resolve()` pass-through)\
+  \ and place 4 (the canonical writer/reader round-trip) are\nbelieved already present for these keys\
+  \ and must be CONFIRMED, not assumed.\n`NPDevCli/npdev_cli.py`'s third `MODEL_ARRAY_KEYS` copy already\
+  \ has all 5 -- confirmed.\n\nBoth `pack.schema.json` copies are covered by `check-schema-mirror-consistency.py`\n\
+  (`PACK_SCHEMA_PATHS`, line 68) with no excused keys, so they must be edited together or the\nai-knowledge\
+  \ gate fails. The existing `pack-composition-four-place` twin-pair rule is extended to\ncover the 5\
+  \ new keys rather than a new rule being added.\n"
+closed: '2026-08-18'
+verification: UNIT_TESTED
+resolution: 'All five keys are now declarable by a pack. Composer first, schema second -- relaxing the
 
-      array keys MISSING from Java MODEL_ARRAY_KEYS : aggregates, autoPanels, documents, selectors
-      array keys MISSING from pack.schema.json      : aggregates, autoPanels, documents, selectors, guidePages
+  schema alone accepts the file and drops its content in silence, which is REG-108''s X0 shape.
 
-  `guidePages` is the asymmetry -- `ModelSourceResolver.java:62` would merge it, but the schema's
-  `additionalProperties: false` rejects the file before the composer runs. The other four are
-  missing from both, which is REG-108's X0 shape: relaxing the schema alone would make the file
-  accepted and the content vanish SILENTLY.
 
-  Per CLAUDE.md's four-place rule each of the 5 keys needs all four places, so the order is load
-  bearing: composer support (place 1) lands before or with the schema relaxation (place 2). Place 3
-  (`ModelResolver.resolve()` pass-through) and place 4 (the canonical writer/reader round-trip) are
-  believed already present for these keys and must be CONFIRMED, not assumed.
-  `NPDevCli/npdev_cli.py`'s third `MODEL_ARRAY_KEYS` copy already has all 5 -- confirmed.
+  Places 3 and 4 were CONFIRMED rather than assumed. `ModelResolver` passes all five through
 
-  Both `pack.schema.json` copies are covered by `check-schema-mirror-consistency.py`
-  (`PACK_SCHEMA_PATHS`, line 68) with no excused keys, so they must be edited together or the
-  ai-knowledge gate fails. The existing `pack-composition-four-place` twin-pair rule is extended to
-  cover the 5 new keys rather than a new rule being added.
+  (grep by ACCESSOR, not by JSON key, which appears nowhere in that file and made the first
+
+  probe read 0/5). The canonical writer round-trips four; `selectors` is absent and correctly
+
+  so, because `ModelCompiler` EXPANDS each selector into a picker panel and the panel is what
+
+  round-trips -- so `selectors` gets its own twin-pair rule naming the expansion site as its
+
+  fourth place, rather than an exemption that would leave it looking guarded while nothing
+
+  checked it.
+
+
+  A FIFTH place the four-place rule does not name: a member kind carrying references of its
+
+  own needs entries in `rewriteKnownMemberReferenceFields`, or it composes and then fails
+
+  validation because its own `concept`/`query` stayed unqualified. Measured immediately --
+
+  "AutoPanel labeling::LabelAdmin: concept not found: Label". Added for autoPanels,
+
+  guidePages, selectors, documents and aggregates.
+
+
+  Corpus coverage in the same commit: the labeling pack contributes an autoPanel, a guide
+
+  page and the query its gadget binds to, and dsl-conformance-max validates clean.
+
+  '
+guard:
+  kind: script
+  ref: scripts/quality/check-twin-pair-consistency.py (rules pack-composition-four-place and selector-expansion-four-place)
+    plus the corpus witness in NPDevSamples/dsl-conformance-max/Input/packs/labeling/pack.json
+  asserts: each of the five keys is threaded through every place it needs, and a pack actually declaring
+    an autoPanel + guidePage + query composes and validates
+  provenRed: true
