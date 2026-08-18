@@ -1011,7 +1011,11 @@ def run_migrate_rename(args: argparse.Namespace) -> int:
     # than silence, because REG-185 turned those orphans into hard validation errors: an author who
     # renames without cascading will find out at the next `validate model`, and would rather find
     # out here.
-    if not args.cascade:
+    # getattr, not args.cascade: this function is called directly by tests and by other CLI paths
+    # that build their own Namespace, and a new flag must not make an existing caller crash. The
+    # default is the historical behaviour, which is also the safe one.
+    cascade = getattr(args, "cascade", False)
+    if not cascade:
         print("  NOTE: references to this field elsewhere in the model were NOT updated.")
         print("        Run with --cascade to update them, or `npdev inspect usage --model "
               f"{model_path} --of {concept_name}.{new_field}` to see what still needs changing.")
@@ -1029,7 +1033,7 @@ def run_migrate_rename(args: argparse.Namespace) -> int:
     candidate = write_temp_model(model, model_path)
     validate_json_schema(repo_root() / "NPDevContract" / "schemas" / "model.schema.json", candidate)
 
-    if args.cascade:
+    if cascade:
         # Fail closed. The rewrite above is re-checked against a freshly built index over the
         # CANDIDATE file, not over the in-memory dict it produced, so a bug in the rewriting cannot
         # produce a written model that silently still refers to the old name.
