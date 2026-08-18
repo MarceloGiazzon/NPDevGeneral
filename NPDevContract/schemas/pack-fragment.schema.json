@@ -2,6 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://npdev.local/schema/npdev-pack-fragment.schema.json",
   "title": "NPDev local pack fragment",
-  "description": "Partial pack file referenced from a pack's fragments array. This is NPDev-local include syntax, not JSON Schema remote $ref.",
-  "$ref": "model-fragment.schema.json"
+  "description": "A fragment of a pack: the same member arrays a pack may declare, in a separate file referenced from the pack by a local $ref. PACK-12: same empty-shell problem as concept-fragment.",
+  "$ref": "model-fragment.schema.json",
+  "allOf": [
+    {
+      "$ref": "pack.schema.json"
+    }
+  ]
 }

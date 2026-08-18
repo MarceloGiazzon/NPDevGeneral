@@ -26,13 +26,17 @@
     {
       "id": "pack-composition-four-place",
       "citedBy": "REG-108",
-      "description": "A top-level model array field contributed by a pack/fragment (not just the app's own root) must be threaded through ModelSourceResolver.MODEL_ARRAY_KEYS, BOTH copies of pack.schema.json, ModelResolver.resolve(), and the CompiledModelCanonicalJson/Reader pair -- CLAUDE.md's own documented four-place rule.",
+      "description": "A top-level model array field contributed by a pack/fragment (not just the app's own root) must be threaded through ModelSourceResolver.MODEL_ARRAY_KEYS, BOTH copies of pack.schema.json, ModelResolver.resolve(), and the CompiledModelCanonicalJson/Reader pair -- CLAUDE.md's own documented four-place rule. PACK-11 (2026-08-17) extended this to aggregates/autoPanels/documents/guidePages (`selectors` has its own rule -- it is expanded, not serialized), found by machine-diffing the composer's key set against the real top-level schema keys: four were missing from BOTH the composer and pack.schema.json, and guidePages was the asymmetric case -- merged by the composer, rejected by the schema. Note the FIFTH place this rule does not cover: a member kind that carries references of its own also needs entries in ModelSourceResolver.rewriteKnownMemberReferenceFields, or it composes and then fails validation because its own `concept`/`query` stayed unqualified. That one fails loudly, which is why it is not tracked here.",
       "kind": "field-in-all-files",
       "trackedFields": [
         "roles",
         "propertyScopes",
         "properties",
-        "conversions"
+        "conversions",
+        "aggregates",
+        "autoPanels",
+        "documents",
+        "guidePages"
       ],
       "caseSensitive": false,
       "files": [
@@ -361,6 +365,23 @@
       "files": [
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
         "NPDevCli/npdev_cli.py"
+      ]
+    },
+    {
+      "id": "selector-expansion-four-place",
+      "citedBy": "PACK-11",
+      "description": "`selectors` is threaded like every other pack-contributable array EXCEPT at the last step: it never reaches the canonical compiled JSON, because ModelCompiler expands each selector into a picker panel and the PANEL is what round-trips. So its fourth place is the expansion loop in ModelCompiler, not CompiledModelCanonicalJson. Tracked separately rather than exempted from pack-composition-four-place: an exemption would leave the key looking guarded while nothing checked it, and this way deleting the expansion breaks the gate instead of silently producing a model whose selectors vanish.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "selectors"
+      ],
+      "caseSensitive": false,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+        "NPDevContract/schemas/pack.schema.json",
+        "NPDevContract/dsl/src/main/resources/schema/pack.schema.json",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java"
       ]
     }
   ]

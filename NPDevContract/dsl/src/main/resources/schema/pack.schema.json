@@ -204,6 +204,51 @@
         ]
       }
     },
+    "aggregates": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/aggregate" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      }
+    },
+    "autoPanels": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/autoPanel" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      }
+    },
+    "documents": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/document" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      }
+    },
+    "selectors": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/selector" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      }
+    },
+    "guidePages": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/guidePage" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      }
+    },
     "roles": {
       "type": "array",
       "items": {

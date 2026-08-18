@@ -69,7 +69,21 @@ public final class ModelSourceResolver {
             // error, just a property that silently never resolves.
             "roles",
             "propertyScopes",
-            "properties"
+            "properties",
+            // PACK-11 (2026-08-17): the same omission as the three above, four more keys later.
+            // Measured by machine-diffing this set against the real top-level schema keys:
+            // aggregates/autoPanels/documents/selectors were missing from BOTH this set and
+            // pack.schema.json, so a pack declaring one was refused outright; `guidePages` was the
+            // asymmetric case -- already merged here, still rejected by the schema, which is the
+            // shape that tells you the two lists were never checked against each other.
+            //
+            // Added HERE FIRST and to the schema second, deliberately. Relaxing the schema alone
+            // would accept the file and drop its content in silence, which is REG-108's X0 shape
+            // and strictly worse than the refusal it replaces.
+            "aggregates",
+            "autoPanels",
+            "documents",
+            "selectors"
     );
     private static final Set<String> ROOT_SCALAR_KEYS = orderedSet(
             "$schema",
@@ -1134,6 +1148,41 @@ public final class ModelSourceResolver {
                 // guidePages member.
                 rewriteTextField(object, "guidePage", resolverFor(rewriteMaps, ambiguousNames, "guidePages"), qualifiedReferenceValidator);
             }
+        } else if ("autoPanels".equals(rootKey)) {
+            // PACK-11: an autoPanel names its concept or its aggregate at the top level, and its
+            // transaction/selection surfaces name procedures through hooks and actions. Before this
+            // block a pack-contributed autoPanel composed successfully and then failed validation
+            // with "concept not found: Label" -- the concept IS in the model, as `labeling::Label`.
+            if (parentKey.isBlank()) {
+                rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
+                rewriteTextField(object, "aggregate", resolverFor(rewriteMaps, ambiguousNames, "aggregates"), qualifiedReferenceValidator);
+            }
+            // `procedure` on a surface's dataSource, on each workbench action, and on every
+            // transaction hook. Rewritten at any depth for the same reason flowStep.scope is: it is
+            // this shape's own field name and means nothing else inside an autoPanel.
+            rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+            rewriteTextField(object, "onLoad", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+            rewriteTextField(object, "onFieldChange", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+            rewriteTextField(object, "beforeAction", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+            rewriteTextField(object, "onValidate", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+            rewriteTextField(object, "onCommit", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+            rewriteTextField(object, "afterAction", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+            rewriteTextField(object, "panel", resolverFor(rewriteMaps, ambiguousNames, "panels"), qualifiedReferenceValidator);
+        } else if ("guidePages".equals(rootKey)) {
+            // PACK-11: every chart/KPI gadget binds to a named query.
+            rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
+        } else if ("selectors".equals(rootKey) || "documents".equals(rootKey)) {
+            // PACK-11: both name exactly one concept, on the member object itself.
+            if (parentKey.isBlank()) {
+                rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
+            }
+        } else if ("aggregates".equals(rootKey)) {
+            // PACK-11: the aggregate root, plus each collection's own concept (nested arbitrarily
+            // deep -- an aggregateCollection may contain further collections).
+            if (parentKey.isBlank()) {
+                rewriteTextField(object, "root", conceptRewriteMap, qualifiedReferenceValidator);
+            }
+            rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
         } else if ("orchestrations".equals(rootKey) || "orchestrationRules".equals(rootKey)) {
             if ("action".equals(parentKey) || "actions".equals(parentKey)) {
                 rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);

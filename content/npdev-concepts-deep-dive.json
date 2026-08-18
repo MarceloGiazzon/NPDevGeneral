@@ -174,13 +174,13 @@
     },
     {
       "level": 2,
-      "title": "8. Procedure (coda) — server-side logic that isn't its own public endpoint",
+      "title": "8. Procedure — server-side logic that isn't its own public endpoint",
       "body": ""
     },
     {
       "level": 3,
       "title": "What it is",
-      "body": "\nA Procedure (\"coda\") is a small script of steps, like a Flow, but it is **not** automatically\nexposed as `POST /api/flows/...`. Instead, it's meant to be called from a Panel action\n(`\"binding\": \"procedure\"`), or from another procedure. Reach for a procedure instead of a flow\nwhen the logic is a supporting operation for a screen — \"read this list for the admin page\",\n\"save this record through the full governed path\" — rather than a standalone action you want\nother systems to call directly over REST.\n"
+      "body": "\nA Procedure is a small script of steps, like a Flow, but it is **not** automatically\nexposed as `POST /api/flows/...`. Instead, it's meant to be called from a Panel action\n(`\"binding\": \"procedure\"`), or from another procedure. Reach for a procedure instead of a flow\nwhen the logic is a supporting operation for a screen — \"read this list for the admin page\",\n\"save this record through the full governed path\" — rather than a standalone action you want\nother systems to call directly over REST.\n"
     },
     {
       "level": 3,
@@ -199,7 +199,12 @@
     },
     {
       "level": 2,
-      "title": "How the eight pieces fit together",
+      "title": "9. Pack, context, fragment — three ways to split a model, and which to reach for",
+      "body": "\nThese three all take content out of one `model.json` and put it somewhere else, and until now\nnothing said how they differ. They are not interchangeable:\n\n| | `packs[]` | `contexts[]` | `fragments[]` |\n|---|---|---|---|\n| What it is | a distributable **Library** | an in-project **Module** | a file split |\n| Namespaced | yes (`pack::X`, or an `as` alias) | yes (`context::X`) | no — flat merge |\n| Versioned | semver + `npdev.lock` | no | no |\n| Can live elsewhere | yes (`git+https`, `oci`) | no | no |\n| Boundary enforcement | `requires` / `provides` | `imports[]`, acyclic, **compile error** | none |\n| Physical DB isolation | no | `physicallyIsolate` | no |\n\n**If you are organising ONE project, you want `contexts[]`.** It is the module mechanism, and\nthe reason is the `imports[]` column: a context may only reference another context it has\ndeclared, the import graph must be acyclic, and a violation is a compile error rather than a\nconvention. That is what makes a boundary a boundary. `physicallyIsolate` additionally puts a\ncontext's tables in their own physical database.\n\n**If you are shipping something for OTHER projects to install, you want `packs[]`.** A pack is\nversioned, resolvable from a remote coordinate, and declares what it `requires` and `provides`.\n\n**`fragments[]` is not a boundary at all** — it is a file split. Its content merges flat into\nthe model with no namespace and no rules about who may reference what. Reach for it when one\n`model.json` has simply become inconvenient to scroll, not when you want separation.\n\nA pack or context contributes its members under a qualifier, and references *inside* the\ncontribution are rewritten to match: a pack-contributed panel naming `Label` gets\n`labeling::Label`, because that is what the concept is called once composed.\n"
+    },
+    {
+      "level": 2,
+      "title": "How the pieces fit together",
       "body": "\n```\nConcept   — the data (a table + its fields + its rules)\n   │\n   ├── Reference/bond  — links one Concept's field to another Concept\n   │\nFlow       — a public action a client calls, made of steps\n   │\n   ├── Capability (capabilityCall step) — a verb the flow delegates to\n   │\n   └── Event (emitEvent step) — a broadcast the flow makes, with no idea who's listening\n             │\n             └── Orchestration rule — reacts to the event, runs its own action automatically\n\nPanel     — a hand-designed screen; its buttons call either a Flow or a Procedure\nProcedure — server-side logic for a Panel button (or another Procedure) to call,\n            not its own public REST endpoint\n```\n\nEverything above is authored the same way: JSON inside `model.json`, validated strictly,\nregenerated with the same `Build-AppGenApp.ps1` → `_ops\\Build-App.ps1` →\n`_ops\\Start-App.ps1` sequence from the manual. Nothing here requires touching the NPDev\nengine itself.\n"
     }
   ]
