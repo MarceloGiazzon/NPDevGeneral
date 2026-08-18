@@ -469,6 +469,22 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
     record["physicalDatabase"] = bool(plan.get("physicalDatabase"))
     record["schemaFingerprint"] = plan.get("schemaFingerprint")
 
+    # MON-9: does this app KEEP its data? Until STOR-16 there was no posture that discarded it, and
+    # until this field the plan carried no answer either way -- the schema-lifecycle posture was
+    # consumed at generation time and never surfaced to an operator.
+    #
+    # An app generated BEFORE this field existed has no `schemaLifecycle` in its plan, and that is
+    # reported as "unknown" rather than guessed as "preserved". A wrong reassurance is worse than an
+    # admission: the whole reason for showing this is that an app quietly emptying itself on every
+    # start must not be able to look like one that does not.
+    lifecycle = plan.get("schemaLifecycle")
+    if isinstance(lifecycle, dict):
+        record["schemaLifecycle"] = lifecycle
+        record["dataPolicy"] = lifecycle.get("dataPolicy") or "unknown"
+    else:
+        record["schemaLifecycle"] = None
+        record["dataPolicy"] = "unknown"
+
     # Connection SUMMARY only -- never the password. This record is rendered in a window, copied into
     # chat windows, and (D10) included in an export bundle; the credential has no business in it.
     record["connection"] = {

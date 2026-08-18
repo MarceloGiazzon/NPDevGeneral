@@ -541,3 +541,66 @@ def migrate_document(doc: dict) -> MigrationResult:
         _migrate_autopanel(autopanel, f"autoPanels[{i}] ({autopanel.get('name') or autopanel.get('aggregate') or '?'})", result)
 
     return result
+
+# =================================================================================================
+# STOR-16: db.definition.json's schemaLifecycle.strategy -- RecreateOnAppStart -> Ephemeral.
+#
+# A DIFFERENT document from everything above. The functions above migrate model.json; this one
+# migrates db.definition.json, and `migrate_document`'s `_looks_compiled` guard would have nothing
+# sensible to say about it. Kept in this module anyway because it is the same KIND of thing -- a
+# spelling the platform retired, rewritten mechanically so an author never has to know it changed --
+# and splitting it into a third file would just mean two places to look for "what does npdev
+# rewrite for me".
+#
+# Why the rename is safe rather than merely convenient: `RecreateOnAppStart` never had a code path.
+# `SchemaLifecycleExecutor` read `strategy` at exactly one line and compared it to
+# `DropAndRecreateOnStructureChange`, so an app declaring the old name recreated nothing, whatever
+# the name promised. `Ephemeral` is the behaviour the name always claimed.
+# =================================================================================================
+
+DEPRECATED_LIFECYCLE_STRATEGY = "RecreateOnAppStart"
+EPHEMERAL_LIFECYCLE_STRATEGY = "Ephemeral"
+
+
+def looks_like_db_definition(doc: dict) -> bool:
+    """A db.definition.json is `{database: {...}, schemaLifecycle: {...}}`. Checked structurally
+    rather than by filename so the codemod also reaches a definition someone renamed."""
+    return (isinstance(doc, dict)
+            and isinstance(doc.get("database"), dict)
+            and isinstance(doc.get("schemaLifecycle"), dict))
+
+
+def migrate_db_definition(doc: dict) -> MigrationResult:
+    """Rewrites `doc` IN PLACE. Returns what happened.
+
+    Only the strategy STRING changes. `allowDestructiveRecreate`, the confirmation and the scope are
+    deliberately left exactly as they are: every in-corpus user of the old spelling is InMemory and
+    already carries the `I_UNDERSTAND_INMEMORY_DATA_IS_EPHEMERAL` +
+    `NpdevOwnedLogicalStoresOnly` pair, which `SchemaLifecyclePolicy.ephemeralConfirmedFor` accepts
+    for that engine. Rewriting a confirmation string on someone's behalf would be forging their
+    signature on a sentence they never read.
+    """
+    result = MigrationResult()
+    if not looks_like_db_definition(doc):
+        return result
+    lifecycle = doc["schemaLifecycle"]
+    strategy = lifecycle.get("strategy")
+    if not isinstance(strategy, str) or strategy.strip() != DEPRECATED_LIFECYCLE_STRATEGY:
+        return result
+    lifecycle["strategy"] = EPHEMERAL_LIFECYCLE_STRATEGY
+    result.changed = True
+    result.changes.append(
+        f"schemaLifecycle.strategy '{DEPRECATED_LIFECYCLE_STRATEGY}' -> "
+        f"'{EPHEMERAL_LIFECYCLE_STRATEGY}'")
+    engine = (doc.get("database") or {}).get("engine")
+    if engine and str(engine) != "InMemory":
+        # Not a refusal: the definition is valid either way, and `ephemeralConfirmedFor` will say so
+        # precisely at generation time. But a physical engine moving to Ephemeral is a real change in
+        # what happens to real rows, and the author should hear it from the tool that made the edit.
+        result.ambiguities.append(
+            f"engine is {engine}, not InMemory -- on a physical engine Ephemeral means this app "
+            f"DROPS its tables on every start. Confirm that is what you want, and set "
+            f"destructiveRecreateConfirmation to "
+            f"\"I_UNDERSTAND_ALL_DATA_IS_DELETED_ON_EVERY_START\" with scope "
+            f"\"NpdevOwnedTablesOnly\".")
+    return result

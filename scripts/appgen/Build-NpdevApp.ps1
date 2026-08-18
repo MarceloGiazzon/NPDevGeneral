@@ -697,6 +697,39 @@ $DbPlan = [ordered]@{
   appRoot = $GeneratedAppRoot
   runtimeHostLibsDir = $RuntimeHostLibsDir
 }
+# MON-9. THIS FILE HAS TWO WRITERS and this one runs last.
+#
+# `OperationalRunbookEmitter.toPlanJson()` (Java) builds a much richer plan -- storageMode,
+# physicalDatabase, schemaFingerprint, profile, dbeaver, smoke -- and writes it to the same
+# path during generation. This script then overwrites it with the ordered map above, which is
+# why an app built through Build-NpdevApp.ps1 has a 10-key plan while the Java emitter's has
+# roughly 25.
+#
+# Measured 2026-08-18, by adding `schemaLifecycle` to the Java emitter and then finding it
+# absent from a freshly generated app: a field added to only the Java seam is silently
+# discarded on the primary AppGen path. Same shape as the spared-directories list CLAUDE.md
+# already warns about, pointed at a different file. So the posture is written HERE too, read
+# straight from the definition this script has already loaded.
+$Lifecycle = $DbDef.schemaLifecycle
+if ($null -ne $Lifecycle) {
+  $Strategy = "$($Lifecycle.strategy)"
+  # `RecreateOnAppStart` is STOR-16's deprecated alias of `Ephemeral`, so it means the same
+  # thing here. An app generated before the codemod ran still discards its data, and the card
+  # has to say so rather than reading the retired spelling as "not ephemeral".
+  $DataPolicy = 'preserved'
+  if ($Strategy -eq 'Ephemeral' -or $Strategy -eq 'RecreateOnAppStart') { $DataPolicy = 'ephemeral' }
+  $Ownership = 'NpdevManaged'
+  if ($Lifecycle.PSObject.Properties.Name -contains 'ownership' -and $Lifecycle.ownership) {
+    $Ownership = "$($Lifecycle.ownership)"
+  }
+  $DbPlan['schemaLifecycle'] = [ordered]@{
+    strategy = $Strategy
+    dataPolicy = $DataPolicy
+    allowDestructiveRecreate = [bool]$Lifecycle.allowDestructiveRecreate
+    scope = "$($Lifecycle.scope)"
+    ownership = $Ownership
+  }
+}
 Write-JsonFile $DbPlan (Join-Path $OpsDir 'resolved-db-plan.json')
 
 $StartEnv = @'

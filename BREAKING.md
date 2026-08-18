@@ -5,6 +5,40 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-18 — `schemaLifecycle.strategy: RecreateOnAppStart` is deprecated in favour of `Ephemeral` (STOR-16)
+
+**What changes.** There is now a fourth `schemaLifecycle.strategy`, `Ephemeral`, meaning *this
+app's data is disposable*: on every start NPDev drops the tables the manifest declares it owns and
+recreates them from the model — no diff, no impact report, no acknowledgment token. It exists
+because there was no posture that said that. `DropAndRecreateOnStructureChange` +
+`allowDestructiveRecreate` authorizes itemized column drops and type narrowings **only**; dropping a
+concept, or any diff that cannot be itemized, still refuses and demands a token, which is right for
+a database whose contents matter and useless for a throwaway one.
+
+`RecreateOnAppStart` is now a **deprecated alias** of it, accepted and warned about rather than
+removed. Measured 2026-08-17: the runtime read `strategy` at exactly one line, comparing it to
+`DropAndRecreateOnStructureChange` — so despite the name, `RecreateOnAppStart` had no code path and
+recreated nothing. `Ephemeral` is the behaviour that name always claimed.
+
+**Who is affected.** Any app whose `db.definition.json` says `RecreateOnAppStart`. All 7 in the
+corpus are `InMemory`, where "drop and recreate on boot" and "memory is empty on boot" are the same
+statement — which is what made re-pointing the name safe by measurement rather than by assumption.
+An app moving to `Ephemeral` on a **physical** engine is a real change in what happens to real rows,
+and must declare it: `allowDestructiveRecreate: true`,
+`destructiveRecreateConfirmation: "I_UNDERSTAND_ALL_DATA_IS_DELETED_ON_EVERY_START"`, and
+`scope: "NpdevOwnedTablesOnly"`. The existing `I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED` token does
+**not** authorize it: that one says "this particular change deletes data", and an author who typed it
+once for a column drop has not agreed that every future boot starts from empty.
+
+The wipe is scoped to manifest-declared NPDev-owned tables, never to the live schema, so an app
+sharing a database cannot take a neighbour's tables with it. `ownership: ExternallyManaged` +
+`Ephemeral` is refused at generation time.
+
+**Codemod.** `npdev migrate db-lifecycle --input <dir> --write` rewrites the strategy string in every
+`db.definition.json` it finds. It changes only that string: rewriting someone's
+`destructiveRecreateConfirmation` on their behalf would be signing a sentence they never read, so a
+physical-engine definition is migrated and then *told* what it still has to declare.
+
 ## 2026-08-17 — `NPDevEditor` is no longer part of this repository
 
 **What changes.** The authoring editor's source tree (`NPDevEditor/`, its standalone Gradle build

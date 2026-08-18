@@ -101,6 +101,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *     the guard being proven lives only in {@link SchemaLifecycleExecutor#migrate(Flyway)} and
  *     {@link SchemaLifecycleExecutor#loadManifest()} reads a fixed classpath resource with no other
  *     injection point</td></tr>
+ * <tr><td>17</td><td>Ephemeral app, existing table with rows, model changed</td>
+ *     <td><b>NEW (STOR-16)</b> -- the table is recreated empty with no diff, no impact report and no
+ *     acknowledgment token, and a table NPDev does not own in the same schema is left untouched.
+ *     Before STOR-16 there was no posture that could express this: {@code RecreateOnAppStart} read
+ *     {@code strategy} nowhere at all, and {@code DropAndRecreateOnStructureChange} authorizes only
+ *     itemized column drops and type narrowings -- a whole-table change still refuses and demands a
+ *     token</td></tr>
  * </table>
  */
 class SchemaLifecycleExecutorProofMatrixTest {
@@ -744,6 +751,66 @@ class SchemaLifecycleExecutorProofMatrixTest {
             DatabaseMetaData metadata = connection.getMetaData();
             assertTrue(hasTable(metadata, "flyway_schema_history"),
                     "the guard's fallback (flyway.migrate()) must still have run for real");
+        }
+    }
+
+    @Test
+    @DisplayName("Row 17: Ephemeral app -> tables recreated empty, no refusal, no token, neighbours untouched")
+    void row17_ephemeralAppDiscardsItsOwnDataAndNothingElse() throws SQLException {
+        // A table with rows, and a stored fingerprint that does NOT match the manifest -- i.e. the
+        // exact situation that makes DropAndRecreateOnStructureChange refuse and demand an itemized
+        // acknowledgment token. Plus a table in the same schema that NPDev does not own.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            statement.execute("INSERT INTO widgets (id, name) VALUES (1, 'alpha')");
+            statement.execute("CREATE TABLE someone_elses_table (id BIGINT PRIMARY KEY, note VARCHAR(50))");
+            statement.execute("INSERT INTO someone_elses_table (id, note) VALUES (1, 'not npdev')");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = ephemeralManifest(
+                "sha256:new", List.of("widgets"), Map.of("widgets", List.of("id", "name", "addedField")));
+
+        Flyway flyway = Flyway.configure().dataSource(dataSource).locations(new String[0]).load();
+        // Baseline first, because this scenario is "an app that has booted before". Hand-creating
+        // the tables without also giving Flyway its history table produced a schema no real app can
+        // be in -- populated, but unknown to Flyway -- and Flyway rightly refused it ("found
+        // non-empty schema without schema history table"). The first draft of this test asserted
+        // against that impossible state and failed for a reason that had nothing to do with STOR-16.
+        flyway.baseline();
+        executor.migrate(flyway, manifest);
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertFalse(hasTable(metadata, "widgets"),
+                    "the NPDev-owned table must have been dropped; Flyway rebuilds it from the model "
+                            + "(this unit has no migrations, so it simply stays gone here)");
+            assertTrue(hasTable(metadata, "someone_elses_table"),
+                    "a table NPDev does not own must survive -- scope: NpdevOwnedTablesOnly is the "
+                            + "whole reason the wipe reads the manifest instead of the schema");
+        }
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT note FROM someone_elses_table WHERE id = 1")) {
+            assertTrue(rows.next());
+            assertEquals("not npdev", rows.getString(1), "the neighbour's ROWS must be intact too");
+        }
+    }
+
+    @Test
+    @DisplayName("Row 17b: Ephemeral is inert on a boot with nothing to drop")
+    void row17b_ephemeralOnAFreshDatabaseIsNotAnError() throws SQLException {
+        // The first-ever boot of an ephemeral app: no tables, no stored fingerprint. `DROP TABLE IF
+        // EXISTS` makes this a no-op, and it must stay one -- an app that crashes on its own first
+        // start would be a spectacular way to ship this.
+        SchemaLifecycleExecutor.SchemaManifest manifest = ephemeralManifest(
+                "sha256:new", List.of("widgets"), Map.of("widgets", List.of("id")));
+
+        Flyway flyway = Flyway.configure().dataSource(dataSource).locations(new String[0]).load();
+        executor.migrate(flyway, manifest);
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertTrue(hasTable(connection.getMetaData(), "flyway_schema_history"),
+                    "flyway.migrate() must still run after the wipe, or the tables are never rebuilt");
         }
     }
 
@@ -2259,6 +2326,26 @@ class SchemaLifecycleExecutorProofMatrixTest {
             }
             throw new AssertionError("expected at least one non-step-pass npdev_schema_history row");
         }
+    }
+
+    /**
+     * STOR-16: like {@link #manifest}, but declaring the {@code Ephemeral} posture.
+     *
+     * <p>A separate factory rather than a strategy parameter on the 15-argument one above: every
+     * existing row passes {@code "DropAndRecreateOnStructureChange"} implicitly, and threading a new
+     * argument through 16 call sites to change nothing at 16 of them is churn that hides the one
+     * call that differs.
+     */
+    private static SchemaLifecycleExecutor.SchemaManifest ephemeralManifest(
+            String schemaFingerprint,
+            List<String> businessTables,
+            Map<String, List<String>> businessTableColumns) {
+        return new SchemaLifecycleExecutor.SchemaManifest(
+                "H2Local", "jdbc", true, schemaFingerprint, List.of(), businessTables,
+                businessTableColumns, Map.of(), Map.of(), Map.of(), Map.of(), true,
+                "Ephemeral", "NpdevOwnedTablesOnly",
+                "I_UNDERSTAND_ALL_DATA_IS_DELETED_ON_EVERY_START", "",
+                Map.of(), Map.of(), Map.of(), Map.of());
     }
 
     private static SchemaLifecycleExecutor.SchemaManifest manifest(

@@ -401,6 +401,12 @@ dl.kv dd small { opacity: .6; }
 }
 .badge.driver { color: #9fb3c8; }
 .badge.pinned { color: var(--warn); border-color: #5a4a1e; }
+/* MON-9. Only the tokens this file already defines -- --ok/--warn/--err/--muted. A previous session
+   shipped an undefined `--bad`, which renders as inherited colour: a badge that silently loses its
+   meaning is worse than no badge, because it still looks deliberate. */
+.badge.ephemeral { color: var(--warn); border-color: #5a4a1e; }
+.badge.preserved { color: var(--muted); }
+.badge.unknownpolicy { color: var(--off); border-style: dashed; }
 
 .verdict { font-family: var(--font-mono); font-size: 13px; letter-spacing: 2px; padding: 4px 12px;
            border-radius: 4px; border: 1px solid currentColor; display: inline-block; }
