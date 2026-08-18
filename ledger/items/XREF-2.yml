@@ -2,31 +2,53 @@ id: XREF-2
 title: No "show usage" surface -- an author cannot ask which panels/queries/procedures use a field
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-17
-source: >-
-  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md section 5 (W2 / XREF-2), motivated by measurements M1 and
-  M9 -- an author who wants to change a field has no way to see what would break.
+source: XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md section 5 (W2 / XREF-2), motivated by measurements M1
+  and M9 -- an author who wants to change a field has no way to see what would break.
 surface: cli/inspect
 files:
-  - NPDevCli/npdev_cli.py
-  - NPDevCli/npdev_diagram.py
-detail: |
-  `npdev inspect bonds` shows concept-to-concept bonds and `npdev inspect app` shows a model
-  summary; neither answers "who uses `WidgetOrder.lineCount`?". Surface to add, reading XREF-1's
-  emitted index:
+- NPDevCli/npdev_cli.py
+- NPDevCli/npdev_diagram.py
+detail: "`npdev inspect bonds` shows concept-to-concept bonds and `npdev inspect app` shows a model\n\
+  summary; neither answers \"who uses `WidgetOrder.lineCount`?\". Surface to add, reading XREF-1's\nemitted\
+  \ index:\n\n    npdev inspect usage --model model.json --of WidgetOrder.lineCount\n    npdev inspect\
+  \ usage --model model.json --of WidgetOrder\n    npdev inspect usage --model model.json --of procedure:EnrichWidgetOrderRows\n\
+  \    npdev inspect usage --model model.json --orphans\n    npdev inspect usage --model model.json --diagram\
+  \ usage.html\n\n`--of` prints every referencing site with its structural `path`. `--orphans` prints\
+  \ `UNRESOLVED` +\n`UNDECIDABLE` and exits 1 if any `UNRESOLVED`, so it works as a pre-commit hook independently\
+  \ of\nthe Gradle-backed validator. `--diagram` reuses the self-contained-HTML renderer built for\n`inspect\
+  \ bonds --diagram`.\n\nThe CLI gets the index the same way `validate model --semantic` does: a Gradle\
+  \ task\n(`:NPDevContract:dsl:modelXref -PmodelPath=<p> -PreportOut=<p>`) mirroring the existing\n`validateModel`.\
+  \ Not a Python reimplementation (plan D1).\n"
+closed: '2026-08-18'
+verification: VERIFIED_LIVE
+resolution: '`npdev inspect usage --of/--orphans/--diagram`, reading the Java-emitted index via the
 
-      npdev inspect usage --model model.json --of WidgetOrder.lineCount
-      npdev inspect usage --model model.json --of WidgetOrder
-      npdev inspect usage --model model.json --of procedure:EnrichWidgetOrderRows
-      npdev inspect usage --model model.json --orphans
-      npdev inspect usage --model model.json --diagram usage.html
+  `modelXref` Gradle task rather than re-walking the model in Python.
 
-  `--of` prints every referencing site with its structural `path`. `--orphans` prints `UNRESOLVED` +
-  `UNDECIDABLE` and exits 1 if any `UNRESOLVED`, so it works as a pre-commit hook independently of
-  the Gradle-backed validator. `--diagram` reuses the self-contained-HTML renderer built for
-  `inspect bonds --diagram`.
 
-  The CLI gets the index the same way `validate model --semantic` does: a Gradle task
-  (`:NPDevContract:dsl:modelXref -PmodelPath=<p> -PreportOut=<p>`) mirroring the existing
-  `validateModel`. Not a Python reimplementation (plan D1).
+  `--orphans` exits 2 on a real orphan and 0 when only UNDECIDABLE edges remain, so it works
+
+  as a pre-commit hook without failing on what it cannot understand. `--of` never fails
+
+  because the model has an orphan somewhere else -- it answers a question, it is not a
+
+  validation run.
+
+
+  Verified against dsl-conformance-max: `--of WidgetOrder.lineCount` finds its one site,
+
+  `--of WidgetOrder` finds 13, `--of procedure:EnrichWidgetOrderRowsProcedure` finds the
+
+  panel data source that calls it, and `--diagram` writes a self-contained page with no
+
+  network reference in it.
+
+  '
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_inspect_usage.py
+  asserts: --of selects every site naming the target (a concept also matching its fields), --orphans exits
+    2 on UNRESOLVED and 0 on UNDECIDABLE alone, and the rendered page reaches no network
+  provenRed: true

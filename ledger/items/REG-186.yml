@@ -1,33 +1,108 @@
 id: REG-186
-title: >-
-  `resolve_split_model` rejects any model using `contexts[]` with a bogus `$ref` shape error, and
-  silently drops pack-contributed members from `npdev inspect app`
+title: '`resolve_split_model` rejects any model using `contexts[]` with a bogus `$ref` shape error, and
+  silently drops pack-contributed members from `npdev inspect app`'
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-17
-source: >-
-  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M4. `npdev inspect app --model
-  NPDevSamples/dsl-conformance-max/Input/model.json` fails outright with
-  `npdev: .../model.json/contexts/0: $ref object must be exactly { "$ref": "relative/path.json" }`.
+source: 'XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M4. `npdev inspect app --model NPDevSamples/dsl-conformance-max/Input/model.json`
+  fails outright with `npdev: .../model.json/contexts/0: $ref object must be exactly { "$ref": "relative/path.json"
+  }`.'
 surface: cli/model-resolution
 files:
-  - NPDevCli/npdev_cli.py
-detail: |
-  `contexts` is in `NPDevCli/npdev_cli.py`'s `MODEL_ARRAY_KEYS` (line 367), so `resolve_array` calls
-  `ref_value` on each entry -- but `ref_value` (line 422) requires the object carry exactly one key,
-  while a context entry is `{"name", "$ref", "physicallyIsolate"}` and a pack entry is
-  `{"$ref", "as", "allowSideBySide"}`. Every model using bounded contexts is therefore unreadable by
-  the CLI's split-model resolver.
+- NPDevCli/npdev_cli.py
+detail: '`contexts` is in `NPDevCli/npdev_cli.py`''s `MODEL_ARRAY_KEYS` (line 367), so `resolve_array`
+  calls
 
-  With `contexts` removed by hand the command runs but reports 11 concepts -- the `labeling` pack's
-  `Label` concept is absent, with no warning. `ROOT_SCALAR_KEYS`' own comment concedes this
-  ("Composing pack-contributed concepts into `inspect bonds`'s output is a separate, larger
+  `ref_value` on each entry -- but `ref_value` (line 422) requires the object carry exactly one key,
+
+  while a context entry is `{"name", "$ref", "physicallyIsolate"}` and a pack entry is
+
+  `{"$ref", "as", "allowSideBySide"}`. Every model using bounded contexts is therefore unreadable by
+
+  the CLI''s split-model resolver.
+
+
+  With `contexts` removed by hand the command runs but reports 11 concepts -- the `labeling` pack''s
+
+  `Label` concept is absent, with no warning. `ROOT_SCALAR_KEYS`'' own comment concedes this
+
+  ("Composing pack-contributed concepts into `inspect bonds`''s output is a separate, larger
+
   feature").
 
+
   Fix shape: replace the exactly-one-key rule with a per-key table of the additional keys an entry
+
   of that array may legally carry alongside `$ref`. The composition half is deliberately NOT
+
   reimplemented in Python (plan D1) -- pack/context qualification exists only in
-  `ModelSourceResolver`/`JsonModelParser`, and a second Python walk of the same graph is REG-108's
+
+  `ModelSourceResolver`/`JsonModelParser`, and a second Python walk of the same graph is REG-108''s
+
   exact shape. `inspect app` / `inspect usage` read the Java-emitted `npdev/model-xref.json`
+
   (XREF-1) instead.
+
+  '
+closed: '2026-08-18'
+verification: VERIFIED_LIVE
+resolution: '`ref_value`''s exactly-one-key rule is replaced by `REF_ENTRY_EXTRA_KEYS`, a per-key table
+  of
+
+  the additional keys an entry of that array may carry alongside `$ref`. An unknown sibling key
+
+  is still an error, so the fix is an allowance and not a relaxation.
+
+
+  The RED was WIDER than the plan measured: `inspect app`, `inspect bonds` AND
+
+  `validate model --structural-only` all failed on any model declaring `contexts[]`, with the
+
+  same bogus `$ref object must be exactly ...` message.
+
+
+  Composition was built in Python rather than deferred to the Java-emitted index, and that was
+
+  the open question the plan asked to settle first. Deciding factor: `inspect app`,
+
+  `inspect bonds` and `validate --structural-only` are build-free commands, and routing them
+
+  through Gradle to answer "what concepts does this model have?" would be a serious downgrade
+
+  for the sake of avoiding a second walk. The second walk is instead PINNED -- twin-pair rule
+
+  `pack-context-qualification-two-language`, token `npdev-qualifier-rule`, carried by both
+
+  `ModelSourceResolver` and `npdev_cli.py`, so dropping it from either fails the ai-knowledge
+
+  gate.
+
+
+  Measured on WmsOffice: 26 -> 33 concepts, 49 -> 53 bonds, zero anchorless. On
+
+  dsl-conformance-max: 11 -> 17 concepts including `labeling::Label` and the four contexts''.
+
+  A remote `packs[].from` coordinate cannot be expanded without the lockfile-backed cache, so
+
+  it is REPORTED as uncomposed (`inspect app`''s `uncomposedPacks`) rather than silently
+
+  contributing nothing -- "there were none" and "we did not look" print identically otherwise.
+
+
+  A first pass composed member NAMES but not the references between them, and `inspect bonds`
+
+  then reported a real bond as anchorless. Failing loudly was more honest than that, so
+
+  `resolve_member_reference` mirrors ModelSourceResolver.resolveUnqualifiedReferences,
+
+  ambiguity refusal included.
+
+  '
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_resolve_split_model_contexts.py
+  asserts: a {name, $ref, physicallyIsolate} context entry composes instead of being rejected as a malformed
+    $ref; pack members compose under the `as` alias; a typo'd sibling key is still an error; a remote
+    `from` pack is reported uncomposed rather than dropped
+  provenRed: true

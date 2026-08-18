@@ -1,43 +1,104 @@
 id: PACK-12
-title: >-
-  Three composition mechanisms (`packs[]`, `contexts[]`, `fragments[]`) with no stated difference,
-  and three fragment schemas that nothing reads -- one of which documents a restriction that does
-  not exist
+title: Three composition mechanisms (`packs[]`, `contexts[]`, `fragments[]`) with no stated difference,
+  and three fragment schemas that nothing reads -- one of which documents a restriction that does not
+  exist
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-17
-source: >-
-  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M8. `model-fragment.schema.json` declares no
-  `concepts` property, yet a fragment carrying concepts composes fine (`FragmentBornConcept`
-  arrived; the only diagnostic was an unrelated presentation-label warning). Grepping all Java and
-  Python finds zero code references to `model-fragment.schema.json`,
-  `concept-fragment.schema.json`, or `pack-fragment.schema.json`.
+source: XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M8. `model-fragment.schema.json` declares
+  no `concepts` property, yet a fragment carrying concepts composes fine (`FragmentBornConcept` arrived;
+  the only diagnostic was an unrelated presentation-label warning). Grepping all Java and Python finds
+  zero code references to `model-fragment.schema.json`, `concept-fragment.schema.json`, or `pack-fragment.schema.json`.
 surface: dsl/pack-composition
 files:
-  - NPDevContract/schemas/authoring/model-fragment.schema.json
-  - NPDevCli/npdev_cli.py
-  - content/npdev-concepts-deep-dive.yml
-detail: |
-  Two deliverables.
+- NPDevContract/schemas/authoring/model-fragment.schema.json
+- NPDevCli/npdev_cli.py
+- content/npdev-concepts-deep-dive.yml
+detail: 'Two deliverables.
+
 
   (a) Name the difference. Measured capabilities:
 
+
   | | `packs[]` | `contexts[]` | `fragments[]` |
+
   |---|---|---|---|
+
   | Purpose | distributable Library | in-project Module | file split |
+
   | Namespaced | yes (`pack::X`, `as` alias) | yes (`context::X`) | no -- flat merge |
+
   | Versioned | semver + `npdev.lock` | no | no |
+
   | Remote | `git+https` / `oci` | no | no |
+
   | Boundary enforcement | `requires`/`provides` | `imports[]`, acyclic, compile error | none |
+
   | Physical DB isolation | no | `physicallyIsolate` | no |
 
+
   `contexts[]` IS the GeneXus-Module answer and already exists, with compile-enforced import
+
   boundaries -- the part that actually matters for internal organization. The gap is that nothing
+
   says so.
 
+
   (b) Fix or delete the three unread schemas. `model-fragment.schema.json` is actively wrong.
+
   Recommendation is to wire them up rather than delete: `resolve_split_model` already knows every
+
   fragment path it visited (`collect_sources`), and validating each against its schema is a small
-  change that turns a typo'd fragment key from a deep Java parser failure into a named error at the
+
+  change that turns a typo''d fragment key from a deep Java parser failure into a named error at the
+
   file that has it.
+
+  '
+closed: '2026-08-18'
+verification: UNIT_TESTED
+resolution: '(a) The three mechanisms are now named and contrasted, in
+
+  `content/npdev-concepts-deep-dive.yml` section 9 and in DOC-1''s feature guide: `packs[]` is
+
+  a distributable Library, `contexts[]` is the in-project Module and the one to reach for
+
+  when organising ONE project (its `imports[]` boundary is a compile error, not a
+
+  convention), `fragments[]` is a file split and not a boundary at all.
+
+
+  The "Coda" collision is resolved in favour of the code''s meaning: `coda.allowed` +
+
+  `CodaHook` is the author-code hook in the generated CRUD path, so a word that is
+
+  load-bearing in source is not also a nickname for `procedures[]` in prose. The nickname is
+
+  gone from the deep dive.
+
+
+  (b) The three fragment schemas are true, and the main one has a consumer.
+
+  `model-fragment.schema.json` declared 14 keys with `additionalProperties: false` and NOT
+
+  `concepts` -- as written it rejected the most ordinary fragment there is, while the composer
+
+  merged one without complaint (proven both ways against HEAD: BEFORE rejects, AFTER accepts).
+
+  Its property list is now GENERATED from the composer''s own key set, because typing it is how
+
+  it went stale, and `resolve_split_model` validates every fragment file it visits. The other
+
+  two declared no properties at all -- a schema that accepts everything is worse than none,
+
+  because it still reads as a contract.
+
+  '
+guard:
+  kind: script
+  ref: scripts/docs/generate_group_e_docs.py (regenerates the deep dive; the ai-knowledge gate diffs it)
+    plus NPDevContract/schemas/model-fragment.schema.json read by NPDevCli/npdev_cli.py's _warn_on_fragment_schema_violations
+  asserts: the fragment schema declares every key the composer accepts (including `concepts`, which it
+    previously forbade) and is actually consulted when a fragment is composed
+  provenRed: true

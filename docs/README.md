@@ -50,6 +50,7 @@ One file per built-in feature.
 
 ## Understand it
 
+[NPDEV_FEATURE_GUIDE.md](NPDEV_FEATURE_GUIDE.md) ·
 [NPDEV_CONCEPTS_DEEP_DIVE.md](NPDEV_CONCEPTS_DEEP_DIVE.md) ·
 [NPDEV_USER_MANUAL.md](NPDEV_USER_MANUAL.md) ·
 [architecture/](architecture/) ·
