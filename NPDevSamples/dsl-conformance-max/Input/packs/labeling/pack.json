@@ -15,9 +15,88 @@
         "label": "Label"
       },
       "fields": [
-        { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "text", "type": "string", "required": true, "maxLength": 80, "ui": { "label": "Text" } },
-        { "name": "color", "type": "string", "required": false, "maxLength": 20, "ui": { "label": "Color" } }
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "required": true,
+          "maxLength": 80,
+          "ui": {
+            "label": "Text"
+          }
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "required": false,
+          "maxLength": 20,
+          "ui": {
+            "label": "Color"
+          }
+        }
+      ]
+    }
+  ],
+  "autoPanels": [
+    {
+      "name": "LabelAdmin",
+      "concept": "Label",
+      "route": "/labeling/labels",
+      "surfaces": [
+        "selection",
+        "detail"
+      ],
+      "selection": {
+        "columns": [
+          "text",
+          "color"
+        ],
+        "filters": [
+          "text"
+        ]
+      },
+      "detail": {
+        "fields": [
+          "text",
+          "color"
+        ]
+      },
+      "metadata": {
+        "purpose": "PACK-11 coverage: a pack-contributed autoPanel. Before PACK-11 the key was missing from BOTH ModelSourceResolver.MODEL_ARRAY_KEYS and pack.schema.json, so this declaration was refused outright."
+      }
+    }
+  ],
+  "guidePages": [
+    {
+      "name": "LabelingOverview",
+      "gadgets": [
+        {
+          "name": "labelCount",
+          "type": "kpi",
+          "title": "Labels",
+          "query": "LabelsByColor",
+          "y": "labelCount"
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "name": "LabelsByColor",
+      "concept": "Label",
+      "groupBy": [
+        "color"
+      ],
+      "aggregates": [
+        {
+          "name": "labelCount",
+          "fn": "count"
+        }
       ]
     }
   ]

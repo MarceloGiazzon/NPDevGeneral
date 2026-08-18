@@ -452,6 +452,42 @@ def resolve_member_reference(target: str | None, known_names, referrer: str | No
     return candidates[0] if len(candidates) == 1 else None
 
 
+def _warn_on_fragment_schema_violations(fragment_path: Path, fragment: dict) -> None:
+    """PACK-12: check one composed fragment against `model-fragment.schema.json`, reporting to
+    stderr rather than refusing.
+
+    A WARNING on purpose. The composer's own `unsupported model fragment key` check above already
+    refuses keys that genuinely cannot compose; this adds precision about the ones that can, and a
+    schema that was itself wrong until PACK-12 corrected it has not earned the right to fail
+    somebody's build. Silent on any environment where the validator is unavailable -- the split
+    resolver runs in the fast, Gradle-free path, and making it depend on a validator would trade a
+    real capability for a diagnostic.
+    """
+    try:
+        import jsonschema  # noqa: PLC0415 -- optional, and deliberately not a hard dependency
+    except ImportError:
+        return
+    schema_path = repo_root() / "NPDevContract" / "schemas" / "model-fragment.schema.json"
+    if not schema_path.is_file():
+        return
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        # Local `$ref`s into sibling schema files are not resolvable without a registry, and the
+        # composer has already checked the shape they describe. Checking the fragment's own KEYS is
+        # the part that has no other owner.
+        keys_only = {
+            "type": "object",
+            "additionalProperties": schema.get("additionalProperties", False),
+            "properties": {key: {} for key in schema.get("properties", {})},
+        }
+        jsonschema.validate(fragment, keys_only)
+    except jsonschema.ValidationError as violation:
+        print(f"npdev: warning: {fragment_path}: {violation.message}", file=sys.stderr)
+    except Exception:
+        # A broken schema file must not break composition -- it is a diagnostic, not a gate.
+        return
+
+
 def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
                        collect_uncomposed: list[str] | None = None) -> dict:
     """Compose a (possibly $ref-split) model into one dict.
@@ -570,6 +606,13 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
         unsupported = set(fragment.keys()) - FRAGMENT_KEYS
         if unsupported:
             fail(str(fragment_path), "unsupported model fragment key: " + sorted(unsupported)[0])
+        # PACK-12: `NPDevContract/schemas/model-fragment.schema.json` had NO consumer, and had
+        # drifted into declaring 14 keys with `additionalProperties: false` and no `concepts` -- so
+        # as written it rejected the most ordinary fragment there is, while this composer merged
+        # one without complaint. Correcting it without wiring it would leave exactly the condition
+        # that let it drift. `collect_sources` already knows every fragment file visited; this is
+        # the point at which one is in hand.
+        _warn_on_fragment_schema_violations(fragment_path, fragment)
         resolved_fragment: dict = {}
         for key in MODEL_ARRAY_KEYS:
             if key in fragment:

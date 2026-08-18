@@ -596,13 +596,13 @@ sections:
 
     ---
 - level: 2
-  title: 8. Procedure (coda) — server-side logic that isn't its own public endpoint
+  title: 8. Procedure — server-side logic that isn't its own public endpoint
   body: ""
 - level: 3
   title: What it is
   body: |2
 
-    A Procedure ("coda") is a small script of steps, like a Flow, but it is **not** automatically
+    A Procedure is a small script of steps, like a Flow, but it is **not** automatically
     exposed as `POST /api/flows/...`. Instead, it's meant to be called from a Panel action
     (`"binding": "procedure"`), or from another procedure. Reach for a procedure instead of a flow
     when the logic is a supporting operation for a screen — "read this list for the admin page",
@@ -686,7 +686,40 @@ sections:
 
     ---
 - level: 2
-  title: How the eight pieces fit together
+  title: 9. Pack, context, fragment — three ways to split a model, and which to reach for
+  body: |2
+
+    These three all take content out of one `model.json` and put it somewhere else, and until now
+    nothing said how they differ. They are not interchangeable:
+
+    | | `packs[]` | `contexts[]` | `fragments[]` |
+    |---|---|---|---|
+    | What it is | a distributable **Library** | an in-project **Module** | a file split |
+    | Namespaced | yes (`pack::X`, or an `as` alias) | yes (`context::X`) | no — flat merge |
+    | Versioned | semver + `npdev.lock` | no | no |
+    | Can live elsewhere | yes (`git+https`, `oci`) | no | no |
+    | Boundary enforcement | `requires` / `provides` | `imports[]`, acyclic, **compile error** | none |
+    | Physical DB isolation | no | `physicallyIsolate` | no |
+
+    **If you are organising ONE project, you want `contexts[]`.** It is the module mechanism, and
+    the reason is the `imports[]` column: a context may only reference another context it has
+    declared, the import graph must be acyclic, and a violation is a compile error rather than a
+    convention. That is what makes a boundary a boundary. `physicallyIsolate` additionally puts a
+    context's tables in their own physical database.
+
+    **If you are shipping something for OTHER projects to install, you want `packs[]`.** A pack is
+    versioned, resolvable from a remote coordinate, and declares what it `requires` and `provides`.
+
+    **`fragments[]` is not a boundary at all** — it is a file split. Its content merges flat into
+    the model with no namespace and no rules about who may reference what. Reach for it when one
+    `model.json` has simply become inconvenient to scroll, not when you want separation.
+
+    A pack or context contributes its members under a qualifier, and references *inside* the
+    contribution are rewritten to match: a pack-contributed panel naming `Label` gets
+    `labeling::Label`, because that is what the concept is called once composed.
+
+- level: 2
+  title: How the pieces fit together
   body: |2
 
     ```

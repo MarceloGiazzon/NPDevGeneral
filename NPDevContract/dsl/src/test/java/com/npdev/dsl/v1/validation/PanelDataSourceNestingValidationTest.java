@@ -13,6 +13,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PanelDataSourceNestingValidationTest {
 
+    /**
+     * REG-185 note: every case in this class declares {@code childField: "parentId"}, and {@code
+     * Child} had no such field until this fixture gained one. The declaration was legal-looking and
+     * pointed at nothing -- precisely the silence REG-185 removed. The fixture gains the FK it was
+     * always claiming to have, rather than the new check being relaxed to keep an under-specified
+     * fixture passing.
+     */
     private static ValidationResult validate(String panelDataSourcesJson) throws Exception {
         Path modelPath = Files.createTempFile("npdev-panel-nesting-", ".json");
         Files.writeString(modelPath, """
@@ -22,7 +29,8 @@ class PanelDataSourceNestingValidationTest {
                   "version": "1.0",
                   "concepts": [
                     { "name": "Parent", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
-                    { "name": "Child", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+                    { "name": "Child", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },
+                      { "name": "parentId", "type": "reference", "reference": { "target": "Parent", "via": "id" } } ] }
                   ],
                   "panels": [
                     {

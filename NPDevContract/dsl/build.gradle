@@ -379,5 +379,3 @@ subprojects {
         }
     }
 }
-
-tasks.register('printRuntimeClasspath') { doLast { println sourceSets.main.runtimeClasspath.asPath } }
