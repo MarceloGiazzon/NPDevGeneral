@@ -14,8 +14,8 @@
       "note": "dsl has no settings.gradle of its own; it is built as a subproject of the root, NPDevGenerator, or NPDevKernel multi-project builds, so its jacoco report lands under whichever rootProject.name built it last (layout.buildDirectory is redirected to the external Build root -- see each build.gradle's resolveNpdevBuildRoot)."
     },
     "NPDevGenerator/generator": {
-      "coveragePercent": 76.5928,
-      "measuredOn": "2026-08-15T13:59:17Z",
+      "coveragePercent": 76.6203,
+      "measuredOn": "2026-08-18T08:56:37Z",
       "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "**/gradle/npdev-generator/generator/reports/jacoco/test/jacocoTestReport.xml"
@@ -43,8 +43,8 @@
       "note": "Only produced when the assembled sample app is built with -PenableCoverage=true (run-runtimehost-gate.ps1 does this and copies the report to the stable path above before its own build-cache cleanup runs). JaCoCo does NOT ship inside generated FinalApps by default -- see NPDevRuntimeHost/build.gradle.template's own gating comment."
     },
     "NPDevCli": {
-      "coveragePercent": 34.2739,
-      "measuredOn": "2026-08-17T14:30:59Z",
+      "coveragePercent": 36.8756,
+      "measuredOn": "2026-08-18T09:03:10Z",
       "reportFormat": "coverage-py-json",
       "reportGlobs": [
         "scripts/reports/out/python-coverage/npdevcli-coverage.json"
