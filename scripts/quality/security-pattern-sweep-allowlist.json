@@ -2301,6 +2301,16 @@
       "rule": "unprovisioned-java-launch",
       "where": "scripts/proofs/run-reg152-secondlaunch-proof.ps1:103",
       "why": "Deliberate RED control, not an oversight: this is REG-152's own re-proof script, and this exact line launches the packaged jar with the OLD (pre-REG-152-fix) arguments on purpose -- no Ensure-NpdevApiKey call, NPDEV_AUTH_API_KEYS explicitly unset one line above (Remove-Item Env:NPDEV_AUTH_API_KEYS) -- to demonstrate the vulnerability class REG-152 closed before the same script runs the real, fixed Start-App.ps1 as the GREEN control a few lines later. Provisioning a key here would defeat the RED control's entire point. Triaged 2026-08-15, FOLLOWUP-PLAN.md Step 1.3 (the launcher-provisioning sweep rule this fingerprint is the first and, so far, only hit for)."
+    },
+    "e89b4894c585": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/xref/ReferenceIndex.java:911",
+      "why": "False positive on the literal string \"select.\", which is a JSON PATH SEGMENT, not SQL. XREF-1's ReferenceIndex builds an edge path naming the procedure step key a `$var.field` read came from, and a `select` step's entries are addressed as `steps[n].select.<key>` -- that path is what `npdev migrate rename --cascade` edits, so it has to spell the real model key. There is no database access anywhere in this class: it walks an in-memory ModelAst and emits a JSON report. Renaming the segment to dodge the pattern would make the emitted path wrong, which is why this is triaged rather than reworded. Triaged 2026-08-18, XREF-1."
+    },
+    "642b1d4893c3": {
+      "rule": "sql-string-building",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/xref/ReferenceIndex.java:911",
+      "why": "False positive on the literal string \"select.\", which is a JSON PATH SEGMENT, not SQL. XREF-1's ReferenceIndex builds an edge path naming the procedure step key a `$var.field` read came from, and a `select` step's entries are addressed as `steps[n].select.<key>` -- that path is what `npdev migrate rename --cascade` edits, so it has to spell the real model key. There is no database access anywhere in this class: it walks an in-memory ModelAst and emits a JSON report. Renaming the segment to dodge the pattern would make the emitted path wrong, which is why this is triaged rather than reworded. Triaged 2026-08-18, XREF-1."
     }
   }
 }
