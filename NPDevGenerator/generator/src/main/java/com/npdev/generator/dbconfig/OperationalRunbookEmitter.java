@@ -502,6 +502,28 @@ NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
         out.put("serverPort", serverPort);
         out.put("apiKey", apiKey);
         out.put("schemaFingerprint", plan.schemaFingerprint());
+        // MON-9: the DB posture travels with the plan, so the Monitor can say whether this app
+        // KEEPS its data. Measured 2026-08-17: `_ops/resolved-db-plan.json` is the single file
+        // `npdev_monitor.probe_app()` reads per app, and the schema-lifecycle posture was consumed
+        // only at generation time (SchemaRealizationEmitter writes it into the runtime manifest and
+        // application.properties) and never surfaced to an operator. That matters much more now
+        // that STOR-16's `Ephemeral` exists: an app that discards its data on every start must be
+        // visible at a glance, not discoverable by reading a manifest inside a jar.
+        //
+        // LinkedHashMap, never Map.of -- see this file's own note below on GATE-DET-1: a MapN's
+        // iteration order is randomized per JVM, and this file is hashed across two generator runs.
+        Map<String, Object> schemaLifecycle = new LinkedHashMap<>();
+        schemaLifecycle.put("strategy", plan.schemaLifecycle().strategy().externalName());
+        // A derived, plain-language field beside the raw one. The Monitor renders THIS, so the
+        // question "does this app keep my rows?" is answered by the plan rather than by each
+        // consumer re-deriving it from a strategy name and getting it subtly different.
+        schemaLifecycle.put("dataPolicy",
+                plan.schemaLifecycle().strategy() == SchemaLifecycleStrategy.EPHEMERAL
+                        ? "ephemeral" : "preserved");
+        schemaLifecycle.put("allowDestructiveRecreate", plan.schemaLifecycle().allowDestructiveRecreate());
+        schemaLifecycle.put("scope", plan.schemaLifecycle().scope());
+        schemaLifecycle.put("ownership", plan.schemaLifecycle().ownership().externalName());
+        out.put("schemaLifecycle", schemaLifecycle);
         // E15/P1: the engine's PROVISIONING facts travel with the plan, so the five _ops scripts can
         // branch on `profile.kind` instead of the engine's NAME. That is the whole parity move --
         // one `if ($plan.profile.kind -eq 'server')` covers Postgres, MySQL and SQL Server

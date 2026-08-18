@@ -329,6 +329,34 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             verifyExternallyManagedSchemaCompatible(dataSource, manifest);
             return;
         }
+        // STOR-16: the ephemeral posture, branched BEFORE any fingerprint read, diff computation,
+        // impact report, acknowledgment-token consult or PendingSchemaAcknowledgmentStore lookup.
+        //
+        // The ordering is the feature. `DropAndRecreateOnStructureChange` + allowDestructiveRecreate
+        // authorizes itemized column drops and type narrowings ONLY -- a concept drop, or any diff
+        // that cannot be executed item by item, still refuses and demands a token (X4.4 / C1). That
+        // is correct for a database whose contents matter and useless for a throwaway one, and no
+        // combination of the existing flags could express the difference. Placing the branch here
+        // means Ephemeral bypasses that machinery BY CONSTRUCTION rather than by each refusal site
+        // remembering to check a flag -- one of which would eventually not.
+        if (manifest.ephemeral()) {
+            DestructiveRecreationPass.executeEphemeralWipe(dataSource, manifest);
+            // Same follow-up the acknowledged path performs after a full wipe: without clearing the
+            // realization history, Flyway sees V1 as already applied and refuses to rebuild the
+            // tables that were just dropped, leaving the app running against nothing.
+            //
+            // ...but only IF there is a history to clear. An Ephemeral app wipes on every boot,
+            // including its first, where flyway_schema_history does not exist yet -- and
+            // clearSchemaRealizationHistory issues a DELETE against it unconditionally. That threw
+            // on a brand-new database, i.e. on the very first start of every ephemeral app, which
+            // is a spectacular way to ship a feature. Not fixed by loosening the shared method: its
+            // strictness is a real invariant on the acknowledged path, which by construction only
+            // runs when a stored fingerprint proves the app has booted before.
+            clearSchemaRealizationHistoryForEphemeral(dataSource);
+            flyway.migrate();
+            afterMigrate(dataSource, manifest);
+            return;
+        }
         // LNCH-1 hardening X4.3: make the deprecated posture visible on EVERY boot, not only on the
         // day it finally destroys something. Deliberately placed here rather than in beforeMigrate:
         // this method runs once per real boot, while beforeMigrate is driven directly by dozens of
@@ -1687,6 +1715,47 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return columns;
     }
 
+    /**
+     * STOR-16: clear Flyway's record of the schema-realization scripts so it re-applies them over
+     * the tables the ephemeral wipe just dropped -- tolerating the two states an ephemeral app
+     * legitimately reaches and the acknowledged path never does.
+     *
+     * <p>{@link #clearSchemaRealizationHistory} treats both as errors, correctly: it runs only
+     * after an ACKNOWLEDGED destruction, which by construction happens on an app that has booted
+     * before and whose realization scripts are on the classpath. Reaching it with no history table
+     * or no scripts would mean something is badly wrong. An ephemeral app wipes on EVERY boot,
+     * including the first, where neither exists yet -- both cases were found by the RuntimeHost
+     * gate throwing, one per boot state, not by reading the code.
+     *
+     * <p>Loosening the shared method to cover this would have traded a real invariant for a
+     * convenience, so this is a sibling rather than a flag.
+     */
+    private void clearSchemaRealizationHistoryForEphemeral(DataSource dataSource) {
+        List<String> scripts = schemaRealizationScriptNames();
+        if (scripts.isEmpty()) {
+            // Nothing to re-apply, so nothing to un-record. Not an error here.
+            return;
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            if (readActualColumns(connection.getMetaData(), "flyway_schema_history").isEmpty()) {
+                // Flyway has never run against this database -- an ephemeral app's first boot. It
+                // will create its history and apply everything from scratch a moment from now.
+                return;
+            }
+            for (String script : scripts) {
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "DELETE FROM flyway_schema_history WHERE script = ?"
+                )) {
+                    statement.setString(1, script);
+                    statement.executeUpdate();
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException(
+                    "Failed preparing schema realization reapply after ephemeral recreation", exception);
+        }
+    }
+
     private void clearSchemaRealizationHistory(DataSource dataSource) {
         List<String> scripts = schemaRealizationScriptNames();
         if (scripts.isEmpty()) {
@@ -2227,6 +2296,20 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     destructiveRecreateConfirmation, destructiveAcknowledgment, businessTableRequiredColumns,
                     businessTableColumnDefaultLiterals, businessTableExpressionDefaultColumns,
                     businessTableUniqueConstraints, planItemStableStrings, "NpdevManaged");
+        }
+
+        /**
+         * STOR-16: true when this app declares its data is discarded on every start.
+         *
+         * <p>Accepts the retired {@code RecreateOnAppStart} spelling too. A generator built after
+         * STOR-16 always writes {@code Ephemeral} -- {@code SchemaLifecycleStrategy.parse} maps the
+         * old name to the new enum and every emission goes through {@code externalName()} -- but a
+         * manifest baked by an OLDER generator is still on disk in already-assembled apps, and the
+         * runtime reads whatever string is there. Refusing to honour it would change those apps'
+         * behaviour on a rebuild-free restart.
+         */
+        boolean ephemeral() {
+            return "Ephemeral".equals(strategy) || "RecreateOnAppStart".equals(strategy);
         }
 
         boolean destructiveAllowed() {

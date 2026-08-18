@@ -249,10 +249,13 @@ public final class UserDatabaseDefinitionLoader {
 
     private static void validate(UserDatabaseDefinition definition) {
         DatabaseEngine engine = definition.engine();
-        if (definition.schemaLifecycle().strategy() == SchemaLifecycleStrategy.DROP_AND_RECREATE_ON_STRUCTURE_CHANGE
-                && !definition.schemaLifecycle().destructiveConfirmedFor(engine)) {
-            throw new IllegalArgumentException("Destructive schema recreation requires exact confirmation and NPDev-owned scope for " + engine.externalName());
-        }
+        // ORDER MATTERS, and this block moved above the strategy-confirmation checks with
+        // STOR-16: an ExternallyManaged app must hear about OWNERSHIP. Told first that it
+        // needs a destructive confirmation, an author would add the very token this posture
+        // forbids, and only then be refused for the real reason. (The misordering predates
+        // Ephemeral -- DropAndRecreateOnStructureChange + ExternallyManaged hit it too -- it
+        // was simply never reachable by a test until Ephemeral made a second strategy
+        // require confirmation.)
         // REG-7.1: ExternallyManaged means NPDev issues NO schema DDL against this database -- a
         // recreate/destructive strategy (which exists only to issue DDL) is therefore nonsensical
         // and rejected at generation time rather than silently ignored at boot.
@@ -268,6 +271,24 @@ public final class UserDatabaseDefinitionLoader {
                         + "allowDestructiveRecreate=false (NPDev never issues DDL against a database it does "
                         + "not own).");
             }
+        }
+        if (definition.schemaLifecycle().strategy() == SchemaLifecycleStrategy.DROP_AND_RECREATE_ON_STRUCTURE_CHANGE
+                && !definition.schemaLifecycle().destructiveConfirmedFor(engine)) {
+            throw new IllegalArgumentException("Destructive schema recreation requires exact confirmation and NPDev-owned scope for " + engine.externalName());
+        }
+        // STOR-16: Ephemeral discards this app's data on EVERY start, so it is confirmed at
+        // generation time in the same way and for the same reason -- and its scope requirement is
+        // load-bearing rather than ceremonial: the wipe is scoped to manifest-declared NPDev-owned
+        // tables, and an app declaring a wider scope would be asking for something the runtime will
+        // not do.
+        if (definition.schemaLifecycle().strategy() == SchemaLifecycleStrategy.EPHEMERAL
+                && !definition.schemaLifecycle().ephemeralConfirmedFor(engine)) {
+            throw new IllegalArgumentException("schemaLifecycle.strategy=Ephemeral requires "
+                    + "allowDestructiveRecreate=true, destructiveRecreateConfirmation=\""
+                    + SchemaLifecyclePolicy.EPHEMERAL_CONFIRMATION + "\" and scope=\""
+                    + SchemaLifecyclePolicy.NPDEV_TABLE_SCOPE + "\" for " + engine.externalName()
+                    + " -- an app whose data is discarded on every start says so explicitly, and the "
+                    + "scope is what stops the wipe from reaching tables NPDev does not own.");
         }
         // STOR-14: an EMBEDDED engine has no server, so there is nothing for someone else to have
         // provisioned. Refused here -- at generation time, at the point of choice -- rather than

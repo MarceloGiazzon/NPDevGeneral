@@ -1037,6 +1037,48 @@ def _cascade_rename(model: dict, model_path: Path, concept_name: str,
         raise CliError("cannot cascade this rename safely -- nothing was written: " + refusal.reason)
 
 
+def run_migrate_db_lifecycle(args: argparse.Namespace) -> int:
+    """STOR-16: rewrite `schemaLifecycle.strategy: RecreateOnAppStart` to `Ephemeral`.
+
+    Ships in the same commit as the deprecation, per the standing convention that a breaking change
+    to the model DSL, generated code layout or internal APIs carries its `npdev migrate` codemod
+    rather than landing the break first and the codemod later.
+    """
+    from dsl_v2_migration import migrate_db_definition  # lazy, matching run_migrate_dsl2
+
+    targets: list[Path] = []
+    for entry in args.input:
+        path = Path(entry).expanduser()
+        if path.is_dir():
+            targets.extend(sorted(path.rglob("db.definition.json")))
+        elif path.exists():
+            targets.append(path)
+        else:
+            raise CliError(f"not found: {path}")
+    if not targets:
+        raise CliError("no db.definition.json found under: " + ", ".join(str(e) for e in args.input))
+
+    changed = 0
+    for target in targets:
+        doc = read_json(target)
+        result = migrate_db_definition(doc)
+        if not result.changed:
+            continue
+        changed += 1
+        verb = "CHANGED" if args.write else "WOULD CHANGE"
+        for change in result.changes:
+            print(f"  [{verb}] {target}: {change}")
+        for note in result.ambiguities:
+            print(f"  [NOTE]    {target}: {note}")
+        if args.write:
+            target.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+
+    print(f"{changed} of {len(targets)} definition(s) use the deprecated spelling.")
+    if changed and not args.write:
+        print("Dry run -- pass --write to apply.")
+    return 0
+
+
 def run_migrate_dsl2(args: argparse.Namespace) -> int:
     """2.A.3 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): rewrite flowStep.type spellings and field
     aliases to their DSL 2.0 canonical form, across one or more files/directories. Dry-run by
@@ -1243,7 +1285,9 @@ DEFAULT_DB_DEFINITION = {
         "createBusinessTables": True,
     },
     "schemaLifecycle": {
-        "strategy": "RecreateOnAppStart",
+        # STOR-16: was "RecreateOnAppStart", a name with no code path behind it. `Ephemeral` is the
+        # behaviour that name always claimed, and for InMemory the two are the same statement.
+        "strategy": "Ephemeral",
         "allowDestructiveRecreate": True,
         "destructiveRecreateConfirmation": "I_UNDERSTAND_INMEMORY_DATA_IS_EPHEMERAL",
         "scope": "NpdevOwnedLogicalStoresOnly",
@@ -6529,6 +6573,20 @@ def build_parser() -> argparse.ArgumentParser:
              "re-indexes the result before writing so a partial rewrite fails closed.",
     )
 
+    # STOR-16: the codemod the RecreateOnAppStart deprecation warning names.
+    migrate_db_lifecycle = migrate_sub.add_parser(
+        "db-lifecycle",
+        help="Rewrite the deprecated schemaLifecycle.strategy=RecreateOnAppStart to Ephemeral.",
+    )
+    migrate_db_lifecycle.add_argument(
+        "--input", required=True, nargs="+",
+        help="db.definition.json files, or directories to search recursively.",
+    )
+    migrate_db_lifecycle.add_argument(
+        "--write", action="store_true",
+        help="apply the edits; without this flag, reports what would change and exits",
+    )
+
     migrate_bc = migrate_sub.add_parser("bounded-contexts")
     migrate_bc.add_argument(
         "--input", required=True, nargs="+",
@@ -7141,6 +7199,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "migrate" and args.migrate_command == "legacy-model":
             migrate_legacy_model(args)
             return 0
+        if args.command == "migrate" and args.migrate_command == "db-lifecycle":
+            return run_migrate_db_lifecycle(args)
         if args.command == "migrate" and args.migrate_command == "rename":
             return run_migrate_rename(args)
         if args.command == "migrate" and args.migrate_command == "dsl-2":

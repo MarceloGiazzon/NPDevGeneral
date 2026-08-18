@@ -286,6 +286,67 @@ final class DestructiveRecreationPass {
      * blanket flag alone is refused before we get here. Callers may therefore rely on
      * {@code acknowledgmentToken} being non-null.
      */
+    /**
+     * STOR-16: the {@code Ephemeral} wipe. Drops every manifest-listed NPDev-owned table and lets
+     * Flyway rebuild them from the model.
+     *
+     * <p>A SEPARATE method from {@link #executeWholeSchemaWipe}, not a flag on it, and the
+     * difference is the point of the whole item. That method is the ACKNOWLEDGED path: it is
+     * reached only after a diff has been computed, classified and itemized, it writes a history row
+     * carrying the acknowledgment token that authorized it, and its own contract (LNCH-1 closeout
+     * C1) is that the token is never null. None of that applies here. An {@code Ephemeral} app has
+     * declared, at generation time and in writing, that its data does not survive a start -- so
+     * there is nothing to diff, nothing to itemize, and no token to demand. Bolting a
+     * "skip the token" flag onto the acknowledged path would have put the two policies one boolean
+     * apart, which is exactly the shape STOR-16 rejected when it chose a fourth strategy over a
+     * fifth boolean.
+     *
+     * <p>No pre-drop snapshot either: {@link SchemaDropSnapshotWriter} exists to preserve data
+     * someone might want back, and snapshotting on every boot of an app whose data is declared
+     * disposable would fill the disk with copies of exactly the thing being discarded.
+     *
+     * <p>Scoped to {@code manifest.businessTables() + manifest.internalTables()} -- the tables the
+     * GENERATOR declared this app owns. A table someone else created in the same schema is never in
+     * that list, so an app sharing a database cannot take its neighbour's tables with it. This is
+     * what {@code scope: NpdevOwnedTablesOnly} means, enforced by construction rather than by a
+     * string comparison.
+     */
+    static SchemaLifecycleExecutor.DestructiveRecreation executeEphemeralWipe(
+            DataSource dataSource,
+            SchemaLifecycleExecutor.SchemaManifest manifest
+    ) {
+        List<String> tables = new ArrayList<>();
+        tables.addAll(manifest.businessTables());
+        tables.addAll(manifest.internalTables());
+        Collections.reverse(tables);
+
+        List<String> dropped = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            for (String table : tables) {
+                if (table == null || table.isBlank()) {
+                    continue;
+                }
+                // CASCADE for the same reason executeWholeSchemaWipe uses it: the manifest lists
+                // tables in declaration order, which is not FK dependency order.
+                String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
+                try (PreparedStatement statement =
+                             connection.prepareStatement("DROP TABLE IF EXISTS " + safeTable + " CASCADE")) {
+                    statement.executeUpdate();
+                    dropped.add(SchemaLifecycleExecutor.safeIdentifier(table));
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed ephemeral schema recreation", exception);
+        }
+        // One unmissable line naming what was dropped. An app that silently empties its own database
+        // every start is the kind of behaviour an operator must be able to see in the boot log
+        // without knowing to look for it.
+        System.out.println("NPDev schema lifecycle: EPHEMERAL -- this app discards its data on every "
+                + "start (schemaLifecycle.strategy=Ephemeral). Dropped " + dropped.size()
+                + " NPDev-owned table(s) and recreated them from the model: " + dropped);
+        return new SchemaLifecycleExecutor.DestructiveRecreation(true, false, List.copyOf(dropped));
+    }
+
     static SchemaLifecycleExecutor.DestructiveRecreation executeWholeSchemaWipe(
             DataSource dataSource,
             SchemaLifecycleExecutor.SchemaManifest manifest,

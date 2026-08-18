@@ -62,7 +62,9 @@
       "required": ["strategy", "allowDestructiveRecreate", "destructiveRecreateConfirmation", "scope"],
       "properties": {
         "strategy": {
-          "enum": ["DropAndRecreateOnStructureChange", "RecreateOnAppStart", "KeepExistingIfCompatible"]
+          "enum": ["DropAndRecreateOnStructureChange", "Ephemeral", "KeepExistingIfCompatible",
+                     "RecreateOnAppStart"],
+          "description": "STOR-16. `Ephemeral` discards this app's data on every start: NPDev drops the tables the manifest declares it owns and recreates them from the model, with no diff, no impact report and no acknowledgment token. `RecreateOnAppStart` is the DEPRECATED spelling of it -- still accepted, warned about at generation time, and rewritten by `npdev migrate db-lifecycle`. It never had a code path of its own; despite the name it recreated nothing."
         },
         "allowDestructiveRecreate": { "type": "boolean" },
         "destructiveRecreateConfirmation": { "type": "string" },
@@ -83,6 +85,18 @@
               "allowDestructiveRecreate": { "const": true },
               "destructiveRecreateConfirmation": { "const": "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED" },
               "scope": { "const": "NpdevOwnedTablesOnly" }
+            }
+          }
+        },
+        {
+          "comment": "STOR-16. `Ephemeral` must be declared, not merely selected. The exact confirmation STRING and the scope are engine-dependent (a physical engine takes I_UNDERSTAND_ALL_DATA_IS_DELETED_ON_EVERY_START + NpdevOwnedTablesOnly; InMemory also accepts the pre-existing I_UNDERSTAND_INMEMORY_DATA_IS_EPHEMERAL + NpdevOwnedLogicalStoresOnly pair it already carries), and this schema cannot see the engine from inside schemaLifecycle -- so it pins the part that is unconditional and SchemaLifecyclePolicy.ephemeralConfirmedFor enforces the rest at generation time with an engine-specific message.",
+          "if": {
+            "properties": { "strategy": { "const": "Ephemeral" } },
+            "required": ["strategy"]
+          },
+          "then": {
+            "properties": {
+              "allowDestructiveRecreate": { "const": true }
             }
           }
         },
