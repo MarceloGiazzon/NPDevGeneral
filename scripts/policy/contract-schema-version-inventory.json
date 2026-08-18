@@ -56,6 +56,14 @@
         "$id": "https://npdev.local/contracts/compiled-model.schema.json",
         "title": "NPDev Compiled Model"
       }
+    },
+    {
+      "name": "model-xref-schema",
+      "path": "schemas\\ai\\model-xref.schema.json",
+      "expectedValues": {
+        "$id": "https://npdev.local/schema/ai/model-xref.schema.json",
+        "version": "1.0.0"
+      }
     }
   ],
   "aliasBehavior": {

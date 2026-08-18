@@ -389,3 +389,166 @@ def render_bonds_diagram_html(concepts: dict, bonds: list[dict], *, model_label:
 </body>
 </html>
 """
+
+# =================================================================================================
+# XREF-2: the usage view. Same page shell and theme tokens as the ER diagram above -- one visual
+# language for the two "show me the shape of this model" commands -- but a different graph: this
+# one answers "what would break if I changed this?", so the useful grouping is by the OBJECT doing
+# the referencing, with the exact structural path visible for each site (that path is what
+# `npdev migrate rename --cascade` edits, so a reader can check the tool's work).
+# =================================================================================================
+
+_RESOLUTION_CLASS = {
+    "RESOLVED": "ok",
+    "UNRESOLVED": "bad",
+    "UNDECIDABLE": "unknown",
+}
+
+_RESOLUTION_NOTE = {
+    "RESOLVED": "target exists",
+    "UNRESOLVED": "no such target -- this is an orphan",
+    "UNDECIDABLE": "could not be evaluated statically; not a defect claim either way",
+}
+
+
+def render_usage_diagram_html(edges: list, *, model_label: str, target: str) -> str:
+    """edges: the exact edge dicts `npdev inspect usage` selected (npdev-model-xref.v1 shape).
+
+    Returns a complete, self-contained HTML page. Written from the selection the command already
+    made rather than re-filtering here, for the same reason `render_bonds_diagram_html` renders
+    `inspect bonds`'s own structures: a second filter would eventually disagree with the JSON, and
+    then the picture and the data would be telling different stories.
+    """
+    by_owner: dict = {}
+    for edge in edges:
+        key = (edge.get("fromKind", ""), edge.get("fromName", ""))
+        by_owner.setdefault(key, []).append(edge)
+
+    counts = {"RESOLVED": 0, "UNRESOLVED": 0, "UNDECIDABLE": 0}
+    for edge in edges:
+        resolution = edge.get("resolution", "UNDECIDABLE")
+        counts[resolution] = counts.get(resolution, 0) + 1
+
+    groups = []
+    for (kind, name), owned in sorted(by_owner.items()):
+        rows = []
+        for edge in sorted(owned, key=lambda e: (e.get("path") or "")):
+            resolution = edge.get("resolution", "UNDECIDABLE")
+            rows.append(
+                '<tr class="{cls}">'
+                '<td class="site"><code>{site}</code></td>'
+                '<td class="path"><code>{path}</code></td>'
+                '<td class="target"><code>{to}</code><span class="kind">{tokind}</span></td>'
+                '<td class="res"><span class="pill {cls}" title="{note}">{res}</span></td>'
+                "</tr>".format(
+                    cls=_RESOLUTION_CLASS.get(resolution, "unknown"),
+                    site=_esc(str(edge.get("site", ""))),
+                    path=_esc(str(edge.get("path", ""))),
+                    to=_esc(str(edge.get("toName", ""))),
+                    tokind=_esc(str(edge.get("toKind", ""))),
+                    note=_esc(_RESOLUTION_NOTE.get(resolution, "")),
+                    res=_esc(resolution),
+                )
+            )
+        groups.append(
+            '<section class="owner">'
+            '<h2><span class="ownerkind">{kind}</span> {name}'
+            '<span class="count">{n} reference{s}</span></h2>'
+            '<table><thead><tr><th>site</th><th>path</th><th>target</th><th></th></tr></thead>'
+            "<tbody>{rows}</tbody></table></section>".format(
+                kind=_esc(kind or "?"), name=_esc(name or "(unnamed)"),
+                n=len(owned), s="" if len(owned) == 1 else "s", rows="".join(rows),
+            )
+        )
+
+    empty = (
+        '<p class="empty">Nothing references this. That is a real answer, not an error: it means '
+        "the object can be changed or removed without touching anything else in the model.</p>"
+    )
+
+    return f"""<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>{_esc(model_label)} — Usage of {_esc(target)}</title>
+<style>
+  :root {{
+    --bg: #f5f7f9; --surface: #ffffff; --surface-alt: #eef2f6; --border: #d9e0e7;
+    --text: #18232c; --text-muted: #576773; --accent: #163f86; --accent-soft: #e2ebf1;
+    --mono-bg: #eef2f6; --mono-border: #d3dce3;
+    --ok: #1f7a4d; --ok-soft: #e3f3ea; --bad: #a32020; --bad-soft: #fae5e5;
+    --unknown: #8a6d1f; --unknown-soft: #f7efd9;
+    --shadow: 0 1px 2px rgba(24,35,44,0.06), 0 8px 24px rgba(24,35,44,0.05);
+  }}
+  @media (prefers-color-scheme: dark) {{
+    :root:not([data-theme="light"]) {{
+      --bg: #10161b; --surface: #171f26; --surface-alt: #1c262e; --border: #2a3742;
+      --text: #e7edf2; --text-muted: #96a6b1; --accent: #7fb0cf; --accent-soft: #1c3140;
+      --mono-bg: #1b2530; --mono-border: #2c3945;
+      --ok: #6fcf97; --ok-soft: #16301f; --bad: #f08a8a; --bad-soft: #35191b;
+      --unknown: #e0c470; --unknown-soft: #322a14;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+    }}
+  }}
+  :root[data-theme="dark"] {{
+    --bg: #10161b; --surface: #171f26; --surface-alt: #1c262e; --border: #2a3742;
+    --text: #e7edf2; --text-muted: #96a6b1; --accent: #7fb0cf; --accent-soft: #1c3140;
+    --mono-bg: #1b2530; --mono-border: #2c3945;
+    --ok: #6fcf97; --ok-soft: #16301f; --bad: #f08a8a; --bad-soft: #35191b;
+    --unknown: #e0c470; --unknown-soft: #322a14;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+  }}
+  * {{ box-sizing: border-box; }}
+  body {{ margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, "Segoe UI", ui-sans-serif, system-ui, sans-serif; line-height: 1.5; }}
+  .page {{ max-width: 1100px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }}
+  .eyebrow {{ font-size: 0.72rem; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin: 0 0 0.5rem; }}
+  h1 {{ font-size: clamp(1.5rem, 3vw, 2rem); margin: 0 0 0.5rem; letter-spacing: -0.01em; text-wrap: balance; }}
+  .dek {{ color: var(--text-muted); max-width: 68ch; margin: 0 0 1rem; }}
+  .tally {{ display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 2rem; }}
+  .tally .pill {{ font-size: 0.8rem; }}
+  code {{ background: var(--mono-bg); border: 1px solid var(--mono-border); border-radius: 4px; padding: 0.08em 0.4em; font-size: 0.84em; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; word-break: break-all; }}
+  .owner {{ border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); margin-bottom: 1.1rem; overflow: hidden; }}
+  .owner h2 {{ display: flex; align-items: center; gap: 0.6rem; font-size: 0.98rem; margin: 0; padding: 0.7rem 1rem; background: var(--surface-alt); border-bottom: 1px solid var(--border); font-weight: 600; }}
+  .ownerkind {{ font-size: 0.68rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 0.15em 0.6em; font-weight: 700; }}
+  .count {{ margin-left: auto; font-size: 0.8rem; font-weight: 400; color: var(--text-muted); }}
+  .owner table {{ width: 100%; border-collapse: collapse; font-size: 0.86rem; }}
+  .owner th {{ text-align: left; font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); }}
+  .owner td {{ padding: 0.45rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }}
+  .owner tr:last-child td {{ border-bottom: none; }}
+  .kind {{ display: block; font-size: 0.7rem; color: var(--text-muted); margin-top: 0.15rem; }}
+  .pill {{ display: inline-block; border-radius: 999px; padding: 0.1em 0.6em; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; white-space: nowrap; }}
+  .pill.ok {{ color: var(--ok); background: var(--ok-soft); }}
+  .pill.bad {{ color: var(--bad); background: var(--bad-soft); }}
+  .pill.unknown {{ color: var(--unknown); background: var(--unknown-soft); }}
+  .empty {{ color: var(--text-muted); border: 1px dashed var(--border); border-radius: 12px; padding: 1.5rem; max-width: 68ch; }}
+  .table-wrap {{ overflow-x: auto; }}
+  footer {{ margin-top: 2.5rem; color: var(--text-muted); font-size: 0.82rem; max-width: 68ch; }}
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <p class="eyebrow">npdev inspect usage --diagram</p>
+    <h1>{_esc(model_label)} — usage of <code>{_esc(target)}</code></h1>
+    <p class="dek">Every place this model refers to that target, grouped by the object doing the
+      referring. The <code>path</code> column is the exact structural pointer
+      <code>npdev migrate rename --cascade</code> would edit.</p>
+    <div class="tally">
+      <span class="pill ok">{counts.get("RESOLVED", 0)} resolved</span>
+      <span class="pill bad">{counts.get("UNRESOLVED", 0)} unresolved</span>
+      <span class="pill unknown">{counts.get("UNDECIDABLE", 0)} undecidable</span>
+    </div>
+  </header>
+  {"".join(groups) if groups else empty}
+  <footer>
+    <strong>UNDECIDABLE</strong> is not a softer <strong>UNRESOLVED</strong>. It means the reference
+    could not be evaluated without running the app — an expression outside the interaction grammar,
+    a <code>$var.field</code> whose producing step declares no shape, an action input with no
+    declaration surface. It is reported rather than assumed clean, because a validator in which
+    “could not check” and “checked, fine” printed identically is exactly the defect this index was
+    built to remove.
+  </footer>
+</div>
+</body>
+</html>
+"""

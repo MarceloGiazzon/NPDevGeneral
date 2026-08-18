@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/ai/model-xref.schema.json",
+  "title": "NPDev model cross-reference index (npdev-model-xref.v1)",
+  "version": "1.0.0",
+  "description": "XREF-1. Every reference one model object makes to another, with an explicit three-state resolution. Produced by com.npdev.dsl.v1.xref.ReferenceIndexJson, which is the ONE writer: the generator emits it into each app as npdev/model-xref.json, and the :NPDevContract:dsl:modelXref Gradle task emits it for `npdev inspect usage`. Consumers: REG-185's ReferenceIntegrityValidation (errors on UNRESOLVED only), `npdev inspect usage` (XREF-2), and `npdev migrate rename --cascade` (XREF-3, which edits at each edge's `path`).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "model", "summary", "edges"],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-model-xref.v1"
+    },
+    "model": {
+      "type": "string",
+      "description": "How this document names the model it describes -- the model file path for a CLI run, the namespace for a generated app. Free text; nothing parses it."
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edges", "resolved", "unresolved", "undecidable"],
+      "description": "Counts, so a consumer can report 'nothing unresolved' without walking every edge. `edges` always equals resolved + unresolved + undecidable.",
+      "properties": {
+        "edges": { "type": "integer", "minimum": 0 },
+        "resolved": { "type": "integer", "minimum": 0 },
+        "unresolved": { "type": "integer", "minimum": 0 },
+        "undecidable": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Sorted by `path`, then `toKind`, then `toName`. The order is part of the contract, not an accident: this file is emitted into every generated app and hashed across two generator runs by scripts/hygiene/check-deterministic-generation.ps1.",
+      "items": { "$ref": "#/$defs/referenceEdge" }
+    }
+  },
+  "$defs": {
+    "referenceEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fromKind", "fromName", "site", "path", "toKind", "toName", "ownerConcept", "resolution"],
+      "properties": {
+        "fromKind": {
+          "type": "string",
+          "description": "Kind of the object making the reference.",
+          "examples": ["panel", "query", "procedure", "flow", "aggregate", "concept", "autoPanel", "selector", "guidePage", "document", "conversion"]
+        },
+        "fromName": {
+          "type": "string",
+          "description": "Qualified name of the referencing object, exactly as the composed model spells it -- a pack-contributed panel reads `labeling::LabelPanel`."
+        },
+        "site": {
+          "type": "string",
+          "description": "The stable, dotted reference-BEARING key, independent of which instance carries it. Lets a consumer reason about a CLASS of reference; REG-185 uses it to skip sites other validators already cover, so one mistake never produces two errors.",
+          "examples": ["panel.layout.fields", "panel.fieldBindings.field", "query.orderBy", "query.groupBy.join", "procedure.steps.varField"]
+        },
+        "path": {
+          "type": "string",
+          "description": "Structural pointer to this exact occurrence. XREF-3's --cascade edits AT this pointer rather than string-replacing across the file, which is the difference between a rename and a corruption.",
+          "examples": ["panels[WidgetOrderReviewPanel].fieldBindings[2].field", "queries[Recent].orderBy[0]"]
+        },
+        "toKind": {
+          "type": "string",
+          "description": "Kind of the target.",
+          "examples": ["field", "concept", "procedure", "flow", "query", "event", "capability", "generatedAction", "aggregate", "guidePage", "dataSource", "domainType", "invariant", "parameter", "expression"]
+        },
+        "toName": {
+          "type": "string",
+          "description": "For `field` targets, `Concept.field` (qualified concept included). For everything else the bare target name. For an UNDECIDABLE edge this is the RAW text that could not be evaluated, so a human can still read what was written."
+        },
+        "ownerConcept": {
+          "type": ["string", "null"],
+          "description": "The concept a `field` target belongs to; null for other kinds. Carried separately so a consumer never has to re-split `toName` on a dot -- concept names may contain `::` but never `.`. Explicitly null rather than absent, because an absent key and a null key read the same to a careless consumer and only one of them is a promise."
+        },
+        "resolution": {
+          "enum": ["RESOLVED", "UNRESOLVED", "UNDECIDABLE"],
+          "description": "RESOLVED: the target exists and `toName` names it. UNRESOLVED: well-formed reference, known target kind, no such target -- this is the orphan REG-185 errors on. UNDECIDABLE: could not be evaluated statically (an expression outside the interaction grammar, a `$var.field` whose producer declares no shape, an action input with no declaration surface). UNDECIDABLE is load-bearing and must never be rounded to either of the others: REG-185's origin was a validator in which 'we could not check this' and 'we checked and it was fine' printed identically."
+        }
+      }
+    }
+  }
+}

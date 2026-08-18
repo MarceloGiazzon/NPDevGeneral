@@ -111,6 +111,29 @@ tasks.register('validateModel', JavaExec) {
     args cliArgs
 }
 
+// XREF-2: emit the model-wide reference index (contract npdev-model-xref.v1) for one model.json.
+// Same JavaExec-wrapping-a-small-Main-class convention as validateModel above, and the same reason:
+// pack/context composition and `qualifierId::Name` qualification exist ONLY on the Java side, so
+// `npdev inspect usage` reads this task's report rather than re-walking the model in Python
+// (REG-108's "two walks of the same graph that drift" shape).
+// ignoreExitValue matches validateModel's: a model that cannot be parsed exits 2, and the caller
+// should see the message rather than a Gradle failure wrapping it.
+tasks.register('modelXref', JavaExec) {
+    group = 'verification'
+    description = 'Emit the model-wide reference index (npdev-model-xref.v1) for a model.json.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.ModelXrefMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('modelPath')) {
+        cliArgs << project.getProperty('modelPath')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
 // PK-3: npdev pack add|update|list|why -- same JavaExec-wrapping-a-small-Main-class convention as
 // validateModel above. add/update share one Main class (PackAddMain; PackUpdateMain is a 1-line
 // delegate) since they're the same operation under two names.
@@ -356,3 +379,5 @@ subprojects {
         }
     }
 }
+
+tasks.register('printRuntimeClasspath') { doLast { println sourceSets.main.runtimeClasspath.asPath } }

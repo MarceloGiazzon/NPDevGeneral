@@ -20,6 +20,7 @@ import com.npdev.generator.emitters.RuntimeAuthPropertiesEmitter;
 import com.npdev.generator.emitters.RuntimeLogPropertiesEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
 import com.npdev.generator.emitters.TrustedSourceEmitter;
+import com.npdev.generator.emitters.XrefEmitter;
 import com.npdev.generator.dbconfig.ConversionHookEmitter;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.SchemaRealizationEmitter;
@@ -199,6 +200,11 @@ public final class GeneratorFacade {
 
         // Stage 3: emit deterministic plugin requirement asset derived from the model source.
         new PluginRequirementAssetEmitter(writer).emit(resolvedModelSource, modelSourcePath);
+
+        // XREF-1: the model-wide reference index, npdev/model-xref.json. Emitted from the same
+        // model source the two emitters above read, so an app carries the answer to "what
+        // references this field?" without a rebuild.
+        new XrefEmitter(writer).emit(resolvedModelSource, modelSourcePath);
 
         // Auth: when the model personalizes auth.mode, emit the runtime auth properties that drive it.
         ResolvedSetting<String> authMode = settingResolver.resolve(NpdevSettings.AUTH_MODE, SettingTarget.app());

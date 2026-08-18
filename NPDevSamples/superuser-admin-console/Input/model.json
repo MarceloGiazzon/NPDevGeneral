@@ -213,7 +213,7 @@
       "dataSources": [
         { "name": "projects", "concept": "Project" }
       ],
-      "layout": { "type": "table", "fields": ["projects"] },
+      "layout": { "type": "table", "fields": ["name", "status", "ownerEmail"] },
       "actions": [
         {
           "name": "recount", "label": "Recount Projects", "binding": "procedure", "procedure": "CountProjects",

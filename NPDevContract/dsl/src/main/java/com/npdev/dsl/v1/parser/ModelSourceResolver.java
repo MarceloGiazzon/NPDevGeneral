@@ -806,7 +806,18 @@ public final class ModelSourceResolver {
 
     /** PK-1 (PACK-ROADMAP.md): generalizes {@link #packConceptRewriteMap} to any of the 18
      *  {@link #MODEL_ARRAY_KEYS} kinds -- a local (bare) member name declared under {@code kind} in
-     *  this pack/context contribution, mapped to its qualified {@code qualifierId::name} form. */
+     *  this pack/context contribution, mapped to its qualified {@code qualifierId::name} form.
+     *
+     *  <p>npdev-qualifier-rule -- twin-pair token, see scripts/quality/twin-pair-registry.json.
+     *  THIS is the authoritative copy of the qualification rule: a context qualifies by the name
+     *  its {@code contexts[]} entry declares, a pack by its {@code as} alias when the import gives
+     *  one and by the pack file's own {@code pack} id otherwise. REG-186 (2026-08-17) added a
+     *  second, deliberately narrow copy in {@code NPDevCli/npdev_cli.py}, so that the build-free
+     *  introspection commands ({@code inspect app}/{@code inspect bonds}/
+     *  {@code validate model --structural-only}) can see pack- and context-contributed members
+     *  without a Gradle run. Two walks of the same graph is REG-108's exact shape, so the two are
+     *  pinned: drop this token from either file and check-twin-pair-consistency.py fails the
+     *  ai-knowledge gate. */
     private static Map<String, String> memberRewriteMap(String qualifierId, ObjectNode sourceNode, String kind) {
         Map<String, String> out = new LinkedHashMap<>();
         JsonNode membersNode = sourceNode.get(kind);

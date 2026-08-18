@@ -1,0 +1,39 @@
+id: PACK-11
+title: >-
+  A pack cannot declare `aggregates`/`autoPanels`/`documents`/`selectors`, and `guidePages` is
+  half-wired -- the composer would merge it but `pack.schema.json` refuses the file
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-17
+source: >-
+  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M7, machine-diffing the three key lists.
+  Proven with a live RED: adding `guidePages` to `packs/labeling/pack.json` gives
+  `status: failed, errors: 1 - $: property 'guidePages' is not defined in the schema and the schema
+  does not allow additional properties`.
+surface: dsl/pack-composition
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ModelSourceResolver.java
+  - NPDevContract/schemas/pack.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/pack.schema.json
+detail: |
+  Machine-diffed:
+
+      array keys MISSING from Java MODEL_ARRAY_KEYS : aggregates, autoPanels, documents, selectors
+      array keys MISSING from pack.schema.json      : aggregates, autoPanels, documents, selectors, guidePages
+
+  `guidePages` is the asymmetry -- `ModelSourceResolver.java:62` would merge it, but the schema's
+  `additionalProperties: false` rejects the file before the composer runs. The other four are
+  missing from both, which is REG-108's X0 shape: relaxing the schema alone would make the file
+  accepted and the content vanish SILENTLY.
+
+  Per CLAUDE.md's four-place rule each of the 5 keys needs all four places, so the order is load
+  bearing: composer support (place 1) lands before or with the schema relaxation (place 2). Place 3
+  (`ModelResolver.resolve()` pass-through) and place 4 (the canonical writer/reader round-trip) are
+  believed already present for these keys and must be CONFIRMED, not assumed.
+  `NPDevCli/npdev_cli.py`'s third `MODEL_ARRAY_KEYS` copy already has all 5 -- confirmed.
+
+  Both `pack.schema.json` copies are covered by `check-schema-mirror-consistency.py`
+  (`PACK_SCHEMA_PATHS`, line 68) with no excused keys, so they must be edited together or the
+  ai-knowledge gate fails. The existing `pack-composition-four-place` twin-pair rule is extended to
+  cover the 5 new keys rather than a new rule being added.

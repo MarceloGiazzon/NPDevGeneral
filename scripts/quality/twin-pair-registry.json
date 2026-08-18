@@ -348,6 +348,20 @@
         "NPDevKernel/kernel/src/main/java/com/npdev/kernel/capabilities/CapabilityExecutionPolicy.java",
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledCapabilityExecutionPolicy.java"
       ]
+    },
+    {
+      "id": "pack-context-qualification-two-language",
+      "citedBy": "REG-186",
+      "description": "The pack/context member-qualification rule (a context qualifies by its declared `contexts[]` name; a pack by its `as` alias if the import declares one, else by the pack file's own `pack` id; members merge as `qualifier::name`) now exists in TWO languages. Java's ModelSourceResolver is authoritative -- the generator only ever reads the Java-resolved model. REG-186 added a narrow Python copy so the build-free introspection commands can see pack/context members without a Gradle run. Both carry the `npdev-qualifier-rule` token; dropping it from either is the REG-108 'two walks of the same graph that drift' shape and fails this gate.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev-qualifier-rule"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+        "NPDevCli/npdev_cli.py"
+      ]
     }
   ]
 }

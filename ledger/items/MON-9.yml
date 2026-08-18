@@ -1,0 +1,35 @@
+id: MON-9
+title: >-
+  `_ops/resolved-db-plan.json` omits `schemaLifecycle`, so the Monitor cannot show whether an app
+  preserves or discards its data
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-17
+source: >-
+  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M6. Three real `resolved-db-plan.json` files
+  were dumped; the full key set carries `appId ... schemaFingerprint, profile, dbeaver, smoke` and
+  no lifecycle information of any kind.
+surface: monitor/db-posture
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
+  - NPDevCli/npdev_monitor.py
+  - NPDevManager/ui/monitor.js
+  - NPDevManager/ui/monitor.css
+detail: |
+  `_ops/resolved-db-plan.json` is the single file `npdev_monitor.probe_app()` reads per app. The
+  schema-lifecycle posture is consumed at GENERATION time
+  (`SchemaRealizationEmitter.java:1556-1565` writes it into the runtime manifest and
+  `application.properties`) and never surfaced to the operator, so no Monitor card can say whether
+  the app in front of you keeps its rows.
+
+  This matters far more once STOR-16's `Ephemeral` exists and becomes the `npdev init` default: a
+  posture that silently discards data on every start must be visible at a glance, which is why MON-9
+  ships in the same release as STOR-16 rather than later.
+
+  Backward compatibility is part of the item, not an afterthought: apps generated before this have
+  no `schemaLifecycle` in their plan file, and `probe_app` must report `dataPolicy: "unknown"` with
+  the card saying "regenerate to see" -- never guessing `preserved`.
+
+  `OperationalRunbookEmitter` output is hashed by `check-deterministic-generation.ps1`, so the new
+  block uses `LinkedHashMap`, never `Map.of` (the file's own comment at line 512 explains why).

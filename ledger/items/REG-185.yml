@@ -1,0 +1,52 @@
+id: REG-185
+title: >-
+  Panel/query/procedure references to non-existent fields validate `passed`; `query.orderBy` reaches
+  SQL, so a ghost field is a guaranteed runtime failure the validator calls clean
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-17
+source: >-
+  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M1 (analysis session 2026-08-17, following the
+  PROMPTER_VALIDATE_APPLY_SESSION-2026-08-17 birthDay/birthDate incident). Ghost field names were
+  injected into NPDevSamples/dsl-conformance-max at six reference sites and `npdev validate model`
+  reported `status: passed, errors: 0, warnings: 0` for every one of them.
+surface: dsl/semantic-validation
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/SemanticValidator.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PanelValidation.java
+  - NPDevSamples/superuser-admin-console/Input/model.json
+detail: |
+  Measured detected-vs-undetected, injecting a name that exists nowhere in the model:
+
+  | Site | Result |
+  |---|---|
+  | concept invariant expression | ERROR |
+  | `patchConcept.set` keys | ERROR |
+  | `panelDataSource.addFormFields` | ERROR (`PanelValidation.java:684`) |
+  | `reference.displayField` | ERROR |
+  | flow step -> invariant name | ERROR |
+  | `panel.layout.fields[]` | silent |
+  | `panel.fieldBindings[].field` | silent |
+  | `panelAction.inputFields[]` | silent |
+  | `query.where` / `query.orderBy` | silent -> runtime SQL error |
+  | `visibleWhen` / `enabledWhen` / `readonlyWhen` | silent |
+  | procedure `$var.field` read side | silent |
+
+  `fieldBindings[].field` is validated nowhere at all: grepping every Java file finds only the AST
+  record, the canonical writer/reader, and the emitters. `query.orderBy` reaches generated SQL, so
+  a ghost entry there is not a cosmetic gap -- it is a guaranteed runtime failure that validation
+  reports as clean.
+
+  The corpus is already almost clean, which is why this can land as a hard ERROR rather than a
+  warning phase (M2): probing 48 `model.json` files across NPDevSamples + AppGen/apps found 4
+  candidate orphans, 3 of which are false positives of the naive probe (`query.orderBy` naming a
+  declared `aggregates[].name` alias, which is legal). Exactly one true orphan exists in the whole
+  corpus: `NPDevSamples/superuser-admin-console/Input/model.json`'s
+  `ProjectsOverviewPanel.layout.fields = ["projects"]`, where `projects` is the dataSource name and
+  not a field of `Project` (whose fields are id/name/status/ownerEmail/shipping). That shipped
+  sample renders a table column bound to nothing, invisible to every gate.
+
+  Depends on XREF-1: the checker consumes the reference index rather than re-walking the model, and
+  MUST resolve `query.aggregates[].name` / `groupBy[]` aliases before reporting, or it reproduces
+  M2's three false positives.

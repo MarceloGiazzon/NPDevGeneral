@@ -35,6 +35,7 @@ import npdev_monitor
 # `inspect bonds --diagram` renders the SAME bonds/concepts inspect_bonds() already computed as a
 # self-contained SVG/HTML page. Stdlib-only inside, same rule as the two imports above.
 import npdev_diagram
+import npdev_rename_cascade
 
 VERSION = "0.9.0"
 # REG-130: the three numbers a bug report could cite, none of them derived from the others.
@@ -369,17 +370,90 @@ MODEL_ARRAY_KEYS = {
 ROOT_SCALAR_KEYS = {
     "$schema", "schemaVersion", "dslVersion", "namespace", "model", "version",
     # Same drift fix as MODEL_ARRAY_KEYS above, for the object-shaped (not array-shaped) top-level
-    # keys. `packs` deliberately stays here rather than joining MODEL_ARRAY_KEYS: its entries are
-    # `{"$ref": ..., "as": "alias"}`, which `ref_value`'s strict `{"$ref"} `-only shape check would
-    # reject -- so it is accepted and passed through raw (no pack-concept composition attempted),
-    # not resolved as a fragment array. Composing pack-contributed concepts into `inspect bonds`'s
-    # output is a separate, larger feature, not implied by just accepting the key at all.
+    # keys. `packs` stays listed here so the REGISTRY of pack imports survives into the resolved
+    # model verbatim (model.schema.json's `packs` property expects exactly the raw
+    # `{"$ref", "as"}` entries) -- REG-186 added the separate composition of pack-CONTRIBUTED
+    # members into the model's own arrays below, which is a different thing from passing the
+    # declaration through.
     "packs", "provides", "externalAi", "settings",
 }
 FRAGMENT_KEYS = MODEL_ARRAY_KEYS | {"metadata", "fragments"}
 
+# REG-186: the two top-level arrays whose entries are a $ref PLUS identity keys, rather than the
+# bare `{"$ref": "..."}` this resolver's generic fragment composition uses everywhere else. Before
+# this table existed, `ref_value`'s exactly-one-key rule rejected every one of them, so any model
+# declaring `contexts[]` was unreadable by `inspect app`, `inspect bonds` AND
+# `validate model --structural-only` -- all three failed with the same bogus
+# `$ref object must be exactly { "$ref": "relative/path.json" }`.
+#
+# key -> the additional keys an entry of that array may legally carry alongside "$ref"
+REF_ENTRY_EXTRA_KEYS = {
+    "contexts": frozenset({"name", "physicallyIsolate"}),
+    "packs": frozenset({"as", "allowSideBySide"}),
+}
+# A `packs[]` entry is `$ref` (a local file, hermetic by design) OR `from` (PK-5's remote
+# coordinate: `oci://...` / `git+https://...`, resolved ONLY out of the local content-addressed
+# cache via npdev.lock at generate time). model.schema.json's `packRef` makes the two mutually
+# exclusive. Nothing build-free can expand a `from` pack, so its members are not composed and the
+# declaration is passed through untouched -- but that is a REPORTED limit, never a silent one:
+# `inspect app` says how many contributions it could not read.
+REMOTE_PACK_KEY = "from"
 
-def resolve_split_model(path: Path, collect_sources: set[Path] | None = None) -> dict:
+# npdev-qualifier-rule -- twin-pair token, see scripts/quality/twin-pair-registry.json.
+# ------------------------------------------------------------------------------------
+# REG-186: composing a pack/context contribution means rewriting each contributed member's bare
+# name to its `qualifierId::name` form, and the qualifier is chosen the same way on both sides:
+#   * a CONTEXT qualifies by the name declared in the model's own `contexts[]` entry;
+#   * a PACK qualifies by its `as` alias when the import declares one, otherwise by the `pack`
+#     identifier the pack file declares for itself.
+# That rule lives in Java in ModelSourceResolver (`memberRewriteMap` / `resolvePackQualifier`),
+# which is authoritative -- the generator only ever reads the Java-resolved model. This Python copy
+# exists ONLY so the build-free introspection commands can see pack/context members without a
+# Gradle run; it must never drift from the Java one, which is why both carry this token and
+# check-twin-pair-consistency.py fails the ai-knowledge gate if either drops it.
+QUALIFIER_SEPARATOR = "::"
+
+# Composed, not concatenated: these two keys name CONTRIBUTIONS whose members are merged into the
+# model's other arrays under a qualifier, so they must not go through the generic `resolve_array`
+# path (which would splice the referenced file's whole body in as if it were a context/pack entry
+# and lose the `name`/`as` that decides the qualifier).
+QUALIFIED_COMPOSITION_KEYS = ("packs", "contexts")
+
+
+def resolve_member_reference(target: str | None, known_names, referrer: str | None = None) -> str | None:
+    """npdev-qualifier-rule -- resolve a possibly-UNQUALIFIED member reference against the composed
+    model's (possibly qualified) member names, returning the real name or None.
+
+    Mirrors ModelSourceResolver.resolveUnqualifiedReferences, in the same order and with the same
+    refusals:
+      1. an exact match wins outright -- an already-qualified reference is never re-interpreted;
+      2. otherwise a bare reference made FROM inside a contribution resolves within that same
+         contribution first (`shipping::DeliveryAttempt` -> `Shipment` means
+         `shipping::Shipment`), which is the ordinary intra-context case and the one that made
+         REG-186's first composed `inspect bonds` run report a real bond as anchorless;
+      3. otherwise it resolves only if EXACTLY ONE contribution offers that bare name. Two or more
+         is an ambiguity, and this returns None rather than picking -- Java throws there, and a
+         silent pick is precisely the failure mode this whole plan exists to remove.
+    """
+    if not isinstance(target, str) or not target:
+        return None
+    names = set(known_names)
+    if target in names:
+        return target
+    if QUALIFIER_SEPARATOR in target:
+        return None
+    if referrer and QUALIFIER_SEPARATOR in referrer:
+        own = referrer.split(QUALIFIER_SEPARATOR, 1)[0] + QUALIFIER_SEPARATOR + target
+        if own in names:
+            return own
+    candidates = [n for n in names
+                  if QUALIFIER_SEPARATOR in n
+                  and n.split(QUALIFIER_SEPARATOR, 1)[1] == target]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
+                       collect_uncomposed: list[str] | None = None) -> dict:
     """Compose a (possibly $ref-split) model into one dict.
 
     `collect_sources`, when given, is populated with every file that contributed -- the root
@@ -387,11 +461,19 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None) ->
     a graph since bounded contexts (S3), so watching model.json alone misses fragment edits.
     Exposed as an out-parameter rather than a second traversal on purpose -- two walks of the
     same $ref graph would drift, which is REG-108's exact shape.
+
+    `collect_uncomposed` (REG-186), when given, is populated with the coordinate of every
+    contribution whose members this build-free resolver could NOT compose -- today exactly the
+    remote `packs[].from` coordinates, which only `npdev generate` can expand out of the
+    lockfile-backed cache. Same out-parameter reasoning; a caller that reports member counts
+    should say how many contributions it could not read, because "0 of them" and "we did not
+    look" print identically otherwise.
     """
     root_path = Path(path).expanduser().resolve(strict=True)
     root_dir = root_path.parent.resolve(strict=True)
     seen: set[Path] = set() if collect_sources is None else collect_sources
     seen.add(root_path)
+    uncomposed: list[str] = [] if collect_uncomposed is None else collect_uncomposed
 
     def fail(label: str, message: str) -> None:
         raise CliError(f"{label}: {message}")
@@ -417,10 +499,15 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None) ->
             fail(str(referencing), f"referenced model fragment is not a file: {ref}")
         return candidate
 
-    def ref_value(value: object, label: str) -> str | None:
+    def ref_value(value: object, label: str, extra_allowed: frozenset[str] = frozenset()) -> str | None:
         if isinstance(value, dict) and "$ref" in value:
-            if set(value.keys()) != {"$ref"}:
-                fail(label, '$ref object must be exactly { "$ref": "relative/path.json" }')
+            # REG-186: `extra_allowed` is the per-key shape table (REF_ENTRY_EXTRA_KEYS), not a
+            # blanket relaxation -- an unknown sibling key is still an error, and the error text is
+            # unchanged for the ordinary bare-`$ref` case so existing diagnostics still read the same.
+            if set(value.keys()) - ({"$ref"} | set(extra_allowed)):
+                allowed = ", ".join(f'"{k}"' for k in sorted(extra_allowed))
+                fail(label, '$ref object must be exactly { "$ref": "relative/path.json" }'
+                     + (f" (plus any of: {allowed})" if extra_allowed else ""))
             ref = value["$ref"]
             if not isinstance(ref, str) or not ref.strip():
                 fail(label, "$ref must be a non-blank string")
@@ -444,13 +531,15 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None) ->
         if isinstance(value, dict):
             ref_value(value, label)
             for child_key, child_value in value.items():
-                if child_key == "packs":
-                    # Pack references are `{"$ref": ..., "as": "alias"}` -- a deliberately
-                    # different, wider shape than this resolver's generic fragment-composition
-                    # `{"$ref"}`-only convention (ref_value's own strict check above), because a
-                    # pack import needs its local alias recorded alongside the path. Not part of
-                    # this resolver's fragment graph at all (see ROOT_SCALAR_KEYS's own note on
-                    # `packs`), so it must not be walked as if it were.
+                if child_key in REF_ENTRY_EXTRA_KEYS:
+                    # REG-186: `packs`/`contexts` entries are `{"$ref", "as"}` and
+                    # `{"name", "$ref", "physicallyIsolate"}` -- deliberately wider shapes than this
+                    # resolver's generic `{"$ref"}`-only fragment convention, because an import
+                    # needs its qualifier recorded alongside the path. Each is shape-checked against
+                    # its own REF_ENTRY_EXTRA_KEYS row by `compose_qualified` below, so walking them
+                    # here with the generic rule would reject them for having exactly the keys they
+                    # are required to have. (Only `packs` was skipped before; `contexts` was not,
+                    # which is the whole of REG-186's hard failure.)
                     continue
                 validate_refs(child_value, f"{label}/{child_key}")
         elif isinstance(value, list):
@@ -462,7 +551,7 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None) ->
             fail(str(source), f"{key} must be an array")
         out: list = []
         for index, item in enumerate(values):
-            ref = ref_value(item, f"{source}/{key}/{index}")
+            ref = ref_value(item, f"{source}/{key}/{index}", REF_ENTRY_EXTRA_KEYS.get(key, frozenset()))
             if ref is None:
                 out.append(item)
                 continue
@@ -510,6 +599,86 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None) ->
                     fail(str(root_path), f"duplicate fragment metadata key: {meta_key}")
                 metadata[meta_key] = meta_value
 
+    def compose_qualified(kind_key: str, entries: object, resolved: dict) -> list:
+        """REG-186: merge every member a `packs[]`/`contexts[]` entry contributes into the model's
+        own arrays, each member's bare `name` rewritten to `qualifier::name`, and return the
+        registry of declarations to keep under `kind_key` itself.
+
+        npdev-qualifier-rule -- mirrors ModelSourceResolver.memberRewriteMap / resolvePackQualifier;
+        see QUALIFIER_SEPARATOR's comment for why this second copy exists and what pins it.
+        """
+        if not isinstance(entries, list):
+            fail(str(root_path), f"{kind_key} must be an array")
+        extra_allowed = REF_ENTRY_EXTRA_KEYS[kind_key]
+        registry: list = []
+        seen_qualifiers: set[str] = set()
+        for index, entry in enumerate(entries):
+            label = f"{root_path}/{kind_key}/{index}"
+            if not isinstance(entry, dict):
+                fail(label, f"{kind_key} entry must be a JSON object carrying a $ref")
+            if kind_key == "packs" and REMOTE_PACK_KEY in entry and "$ref" not in entry:
+                # Remote coordinate -- not expandable without the lockfile-backed pack cache. Keep
+                # the declaration verbatim and record that its members were not composed.
+                registry.append(dict(entry))
+                uncomposed.append(str(entry.get(REMOTE_PACK_KEY)))
+                continue
+            ref = ref_value(entry, label, extra_allowed)
+            if ref is None:
+                fail(label, f"{kind_key} entry must declare a $ref")
+            child_path = include_path(ref, root_path)
+            content = read_fragment(child_path, 1, [root_path])
+            if not isinstance(content, dict):
+                fail(str(child_path), f"{kind_key} target must be an object")
+
+            if kind_key == "contexts":
+                qualifier = entry.get("name")
+                if not isinstance(qualifier, str) or not qualifier.strip():
+                    fail(label + "/name", "Context 'name' must be a non-blank string")
+                qualifier = qualifier.strip()
+            else:
+                # A pack import's `as` alias wins over the pack file's own `pack` identifier --
+                # that is the alias's entire purpose (side-by-side imports of the same pack).
+                alias = entry.get("as")
+                if alias is not None and (not isinstance(alias, str) or not alias.strip()):
+                    fail(label + "/as", "Pack alias 'as' must be a non-blank string")
+                declared = content.get("pack")
+                if alias is None and (not isinstance(declared, str) or not declared.strip()):
+                    fail(str(child_path) + "/pack",
+                         "Pack file must declare a non-blank string 'pack' identifier")
+                qualifier = (alias or declared).strip()
+            if qualifier in seen_qualifiers:
+                fail(label, f"duplicate {kind_key[:-1]} qualifier: {qualifier}")
+            seen_qualifiers.add(qualifier)
+
+            for member_key in MODEL_ARRAY_KEYS:
+                if member_key in QUALIFIED_COMPOSITION_KEYS or member_key not in content:
+                    continue
+                members = resolve_array(member_key, content[member_key], child_path, 1, [root_path])
+                qualified = []
+                for member in members:
+                    if isinstance(member, dict) and isinstance(member.get("name"), str):
+                        member = dict(member)
+                        member["name"] = qualifier + QUALIFIER_SEPARATOR + member["name"]
+                    qualified.append(member)
+                resolved.setdefault(member_key, []).extend(qualified)
+
+            # The registry entry keeps ONLY the declaration keys, never the composed body -- the
+            # members are already merged above, and model.schema.json's `context`/`packRef` defs are
+            # `additionalProperties: false`. `physicallyIsolate` is emitted only when true, matching
+            # ModelSourceResolver's own note that a model never declaring it must resolve unchanged.
+            keep = {"$ref": ref}
+            if kind_key == "contexts":
+                keep = {"name": qualifier, "$ref": ref}
+                if entry.get("physicallyIsolate") is True:
+                    keep["physicallyIsolate"] = True
+            else:
+                if entry.get("as") is not None:
+                    keep["as"] = entry["as"]
+                if entry.get("allowSideBySide") is not None:
+                    keep["allowSideBySide"] = entry["allowSideBySide"]
+            registry.append(keep)
+        return registry
+
     raw = read_json(root_path)
     if not isinstance(raw, dict):
         fail(str(root_path), "root model must be an object")
@@ -518,10 +687,16 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None) ->
         fail(str(root_path), "unsupported model top-level key: " + sorted(unsupported)[0])
     validate_refs(raw, str(root_path))
 
-    resolved = {key: raw[key] for key in ROOT_SCALAR_KEYS if key in raw}
+    resolved = {key: raw[key] for key in ROOT_SCALAR_KEYS if key in raw
+                and key not in QUALIFIED_COMPOSITION_KEYS}
     for key in MODEL_ARRAY_KEYS:
-        if key in raw:
+        if key in raw and key not in QUALIFIED_COMPOSITION_KEYS:
             resolved[key] = resolve_array(key, raw[key], root_path, 0, [root_path])
+    # REG-186: packs before contexts, matching ModelSourceResolver's own order -- a context is
+    # allowed to reference a pack-contributed member, so the pack members must already be present.
+    for key in QUALIFIED_COMPOSITION_KEYS:
+        if key in raw:
+            resolved[key] = compose_qualified(key, raw[key], resolved)
     root_metadata_keys = set((raw.get("metadata") or {}).keys()) if isinstance(raw.get("metadata"), dict) else set()
     if "metadata" in raw and not isinstance(raw["metadata"], dict):
         fail(str(root_path), "metadata must be an object")
@@ -632,6 +807,13 @@ def inspect_bonds(args: argparse.Namespace) -> None:
                 continue
             via = reference.get("via") or "id"
             on_delete = reference.get("onDelete") or "restrict"
+            # REG-186: once pack/context members are composed under a qualifier, a bare target name
+            # written inside a contribution no longer matches the composed concept map directly.
+            # Resolve it the way the Java resolver does rather than reporting a real bond as
+            # anchorless.
+            resolved_target = resolve_member_reference(target, concepts.keys(), concept_name)
+            if resolved_target is not None:
+                target = resolved_target
             target_concept = concepts.get(target)
             anchor = find_anchor(target_concept, via)
             multiple = bool(reference.get("multiple"))
@@ -781,15 +963,78 @@ def run_migrate_rename(args: argparse.Namespace) -> int:
     verb = "CHANGED" if args.write else "WOULD CHANGE"
     print(f"  [{verb}] {concept_name}.{summary}")
 
+    # XREF-3: without --cascade this is the historical behaviour, kept exactly -- stamp the rename
+    # and leave every panel/query/procedure pointing at the old name. That is now a WARNING rather
+    # than silence, because REG-185 turned those orphans into hard validation errors: an author who
+    # renames without cascading will find out at the next `validate model`, and would rather find
+    # out here.
+    if not args.cascade:
+        print("  NOTE: references to this field elsewhere in the model were NOT updated.")
+        print("        Run with --cascade to update them, or `npdev inspect usage --model "
+              f"{model_path} --of {concept_name}.{new_field}` to see what still needs changing.")
+    else:
+        edits = _cascade_rename(model, model_path, concept_name, old_field, new_field)
+        for edit in edits:
+            print(f"  [{verb}] {edit}")
+        if not edits:
+            print("  (nothing else in this model references that field)")
+
     if not args.write:
         print("Dry run -- pass --write to apply.")
         return 0
 
-    validate_json_schema(repo_root() / "NPDevContract" / "schemas" / "model.schema.json",
-                          write_temp_model(model, model_path))
+    candidate = write_temp_model(model, model_path)
+    validate_json_schema(repo_root() / "NPDevContract" / "schemas" / "model.schema.json", candidate)
+
+    if args.cascade:
+        # Fail closed. The rewrite above is re-checked against a freshly built index over the
+        # CANDIDATE file, not over the in-memory dict it produced, so a bug in the rewriting cannot
+        # produce a written model that silently still refers to the old name.
+        after = load_model_xref(candidate)
+        left = npdev_rename_cascade.remaining_references(
+            after.get("edges") or [], concept_name, old_field)
+        if left:
+            raise CliError(
+                "refusing to write: after the cascade, "
+                + str(len(left)) + " reference(s) still point at "
+                + f"{concept_name}.{old_field} -- "
+                + "; ".join(str(e.get("path")) for e in left[:5]))
+        introduced = [e for e in (after.get("edges") or []) if e.get("resolution") == "UNRESOLVED"]
+        if introduced:
+            raise CliError(
+                "refusing to write: the cascade would leave "
+                + str(len(introduced)) + " unresolved reference(s) -- "
+                + "; ".join(f"{e.get('path')} -> {e.get('toName')}" for e in introduced[:5]))
+
     model_path.write_text(json.dumps(model, indent=2) + "\n", encoding="utf-8")
     print(str(model_path))
     return 0
+
+
+def _cascade_rename(model: dict, model_path: Path, concept_name: str,
+                    old_field: str, new_field: str) -> list[str]:
+    """XREF-3: rewrite every reference to `concept_name.old_field`, or refuse and change nothing.
+
+    The index is built from the model ON DISK -- i.e. BEFORE the in-memory rename above -- which is
+    the whole point: it has to describe the world the references were written against. `model` is
+    then edited in memory and only written by the caller, after the post-check.
+    """
+    report = load_model_xref(model_path)
+    edges = report.get("edges") or []
+
+    rewritable, refusals = npdev_rename_cascade.plan_cascade(edges, concept_name, old_field)
+    refusals += npdev_rename_cascade.trusted_source_refusals(model, rewritable)
+    if refusals:
+        raise CliError(
+            "cannot cascade this rename safely -- nothing was changed:\n  - "
+            + "\n  - ".join(refusals)
+            + "\nFix the listed sites by hand and re-run. (A rename that rewrites what it can see "
+              "and leaves what it cannot is worse than one that refuses: it looks finished.)")
+
+    try:
+        return npdev_rename_cascade.apply_cascade(model, rewritable, old_field, new_field)
+    except npdev_rename_cascade.CascadeRefusal as refusal:
+        raise CliError("cannot cascade this rename safely -- nothing was written: " + refusal.reason)
 
 
 def run_migrate_dsl2(args: argparse.Namespace) -> int:
@@ -5287,7 +5532,8 @@ def inspect_app(args: argparse.Namespace) -> None:
     and `validate model --semantic` for correctness.
     """
     model_path = Path(args.model).expanduser().resolve()
-    model = resolve_split_model(model_path)
+    uncomposed: list[str] = []
+    model = resolve_split_model(model_path, collect_uncomposed=uncomposed)
 
     def names(key: str) -> list:
         return [item.get("name") for item in (model.get(key) or [])
@@ -5358,9 +5604,141 @@ def inspect_app(args: argparse.Namespace) -> None:
             "procedures": names("procedures"),
             "capabilities": names("capabilities"),
             "queries": names("queries"),
+            # REG-186: a build-free read cannot expand a remote `packs[].from` coordinate (only
+            # `npdev generate` can, out of the lockfile-backed cache), so every count above
+            # EXCLUDES whatever those packs contribute. Reported, never assumed away -- an empty
+            # list means "there were none", which is a different claim from "we did not look".
+            "uncomposedPacks": uncomposed,
         },
         args.output,
     )
+
+
+# -------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------
+# XREF-2: `npdev inspect usage` -- "who uses this field?", read from the Java-emitted index.
+# -------------------------------------------------------------------------------------------------
+
+# The kinds an `--of` argument may name explicitly, as `kind:Name`. A bare `--of` argument is
+# matched against every kind, which is what an author actually types.
+USAGE_TARGET_KINDS = (
+    "field", "concept", "query", "procedure", "flow", "event", "capability", "generatedAction",
+    "aggregate", "guidePage", "dataSource", "domainType", "invariant", "parameter",
+)
+
+
+def load_model_xref(model_path: Path) -> dict:
+    """Build the model-wide reference index by running the :NPDevContract:dsl:modelXref Gradle task.
+
+    Deliberately NOT a Python re-walk of the model. Pack/context composition, `qualifierId::Name`
+    qualification, `extends` field inheritance, the groupBy join grammar and the interaction
+    expression grammar all live on the Java side; a second implementation here is REG-108's exact
+    shape, and this index exists precisely because a reference that nothing checks is a reference
+    that silently breaks. Same plumbing as `run_validate_semantic`.
+    """
+    root = repo_root()
+    wrapper = gradle_wrapper(root)
+    if not wrapper.exists():
+        raise CliError(f"Gradle wrapper not found: {wrapper}")
+    model = Path(model_path).expanduser().resolve()
+    if not model.exists():
+        raise CliError(f"model not found: {model}")
+
+    with tempfile.TemporaryDirectory(prefix="npdev-xref-") as temp_dir:
+        report_target = Path(temp_dir) / "model-xref.json"
+        gradle_args = [
+            str(wrapper),
+            *gradle_project_cache_args("root"),
+            ":NPDevContract:dsl:modelXref",
+            f"-PmodelPath={model}",
+            f"-PreportOut={report_target}",
+            "-q",
+            "--console=plain",
+        ]
+        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+            gradle_args = ["cmd.exe", "/c"] + gradle_args
+        completed = subprocess.run(gradle_args, cwd=root, check=False, capture_output=True, text=True)
+        if not report_target.exists():
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise CliError(
+                "model-xref task did not produce a report"
+                + (f" (gradle exit {completed.returncode})" if completed.returncode else "")
+                + (f": {detail[-500:]}" if detail else "")
+            )
+        return read_json(report_target)
+
+
+def _usage_matches(edge: dict, target: str) -> bool:
+    """Does `edge` point at `target`?
+
+    `target` is either `kind:Name`, a `Concept.field`, or a bare name. A bare CONCEPT name also
+    matches edges pointing at that concept's FIELDS -- "who uses WidgetOrder?" that omitted every
+    panel column reading a WidgetOrder field would be a useless answer.
+    """
+    wanted = target.strip()
+    if ":" in wanted and not wanted.startswith("::"):
+        prefix, _, rest = wanted.partition(":")
+        if prefix in USAGE_TARGET_KINDS:
+            return edge.get("toKind") == prefix and edge.get("toName") == rest
+    if edge.get("toName") == wanted:
+        return True
+    if edge.get("toKind") == "field":
+        return edge.get("ownerConcept") == wanted or str(edge.get("toName", "")).startswith(wanted + ".")
+    return False
+
+
+def inspect_usage(args: argparse.Namespace) -> int:
+    model_path = Path(args.model).expanduser().resolve()
+    report = load_model_xref(model_path)
+    edges = report.get("edges") or []
+
+    if args.orphans:
+        selected = [e for e in edges if e.get("resolution") != "RESOLVED"]
+        mode = "orphans"
+    elif args.of:
+        selected = [e for e in edges if _usage_matches(e, args.of)]
+        mode = f"usagesOf:{args.of}"
+    else:
+        selected = edges
+        mode = "all"
+
+    unresolved = [e for e in selected if e.get("resolution") == "UNRESOLVED"]
+    undecidable = [e for e in selected if e.get("resolution") == "UNDECIDABLE"]
+
+    result = {
+        "model": str(model_path),
+        "mode": mode,
+        "of": args.of,
+        "counts": {
+            "matched": len(selected),
+            "resolved": len(selected) - len(unresolved) - len(undecidable),
+            "unresolved": len(unresolved),
+            "undecidable": len(undecidable),
+        },
+        # The whole-model totals stay visible even when `--of` narrowed the list: "3 usages" reads
+        # very differently next to "and 1 unresolved reference elsewhere in this model".
+        "modelTotals": report.get("summary"),
+        "edges": selected,
+    }
+
+    if args.diagram:
+        diagram_path = Path(args.diagram).expanduser()
+        diagram_path.parent.mkdir(parents=True, exist_ok=True)
+        diagram_path.write_text(
+            npdev_diagram.render_usage_diagram_html(
+                selected, model_label=model_path.stem, target=args.of or mode),
+            encoding="utf-8",
+        )
+        result["diagram"] = str(diagram_path)
+
+    write_or_print_json(result, args.output)
+
+    # Exit 2 only for a real orphan, and only in --orphans mode: `inspect usage --of X` must still
+    # answer on a model that happens to have an unresolved reference somewhere else entirely.
+    # (2, not 1, is this CLI's "ran fine and reported a real structured problem" code.)
+    if args.orphans and unresolved:
+        return 2
+    return 0
 
 
 # -------------------------------------------------------------------------------------------------
@@ -6141,6 +6519,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="apply the edit in place (and schema-validate); without this flag, reports what would "
              "change and exits",
     )
+    migrate_rename.add_argument(
+        "--cascade", action="store_true",
+        help="XREF-3: also rewrite every reference to the field -- panel columns and field "
+             "bindings, query orderBy/where, procedure steps, predicates -- at the exact "
+             "structural path the reference index reports, never by string replacement. Refuses "
+             "and changes nothing if any reference cannot be followed (an undecidable expression, "
+             "a hash-pinned trusted-source asset, a pack- or context-contributed member), and "
+             "re-indexes the result before writing so a partial rewrite fails closed.",
+    )
 
     migrate_bc = migrate_sub.add_parser("bounded-contexts")
     migrate_bc.add_argument(
@@ -6240,6 +6627,31 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_app_parser = inspect_sub.add_parser("app")
     inspect_app_parser.add_argument("--model", required=True)
     inspect_app_parser.add_argument("--output")
+
+    # XREF-2: the "what would I break?" surface. Reads the Java-emitted reference index
+    # (:NPDevContract:dsl:modelXref), never a second Python walk of the model.
+    inspect_usage_parser = inspect_sub.add_parser(
+        "usage",
+        help="Show every place a field/concept/procedure is referenced, or list unresolved references.",
+    )
+    inspect_usage_parser.add_argument("--model", required=True)
+    inspect_usage_parser.add_argument(
+        "--of",
+        help="What to look up: WidgetOrder.lineCount, WidgetOrder, or kind:Name "
+             "(procedure:EnrichRows, query:AllOrders, flow:PlaceOrder, ...).",
+    )
+    inspect_usage_parser.add_argument(
+        "--orphans",
+        action="store_true",
+        help="List only references that do not resolve. Exits 2 if any is UNRESOLVED, so this "
+             "works as a pre-commit hook on its own; UNDECIDABLE entries are listed but never "
+             "fail, because 'we could not check this' is not the same claim as 'this is wrong'.",
+    )
+    inspect_usage_parser.add_argument(
+        "--diagram",
+        help="Also render the selected usages as a self-contained HTML page at this path.",
+    )
+    inspect_usage_parser.add_argument("--output")
 
     generate = subparsers.add_parser(
         "generate", help="Generate a complete, runnable app (or a single screen) from a model."
@@ -6760,6 +7172,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "inspect" and args.inspect_command == "app":
             inspect_app(args)
             return 0
+        if args.command == "inspect" and args.inspect_command == "usage":
+            return inspect_usage(args)
         if args.command == "init":
             return run_init(args)
         if args.command == "setup":

@@ -1,0 +1,32 @@
+id: XREF-2
+title: No "show usage" surface -- an author cannot ask which panels/queries/procedures use a field
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-17
+source: >-
+  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md section 5 (W2 / XREF-2), motivated by measurements M1 and
+  M9 -- an author who wants to change a field has no way to see what would break.
+surface: cli/inspect
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/npdev_diagram.py
+detail: |
+  `npdev inspect bonds` shows concept-to-concept bonds and `npdev inspect app` shows a model
+  summary; neither answers "who uses `WidgetOrder.lineCount`?". Surface to add, reading XREF-1's
+  emitted index:
+
+      npdev inspect usage --model model.json --of WidgetOrder.lineCount
+      npdev inspect usage --model model.json --of WidgetOrder
+      npdev inspect usage --model model.json --of procedure:EnrichWidgetOrderRows
+      npdev inspect usage --model model.json --orphans
+      npdev inspect usage --model model.json --diagram usage.html
+
+  `--of` prints every referencing site with its structural `path`. `--orphans` prints `UNRESOLVED` +
+  `UNDECIDABLE` and exits 1 if any `UNRESOLVED`, so it works as a pre-commit hook independently of
+  the Gradle-backed validator. `--diagram` reuses the self-contained-HTML renderer built for
+  `inspect bonds --diagram`.
+
+  The CLI gets the index the same way `validate model --semantic` does: a Gradle task
+  (`:NPDevContract:dsl:modelXref -PmodelPath=<p> -PreportOut=<p>`) mirroring the existing
+  `validateModel`. Not a Python reimplementation (plan D1).
