@@ -66,6 +66,25 @@
     },
     {
       "level": 2,
+      "title": "4. Before you change a field: who uses it?",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": ""
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "# every place this field is referenced -- panels, queries, procedures, flows\n./npdev inspect usage --model <model.json> --of Patient.birthDate\n\n# the same question about a whole concept, or about a named object\n./npdev inspect usage --model <model.json> --of Patient\n./npdev inspect usage --model <model.json> --of procedure:EnrichRows\n\n# every reference that does NOT resolve; exits 2 if any is a real orphan\n./npdev inspect usage --model <model.json> --orphans\n\n# the same answer as a self-contained HTML page you can open or send to someone\n./npdev inspect usage --model <model.json> --of Patient.birthDate --diagram usage.html"
+        },
+        {
+          "type": "prose",
+          "text": "\nA field is referenced from more places than it looks: a panel's table columns and field bindings,\na query's `orderBy` and `where`, a procedure's steps, a visibility rule. Renaming or removing one\nwithout checking those is the most common way to break a model that still validates.\n\nEach result carries the exact structural `path` of the reference (for example\n`panels[PatientsPanel].fieldBindings[2].field`), which is what `npdev migrate rename --cascade`\nedits when it updates them for you.\n\nThree outcomes, and the third one matters:\n\n- **RESOLVED** -- the target exists.\n- **UNRESOLVED** -- nothing by that name exists. This is a real defect, and `npdev validate model`\n  now fails on it.\n- **UNDECIDABLE** -- the reference could not be worked out without running the app (an expression\n  outside the predicate grammar, a `$var.field` whose producing step declares no shape). It is\n  reported, never counted as clean, and never treated as a failure. \"We could not check this\" and\n  \"we checked it and it was fine\" are different answers, and a tool that prints them identically\n  is how a broken model comes to validate cleanly.\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
       "title": "Other useful commands",
       "blocks": [
         {

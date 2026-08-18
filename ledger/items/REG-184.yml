@@ -68,7 +68,9 @@ detail: |
   NPDevContract/dsl.
 guard:
   kind: script
-  ref: NPDevContract/dsl/gradle.properties (absence of org.gradle.projectcachedir) + scripts/runtimehost/sync-runtimehost-libs.ps1's --project-cache-dir pass-through
+  ref: >-
+    NPDevContract/dsl/gradle.properties (absence of org.gradle.projectcachedir) plus the
+    --project-cache-dir pass-through in scripts/runtimehost/sync-runtimehost-libs.ps1
   asserts: >-
     `NPDevContract/dsl/gradlew jar --project-cache-dir <portable-path>` succeeds on any OS, proven
     by reproducing the exact CI failure locally and confirming BUILD SUCCESSFUL once the conflicting

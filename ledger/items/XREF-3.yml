@@ -1,0 +1,34 @@
+id: XREF-3
+title: >-
+  Nothing cascades a declared rename to referencing objects -- `npdev migrate rename` stamps
+  `renamedFrom` and leaves every panel, query and procedure pointing at the old name
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-17
+source: >-
+  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M9. `run_migrate_rename`
+  (NPDevCli/npdev_cli.py:733-791) was read in full: it finds the concept, finds the field, stamps
+  `renamedFrom`, renames, schema-validates, writes. It never touches `panels`, `procedures`,
+  `queries`, `flows`, `aggregates`, or any expression string.
+surface: cli/migrate
+files:
+  - NPDevCli/npdev_cli.py
+detail: |
+  Renaming a field is the operation most likely to orphan references, and it is the one operation
+  the platform offers a tool for -- a tool that does exactly the half that does not break anything
+  and none of the half that does. Because REG-185 makes orphans silent, the result validates
+  `passed` and fails at runtime.
+
+  Precedent that this is a real production bug class: REG-117 (DONE) -- `workspace::Preference` was
+  renamed to `PropertyValue` and the panel referencing it silently vanished from the nav. One
+  instance fixed; the mechanism untouched.
+
+  Fix: `--cascade`, driven by XREF-1's `path` (a structural edit at a known JSON pointer, never a
+  blind string replace across the file). The refusals matter more than the rewrite:
+  any `UNDECIDABLE` edge naming the old field -> refuse and list them; trusted-source assets
+  (`metadata.trustedSourceEntrypoint`) are hash-pinned external files -> refuse and name the
+  manifest entry; pack-contributed members whose source file is outside the model root -> refuse.
+  Never rewrite a file while knowingly leaving a reference the tool could not see. Dry-run by
+  default as today; `--write` applies, schema-validates, then runs the REG-185 check and refuses to
+  write if it introduced a new orphan.

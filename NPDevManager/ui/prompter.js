@@ -121,8 +121,20 @@ function buildPrompterPrompt() {
     `app called "${appName}", followed by what I want changed.\n\n` +
     'Respond with ONLY the complete, updated model.json -- the entire file, valid and ready to ' +
     'save as-is, with the requested change already applied. Do not output a diff, a patch, an ' +
-    'explanation, or any text outside the JSON. Leave every concept, field and flow not mentioned ' +
-    'below byte-for-byte unchanged.\n' +
+    'explanation, or any text outside the JSON, except the one note described below. Leave every ' +
+    'concept, field and flow not mentioned below byte-for-byte unchanged.\n\n' +
+    // MON-10: the birthDay/birthDate incident. NPDev already knows how to carry a rename across a
+    // schema change -- `renamedFrom` is read by the schema-lifecycle diff, and the runtime's own
+    // refusal hint (ImpactReportText.appendPossibleRenames) prints the exact key as the fix. The
+    // model author was simply never told it exists, so an AI-authored rename arrived as a drop plus
+    // an unrelated add, which is either refused or silently loses the column's data. Validation
+    // cannot catch this: it checks "is this a valid model", never "is this what was asked for".
+    'If your change RENAMES an existing field or concept, you MUST declare it rather than deleting ' +
+    'the old name and adding a new one: put "renamedFrom": "<oldName>" on the renamed field object ' +
+    '(or on the concept object for a table rename). A rename that is not declared reads to NPDev ' +
+    'as an unrelated drop-plus-add and will either be refused or lose that column\'s data. If your ' +
+    'change REMOVES a field on purpose, say so in a plain-sentence "deliberateRemovals" note after ' +
+    'the JSON -- prose only, with no braces in it.\n' +
     contextBlock +
     `\n=== What I want ===\n${ask}\n`;
 
@@ -359,6 +371,32 @@ async function copyText(text, message) {
 
 const MODEL_APPLY_CONFIRMATION = "I_UNDERSTAND_THIS_OVERWRITES_MODEL_JSON";
 
+/// Scans forward from `start` (which must index a `{`) and returns the substring covering the
+/// first BALANCED object, or null if the braces never close. String literals and their escapes are
+/// tracked so a `}` inside a value -- a label, a description, an expression -- does not close the
+/// object early.
+function balancedObjectAt(text, start) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
 /// Mirrors the lenient extraction `npdev_cli.py`'s `_extract_json_object` already does
 /// server-side for AI routine answers: a provider that wraps its JSON in prose or a fenced code
 /// block is the common case, not the exception.
@@ -384,6 +422,20 @@ function extractCandidateModel(text) {
       return JSON.parse(trimmed.slice(start, end + 1));
     } catch (e) {
       // fall through
+    }
+  }
+  // MON-10: the outermost-brace span above assumes nothing brace-bearing follows the model. The
+  // prompt now asks for a "deliberateRemovals" note after the JSON, and a provider that writes that
+  // note with a brace in it would push `lastIndexOf("}")` past the model and lose an otherwise
+  // perfectly good answer. Fall back to the FIRST balanced object instead of the widest span.
+  if (start !== -1) {
+    const firstObject = balancedObjectAt(trimmed, start);
+    if (firstObject !== null) {
+      try {
+        return JSON.parse(firstObject);
+      } catch (e) {
+        // fall through
+      }
     }
   }
   return null;

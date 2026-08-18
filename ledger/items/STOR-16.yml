@@ -1,0 +1,51 @@
+id: STOR-16
+title: >-
+  No ephemeral-data posture; `RecreateOnAppStart` is an inert name that no code path reads, so a
+  throwaway dev app still hits the itemized-acknowledgment refusal on a structure change
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-17
+source: >-
+  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M5. `SchemaLifecycleExecutor` reads `strategy`
+  at exactly one line (2233): `return "DropAndRecreateOnStructureChange".equals(strategy);` --
+  `RecreateOnAppStart` has no code path at all.
+surface: runtimehost/schema-lifecycle
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaLifecycleStrategy.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaLifecyclePolicy.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - schemas/ai/user-db-definition.schema.json
+  - NPDevCli/dsl_v2_migration.py
+detail: |
+  `DropAndRecreateOnStructureChange` + `allowDestructiveRecreate: true` authorizes surgical column
+  drops and type narrowings ONLY -- dropping a concept, or any diff that cannot be itemized, still
+  refuses and demands a token (hardenings X4.4 / C1). So the `freshdb` posture does not mean "wipe
+  freely", and there is no posture that does. A developer iterating on a throwaway app gets the
+  production-grade refusal.
+
+  Corpus distribution over 42 `db.definition.json` files:
+
+  | strategy | count | engines |
+  |---|---|---|
+  | `KeepExistingIfCompatible` | 33 | 21 H2Local, 7 H2Server, 2 Postgres, 1 SqlServer, 1 MySQL, 1 InMemory |
+  | `RecreateOnAppStart` | 7 | InMemory only -- all 7 |
+  | `DropAndRecreateOnStructureChange` | 2 | Postgres, H2Local |
+
+  Every `RecreateOnAppStart` in the corpus is `InMemory`, where "drop and recreate on boot" and
+  "memory is empty on boot" are the same thing. That makes re-pointing the name safe by measurement,
+  not by assumption.
+
+  Fix (plan D4/D5): `Ephemeral` becomes a fourth `strategy` value rather than a new boolean --
+  `allowDestructiveRecreate` already exists and is proven insufficient, only a distinct strategy
+  value can bypass the itemized-token path BY CONSTRUCTION, and it is greppable in a way a fourth
+  boolean combination would not be. `RecreateOnAppStart` deprecates to an alias of `Ephemeral` with
+  a warning naming the new spelling, and `npdev migrate` gains a codemod shipped in the same commit
+  per the standing convention. `Ephemeral` must respect `scope: NpdevOwnedTablesOnly` -- an app
+  pointed at a shared database must not lose the neighbour's tables -- and
+  `ownership: ExternallyManaged` + `Ephemeral` is a hard refusal at generation time.
+
+  Stale-claim correction owed by this item:
+  `knowledge/cards/schema-evolution-declare-rename-and-acknowledge-drop.json` says "6 use the
+  recommended posture and 27 the blanket one" (dated 2026-07-21). The corpus has since inverted to
+  the 33/7/2 measured above.

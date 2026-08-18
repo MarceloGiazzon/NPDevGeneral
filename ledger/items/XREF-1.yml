@@ -1,0 +1,45 @@
+id: XREF-1
+title: >-
+  No model-wide reference index; the edges exist only inside panel provenance, for 1 of the 35
+  schema definitions that carry references
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-17
+source: >-
+  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurements M3 and M10. Machine-enumerated from
+  NPDevContract/schemas/model.schema.json: 35 definitions carrying references, 70 reference-bearing
+  keys.
+surface: dsl/reference-index
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/xref/ReferenceIndex.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/xref/ReferenceEdge.java
+  - schemas/ai/model-xref.schema.json
+detail: |
+  Nothing in the platform can answer "what references this field?". The reference surface is 70 keys
+  across 35 schema definitions -- `panelDataSource`{concept, query, procedure, onRowLoad,
+  parentDataSource, parentField, childField, addFormFields}; `panelAction`{concept, procedure, flow,
+  dataSource, inputFields}; `procedureStep`{concept, query, procedure, capability, event, target};
+  `referenceDefinition`{target, displayField, lookupFields, previewFields, searchFields};
+  `aggregateCollection`{concept, childField}; `guidePageGadget`{query, x, y, series} -- plus
+  free-text expression strings (`where`, `having`, `visibleWhen`, `enabledWhen`, `readonlyWhen`,
+  `condition`, `expr`, `$var.field`) and `layout.fields[]`.
+
+  Half the engine already exists: `CompiledMetadataCanonicalJson.toPanelProvenance()` (line 676)
+  computes `reads`/`writes`/`invokes` as qualified `Concept.field` edges, resolving
+  `fieldBindings[].source` against `dataSources[].concept`. It returns `null` unless
+  `metadata.generatedBy` is stamped (AutoPanel- or selector-expanded panels only) and covers panels
+  only. That walk is the working prototype and must be refactored to DELEGATE to the index rather
+  than duplicated.
+
+  Computed in Java, not Python (plan D1): pack/context composition and `qualifierId::Name`
+  qualification exist only in `ModelSourceResolver`/`JsonModelParser`, so a Python reimplementation
+  is REG-108's exact shape. Emitted as its own artifact `npdev/model-xref.json` beside
+  `compiled-model.json` (plan D2), because `compiled-metadata.json`'s `catalogs` has no contract
+  schema at all and an independent file is directly consumable by the CLI, the Monitor and the
+  Editor without a running app.
+
+  `Resolution.UNDECIDABLE` is load-bearing: an arbitrary `visibleWhen` predicate, or a `$var.field`
+  where `$var` came from a `capabilityCall`, cannot be resolved statically without an expression
+  evaluator. Classify those explicitly. REG-185 errors on `UNRESOLVED` only. Letting "we cannot be
+  sure" silently become "resolved" is exactly how REG-185's silence happened in the first place.

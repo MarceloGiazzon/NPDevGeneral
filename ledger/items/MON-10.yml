@@ -1,0 +1,61 @@
+id: MON-10
+title: >-
+  The Prompter prompt template never mentions `renamedFrom`, so an AI-authored rename reads to NPDev
+  as an unrelated drop-plus-add and orphans the column
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-17
+closed: 2026-08-17
+verification: UNIT_TESTED
+source: >-
+  PROMPTER_VALIDATE_APPLY_SESSION-2026-08-17.md's birthDay/birthDate incident, re-measured in
+  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md section 5 (W0). `buildPrompterPrompt()`
+  (NPDevManager/ui/prompter.js, lines 117-127) was read in full: nothing in the composed prompt
+  mentions `renamedFrom`, rename declaration, or deliberate removal.
+surface: manager/prompter
+files:
+  - NPDevManager/ui/prompter.js
+detail: |
+  Validation passed on the AI's `birthDay` because validation checks "is this a valid model", never
+  "does this match what was asked". The platform's own refusal hint already prints the fix
+  (`ImpactReportText.appendPossibleRenames`) -- the AI was simply never told the key exists.
+
+  One paragraph in the composed prompt, inserted between the "complete updated model.json"
+  instruction and the context block, telling the model to put `"renamedFrom": "<oldName>"` on a
+  renamed field or concept object and to declare deliberate removals explicitly. Cheapest real win
+  in the whole plan: it prevents the exact incident that started it.
+resolution: |
+  `buildPrompterPrompt()` now carries the rename paragraph between the "complete updated
+  model.json" instruction and the context block. Rendered headlessly with a stub DOM
+  (`__OutsideRepo/mon10-prompter-rename/render-prompt-harness.js`): RED was 0 occurrences of
+  `renamedFrom` in the whole file; GREEN prints the paragraph in the composed prompt.
+
+  Two deviations from the plan's literal wording, both because the paragraph as specified would
+  have broken the flow it was meant to protect:
+
+  1. The pre-existing sentence said "do not output ... any text outside the JSON" while the new
+     paragraph asks for a note AFTER the JSON. Shipping both is a self-contradictory prompt, so the
+     older sentence now carves out that one exception explicitly.
+  2. `extractCandidateModel` spanned `indexOf("{")` to `lastIndexOf("}")`, so a trailing note
+     containing a brace would push the end past the model and lose an otherwise valid answer -- a
+     regression this item's own prompt change would have introduced. The prompt now asks for the
+     note as brace-free prose AND the extractor gained a `balancedObjectAt` fallback that returns
+     the FIRST balanced object, string-literal aware so a `}` inside a value does not close early.
+     Proven over six cases (`__OutsideRepo/mon10-prompter-rename/extract-harness.js`), including
+     a reply whose trailing note carried braces, and a `}` inside a string value.
+
+  NOT verified live: the plan's second acceptance leg -- running the real Prompter send flow against
+  a provider and confirming the answer carries `renamedFrom` -- needs an operator-written provider
+  key in a generated app's `secrets/agent-proxy.env`, so it is left for the owner. What is proven
+  is that the instruction reaches the model and that the reply path survives the note it now invites.
+guard:
+  kind: manual
+  ref: >-
+    NPDevManager/ui/prompter.js (buildPrompterPrompt + balancedObjectAt) with the render/extract
+    harnesses captured at __OutsideRepo/mon10-prompter-rename/
+  asserts: >-
+    The composed Prompter prompt contains the `renamedFrom` declaration paragraph, and
+    `extractCandidateModel` still recovers the model from a reply carrying a brace-bearing
+    deliberate-removals note after the JSON
+  provenRed: true

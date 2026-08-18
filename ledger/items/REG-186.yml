@@ -1,0 +1,33 @@
+id: REG-186
+title: >-
+  `resolve_split_model` rejects any model using `contexts[]` with a bogus `$ref` shape error, and
+  silently drops pack-contributed members from `npdev inspect app`
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-17
+source: >-
+  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md measurement M4. `npdev inspect app --model
+  NPDevSamples/dsl-conformance-max/Input/model.json` fails outright with
+  `npdev: .../model.json/contexts/0: $ref object must be exactly { "$ref": "relative/path.json" }`.
+surface: cli/model-resolution
+files:
+  - NPDevCli/npdev_cli.py
+detail: |
+  `contexts` is in `NPDevCli/npdev_cli.py`'s `MODEL_ARRAY_KEYS` (line 367), so `resolve_array` calls
+  `ref_value` on each entry -- but `ref_value` (line 422) requires the object carry exactly one key,
+  while a context entry is `{"name", "$ref", "physicallyIsolate"}` and a pack entry is
+  `{"$ref", "as", "allowSideBySide"}`. Every model using bounded contexts is therefore unreadable by
+  the CLI's split-model resolver.
+
+  With `contexts` removed by hand the command runs but reports 11 concepts -- the `labeling` pack's
+  `Label` concept is absent, with no warning. `ROOT_SCALAR_KEYS`' own comment concedes this
+  ("Composing pack-contributed concepts into `inspect bonds`'s output is a separate, larger
+  feature").
+
+  Fix shape: replace the exactly-one-key rule with a per-key table of the additional keys an entry
+  of that array may legally carry alongside `$ref`. The composition half is deliberately NOT
+  reimplemented in Python (plan D1) -- pack/context qualification exists only in
+  `ModelSourceResolver`/`JsonModelParser`, and a second Python walk of the same graph is REG-108's
+  exact shape. `inspect app` / `inspect usage` read the Java-emitted `npdev/model-xref.json`
+  (XREF-1) instead.

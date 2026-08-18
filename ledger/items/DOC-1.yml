@@ -1,0 +1,37 @@
+id: DOC-1
+title: >-
+  No audience-appropriate feature guide -- a non-specialist cannot find out what NPDev can do, and
+  `docs/` root answers with programme history
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-17
+source: >-
+  XREF_EPHEMERAL_PACKS_PLAN-2026-08-17.md section 5 (W5). Follows the same session's finding that
+  the four screen-production paths, the three procedure-production paths, and the
+  module-vs-library distinction are each discoverable only by reading emitter source.
+surface: docs/product
+files:
+  - content/npdev-feature-guide.yml
+  - scripts/docs/generate_group_e_docs.py
+  - docs/NPDEV_FEATURE_GUIDE.md
+detail: |
+  A product doc, not a process doc (plan D6): source `content/npdev-feature-guide.yml` (tracked) ->
+  `docs/NPDEV_FEATURE_GUIDE.md` (tracked, generated) + an HTML rendering under the external Build
+  root (untracked, per the build-output policy). It joins `generate_group_e_docs.py`'s `TARGETS` so
+  the ai-knowledge gate regenerates it and `git diff --exit-code` catches staleness, exactly like
+  the existing four.
+
+  Each section answers four questions: what it is (non-specialist, one paragraph, no class names),
+  when to reach for it, copyable JSON, and the real app that uses it. Minimum viable table of
+  contents: concepts & fields; the four ways to get a screen; the three ways to get a procedure;
+  flows/events/orchestrations; bonds & references; module vs library vs fragment (PACK-12's table);
+  data lifecycle (`Ephemeral` vs `KeepExistingIfCompatible`, `renamedFrom`, the acknowledgment
+  path); show usage (XREF-2); custom capabilities; properties & scoped settings.
+
+  Two naming collisions get resolved here rather than perpetuated. "Coda" means two unrelated
+  things: a docs nickname for `procedures[]`, and `coda.allowed` + `CodaHook`, the author-code hook
+  in the generated CRUD path (`ServiceEmitter.java:187`). The code's own meaning wins and the
+  nickname is dropped.
+
+  Filed last on purpose: the data-lifecycle section cannot be written honestly until STOR-16 lands.
