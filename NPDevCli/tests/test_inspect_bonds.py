@@ -61,6 +61,22 @@ def _sample_model() -> dict:
     }
 
 
+def _write_sample_model(tmp_dir: Path) -> Path:
+    """Write the sample model AND the pack file it declares.
+
+    REG-186: `packs[]` used to be a raw pass-through, so a model naming a pack file that did not
+    exist resolved happily and the pack simply contributed nothing. Now the composer reads it, and a
+    missing pack file is a named error -- correct, and the same class of silence this plan removed
+    elsewhere. These fixtures declared the pack without writing it.
+    """
+    _write(tmp_dir / "packs" / "identity" / "pack.json", json.dumps({
+        "dslVersion": "1.0.0", "pack": "identity", "version": "1.0.0", "concepts": [],
+    }))
+    model_path = tmp_dir / "model.json"
+    _write(model_path, json.dumps(_sample_model()))
+    return model_path
+
+
 class InspectBondsWhitelistTest(unittest.TestCase):
     def test_every_real_top_level_key_is_accepted(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -79,8 +95,7 @@ class InspectBondsWhitelistTest(unittest.TestCase):
     def test_inspect_bonds_reports_the_one_real_reference(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
-            model_path = tmp_dir / "model.json"
-            _write(model_path, json.dumps(_sample_model()))
+            model_path = _write_sample_model(tmp_dir)
             output_path = tmp_dir / "bonds.json"
 
             args = argparse.Namespace(model=str(model_path), output=str(output_path), diagram=None)
@@ -96,8 +111,7 @@ class InspectBondsDiagramTest(unittest.TestCase):
     def test_diagram_flag_writes_a_self_contained_html_page(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
-            model_path = tmp_dir / "model.json"
-            _write(model_path, json.dumps(_sample_model()))
+            model_path = _write_sample_model(tmp_dir)
             diagram_path = tmp_dir / "diagram.html"
 
             args = argparse.Namespace(model=str(model_path), output=None, diagram=str(diagram_path))
