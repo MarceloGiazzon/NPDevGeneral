@@ -1,0 +1,73 @@
+id: MON-24
+title: >-
+  EngineDetection's tests fail whenever the OS temp directory sits under a tree containing a real
+  ScrapForAI checkout -- detect_engine walks five parents up from the workspace root it is handed
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-19
+source: >-
+  Found by the orchestrator after two EngineDetection tests went red with no code change. Diagnosed
+  to the orchestrator's OWN temp redirection, not to any product change -- recorded so the next
+  person does not repeat the same misattribution.
+surface: cli/monitor
+files:
+  - NPDevCli/npdev_monitor.py
+  - NPDevCli/tests/test_monitor_and_explore.py
+detail: |
+  `test_not_found_is_reported_not_guessed` and
+  `test_a_declared_root_must_still_pass_the_contents_check` both hand `detect_engine` a fresh
+  `TemporaryDirectory()` as `workspace_root`, a dead port, and no configured root, then assert
+  `found is False`.
+
+  `_derived_candidate_groups` (npdev_monitor.py:764) deliberately walks **five parent levels up**
+  from that workspace root, collecting every sibling directory as an engine candidate, and
+  `_engine_root_ok` accepts any directory holding `src/server.ts` plus `node_modules/.bin/tsx*`.
+  That walk is intentional -- it is how the Monitor finds an engine "derived from this machine's own
+  layout" rather than from a hardcoded path, which is the whole point of D9. The tests just do not
+  control it.
+
+  So the tests' verdict depends on WHERE THE OS TEMP DIRECTORY LIVES:
+    - temp under `C:\Users\<u>\AppData\Local\Temp` -> five levels up finds nothing -> GREEN.
+    - temp under `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\tmp` -> the walk reaches
+      `D:\WorkSpace`, whose sibling `D:\WorkSpace\ScrapForAILegacy` holds a REAL
+      `src/server.ts` -> `found: True` -> RED.
+
+  MEASURED, 2026-08-19: the suite ran 397/OK on default TEMP. The orchestrator then set
+  `TMPDIR=/d/WorkSpace/NPDev/NPDev_General__OutsideRepo/tmp` to work around a C: drive at 0 bytes
+  free, and the same two tests went red at 432 tests. Confirmed by calling `detect_engine` directly
+  with cwd under `NPDevCli` (returns `found: False`, `via: None`) versus under the suite's redirected
+  temp (returns found). `D:\WorkSpace\ScrapForAILegacy\src\server.ts` verified present.
+
+  **Two misattributions this produced, both worth remembering.** An agent reported the failures as
+  "2 pre-existing, unrelated EngineDetection failures ... confirmed via baseline run" -- they were
+  not pre-existing; the suite had been green minutes earlier. The orchestrator's own first
+  hypothesis was a leftover ScrapForAI engine process (two were indeed listening, on 3010 and 3015)
+  -- also wrong, since the probe step targets the dead port 59998 and never reaches those.
+  The actual cause was the temp path, which neither guess would have found.
+
+  SMALLEST FIX (not applied): pin the candidate walk during these two tests -- e.g. create the
+  temporary workspace under a directory with no engine-bearing ancestors, or give `detect_engine` an
+  explicit "do not derive" switch the tests set. Do NOT fix it by shortening the five-level walk;
+  that walk is load-bearing product behaviour, and the defect is the test's lack of isolation from
+  it.
+
+  Low severity because it never misleads a USER -- a machine with a real engine checkout genuinely
+  has one, and reporting it found is correct. It only makes the gated Python suite's verdict depend
+  on the runner's temp configuration, which is exactly the kind of red that gets waved through as
+  "pre-existing" the next time.
+guard:
+  kind: manual
+  ref: >-
+    Run `python -m unittest discover -s NPDevCli/tests -p "test_monitor_and_explore.py"` twice: once
+    with the default OS temp, once with TMPDIR set to a directory whose fifth-level ancestor contains
+    a ScrapForAI checkout (on this machine, anything under D:\WorkSpace\NPDev). The second run fails
+    the two EngineDetection assertions with no code change.
+  asserts: >-
+    EngineDetection's verdict depends only on the arguments the test passes, not on where the
+    runner's temp directory happens to sit
+  provenRed: false
+  provenRedNote: >-
+    Observed live (397/OK before the temp redirection, 2 failures after, same code) and traced to the
+    exact line, but not captured by a test written to force it -- a deliberate RED here would mean
+    parameterising the suite over temp locations.

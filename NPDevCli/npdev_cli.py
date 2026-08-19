@@ -6555,6 +6555,9 @@ def _run_pack_gradle_task(task: str, model_path: Path, extra_props: dict[str, st
 
 
 def run_pack_add(args: argparse.Namespace) -> int:
+    from_catalog = getattr(args, "from_catalog", None)
+    if from_catalog:
+        _add_pack_from_catalog(Path(args.model), from_catalog, args)
     return _run_pack_gradle_task("packAdd", Path(args.model))
 
 
@@ -6568,6 +6571,279 @@ def run_pack_list(args: argparse.Namespace) -> int:
 
 def run_pack_why(args: argparse.Namespace) -> int:
     return _run_pack_gradle_task("packWhy", Path(args.model), {"packId": args.pack_id})
+
+
+# ---------------------------------------------------------------------------------------------
+# R8.4: `npdev pack search` + the NPR catalog index.
+#
+# PREMISE CHECK (done before writing any of this): the fetch/cache/lock substrate this depends on
+# is real and already live -- PackDependencyGraphWalker.resolveRemotePackFile, RemotePackFetcher
+# and PackCache (PK-5) resolve a KNOWN `from` coordinate end to end, digest-verified, with
+# `npdev generate`/`validate` never touching the network at all (only `pack add`/`update` do,
+# gated by NetworkPolicy). What was actually missing is discovery: nothing let an author find a
+# coordinate by NAME. `PackDependencyGraphWalker.defaultPackFile` was confirmed to resolve a
+# TRANSITIVE dependency only as `<rootDir>/packs/<id>/pack.json` -- "still local files only, no
+# registry yet" -- which is why `_add_pack_from_catalog` below only ever writes a DIRECT `from`
+# entry into the app's own model; a transitive dependency published only in a pack's own `packs[]`
+# still needs a locally-vendored copy (or its own resolvable `from`) exactly as PACK-13 measured.
+#
+# NETWORK ACCESS AS A DESIGN DECISION (not an implementation detail, per this task's own brief):
+# `catalog-index.json` is fetched over plain read-only HTTPS (`urllib.request`, no credentials, no
+# write access to anything) and CACHED locally (`_pack_catalog_cache_path()`). A stale cache is
+# served with a loud, unmissable warning naming exactly why (`meta["fetchError"]`) -- never silent.
+# An empty `packs: []` result must always mean "the catalog is genuinely empty", never "the network
+# was unreachable and nobody said so" -- so `_load_pack_catalog` RAISES when there is neither a
+# fresh fetch nor a usable cache, rather than returning an empty list that would look identical to
+# a real empty catalog. This was verified against the REAL github.com/MarceloGiazzon/NPR repo while
+# building this feature: the repo and its one published pack (`packs/user/pack.json`, tagged
+# `v1.0.0` at the repo root) are real and fetchable, but no `catalog-index.json` exists there yet
+# (a live 404) -- `run_pack_build_catalog` below is the tool that produces one; publishing it to
+# NPR is left to the repo owner (or R8.5's future `pack publish --push`), not done by this command.
+# ---------------------------------------------------------------------------------------------
+
+PACK_CATALOG_SCHEMA_VERSION = "npdev-pack-catalog.v1"
+# The real NPR pack repo (github.com/MarceloGiazzon/NPR) -- confirmed live and reachable while this
+# was built (README.md + packs/user/pack.json fetched for real over HTTPS). It has no
+# catalog-index.json yet, so a fresh `pack search` against the default URL today reports a clean
+# 404-derived refusal (or a stale-cache warning on a second run) rather than a silent empty list --
+# exactly the "never fail open" contract this module documents above.
+DEFAULT_PACK_CATALOG_URL = "https://raw.githubusercontent.com/MarceloGiazzon/NPR/main/catalog-index.json"
+ENV_PACK_CATALOG_URL = "NPDEV_PACK_CATALOG_URL"
+ENV_PACK_CATALOG_CACHE = "NPDEV_PACK_CATALOG_CACHE"
+
+
+def _pack_catalog_cache_path() -> Path:
+    override = os.environ.get(ENV_PACK_CATALOG_CACHE)
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".npdev" / "catalog-cache.json"
+
+
+def _pack_catalog_url(explicit: str | None) -> str:
+    return explicit or os.environ.get(ENV_PACK_CATALOG_URL) or DEFAULT_PACK_CATALOG_URL
+
+
+def _fetch_pack_catalog_http(url: str, *, timeout: float = 10.0) -> tuple[dict | None, str | None]:
+    """One real HTTPS GET, no credentials, no retries beyond urllib's own. Returns
+    (parsed_catalog, None) on success or (None, human-readable reason) on any failure -- never
+    raises, so the caller can decide whether a failure means "fall back to cache" or "refuse"."""
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(url, headers={"User-Agent": "npdev-cli", "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        return None, f"HTTP {exc.code} from {url}"
+    except urllib.error.URLError as exc:
+        return None, f"could not reach {url}: {exc.reason}"
+    except (TimeoutError, OSError, ValueError) as exc:
+        return None, f"could not reach {url}: {exc}"
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return None, f"{url} did not return valid JSON: {exc}"
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("packs"), list):
+        return None, f"{url} is not a valid npdev pack catalog (expected an object with a 'packs' array)"
+    return parsed, None
+
+
+def _load_pack_catalog(url: str, *, refresh: bool) -> tuple[dict, dict]:
+    """Returns (catalog, meta). `meta` is `{"status": "fresh"|"stale", "source", "fetchedAt",
+    "fetchError", "cachePath"}` -- always present, always naming exactly what happened, so a
+    caller can print the same staleness warning `pack search` and `pack add --from-catalog` both
+    show. Raises CliError -- never returns an empty catalog -- when there is neither a fresh fetch
+    nor a usable cache: see this section's own module-level doc for why."""
+    cache_path = _pack_catalog_cache_path()
+    cached_catalog: dict | None = None
+    cached_source = None
+    cached_fetched_at = None
+    if cache_path.is_file():
+        try:
+            wrapper = json.loads(cache_path.read_text(encoding="utf-8"))
+            if isinstance(wrapper, dict) and isinstance(wrapper.get("catalog"), dict):
+                cached_catalog = wrapper["catalog"]
+                cached_source = wrapper.get("source")
+                cached_fetched_at = wrapper.get("fetchedAt")
+        except (OSError, json.JSONDecodeError):
+            cached_catalog = None  # a corrupt cache is treated as no cache, never a crash
+
+    fetch_error = "network not attempted (--offline)"
+    if refresh:
+        fetched, fetch_error = _fetch_pack_catalog_http(url)
+        if fetched is not None:
+            fetched_at = _utc_now()
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(
+                {"source": url, "fetchedAt": fetched_at, "catalog": fetched},
+                indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            return fetched, {"status": "fresh", "source": url, "fetchedAt": fetched_at,
+                              "fetchError": None, "cachePath": str(cache_path)}
+
+    if cached_catalog is not None:
+        return cached_catalog, {
+            "status": "stale", "source": cached_source or url, "fetchedAt": cached_fetched_at,
+            "fetchError": fetch_error, "cachePath": str(cache_path),
+        }
+
+    raise CliError(
+        f"no cached pack catalog, and could not fetch a fresh one from {url}: {fetch_error}. "
+        f"(The cache would live at {cache_path} after a successful fetch.) Refusing rather than "
+        f"reporting zero results, which would look like 'no packs match' instead of 'could not check'."
+    )
+
+
+def run_pack_search(args: argparse.Namespace) -> int:
+    """R8.4: the pack ecosystem's missing front door. Filters the cached/fetched catalog by a
+    case-insensitive substring against pack id/description/category -- no query lists everything.
+    """
+    url = _pack_catalog_url(args.catalog_url)
+    catalog, meta = _load_pack_catalog(url, refresh=not args.offline)
+    query = (args.query or "").strip().lower()
+    entries = [e for e in catalog.get("packs", []) if isinstance(e, dict)]
+    matches = [
+        e for e in entries
+        if not query
+        or query in str(e.get("pack", "")).lower()
+        or query in str(e.get("description", "")).lower()
+        or query in str(e.get("category", "")).lower()
+    ]
+    if meta["status"] == "stale":
+        # To stderr (not stdout) so --json's stdout stays one clean parseable document, but ALWAYS
+        # printed, never conditional on --json -- staleness must never be silent either way.
+        print(f"WARNING: serving a CACHED catalog (fetched {meta.get('fetchedAt') or 'unknown time'}, "
+              f"{meta.get('cachePath')}) -- could not reach {meta.get('source')}: {meta.get('fetchError')}",
+              file=sys.stderr)
+    result = {
+        "schemaVersion": "npdev-pack-search.v1",
+        "command": "pack search",
+        "ok": True,
+        "query": args.query or "",
+        "catalogSource": meta.get("source"),
+        "catalogStatus": meta["status"],
+        "catalogFetchedAt": meta.get("fetchedAt"),
+        "catalogStaleReason": meta.get("fetchError") if meta["status"] == "stale" else None,
+        "count": len(matches),
+        "results": matches,
+    }
+    _print_result(result, args)
+    return 0
+
+
+def run_pack_build_catalog(args: argparse.Namespace) -> int:
+    """R8.4 (shared index format with R8.5): scans a local checkout of an NPR-shaped pack repo
+    (`packs/<name>/pack.json` per pack -- the layout github.com/MarceloGiazzon/NPR already uses)
+    and writes `catalog-index.json`, the artifact `pack search` fetches. Writes a LOCAL FILE ONLY
+    -- publishing it (committing + pushing to the catalog repo) is a separate, manual step today,
+    or R8.5's future `pack publish --push`; this command never touches git or the network.
+
+    `--tag-template` exists because NPR's own convention today is a single repo-wide release tag
+    (`v1.0.0`), confirmed live -- there is exactly one published pack as of this writing, so a real
+    per-pack tagging scheme has never actually been exercised with two packs at different versions.
+    Stated plainly rather than invented: whoever publishes a second pack to NPR must decide that
+    scheme for real, and this template is the seam the decision plugs into.
+    """
+    repo_dir = Path(args.repo_dir).expanduser().resolve()
+    packs_dir = repo_dir / "packs"
+    if not packs_dir.is_dir():
+        raise CliError(f"no packs/ directory under {repo_dir} -- expected {packs_dir}")
+
+    repo_url = args.repository_url.rstrip("/")
+    if repo_url.endswith(".git"):
+        repo_url = repo_url[: -len(".git")]
+
+    entries = []
+    problems = []
+    for pack_json in sorted(packs_dir.glob("*/pack.json")):
+        try:
+            data = read_json(pack_json)
+        except CliError as exc:
+            problems.append(f"{pack_json}: {exc} -- skipped")
+            continue
+        pack_id = data.get("pack")
+        version = data.get("version")
+        if not pack_id or not version:
+            problems.append(f"{pack_json}: missing 'pack' or 'version' -- skipped")
+            continue
+        tag = args.tag_template.format(pack=pack_id, version=version)
+        subpath = pack_json.parent.relative_to(repo_dir).as_posix()
+        coordinate = f"git+{repo_url}.git//{subpath}@{tag}"
+        entries.append({
+            "pack": pack_id,
+            "version": version,
+            "description": data.get("description", ""),
+            "category": data.get("category", "other"),
+            "author": data.get("author", ""),
+            "path": subpath,
+            "from": coordinate,
+        })
+
+    catalog = {
+        "schemaVersion": PACK_CATALOG_SCHEMA_VERSION,
+        "repository": args.repository_url,
+        "generatedAt": _utc_now(),
+        "packs": entries,
+    }
+    out_path = Path(args.out).expanduser() if args.out else repo_dir / "catalog-index.json"
+    out_path.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    report = {
+        "schemaVersion": "npdev-pack-catalog-build.v1",
+        "command": "pack build-catalog",
+        "ok": not problems,
+        "repoDir": str(repo_dir),
+        "outPath": str(out_path),
+        "packCount": len(entries),
+        "problems": problems,
+    }
+    print(json.dumps(report, indent=2))
+    return 0 if not problems else 2
+
+
+def _add_pack_from_catalog(model_path: Path, pack_name: str, args: argparse.Namespace) -> None:
+    """R8.4: `npdev pack add --from-catalog <name>` -- resolve `name` against the catalog and
+    write its `from` coordinate into the model's OWN `packs[]`, exactly the shape an author would
+    hand-write from a coordinate they looked up themselves. Everything after this point (the
+    network fetch, the digest, npdev.lock) is the ALREADY-PROVEN PK-5 machinery
+    (PackDependencyGraphWalker/RemotePackFetcher/PackCache) invoked by the `packAdd` Gradle task
+    `run_pack_add` runs immediately after calling this -- this function only ever edits JSON, never
+    touches the network or the pack cache itself, so there remains exactly ONE resolver in this
+    codebase, not a second one built alongside it.
+    """
+    model_path = Path(model_path).expanduser().resolve()
+    if not model_path.is_file():
+        raise CliError(f"model not found: {model_path}")
+    url = _pack_catalog_url(getattr(args, "catalog_url", None))
+    catalog, meta = _load_pack_catalog(url, refresh=not getattr(args, "offline", False))
+    if meta["status"] == "stale":
+        print(f"WARNING: resolving '{pack_name}' from a CACHED catalog (fetched "
+              f"{meta.get('fetchedAt') or 'unknown time'}) -- could not reach {meta.get('source')}: "
+              f"{meta.get('fetchError')}", file=sys.stderr)
+
+    entries = [e for e in catalog.get("packs", []) if isinstance(e, dict)]
+    match = next((e for e in entries if e.get("pack") == pack_name), None)
+    if match is None:
+        available = ", ".join(sorted(e.get("pack", "?") for e in entries)) or "(catalog is empty)"
+        raise CliError(f"no pack named {pack_name!r} in the catalog ({meta.get('source')}). "
+                        f"Available: {available}")
+    coordinate = match.get("from")
+    if not coordinate:
+        raise CliError(f"catalog entry for {pack_name!r} has no 'from' coordinate -- malformed catalog")
+
+    model = read_json(model_path)
+    packs = model.setdefault("packs", [])
+    if not isinstance(packs, list):
+        raise CliError(f"{model_path}: top-level 'packs' is not an array, refusing to append")
+    if any(isinstance(e, dict) and e.get("from") == coordinate for e in packs):
+        print(f"'{pack_name}' is already declared in {model_path} at this coordinate -- nothing to add.")
+        return
+    if any(isinstance(e, dict) and e.get("as") == pack_name for e in packs):
+        raise CliError(f"{model_path} already declares a pack aliased {pack_name!r} at a different "
+                        f"coordinate -- resolve the conflict by hand before --from-catalog")
+    packs.append({"from": coordinate})
+    model_path.write_text(json.dumps(model, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"added pack {pack_name!r} to {model_path}: {coordinate}")
 
 
 def _pack_export_reference_targets(concept: dict):
@@ -7885,6 +8161,132 @@ def _run_monitor_ops(args: argparse.Namespace) -> int:
     return 0 if code == 0 else 2
 
 
+# ---------------------------------------------------------------------------------------------
+# MON-22 follow-up: `npdev service install|uninstall` -- a THIN wrapper over the four scripts
+# OperationalRunbookEmitter (R9.6) already writes into every generated app's `_ops`
+# (Install-Service.ps1/Uninstall-Service.ps1 on Windows, install-service.sh/uninstall-service.sh
+# elsewhere). This locates and invokes them; it never reimplements OS-level supervision itself --
+# the same "wrap the launchers, do not reimplement them" rule those scripts document one layer
+# down for Start-App.ps1/run-final-app.sh.
+# ---------------------------------------------------------------------------------------------
+
+def run_service_install(args: argparse.Namespace) -> int:
+    return _run_service_op(args, "install")
+
+
+def run_service_uninstall(args: argparse.Namespace) -> int:
+    return _run_service_op(args, "uninstall")
+
+
+def _is_windows_platform() -> bool:
+    """A thin, separately-mockable wrapper around `os.name == "nt"`. Tests need to exercise the
+    POSIX branch of `_service_script`/`_run_service_op` on a real Windows dev machine -- monkey-
+    patching the actual `os.name` attribute globally is NOT safe for that (pathlib's own `Path()`
+    factory reads the same shared `os` module and refuses to instantiate a `PosixPath` while the
+    real OS is Windows, `pathlib._abc.UnsupportedOperation`, reproduced live while writing this
+    module's own tests) -- so this indirection is the seam a test patches instead."""
+    return os.name == "nt"
+
+
+def _service_script(app_record: dict, op: str) -> tuple[Path, list[str]]:
+    """The platform-appropriate emitted `_ops` service script for `op` ("install"/"uninstall"),
+    and the base command used to invoke it. `_ops` lives INSIDE the FinalApp root since QUAL-3
+    (`OperationalRunbookEmitter`: `finalAppRoot.resolve("_ops")`) -- the same anchor `npdev bench`
+    uses (`app_record["finalAppRoot"]`), not the discovery-only `app_record["opsDir"]`, which can
+    point at the pre-QUAL-3 legacy-shared location instead.
+    """
+    ops_dir = Path(app_record["finalAppRoot"]) / "_ops"
+    if _is_windows_platform():
+        name = "Install-Service.ps1" if op == "install" else "Uninstall-Service.ps1"
+        script = ops_dir / name
+        shell = _find_powershell()
+        if shell is None:
+            raise CliError(f"no PowerShell found (looked for `pwsh`, then `powershell`) -- {name} "
+                            "is a PowerShell script and needs one")
+        return script, [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)]
+    name = "install-service.sh" if op == "install" else "uninstall-service.sh"
+    script = ops_dir / name
+    return script, ["sh", str(script)]
+
+
+def _run_service_op(args: argparse.Namespace, op: str) -> int:
+    """Resolves the app exactly the way `npdev bench` does (`npdev_monitor.probe_app`), refuses
+    clearly if this is not a generated NPDev app or the script is missing (an app generated before
+    R9.6, or missing this platform's twin), and passes --dry-run/--start/--profile straight
+    through to the real script. Never touches OS service state itself.
+    """
+    app_dir = Path(args.app_dir).expanduser().resolve()
+    app_record = npdev_monitor.probe_app(app_dir, include_info=False)
+    if not app_record.get("isAppRoot"):
+        raise CliError(app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+
+    script, command = _service_script(app_record, op)
+    if not script.is_file():
+        raise CliError(
+            f"{script} does not exist -- this app was generated before R9.6 (or this platform's "
+            "twin script was never emitted for it). Regenerate the app to pick up the _ops "
+            "service scripts, or supervise it another way (a Docker restart policy, an external "
+            "process supervisor)."
+        )
+
+    is_windows = _is_windows_platform()
+
+    if op == "uninstall" and args.dry_run:
+        # Neither Uninstall-Service.ps1 nor uninstall-service.sh has a native dry-run mode -- both
+        # are already an idempotent no-op when nothing is installed, which is the only case this
+        # command's own tests exercise for real (installing a service is privileged and hard to
+        # reverse). Rather than silently drop --dry-run or claim a flag the scripts do not have,
+        # print exactly what WOULD run and stop -- nothing is executed.
+        result = {
+            "schemaVersion": "npdev-cli-result.v1", "command": f"service {op}", "ok": True,
+            "dryRun": True, "script": str(script), "wouldRun": command,
+            "note": f"{script.name} has no native dry-run mode; nothing was executed. Without "
+                    "--dry-run this command is idempotent anyway: a no-op if nothing is installed "
+                    "for THIS app, a named refusal if a DIFFERENT app's install already claims the "
+                    "same name.",
+        }
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print(result["note"])
+            print("would run: " + " ".join(command))
+        return 0
+
+    profile = getattr(args, "profile", None)
+    if op == "install":
+        if profile and is_windows:
+            raise CliError(
+                "Install-Service.ps1 (Windows) has no --profile option -- it always wraps "
+                "Start-App.ps1 unchanged. --profile only applies to install-service.sh (systemd)."
+            )
+        if args.dry_run:
+            command = command + (["-DryRun"] if is_windows else ["--dry-run"])
+        if args.start:
+            command = command + (["-Start"] if is_windows else ["--start"])
+        if profile and not is_windows:
+            command = command + ["--profile", profile]
+
+    if not args.json:
+        print("running: " + " ".join(command))
+    completed = subprocess.run(command, cwd=str(script.parent), capture_output=True, text=True)
+    output = ((completed.stdout or "") + (completed.stderr or "")).strip()
+    result = {
+        "schemaVersion": "npdev-cli-result.v1",
+        "command": f"service {op}",
+        "ok": completed.returncode == 0,
+        "exitCode": completed.returncode,
+        "script": str(script),
+        "dryRun": bool(getattr(args, "dry_run", False)),
+        "output": output,
+    }
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(output)
+        print(f"(exit {completed.returncode})")
+    return 0 if completed.returncode == 0 else 2
+
+
 def _explore_pairs(pairs: list[str]) -> dict:
     """`--var NAME=VALUE` / `--credential NAME=VALUE` -> a dict. One parser for both flags and for
     both `run` and `suite`, so a suite cannot interpret an override differently from a single run."""
@@ -8512,6 +8914,21 @@ def build_parser() -> argparse.ArgumentParser:
     pack_sub = pack.add_subparsers(dest="pack_command")
     pack_add = pack_sub.add_parser("add", help="Resolve the pack graph and write npdev.lock.")
     pack_add.add_argument("--model", required=True, help="path to the model.json to resolve")
+    # R8.4: resolve a pack by NAME against the catalog instead of hand-writing a 'from' coordinate.
+    pack_add.add_argument(
+        "--from-catalog", dest="from_catalog", default=None, metavar="<packId>",
+        help="resolve <packId> against the pack catalog (see `npdev pack search`) and add its "
+             "'from' coordinate to --model's own packs[] BEFORE resolving -- idempotent if already "
+             "declared. The catalog lookup itself honors --catalog-url/--offline below; the "
+             "resolve-and-lock step that follows always needs the network for a genuinely new pack "
+             "regardless of --offline.")
+    pack_add.add_argument("--catalog-url", dest="catalog_url", default=None,
+                          help=f"override the catalog URL used by --from-catalog (default: "
+                               f"${ENV_PACK_CATALOG_URL}, else {DEFAULT_PACK_CATALOG_URL})")
+    pack_add.add_argument("--offline", action="store_true",
+                          help="--from-catalog's own lookup only: never touch the network, use the "
+                               "cached catalog (refuses if none is cached). Has no effect without "
+                               "--from-catalog.")
     pack_update = pack_sub.add_parser("update", help="Re-resolve the pack graph and rewrite npdev.lock.")
     pack_update.add_argument("--model", required=True, help="path to the model.json to resolve")
     pack_list = pack_sub.add_parser("list", help="Print the current npdev.lock (or a live dry-run).")
@@ -8519,6 +8936,44 @@ def build_parser() -> argparse.ArgumentParser:
     pack_why = pack_sub.add_parser("why", help="Explain why a pack resolved to its current version.")
     pack_why.add_argument("--model", required=True, help="path to the model.json to resolve")
     pack_why.add_argument("pack_id", metavar="<packId>", help="the pack id to explain")
+
+    # R8.4: discovery -- the ecosystem's missing front door. `search` reads a generated
+    # catalog-index.json (cached, offline-tolerant, never silently empty on a real fetch failure --
+    # see the module doc above `run_pack_search`); `build-catalog` produces that file from a local
+    # checkout of an NPR-shaped pack repo.
+    pack_search = pack_sub.add_parser(
+        "search", help="Search the NPR pack catalog by name/description/category (cached; offline-tolerant)."
+    )
+    pack_search.add_argument("query", nargs="?", default="",
+                             help="substring to match against pack id/description/category "
+                                  "(case-insensitive; default: list the whole catalog)")
+    pack_search.add_argument("--catalog-url", dest="catalog_url", default=None,
+                             help=f"override the catalog URL (default: ${ENV_PACK_CATALOG_URL}, "
+                                  f"else {DEFAULT_PACK_CATALOG_URL})")
+    pack_search.add_argument("--offline", action="store_true",
+                             help="never touch the network -- use the cached catalog only, or "
+                                  "refuse (never an empty result) if nothing is cached yet")
+    pack_search.add_argument("--json", action="store_true")
+
+    pack_build_catalog = pack_sub.add_parser(
+        "build-catalog",
+        help="Generate catalog-index.json from a local checkout of an NPR-shaped pack repo "
+             "(packs/<name>/pack.json per pack). Writes a local file only -- publishing it is a "
+             "separate, manual step today (or a future R8.5 `pack publish --push`).",
+    )
+    pack_build_catalog.add_argument("--repo-dir", dest="repo_dir", required=True,
+                                    help="local checkout containing packs/<name>/pack.json")
+    pack_build_catalog.add_argument("--repository-url", dest="repository_url",
+                                    default="https://github.com/MarceloGiazzon/NPR",
+                                    help="public repo URL baked into every entry's 'from' "
+                                         "coordinate (default: the NPR pack repo)")
+    pack_build_catalog.add_argument("--tag-template", dest="tag_template", default="v{version}",
+                                    help="how each pack's release tag is named, templated with "
+                                         "{pack}/{version} (default: v{version}, matching NPR's "
+                                         "current single repo-wide release-tag convention)")
+    pack_build_catalog.add_argument("--out", default="",
+                                    help="where to write catalog-index.json (default: "
+                                         "<repo-dir>/catalog-index.json)")
 
     # R8.2: multi-member "export a working concept into a reusable pack" verb, replacing the
     # external one-concept PowerShell script (NPDevSamples/scripts/packs/export-concept-to-pack.ps1)
@@ -8980,6 +9435,55 @@ def build_parser() -> argparse.ArgumentParser:
                        help=f"Where to write the report. Default: <app-dir>/_ops/{BENCH_REPORT_FILENAME}.")
     bench.add_argument("--json", action="store_true")
 
+    # MON-22 follow-up: R9.6 (OperationalRunbookEmitter) writes Install-Service.ps1/
+    # Uninstall-Service.ps1 and install-service.sh/uninstall-service.sh into every generated app's
+    # _ops, but nothing in the CLI could reach them -- this is that thin wrapper. It locates the
+    # platform-appropriate script the same way `npdev bench` locates the app (npdev_monitor.probe_app)
+    # and never reimplements what the scripts do.
+    service = subparsers.add_parser(
+        "service",
+        help="Install/uninstall OS-level supervision for a generated app (wraps the R9.6-emitted "
+             "Install-Service.ps1/install-service.sh) -- restart-on-crash, start-at-boot.",
+    )
+    service_sub = service.add_subparsers(dest="service_command")
+
+    service_install = service_sub.add_parser(
+        "install",
+        help="Register OS-level supervision around this app's own launcher (Windows: a Scheduled "
+             "Task; Linux: a real systemd unit). PRIVILEGED and hard to reverse -- ALWAYS "
+             "--dry-run first.",
+    )
+    service_install.add_argument("--app-dir", required=True,
+                                 help="a generated NPDev app (the one `npdev monitor probe` sees)")
+    service_install.add_argument(
+        "--dry-run", action="store_true",
+        help="RECOMMENDED FIRST STEP, DO THIS BEFORE A REAL INSTALL: preview the exact "
+             "registration with zero side effects and no elevation needed. Without this flag, "
+             "install needs an elevated shell (Windows) or root (Linux/systemd) and actually "
+             "registers the supervisor.")
+    service_install.add_argument("--start", action="store_true",
+                                 help="also start the app/task immediately after a REAL "
+                                      "(non-dry-run) install")
+    service_install.add_argument("--profile", default=None,
+                                 help="Spring profile to pass through -- install-service.sh "
+                                      "(systemd) ONLY; Windows Install-Service.ps1 has no "
+                                      "--profile and this is refused on Windows")
+    service_install.add_argument("--json", action="store_true")
+
+    service_uninstall = service_sub.add_parser(
+        "uninstall",
+        help="Remove the OS-level supervision `service install` added for this app. Idempotent -- "
+             "a no-op if nothing is installed.",
+    )
+    service_uninstall.add_argument("--app-dir", required=True)
+    service_uninstall.add_argument(
+        "--dry-run", action="store_true",
+        help="Preview only, execute nothing. The underlying Uninstall-Service.ps1/"
+             "uninstall-service.sh has no native dry-run mode -- both are already an idempotent "
+             "no-op when nothing is installed -- so this prints the command that WOULD run instead "
+             "of running it.")
+    service_uninstall.add_argument("--json", action="store_true")
+
     report = subparsers.add_parser(
         "report", help="Produce or bootstrap the evidence and status reports."
     )
@@ -9398,6 +9902,14 @@ def main(argv: list[str] | None = None) -> int:
             return run_pack_diff(args)
         if args.command == "pack" and args.pack_command == "publish":
             return run_pack_publish(args)
+        if args.command == "pack" and args.pack_command == "search":
+            return run_pack_search(args)
+        if args.command == "pack" and args.pack_command == "build-catalog":
+            return run_pack_build_catalog(args)
+        if args.command == "service" and args.service_command == "install":
+            return run_service_install(args)
+        if args.command == "service" and args.service_command == "uninstall":
+            return run_service_uninstall(args)
         if args.command == "add" and args.add_command == "concept":
             return run_add_member(args, "concept")
         if args.command == "add" and args.add_command == "panel":

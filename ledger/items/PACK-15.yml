@@ -1,0 +1,140 @@
+id: PACK-15
+title: >-
+  Discovery was the pack ecosystem's missing front door -- add `npdev pack search`, the
+  catalog-index.json format (shared decision with the future R8.5), `npdev pack build-catalog` to
+  generate it, and `npdev pack add --from-catalog` to consume it, all on top of the already-proven
+  PK-5 fetch/cache/lock substrate rather than a second resolver
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R8.4 -- "Discovery is the
+  ecosystem's missing front door: every fetch/cache/lock primitive is proven and the NPR repo
+  already exists. A generated catalog-index.json at the repo root; search fetches + caches it;
+  pack add --from-catalog <name> writes the correct coordinate and lock; the generated app's Store
+  panel gains remote entries." Blocked-by: "the one-time index-format decision (shared with R8.5)".
+surface: cli/pack
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_pack_catalog.py
+detail: |
+  `npdev pack search [query] [--catalog-url URL] [--offline] [--json]`, `npdev pack build-catalog
+  --repo-dir <path> [--repository-url URL] [--tag-template TPL] [--out PATH]`, and `npdev pack add
+  --from-catalog <packId> [--catalog-url URL] [--offline]` -- three new subcommands alongside
+  `pack add|update|list|why|export|diff|publish`.
+
+  **PREMISE CHECK -- done against the real repo before writing anything, per this task's own
+  brief.** `PackDependencyGraphWalker.defaultPackFile` was re-confirmed (reading the Java, not
+  assumed): a TRANSITIVE pack dependency resolves ONLY as `<rootDirectory>/packs/<packId>/pack.json`
+  -- "still local files only, no registry yet" (PK-3) -- which is exactly why `_add_pack_from_catalog`
+  below only ever writes a DIRECT `from` entry into the app's own model; nothing here adds a second,
+  competing resolution path. Separately, `PackDependencyGraphWalker.resolveRemotePackFile` /
+  `RemotePackFetcher` / `PackCache` (PK-5) were confirmed ALREADY LIVE and correct: a direct `from`
+  coordinate resolves over the network only during `pack add`/`update` (`NetworkPolicy.ALLOWED`);
+  every other caller, including `npdev generate`/`validate`, reads `npdev.lock` + the local
+  digest-verified cache and NEVER touches the network (`NetworkPolicy.DENIED`). So the ONLY real gap
+  was discovery -- nothing before this let an author find a coordinate by NAME.
+
+  **NETWORK ACCESS AS A DESIGN DECISION, verified live, not assumed.** The real NPR pack repo
+  (github.com/MarceloGiazzon/NPR) was fetched for real over HTTPS while building this: it exists,
+  its README documents the coordinate grammar
+  (`git+https://github.com/MarceloGiazzon/NPR.git//packs/<name>@<tag>`), and it has exactly ONE
+  published pack (`packs/user/pack.json`, `v1.0.0`, tagged at the REPO ROOT -- a repo-wide tag, not
+  a per-pack one; there has never been a second pack to force that convention to be decided for
+  real). It has NO `catalog-index.json` yet -- a live, reproducible 404 against
+  `https://raw.githubusercontent.com/MarceloGiazzon/NPR/main/catalog-index.json`, the new default
+  URL. So `_load_pack_catalog` is built to NEVER treat a fetch failure as "the catalog is empty":
+  it returns `(catalog, meta)` where `meta.status` is `"fresh"` or `"stale"`, prints an unmissable
+  `WARNING:` (to stderr, so `--json` stdout stays one clean document) whenever serving a stale
+  cache, and RAISES `CliError` -- refusing rather than reporting zero results -- when there is
+  neither a fresh fetch nor any usable cache. Nothing here ever silently fails open. Read-only
+  plain HTTPS via `urllib.request`, no credentials of any kind, no write access to anything.
+
+  **`npdev pack build-catalog`** scans a local checkout's `packs/<name>/pack.json` files and writes
+  `catalog-index.json` (schema `npdev-pack-catalog.v1`: `pack`/`version`/`description`/`category`/
+  `author`/`path`/`from` per entry) -- the artifact `search` fetches. It writes a LOCAL FILE ONLY;
+  publishing it (committing + pushing to github.com/MarceloGiazzon/NPR) is deliberately NOT done by
+  this item -- that is either a manual step by the repo owner or R8.5's future `pack publish
+  --push`, neither of which this session's scope or ownership covers (NPDevCli only; pushing to a
+  separate external repository the user owns was judged out of scope for an unattended session with
+  no explicit instruction to do so). `--tag-template` (default `v{version}`) exists because NPR's
+  own convention today is genuinely repo-wide, not per-pack, as measured above -- stated plainly as
+  a real limitation rather than inventing a per-pack scheme nobody has decided yet.
+
+  **`npdev pack add --from-catalog <packId>`** resolves `packId` against the (offline-tolerant)
+  catalog, writes `{"from": "<coordinate>"}` into the target model's own `packs[]` -- idempotent if
+  the exact coordinate is already declared, refused (naming both sides) if a DIFFERENT coordinate
+  already claims the same alias -- and then runs the EXISTING `packAdd` Gradle task exactly as plain
+  `pack add` does. `_add_pack_from_catalog` only ever edits JSON; every network fetch, digest check
+  and `npdev.lock` write still happens exactly once, inside the pre-existing PK-5 machinery -- no
+  parallel implementation.
+
+  **ROUND TRIP -- MEASURED, not asserted (the roadmap's own Done-When).** Built a genuine
+  `git+file://` remote (same zero-network-but-real-git-process proof
+  `RemotePackFetcherGitLiveTest` already established for the identical reason: a directory literally
+  named `npr-fixture.git` containing `packs/rtpack/pack.json`, tagged `v1.0.0`), ran
+  `build-catalog` against it (produces the exact `git+file://.../npr-fixture.git//packs/rtpack@v1.0.0`
+  coordinate), served the generated `catalog-index.json` over a REAL local HTTP server, then ran
+  `npdev pack add --from-catalog rtpack` against a throwaway model with an isolated
+  `NPDEV_PACK_CACHE_ROOT` -- it wrote the coordinate, resolved it through the real Gradle-backed
+  `PackDependencyGraphWalker`/`RemotePackFetcher`/`PackCache`, and wrote `npdev.lock`. Then ran
+  `npdev validate model` (Gradle/DSL-composer-backed, `NetworkPolicy.DENIED` -- the same path a real
+  `npdev generate` takes): **0 errors**, proving the pack resolved via `--from-catalog` "generates
+  offline" exactly as the roadmap's own Done-When requires. ~38s end to end.
+
+  **THE KNOWN `--version` COLLISION TRAP (named explicitly in this task's brief) was avoided by
+  construction**, not discovered live: none of the three new subcommands declare a `--version` flag
+  at all (checked via `npdev pack search --help` / `pack build-catalog --help` / `pack add --help`,
+  and `npdev --version` re-confirmed still prints the banner correctly afterward) -- there was
+  nothing here shaped like PACK-13's own `--version`/`-Version` precedent to collide.
+
+  **A REAL TESTING-METHODOLOGY GOTCHA, found live while writing the sibling MON-23 item's tests, not
+  this item's own code:** `mock.patch.object(os, "name", "posix")` to exercise a POSIX code branch
+  on this real Windows dev machine breaks Python 3.13's own `pathlib.Path()` factory (`pathlib.
+  _abc.UnsupportedOperation: cannot instantiate 'PosixPath' on your system`), because pathlib reads
+  the SAME shared `os` module `_run_service_op`/`_service_script` also import. Not this item's own
+  production code (`_load_pack_catalog`/`build-catalog`/`_add_pack_from_catalog` never branch on
+  `os.name` at all), but recorded here since it is the same class of hazard for any future
+  platform-branching code in this file -- MON-23 fixes it there via a separately-mockable
+  `_is_windows_platform()` seam.
+
+  NUMBERS: 17 new tests in `NPDevCli/tests/test_pack_catalog.py` (16 fast, real-localhost-HTTP or
+  pure-filesystem; 1 real end-to-end round trip, ~38s), full `NPDevCli/tests` suite (432 tests
+  total after this AND the sibling MON-23 item) has exactly the same 2 pre-existing, unrelated
+  `EngineDetection` failures this session found already failing before any of this work started
+  (an environment-specific ScrapForAI-engine-detection leak, nothing to do with packs or services).
+
+  **NOT DONE, stated plainly.** The generated app's own Store panel does NOT list remote catalog
+  entries -- that is `business-ui-app.mustache`/generator template work, explicitly owned by a
+  different agent in this session (not touched here). `catalog-index.json` was never pushed to the
+  real NPR repo -- `build-catalog` only ever writes a local file; no git push, no credentials, no
+  external-repo mutation happened anywhere in this item. No signing/trust layer (that is R8.7). No
+  MCP tool surface for search/catalog (CLI-only, matching how `pack add/update/list/why` are
+  CLI-only today).
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_pack_catalog.py
+  asserts: >-
+    `pack search` fetches a real catalog over HTTP, caches it, filters by substring, and either
+    serves a loudly-labelled stale cache (never silent) or refuses outright (never an empty "no
+    matches" result) when the network is unreachable and no cache exists; `--offline` never attempts
+    a network call at all; `pack build-catalog` scans a local `packs/<name>/pack.json` tree and
+    writes correct `git+<repo>.git//<path>@<tag>` coordinates, skipping and naming any malformed
+    pack.json rather than crashing; `pack add --from-catalog` writes the resolved coordinate into
+    the model idempotently, refuses a real alias conflict, and -- proven by the slow end-to-end
+    `PackAddFromCatalogRoundTripTest` against a genuine `git+file://` remote and a real local HTTP
+    catalog server -- the resulting pack actually resolves, locks, and then validates with ZERO
+    errors through the real Gradle-backed DSL composer running with the network denied, which is
+    the roadmap's own literal Done-When ("add-from-catalog produces a lock that generates offline").
+  provenRed: false
+  provenRedNote: >-
+    None of these three verbs existed before, so nothing about them could have failed red-then-
+    green. The `--version`/global-flag collision PACK-13 hit live was avoided by construction here
+    (no new subcommand declares a `--version` flag) rather than caught and fixed after the fact --
+    confirmed by running `--help` on all three new subcommands plus `npdev --version` itself. A real,
+    but unrelated, testing-methodology gotcha (`mock.patch`-ing `os.name` breaks Python 3.13's own
+    `pathlib.Path()` factory on Windows) was found live while writing the sibling MON-23 item's
+    tests, not this item's production code -- see this item's own detail field and MON-23's guard.
