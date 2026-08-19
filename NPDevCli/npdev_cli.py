@@ -7995,6 +7995,12 @@ def _run_monitor_engine_start(args: argparse.Namespace) -> int:
     so closing the window takes this process and the engine down together instead of leaving a
     browser-automation server listening on a user's machine.
     """
+    # This module imports `time` per-function (there is no module-level import), and this one was
+    # missing while the readiness loop below calls time.sleep -- so `npdev monitor engine-start`
+    # raised NameError the moment it reached that loop, i.e. on every invocation that got as far as
+    # waiting for the engine. Found when an agent had to bypass the verb and spawn the engine
+    # process directly to do browser verification.
+    import time
     root = Path(args.root).expanduser()
     if not npdev_monitor._engine_root_ok(root):
         raise CliError(

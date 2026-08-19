@@ -160,7 +160,7 @@ class StorageCapabilityGateTest {
                 field("id", true, false, null),
                 field("customer", false, false, "Customer")));
         CompiledQuery summary = new CompiledQuery(
-                "orderSummary", "Order", null, List.of(), null, List.of(), List.of(), null, null,
+                "orderSummary", "Order", null, List.of(), null, List.of(), List.of(), null,
                 java.util.Map.of(),
                 List.of(new CompiledGroupByField("customer.region", null)),
                 List.of(), null);
