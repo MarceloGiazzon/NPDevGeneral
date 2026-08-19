@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/ai/change-impact-report.schema.json",
+  "title": "NPDev change-impact preview report (npdev-impact-report.v1)",
+  "description": "R1.6. Composes the four separate 'what breaks if I change this?' invocations -- migration classification (:generator:classifyModelChange, same as `npdev migration diff`), xref usage (:NPDevContract:dsl:modelXref, same selection logic as `npdev inspect usage`), pack diff (:NPDevContract:dsl:packDiff, same as `npdev pack diff`), and the AI Authoring Contract's diff-gate (:generator:authorDiffGate, same as `npdev author diff-gate`) -- into ONE typed report for a baseline/current document pair. Produced by `npdev impact` (NPDevCli/npdev_cli.py's run_impact) and the npdev_impact MCP tool. No generate/build/boot happens here -- see the separate npdev-closed-loop-report.v1 (`npdev loop run`) for the heavy pipeline this deliberately stays lighter than. `subjectKind` decides which legs actually run: migrationClassification/xrefUsage/authoringGate need an app model.json (JsonModelParser cannot parse a pack.json's different required top-level shape); packDiff needs two pack.json documents (PackDiffEngine has no model.json input). Exactly one of the two document kinds' legs runs per call -- the other kind's legs report status 'notApplicable' with a stated reason rather than being silently omitted, so a caller can always tell whether an axis was skipped by design or never ran at all (measurement honesty).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "subjectKind", "baseline", "current", "of",
+    "migrationClassification", "xrefUsage", "packDiff", "authoringGate",
+    "limitations", "problemsFound"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "npdev-impact-report.v1" },
+    "subjectKind": {
+      "enum": ["model", "pack"],
+      "description": "Detected from the baseline/current documents' own top-level shape (_document_kind): a non-blank top-level string 'pack' identifier (pack.schema.json requires it) means 'pack'; otherwise 'model' (model.schema.json has no top-level 'pack' key at all -- a model's own pack DEPENDENCIES live under the plural 'packs' array instead, so there is no collision)."
+    },
+    "baseline": { "type": "string", "description": "Resolved path to --baseline." },
+    "current": { "type": "string", "description": "Resolved path to --current." },
+    "of": {
+      "type": ["string", "null"],
+      "description": "The --of target (Concept.field / Concept / kind:Name) that narrowed xrefUsage, or null when the whole model was scanned. Always null when subjectKind is 'pack'."
+    },
+    "migrationClassification": {
+      "$ref": "#/$defs/section",
+      "description": "model pairs: ModelChangeClassifierMain's report (classification: METADATA_ONLY/SAFE_ADDITIVE/BACKFILL_REQUIRED/MANUAL_REVIEW + classificationReasons + the underlying MigrationPlan), identical to `npdev migration diff --baseline --current`'s own decision report. pack pairs: notApplicable."
+    },
+    "xrefUsage": {
+      "$ref": "#/$defs/section",
+      "description": "model pairs: the same result shape `npdev inspect usage` prints for --current (model/mode/of/counts/modelTotals/edges over the npdev-model-xref.v1 index, schemas/ai/model-xref.schema.json), narrowed by `of` when given. pack pairs: notApplicable."
+    },
+    "packDiff": {
+      "$ref": "#/$defs/section",
+      "description": "pack pairs: PackDiffMain's ADDITIVE/BREAKING/PATCH report, identical to `npdev pack diff <old> <new>`'s own output. model pairs: notApplicable (a model's own pack DEPENDENCIES are not diffed here -- run `npdev pack diff` directly against the dependency's own pack.json if needed)."
+    },
+    "authoringGate": {
+      "$ref": "#/$defs/section",
+      "description": "model pairs: AuthoringDiffGate's report (status/diagnostics/merge), identical to `npdev author diff-gate --previous=baseline --submitted=current`'s own output. Always attempted for a model pair, manifest or not -- with no --manifest it reports the same AUTHORING_MANIFEST_MISSING refusal `author diff-gate` itself would (see this section's own `reason` when that happens). pack pairs: notApplicable."
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Measurement-honesty statement (house rule: state what coverage was dropped, never imply completeness). Always present, model or pack pair alike: forms of reference this report's underlying tools cannot see, regardless of subjectKind -- e.g. an expression-string literal such as nextNumber('name') (R5.3), an UNDECIDABLE xref edge meaning 'could not check' rather than 'checked, safe', and what PACK-13's exporter does and does not refuse by name. May also carry a call-specific note, e.g. --of naming a concept absent from --current's composed view."
+    },
+    "problemsFound": {
+      "type": "boolean",
+      "description": "true when a leg that RAN found a real problem by ITS OWN existing exit-code convention: xrefUsage's whole-model unresolved count is nonzero (matching `inspect usage --orphans`'s own exit-2 rule), or authoringGate ran and its status is not 'passed' (matching `author diff-gate`'s own exit-2 rule). migrationClassification and packDiff are informational-only here, matching `migration diff`/`pack diff`'s own always-exit-0 philosophy -- refusal is `author diff-gate`'s/`pack publish`'s job, not this preview's. Drives the CLI's own process exit code (0 clean, 2 when true)."
+    }
+  },
+  "$defs": {
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason", "report"],
+      "properties": {
+        "status": {
+          "enum": ["ran", "notApplicable"],
+          "description": "'ran': this leg's underlying tool was actually invoked for this call. 'notApplicable': subjectKind rules this leg out entirely (see `reason`) -- never a silent 0/empty result standing in for 'we did not check'."
+        },
+        "reason": {
+          "type": ["string", "null"],
+          "description": "Non-null exactly when status is 'notApplicable' (why this leg does not apply to this subjectKind), or when status is 'ran' but the leg's own result was itself a no-op by design (authoringGate ran with no --manifest and reports its own refusal). Null whenever a leg ran and produced its ordinary result."
+        },
+        "report": {
+          "description": "The underlying tool's own report, embedded verbatim -- never re-derived into a second shape. null when status is 'notApplicable'."
+        }
+      }
+    }
+  }
+}

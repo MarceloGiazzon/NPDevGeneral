@@ -22,6 +22,8 @@ that exposes the NPDev authoring pipeline as typed tools. It wraps the portable 
   - npdev_search_fix      : given a validator diagnostic, retrieve precedent fixes by failure signature
   - npdev_check_support   : is a feature a known gap/constraint/lifted boundary? (queries the ledger projection)
   - npdev_migration_diff : classify a schema change as safe-additive vs destructive
+  - npdev_impact         : ONE change-preview report -- migration classification + xref usage + the
+                           authoring diff-gate (model.json pair), or pack diff (pack.json pair)
   - npdev_generate       : run the real generator (slow/mutating -- gate in your client)
   - npdev_build_and_run  : GENERATE + BUILD + BOOT + health-check in one call (Move 10 D1)
 
@@ -540,6 +542,24 @@ def tool_author_diff_gate(arguments: dict[str, Any]) -> dict[str, Any]:
     return _passthrough(result)
 
 
+def tool_impact(arguments: dict[str, Any]) -> dict[str, Any]:
+    """R1.6: thin wrapper over `npdev impact` -- the CLI is the real implementation (testable
+    without an MCP client, see NPDevCli/tests/test_impact_cli.py); this tool just runs it and passes
+    its structured JSON straight through, same pattern as tool_migration_diff/tool_author_diff_gate.
+    """
+    baseline = arguments.get("baseline")
+    current = arguments.get("current")
+    if not (baseline and current):
+        return _text_error("baseline and current are required")
+    args = ["impact", "--baseline", baseline, "--current", current]
+    if arguments.get("of"):
+        args += ["--of", arguments["of"]]
+    if arguments.get("manifest"):
+        args += ["--manifest", arguments["manifest"]]
+    result = run_cli(args)
+    return _passthrough(result)
+
+
 def tool_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     model = arguments.get("model")
     config = arguments.get("config")
@@ -914,6 +934,32 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "npdev_impact",
+        "description": (
+            "R1.6: ONE change-preview report for a baseline/current document pair, composing four "
+            "checks that used to need four separate calls. For a model.json pair: migration "
+            "classification (same as npdev_migration_diff), xref usage (who references what, "
+            "narrowed by 'of' when given), and the AI Authoring Contract diff-gate (same as "
+            "npdev_author_diff_gate -- runs even with no manifest, reporting its own refusal). For "
+            "a pack.json pair: pack diff (ADDITIVE/BREAKING/PATCH classification) instead -- "
+            "baseline and current must be the SAME kind of document. Does NOT generate/build/boot "
+            "anything. The report always carries a 'limitations' list (forms of reference it cannot "
+            "see, e.g. nextNumber('name') embedded inside an expression string) and a 'problemsFound' "
+            "boolean (true when xref usage has an unresolved reference, or the authoring gate "
+            "refused)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "baseline": {"type": "string", "description": "Previous model.json or pack.json."},
+                "current": {"type": "string", "description": "Current (candidate) model.json or pack.json."},
+                "of": {"type": "string", "description": "model.json pairs only: narrow xref usage to Concept.field / Concept / kind:Name."},
+                "manifest": {"type": "string", "description": "model.json pairs only: a npdev-authoring-submission.v1 manifest, for a real authoring-gate compliance check."},
+            },
+            "required": ["baseline", "current"],
+        },
+    },
+    {
         "name": "npdev_generate",
         "description": (
             "Run the REAL NPDev generator to produce a runnable app from a validated model + config. "
@@ -1069,6 +1115,7 @@ TOOL_HANDLERS = {
     "npdev_migration_diff": tool_migration_diff,
     "npdev_author_diff_gate": tool_author_diff_gate,
     "npdev_author_submit": tool_author_submit,
+    "npdev_impact": tool_impact,
     "npdev_generate": tool_generate,
     "npdev_build_and_run": tool_build_and_run,
     "npdev_build_review_pack": tool_build_review_pack,
