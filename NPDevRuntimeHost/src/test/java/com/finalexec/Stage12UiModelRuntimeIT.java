@@ -72,23 +72,15 @@ class Stage12UiModelRuntimeIT extends AbstractScenarioIntegrationTest {
     }
 
     @Test
-    void editorDraft_endpoint_is_reachable() throws Exception {
-        String body = mockMvc.perform(get("/api/admin/model/editor/draft")
+    void editorDraft_endpoint_is_gone_r10_1() throws Exception {
+        // R10.1: the model/rule/orchestration editor-draft endpoints were deleted outright -- they
+        // held server-side draft state that never wrote back into model.json (a one-way door that
+        // dropped 14 DSL sections on round-trip), and EDIT-3 recorded the owner's decision to demote
+        // the shipped editor to read-only rather than keep patching that path. A regenerated app must
+        // 404 here now, not resurrect the old {namespace, dslVersion, version, entities} shape.
+        mockMvc.perform(get("/api/admin/model/editor/draft")
                         .header("X-Api-Key", API_KEY))
-                .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        JsonNode root = objectMapper.readTree(body);
-        // REG-172: this endpoint's real response shape is {namespace, dslVersion, version, entities}
-        // (confirmed live against a fresh superuser-admin-console boot, 2026-08-14) -- it has never
-        // had top-level "concepts"/"flows" keys, on any sample; the original assertions here were
-        // wrong about the contract itself, not just about canonical-demo-specific content.
-        assertThat(root.has("namespace")).isTrue();
-        assertThat(root.has("entities")).isTrue();
-        assertThat(root.path("entities").isArray()).isTrue();
+                .andExpect(status().isNotFound());
     }
 
     private static JsonNode findConcept(JsonNode concepts, String conceptName) {

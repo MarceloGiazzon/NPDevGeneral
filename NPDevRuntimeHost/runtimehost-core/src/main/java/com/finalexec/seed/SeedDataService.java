@@ -64,18 +64,37 @@ public class SeedDataService {
             List<Map<String, Object>> entries = new ArrayList<>();
             if (manifest.isArray()) {
                 for (JsonNode entry : manifest) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("id", textOrNull(entry, "id"));
-                    row.put("label", textOrNull(entry, "label"));
-                    row.put("description", textOrNull(entry, "description"));
-                    row.put("kind", textOrDefault(entry, "kind", KIND_SMART));
-                    entries.add(row);
+                    entries.add(manifestRow(entry));
                 }
+            } else if (manifest.isObject()) {
+                // REG-189: PowerShell's `ConvertTo-Json` unrolls a single-element array through
+                // the pipeline, so a manifest built from exactly one definition/seeds/*.json file
+                // is written as a bare object rather than a one-element array. Treat it as the
+                // one-element manifest it represents rather than silently returning List.of() --
+                // an empty list here is indistinguishable from "this app declares no seeds", which
+                // is exactly the wrong-answer shape this codebase rejects (see DataSeedAdminController
+                // callers such as R7.2's "Load sample data" UI action). The writer is fixed
+                // (Build-NpdevApp.ps1 now forces array serialization at this call site), so this
+                // branch exists to recover already-built apps without regeneration.
+                entries.add(manifestRow(manifest));
+            } else if (!manifest.isNull() && !manifest.isMissingNode()) {
+                throw new SeedLoadException(
+                        "Seed manifest at " + MANIFEST_PATH + " is neither a JSON array nor an object (found "
+                                + manifest.getNodeType() + ") -- cannot list available seeds", null);
             }
             return entries;
         } catch (IOException exception) {
             throw new SeedLoadException("Failed to read seed manifest: " + exception.getMessage(), exception);
         }
+    }
+
+    private Map<String, Object> manifestRow(JsonNode entry) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", textOrNull(entry, "id"));
+        row.put("label", textOrNull(entry, "label"));
+        row.put("description", textOrNull(entry, "description"));
+        row.put("kind", textOrDefault(entry, "kind", KIND_SMART));
+        return row;
     }
 
     public SeedRunResult run(String seedId, ExecutionContext context) {
