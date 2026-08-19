@@ -8796,7 +8796,11 @@ def run_monitor(args: argparse.Namespace) -> int:
         return _run_monitor_ops(args)
     if args.monitor_command == "ingress":
         return _run_monitor_ingress(args)
-    raise CliError("usage: npdev monitor {scan|probe|engine|engine-start|logs|ops|ingress}")
+    if args.monitor_command == "clone":
+        return _run_monitor_clone(args)
+    if args.monitor_command == "clone-remove":
+        return _run_monitor_clone_remove(args)
+    raise CliError("usage: npdev monitor {scan|probe|engine|engine-start|logs|ops|ingress|clone|clone-remove}")
 
 
 def _run_monitor_engine_start(args: argparse.Namespace) -> int:
@@ -8886,6 +8890,45 @@ def _run_monitor_ingress(args: argparse.Namespace) -> int:
         print(f"  ROUTE   {entry.get('slug')} -> {args.upstream_host}:{entry.get('port')}")
     for entry in result["skipped"]:
         print(f"  SKIP    {entry.get('name')}: {entry.get('reason')}")
+    return 0
+
+
+def _run_monitor_clone(args: argparse.Namespace) -> int:
+    """R3.8: isolated instances for parallel testers -- see `npdev_monitor.clone_app`'s own
+    docstring (and the module-level comment above it) for the concrete collision list this fixes
+    and why. Errors here are the caller's own mistakes (bad name, port taken, not an app) rather
+    than platform bugs, so they come back as an ordinary `ok: false` result, not a traceback."""
+    try:
+        result = npdev_monitor.clone_app(
+            Path(args.app_dir), Path(args.dest_root), name=args.name, port=args.port)
+    except (ValueError, FileExistsError, RuntimeError, TimeoutError) as exc:
+        result = {
+            "schemaVersion": "npdev-cli-result.v1", "command": "monitor clone", "ok": False,
+            "exitCode": 2, "error": {"message": str(exc)},
+        }
+        _print_result(result, args)
+        return 2
+    _print_result(result, args)
+    if not args.json:
+        print(f"cloned {result['originAppDir']} -> {result['cloneDir']}")
+        print(f"  port {result['originPort']} -> {result['port']}")
+        print(f"  data isolation: {result['dataIsolation']}")
+    return 0
+
+
+def _run_monitor_clone_remove(args: argparse.Namespace) -> int:
+    try:
+        result = npdev_monitor.remove_clone(Path(args.clone_dir))
+    except (ValueError, RuntimeError) as exc:
+        result = {
+            "schemaVersion": "npdev-cli-result.v1", "command": "monitor clone-remove", "ok": False,
+            "exitCode": 2, "error": {"message": str(exc)},
+        }
+        _print_result(result, args)
+        return 2
+    _print_result(result, args)
+    if not args.json:
+        print(f"removed {result['removed']} (ports released: {result['portsReleased']})")
     return 0
 
 
@@ -10536,6 +10579,30 @@ def build_parser() -> argparse.ArgumentParser:
                              help="The acknowledgement token a destructive script demands. The window "
                                   "must be at least as careful as the terminal.")
     monitor_ops.add_argument("--json", action="store_true")
+
+    monitor_clone = monitor_sub.add_parser(
+        "clone",
+        help="Copy a generated app into a new, independently runnable instance -- its own port and "
+             "database, so parallel testers stop stepping on each other (R3.8).",
+    )
+    monitor_clone.add_argument("--app-dir", required=True, help="The app to clone (its ORIGIN).")
+    monitor_clone.add_argument("--dest-root", required=True,
+                               help="Directory the clone is created UNDER, as a new subdirectory "
+                                    "named --name (or an auto-generated <appId>-clone-<token>).")
+    monitor_clone.add_argument("--name", default=None,
+                               help="Clone id / directory name. Auto-generated if omitted.")
+    monitor_clone.add_argument("--port", type=int, default=None,
+                               help="Use exactly this port (fails if it is not available) instead of "
+                                    "picking the next free one in the default 20000-20999 range.")
+    monitor_clone.add_argument("--json", action="store_true")
+
+    monitor_clone_remove = monitor_sub.add_parser(
+        "clone-remove",
+        help="Delete a clone `monitor clone` created (never an origin app) and release its "
+             "reserved port(s).",
+    )
+    monitor_clone_remove.add_argument("--clone-dir", required=True)
+    monitor_clone_remove.add_argument("--json", action="store_true")
 
     # ------------------------------------------------------------------------------------------
     # MONITOR_PLAN A4: `npdev explore`. The Scrap Manager screen calls these; so does the

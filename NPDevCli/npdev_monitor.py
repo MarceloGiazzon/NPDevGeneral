@@ -36,11 +36,17 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA_VERSION = "npdev-monitor-scan.v1"
+
+# R3.8: the marker `clone_app` writes into a clone's own `_ops/`, and the only thing that makes a
+# clone identifiable as a clone (never a name-pattern guess). Declared here, at module scope, because
+# `probe_app` reads it too (a clone must show up in an ordinary `monitor scan` like any other app).
+CLONE_INFO_FILENAME = "npdev-clone.json"
 
 # The engine's own default. A PORT is not a path -- it is part of the protocol, the same way 8080 is,
 # and `Find-ScrapEngine.ps1` carries the identical default.
@@ -663,6 +669,10 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
 
     # --- explorations at a glance (the EXPLORE light) ----------------------------------------
     record["explorations"] = _exploration_summary(app_root)
+
+    # R3.8: a clone is identified by CONTENTS too -- the small marker `clone_app` writes at
+    # `_ops/npdev-clone.json` -- never by name pattern. None for an ordinary app, never guessed.
+    record["clone"] = _read_json(app_root / "_ops" / CLONE_INFO_FILENAME)
 
     if include_info:
         record["info"] = _read_json(info_json) if info_json else None
@@ -1330,6 +1340,539 @@ def _export_readme(app_root: Path) -> str:
         "Credentials are redacted. Nothing here is sent anywhere by NPDev -- this file exists so\n"
         "YOU can send it, deliberately, to whoever is helping.\n"
     )
+
+
+# ---------------------------------------------------------------------------------------------
+# R3.8 -- `npdev monitor clone`. Isolated instances for parallel testers: copy a generated app into
+# a new, independently runnable directory with its own port and its own database identity.
+#
+# WHAT ACTUALLY COLLIDES BETWEEN TWO COPIES OF ONE APP (measured against real generated apps on
+# this machine, not assumed):
+#   1. The HTTP port. Two generator revisions bake it in differently -- newer apps read
+#      `serverPort` out of `_ops/app-plan.json` at Start-App.ps1 launch time (nothing hardcoded),
+#      but the frozen `npdev-canary` fixture still has `--server.port=8103` typed LITERALLY into
+#      `_ops/Run-FinalApp.ps1` / `run-final-app.sh`. Both are patched here -- the JSON field always,
+#      the literal only when present (the regex simply finds nothing to replace on the newer shape).
+#   2. The database -- and the GROUND TRUTH for this one is not `_ops/resolved-db-plan.json` (that
+#      file is read only by the `_ops` tooling -- Print-DbConnectionInfo.ps1, DBeaver helpers -- and
+#      NEVER by the running app). The generator bakes the real `spring.datasource.url` into
+#      `application-npdev-db.properties`, which is compiled INTO the already-built jar; nothing
+#      re-reads it from the plan JSON at runtime, and this module never rebuilds a jar. Measured
+#      against two real apps on this machine: `npdev-canary` (H2Local) bakes a RELATIVE URL
+#      (`jdbc:h2:file:./data/stor16_ephemeral;...`), which the JVM resolves against its OWN working
+#      directory -- so copying the app directory genuinely isolates it, proven live below. But
+#      `aggregate-query-verify-h2local` (H2Server) bakes an ABSOLUTE one, pointing at a directory
+#      named after the app OUTSIDE the app tree entirely (`jdbc:h2:file:D:/.../Build/databases/
+#      aggregate-query-verify-h2local/...`) -- a copy of THAT app would boot a second process that
+#      opens the exact same physical `.mv.db` as the original. Renaming fields in the plan JSON does
+#      NOTHING to fix this, because the JVM never reads that JSON. `_detect_datasource_sharing`
+#      reads the SAME baked properties file the jar was built from and REFUSES to clone anything
+#      whose real datasource URL is not a relative, app-owned H2 file path -- covering the shared-
+#      H2Server case above and every container-backed engine (Postgres/MySQL/SqlServer), whose URL
+#      is a network address, never relative. A clone this module agrees to create is proven
+#      isolated; anything it cannot prove, it declines rather than fakes.
+#   3. `data`/`logs`/`secrets` -- the same three directories CLAUDE.md pins as spared-on-regen.
+#      Copying them WOULD copy the origin's live rows, its API key and its run history into what is
+#      supposed to be a clean instance; they are recreated empty instead, and the app's own
+#      bootstrap (`Ensure-NpdevApiKey`, first-boot data creation) fills them in on first run, the
+#      same as it would for a first-ever generation.
+#   4. `_ops`'s own single-instance guards (`app.pid`, the port-busy check in Start-App.ps1) operate
+#      per-directory, so they never collide between two SEPARATE clone directories -- only within
+#      one. Nothing to do there; it is exactly why cloning the DIRECTORY, not just re-running the
+#      same one, is the fix.
+#
+# PORT RACES: two `npdev monitor clone` calls made back-to-back must not hand out the same port to
+# both, even though NEITHER clone has been started yet (so a plain "bind a socket, see if it
+# succeeds" probe cannot tell them apart -- nothing is listening on either candidate). Handled by
+# `reserve_clone_port`, which holds a small file lock (`_acquire_file_lock`, portable
+# O_CREAT|O_EXCL, no third-party dependency) around "read the reservation registry, bind-test a
+# candidate, record the choice" as one atomic step -- the second call only gets the lock after the
+# first has already written its choice into the registry, so its own scan sees that port as taken.
+# ---------------------------------------------------------------------------------------------
+
+CLONE_SCHEMA_VERSION = "npdev-monitor-clone.v1"
+DEFAULT_CLONE_PORT_RANGE = (20000, 20999)
+_CLONE_SPARED_DIR_NAMES = {"data", "logs", "secrets"}
+_CLONE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_CLONE_PORT_REGISTRY_NAME = "clone-port-reservations.json"
+_CLONE_PORT_LOCK_NAME = "clone-port-reservations.lock"
+_CLONE_LOCK_STALE_SECONDS = 30.0
+
+
+def _npdev_home() -> Path:
+    """The same home `_manager_logs_dir` resolves for the Manager's own logs -- never a path
+    literal, and honouring `NPDEV_MANAGER_HOME` so a stub-mode test run does not touch the real one.
+    Used here for the clone port-reservation registry, which has to be the SAME file no matter which
+    `--dest-root` a particular clone is created under -- the race is between clones, not between
+    directories."""
+    override = os.environ.get("NPDEV_MANAGER_HOME")
+    if override and override.strip():
+        return Path(override).expanduser()
+    if os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        return (Path(local_app_data) / "NPDev") if local_app_data else (Path.home() / ".npdev")
+    data_home = os.environ.get("XDG_DATA_HOME")
+    base = Path(data_home) if data_home else Path.home() / ".local" / "share"
+    return base / "npdev"
+
+
+def _acquire_file_lock(lock_path: Path, timeout: float = 15.0) -> None:
+    """Exclusive mutex via atomic file creation (`O_CREAT|O_EXCL`) -- no `msvcrt`/`fcntl` split and
+    no third-party dependency, which matters here for the same R9 reason the rest of this module
+    avoids one (the Manager ships a private Python with nothing beyond stdlib). Stale after 30s so a
+    process that crashed mid-reservation cannot wedge every later clone forever."""
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.time() + timeout
+    while True:
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode("ascii", "ignore"))
+            os.close(fd)
+            return
+        except FileExistsError:
+            try:
+                if time.time() - lock_path.stat().st_mtime > _CLONE_LOCK_STALE_SECONDS:
+                    lock_path.unlink(missing_ok=True)
+                    continue
+            except OSError:
+                pass
+            if time.time() >= deadline:
+                raise TimeoutError(
+                    f"could not acquire {lock_path} within {timeout}s -- another `npdev monitor "
+                    "clone` may be stuck (delete the .lock file if you are certain none is running)"
+                )
+            time.sleep(0.05)
+
+
+def _release_file_lock(lock_path: Path) -> None:
+    try:
+        lock_path.unlink()
+    except OSError:
+        pass
+
+
+def _port_bind_free(port: int, host: str = "127.0.0.1") -> bool:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def _read_port_registry(path: Path) -> dict:
+    data = _read_json(path)
+    if not isinstance(data, dict) or not isinstance(data.get("reservations"), list):
+        return {"schemaVersion": "npdev-clone-port-registry.v1", "reservations": []}
+    return data
+
+
+def reserve_clone_port(*, clone_path: Path, purpose: str,
+                       port_range: tuple[int, int] = DEFAULT_CLONE_PORT_RANGE,
+                       exact_port: int | None = None) -> int:
+    """One port, guaranteed not already handed to another clone -- see the module-level comment
+    above for why a bare bind-test cannot make that guarantee by itself. Raises `RuntimeError` if
+    `exact_port` is unavailable, or if nothing in `port_range` is free."""
+    home = _npdev_home()
+    registry_path = home / _CLONE_PORT_REGISTRY_NAME
+    lock_path = home / _CLONE_PORT_LOCK_NAME
+    _acquire_file_lock(lock_path)
+    try:
+        registry = _read_port_registry(registry_path)
+        reserved = {int(r["port"]) for r in registry["reservations"] if "port" in r}
+        candidates = [exact_port] if exact_port is not None else range(port_range[0], port_range[1] + 1)
+        chosen = None
+        for candidate in candidates:
+            if candidate in reserved:
+                continue
+            if _port_bind_free(candidate):
+                chosen = candidate
+                break
+        if chosen is None:
+            if exact_port is not None:
+                raise RuntimeError(
+                    f"port {exact_port} is not available for a new clone (already reserved by "
+                    "another clone, or something else on this machine is using it)")
+            raise RuntimeError(
+                f"no free port in {port_range[0]}-{port_range[1]} for a new clone "
+                f"({len(reserved)} already reserved by other clones)")
+        registry["reservations"].append({
+            "port": chosen, "purpose": purpose, "clonePath": str(clone_path),
+            "reservedAt": _utc_now(), "pid": os.getpid(),
+        })
+        registry_path.write_text(json.dumps(registry, indent=2), encoding="utf-8")
+        return chosen
+    finally:
+        _release_file_lock(lock_path)
+
+
+def release_clone_ports(clone_path: Path) -> int:
+    """Frees every port a clone directory ever reserved. Called by `remove_clone` so a deleted
+    clone's port becomes available to the next one instead of leaking out of `DEFAULT_CLONE_PORT_RANGE`
+    over a long testing session."""
+    home = _npdev_home()
+    registry_path = home / _CLONE_PORT_REGISTRY_NAME
+    lock_path = home / _CLONE_PORT_LOCK_NAME
+    _acquire_file_lock(lock_path)
+    try:
+        registry = _read_port_registry(registry_path)
+        target = str(Path(clone_path).resolve())
+        kept: list[dict] = []
+        removed = 0
+        for entry in registry["reservations"]:
+            reserved_for = entry.get("clonePath")
+            if reserved_for and str(Path(reserved_for).resolve()) == target:
+                removed += 1
+            else:
+                kept.append(entry)
+        if removed:
+            registry["reservations"] = kept
+            registry_path.write_text(json.dumps(registry, indent=2), encoding="utf-8")
+        return removed
+    finally:
+        _release_file_lock(lock_path)
+
+
+def _validate_clone_name(name: str) -> str:
+    if not _CLONE_NAME_RE.match(name):
+        raise ValueError(
+            f"invalid clone name {name!r} -- letters, digits, '.', '_', '-' only, starting with a "
+            "letter or digit, max 64 characters")
+    return name
+
+
+def _copy_app_tree(src: Path, dest: Path, *, spared_names: set[str]) -> list[str]:
+    """A faithful copy of `src` at `dest`, except that any directory NAMED in `spared_names` --
+    wherever it occurs, at any depth, matching CLAUDE.md's three spared-on-regen directories by name
+    rather than by a fixed layout depth (the two `_ops` layouts observed on this machine put the
+    FinalApp root at different depths) -- is skipped entirely rather than copied, then recreated
+    empty. The app's own bootstrap (`Ensure-NpdevApiKey`, H2's own first-connection file creation)
+    fills a fresh `secrets`/`data`/`logs` in exactly the way it would for a first-ever generation."""
+    spared_relpaths: list[str] = []
+
+    def _ignore(directory: str, names: list[str]) -> set[str]:
+        skip: set[str] = set()
+        for entry_name in names:
+            if entry_name in spared_names and (Path(directory) / entry_name).is_dir():
+                skip.add(entry_name)
+                spared_relpaths.append(str((Path(directory) / entry_name).relative_to(src)))
+        return skip
+
+    shutil.copytree(src, dest, ignore=_ignore)
+    for rel in spared_relpaths:
+        (dest / rel).mkdir(parents=True, exist_ok=True)
+    return spared_relpaths
+
+
+def _rewrite_abs_path(value: str, old_root: str, new_root: str) -> str:
+    """`value` unchanged unless it IS `old_root`, or starts with `old_root` plus a path separator --
+    a plain prefix-of-a-different-string match (e.g. `old_root` = `...\\foo` matching
+    `...\\foobar`) would silently corrupt an unrelated path that merely shares a prefix."""
+    if value == old_root:
+        return new_root
+    for sep in ("\\", "/"):
+        prefix = old_root + sep
+        if value.startswith(prefix):
+            return new_root + value[len(old_root):]
+    return value
+
+
+def _patch_app_plan_file(path: Path, *, old_root: str, new_root: str, new_app_id: str, new_port: int) -> bool:
+    """`_ops/app-plan.json` -- the file the NEWER generator layout's `Start-App.ps1` reads
+    `serverPort`/`appRoot` from at launch time (nothing hardcoded in that script), so patching this
+    JSON alone is enough to move the newer layout's port and working directory."""
+    data = _read_json(path)
+    if not isinstance(data, dict):
+        return False
+    changed = False
+    if "appId" in data:
+        data["appId"] = new_app_id
+        changed = True
+    if "appName" in data:
+        data["appName"] = new_app_id
+        changed = True
+    if "serverPort" in data:
+        data["serverPort"] = new_port
+        changed = True
+    if isinstance(data.get("baseUrl"), str) and data["baseUrl"]:
+        updated = re.sub(r":(\d+)(/|$)", lambda m: f":{new_port}{m.group(2)}", data["baseUrl"], count=1)
+        if updated != data["baseUrl"]:
+            data["baseUrl"] = updated
+            changed = True
+    for key in ("appRoot", "outRoot"):
+        value = data.get(key)
+        if isinstance(value, str) and value:
+            updated = _rewrite_abs_path(value, old_root, new_root)
+            if updated != value:
+                data[key] = updated
+                changed = True
+    if changed:
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return changed
+
+
+def _read_properties_file(path: Path) -> dict:
+    """A minimal `.properties` reader (KEY=VALUE, `#`/`!` comments) -- stdlib has no parser for this
+    format. Used only to read the ONE file that is actual ground truth for a running app's
+    datasource (see `_detect_datasource_sharing`); never written by this module."""
+    out: dict = {}
+    try:
+        for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or line.startswith("!") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            out[key.strip()] = value.strip()
+    except OSError:
+        pass
+    return out
+
+
+def _detect_datasource_sharing(app_root: Path) -> tuple[bool, str]:
+    """(safe_to_isolate_by_copy, reason). Reads `application-npdev-db.properties` -- the file the
+    generator bakes `spring.datasource.url` into, which is compiled INTO the built jar and is what
+    the running JVM actually uses. `_ops/resolved-db-plan.json` is NOT ground truth here: it is read
+    only by the `_ops` tooling, never by the app itself, so renaming a field in it changes nothing
+    about where the running process actually connects.
+
+    Only a relative-path, file-mode H2 URL (`jdbc:h2:file:./...`) is safe: the JVM resolves that
+    path against its OWN working directory, which for a clone IS the clone's own copied tree, so the
+    isolation `_copy_app_tree` already gives the `data/` directory is real. Anything else -- an
+    ABSOLUTE H2 path (this machine's `aggregate-query-verify-h2local` bakes one pointing outside its
+    own app tree, at a shared-by-appname directory under `Build\\databases\\`) or a network JDBC URL
+    (Postgres/MySQL/SqlServer) -- is a database this module cannot prove it duplicated, so it refuses
+    rather than claim isolation a file copy did not actually produce."""
+    candidates = list(app_root.rglob("application-npdev-db.properties"))
+    if not candidates:
+        return False, ("no application-npdev-db.properties found anywhere under this app -- cannot "
+                       "verify how its datasource is configured, so refusing rather than guessing")
+    url = _read_properties_file(candidates[0]).get("spring.datasource.url", "")
+    if not url.startswith("jdbc:h2:file:"):
+        return False, (f"datasource is not a relative-path embedded H2 file ({url or 'unknown'}) -- "
+                       "cloning by file copy cannot isolate a network database or a container-backed "
+                       "engine; its real storage lives outside anything this command copies")
+    path_part = url[len("jdbc:h2:file:"):].split(";", 1)[0]
+    if path_part.startswith("./") or path_part.startswith(".\\") or not re.match(r"^([A-Za-z]:)?[\\/]", path_part):
+        return True, "relative, app-owned H2 file path -- isolated by the directory copy alone"
+    return False, (f"the database file is at an ABSOLUTE, shared path ({path_part}) baked into the "
+                   "built jar -- copying the app directory does not duplicate it, so a clone would "
+                   "silently read and write the SAME physical database as the origin")
+
+
+def _patch_resolved_plan_file(path: Path, *, old_root: str, new_root: str, new_app_id: str, new_port: int) -> bool:
+    """`_ops/resolved-db-plan.json` -- present at least once in every generated app (it is one of
+    `discovery_rule`'s two acceptable signatures), and TWICE with two different schemas for the
+    older `npdev-canary`-style outer+`App` split. Every key here is patched only if present, so the
+    same function handles both schemas without needing to know which one it was handed.
+
+    Deliberately does NOT rename the database identity fields (`resolvedDatabaseName` and friends):
+    this file is not what isolates the database (see `_detect_datasource_sharing`), and renaming it
+    here would make the `_ops` tooling's own connection info LIE about the actual, unchanged
+    filename on disk."""
+    data = _read_json(path)
+    if not isinstance(data, dict):
+        return False
+    changed = False
+    if "appId" in data:
+        data["appId"] = new_app_id
+        changed = True
+    if "serverPort" in data:
+        data["serverPort"] = new_port
+        changed = True
+    if isinstance(data.get("resolvedDataRoot"), str) and data["resolvedDataRoot"]:
+        updated = _rewrite_abs_path(data["resolvedDataRoot"], old_root, new_root)
+        if updated != data["resolvedDataRoot"]:
+            data["resolvedDataRoot"] = updated
+            changed = True
+    for key in ("appRoot", "finalAppPath"):
+        value = data.get(key)
+        if isinstance(value, str) and value not in ("", "."):
+            updated = _rewrite_abs_path(value, old_root, new_root)
+            if updated != value:
+                data[key] = updated
+                changed = True
+    if changed:
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return changed
+
+
+def _patch_run_script_file(path: Path, *, old_port: int, new_port: int) -> bool:
+    """The ONE hardcoded-literal collision this module found by reading the code rather than
+    assuming: `npdev-canary`'s frozen `Run-FinalApp.ps1`/`run-final-app.sh` spell `--server.port=8103`
+    directly in the java invocation, bypassing the plan JSON entirely for that one argument. A no-op
+    on the newer generator layout, whose equivalent script reads the port from the plan instead."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    updated = re.sub(rf"--server\.port={old_port}(?!\d)", f"--server.port={new_port}", text)
+    if updated != text:
+        path.write_text(updated, encoding="utf-8")
+        return True
+    return False
+
+
+def clone_app(app_dir: Path, dest_root: Path, *, name: str | None = None,
+              port: int | None = None, port_range: tuple[int, int] = DEFAULT_CLONE_PORT_RANGE) -> dict:
+    """Copies a generated app into a new, independently runnable directory -- its own port and a
+    clean `data`/`logs`/`secrets` slate -- so parallel testers stop corrupting a database they were
+    meant to be comparing against (R3.8). See the module-level comment above this section for the
+    concrete collision list and why each fix is shaped as it is.
+
+    REFUSES rather than fakes: `_detect_datasource_sharing` reads the ground truth of where this
+    app's database actually lives (baked into the built jar, not the `_ops` plan JSON) and this
+    function raises `ValueError` before copying anything if that truth is not a relative, app-owned
+    H2 file path -- the one case a directory copy genuinely isolates. A clone this function agrees
+    to create has been proven separated; it does not produce one it cannot prove.
+
+    Generic by construction, not by `_ops` layout: rather than re-deriving which shape (QUAL-3's
+    in-app layout, or the older outer+`App` split `npdev-canary` still uses) this particular app
+    has, every file actually NAMED `app-plan.json` / `resolved-db-plan.json` / `Run-FinalApp.ps1` /
+    `run-final-app.sh` anywhere under the copy is found and patched.
+
+    Raises `ValueError` if `app_dir` is not a discoverable app, names no port, or its database
+    cannot be proven isolated by a file copy; `FileExistsError` if the destination is already taken;
+    `RuntimeError`/`TimeoutError` if a port cannot be reserved. Any failure after the destination
+    directory is created rolls it back (and releases any port it reserved) rather than leaving a
+    half-cloned directory that `monitor scan` would report as a real, but broken, app.
+    """
+    app_root = Path(app_dir).expanduser().resolve()
+    if discovery_rule(app_root) is None:
+        raise ValueError(
+            f"{app_root} is not a generated NPDev app -- needs an _ops directory plus either "
+            "a .npdev-root marker or _ops/resolved-db-plan.json (see `npdev monitor probe`)")
+
+    safe, reason = _detect_datasource_sharing(app_root)
+    if not safe:
+        raise ValueError(
+            f"refusing to clone {app_root}: {reason}. Cloning by file copy only isolates a "
+            "relative-path, app-owned embedded H2 database -- anything else needs the clone's own "
+            "provisioned storage, which this command does not create.")
+
+    origin_plan = (_read_json(app_root / "_ops" / "app-plan.json")
+                  or _read_json(app_root / "_ops" / "resolved-db-plan.json") or {})
+    origin_app_id = str(origin_plan.get("appId") or app_root.name)
+
+    old_port = 0
+    for candidate_path in [app_root / "_ops" / "app-plan.json"] + list(app_root.rglob("resolved-db-plan.json")):
+        data = _read_json(candidate_path) or {}
+        if data.get("serverPort"):
+            old_port = int(data["serverPort"])
+            break
+    if not old_port:
+        raise ValueError(f"{app_root} names no serverPort anywhere under it -- cannot clone "
+                         "(has it ever been built?)")
+
+    token = uuid.uuid4().hex[:6]
+    clone_id = _validate_clone_name(name) if name else f"{origin_app_id}-clone-{token}"
+    dest_root_resolved = Path(dest_root).expanduser().resolve()
+    dest = dest_root_resolved / clone_id
+    if dest.exists():
+        raise FileExistsError(f"{dest} already exists -- pick a different --name")
+    if app_root == dest or app_root in dest.parents:
+        raise ValueError("refusing to clone an app into itself or one of its own ancestors")
+
+    dest_root_resolved.mkdir(parents=True, exist_ok=True)
+    dest_created = False
+    try:
+        if port is not None:
+            new_port = reserve_clone_port(clone_path=dest, purpose="serverPort", exact_port=port)
+        else:
+            new_port = reserve_clone_port(clone_path=dest, purpose="serverPort", port_range=port_range)
+
+        spared = _copy_app_tree(app_root, dest, spared_names=_CLONE_SPARED_DIR_NAMES)
+        dest_created = True
+
+        old_root = str(app_root)
+        new_root = str(dest)
+
+        touched: list[str] = []
+        for plan_path in dest.rglob("app-plan.json"):
+            if _patch_app_plan_file(plan_path, old_root=old_root, new_root=new_root,
+                                    new_app_id=clone_id, new_port=new_port):
+                touched.append(str(plan_path))
+        for plan_path in dest.rglob("resolved-db-plan.json"):
+            if _patch_resolved_plan_file(plan_path, old_root=old_root, new_root=new_root,
+                                         new_app_id=clone_id, new_port=new_port):
+                touched.append(str(plan_path))
+        for script_name in ("Run-FinalApp.ps1", "run-final-app.sh"):
+            for script_path in dest.rglob(script_name):
+                if _patch_run_script_file(script_path, old_port=old_port, new_port=new_port):
+                    touched.append(str(script_path))
+
+        data_isolation = (
+            "automatic and proven -- relative-path embedded H2 database, isolated by the clone's "
+            "own data directory (a distinct physical .mv.db from the origin's, verified by reading "
+            "application-npdev-db.properties before copying)."
+        )
+        clone_info = {
+            "schemaVersion": CLONE_SCHEMA_VERSION,
+            "cloneId": clone_id,
+            "createdAt": _utc_now(),
+            "originAppDir": str(app_root),
+            "originAppId": origin_app_id,
+            "originPort": old_port,
+            "port": new_port,
+            "dataIsolation": data_isolation,
+        }
+        clone_ops_dir = dest / "_ops"
+        clone_ops_dir.mkdir(parents=True, exist_ok=True)
+        (clone_ops_dir / CLONE_INFO_FILENAME).write_text(json.dumps(clone_info, indent=2), encoding="utf-8")
+
+        return {
+            "schemaVersion": CLONE_SCHEMA_VERSION,
+            "command": "monitor clone",
+            "ok": True,
+            "cloneId": clone_id,
+            "cloneDir": str(dest),
+            "originAppDir": str(app_root),
+            "originAppId": origin_app_id,
+            "originPort": old_port,
+            "port": new_port,
+            "dataIsolation": data_isolation,
+            "sparedDirectoriesRecreatedEmpty": spared,
+            "filesRewritten": touched,
+        }
+    except Exception:
+        release_clone_ports(dest)
+        if dest_created:
+            shutil.rmtree(dest, ignore_errors=True)
+        raise
+
+
+def remove_clone(clone_dir: Path) -> dict:
+    """Deletes a clone `clone_app` created, and releases its port reservation(s). Refuses anything
+    that is not provably a clone -- the `_ops/npdev-clone.json` marker `clone_app` writes, which an
+    ORIGIN app never has -- so a mistyped `--clone-dir` can never reach the app it was cloned from.
+    Also refuses while something is still listening on the clone's own port(s): deleting a live
+    app's directory out from under its own open jar/`.mv.db` file handles produces a half-broken
+    state a tester would blame on the platform rather than on the delete."""
+    clone_root = Path(clone_dir).expanduser().resolve()
+    info = _read_json(clone_root / "_ops" / CLONE_INFO_FILENAME)
+    if info is None:
+        raise ValueError(
+            f"{clone_root} has no _ops/{CLONE_INFO_FILENAME} -- refusing to delete a directory "
+            "`monitor clone` did not create (this guard exists so a mistyped --clone-dir can never "
+            "reach an app's ORIGIN). Delete it by hand if you are certain.")
+    live_ports = [p for p in (info.get("port"), info.get("hostPort")) if p]
+    listening = [p for p in live_ports if _tcp_open("127.0.0.1", p, timeout=0.3)]
+    if listening:
+        raise RuntimeError(
+            f"clone '{clone_root.name}' still has something listening on port(s) "
+            f"{', '.join(str(p) for p in listening)} -- stop it first, then remove")
+    released = release_clone_ports(clone_root)
+    shutil.rmtree(clone_root)
+    return {
+        "schemaVersion": "npdev-monitor-clone-remove.v1",
+        "command": "monitor clone-remove",
+        "ok": True,
+        "removed": str(clone_root),
+        "cloneId": info.get("cloneId"),
+        "originAppDir": info.get("originAppDir"),
+        "portsReleased": released,
+    }
 
 
 # ---------------------------------------------------------------------------------------------
