@@ -124,6 +124,98 @@ def _has_field_access(model: dict) -> bool:
     return False
 
 
+_LABEL_SITE_KEYS = ("label", "shortLabel", "displayLabel", "actionLabel")
+
+
+def _is_locale_label_object(value) -> bool:
+    """R5.6: a widened label site -- the object form `{"default": "...", "<locale>": "...", ...}`
+    the schema's `$defs/localizableLabel` accepts alongside the still-valid plain string. Detected
+    structurally (dict with a "default" key), not by checking for any specific locale tag, since
+    the whole point is that authors declare whatever locale tags they need."""
+    return isinstance(value, dict) and isinstance(value.get("default"), str) and value.get("default").strip() != ""
+
+
+def _iter_label_site_values(obj):
+    if isinstance(obj, dict):
+        for key in _LABEL_SITE_KEYS:
+            if key in obj:
+                yield obj[key]
+
+
+def _has_locale_label(model: dict) -> bool:
+    """R5.6: true when at least one label site anywhere in the model uses the per-locale object
+    form rather than a plain string -- proves the widened schema/DSL/canonical-JSON chain actually
+    carries a locale map, not just that a plain string still parses (which every OTHER model in
+    the corpus already proves and would make this detector vacuous)."""
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        ui = concept.get("ui")
+        if isinstance(ui, dict):
+            for value in _iter_label_site_values(ui):
+                if _is_locale_label_object(value):
+                    return True
+        for field in (concept.get("fields", None) or []):
+            if not isinstance(field, dict):
+                continue
+            field_ui = field.get("ui")
+            if isinstance(field_ui, dict):
+                for value in _iter_label_site_values(field_ui):
+                    if _is_locale_label_object(value):
+                        return True
+            for option in (field.get("enumValues", None) or []):
+                if isinstance(option, dict):
+                    for value in _iter_label_site_values(option):
+                        if _is_locale_label_object(value):
+                            return True
+        lifecycle = concept.get("lifecycle")
+        if isinstance(lifecycle, dict):
+            for state in (lifecycle.get("states", None) or []):
+                if isinstance(state, dict):
+                    for value in _iter_label_site_values(state):
+                        if _is_locale_label_object(value):
+                            return True
+            for transition in (lifecycle.get("transitions", None) or []):
+                if isinstance(transition, dict):
+                    for value in _iter_label_site_values(transition):
+                        if _is_locale_label_object(value):
+                            return True
+    for prop in (model.get("properties", None) or []):
+        if isinstance(prop, dict):
+            for value in _iter_label_site_values(prop):
+                if _is_locale_label_object(value):
+                    return True
+    for panel in (model.get("panels", None) or []):
+        if not isinstance(panel, dict):
+            continue
+        for action in (panel.get("actions", None) or []):
+            if isinstance(action, dict):
+                for value in _iter_label_site_values(action):
+                    if _is_locale_label_object(value):
+                        return True
+    for autopanel in (model.get("autoPanels", None) or []):
+        if not isinstance(autopanel, dict):
+            continue
+        for surface_name in ("selection", "detail", "transaction", "prompt"):
+            surface = autopanel.get(surface_name)
+            if not isinstance(surface, dict):
+                continue
+            for action in (surface.get("actions", None) or []):
+                if isinstance(action, dict):
+                    for value in _iter_label_site_values(action):
+                        if _is_locale_label_object(value):
+                            return True
+            for bucket_key in ("bandPickers", "derivedFields", "uiState"):
+                bucket = surface.get(bucket_key)
+                if isinstance(bucket, dict):
+                    for entry in bucket.values():
+                        if isinstance(entry, dict):
+                            for value in _iter_label_site_values(entry):
+                                if _is_locale_label_object(value):
+                                    return True
+    return False
+
+
 def _has_concept_soft_delete(model: dict) -> bool:
     """R5.4 (Roadmap Collection 2026-08-18): a concept declaring softDelete: true -- deletedAt-flip
     delete, deleted-row-excluding reads, and unique-among-live-rows semantics instead of a physical

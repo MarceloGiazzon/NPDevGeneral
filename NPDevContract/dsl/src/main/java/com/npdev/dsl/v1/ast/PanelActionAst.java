@@ -21,7 +21,8 @@ public record PanelActionAst(
         List<String> inputFields,
         String resultAs,
         String filename,
-        String contentType
+        String contentType,
+        Map<String, String> labelLocales
 ) {
     public PanelActionAst {
         permissionRequirements = permissionRequirements == null ? List.of() : List.copyOf(permissionRequirements);
@@ -31,5 +32,6 @@ public record PanelActionAst(
         resultAs = resultAs == null || resultAs.isBlank() ? null : resultAs.trim();
         filename = filename == null || filename.isBlank() ? null : filename.trim();
         contentType = contentType == null || contentType.isBlank() ? null : contentType.trim();
+        labelLocales = (labelLocales == null || labelLocales.isEmpty()) ? Map.of() : Map.copyOf(labelLocales);
     }
 }

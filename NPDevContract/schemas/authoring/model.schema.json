@@ -636,6 +636,31 @@
       },
       "additionalProperties": false
     },
+    "localizableLabel": {
+      "description": "R5.6: a label site accepts a plain string (unchanged -- every existing model keeps validating and behaving exactly as before) OR a per-locale object. The object form requires 'default', the deterministic terminal fallback used when neither the requested locale nor its language family has an entry -- resolution order is exact locale tag, then language-only, then 'default'. Any other key is a BCP-47-ish locale tag (e.g. 'en', 'pt-BR') mapped to that locale's override string.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "required": [
+            "default"
+          ],
+          "properties": {
+            "default": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
     "property": {
       "type": "object",
       "required": [
@@ -671,8 +696,7 @@
           "description": "Which declared propertyScopes[].name values may hold a row for this property. Every name here must be declared in propertyScopes -- checked at compile time, not by this schema."
         },
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "securityRelevant": {
           "type": "boolean",
@@ -1083,8 +1107,7 @@
           "description": "Declared procedure this action invokes over the draft."
         },
         "label": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "#/$defs/localizableLabel",
           "description": "Button caption. Defaults to the procedure name when omitted."
         },
         "inputFields": {
@@ -1121,8 +1144,7 @@
           "description": "Source Selection panel the client offers as a modal row picker (C6 \"Seleciona Ruas\")."
         },
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "columns": {
           "type": "array",
@@ -1200,8 +1222,7 @@
       "additionalProperties": false,
       "properties": {
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "tier": {
           "type": "string",
@@ -1231,8 +1252,7 @@
       "description": "Move 11 W6 (C1, docs/MOVE3_G2_CHECKLISTS.md): one piece of declared TRANSIENT UI state on an Aggregate Workbench surface -- a record-type toggle and its kind. transaction.visibleWhen's grammar ($root.<field> == '<literal>') reads persisted root fields only, and a record-type toggle is not a persisted field of anything, so there was nothing for the predicate to read. This adds a second resolvable ROOT for the SAME grammar ($ui.<name>), not a second dialect. PRESENTATION-ONLY: UI state never reaches the commit payload and must never gate persistence or authorization -- a surface hidden by $ui.* whose rows exist still commits them unchanged.",
       "properties": {
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "values": {
           "type": "array",
@@ -1414,8 +1434,7 @@
           "minLength": 1
         },
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "initial": {
           "type": "boolean"
@@ -1463,8 +1482,7 @@
           "minLength": 1
         },
         "actionLabel": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "action": {
           "$ref": "#/$defs/actionMetadata"
@@ -1902,12 +1920,10 @@
           "minLength": 1
         },
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "displayLabel": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "order": {
           "type": "integer",
@@ -2037,12 +2053,10 @@
       "type": "object",
       "properties": {
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "shortLabel": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "description": {
           "type": "string",
@@ -2184,8 +2198,7 @@
       "type": "object",
       "properties": {
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "confirmationText": {
           "type": "string",
@@ -4190,8 +4203,7 @@
           "minLength": 1
         },
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "binding": {
           "type": "string",

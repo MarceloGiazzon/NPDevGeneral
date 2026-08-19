@@ -839,7 +839,8 @@ public final class ModelCompiler {
         for (com.npdev.dsl.v1.ast.PropertyAst propertyAst : propertyAsts) {
             compiled.add(new com.npdev.dsl.v1.compiled.CompiledProperty(
                     propertyAst.name(), propertyAst.type(), propertyAst.defaultValue(),
-                    propertyAst.settableAt(), propertyAst.label(), propertyAst.securityRelevant()));
+                    propertyAst.settableAt(), propertyAst.label(), propertyAst.securityRelevant(),
+                    propertyAst.labelLocales()));
         }
         return compiled;
     }
@@ -912,7 +913,7 @@ public final class ModelCompiler {
         }
         List<CompiledDerivedField> derivedFields = new ArrayList<>();
         for (DerivedFieldAst d : surface.derivedFields()) {
-            derivedFields.add(new CompiledDerivedField(d.name(), d.label(), d.tier(), d.expression(), d.procedure()));
+            derivedFields.add(new CompiledDerivedField(d.name(), d.label(), d.tier(), d.expression(), d.procedure(), d.labelLocales()));
         }
         Map<String, CompiledRegionMount> regions = new LinkedHashMap<>();
         for (Map.Entry<String, RegionMountAst> entry : surface.regions().entrySet()) {
@@ -927,7 +928,8 @@ public final class ModelCompiler {
                     new ArrayList<>(action.inputFields()),
                     toCompiledWorkbenchActionApplyTo(action.applyTo()),
                     action.afterAction(),
-                    action.visibleWhen()
+                    action.visibleWhen(),
+                    action.labelLocales()
             ));
         }
         Map<String, CompiledWorkbenchBandPicker> bandPickers = new LinkedHashMap<>();
@@ -936,14 +938,15 @@ public final class ModelCompiler {
             bandPickers.put(entry.getKey(),
                     new CompiledWorkbenchBandPicker(
                             picker.panel(), picker.label(), new ArrayList<>(picker.columns()),
-                            picker.filter(), picker.multiSelect()));
+                            picker.filter(), picker.multiSelect(), picker.labelLocales()));
         }
         // Move 11 W6: declared transient UI state a `$ui.<name>` visibleWhen predicate can read.
         Map<String, CompiledUiStateControl> uiState = new LinkedHashMap<>();
         for (Map.Entry<String, UiStateControlAst> entry : surface.uiState().entrySet()) {
             UiStateControlAst control = entry.getValue();
             uiState.put(entry.getKey(), new CompiledUiStateControl(
-                    control.name(), control.label(), new ArrayList<>(control.values()), control.defaultValue()));
+                    control.name(), control.label(), new ArrayList<>(control.values()), control.defaultValue(),
+                    control.labelLocales()));
         }
         return new CompiledAutoPanelSurface(
                 new ArrayList<>(surface.filters()),
@@ -1225,7 +1228,8 @@ public final class ModelCompiler {
                 uiAst.getLabel(),
                 uiAst.getPlaceholder(),
                 uiAst.getHelpText(),
-                uiAst.getWidget()
+                uiAst.getWidget(),
+                uiAst.getLabelLocales()
         );
         return new CompiledDomainType(
                 domainTypeAst.getName(),
@@ -1260,7 +1264,8 @@ public final class ModelCompiler {
                     enumOption.isDeprecated(),
                     enumOption.getIconHint(),
                     enumOption.getBadgeHint(),
-                    enumOption.getDescription()
+                    enumOption.getDescription(),
+                    enumOption.getLabelLocales()
             ));
         }
         return List.copyOf(compiled);
@@ -1411,7 +1416,8 @@ public final class ModelCompiler {
                     stateAst.getLabel(),
                     stateAst.isInitial(),
                     stateAst.isTerminal(),
-                    stateAst.getMetadata()
+                    stateAst.getMetadata(),
+                    stateAst.getLabelLocales()
             ));
         }
         List<CompiledStateTransition> transitions = new ArrayList<>();
@@ -1429,7 +1435,8 @@ public final class ModelCompiler {
                     transitionAst.getGuard(),
                     transitionAst.getActionLabel(),
                     transitionAst.getMetadata(),
-                    toCompiledActionMetadata(transitionAst.getAction())
+                    toCompiledActionMetadata(transitionAst.getAction()),
+                    transitionAst.getActionLabelLocales()
             ));
         }
         transitions.sort(Comparator
@@ -1716,7 +1723,8 @@ public final class ModelCompiler {
                 actionMetadata.getDangerLevel(),
                 actionMetadata.getVisibleWhen(),
                 actionMetadata.getPermissionHint(),
-                actionMetadata.getInputFormHint()
+                actionMetadata.getInputFormHint(),
+                actionMetadata.getLabelLocales()
         );
     }
 
@@ -1907,7 +1915,8 @@ public final class ModelCompiler {
                     sortedStrings(action.inputFields()),
                     action.resultAs(),
                     action.filename(),
-                    action.contentType()
+                    action.contentType(),
+                    action.labelLocales()
             ));
         }
         out.sort(Comparator.comparing(action -> normalize(action.name())));
@@ -2024,7 +2033,9 @@ public final class ModelCompiler {
                 metadata.getDefaultSort(),
                 metadata.getDefaultGroup(),
                 metadata.getImageField(),
-                metadata.getCustomWidgetRef()
+                metadata.getCustomWidgetRef(),
+                metadata.getLabelLocales(),
+                metadata.getShortLabelLocales()
         );
     }
 

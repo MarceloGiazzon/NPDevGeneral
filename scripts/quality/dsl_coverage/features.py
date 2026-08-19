@@ -18,7 +18,7 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
     _all_steps, _flows, _has_aggregate_on_commit, _has_aggregate_on_validate,
     _has_arithmetic_derived_expression,
     _has_capability_policy, _has_composite_index, _has_concept_access, _has_concept_extends,
-    _has_concept_soft_delete, _has_field_access,
+    _has_concept_soft_delete, _has_field_access, _has_locale_label,
     _has_conversion_op, _has_date_field, _has_decimal_field, _has_file_field, _has_flow_io_schema,
     _has_flow_start_endpoint, _has_groupby_cross_context_join, _has_groupby_join,
     _has_groupby_multi_hop_join, _has_await_timeout, _has_on_failure, _has_parallel_await_foreach,
@@ -158,6 +158,12 @@ FEATURE_DETECTORS = {
     # expression via the same evaluateAccessRule concept.access already uses), the next rung below
     # concept.access on the role-ceiling -> row-scope -> field-scope ladder.
     "field.access": _has_field_access,
+    # R5.6 (Roadmap Wave 1, 2026-08-19): a label site authored as the per-locale object form
+    # ({"default": "...", "<locale>": "..."}) rather than a plain string -- proves the widened
+    # schema/DSL/canonical-JSON chain actually carries a locale map end to end, distinct from every
+    # OTHER corpus model's plain-string labels (which would make a detector that only checked "a
+    # label exists" vacuous -- string-form labels predate this feature entirely).
+    "label.locale": _has_locale_label,
     # R5.4 (Roadmap Collection 2026-08-18): concept.softDelete -- deletedAt-flip delete, deleted-row-
     # excluding reads (list/page/aggregate/existsUnique/reference finders), a restore action, and
     # unique-among-live-rows semantics instead of a physical DELETE.

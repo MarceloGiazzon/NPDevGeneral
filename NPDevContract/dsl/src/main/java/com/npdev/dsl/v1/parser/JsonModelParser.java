@@ -892,8 +892,9 @@ public final class JsonModelParser {
                     requiredText(propertyNode, "type"),
                     parseJsonValue(propertyNode.get("default")),
                     parseTextArray(propertyNode.get("settableAt")),
-                    readText(propertyNode, "label"),
-                    readBooleanFlag(propertyNode, "securityRelevant")
+                    readLabelText(propertyNode, "label"),
+                    readBooleanFlag(propertyNode, "securityRelevant"),
+                    readLabelLocales(propertyNode, "label")
             ));
         }
         return out;
@@ -1394,9 +1395,10 @@ public final class JsonModelParser {
             JsonNode stateNode = node.get(name);
             out.put(name, new UiStateControlAst(
                     name,
-                    readText(stateNode, "label"),
+                    readLabelText(stateNode, "label"),
                     parseTextArray(stateNode.get("values")),
-                    readText(stateNode, "default")
+                    readText(stateNode, "default"),
+                    readLabelLocales(stateNode, "label")
             ));
         }
         return out;
@@ -1429,11 +1431,12 @@ public final class JsonModelParser {
         for (JsonNode actionNode : node) {
             out.add(new WorkbenchActionAst(
                     requiredText(actionNode, "procedure"),
-                    readText(actionNode, "label"),
+                    readLabelText(actionNode, "label"),
                     parseTextArray(actionNode.get("inputFields")),
                     parseWorkbenchActionApplyTo(actionNode.get("applyTo")),
                     readText(actionNode, "afterAction"),
-                    readText(actionNode, "visibleWhen")
+                    readText(actionNode, "visibleWhen"),
+                    readLabelLocales(actionNode, "label")
             ));
         }
         return out;
@@ -1485,10 +1488,11 @@ public final class JsonModelParser {
             // the single source of truth for "panel is still required" (not relaxed in this pass).
             out.put(name, new WorkbenchBandPickerAst(
                     panel,
-                    readText(pickerNode, "label"),
+                    readLabelText(pickerNode, "label"),
                     parseTextArray(pickerNode.get("columns")),
                     filter,
-                    multiSelect
+                    multiSelect,
+                    readLabelLocales(pickerNode, "label")
             ));
         }
         return out;
@@ -1545,10 +1549,11 @@ public final class JsonModelParser {
             JsonNode fieldNode = node.get(name);
             out.add(new DerivedFieldAst(
                     name,
-                    readText(fieldNode, "label"),
+                    readLabelText(fieldNode, "label"),
                     readText(fieldNode, "tier"),
                     readText(fieldNode, "expression"),
-                    readText(fieldNode, "procedure")
+                    readText(fieldNode, "procedure"),
+                    readLabelLocales(fieldNode, "label")
             ));
         }
         return out;
@@ -1752,7 +1757,7 @@ public final class JsonModelParser {
             String name = requiredText(actionNode, "name");
             out.add(new PanelActionAst(
                     name,
-                    readText(actionNode, "label"),
+                    readLabelText(actionNode, "label"),
                     requiredText(actionNode, "binding"),
                     readText(actionNode, "concept"),
                     readText(actionNode, "operation"),
@@ -1768,7 +1773,8 @@ public final class JsonModelParser {
                     parseTextArray(actionNode.get("inputFields")),
                     readText(actionNode, "resultAs"),
                     readText(actionNode, "filename"),
-                    readText(actionNode, "contentType")
+                    readText(actionNode, "contentType"),
+                    readLabelLocales(actionNode, "label")
             ));
         }
         return out;
@@ -1793,6 +1799,53 @@ public final class JsonModelParser {
         String s = v.asText();
         if (s == null || s.isBlank()) return null;
         return s;
+    }
+
+    /**
+     * R5.6: reads a label site's resolved default text. Every label site accepts the widened
+     * shape {@code $defs/localizableLabel} -- a plain string (unchanged, {@link #readText} on it
+     * directly would already work) OR an object {@code {"default": "...", "<locale>": "...", ...}}.
+     * This is the ONE extra layer of indirection: for the object form it reads "default", the
+     * schema-required terminal fallback; for the plain-string form it behaves exactly like
+     * {@link #readText}. Always pair with {@link #readLabelLocales} at the same call site -- the
+     * text is only half of a label site's authored value.
+     */
+    private static String readLabelText(JsonNode node, String key) {
+        JsonNode v = node.get(key);
+        if (v == null || v.isNull()) return null;
+        if (v.isObject()) {
+            return readText(v, "default");
+        }
+        String s = v.asText();
+        return (s == null || s.isBlank()) ? null : s;
+    }
+
+    /**
+     * R5.6: reads a label site's per-locale overrides (empty when authored as a plain string, or
+     * when the object form declares only "default"). Keys are whatever locale tags the author
+     * wrote (e.g. "en", "pt-BR") -- not validated against a fixed locale list, matching this
+     * codebase's general "informational tag, not a closed set" treatment of locale strings
+     * elsewhere (see {@code SettingsAst.locale}). Insertion order is preserved (LinkedHashMap) so
+     * canonical-JSON output is a function of parse order, not hash order.
+     */
+    private static Map<String, String> readLabelLocales(JsonNode node, String key) {
+        JsonNode v = node.get(key);
+        if (v == null || v.isNull() || !v.isObject()) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        Iterator<String> names = v.fieldNames();
+        while (names.hasNext()) {
+            String locale = names.next();
+            if ("default".equals(locale)) {
+                continue;
+            }
+            String value = readText(v, locale);
+            if (value != null) {
+                out.put(locale, value);
+            }
+        }
+        return out;
     }
 
     private static String requiredText(JsonNode node, String key) throws IOException {
@@ -1953,7 +2006,10 @@ public final class JsonModelParser {
                 throw new IOException(fieldPath + "[" + index + "] must be string or object");
             }
             String value = requiredText(item, "value");
-            String label = firstNonBlank(readText(item, "label"), readText(item, "displayLabel"));
+            String label = firstNonBlank(readLabelText(item, "label"), readLabelText(item, "displayLabel"));
+            Map<String, String> labelLocales = !readLabelLocales(item, "label").isEmpty()
+                    ? readLabelLocales(item, "label")
+                    : readLabelLocales(item, "displayLabel");
             Integer order = readOptionalInt(item, "order");
             String group = readText(item, "group");
             boolean defaultValue = item.has("default") && item.get("default").asBoolean(false);
@@ -1970,7 +2026,8 @@ public final class JsonModelParser {
                     deprecated,
                     iconHint,
                     badgeHint,
-                    description
+                    description,
+                    labelLocales
             ));
         }
         return out;
@@ -2488,14 +2545,15 @@ public final class JsonModelParser {
             throw new IOException(fieldPath + " must be an object");
         }
         return new ActionMetadataAst(
-                readText(node, "label"),
+                readLabelText(node, "label"),
                 readText(node, "confirmationText"),
                 readText(node, "successMessage"),
                 readText(node, "failureHint"),
                 readText(node, "dangerLevel"),
                 readText(node, "visibleWhen"),
                 readText(node, "permissionHint"),
-                readText(node, "inputFormHint")
+                readText(node, "inputFormHint"),
+                readLabelLocales(node, "label")
         );
     }
 
@@ -2512,10 +2570,11 @@ public final class JsonModelParser {
             throw new IOException(fieldPath + " must be an object");
         }
         return new DomainTypeUiAst(
-                readText(node, "label"),
+                readLabelText(node, "label"),
                 readText(node, "placeholder"),
                 readText(node, "helpText"),
-                readText(node, "widget")
+                readText(node, "widget"),
+                readLabelLocales(node, "label")
         );
     }
 
@@ -2527,8 +2586,8 @@ public final class JsonModelParser {
             throw new IOException(fieldPath + " must be an object");
         }
         return new PresentationMetadataAst(
-                readText(node, "label"),
-                readText(node, "shortLabel"),
+                readLabelText(node, "label"),
+                readLabelText(node, "shortLabel"),
                 readText(node, "description"),
                 readText(node, "helpText"),
                 readText(node, "placeholder"),
@@ -2561,7 +2620,9 @@ public final class JsonModelParser {
                 readText(node, "defaultSort"),
                 readText(node, "defaultGroup"),
                 readText(node, "imageField"),
-                readText(node, "customWidgetRef")
+                readText(node, "customWidgetRef"),
+                readLabelLocales(node, "label"),
+                readLabelLocales(node, "shortLabel")
         );
     }
 
@@ -2679,10 +2740,11 @@ public final class JsonModelParser {
             }
             String event = readText(transitionNode, "event");
             String guard = readText(transitionNode, "guard");
-            String actionLabel = readText(transitionNode, "actionLabel");
+            String actionLabel = readLabelText(transitionNode, "actionLabel");
             Map<String, String> metadata = parseStringMap(transitionNode.get("metadata"));
             ActionMetadataAst action = parseActionMetadata(transitionNode.get("action"), fieldPath + ".transitions[" + index + "].action");
-            transitions.add(new StateTransitionAst(from, to, requiredPayload, event, guard, actionLabel, metadata, action));
+            transitions.add(new StateTransitionAst(from, to, requiredPayload, event, guard, actionLabel, metadata, action,
+                    readLabelLocales(transitionNode, "actionLabel")));
         }
         return new LifecycleAst(statusField, states, transitions);
     }
@@ -2709,7 +2771,7 @@ public final class JsonModelParser {
                 throw new IOException(fieldPath + "[" + index + "] must be a string or object");
             }
             String value = requiredText(stateNode, "value");
-            String label = readText(stateNode, "label");
+            String label = readLabelText(stateNode, "label");
             Boolean initial = readOptionalBoolean(stateNode, "initial");
             Boolean terminal = readOptionalBoolean(stateNode, "terminal");
             List<String> allowedActions = parseTextArray(stateNode.get("allowedActions"));
@@ -2720,7 +2782,8 @@ public final class JsonModelParser {
                     initial != null && initial,
                     terminal != null && terminal,
                     allowedActions,
-                    metadata
+                    metadata,
+                    readLabelLocales(stateNode, "label")
             ));
         }
         return states;

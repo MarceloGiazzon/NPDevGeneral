@@ -5,6 +5,62 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-19 — every label site accepts a per-locale object, not just a plain string (R5.6)
+
+**What changes.** All 13 label-shaped fields in the model schema (`property.label`,
+`workbenchAction.label`, `workbenchBandPicker.label`, `transactionDerivedField.label`,
+`transactionUiState.label`, `lifecycleState.label`, `lifecycleTransition.actionLabel`,
+`enumOption.label`/`displayLabel`, `presentationMetadata.label`/`shortLabel` — which covers both
+`field.ui` and `concept.ui` via the shared `uiField`/`presentationMetadata` def, plus
+`domainType.ui.label` at the AST layer even though it shares the same schema def — `actionMetadata.label`,
+and `panelAction.label`) now accept `$defs/localizableLabel`: a plain string (**unchanged — every
+existing model keeps validating and behaving exactly as before, a widening not a replacement**) OR
+an object `{"default": "...", "<locale>": "...", ...}`. `default` is required whenever the object
+form is used — the deterministic terminal fallback. Resolution order, implemented in
+`com.npdev.kernel.i18n.LabelResolver` (new): exact locale-tag match (case-insensitive) → same-
+language match ignoring region (`pt-BR` request against a declared `pt` entry, or vice versa) →
+`default`. Never blank, never a random map entry.
+
+Threaded through the full four-place chain (`JsonModelParser` → `ModelCompiler` →
+`ModelResolver`'s specialize/extend merge, which now does a whole-value override — a specialization
+declaring ANY label content, text or locale map, replaces the base's entirely, matching this
+codebase's existing "override wins, no partial merge" convention elsewhere in the resolver → the
+`CompiledModelCanonicalJson`/`Reader` canonical pair, which writes the object form only when a
+label actually carries locale overrides so a plain-string label's canonical JSON is byte-identical
+to before). Every existing `label`/`labelLocales`-shaped getter (`CompiledProperty.label()`, etc.)
+keeps its old signature; `labelLocales()`/`getLabelLocales()` is a new, additive accessor. Records
+constructed positionally outside `NPDevContract/dsl` (`CompiledProperty`, `CompiledPanelAction`,
+`CompiledStateMachineState`, `CompiledStateTransition` — confirmed by grep across
+generator/kernel/runtimehost test fixtures) keep their pre-existing constructor overload
+unchanged; the widened shape is a new trailing-arg overload only.
+
+**Server-side locale is not wired end to end yet.** Nothing upstream of `ExecutionContext` carries
+a user locale today (no JWT claim, no header, no session field — confirmed by inspection of
+`JwtAuthenticatedContextResolver` and the `RuntimeContextService` mustache template). This change
+adds `ExecutionContext.locale()` (additive method, reads the existing generic `tags` map's
+`"locale"` key — the same pattern `correlationId()`/`idempotencyKey()` already use — deliberately
+NOT a new record component, since `ExecutionContext`'s canonical constructor is called positionally
+by callers this change does not own) and `LabelResolver`, both in `NPDevKernel/kernel`. Wiring an
+actual `Accept-Language`/`X-Tag-locale` header into `ExecutionContext.withTag("locale", ...)`, and
+calling `LabelResolver` from the UI-metadata bundle builder, is a `NPDevRuntimeHost` change (that
+module's `RuntimeUiMetadataController`/`RuntimeMetadataService`/`PanelRuntime` currently read
+labels as raw strings off the generically-parsed compiled-metadata JSON tree) — out of scope here
+and not yet done.
+
+**Codemod.** `NPDevCli/dsl_v2_migration.py`'s new `migrate_label_locales(doc, locale)` (not yet
+wired to a CLI subcommand — that file is the only one touched here; `npdev_cli.py`'s `migrate`
+subparser needs a follow-up commit from whoever owns it) widens every plain-string label site it
+finds into `{"default": <original text>, "<locale>": <original text>}`, structurally (walks the
+same shapes the parser recognizes, never a blind string replace), losslessly (the original text
+survives byte-for-byte as both `default` and the locale entry), and idempotently (an
+already-widened site is left alone). It is a no-op when `locale` is blank — this codemod does not
+guess what locale an app's existing plain strings are in. Round-tripped against
+`AppGen/apps/payment-webhook-rehearsal/definition/model.json` (18 real label sites): all 18
+widened, collapsing the widened form back to a plain string reproduces the original document
+byte-for-byte, a second run makes zero further changes, and `:dsl:validateModel` against both the
+original and the widened file report the identical single pre-existing warning (unrelated to
+labels) and zero errors.
+
 ## 2026-08-19 — remote packs must be signed, or accepted with an explicit flag (R8.7)
 
 **What changes.** `npdev pack add` and `npdev pack update` now refuse a remote pack (any entry with

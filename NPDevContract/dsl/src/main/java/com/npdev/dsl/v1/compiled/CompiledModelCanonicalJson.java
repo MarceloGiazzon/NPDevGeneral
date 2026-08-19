@@ -242,8 +242,8 @@ public final class CompiledModelCanonicalJson {
             node.put("type", safe(property.type()));
             node.set("default", MAPPER.valueToTree(property.defaultValue()));
             node.set("settableAt", toStringArray(property.settableAt()));
-            if (property.label() != null) {
-                node.put("label", property.label());
+            if (property.label() != null || !property.labelLocales().isEmpty()) {
+                node.set("label", toLabelNode(property.label(), property.labelLocales()));
             }
             node.put("securityRelevant", property.securityRelevant());
             properties.add(node);
@@ -397,7 +397,7 @@ public final class CompiledModelCanonicalJson {
             CompiledUiStateControl control = entry.getValue();
             ObjectNode controlNode = JsonNodeFactory.instance.objectNode();
             controlNode.put("name", safe(control.name()));
-            controlNode.put("label", safe(control.label()));
+            controlNode.set("label", toLabelNode(control.label(), control.labelLocales()));
             controlNode.set("values", toStringArray(control.values()));
             controlNode.put("default", safe(control.defaultValue()));
             node.set(safe(entry.getKey()), controlNode);
@@ -426,8 +426,8 @@ public final class CompiledModelCanonicalJson {
         for (CompiledWorkbenchAction action : actions) {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("procedure", safe(action.procedure()));
-            if (action.label() != null) {
-                node.put("label", safe(action.label()));
+            if (action.label() != null || !action.labelLocales().isEmpty()) {
+                node.set("label", toLabelNode(action.label(), action.labelLocales()));
             }
             node.set("inputFields", toStringArray(action.inputFields()));
             if (action.applyTo() != null) {
@@ -480,8 +480,8 @@ public final class CompiledModelCanonicalJson {
             CompiledWorkbenchBandPicker picker = entry.getValue();
             ObjectNode pickerNode = JsonNodeFactory.instance.objectNode();
             pickerNode.put("panel", safe(picker.panel()));
-            if (picker.label() != null) {
-                pickerNode.put("label", safe(picker.label()));
+            if (picker.label() != null || !picker.labelLocales().isEmpty()) {
+                pickerNode.set("label", toLabelNode(picker.label(), picker.labelLocales()));
             }
             pickerNode.set("columns", toStringArray(picker.columns()));
             pickerNode.put("filter", safe(picker.filter()));
@@ -541,8 +541,8 @@ public final class CompiledModelCanonicalJson {
         }
         for (CompiledDerivedField field : derivedFields) {
             ObjectNode entry = JsonNodeFactory.instance.objectNode();
-            if (field.label() != null) {
-                entry.put("label", safe(field.label()));
+            if (field.label() != null || !field.labelLocales().isEmpty()) {
+                entry.set("label", toLabelNode(field.label(), field.labelLocales()));
             }
             entry.put("tier", safe(field.tier()));
             if (field.expression() != null) {
@@ -732,7 +732,7 @@ public final class CompiledModelCanonicalJson {
             return null;
         }
         ObjectNode node = JsonNodeFactory.instance.objectNode();
-        node.put("label", safe(ui.getLabel()));
+        node.set("label", toLabelNode(ui.getLabel(), ui.getLabelLocales()));
         node.put("placeholder", safe(ui.getPlaceholder()));
         node.put("helpText", safe(ui.getHelpText()));
         node.put("widget", safe(ui.getWidget()));
@@ -744,8 +744,8 @@ public final class CompiledModelCanonicalJson {
             return null;
         }
         ObjectNode node = JsonNodeFactory.instance.objectNode();
-        node.put("label", safe(metadata.getLabel()));
-        node.put("shortLabel", safe(metadata.getShortLabel()));
+        node.set("label", toLabelNode(metadata.getLabel(), metadata.getLabelLocales()));
+        node.set("shortLabel", toLabelNode(metadata.getShortLabel(), metadata.getShortLabelLocales()));
         node.put("description", safe(metadata.getDescription()));
         node.put("helpText", safe(metadata.getHelpText()));
         node.put("placeholder", safe(metadata.getPlaceholder()));
@@ -1290,7 +1290,7 @@ public final class CompiledModelCanonicalJson {
         for (CompiledPanelAction action : sorted) {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("name", safe(action.name()));
-            node.put("label", safe(action.label()));
+            node.set("label", toLabelNode(action.label(), action.labelLocales()));
             node.put("binding", safe(action.binding()));
             node.put("concept", safe(action.concept()));
             node.put("operation", safe(action.operation()));
@@ -1350,7 +1350,7 @@ public final class CompiledModelCanonicalJson {
         for (CompiledStateMachineState state : lifecycle.getStates()) {
             ObjectNode stateNode = JsonNodeFactory.instance.objectNode();
             stateNode.put("value", safe(state.getValue()));
-            stateNode.put("label", safe(state.getLabel()));
+            stateNode.set("label", toLabelNode(state.getLabel(), state.getLabelLocales()));
             stateNode.put("initial", state.isInitial());
             stateNode.put("terminal", state.isTerminal());
             stateNode.set("metadata", toStringMap(state.getMetadata()));
@@ -1370,7 +1370,7 @@ public final class CompiledModelCanonicalJson {
             transitionNode.set("requiredPayload", toStringArray(transition.getRequiredPayload()));
             transitionNode.put("event", safe(transition.getEvent()));
             transitionNode.put("guard", safe(transition.getGuard()));
-            transitionNode.put("actionLabel", safe(transition.getActionLabel()));
+            transitionNode.set("actionLabel", toLabelNode(transition.getActionLabel(), transition.getActionLabelLocales()));
             transitionNode.set("action", toActionMetadata(transition.getAction()));
             transitionNode.set("metadata", toStringMap(transition.getMetadata()));
             transitionsNode.add(transitionNode);
@@ -1526,7 +1526,7 @@ public final class CompiledModelCanonicalJson {
             return null;
         }
         ObjectNode node = JsonNodeFactory.instance.objectNode();
-        node.put("label", safe(action.getLabel()));
+        node.set("label", toLabelNode(action.getLabel(), action.getLabelLocales()));
         node.put("confirmationText", safe(action.getConfirmationText()));
         node.put("successMessage", safe(action.getSuccessMessage()));
         node.put("failureHint", safe(action.getFailureHint()));
@@ -1701,7 +1701,7 @@ public final class CompiledModelCanonicalJson {
             }
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("value", safe(option.getValue()));
-            node.put("label", safe(option.getLabel()));
+            node.set("label", toLabelNode(option.getLabel(), option.getLabelLocales()));
             if (option.getOrder() == null) {
                 node.putNull("order");
             } else {
@@ -1797,6 +1797,26 @@ public final class CompiledModelCanonicalJson {
 
     private static String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    /**
+     * R5.6: writes a label site. Plain string when there are no per-locale overrides -- the
+     * common case, and byte-identical to every pre-R5.6 canonical file (load-bearing for the
+     * determinism checker: {@code check-deterministic-generation.ps1} diffs two generations of the
+     * SAME model, so this only needs to be a function of the input, not literally unchanged
+     * output). Object form {@code {"default": "...", "<locale>": "...", ...}} otherwise, with
+     * locale keys sorted so output is independent of authoring/map-iteration order.
+     */
+    private static JsonNode toLabelNode(String text, Map<String, String> locales) {
+        if (locales == null || locales.isEmpty()) {
+            return JsonNodeFactory.instance.textNode(safe(text));
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("default", safe(text));
+        for (Map.Entry<String, String> entry : new TreeMap<>(locales).entrySet()) {
+            node.put(entry.getKey(), safe(entry.getValue()));
+        }
+        return node;
     }
 
     private static String normalize(String value) {
