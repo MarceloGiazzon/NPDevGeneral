@@ -3085,6 +3085,25 @@
     }
   }
 
+  // PACK-10 step 4: a field carries `extensionSource` (a pack alias) when an extension pack
+  // additively merged it onto a base pack's concept -- see PackExtensionComposer.applyExtension.
+  // Rendering it is purely presentational: which base/extension pack's field this is, never who
+  // controls WHERE it renders (that is app-controlled -- see the field's already-final position in
+  // `concept.fields`, decided server-side by composeExtensionsWithOrdering before this manifest was
+  // ever written). Appended as a sibling element (never folded into textContent), so it survives
+  // later `textContent =`/`+=` reassignment of the label it sits next to (e.g. the sort-arrow
+  // append in renderTable, or applyConditionals' required-marker rewrite).
+  function appendExtensionBadge(el, packAlias) {
+    if (!packAlias) {
+      return;
+    }
+    const badge = document.createElement("span");
+    badge.className = "ext-field-badge";
+    badge.textContent = "+" + packAlias;
+    badge.title = "Added by extension pack \"" + packAlias + "\"";
+    el.appendChild(badge);
+  }
+
   function renderTable(concept, panel) {
     const fields = visibleFields(concept, panel);
     const table = document.createElement("table");
@@ -3129,6 +3148,7 @@
           loadPanel(concept);
         });
       }
+      appendExtensionBadge(th, field.extensionSource);
       headRow.appendChild(th);
     });
     const actionHead = document.createElement("th");
@@ -3909,6 +3929,7 @@
       row.className = "detail-row";
       const label = document.createElement("strong");
       label.textContent = field.label || field.name;
+      appendExtensionBadge(label, field.extensionSource);
       const value = document.createElement("span");
       if (field.widget === "multiselect" && field.reference) {
         value.textContent = "Loading…";
@@ -4029,10 +4050,17 @@
           wrapper.style.gridColumn = "span " + field.columnSpan;
         }
         const label = document.createElement("label");
+        // A dedicated header row (not `label` itself) so the extension badge sits INLINE next to
+        // the label text -- `label` is `display:grid` with no explicit columns, so appending the
+        // badge directly to it would stack the badge as its own row between the text and the input.
+        const labelHead = document.createElement("span");
+        labelHead.className = "field-label-row";
         const labelText = document.createElement("span");
         labelText.className = "field-label-text";
         labelText.textContent = (field.label || field.name) + (field.required ? " *" : "");
-        label.appendChild(labelText);
+        labelHead.appendChild(labelText);
+        appendExtensionBadge(labelHead, field.extensionSource);
+        label.appendChild(labelHead);
         const input = createInput(field, record ? record[field.name] : "", record ? record[concept.idField] : null);
         // R7.1: editing a flagged field clears ONLY that field's own highlight, so fixing one
         // problem does not hide the ones the user has not addressed yet.

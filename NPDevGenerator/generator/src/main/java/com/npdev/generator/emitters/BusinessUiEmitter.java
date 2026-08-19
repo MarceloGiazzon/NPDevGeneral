@@ -63,9 +63,31 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      *     declare an override.
      */
     public void emit(CompiledModel model, String superUserRole, SettingResolver settingResolver) {
+        emit(model, superUserRole, settingResolver, Map.of());
+    }
+
+    /**
+     * PACK-10 step 4: same as the three-argument {@link #emit(CompiledModel, String,
+     * SettingResolver)}, plus {@code extensionFieldOrigins} -- per-concept, per-field extension
+     * provenance (as returned by {@code PackExtensionComposer.ExtensionComposition
+     * .extensionFieldOrigins()}), threaded into the generated UI manifest so the business UI can
+     * visually attribute an extension-added field to the pack that added it (e.g. a small
+     * "+clinicext" badge). An empty map (every existing caller's implicit default) reproduces prior
+     * behavior exactly -- no field carries an {@code extensionSource}.
+     *
+     * @param extensionFieldOrigins pack-qualified concept name -> (field name -> extension pack
+     *                              alias); {@code null} is treated as empty.
+     */
+    public void emit(
+            CompiledModel model,
+            String superUserRole,
+            SettingResolver settingResolver,
+            Map<String, Map<String, String>> extensionFieldOrigins
+    ) {
         SettingResolver resolver = settingResolver == null
                 ? new SettingResolver(com.npdev.dsl.v1.settings.SettingStore.empty())
                 : settingResolver;
+        Map<String, Map<String, String>> fieldOrigins = extensionFieldOrigins == null ? Map.of() : extensionFieldOrigins;
         List<CompiledConcept> persistedConcepts = persistedConcepts(model);
         Map<String, CompiledConcept> conceptsByName = conceptsByName(persistedConcepts);
         Map<String, Object> ctx = new LinkedHashMap<>();
@@ -118,7 +140,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         );
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/generated-ui-manifest.json",
-                manifestJson(model, persistedConcepts, superUserRole, resolver)
+                manifestJson(model, persistedConcepts, superUserRole, resolver, fieldOrigins)
         );
 
         // The shared frame (top bar + left nav) is now the platform default for EVERY generated
@@ -296,7 +318,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             CompiledModel model,
             List<CompiledConcept> concepts,
             String superUserRole,
-            SettingResolver settingResolver
+            SettingResolver settingResolver,
+            Map<String, Map<String, String>> extensionFieldOrigins
     ) {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schemaVersion", "npdev-generated-ui-manifest.v1");
@@ -362,7 +385,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("formPresentation", formPresentation(concept));
             node.put("frameMode", resolveFrameMode(concept, settingResolver));
             node.put("guidePage", resolveGuidePage(concept, settingResolver, knownGuidePageNames, guidePages.defaultGuidePage()));
-            node.put("fields", manifestFields(concept, conceptsByName(concepts), settingResolver, contexts));
+            node.put("fields", manifestFields(concept, conceptsByName(concepts), settingResolver, contexts,
+                    extensionFieldOrigins.getOrDefault(concept.getName(), Map.of())));
             node.put("list", manifestList(concept, idField));
             node.put("documents", documentsByConcept.getOrDefault(concept.getName(), List.of()));
             Map<String, Object> actions = new LinkedHashMap<>();
@@ -387,13 +411,19 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             CompiledConcept concept,
             Map<String, CompiledConcept> conceptsByName,
             SettingResolver settingResolver,
-            List<CompiledContext> contexts
+            List<CompiledContext> contexts,
+            Map<String, String> extensionFieldOrigins
     ) {
         List<Map<String, Object>> fields = new ArrayList<>();
         for (CompiledField field : concept.getFields()) {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("name", field.getName());
             node.put("concept", concept.getName());
+            // PACK-10 step 4: non-blank only for a field an extension pack ADDED (see
+            // PackExtensionComposer.ExtensionComposition) -- empty string (never omitted) so every
+            // field node has a uniform shape and business-ui-app.mustache can test it with a plain
+            // truthiness check.
+            node.put("extensionSource", extensionFieldOrigins.getOrDefault(field.getName(), ""));
             node.put("label", fieldLabel(field));
             node.put("columnName", toSnake(field.getName()));
             node.put("type", manifestType(field));

@@ -623,6 +623,32 @@ textarea {
   font-size: 13px;
 }
 
+.field-label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* PACK-10 step 4: marks a field an extension pack additively merged onto a base pack's concept
+   (PackExtensionComposer) -- purely attribution, never a control (ordering is decided server-side,
+   before the manifest is ever written; this badge cannot be dragged or reordered). Shown next to
+   the grid column header, the read-only detail view's label, and the form field's label -- the
+   SAME `field.extensionSource` value drives all three, so the responsive card-collapse view (which
+   reuses the desktop table's `<th>` markup, just visually reflowed below 768px -- see the
+   `data-label`/`::before` rule further down) shows it too, with no separate code path. */
+.ext-field-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--np-accent, #1769aa);
+  background: color-mix(in srgb, var(--np-accent, #1769aa) 14%, transparent);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .detail-row {
   grid-template-columns: 180px 1fr;
   align-items: start;

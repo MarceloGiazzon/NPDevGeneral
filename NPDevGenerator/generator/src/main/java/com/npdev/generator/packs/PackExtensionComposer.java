@@ -8,9 +8,11 @@ import com.npdev.dsl.v1.pack.PackSealednessAnalyzer;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * PACK-10 steps 2-3: additive-only, in-place extension of a base pack's concept by a SEPARATE
@@ -54,6 +56,14 @@ import java.util.Objects;
  * real-pack refusal proof against {@code identity}). A pack meant to be extended must stay unsealed
  * (declare a {@code requires.capabilities[]} entry, or depend on another pack via {@code packs[]})
  * for as long as in-place extension is meant to remain possible.
+ *
+ * <p><b>Step 4 (UI composition with app-controlled ordering).</b> {@link #composeExtensionsWithOrdering}
+ * builds on the merge above to answer two questions a UI renderer needs that pure field-shape
+ * composition alone does not: which pack added a given field (for attribution), and where it should
+ * render. Default: base fields, then each extension's added fields in processing order -- the sane
+ * fallback when the app declares nothing. The APP can override via {@code metadata.fieldOrder} on its
+ * own root model.json (see {@link #readFieldOrderOverrides}); an extension's own field declaration
+ * order never determines final position -- see this class's own opening paragraph on why that matters.
  */
 public final class PackExtensionComposer {
 
@@ -264,6 +274,237 @@ public final class PackExtensionComposer {
                 app.getProperties(),
                 app.getContexts(),
                 app.getConversions()
+        );
+    }
+
+    /**
+     * PACK-10 step 4 result: the extension-composed model (identical to what {@link
+     * #composeExtensions} would produce, except each extended concept's field order additionally
+     * honors the app's own {@code metadata.fieldOrder} directive -- see {@link
+     * #composeExtensionsWithOrdering}), plus per-concept, per-field provenance for the fields an
+     * extension pack actually ADDED (a pre-existing field an extension merely re-declares to stay a
+     * syntactically valid concept, e.g. the shared {@code id} anchor, carries no provenance entry --
+     * it was not added, so there is nothing to attribute).
+     *
+     * @param extensionFieldOrigins pack-qualified concept name (e.g. {@code "clinicbase::Patient"})
+     *                              to a map of {@code fieldName -> extensionPackAlias}, for UI
+     *                              attribution (e.g. a small "+clinicext" badge next to the field).
+     *                              A concept with no extension-added fields is simply absent as a key
+     *                              (never present with an empty map).
+     */
+    public record ExtensionComposition(CompiledModel model, Map<String, Map<String, String>> extensionFieldOrigins) {
+    }
+
+    /**
+     * PACK-10 step 4: {@link #composeExtensions}'s merge, plus the two things pure field-shape
+     * composition alone cannot give a UI renderer -- who added a field, and where the APP (not the
+     * extension) wants it to render. <b>Deliberately the extension pack's own field declaration
+     * order never determines final position</b> -- see this class's own doc: an extension able to
+     * dictate its position in every consuming app's forms would let two extensions fight over the
+     * same slot, with the app author holding no recourse. Final order is either (a) the base pack's
+     * original declaration order with each extension's added fields appended, in the order {@code
+     * extensions} was processed -- the sane default when the app declares nothing -- or (b) the
+     * app's own explicit {@code metadata.fieldOrder} directive (see {@link
+     * #readFieldOrderOverrides}), applied AFTER every extension has folded in so an app ordering two
+     * extensions' fields relative to each other sees both. A field the app's order list omits (e.g.
+     * one a newer extension just added that the app's model.json has not caught up to yet) is never
+     * dropped -- it is appended after every named field, in its pre-reorder position, so a forgotten
+     * field stays visible rather than silently vanishing.
+     *
+     * @param appModelJson the app's own root model.json, read ONLY for {@code metadata.fieldOrder}
+     *                     (may be {@code null}, equivalent to the app declaring no directive at all)
+     */
+    public ExtensionComposition composeExtensionsWithOrdering(
+            CompiledModel app,
+            Map<String, JsonNode> basePackJsonByAlias,
+            List<ExtensionSource> extensions,
+            JsonNode appModelJson
+    ) {
+        Objects.requireNonNull(app, "app");
+        Map<String, List<String>> fieldOrderOverrides = readFieldOrderOverrides(appModelJson);
+
+        LinkedHashMap<String, CompiledConcept> byName = new LinkedHashMap<>();
+        for (CompiledConcept concept : app.getConcepts()) {
+            byName.put(concept.getName(), concept);
+        }
+        Map<String, Map<String, String>> originsByConcept = new LinkedHashMap<>();
+
+        if (extensions != null) {
+            for (ExtensionSource source : extensions) {
+                ExtensionTarget target = readExtensionTarget(source.extensionPackJson());
+                if (target == null) {
+                    throw new IllegalArgumentException(
+                            "extension pack '" + source.extensionAlias() + "' declares no metadata.extends target");
+                }
+                String qualifiedTarget = target.qualifiedName();
+                CompiledConcept base = byName.get(qualifiedTarget);
+                if (base == null) {
+                    throw new IllegalArgumentException(
+                            "extension pack '" + source.extensionAlias() + "' targets '" + qualifiedTarget
+                                    + "', which is not present in the composed model");
+                }
+                JsonNode basePackJson = basePackJsonByAlias == null ? null : basePackJsonByAlias.get(target.packAlias());
+                CompiledConcept merged = applyExtension(
+                        target.packAlias(), basePackJson, base, source.extensionAlias(), source.extensionConcept());
+
+                Map<String, String> addedOrigins = newlyAddedFieldNames(base, merged, source.extensionAlias());
+                if (!addedOrigins.isEmpty()) {
+                    originsByConcept.computeIfAbsent(qualifiedTarget, key -> new LinkedHashMap<>()).putAll(addedOrigins);
+                }
+                byName.put(qualifiedTarget, merged);
+            }
+        }
+
+        LinkedHashMap<String, CompiledConcept> orderedByName = new LinkedHashMap<>();
+        for (Map.Entry<String, CompiledConcept> entry : byName.entrySet()) {
+            CompiledConcept concept = entry.getValue();
+            List<String> order = fieldOrderOverrides.get(entry.getKey());
+            if (order == null || order.isEmpty()) {
+                orderedByName.put(entry.getKey(), concept);
+                continue;
+            }
+            orderedByName.put(entry.getKey(), withFields(concept, reorderFields(concept.getFields(), order)));
+        }
+
+        CompiledModel model = new CompiledModel(
+                app.getNamespace(),
+                app.getDslVersion(),
+                app.getVersion(),
+                orderedByName,
+                app.getDomainTypes(),
+                app.getCapabilities(),
+                app.getBindings(),
+                app.getEvents(),
+                app.getFlows(),
+                app.getOrchestrationRules(),
+                app.getQueries(),
+                app.getRuleProfiles(),
+                app.getProcedures(),
+                app.getPanels(),
+                app.getGuidePages(),
+                app.getAggregates(),
+                app.getAutoPanels(),
+                app.getDocuments(),
+                app.getExternalAi(),
+                app.getSettings(),
+                app.getRoles(),
+                app.getPropertyScopes(),
+                app.getProperties(),
+                app.getContexts(),
+                app.getConversions()
+        );
+
+        return new ExtensionComposition(model, originsByConcept);
+    }
+
+    /**
+     * PACK-10 step 4: reads the app's own field-order directive from {@code metadata.fieldOrder} on
+     * its root model.json -- keyed by pack-qualified concept name (e.g. {@code
+     * "clinicbase::Patient"}) to an ordered array of field names. Uses the SAME schema-free trick
+     * {@link #readExtensionTarget} already established for {@code metadata.extends}: {@code
+     * model.schema.json}'s root {@code metadata} property is already an untyped {@code
+     * {"type":"object"}}, so declaring this requires no schema change in either mirror. Returns an
+     * empty map (never {@code null}) when the app declares no directive at all, or a malformed one
+     * (non-object {@code metadata}/{@code fieldOrder}, or a non-array value for a concept) -- silently
+     * falling back to the default order rather than failing generation over presentation metadata.
+     */
+    public Map<String, List<String>> readFieldOrderOverrides(JsonNode appModelJson) {
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        if (appModelJson == null || !appModelJson.isObject()) {
+            return result;
+        }
+        JsonNode metadata = appModelJson.get("metadata");
+        if (metadata == null || !metadata.isObject()) {
+            return result;
+        }
+        JsonNode fieldOrder = metadata.get("fieldOrder");
+        if (fieldOrder == null || !fieldOrder.isObject()) {
+            return result;
+        }
+        fieldOrder.fields().forEachRemaining(entry -> {
+            JsonNode value = entry.getValue();
+            if (value == null || !value.isArray()) {
+                return;
+            }
+            List<String> names = new ArrayList<>();
+            for (JsonNode item : value) {
+                if (item != null && item.isTextual() && !item.asText().isBlank()) {
+                    names.add(item.asText());
+                }
+            }
+            if (!names.isEmpty()) {
+                result.put(entry.getKey(), names);
+            }
+        });
+        return result;
+    }
+
+    /**
+     * Reorders {@code fields} per the app's declared order for one concept: every named field is
+     * moved to the EXACT position the app listed it in, then any field the app's list did not
+     * mention is appended afterward in its original (pre-reorder) relative order -- so a field a
+     * newer extension adds, that the app's {@code metadata.fieldOrder} has not caught up to yet,
+     * still renders (at the end) rather than silently vanishing. An unknown name in {@code order}
+     * (a typo, or a field from an extension that was never applied) is simply ignored.
+     */
+    private static List<CompiledField> reorderFields(List<CompiledField> fields, List<String> order) {
+        Map<String, CompiledField> byName = new LinkedHashMap<>();
+        for (CompiledField field : fields) {
+            byName.put(field.getName(), field);
+        }
+        List<CompiledField> ordered = new ArrayList<>();
+        Set<String> placed = new LinkedHashSet<>();
+        for (String name : order) {
+            CompiledField field = byName.get(name);
+            if (field != null && placed.add(name)) {
+                ordered.add(field);
+            }
+        }
+        for (CompiledField field : fields) {
+            if (placed.add(field.getName())) {
+                ordered.add(field);
+            }
+        }
+        return ordered;
+    }
+
+    /** The field names present in {@code merged} but absent from {@code base} -- i.e. the fields
+     *  THIS extension actually added (never one it merely re-declared identically, like the shared
+     *  {@code id} anchor) -- each attributed to {@code extensionPackAlias} for UI provenance. */
+    private static Map<String, String> newlyAddedFieldNames(CompiledConcept base, CompiledConcept merged, String extensionPackAlias) {
+        Set<String> baseNames = new LinkedHashSet<>();
+        for (CompiledField field : base.getFields()) {
+            baseNames.add(field.getName());
+        }
+        Map<String, String> origins = new LinkedHashMap<>();
+        for (CompiledField field : merged.getFields()) {
+            if (!baseNames.contains(field.getName())) {
+                origins.put(field.getName(), extensionPackAlias);
+            }
+        }
+        return origins;
+    }
+
+    /** Rebuilds {@code concept} with a different field list, every other property carried over
+     *  unchanged -- used only to apply {@link #reorderFields}'s result. */
+    private static CompiledConcept withFields(CompiledConcept concept, List<CompiledField> fields) {
+        return new CompiledConcept(
+                concept.getName(),
+                concept.getClassName(),
+                concept.getTableName(),
+                List.copyOf(fields),
+                concept.getExpressionInvariants(),
+                concept.getInvariants(),
+                concept.getLifecycle(),
+                concept.getUi(),
+                concept.getTruthLevel(),
+                concept.getModule(),
+                concept.getIndexes(),
+                concept.getAccess(),
+                concept.getRenamedFrom(),
+                concept.getSatelliteOf(),
+                concept.getOrigin(),
+                concept.isSoftDelete()
         );
     }
 
