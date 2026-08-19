@@ -649,6 +649,26 @@ textarea {
   vertical-align: middle;
 }
 
+/* R5.5/GAP-2: a courtesy hint next to a create/edit form field's label when the model declares a
+   field.access.write rule for it (see BusinessUiEmitter.manifestFields' accessWriteScoped and
+   business-ui-app.mustache's isFieldReadonlyByCondition/appendAccessBadge). The field always
+   renders read-only whenever this badge is shown -- this generic UI has no evaluator for the
+   declared rule (it may depend on the caller's role/tenant/row-owner), so it never guesses; the
+   SERVER remains the only real enforcement point regardless of this badge or the input's disabled
+   state. */
+.access-restricted-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--np-warning, #95620a);
+  background: color-mix(in srgb, var(--np-warning, #95620a) 14%, transparent);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .detail-row {
   grid-template-columns: 180px 1fr;
   align-items: start;

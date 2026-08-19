@@ -261,6 +261,21 @@
   }
 
   function isFieldReadonlyByCondition(field, values) {
+    // R5.5/GAP-2: `field.accessWriteScoped` is true when the model declares a field.access.write
+    // rule for this field at all (see BusinessUiEmitter.manifestFields) -- the SERVER is the one
+    // real enforcer of that rule (a denied write fails the whole save with FIELD_SCOPE_DENIED,
+    // never a silent per-field drop; see DefaultConceptGateway.enforceFieldWriteAccess). This
+    // client-side evaluator only ever looks up OTHER FIELD VALUES on the same record (see
+    // evaluateWhen/currentFormValues above) -- it has no access to the caller's role, tenant or a
+    // row-owner comparison, so it cannot evaluate the declared rule itself. Rather than guess,
+    // ANY field carrying the flag renders read-only here unconditionally: a real UX cost for a
+    // caller the server WOULD actually allow to write, but coherent -- no editable input that the
+    // very next save silently bounces -- and never itself a security boundary (isFieldEnabled/
+    // isFieldReadonlyByCondition affect only this generic UI's own <input disabled/readOnly>
+    // attributes; the server enforces regardless of what this function returns).
+    if (field.accessWriteScoped) {
+      return true;
+    }
     return field.readonlyWhen ? evaluateWhen(field.readonlyWhen, values) : false;
   }
 
@@ -3104,6 +3119,23 @@
     el.appendChild(badge);
   }
 
+  // R5.5/GAP-2: purely a courtesy hint that a field's WRITE is server-gated by a declared
+  // field.access.write rule -- see isFieldReadonlyByCondition's own comment for why this generic
+  // UI cannot evaluate the rule itself and instead renders the field read-only unconditionally
+  // whenever this badge shows. Never appended for accessReadScoped alone (a denied read is simply
+  // absent from the record already -- there is no field to badge).
+  function appendAccessBadge(el, field) {
+    if (!field || !field.accessWriteScoped) {
+      return;
+    }
+    const badge = document.createElement("span");
+    badge.className = "access-restricted-badge";
+    badge.textContent = "restricted";
+    badge.title = "This field's write access is restricted by server-side policy -- shown "
+        + "read-only here; the server, not this screen, decides who may actually change it.";
+    el.appendChild(badge);
+  }
+
   function renderTable(concept, panel) {
     const fields = visibleFields(concept, panel);
     const table = document.createElement("table");
@@ -4060,6 +4092,7 @@
         labelText.textContent = (field.label || field.name) + (field.required ? " *" : "");
         labelHead.appendChild(labelText);
         appendExtensionBadge(labelHead, field.extensionSource);
+        appendAccessBadge(labelHead, field);
         label.appendChild(labelHead);
         const input = createInput(field, record ? record[field.name] : "", record ? record[concept.idField] : null);
         // R7.1: editing a flagged field clears ONLY that field's own highlight, so fixing one
