@@ -1,0 +1,99 @@
+{
+  "$schemaVersion": "npdev-source-zip-manifest.v1",
+  "description": "Content list for scripts/release/New-SourceZip.ps1 -- a source-code-only archive of this repo. Paths are repo-relative with forward slashes, enumerated from 'git ls-files' (nothing untracked or gitignored can ever enter). A file is included when it matches ANY 'include' pattern and NO 'exclude' pattern; exclude always wins. Edit this file to change what ships -- the script itself carries no path knowledge.",
+  "archiveBaseName": "npdev-source",
+  "include": [
+    {
+      "pattern": "(^|/)src/main/",
+      "note": "All production Java + main resources for every module (dsl, kernel, adapters, generator, runtimehost, runtimehost-core, tools, db-history). Carries the mustache templates, npdev-templates/, engine-profiles.json and runtime-supported-controllers.json."
+    },
+    {
+      "pattern": "^NPDevContract/schemas/",
+      "note": "JSON Schema contracts: runtime, kernel, generator, authoring."
+    },
+    {
+      "pattern": "^NPDevContract/dsl/resources/Schemas/",
+      "note": "The 4th model.schema.json mirror (see CLAUDE.md) -- kept so the four copies stay complete."
+    },
+    {
+      "pattern": "^NPDevContract/packs/",
+      "note": "Built-in packs shipped into every generated app: workspace, identity, project-tracker-demo."
+    },
+    {
+      "pattern": "\\.gradle$",
+      "note": "Every build.gradle / settings.gradle in the tree."
+    },
+    {
+      "pattern": "\\.gradle\\.template$",
+      "note": "NPDevRuntimeHost build.gradle.template + settings.gradle.template -- the generated app's build files."
+    },
+    {
+      "pattern": "(^|/)gradle\\.properties$",
+      "note": "Per-module gradle properties."
+    },
+    {
+      "pattern": "(^|/)gradle/wrapper/",
+      "note": "Gradle wrapper properties AND the 6 wrapper jars, so the archive builds standalone."
+    },
+    {
+      "pattern": "(^|/)gradlew(\\.bat)?$",
+      "note": "Gradle wrapper launchers."
+    },
+    {
+      "pattern": "^NPDevCli/[^/]+\\.py$",
+      "note": "The Python CLI (npdev_cli, npdev_monitor, npdev_explore, npdev_diagram, npdev_engines, migrations, ...). Top level only -- NPDevCli/tests/ is out."
+    },
+    {
+      "pattern": "^NPDevMcp/[^/]+\\.py$",
+      "note": "MCP server for AI authoring."
+    },
+    {
+      "pattern": "^NPDevManager/",
+      "note": "Tauri desktop Manager: Rust src, ui/, Cargo manifests, tauri.conf.json, capabilities, icons. fixtures/ excluded below."
+    },
+    {
+      "pattern": "^scripts/(appgen|runtimehost|samples)/",
+      "note": "The build/run scripts that stay: Build-NpdevApp / Build-ClaudeApp / Build-AppGenApp / Rebuild-And-Restage / New-*Page emitters, sync-runtimehost-libs, and the sample generate/run/verify/clean/normalize/sync helpers."
+    },
+    {
+      "pattern": "^scripts/npdev-common\\.ps1$",
+      "note": "Shared PowerShell helpers dot-sourced by the build scripts above."
+    },
+    {
+      "pattern": "^scripts/policy/sample-mirrors\\.json$",
+      "note": "The only scripts/policy file a kept script reads (sync-mirrored-samples.ps1). Every other policy file belongs to a quality gate and is out."
+    },
+    {
+      "pattern": "^(npdev|npdev\\.bat|npdev-gradlew\\.(ps1|sh)|Makefile|README\\.md|LICENSE|\\.gitignore|\\.gitattributes|\\.npdev-root)$",
+      "note": "Root entry points and repo metadata. README + LICENSE are the only markdown/legal files that ship."
+    }
+  ],
+  "exclude": [
+    {
+      "pattern": "(^|/)src/test/",
+      "note": "All test sources and test resources in every module -- 551 *Test.java plus fixtures."
+    },
+    {
+      "pattern": "^NPDevManager/fixtures/",
+      "note": "Manager test fixtures (doctor/monitor/explore JSON captures)."
+    },
+    {
+      "pattern": "^NPDevSamples/",
+      "note": "Sample app corpus is out entirely, including the three probe capability sources that would otherwise match src/main/."
+    }
+  ],
+  "textExclude": [
+    {
+      "pattern": "(^|/)gradle/wrapper/.*\\.jar$",
+      "note": "TEXT PACK ONLY (New-Source-npx.ps1). Binary -- a zip can carry it, a text pack cannot."
+    },
+    {
+      "pattern": "^NPDevManager/icons/",
+      "note": "TEXT PACK ONLY. PNG/ICO binaries."
+    },
+    {
+      "pattern": "npdev-templates/static-react/assets/",
+      "note": "TEXT PACK ONLY. ~450 KB of minified, generated JS/CSS -- unreadable and a very large share of the token budget. Stays in the zip because a build needs it."
+    }
+  ]
+}
