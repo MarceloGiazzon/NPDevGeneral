@@ -103,7 +103,9 @@ final class ReferenceValidation {
 
         if (!isScalarLookupReferenceType(normalizedType)) {
             errors.add("Entity " + entityName + " field " + field.getName()
-                    + ": ref/reference metadata on non-reference fields is supported only for scalar id fields");
+                    + ": ref/reference metadata on non-reference fields is supported only for scalar id fields"
+                    + " -- suggestedFix: change this field's type to \"reference\" if it really points at "
+                    + "another concept, or drop the ref/reference metadata if it does not");
             return;
         }
 
@@ -224,7 +226,10 @@ final class ReferenceValidation {
             } else if (!isConnectableAnchor(anchor)) {
                 errors.add("Entity " + entityName + " field " + field.getName()
                         + ": reference via must target a connectable anchor (the id field, or a non-id field"
-                        + " with unique=true and connectable:anchor): " + referenceSemantics.getVia());
+                        + " with unique=true and connectable:anchor): " + referenceSemantics.getVia()
+                        + " -- suggestedFix: set unique:true and connectable:\"anchor\" on field '"
+                        + referenceSemantics.getVia() + "' of the target concept, or point via at that "
+                        + "concept's id field instead");
             }
         }
 

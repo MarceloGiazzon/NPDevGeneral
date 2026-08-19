@@ -179,7 +179,9 @@ final class PackValidation {
                     && !declaredParameters.contains(normalize(placeholder.name()))) {
                 errors.add("Query " + query.name() + ": where references bind placeholder :" + placeholder.name()
                         + ", which is not declared in this query's parameters[] (declared: "
-                        + (declaredParameters.isEmpty() ? "none" : new TreeSet<>(declaredParameters)) + ")");
+                        + (declaredParameters.isEmpty() ? "none" : new TreeSet<>(declaredParameters)) + ")"
+                        + " -- suggestedFix: add a parameter named '" + placeholder.name() + "' to this "
+                        + "query's parameters[], or change the placeholder to one already declared there");
             }
         }
     }
@@ -301,7 +303,10 @@ final class PackValidation {
             if (hasText(groupByField.bucket()) && !AGGREGATE_DATE_TYPES.contains(normalize(field.getType()))) {
                 errors.add(here + ": groupBy field " + direct.field() + " has bucket \""
                         + groupByField.bucket() + "\" but its type (" + field.getType()
-                        + ") is not date/datetime");
+                        + ") is not date/datetime"
+                        + " -- suggestedFix: remove the bucket from this groupBy entry, or group by a "
+                        + "date/datetime field instead -- bucketing is a calendar operation and has no "
+                        + "meaning on " + field.getType());
             }
             return;
         }
@@ -357,7 +362,10 @@ final class PackValidation {
                         + targetConcept.getName() + ", which declares access.read -- a pushed-down GROUP BY "
                         + "would compute totals over rows the row-level access.read scope exists to hide, the "
                         + "same leak whether the restricted concept is queried directly or reached through a "
-                        + "join (accepted boundary; lift when access.read gains a SQL translation)");
+                        + "join (accepted boundary; lift when access.read gains a SQL translation)"
+                        + " -- suggestedFix: drop the join into " + targetConcept.getName() + " from this "
+                        + "query's groupBy, or remove access.read from " + targetConcept.getName()
+                        + " if its rows are not actually restricted");
                 return;
             }
 
@@ -377,7 +385,10 @@ final class PackValidation {
         if (hasText(groupByField.bucket()) && !AGGREGATE_DATE_TYPES.contains(normalize(targetField.getType()))) {
             errors.add(here + ": groupBy join \"" + groupByField.field() + "\" has bucket \""
                     + groupByField.bucket() + "\" but its target field's type (" + targetField.getType()
-                    + ") is not date/datetime");
+                    + ") is not date/datetime"
+                    + " -- suggestedFix: remove the bucket from this groupBy entry, or point the join at a "
+                    + "date/datetime field on the joined concept -- bucketing has no meaning on "
+                    + targetField.getType());
         }
     }
 
@@ -554,7 +565,10 @@ final class PackValidation {
         int actualArity = step.args() == null ? 0 : step.args().size();
         if (!declaredArity.equals(actualArity)) {
             errors.add("Procedure " + procedureName + " step " + stepPath + ": capability " + step.capability() + "."
-                    + step.operation() + " expects " + declaredArity + " arg(s) but this call supplies " + actualArity);
+                    + step.operation() + " expects " + declaredArity + " arg(s) but this call supplies " + actualArity
+                    + " -- suggestedFix: supply exactly " + declaredArity + " arg(s) here, or change the "
+                    + "operation's declared parameters on capability " + step.capability() + " to take "
+                    + actualArity);
         }
     }
 
@@ -601,7 +615,9 @@ final class PackValidation {
         for (String field : step.set().keySet()) {
             if (!declaredFields.contains(normalize(field))) {
                 errors.add("Procedure " + procedureName + " step " + stepPath + ": set names a field not declared on "
-                        + step.concept() + ": " + field);
+                        + step.concept() + ": " + field
+                        + " -- suggestedFix: declare a field named '" + field + "' on concept "
+                        + step.concept() + ", or correct the key in this step's set{} to one it already has");
             }
         }
     }
@@ -709,7 +725,10 @@ final class PackValidation {
                 continue;
             }
             if (!boundCapabilities.contains(capability)) {
-                errors.add("Flow references capability without binding: " + capability);
+                errors.add("Flow references capability without binding: " + capability
+                        + " -- suggestedFix: add a bindings[] entry for capability '" + capability
+                        + "' naming the adapter that implements it; a flow may only call a capability "
+                        + "the model has bound to something runnable");
             }
         }
     }

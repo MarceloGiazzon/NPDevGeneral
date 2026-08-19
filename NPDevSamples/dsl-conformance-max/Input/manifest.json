@@ -22,7 +22,7 @@
     "step: forEach (+ maxLoopIterations)",
     "step: onFailure (compensation)",
     "step: map",
-    "step: scheduleEvent (delaySeconds)",
+    "step: scheduleEvent -- both delivery modes (delaySeconds: 0 publishes inline, delaySeconds: 3600 defers through npdev_scheduled_event)",
     "step: invariantCheck, createConcept, emitEvent, capabilityCall, return"
   ],
   "inputFiles": [],

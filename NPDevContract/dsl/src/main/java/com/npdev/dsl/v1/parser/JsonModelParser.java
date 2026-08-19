@@ -1989,6 +1989,20 @@ public final class JsonModelParser {
             onFailureSteps = parseStepList(flowName + "." + stepName + ".onFailure", onFailureNode);
         }
 
+        // R2.5 (durable await timeouts): an awaitEvent step's optional durable wait deadline
+        // (seconds from when it first parks) plus the escalation steps to run once that deadline
+        // passes without the awaited event ever arriving -- same array-of-steps shape onFailure
+        // already established above, deliberately not restricted to type=="await" here (mirroring
+        // delaySeconds/onFailureSteps, which are also parsed unconditionally and left unused by
+        // step types that don't read them; FlowValidation is where "only awaitEvent may declare
+        // this" gets enforced, not the parser).
+        Long timeoutSeconds = readOptionalLong(stepNode, "timeout");
+        List<StepAst> onTimeoutSteps = List.of();
+        JsonNode onTimeoutNode = stepNode.get("onTimeout");
+        if (onTimeoutNode != null && onTimeoutNode.isArray()) {
+            onTimeoutSteps = parseStepList(flowName + "." + stepName + ".onTimeout", onTimeoutNode);
+        }
+
         if ("invariant".equals(type)) {
             if ((checkpoint == null || checkpoint.isBlank()) && scope != null && !scope.isBlank()) {
                 checkpoint = "pre";
@@ -2044,7 +2058,9 @@ public final class JsonModelParser {
                 maxLoopIterations,
                 onFailureSteps,
                 procedure,
-                parallelAwait
+                parallelAwait,
+                timeoutSeconds,
+                onTimeoutSteps
         );
     }
 

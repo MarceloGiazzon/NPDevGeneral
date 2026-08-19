@@ -4,6 +4,7 @@ import com.networknt.schema.ValidationMessage;
 
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -42,6 +43,49 @@ final class ValidationDiagnosticNormalizer {
     // from "you have a typo" -- see ledger/boundaries/B16.yml's own codeLinked note.
     private static final Map<String, String> DESCOPED_PROPERTY_BOUNDARY_IDS = Map.of(
             "selectorRef", "B16"
+    );
+
+    /**
+     * R1.4: the ONE text that means "this diagnostic shipped bare". Every ERROR diagnostic must
+     * carry an actionable fix, so this string is a failure signal, not a fallback anyone should be
+     * content with -- {@code DiagnosticSuggestedFixCoverageTest} fails the build when any message
+     * template in this package still lands here. It stays reachable only so a genuinely
+     * unclassifiable message (a resolver exception text, say) still produces a non-null field.
+     */
+    static final String UNCLASSIFIED_SUGGESTED_FIX =
+            "Review the semantic validation message and align the model with the DSL rules.";
+
+    /**
+     * R1.4: a validator that knows the fix better than any grammar could writes it into its own
+     * message as {@code ... -- suggestedFix: <text>}, and this lifts that text into the
+     * {@code suggestedFix} FIELD. {@link PropertyValidation} started this convention (two sites,
+     * 2026-08) but nothing ever read the marker, so the text sat in the message while the field
+     * got a generic derivation.
+     *
+     * <p>The marker is deliberately LEFT IN the message rather than stripped: {@code
+     * SemanticValidator.validate()} returns bare {@code List<String>} and most callers (the
+     * generator, the plain-text CLI path, ~30 validation tests) only ever see those strings -- for
+     * them, stripping the marker would delete the fix instead of relocating it.
+     */
+    private static final Pattern SITE_SUGGESTED_FIX =
+            Pattern.compile("--\\s*suggestedFix:\\s*(.+)$", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /**
+     * R1.4: {@code helpKey} normally carries a documentation lookup key ({@code
+     * validation.semantic.<code>}). Where a real {@code knowledge/cards/*.json} card documents THIS
+     * diagnostic class, the card's id is used instead so {@code npdev_search_fix} can hand back the
+     * precedent fix. Card ids are kebab-case and doc keys are dotted, so a consumer can tell them
+     * apart without a flag.
+     *
+     * <p>Only cards that actually exist and actually describe a DSL-validation diagnostic are wired
+     * -- measured 2026-08-18: of the 16 cards in {@code knowledge/cards/}, 6 are {@code error-fix}
+     * and only these 3 have a signature a {@code SemanticValidator} message can match. Pointing
+     * {@code helpKey} at an id with no card behind it would be worse than leaving the doc key.
+     */
+    private static final Map<String, String> KNOWLEDGE_CARD_SIGNATURES = Map.of(
+            "panel:concept not found", "fix-panel-unknown-entity",
+            "lifecycle:is not declared in lifecycle.states", "fix-workflow-invalid-transition",
+            "ui.widget:is incompatible with type", "widget-datatype-compatibility"
     );
 
     private ValidationDiagnosticNormalizer() {
@@ -83,8 +127,8 @@ final class ValidationDiagnosticNormalizer {
                     field,
                     "concepts",
                     null,
-                    semanticSuggestedFix(code, concept, field, null),
-                    "validation.semantic." + code
+                    suggestedFixFor(safeMessage, code, concept, field, null),
+                    helpKeyFor(safeMessage, "validation.semantic." + code)
             );
         }
 
@@ -105,8 +149,8 @@ final class ValidationDiagnosticNormalizer {
                     null,
                     "concepts",
                     ruleName,
-                    semanticSuggestedFix(code, concept, null, ruleName),
-                    "validation.semantic." + code
+                    suggestedFixFor(safeMessage, code, concept, null, ruleName),
+                    helpKeyFor(safeMessage, "validation.semantic." + code)
             );
         }
 
@@ -127,8 +171,8 @@ final class ValidationDiagnosticNormalizer {
                     null,
                     "concepts",
                     ruleName,
-                    semanticSuggestedFix(code, concept, null, ruleName),
-                    "validation.semantic." + code
+                    suggestedFixFor(safeMessage, code, concept, null, ruleName),
+                    helpKeyFor(safeMessage, "validation.semantic." + code)
             );
         }
 
@@ -148,8 +192,8 @@ final class ValidationDiagnosticNormalizer {
                     null,
                     "flows",
                     flowName,
-                    semanticSuggestedFix(code, null, null, flowName),
-                    "validation.semantic." + code
+                    suggestedFixFor(safeMessage, code, null, null, flowName),
+                    helpKeyFor(safeMessage, "validation.semantic." + code)
             );
         }
 
@@ -173,8 +217,8 @@ final class ValidationDiagnosticNormalizer {
                     operation,
                     "capabilities",
                     operation == null ? capability : operation,
-                    semanticSuggestedFix(code, null, operation, capability),
-                    "validation.semantic." + code
+                    suggestedFixFor(safeMessage, code, null, operation, capability),
+                    helpKeyFor(safeMessage, "validation.semantic." + code)
             );
         }
 
@@ -194,8 +238,8 @@ final class ValidationDiagnosticNormalizer {
                     null,
                     "events",
                     eventName,
-                    semanticSuggestedFix(code, null, null, eventName),
-                    "validation.semantic." + code
+                    suggestedFixFor(safeMessage, code, null, null, eventName),
+                    helpKeyFor(safeMessage, "validation.semantic." + code)
             );
         }
 
@@ -305,8 +349,12 @@ final class ValidationDiagnosticNormalizer {
                 null,
                 "semantic",
                 null,
-                "Review the semantic validation message and align the model with the DSL rules.",
-                "validation.semantic"
+                // R1.4: this branch takes every message shape the patterns above do not recognize
+                // -- the panel/pack/aggregate/orchestration families, which are 218 of this
+                // package's 362 error sites. It used to hand all of them one generic sentence.
+                suggestedFixFor(safeMessage, "semantic_validation_" + severity.getExternalName(),
+                        null, null, null),
+                helpKeyFor(safeMessage, "validation.semantic")
         );
     }
 
@@ -468,7 +516,53 @@ final class ValidationDiagnosticNormalizer {
         return fallback;
     }
 
-    private static String semanticSuggestedFix(String code, String concept, String field, String ruleName) {
+    /**
+     * R1.4 (roadmap item "suggestedFix + helpKey on every ERROR diagnostic"): the single entry
+     * point every diagnostic branch uses, in strict precedence order:
+     *
+     * <ol>
+     *   <li>an explicit {@code -- suggestedFix: ...} marker the emitting validator wrote (it knows
+     *       the fix better than any grammar can infer it);</li>
+     *   <li>the per-code table below, for the classified message families;</li>
+     *   <li>{@link #deriveSuggestedFix}, which reads the message's own grammar and quotes the
+     *       offending token back to the author.</li>
+     * </ol>
+     *
+     * <p>Why a grammar and not 362 hand-written strings: the validators in this package emit
+     * messages in a small, extremely regular set of shapes ({@code <what> not found: <name>},
+     * {@code <what> is required}, {@code duplicate <what> <name>}, {@code must be one of ...}).
+     * Measured 2026-08-18 over all 362 {@code errors.add} sites, nine shapes cover them; writing
+     * the imperative once per shape and substituting the real token beats 362 near-duplicates that
+     * drift apart.
+     */
+    private static String suggestedFixFor(
+            String message, String code, String concept, String field, String ruleName) {
+        String siteFix = siteSuggestedFix(message);
+        if (siteFix != null) {
+            return siteFix;
+        }
+        String coded = codedSuggestedFix(code, concept, field, ruleName);
+        if (coded != null) {
+            return coded;
+        }
+        return deriveSuggestedFix(message);
+    }
+
+    /** The {@code -- suggestedFix: ...} marker text, or null when the message carries none. */
+    private static String siteSuggestedFix(String message) {
+        if (message == null || message.isBlank()) {
+            return null;
+        }
+        Matcher matcher = SITE_SUGGESTED_FIX.matcher(message);
+        if (!matcher.find()) {
+            return null;
+        }
+        String fix = matcher.group(1).trim();
+        return fix.isEmpty() ? null : capitalizeSentence(fix);
+    }
+
+    /** Null (not a generic sentence) when the code is one of the unclassified fallbacks. */
+    private static String codedSuggestedFix(String code, String concept, String field, String ruleName) {
         return switch (code) {
             case "unknown_field_type" ->
                     "Use a supported DSL field type" + suffix(field) + " or add the type in a future DSL release.";
@@ -494,9 +588,339 @@ final class ValidationDiagnosticNormalizer {
                     "Replace implementation-specific naming with a technology-neutral semantic name.";
             case "duplicate_operation_name" ->
                     "Rename or merge the duplicate capability operation.";
-            default ->
-                    "Update the model so this semantic rule is satisfied.";
+            default -> null;
         };
+    }
+
+    /**
+     * Reads the message's own grammar and returns an imperative that names the exact token to
+     * change. Ordered most-specific-shape first: {@code not found} before the generic
+     * {@code unknown}, {@code must be one of} before the bare {@code must be}.
+     */
+    private static String deriveSuggestedFix(String message) {
+        if (message == null || message.isBlank()) {
+            return UNCLASSIFIED_SUGGESTED_FIX;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+
+        // 1. "<what> not found: <name>" / "<what> not found on concept X: <name>" / "<what> not found"
+        int notFound = lower.lastIndexOf("not found");
+        if (notFound >= 0) {
+            String what = nounBefore(message, notFound);
+            String name = nameAfter(message, notFound);
+            return "Declare " + articled(what) + named(name)
+                    + " before referencing it here, or point the reference at one that already "
+                    + "exists -- the name is matched against the declared name exactly.";
+        }
+
+        // 2. "references unknown <kind> <name>" / "extends unknown base <name>"
+        int referencesUnknown = lower.indexOf("references unknown ");
+        if (referencesUnknown >= 0) {
+            String tail = message.substring(referencesUnknown + "references unknown ".length()).trim();
+            return "Declare " + articled(firstToken(tail)) + named(secondToken(tail))
+                    + ", or change this reference to one the model already declares.";
+        }
+        int extendsUnknown = lower.indexOf("extends unknown ");
+        if (extendsUnknown >= 0) {
+            String tail = message.substring(extendsUnknown + "extends unknown ".length()).trim();
+            return "Declare the base concept" + named(secondToken(tail))
+                    + " before extending it, or drop the 'extends' so this concept stands alone.";
+        }
+        if (lower.contains("does not name")) {
+            return "Change" + named(quotedToken(message))
+                    + " to a name the referenced declaration actually exposes -- the message says "
+                    + "which declaration is being looked in.";
+        }
+
+        // 2c. a value that is legal in isolation but absent from the closed list this node declares
+        // ("transition to 'archived' is not declared in lifecycle.states"). Two real edits, and the
+        // author has to pick: widen the list, or point at something already in it.
+        String membership = firstNonNull(afterPhrase(message, lower, "is not declared in "),
+                afterPhrase(message, lower, "is not a valid value of "));
+        if (membership != null) {
+            return "Add" + named(quotedToken(message)) + " to " + membership
+                    + ", or point this reference at a value already declared there.";
+        }
+
+        // 3. duplicates and ambiguity: two declarations where the model allows one
+        if (lower.contains("duplicate") || lower.contains("both declare")
+                || lower.contains("both derive") || lower.contains("more than one")
+                || lower.contains("at most one") || lower.contains("ambiguous")) {
+            String name = firstNonNull(quotedToken(message), trailingToken(message));
+            return "Keep exactly one declaration" + named(name) + " -- rename or remove the other, "
+                    + "so the name resolves to a single declaration instead of two.";
+        }
+
+        // 4. something the model requires is absent
+        String missing = subjectBefore(message, lower, "is required", "are required", "is missing",
+                "is null", "must declare", "must define", "must have", "must contain", "requires",
+                "has no");
+        if (missing != null) {
+            return "Add " + quotedOr(missing, "the required declaration")
+                    + " here -- it is required, not optional, and the model stays rejected until it "
+                    + "is present.";
+        }
+
+        // 5. present but empty/blank -- a different edit from absent, so a different sentence
+        String blank = subjectBefore(message, lower, "must not be empty", "must not be blank",
+                "must be non-blank", "is blank", "must not contain blank");
+        if (blank != null) {
+            return "Give " + quotedOr(blank, "it") + " a non-blank value, or drop the key entirely "
+                    + "-- an empty declaration is rejected rather than treated as absent.";
+        }
+
+        // 6. a closed set was violated; the message already prints the members next to the value
+        if (lower.contains("one of") || lower.contains("(supported:") || lower.contains("must be '")
+                || lower.contains("must be \"") || lower.contains("must start with")
+                || lower.contains("must match") || lower.contains("must evaluate")
+                || lower.contains("must be ") || lower.contains("does not match")
+                || lower.contains("is incompatible")) {
+            // The offending VALUE, in the four shapes this package prints it: "..., found: x",
+            // "..., got x", a trailing ": x", or the message's first quoted token. Ordered so a
+            // message that prints both the required form AND the found value ("must start with
+            // '/': board") quotes the value, not the requirement.
+            String found = firstNonNull(afterMarker(message, lower, "found: "),
+                    firstNonNull(afterMarker(message, lower, "got "),
+                            firstNonNull(trailingToken(message), quotedToken(message))));
+            return (found == null || found.isBlank()
+                    ? "Change the value to one this rule accepts"
+                    : "Change '" + found + "' to a value this rule accepts")
+                    + " -- the message prints the allowed form (or the whole allowed set) beside the "
+                    + "value that was found.";
+        }
+
+        // 7. declared, but not supported by this DSL version
+        if (lower.contains("unsupported") || lower.contains("not supported")
+                || lower.contains("unknown ")) {
+            String found = firstNonNull(quotedToken(message), lastToken(message));
+            return "Replace" + named(found) + " with a value this DSL version supports; if none "
+                    + "fits, model the intent with a construct that exists rather than an unknown key.";
+        }
+
+        // 8. self-reference / cycle. "cycle" must match as a WORD: "lifecycle" contains it, and
+        // matching it as a substring sent every lifecycle diagnostic down this branch.
+        if (CYCLE_WORD.matcher(lower).find() || lower.contains("calls itself")
+                || lower.contains("reference itself") || lower.contains("target itself")
+                || lower.contains("extend itself") || lower.contains("shadows")) {
+            return "Break the chain by removing one link in it -- a declaration may not reach "
+                    + "itself, directly or through the intermediate declarations this message names.";
+        }
+
+        // 9. two declarations that are individually legal but illegal together
+        if (lower.contains("mutually exclusive") || lower.contains("cannot be combined")
+                || lower.contains("cannot") || lower.contains("may never")
+                || lower.contains("may only") || lower.contains("not allowed")
+                || lower.contains("is forbidden") || lower.contains("only allowed")
+                || lower.contains("only supported") || lower.contains("is limited to")) {
+            return "Remove one of the two conflicting declarations this message names -- each is "
+                    + "legal on its own but they may not both sit on the same node.";
+        }
+
+        // 10. an expression the validator parsed but could not accept
+        if (lower.contains("expression") || lower.contains("syntax") || lower.contains("invalid")
+                || lower.contains("predicate") || lower.contains("condition")) {
+            return "Rewrite the expression into the subset this validator accepts -- the message "
+                    + "names the offending clause; unsupported syntax is refused, never ignored.";
+        }
+
+        return UNCLASSIFIED_SUGGESTED_FIX;
+    }
+
+    /**
+     * R1.4: a knowledge-card id when one documents this diagnostic class, else the documentation
+     * lookup key. See {@link #KNOWLEDGE_CARD_SIGNATURES} for why only three are wired.
+     */
+    private static String helpKeyFor(String message, String documentationKey) {
+        if (message != null && !message.isBlank()) {
+            String lower = message.toLowerCase(Locale.ROOT);
+            for (Map.Entry<String, String> entry : KNOWLEDGE_CARD_SIGNATURES.entrySet()) {
+                int separator = entry.getKey().indexOf(':');
+                String scope = entry.getKey().substring(0, separator);
+                String phrase = entry.getKey().substring(separator + 1);
+                if (lower.contains(scope) && lower.contains(phrase)) {
+                    return entry.getValue();
+                }
+            }
+        }
+        return documentationKey;
+    }
+
+    /**
+     * Words that are never the noun an author has to act on, so a noun phrase that ends on one is
+     * shortened rather than quoted back ("a a procedure" was the first thing this produced).
+     */
+    private static final Set<String> NOUN_STOPWORDS = Set.of(
+            "a", "an", "the", "is", "are", "its", "it", "this", "that", "and", "or", "not", "but",
+            "has", "have", "no", "one", "of", "on", "in", "to", "at", "by", "for", "names", "name",
+            "with", "be", "was", "were", "must", "may", "can", "cannot", "own");
+
+    /** The 1-2 word noun phrase immediately before {@code index}, e.g. "root concept". */
+    private static String nounBefore(String message, int index) {
+        String head = message.substring(0, index).trim();
+        int colon = head.lastIndexOf(':');
+        if (colon >= 0) {
+            head = head.substring(colon + 1).trim();
+        }
+        // Drop any quoted value sitting between the noun and the phrase ("statusField 'state' not
+        // found") -- the quoted part is the NAME, and quoting it inside the noun produced
+        // "a statusfield 'state' 'state'".
+        head = QUOTED_TOKEN.matcher(head).replaceAll(" ").trim();
+        String[] words = head.isEmpty() ? new String[0] : head.split("\\s+");
+        if (words.length == 0) {
+            return "declaration";
+        }
+        String last = words[words.length - 1].toLowerCase(Locale.ROOT);
+        if (last.isBlank() || NOUN_STOPWORDS.contains(last)) {
+            return "declaration";
+        }
+        if (words.length >= 2) {
+            String previous = words[words.length - 2].toLowerCase(Locale.ROOT);
+            if (previous.matches("[a-z][a-z.]*") && !NOUN_STOPWORDS.contains(previous)) {
+                return previous + " " + last;
+            }
+        }
+        return last;
+    }
+
+    /**
+     * The offending name printed after "not found", which this package writes either as
+     * {@code ... not found: <name>} or {@code ... not found on concept X: <name>}. Only a colon
+     * that comes AFTER the phrase can carry it -- the leading {@code "Aggregate Foo:"} context
+     * colon must not be mistaken for one.
+     */
+    private static String nameAfter(String message, int phraseIndex) {
+        int colon = message.indexOf(':', phraseIndex);
+        if (colon < 0 || colon == message.length() - 1) {
+            return quotedToken(message.substring(0, phraseIndex));
+        }
+        return firstWordOf(message.substring(colon + 1));
+    }
+
+    /**
+     * The offending name when the message ENDS with {@code ": <name>"}, else null. The
+     * single-word requirement is what separates "route must start with '/': board" (the tail IS
+     * the value) from "field createdAt: ui.widget \"checkbox\" is incompatible with type date"
+     * (the tail is the whole complaint, and quoting it back read as nonsense).
+     */
+    private static String trailingToken(String message) {
+        int colon = message.lastIndexOf(':');
+        if (colon < 0 || colon == message.length() - 1) {
+            return null;
+        }
+        String tail = message.substring(colon + 1).trim();
+        return tail.contains(" ") ? null : firstWordOf(tail);
+    }
+
+    private static String firstWordOf(String value) {
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        String[] parts = trimmed.split("\\s+");
+        String first = parts[0].replaceAll("^['\"]+|['\",;]+$", "");
+        return first.isBlank() || first.length() > 60 ? null : first;
+    }
+
+    /** Text following {@code phrase}, up to the end of the clause -- the collection being looked in. */
+    private static String afterPhrase(String message, String lower, String phrase) {
+        int at = lower.indexOf(phrase);
+        if (at < 0) {
+            return null;
+        }
+        String tail = message.substring(at + phrase.length()).trim();
+        int stop = tail.indexOf(" --");
+        if (stop > 0) {
+            tail = tail.substring(0, stop);
+        }
+        tail = tail.replaceAll("[.,;]+$", "").trim();
+        return tail.isEmpty() || tail.length() > 60 ? null : tail;
+    }
+
+    /**
+     * The noun immediately before whichever of {@code phrases} appears first, so a "&lt;x&gt; is
+     * required" style message can be answered with "Add '&lt;x&gt;'" rather than "add the thing the
+     * message names". Returns null when none of the phrases is present.
+     */
+    private static String subjectBefore(String message, String lower, String... phrases) {
+        int best = -1;
+        for (String phrase : phrases) {
+            int at = lower.indexOf(phrase);
+            if (at >= 0 && (best < 0 || at < best)) {
+                best = at;
+            }
+        }
+        if (best < 0) {
+            return null;
+        }
+        String noun = nounBefore(message, best);
+        return "declaration".equals(noun) ? "" : noun;
+    }
+
+    /** Text after a marker such as {@code "found: "}, up to the end of the message. */
+    private static String afterMarker(String message, String lower, String marker) {
+        int at = lower.lastIndexOf(marker);
+        if (at < 0) {
+            return null;
+        }
+        String tail = message.substring(at + marker.length()).trim();
+        return tail.isEmpty() || tail.length() > 60 ? null : tail;
+    }
+
+    /** The final word of the message -- the offending value in this package's "unsupported X y" shape. */
+    private static String lastToken(String message) {
+        String[] parts = message.trim().split("\\s+");
+        if (parts.length == 0) {
+            return null;
+        }
+        String last = parts[parts.length - 1].replaceAll("^['\"(]+|['\").,;]+$", "");
+        return last.isBlank() ? null : last;
+    }
+
+    private static String firstToken(String value) {
+        String[] parts = value.trim().split("\\s+");
+        return parts.length == 0 ? "declaration" : parts[0];
+    }
+
+    private static String secondToken(String value) {
+        String[] parts = value.trim().split("\\s+");
+        return parts.length < 2 ? null : parts[1];
+    }
+
+    /** The first single-quoted or double-quoted token in the message, if any. */
+    private static String quotedToken(String message) {
+        Matcher matcher = QUOTED_TOKEN.matcher(message);
+        return matcher.find() ? matcher.group(1) : null;
+    }
+
+    private static final Pattern QUOTED_TOKEN = Pattern.compile("['\"]([^'\"]{1,60})['\"]");
+
+    private static final Pattern CYCLE_WORD = Pattern.compile("\\bcycle\\b");
+
+    private static String firstNonNull(String first, String second) {
+        return first != null && !first.isBlank() ? first : second;
+    }
+
+    private static String articled(String noun) {
+        if (noun == null || noun.isBlank()) {
+            return "the missing declaration";
+        }
+        boolean vowel = "aeiou".indexOf(Character.toLowerCase(noun.charAt(0))) >= 0;
+        return (vowel ? "an " : "a ") + noun;
+    }
+
+    private static String named(String value) {
+        return value == null || value.isBlank() ? "" : " '" + value + "'";
+    }
+
+    private static String quotedOr(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : "'" + value + "'";
+    }
+
+    private static String capitalizeSentence(String value) {
+        if (value.isEmpty()) {
+            return value;
+        }
+        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
     }
 
     private static String extractRuleName(String detail) {

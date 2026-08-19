@@ -1961,7 +1961,18 @@ public final class ModelSourceResolver {
         if (!Files.isRegularFile(real)) {
             throw error(referencingFile, "$ref", label + " is not a file: " + ref);
         }
-        if (rootDirectory != null && !real.startsWith(rootDirectory)) {
+        // R8.1: a cache-resident (remote) pack's own directory lives entirely OUTSIDE the app's
+        // model root by construction -- every fragment inside a multi-file remote pack therefore
+        // tripped "escapes the model root" before it could ever be reached, even though it never
+        // left the pack's own directory. Detected by asking whether the pack's own containment
+        // directory is itself outside the root: if so, this call is resolving a REMOTE pack's
+        // internal $ref, and the model-root boundary simply does not apply to it -- the
+        // containment-directory check just below is what still stops a fragment reaching outside
+        // its own pack (e.g. path traversal into a sibling cache entry). A LOCAL pack's containment
+        // directory is always under the model root, so this changes nothing for it.
+        boolean containedByAPackOutsideTheRoot = containmentDirectory != null && rootDirectory != null
+                && !containmentDirectory.startsWith(rootDirectory);
+        if (!containedByAPackOutsideTheRoot && rootDirectory != null && !real.startsWith(rootDirectory)) {
             throw error(referencingFile, "$ref", label + " escapes the model root: " + ref);
         }
         if (containmentDirectory != null && !real.startsWith(containmentDirectory)) {

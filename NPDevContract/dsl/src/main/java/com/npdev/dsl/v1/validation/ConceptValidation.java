@@ -496,7 +496,10 @@ final class ConceptValidation {
             if (!entitiesByLower.containsKey(normalizedTarget)) {
                 errors.add("Concept " + concept.getName()
                         + ": satelliteOf \"" + satelliteOf + "\" names a concept that does not exist "
-                        + "in the resolved model");
+                        + "in the resolved model"
+                        + " -- suggestedFix: add the pack that owns \"" + satelliteOf + "\" to this "
+                        + "model's packs[], or correct the packId::ConceptName spelling; a satellite "
+                        + "cannot be resolved before the concept it extends is in the resolved model");
                 continue;
             }
 

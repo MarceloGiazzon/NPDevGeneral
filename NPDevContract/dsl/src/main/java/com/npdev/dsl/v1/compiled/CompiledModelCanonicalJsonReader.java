@@ -821,6 +821,11 @@ public final class CompiledModelCanonicalJsonReader {
         for (JsonNode stepNode : array(node, "onFailureSteps")) {
             onFailureSteps.add(toFlowStep(stepNode));
         }
+        // R2.5: mirrors the writer's onTimeoutSteps -- see CompiledModelCanonicalJson.toFlowSteps.
+        List<CompiledFlowStep> onTimeoutSteps = new ArrayList<>();
+        for (JsonNode stepNode : array(node, "onTimeoutSteps")) {
+            onTimeoutSteps.add(toFlowStep(stepNode));
+        }
 
         return new CompiledFlowStep(
                 text(node, "name"),
@@ -851,7 +856,9 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalIntegerObject(node.get("maxLoopIterations")),
                 onFailureSteps,
                 optionalText(node, "procedureName"),
-                optionalBoolean(node.get("parallelAwait"))
+                optionalBoolean(node.get("parallelAwait")),
+                optionalLongObject(node.get("timeoutSeconds")),
+                onTimeoutSteps
         );
     }
 
