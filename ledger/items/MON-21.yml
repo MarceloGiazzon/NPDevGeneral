@@ -1,0 +1,70 @@
+id: MON-21
+title: >-
+  `npdev bench`'s regression verdict compares across runs, so ambient machine load alone produces a
+  false REGRESSED and exit 2 -- measured at 1.666x with no code change
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-19
+source: >-
+  Found by the orchestrator while verifying MON-20 (R3.7). The evidence is MON-20's own live
+  measurement, which its first draft described as a correct detection.
+surface: cli/bench
+files:
+  - NPDevCli/npdev_cli.py
+detail: |
+  `_compare_to_baseline` computes `ratio = current p50 / baseline p50` and flags REGRESSED at
+  `ratio >= threshold` (default 1.5x), exiting 2. The baseline is read from
+  `<app-dir>/_ops/bench-baseline.json`, written by an EARLIER run.
+
+  MEASURED, not hypothesised -- and it is MON-20's own recorded evidence:
+  `simple-user-registry`'s `User` endpoint baselined at `p50=6.814ms`. A later run of the SAME code,
+  under heavier ambient load from concurrent agent builds, measured `p50=11.349ms` -> `ratio=1.666x`
+  -> REGRESSED, exit 2. Nothing had regressed. 1.666x is also ABOVE the 1.5x default, so the
+  reassurance that "1.5x sits comfortably above the noise band" was false on the very machine the
+  verb was built on.
+
+  **THE FIX IS NOT A BIGGER CONSTANT.** The problem is structural. RUN-16 (R5.2) got a trustworthy
+  7.4x by measuring the OLD and NEW code paths back-to-back **inside one run**, so both samples
+  carried identical machine noise and it cancelled -- that is precisely why it abandoned its own
+  first attempt at an absolute `<300ms` assertion, which flaked at 365ms. `npdev bench` compares
+  across TIME instead: baseline captured on an idle machine, comparison run on a busy one, nothing
+  shared, nothing cancels. Raising the threshold only trades false positives for false negatives, and
+  a benchmark that cries wolf gets ignored, which is worse than not having one.
+
+  SHAPE OF A REAL FIX (not applied -- it is a design change, and the measurements the verb already
+  produces are trustworthy today):
+    - Measure a CONTROL endpoint in the same run whose cost is known-stable (e.g. `/actuator/health`),
+      and normalise every other endpoint's ratio by the control's own ratio. A machine 1.6x slower
+      overall moves the control 1.6x too, so the normalised ratios stay near 1.0 and only a genuine
+      regression stands out.
+    - Alternatively record a load indicator in the baseline and DOWNGRADE the verdict to a warning
+      when the control drifts beyond a band, rather than failing.
+    - Either way the report should state which it did, since a normalised number is a different claim
+      from a raw one.
+
+  WHAT IS SAFE TO USE TODAY, stated so this item is not read as "the verb is broken": the
+  measurements themselves -- p50/p95/mean/stdev with explicit `samples`, `failedSamples` and
+  truncation counts -- are honest and useful, and the 35 unit tests over the pure stats/threshold
+  functions all pass. It is only the cross-run REGRESSED verdict, and therefore exit code 2, that is
+  unreliable. **Do not wire exit 2 into a blocking gate until this is addressed.** MON-20 now records
+  the same caveat at the point of use.
+
+  Note the baseline file also inherits MON-19's durability gap: it lives in `_ops`, which regeneration
+  wipes, so a rebuilt app silently re-establishes a fresh baseline instead of comparing.
+guard:
+  kind: manual
+  ref: >-
+    Run `npdev bench --app-dir <app>` on an idle machine to establish a baseline, then run it again
+    while a heavy build is running, with NO code change in between. Today the second run can report
+    REGRESSED and exit 2 purely from load; 1.666x was observed this way. Inspect
+    `_compare_to_baseline` in NPDevCli/npdev_cli.py -- it divides current p50 by stored p50 with no
+    control or noise normalisation.
+  asserts: >-
+    a REGRESSED verdict reflects a real code regression rather than machine load, so exit code 2 is
+    safe to treat as a failure signal
+  provenRed: false
+  provenRedNote: >-
+    The false positive was observed live (1.666x, no code change) and is recorded in MON-20's own
+    measurement section, but it was observed incidentally rather than produced by a test written to
+    force it. A deliberate RED here would mean baselining idle and re-running under synthetic load.
