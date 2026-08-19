@@ -29,6 +29,18 @@ import java.util.Map;
  * dispatch to it exactly like {@code mail}/{@code webhook} already do, while {@link
  * DocumentRenderContract#render} itself -- the typed direct-call path {@code DocumentRenderController}
  * uses -- is unchanged.</p>
+ *
+ * <p><b>R5.7 (Roadmap Wave 1 2026-08-19):</b> a second capability operation, {@code renderAggregate},
+ * renders the canonical ERP document shape -- a header plus one or more line-item bands, bound to an
+ * {@code aggregate}'s already-loaded data tree, plus an optional logo. It composes HTML via {@link
+ * AggregateDocumentHtmlBuilder} from a payload parsed by {@link AggregateDocumentPayload}, then calls
+ * the SAME {@link #render(String, RenderOptions)} this class already exposes -- so it inherits {@link
+ * #DENY_EXTERNAL_URIS} for free: a logo (or any other value) that is not an inline {@code data:} URI
+ * is refused by the HTML builder before rendering even starts, not merely dropped by the resolver.
+ * Neither {@link DocumentRenderContract} nor {@code CapabilityAdapter} (both in {@code
+ * NPDevKernel/kernel/**}) needed to change for this -- {@code renderAggregate} is simply an
+ * additional operation this adapter recognizes, the same way {@code render} already is one operation
+ * among others a {@code CapabilityAdapter} can implement.</p>
  */
 public final class DocumentRenderInProcAdapter implements CapabilityAdapter, DocumentRenderContract {
 
@@ -49,6 +61,9 @@ public final class DocumentRenderInProcAdapter implements CapabilityAdapter, Doc
 
     @Override
     public CapabilityResult invoke(CapabilityCall call, Map<String, Object> contextState) {
+        if ("renderAggregate".equals(call.operation())) {
+            return invokeRenderAggregate(call);
+        }
         if (!"render".equals(call.operation())) {
             return CapabilityResult.failure(
                     "DOCUMENT_RENDER_OPERATION_UNSUPPORTED",
@@ -60,6 +75,33 @@ public final class DocumentRenderInProcAdapter implements CapabilityAdapter, Doc
         DocumentRenderPayload.RenderRequest request = DocumentRenderPayload.parse(call.args());
         try {
             byte[] pdfBytes = render(request.html(), request.toRenderOptions());
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("contentBase64", Base64.getEncoder().encodeToString(pdfBytes));
+            result.put("contentType", "application/pdf");
+            result.put("filename", request.filenameOrDefault());
+            result.put("sizeBytes", pdfBytes.length);
+            return CapabilityResult.success(result);
+        } catch (DocumentRenderException e) {
+            return CapabilityResult.failure(
+                    "DOCUMENT_RENDER_FAILED",
+                    e.getMessage(),
+                    CapabilityErrorKind.PERMANENT,
+                    Map.of()
+            );
+        }
+    }
+
+    /**
+     * R5.7: the {@code renderAggregate} operation -- see this class's javadoc. Failures (an
+     * unresolvable band, an empty band, a non-{@code data:} logo, malformed HTML) come back as a
+     * named {@code DOCUMENT_RENDER_FAILED} result exactly like the plain {@code render} operation's
+     * failures do, never a silently blank PDF.
+     */
+    private CapabilityResult invokeRenderAggregate(CapabilityCall call) {
+        try {
+            AggregateDocumentPayload.Request request = AggregateDocumentPayload.parse(call.args());
+            String html = AggregateDocumentHtmlBuilder.build(request);
+            byte[] pdfBytes = render(html, request.toRenderOptions());
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("contentBase64", Base64.getEncoder().encodeToString(pdfBytes));
             result.put("contentType", "application/pdf");

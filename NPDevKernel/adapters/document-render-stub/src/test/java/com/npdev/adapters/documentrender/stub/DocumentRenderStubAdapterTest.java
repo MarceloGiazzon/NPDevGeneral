@@ -48,6 +48,26 @@ class DocumentRenderStubAdapterTest {
         assertTrue(result.error().message().contains("stub"), result.error().message());
     }
 
+    /**
+     * R5.7 (Roadmap Wave 1 2026-08-19): {@code renderAggregate} (document-render-inproc's
+     * aggregate/bands/logo document shape) must fail the same way {@code render} always has -- an
+     * app opting out of PDF rendering opts out of all of it, not just the pre-R5.7 flat-grid shape.
+     */
+    @Test
+    void invokeRefusesTheAggregateOperationTooRatherThanSilentlySucceeding() {
+        DocumentRenderStubAdapter adapter = new DocumentRenderStubAdapter();
+        CapabilityCall call = new CapabilityCall(
+                "documentRender", "DocumentRenderCapability", "document-render-stub", "renderAggregate",
+                List.of(Map.of("title", "t", "tree", Map.of(), "bands", List.of()))
+        );
+
+        CapabilityResult result = adapter.invoke(call, Map.of());
+
+        assertTrue(!result.ok());
+        assertEquals("DOCUMENT_RENDER_FAILED", result.error().code());
+        assertTrue(result.error().message().contains("stub"), result.error().message());
+    }
+
     @Test
     void invokeRejectsUnsupportedOperation() {
         DocumentRenderStubAdapter adapter = new DocumentRenderStubAdapter();
