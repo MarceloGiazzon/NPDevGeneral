@@ -30,7 +30,8 @@ final class NpdevInternalTablesSourceOfTruthTest {
             "npdev_tenant",
             "npdev_api_credential",
             "npdev_pack_install_intent",
-            "npdev_cron_fire_claim"
+            "npdev_cron_fire_claim",
+            "npdev_sequence_counter"
     );
 
     // npdev_tenant was previously future-scope; it is now in scope as the backbone of the runtime

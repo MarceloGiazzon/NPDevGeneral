@@ -90,7 +90,18 @@ public final class ModelSourceResolver {
             // X0 shape). Its `eventName` field also needs a rewriteKnownMemberReferenceFields entry
             // (the "PACK-11 fifth place" for any member kind carrying a reference of its own) --
             // see that method's own "webhooks" branch.
-            "webhooks"
+            "webhooks",
+            // R5.3 (2026-08-19): sequences[] threaded the same way. Unlike every other kind in this
+            // set, its own `name` field is deliberately EXCLUDED from mergeQualifiedNonConceptArrays'
+            // generic pack-qualification (see that method's own "sequences" check) -- a sequence is
+            // referenced by nextNumber('name') as an opaque literal argument embedded inside a
+            // field's defaultExpression TEXT, which rewriteKnownMemberReferenceFields cannot reach
+            // (it rewrites discrete JSON fields, never substrings inside another field's expression
+            // string). Qualifying the declaration but never the reference would silently break every
+            // pack-declared sequence -- the same reasoning webhooks[].source already established for
+            // a wire-visible identity. SequenceValidation instead requires global name uniqueness
+            // across the fully-resolved model, closing the loop WebhookValidation closes for source.
+            "sequences"
     );
     private static final Set<String> ROOT_SCALAR_KEYS = orderedSet(
             "$schema",
@@ -1001,7 +1012,14 @@ public final class ModelSourceResolver {
                         throw error(sourceFile, "/" + key,
                                 kindLabel + " '" + qualifierId + "' contributes duplicate " + key + " member '" + localName + "'");
                     }
-                    ((ObjectNode) rewritten).put("name", qualifierId + "::" + localName);
+                    // R5.3: sequences[].name is deliberately NOT namespace-qualified here, unlike
+                    // every other kind this loop walks -- see MODEL_ARRAY_KEYS' own "sequences"
+                    // comment for why (nextNumber('name') references it as an opaque literal inside
+                    // a defaultExpression string the reference-rewriting machinery cannot reach).
+                    // The duplicate-within-this-pack check above still applies unconditionally.
+                    if (!"sequences".equals(key)) {
+                        ((ObjectNode) rewritten).put("name", qualifierId + "::" + localName);
+                    }
                 }
                 rewritePackLocalConceptReferencesInPlace(rewritten, rewriteMaps, ambiguousNames, key, qualifiedReferenceValidator);
                 target.add(rewritten);

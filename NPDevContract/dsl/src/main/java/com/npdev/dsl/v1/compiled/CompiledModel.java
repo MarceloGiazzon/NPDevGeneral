@@ -30,6 +30,7 @@ public final class CompiledModel {
     private final List<CompiledContext> contexts;
     private final List<CompiledConversion> conversions;
     private final List<CompiledWebhook> webhooks;
+    private final List<CompiledSequence> sequences;
 
     public CompiledModel(String namespace, String version, Map<String, ? extends CompiledEntity> entitiesByName) {
         this(namespace, "1.0.0", version, entitiesByName, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -423,6 +424,43 @@ public final class CompiledModel {
             List<CompiledConversion> conversions,
             List<CompiledWebhook> webhooks
     ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, webhooks,
+                List.of());
+    }
+
+    /** R5.3: canonical constructor, adds {@code sequences} (model-declared document-numbering
+     *  counters -- see {@link CompiledSequence}). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings,
+            List<CompiledRole> roles,
+            List<CompiledPropertyScope> propertyScopes,
+            List<CompiledProperty> properties,
+            List<CompiledContext> contexts,
+            List<CompiledConversion> conversions,
+            List<CompiledWebhook> webhooks,
+            List<CompiledSequence> sequences
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -453,6 +491,7 @@ public final class CompiledModel {
         this.contexts = contexts == null ? List.of() : List.copyOf(contexts);
         this.conversions = conversions == null ? List.of() : List.copyOf(conversions);
         this.webhooks = webhooks == null ? List.of() : List.copyOf(webhooks);
+        this.sequences = sequences == null ? List.of() : List.copyOf(sequences);
     }
 
     public String getNamespace() { return namespace; }
@@ -603,6 +642,26 @@ public final class CompiledModel {
         for (CompiledWebhook webhook : webhooks) {
             if (webhook.source().equals(source)) {
                 return Optional.of(webhook);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** R5.3: model-declared document-numbering counters, empty when the model declares none. */
+    public List<CompiledSequence> getSequences() {
+        return Collections.unmodifiableList(sequences);
+    }
+
+    /** R5.3: the single sequence whose {@code name} matches -- the lookup {@code
+     *  ConfiguredConceptGatewaySemanticPolicy} uses to resolve a field's {@code
+     *  nextNumber('name')} defaultExpression. */
+    public Optional<CompiledSequence> findSequenceByName(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        for (CompiledSequence sequence : sequences) {
+            if (sequence.name().equalsIgnoreCase(name)) {
+                return Optional.of(sequence);
             }
         }
         return Optional.empty();

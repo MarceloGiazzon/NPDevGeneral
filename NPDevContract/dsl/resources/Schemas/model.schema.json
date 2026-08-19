@@ -452,6 +452,13 @@
         "$ref": "#/$defs/webhook"
       },
       "description": "R6.2: model-declared inbound webhook doors -- POST /api/hooks/{source} verifies an HMAC-SHA256 signature against a named env var and, once verified, publishes eventName into the flow engine's event store so a flow parked on awaitEvent can be resumed by a third party holding no NPDev credential."
+    },
+    "sequences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sequence"
+      },
+      "description": "R5.3: model-declared document-numbering counters (e.g. INV-2026-0001). A field's defaultExpression can call nextNumber('name') to atomically allocate the next value, formatted per this sequence's format template."
     }
   },
   "$defs": {
@@ -507,6 +514,31 @@
             "minLength": 1
           },
           "description": "Target event-payload field name -> dot-path into the inbound JSON body. Absent/empty means the raw parsed JSON body becomes the event payload unchanged."
+        }
+      },
+      "additionalProperties": false
+    },
+    "sequence": {
+      "type": "object",
+      "required": [
+        "name",
+        "format"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "Identifier referenced by nextNumber('name') in a field's defaultExpression. Deliberately NOT namespace-qualified by pack composition -- same reasoning as this schema's webhook $def applies to source."
+        },
+        "format": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Render template for an allocated number. Recognized tokens: {seq} / {seq:N} (the running counter, zero-padded to N digits -- exactly one required), plus optional {year}/{yy}/{month}/{day} date tokens resolved at allocation time. Example: \"INV-{year}-{seq:4}\" -> INV-2026-0001. Any date token also partitions the underlying counter, so numbering resets exactly when the rendered text would otherwise repeat."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["global", "tenant"],
+          "description": "global (default): one counter shared by every tenant. tenant: one independent counter per tenant."
         }
       },
       "additionalProperties": false

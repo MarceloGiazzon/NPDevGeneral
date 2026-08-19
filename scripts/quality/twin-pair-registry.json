@@ -26,7 +26,7 @@
     {
       "id": "pack-composition-four-place",
       "citedBy": "REG-108",
-      "description": "A top-level model array field contributed by a pack/fragment (not just the app's own root) must be threaded through ModelSourceResolver.MODEL_ARRAY_KEYS, BOTH copies of pack.schema.json, ModelResolver.resolve(), and the CompiledModelCanonicalJson/Reader pair -- CLAUDE.md's own documented four-place rule. PACK-11 (2026-08-17) extended this to aggregates/autoPanels/documents/guidePages (`selectors` has its own rule -- it is expanded, not serialized), found by machine-diffing the composer's key set against the real top-level schema keys: four were missing from BOTH the composer and pack.schema.json, and guidePages was the asymmetric case -- merged by the composer, rejected by the schema. R6.2 (2026-08-19) added `webhooks` (inbound webhook doors) the same way, PLUS its own rewriteKnownMemberReferenceFields entry for `eventName` (see the next note). Note the FIFTH place this rule does not cover: a member kind that carries references of its own also needs entries in ModelSourceResolver.rewriteKnownMemberReferenceFields, or it composes and then fails validation because its own `concept`/`query` stayed unqualified. That one fails loudly, which is why it is not tracked here.",
+      "description": "A top-level model array field contributed by a pack/fragment (not just the app's own root) must be threaded through ModelSourceResolver.MODEL_ARRAY_KEYS, BOTH copies of pack.schema.json, ModelResolver.resolve(), and the CompiledModelCanonicalJson/Reader pair -- CLAUDE.md's own documented four-place rule. PACK-11 (2026-08-17) extended this to aggregates/autoPanels/documents/guidePages (`selectors` has its own rule -- it is expanded, not serialized), found by machine-diffing the composer's key set against the real top-level schema keys: four were missing from BOTH the composer and pack.schema.json, and guidePages was the asymmetric case -- merged by the composer, rejected by the schema. R6.2 (2026-08-19) added `webhooks` (inbound webhook doors) the same way, PLUS its own rewriteKnownMemberReferenceFields entry for `eventName` (see the next note). R5.3 (2026-08-19) added `sequences` (document-numbering counters) the same way too, WITHOUT a rewriteKnownMemberReferenceFields entry -- unlike webhooks' eventName, a sequence's `name` is referenced as an opaque literal argument to nextNumber('name') embedded inside another field's defaultExpression TEXT, which that mechanism cannot reach (it rewrites discrete JSON fields, not substrings inside an expression string); see SequenceAst's javadoc and mergeQualifiedNonConceptArrays' own `sequences` exclusion for the reasoning. Note the FIFTH place this rule does not cover: a member kind that carries references of its own also needs entries in ModelSourceResolver.rewriteKnownMemberReferenceFields, or it composes and then fails validation because its own `concept`/`query` stayed unqualified. That one fails loudly, which is why it is not tracked here.",
       "kind": "field-in-all-files",
       "trackedFields": [
         "roles",
@@ -37,7 +37,8 @@
         "autoPanels",
         "documents",
         "guidePages",
-        "webhooks"
+        "webhooks",
+        "sequences"
       ],
       "caseSensitive": false,
       "files": [
@@ -375,6 +376,23 @@
       "kind": "field-in-all-files",
       "trackedFields": [
         "webhooks"
+      ],
+      "caseSensitive": false,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+      ]
+    },
+    {
+      "id": "sequence-ast-compiled-four-place",
+      "citedBy": "R5.3 (Roadmap Collection 2026-08-18)",
+      "description": "sequences[] needs the same live path the ast-compiled-four-place rule requires for roles[] -- parser, compiler, ModelResolver, and the canonical writer+reader pair -- or a declared document-numbering counter survives parsing but silently never reaches ConfiguredConceptGatewaySemanticPolicy, which reads CompiledModel.getSequences() to resolve a field's nextNumber('name') defaultExpression (REG-104's exact shape: parses/compiles clean, never reaches the runtime on the skipped side).",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "sequences"
       ],
       "caseSensitive": false,
       "files": [
