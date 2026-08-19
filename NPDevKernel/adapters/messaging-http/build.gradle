@@ -1,0 +1,9 @@
+dependencies {
+    implementation project(':kernel')
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+
+    // R6.4: dedup on the inbound/receiving side reuses the kernel's proven IdempotencyStore port
+    // rather than a second dedup mechanism -- this adapter depends only on the PORT (kernel), and
+    // tests exercise it against the real in-process implementation.
+    testImplementation project(':adapters:idempotency-inproc')
+}
