@@ -386,17 +386,19 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // fingerprint (only afterMigrate does, at its very end) and no path drops npdev_schema_metadata,
         // so this read is the true pre-boot value even after a destructive beforeMigrate.
         String storedAtBootStart = readFingerprint(dataSource);
-        // B4 (Move 9 A1, docs/ACCEPTED_BOUNDARIES.md): claim the single migration slot for this boot
-        // BEFORE any schema work, so a second instance racing against the same database refuses
-        // loudly instead of interleaving renames/widenings/drops. freshDatabase=true (no fingerprint
-        // stored yet -- a genuinely virgin database) is passed through, not used to skip the call
-        // outright: on Postgres, MigrationClaimStore.claim now protects this case too (a
-        // pg_advisory_lock needs no table to exist), closing the one race the old row-only claim could
-        // never cover. On H2 the fresh-database case is still skipped internally, exactly as before
-        // REG-7.2's fix required (claiming unconditionally would self-bootstrap
-        // npdev_schema_migration_claim before flyway.migrate() ever runs on a fresh schema, which
-        // makes Flyway see a non-empty "public" schema with no history table and refuse outright).
-        // See MigrationClaimStore's class javadoc for the full engine-by-engine scope.
+        // B4 (Move 9 A1) / R9.3: take the single migration slot for this boot BEFORE any schema
+        // work, so a second instance racing against the same database WAITS instead of interleaving
+        // renames/widenings/drops. R9.3 changed what "take" means: this used to refuse on collision
+        // (and, on every engine but Postgres, not to lock a virgin database at all), which turned two
+        // simultaneous boots into one migrated database and one dead process. It now blocks until the
+        // slot is free, on all four engines and including the first-ever boot.
+        //
+        // freshDatabase is still passed through and still matters, but only for the BOOKKEEPING ROW:
+        // writing it means creating npdev_schema_migration_claim, and creating any table in Flyway's
+        // schema before flyway.migrate() runs on a virgin schema makes Flyway see a non-empty
+        // "public" schema with no history table and refuse outright (REG-7.2). The LOCK itself is
+        // taken either way -- see MigrationMutex for how it avoids needing a table at all on three
+        // engines, and keeps its table out of Flyway's schema on the fourth.
         boolean freshDatabase = storedAtBootStart == null || storedAtBootStart.isBlank();
         MigrationClaimStore.Claim claim = MigrationClaimStore.claim(dataSource, freshDatabase);
         try {

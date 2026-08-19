@@ -30,9 +30,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code beforeMigrate}) with a real {@link Flyway} instance (empty locations, following
  * {@code SchemaLifecycleExecutorProofMatrixTest} Row 16's precedent).
  *
- * <p>Per D3, this is detect-and-refuse, not a lock -- a real concurrent-insert race is not (and
- * cannot be) proven by a single-threaded H2 test; only "a held claim is detected and a released claim
- * is gone" is asserted here, honestly matching what this mechanism actually guarantees.
+ * <p>This class stayed single-threaded on purpose, and said so: under detect-and-refuse a real
+ * concurrent race could not be proven here, so it asserted only "a held claim is detected and a
+ * released claim is gone". R9.3 turned the mechanism into a mutex that WAITS, which is a claim a
+ * single-threaded test cannot make either -- so the concurrency proof lives in
+ * {@code MigrationLockConcurrentBootTest} (two real threads, plus a control that fails without the
+ * lock), and what remains here is still the single-threaded half: the bookkeeping row, the
+ * fresh-boot REG-7.2 guard, and the give-up diagnostic.
  */
 class SchemaLifecycleExecutorMigrationClaimTest {
 
@@ -69,54 +73,84 @@ class SchemaLifecycleExecutorMigrationClaimTest {
     }
 
     @Test
-    @DisplayName("an existing claim refuses the boot, naming the holder, and is left untouched")
-    void existingClaimRefusesAndIsLeftUntouched() throws SQLException {
+    @DisplayName("R9.3: a LIVE holder makes the boot wait, then time out naming the holder -- never interleave")
+    void aLiveHolderMakesTheBootWaitThenTimeOut() throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY)");
         }
         seedStoredFingerprint(dataSource, "sha256:same");
+        // Holds the mutex for the rest of this test and never releases -- a live instance stuck
+        // mid-migration, which is the only case that can still block a boot after R9.3.
         MigrationClaimStore.Claim otherInstance = MigrationClaimStore.claim(dataSource, false);
 
         SchemaLifecycleExecutor.SchemaManifest manifest = manifestIdOnly("sha256:same");
         Flyway flyway = Flyway.configure().dataSource(dataSource).locations(new String[0]).load();
 
-        IllegalStateException exception = assertThrows(IllegalStateException.class,
-                () -> executor.migrate(flyway, manifest));
-        assertTrue(exception.getMessage().contains(otherInstance.instanceId()), exception.getMessage());
-        assertTrue(exception.getMessage().contains("clear-claim"), exception.getMessage());
+        String previousWait = System.getProperty("npdev.schema.lock.waitSeconds");
+        System.setProperty("npdev.schema.lock.waitSeconds", "1");
+        try {
+            IllegalStateException exception = assertThrows(IllegalStateException.class,
+                    () -> executor.migrate(flyway, manifest));
+            // It WAITED (and said so) rather than refusing on sight, and it named the holder.
+            assertTrue(exception.getMessage().contains("timed out after"), exception.getMessage());
+            assertTrue(exception.getMessage().contains(otherInstance.instanceId()), exception.getMessage());
+            // NPDevCli's MIGRATION_CLAIM_HELD boot-log diagnostic greps this phrase verbatim;
+            // dropping it would silently demote a named diagnostic to "unknown boot failure".
+            assertTrue(exception.getMessage().contains("Another NPDev instance is currently migrating this database"),
+                    exception.getMessage());
+            // Deliberately NOT the old "clear the stale claim via clear-claim" advice: the mutex is
+            // connection-scoped, so clearing the row cannot free it and saying so would send an
+            // operator to a control that does nothing for the state they are actually in.
+            assertFalse(exception.getMessage().contains("clear-claim"), exception.getMessage());
+        } finally {
+            if (previousWait == null) {
+                System.clearProperty("npdev.schema.lock.waitSeconds");
+            } else {
+                System.setProperty("npdev.schema.lock.waitSeconds", previousWait);
+            }
+        }
 
         Optional<MigrationClaimStore.Claim> stillHeld = MigrationClaimStore.current(dataSource);
-        assertTrue(stillHeld.isPresent(), "a refused boot must never release a DIFFERENT instance's claim");
+        assertTrue(stillHeld.isPresent(), "a boot that gave up must never release a DIFFERENT instance's claim");
         assertEquals(otherInstance.instanceId(), stillHeld.get().instanceId());
     }
 
     @Test
-    @DisplayName("a genuinely fresh boot (no stored fingerprint) never even attempts a claim")
-    void freshBootNeverAttemptsAClaim() throws SQLException {
-        // No seedStoredFingerprint call -- this simulates the true first-ever boot against a
-        // genuinely virgin schema (nothing pre-created, including no claim table -- see this class's
-        // javadoc / the executor's own comment at the claim call site: self-bootstrapping ANY table
-        // here, including the claim table, before flyway.migrate() runs on a virgin schema breaks
-        // Flyway's own baseline detection, which is exactly what motivates skipping the claim here).
+    @DisplayName("R9.3: a genuinely fresh boot IS locked, but still writes no claim table (REG-7.2)")
+    void freshBootIsLockedWithoutSelfBootstrappingTheClaimTable() throws SQLException {
+        // No seedStoredFingerprint call -- the true first-ever boot against a virgin schema. Before
+        // R9.3 this path took no lock at all on H2; it now takes one, in a schema Flyway does not
+        // manage, because self-bootstrapping any table into Flyway's OWN schema ahead of
+        // flyway.migrate() breaks its baseline detection (REG-7.2). The claim table is still not
+        // created here -- see MigrationLockConcurrentBootTest for the two-thread proof that the
+        // window is nonetheless locked.
         SchemaLifecycleExecutor.SchemaManifest manifest = manifestIdOnly("sha256:first-ever");
         Flyway flyway = Flyway.configure().dataSource(dataSource).locations(new String[0]).load();
 
         executor.migrate(flyway, manifest);
 
-        // The executor itself must never have touched the claim table on this path.
         assertTrue(MigrationClaimStore.current(dataSource).isEmpty(),
-                "a fresh boot must never self-bootstrap the claim table at all");
+                "a fresh boot must never self-bootstrap the claim table into Flyway's schema");
     }
 
     @Test
-    @DisplayName("clearing a stale claim (the escape hatch) allows the next boot to claim normally")
+    @DisplayName("clearing a stale claim (the escape hatch) still leaves the next boot able to claim")
     void clearingAStaleClaimAllowsTheNextBootToProceed() throws SQLException {
         Flyway flyway = freshlyBootstrappedFlyway();
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY)");
         }
         seedStoredFingerprint(dataSource, "sha256:same");
-        MigrationClaimStore.claim(dataSource, false); // simulate a crashed holder that never released
+        // R9.3: a crashed holder is its leftover ROW. Calling claim() and walking away would leave a
+        // connection-scoped mutex held, which is what a crashed process specifically does not do.
+        try (Connection connection = dataSource.getConnection()) {
+            MigrationClaimStore.ensureTable(connection);
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("INSERT INTO " + MigrationClaimStore.TABLE
+                        + " (claim_key, instance_id, hostname, claimed_at_utc) "
+                        + "VALUES ('schema-migration', 'crashed-instance', 'some-host', 1)");
+            }
+        }
 
         MigrationClaimStore.clear(dataSource);
 
