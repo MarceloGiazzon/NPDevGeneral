@@ -3165,6 +3165,10 @@
         tr.appendChild(selectTd);
         fields.forEach(function (field) {
           const td = document.createElement("td");
+          // R7.10: consumed by business-ui-style.mustache's mobile card-collapse rule
+          // (`td::before { content: attr(data-label) }`) -- the header row that would normally
+          // carry this text is hidden in card mode, so each cell has to know its own column label.
+          td.setAttribute("data-label", field.label || field.name);
           renderFieldValue(td, field, record[field.name], false);
           tr.appendChild(td);
         });

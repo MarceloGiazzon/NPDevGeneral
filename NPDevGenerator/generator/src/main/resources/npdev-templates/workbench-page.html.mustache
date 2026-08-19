@@ -42,8 +42,17 @@
   .rowbtn{color:var(--np-danger);cursor:pointer;font-weight:700;padding:0 5px;background:none;border:0;font:inherit}
   .addrow{color:var(--np-accent);cursor:pointer;font-size:12px;display:inline-block;margin-top:4px;background:none;border:0;font:inherit}
   .grids{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
-  .gwrap{min-width:220px}
+  .gwrap{min-width:220px;max-width:100%}
   .gwrap h4{margin:0 0 3px;font-size:12px;color:#456}
+  /* R7.10: each band grid scrolls in its OWN box instead of growing the whole page -- with several
+     bands side by side (see .grids above) an unbounded table here used to push page height past
+     several screens for one long band, dragging every sibling band's rows off-screen with it. The
+     table's own header stays pinned (position:sticky) while its body scrolls underneath, so the
+     column labels never leave view during that scroll -- readable independently of how tall any
+     other band on the same row-selection happens to be. */
+  .gwrap-scroll{max-height:280px;overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--np-line);border-radius:4px}
+  .gwrap-scroll table{border:0}
+  .gwrap-scroll th{position:sticky;top:0;z-index:1}
   .btn{background:var(--np-accent);color:#fff;border:0;border-radius:4px;padding:5px 14px;font:12px var(--np-font);cursor:pointer}
   .msg{margin-left:10px;font-size:12px}
   .msg.ok{color:var(--np-ok)}.msg.err{color:var(--np-danger)}
@@ -61,6 +70,29 @@
   .modal-ft{display:flex;gap:8px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--np-line)}
   .modal tr.master.sel td{background:#dcecff}
   .btn.ghost{background:#e6ebf0;color:var(--np-ink)}
+
+  /* R7.10: the one small-viewport threshold this file's responsive behaviour keys off -- 768
+     matches shell.js.mustache's MOBILE_BREAKPOINT_PX and business-ui-style.mustache's own
+     breakpoint, so a boot at either 390px or 768px sees the sidebar, grid, form and workbench
+     responses land together. */
+  @media (max-width:768px){
+    .app{padding:8px}
+    /* The header form's "label / value / label / value" 4-column row (form.grid2's default) is
+       exactly the "two-up form" this item retires -- collapses to a single label-then-value
+       column, same as .form-grid/.record-form already do in business-ui-style.mustache. */
+    form.grid2{grid-template-columns:auto 1fr}
+    /* Band grids stop competing for horizontal room (.grids' desktop flex-wrap row) and stack
+       full-width instead -- each keeps its own independent scroll box (.gwrap-scroll above). */
+    .grids{flex-direction:column;align-items:stretch}
+    .gwrap{min-width:0;width:100%}
+    /* R7.10 touch targets: every tappable control (row delete, add-row, band picker, the primary
+       save/action button) grows to a >=44px hit area. Dense in-grid cell inputs are deliberately
+       left at their desktop size -- the workbench is a spreadsheet-dense data-entry surface by
+       design, and ballooning every cell to 44px would defeat that on the very rows a user is
+       scanning, not just the ones they are about to tap. */
+    .rowbtn,.addrow,.pick,.btn{min-height:44px}
+    .rev{min-height:32px}
+  }
 </style>
 </head>
 <body>
@@ -748,7 +780,10 @@
               if (EDITABLE) { var bx = el('<button type="button" class="rowbtn" aria-label="Remove row">✕</button>'); bx.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); }; del.append(bx); }
               tr.append(del); gt.append(tr);
             });
-            g.append(gt);
+            // R7.10: the table sits inside its own scroll box (.gwrap-scroll) rather than under
+            // the h4 title directly -- so the title stays put while a tall band's rows scroll,
+            // and this band's scroll never spills into the page or a sibling band's.
+            var gtWrap = el('<div class="gwrap-scroll"></div>'); gtWrap.append(gt); g.append(gtWrap);
             if (EDITABLE) {
               var addRowFn = function () {
                 var newId = store.addBandRow(sec.collection, selRow.id, bd.collection);

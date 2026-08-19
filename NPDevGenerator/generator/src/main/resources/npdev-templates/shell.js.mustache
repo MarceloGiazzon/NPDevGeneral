@@ -25,6 +25,13 @@
   var SIDEBAR_COLLAPSED_KEY = "npdev.shell.sidebarCollapsed";
   var RIGHTBAR_COLLAPSED_KEY = "npdev.shell.rightbarCollapsed";
   var RECENT_ITEMS_KEY = "npdev.shell.recentItems";
+  // R7.10: the one small-viewport threshold this whole file's responsive behaviour keys off --
+  // shared between the injected CSS below (so the transform-based drawer and the JS state that
+  // drives it never disagree about where "mobile" starts) and every matchMedia() call later in
+  // this file. 768 matches business-ui-style.mustache's own breakpoint (bumped from 760 in the
+  // same change) and workbench-page.html.mustache's, so a boot at either 390px or 768px sees the
+  // sidebar, grid, form and workbench responses land together.
+  var MOBILE_BREAKPOINT_PX = 768;
 
   // App-owned theme hook: an app can ship a `theme.css` in its own web/ folder (served at the
   // static root, next to its hand-authored pages) to override the shell's `--np-*` tokens and any
@@ -68,6 +75,49 @@
       ".npdev-shell-execution-pending .npdev-shell-execution-status{background:#fbeed2;color:#8a5c00;}" +
       ".npdev-shell-execution-succeeded .npdev-shell-execution-status{background:#d9f0e3;color:#1f7a4d;}" +
       ".npdev-shell-execution-failed .npdev-shell-execution-status{background:#f6d9d9;color:#a32424;}";
+    document.head.appendChild(style);
+  })();
+
+  // R7.10: the sidebar's small-viewport drawer CSS -- same "JS-injected style block" pattern as
+  // injectExecutionsRailStyle above, and for the same reason: this script is the sidebar's only
+  // owner (paintSkeleton builds it, the toggle below drives it), so its responsive behaviour lives
+  // with it rather than in shell.css.mustache. Below MOBILE_BREAKPOINT_PX the sidebar leaves the
+  // flex flow and becomes an off-canvas drawer (translateX, closed by default) with a dismissible
+  // backdrop; the desktop icon-rail "collapsed" affordance (npdev-shell-sidebar-collapsed) is
+  // neutralized here since a narrow icon rail is not a meaningful state on a touch drawer -- the
+  // drawer is always either fully open or fully hidden.
+  (function injectResponsiveShellStyle() {
+    if (document.querySelector('style[data-npdev-shell-responsive]')) return;
+    var style = document.createElement("style");
+    style.setAttribute("data-npdev-shell-responsive", "true");
+    var mq = "@media (max-width:" + MOBILE_BREAKPOINT_PX + "px)";
+    style.textContent =
+      mq + "{" +
+      ".npdev-shell-sidebar{position:fixed;top:var(--np-topbar-h,52px);bottom:0;left:0;z-index:40;" +
+      "width:min(84vw,300px);transform:translateX(-100%);transition:transform .18s ease;" +
+      "box-shadow:0 12px 32px rgba(24,32,42,.28);}" +
+      "body.npdev-shell-sidebar-mobile-open .npdev-shell-sidebar{transform:translateX(0);}" +
+      /* A drawer ignores the desktop icon-rail width/label-hiding -- always full width, labels on. */
+      "body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar{width:min(84vw,300px);}" +
+      "body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-label," +
+      "body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-section{display:block;}" +
+      "body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar a," +
+      "body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-group-header{" +
+      "justify-content:flex-start;padding-left:8px;padding-right:8px;}" +
+      ".npdev-shell-sidebar-backdrop{position:fixed;inset:0;top:var(--np-topbar-h,52px);" +
+      "background:rgba(16,24,40,.45);z-index:39;display:none;}" +
+      "body.npdev-shell-sidebar-mobile-open .npdev-shell-sidebar-backdrop{display:block;}" +
+      /* R7.10 touch targets: the nav links/collapse toggle grow to >=44px hit areas on a drawer a
+         thumb has to tap, without changing the desktop rail's denser 28px controls. */
+      ".npdev-shell-topbar .npdev-shell-collapse-toggle{width:44px;height:44px;}" +
+      ".npdev-shell-sidebar a,.npdev-shell-sidebar .npdev-shell-nav-group-header{min-height:44px;}" +
+      ".npdev-shell-body{position:relative;}" +
+      /* The right gadget rail has no drawer of its own (out of scope for this pass) -- at this
+         width it would otherwise squeeze the content column to near-nothing alongside the sidebar
+         drawer, so it and its topbar toggle are simply hidden rather than left half-broken. */
+      ".npdev-shell-rightbar{display:none;}" +
+      ".npdev-shell-topbar button.npdev-shell-rightbar-toggle{display:none;}" +
+      "}";
     document.head.appendChild(style);
   })();
 
@@ -181,6 +231,26 @@
     return window.location.pathname.split("/").pop();
   }
 
+  // ------------------------------------------------------------ responsive ----
+
+  // R7.10: the one place that decides "are we on the drawer layout" -- both the collapse-toggle's
+  // click handler and the resize listener below ask this rather than each hardcoding the number,
+  // so it can only ever disagree with the injected CSS's own MOBILE_BREAKPOINT_PX by construction,
+  // not by two literals drifting apart.
+  function isMobileViewport() {
+    return !!(window.matchMedia && window.matchMedia("(max-width:" + MOBILE_BREAKPOINT_PX + "px)").matches);
+  }
+
+  function closeMobileSidebar() {
+    document.body.classList.remove("npdev-shell-sidebar-mobile-open");
+    if (el.sidebarToggle) el.sidebarToggle.setAttribute("aria-expanded", "false");
+  }
+
+  function openMobileSidebar() {
+    document.body.classList.add("npdev-shell-sidebar-mobile-open");
+    if (el.sidebarToggle) el.sidebarToggle.setAttribute("aria-expanded", "true");
+  }
+
   // ------------------------------------------------------------- skeleton ----
 
   function wrapContent() {
@@ -199,13 +269,31 @@
     sidebarToggle.className = "npdev-shell-collapse-toggle";
     sidebarToggle.type = "button";
     sidebarToggle.title = "Recolher/expandir menu";
+    sidebarToggle.setAttribute("aria-label", "Recolher/expandir menu");
     sidebarToggle.textContent = "☰";
+    sidebarToggle.setAttribute("aria-expanded", "false");
+    // R7.10: ties the toggle to the drawer it controls for assistive tech, on both the desktop
+    // icon-rail and the mobile drawer -- "sideNav" is paintSkeleton()'s own fixed id for the same
+    // element in both modes, so one attribute covers both.
+    sidebarToggle.setAttribute("aria-controls", "sideNav");
+    // R7.10: below MOBILE_BREAKPOINT_PX this same button drives the off-canvas drawer
+    // (npdev-shell-sidebar-mobile-open) instead of the desktop icon-rail collapse -- a drawer has
+    // no meaningful "collapsed-but-still-there" state, so the two behaviours don't mix.
     sidebarToggle.addEventListener("click", function () {
+      if (isMobileViewport()) {
+        if (document.body.classList.contains("npdev-shell-sidebar-mobile-open")) {
+          closeMobileSidebar();
+        } else {
+          openMobileSidebar();
+        }
+        return;
+      }
       var collapsed = !document.body.classList.contains("npdev-shell-sidebar-collapsed");
       document.body.classList.toggle("npdev-shell-sidebar-collapsed", collapsed);
       writeJsonStorage(localStorage, SIDEBAR_COLLAPSED_KEY, collapsed);
     });
     bar.appendChild(sidebarToggle);
+    el.sidebarToggle = sidebarToggle;
 
     var logo = document.createElement("span");
     logo.className = "npdev-shell-logo";
@@ -269,9 +357,18 @@
     var rightbar = document.createElement("div");
     rightbar.className = "npdev-shell-rightbar";
 
+    // R7.10: the drawer's dismiss surface -- covers the content column at MOBILE_BREAKPOINT_PX and
+    // below (see injectResponsiveShellStyle's .npdev-shell-sidebar-backdrop rule), hidden otherwise.
+    // Lives in the DOM unconditionally (cheap, inert when hidden) rather than being created/destroyed
+    // on every viewport crossing.
+    var sidebarBackdrop = document.createElement("div");
+    sidebarBackdrop.className = "npdev-shell-sidebar-backdrop";
+    sidebarBackdrop.addEventListener("click", closeMobileSidebar);
+
     var bodyRow = document.createElement("div");
     bodyRow.className = "npdev-shell-body";
     bodyRow.appendChild(sidebar);
+    bodyRow.appendChild(sidebarBackdrop);
     bodyRow.appendChild(content);
     bodyRow.appendChild(rightbar);
 
@@ -280,6 +377,7 @@
     document.body.classList.add("npdev-shell-active");
 
     el.sidebar = sidebar;
+    el.sidebarBackdrop = sidebarBackdrop;
     el.rightbar = rightbar;
     el.content = content;
 
@@ -289,6 +387,21 @@
     if (readJsonStorage(localStorage, RIGHTBAR_COLLAPSED_KEY, false)) {
       document.body.classList.add("npdev-shell-rightbar-collapsed");
     }
+
+    // R7.10: dismiss the drawer on Escape (a standard dialog/drawer convention) and drop it
+    // whenever a resize/rotation crosses back above the breakpoint -- without this a drawer left
+    // open on a phone, then the same page resized wide (devtools, foldable, external monitor),
+    // would keep the off-canvas transform applied under styles no longer meant for it.
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && document.body.classList.contains("npdev-shell-sidebar-mobile-open")) {
+        closeMobileSidebar();
+      }
+    });
+    window.addEventListener("resize", function () {
+      if (!isMobileViewport() && document.body.classList.contains("npdev-shell-sidebar-mobile-open")) {
+        closeMobileSidebar();
+      }
+    });
   }
 
   // --------------------------------------------------------------- identity ----
@@ -461,6 +574,10 @@
       // qualify it with the SPA's own root so the recent-items gadget stays a valid link from any
       // page (a hand-authored page has no element with that hash id at all).
       recordRecentItem(label, isHash && state.hostMode ? BUSINESS_UI_ROOT + href : href);
+      // R7.10: a same-page hash switch on the drawer layout would otherwise leave the drawer
+      // covering the very content it just navigated to -- a real navigation unloads the page
+      // anyway, so this is a no-op there.
+      if (isMobileViewport()) closeMobileSidebar();
     });
     container.appendChild(a);
     return a;
