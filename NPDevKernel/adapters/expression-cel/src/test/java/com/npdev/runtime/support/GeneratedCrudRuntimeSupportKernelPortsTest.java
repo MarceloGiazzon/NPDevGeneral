@@ -89,6 +89,101 @@ class GeneratedCrudRuntimeSupportKernelPortsTest {
                         ExecutionContext.anonymous()));
     }
 
+    /**
+     * R5.1: the 7-arg {@code auditCrudMutation} overload is what makes the audit trail record WHAT
+     * changed, not just that a mutation happened -- proves the recorded {@link AuditRecord} carries a
+     * "field: before -> after" entry per changed field, an unchanged field is silently omitted (no
+     * noise), and a create's "before == null" fields all show as "null -> value".
+     */
+    @Test
+    void auditCrudMutation_withBeforeAndAfter_recordsOnlyChangedFieldsInDiff() {
+        List<AuditRecord> captured = new ArrayList<>();
+        AuditLogStore capturingStore = new AuditLogStore() {
+            @Override
+            public void append(AuditRecord record) {
+                captured.add(record);
+            }
+
+            @Override
+            public List<AuditRecord> search(AuditQuery query) {
+                return List.of();
+            }
+        };
+        GeneratedCrudRuntimeSupport support = supportWith(
+                capturingStore, PermissionEvaluator.allowAll(), IdempotencyStore.noop());
+
+        java.util.Map<String, Object> before = new LinkedHashMap<>();
+        before.put("status", "OPEN");
+        before.put("priority", 1);
+        before.put("id", "order-1");
+
+        java.util.Map<String, Object> after = new LinkedHashMap<>();
+        after.put("status", "CLOSED");
+        after.put("priority", 1);
+        after.put("id", "order-1");
+
+        support.auditCrudMutation("Order", "UPDATE", "order-1", "ALLOW", ExecutionContext.anonymous(),
+                before, after);
+
+        assertEquals(1, captured.size());
+        AuditRecord record = captured.get(0);
+        assertEquals("CRUD_UPDATE", record.action());
+        String diff = record.meta().get("fieldDiff");
+        assertTrue(diff.contains("status: OPEN -> CLOSED"), diff);
+        assertFalse(diff.contains("priority"), "unchanged field must not appear in the diff: " + diff);
+        assertFalse(diff.contains("id:"), "unchanged field must not appear in the diff: " + diff);
+    }
+
+    @Test
+    void auditCrudMutation_createHasNoBefore_everyAfterFieldShowsAsNullToValue() {
+        List<AuditRecord> captured = new ArrayList<>();
+        AuditLogStore capturingStore = new AuditLogStore() {
+            @Override
+            public void append(AuditRecord record) {
+                captured.add(record);
+            }
+
+            @Override
+            public List<AuditRecord> search(AuditQuery query) {
+                return List.of();
+            }
+        };
+        GeneratedCrudRuntimeSupport support = supportWith(
+                capturingStore, PermissionEvaluator.allowAll(), IdempotencyStore.noop());
+
+        java.util.Map<String, Object> after = new LinkedHashMap<>();
+        after.put("status", "OPEN");
+
+        support.auditCrudMutation("Order", "CREATE", "order-2", "ALLOW", ExecutionContext.anonymous(),
+                null, after);
+
+        String diff = captured.get(0).meta().get("fieldDiff");
+        assertTrue(diff.contains("status: null -> OPEN"), diff);
+    }
+
+    @Test
+    void auditCrudMutation_noBeforeOrAfter_omitsFieldDiffFromMeta() {
+        List<AuditRecord> captured = new ArrayList<>();
+        AuditLogStore capturingStore = new AuditLogStore() {
+            @Override
+            public void append(AuditRecord record) {
+                captured.add(record);
+            }
+
+            @Override
+            public List<AuditRecord> search(AuditQuery query) {
+                return List.of();
+            }
+        };
+        GeneratedCrudRuntimeSupport support = supportWith(
+                capturingStore, PermissionEvaluator.allowAll(), IdempotencyStore.noop());
+
+        support.auditCrudMutation("Order", "RESTORE", "order-3", "ALLOW", ExecutionContext.anonymous());
+
+        assertFalse(captured.get(0).meta().containsKey("fieldDiff"),
+                "no before/after supplied -- meta must not carry a fieldDiff key at all");
+    }
+
     @Test
     void checkCrudIdempotency_returnsExistingWhenKeyRecorded() {
         String storedId = UUID.randomUUID().toString();

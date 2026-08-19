@@ -498,6 +498,33 @@ def _migrate_transaction_band_pickers(transaction: dict, where: str, result: Mig
     result.changes.append(message)
 
 
+def _migrate_query_or_procedure_audit_policy(entries, kind: str, result: MigrationResult) -> None:
+    """R5.1 (roadmap 2026-08-18, "retire the inert auditPolicy knob"): `queries[].auditPolicy` and
+    `procedures[].auditPolicy` were schema-declared (none|read|write) but consumed by nothing at
+    runtime -- no validator, compiler pass, or kernel code path ever read the accessor beyond
+    round-tripping it through the compiled-model JSON. The REAL, always-on audit trail lives at the
+    ConceptGateway/AuditLogStore layer (every concept read/write/delete is logged there regardless
+    of this flag) and, as of the same change that retires this knob, at the generated CRUD service's
+    own field-diff audit trail (create/update/delete/restore). Both are unconditional per-operation,
+    not opt-in per query/procedure, so there was no live semantics this flag could have controlled.
+    Retired from schema (all 4 model.schema.json mirrors); this strips the dead key from an existing
+    document so it keeps validating (`additionalProperties: false` on both object shapes would
+    otherwise reject it)."""
+    if not isinstance(entries, list):
+        return
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            continue
+        if "auditPolicy" not in entry:
+            continue
+        value = entry.pop("auditPolicy")
+        result.changed = True
+        result.changes.append(
+            f"{kind}[{i}] ({entry.get('name', '?')}): dropped inert 'auditPolicy' ({value!r}) -- "
+            f"retired, consumed by nothing (R5.1)"
+        )
+
+
 def _migrate_autopanel(autopanel: dict, where: str, result: MigrationResult) -> None:
     if not isinstance(autopanel, dict):
         return
@@ -539,6 +566,9 @@ def migrate_document(doc: dict) -> MigrationResult:
 
     for i, autopanel in enumerate(doc.get("autoPanels", None) or []):
         _migrate_autopanel(autopanel, f"autoPanels[{i}] ({autopanel.get('name') or autopanel.get('aggregate') or '?'})", result)
+
+    _migrate_query_or_procedure_audit_policy(doc.get("queries", None) or [], "queries", result)
+    _migrate_query_or_procedure_audit_policy(doc.get("procedures", None) or [], "procedures", result)
 
     return result
 

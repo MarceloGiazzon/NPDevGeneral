@@ -579,8 +579,7 @@ other systems to call directly over REST.
   "locals": [ /* optional working variables, alias: "variables" */ ],
   "steps": [ /* REQUIRED, at least 1 */ ],
   "returns": { /* optional shape of the result */ },
-  "tracePolicy": "detailed",     // none | summary | detailed
-  "auditPolicy": "write"          // none | read | write
+  "tracePolicy": "detailed"     // none | summary | detailed
 }
 ```
 
@@ -591,8 +590,10 @@ around data access): `assign`, `mapValue`, `condition`/`if`, `loop`/`forEach`, `
 `eventPublish`/`publishEvent`, `return`.
 
 `tracePolicy` controls how much execution detail gets recorded (useful while you're building
-and debugging); `auditPolicy` controls whether reads/writes get logged to the audit trail —
-set `"write"` for anything that changes data you'll need to account for later.
+and debugging). Audit logging is NOT a per-procedure setting — every concept create, update,
+delete and restore reached through the governed path (`saveConcept`/`deleteConcept` steps
+included) is logged automatically, with a before/after field diff, no matter what the
+procedure declares.
 
 ### Real examples (from `invoice-bonds-demo`) — a read procedure and a write procedure
 
@@ -607,8 +608,7 @@ A **read-oriented** procedure, running a governed query:
       "target": "activeUsers", "trace": true },
     { "name": "return-active-users", "type": "return", "value": "$activeUsers", "trace": true }
   ],
-  "tracePolicy": "detailed",
-  "auditPolicy": "read"
+  "tracePolicy": "detailed"
 }
 ```
 
@@ -625,8 +625,7 @@ isolation, audit — the same enforcement a business CRUD write gets):
       "data": { "input": "$input" }, "target": "savedUser", "trace": true, "audit": true },
     { "name": "return-saved-user", "type": "return", "value": "$savedUser", "trace": true }
   ],
-  "tracePolicy": "detailed",
-  "auditPolicy": "write"
+  "tracePolicy": "detailed"
 }
 ```
 
@@ -638,9 +637,10 @@ just a button that runs this logic.
 
 - A procedure has no REST route of its own — if you need something callable directly by an
   external client, use a Flow instead.
-- `trace`/`audit` can be set per-step (as shown above) in addition to the procedure-level
-  `tracePolicy`/`auditPolicy` — the per-step flags are for singling out the operations that
-  matter most inside an otherwise ordinary procedure.
+- `trace` can be set per-step (as shown above) in addition to the procedure-level
+  `tracePolicy` — the per-step flag is for singling out the operations that matter most inside
+  an otherwise ordinary procedure. The per-step `audit` flag shown on `save-user-through-gateway`
+  above is a leftover marker with no effect — audit logging is unconditional, not opt-in.
 
 ---
 

@@ -3433,14 +3433,6 @@
             "detailed"
           ]
         },
-        "auditPolicy": {
-          "type": "string",
-          "enum": [
-            "none",
-            "read",
-            "write"
-          ]
-        },
         "metadata": {
           "type": "object"
         },
@@ -3619,14 +3611,6 @@
             "none",
             "summary",
             "detailed"
-          ]
-        },
-        "auditPolicy": {
-          "type": "string",
-          "enum": [
-            "none",
-            "read",
-            "write"
           ]
         },
         "actionDescriptor": {

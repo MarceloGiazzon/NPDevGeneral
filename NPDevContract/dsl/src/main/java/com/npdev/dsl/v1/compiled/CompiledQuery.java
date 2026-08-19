@@ -12,7 +12,6 @@ public record CompiledQuery(
         List<CompiledProcedureParameter> parameters,
         List<String> permissionRequirements,
         String tracePolicy,
-        String auditPolicy,
         Map<String, Object> metadata,
         List<CompiledGroupByField> groupBy,
         List<CompiledAggregateFunction> aggregates,
@@ -38,13 +37,12 @@ public record CompiledQuery(
             List<CompiledProcedureParameter> parameters,
             List<String> permissionRequirements,
             String tracePolicy,
-            String auditPolicy,
             Map<String, Object> metadata,
             List<CompiledGroupByField> groupBy,
             List<CompiledAggregateFunction> aggregates,
             String having
     ) {
-        this(name, concept, where, orderBy, limit, parameters, permissionRequirements, tracePolicy, auditPolicy,
+        this(name, concept, where, orderBy, limit, parameters, permissionRequirements, tracePolicy,
                 metadata, groupBy, aggregates, having, null);
     }
 

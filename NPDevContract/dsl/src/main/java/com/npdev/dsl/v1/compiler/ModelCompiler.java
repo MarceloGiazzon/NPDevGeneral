@@ -455,7 +455,6 @@ public final class ModelCompiler {
                     compileProcedureParameters(queryAst.parameters()),
                     sortedStrings(queryAst.permissionRequirements()),
                     queryAst.tracePolicy(),
-                    queryAst.auditPolicy(),
                     sortObjectMap(queryAst.metadata()),
                     toCompiledGroupByFields(queryAst.groupBy()),
                     toCompiledAggregateFunctions(queryAst.aggregates()),
@@ -488,7 +487,6 @@ public final class ModelCompiler {
                     toCompiledSchema(procedureAst.returns()),
                     sortedStrings(procedureAst.permissionRequirements()),
                     procedureAst.tracePolicy(),
-                    procedureAst.auditPolicy(),
                     compileGeneratedActionDescriptor(procedureAst),
                     sortObjectMap(procedureAst.metadata())
             ));

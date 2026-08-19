@@ -3769,7 +3769,7 @@ public final class GeneratedCrudRuntimeSupport {
         );
         PermissionDecision decision = permissionEvaluator.evaluate(subject, requirement);
         if (decision != null && !decision.allowed()) {
-            appendCrudAudit(conceptName, operation, null, "DENY", safeCtx);
+            appendCrudAudit(conceptName, operation, null, "DENY", safeCtx, null, null);
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "forbidden: " + conceptName + "." + operation);
         }
@@ -3777,7 +3777,23 @@ public final class GeneratedCrudRuntimeSupport {
 
     public void auditCrudMutation(String conceptName, String operation, String resourceId,
                                   String outcome, ExecutionContext ctx) {
-        appendCrudAudit(conceptName, operation, resourceId, outcome, ctx);
+        appendCrudAudit(conceptName, operation, resourceId, outcome, ctx, null, null);
+    }
+
+    /**
+     * R5.1: same as the 5-arg {@link #auditCrudMutation} above, but carries the record's own
+     * field-level before/after snapshot (service-base.mustache's {@code mapFromEntity} output) so
+     * the audit trail records WHAT changed, not just that a mutation happened -- "who changed what,
+     * when" is the actual ERP requirement, and a bare CRUD_UPDATE row with no field data answers only
+     * "when"/"who". Either snapshot may be {@code null}: CREATE has no before; a delete (soft or
+     * physical -- the store makes that call, not this method) has no after; RESTORE's before is
+     * deliberately omitted rather than guessed, since the row was excluded from every read while
+     * deleted.
+     */
+    public void auditCrudMutation(String conceptName, String operation, String resourceId,
+                                  String outcome, ExecutionContext ctx,
+                                  Map<String, Object> before, Map<String, Object> after) {
+        appendCrudAudit(conceptName, operation, resourceId, outcome, ctx, before, after);
     }
 
     public Optional<String> checkCrudIdempotency(String tenantId, String conceptName,
@@ -3818,12 +3834,19 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private void appendCrudAudit(String conceptName, String operation, String resourceId,
-                                  String outcome, ExecutionContext ctx) {
+                                  String outcome, ExecutionContext ctx,
+                                  Map<String, Object> before, Map<String, Object> after) {
         try {
             ExecutionContext safeCtx = ctx == null ? ExecutionContext.anonymous() : ctx;
             String safeResourceType = (conceptName == null || conceptName.isBlank())
                     ? "UNKNOWN" : conceptName.toUpperCase(Locale.ROOT);
             String safeOperation = (operation == null || operation.isBlank()) ? "UNKNOWN" : operation;
+            Map<String, String> meta = new LinkedHashMap<>();
+            meta.put("operation", safeOperation);
+            String fieldDiff = describeFieldDiff(before, after);
+            if (!fieldDiff.isEmpty()) {
+                meta.put("fieldDiff", fieldDiff);
+            }
             auditLogStore.append(AuditRecord.create(
                     safeCtx.tenantId(),
                     safeCtx.actorId(),
@@ -3834,10 +3857,52 @@ public final class GeneratedCrudRuntimeSupport {
                     outcome == null ? "UNKNOWN" : outcome,
                     "crud_" + safeOperation.toLowerCase(Locale.ROOT),
                     Map.of("conceptName", safeResourceType),
-                    Map.of("operation", safeOperation)
+                    meta
             ));
         } catch (Exception ignored) {
             // Audit must never break primary execution.
         }
+    }
+
+    /**
+     * R5.1: a compact, deterministic "field: before -> after" list for every field that differs
+     * between two record snapshots. A create has {@code before == null}, so every field in
+     * {@code after} shows as a change from "null"; a delete has {@code after == null}, so every
+     * field in {@code before} shows as a change to "null". Values are stringified, not
+     * type-preserved -- this produces an audit trail entry, not a re-playable payload. Fields are
+     * sorted alphabetically so output is deterministic regardless of the entity's declared field
+     * order.
+     */
+    private static String describeFieldDiff(Map<String, Object> before, Map<String, Object> after) {
+        if (before == null && after == null) {
+            return "";
+        }
+        List<String> fields = new ArrayList<>();
+        if (before != null) {
+            fields.addAll(before.keySet());
+        }
+        if (after != null) {
+            for (String key : after.keySet()) {
+                if (!fields.contains(key)) {
+                    fields.add(key);
+                }
+            }
+        }
+        fields.sort(Comparator.naturalOrder());
+        StringBuilder builder = new StringBuilder();
+        for (String field : fields) {
+            Object oldValue = before == null ? null : before.get(field);
+            Object newValue = after == null ? null : after.get(field);
+            String oldText = oldValue == null ? "null" : String.valueOf(oldValue);
+            String newText = newValue == null ? "null" : String.valueOf(newValue);
+            if (oldText.equals(newText)) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append("; ");
+            }
+            builder.append(field).append(": ").append(oldText).append(" -> ").append(newText);
+        }
+        return builder.toString();
     }
 }

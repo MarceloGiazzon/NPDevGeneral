@@ -5,6 +5,24 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-19 — `queries[].auditPolicy` / `procedures[].auditPolicy` removed from the schema (R5.1)
+
+**What changes.** The `auditPolicy` field (`none`/`read`/`write`) on a `query` or `procedure`
+declaration is no longer accepted — both object shapes have `additionalProperties: false`, so a
+model that still declares it fails schema validation. It was schema-declared, parsed, compiled,
+and round-tripped through the canonical JSON, but no validator, compiler pass, or kernel/runtime
+code path ever read it to decide anything. Retired rather than enforced: the platform's real audit
+trail is unconditional, not opt-in per query/procedure — every concept create/update/delete/restore
+reached through the governed gateway is logged automatically (actor, timestamp, outcome, and — new
+in this same change — a field-level before/after diff), regardless of what any query or procedure
+declares. `tracePolicy` is unaffected and still works exactly as before.
+
+**Codemod.** `python NPDevCli/npdev_cli.py migrate dsl-2 --write --input <model.json or directory>`
+strips the dead key from every `queries[]`/`procedures[]` entry that declares it (structural, not a
+blind string replace — every other field on the entry is left untouched). Already run against the
+5 in-repo corpus models that declared it (medium-expense-approval's 3 copies, npdev-canary,
+engine-probe); re-validated against the updated schema.
+
 ## 2026-08-19 — a generated app's background launcher moved into the emitter, and its log file moved with it (R9.4)
 
 **What changes.** The duplicate-PID guard, port-conflict guard and log archiving used to exist only

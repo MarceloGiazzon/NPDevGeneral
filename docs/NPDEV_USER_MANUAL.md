@@ -578,7 +578,7 @@ automatic notification created the moment an invoice is issued.
   ],
   "events": [ { "name": "InvoiceIssued", "payload": ["id", "invoiceNumber"] } ],
   "queries": [
-    { "name": "PendingInvoices", "concept": "Invoice", "where": "status == 'DRAFT'", "orderBy": ["invoiceNumber"], "auditPolicy": "read" }
+    { "name": "PendingInvoices", "concept": "Invoice", "where": "status == 'DRAFT'", "orderBy": ["invoiceNumber"] }
   ],
   "flows": [
     {
