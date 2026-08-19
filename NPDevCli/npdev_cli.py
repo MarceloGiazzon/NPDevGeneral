@@ -8975,6 +8975,13 @@ def _human_summary(result: dict) -> str:
         for key in ("appDir", "opsDir", "modelPath", "jarPath", "dbFile", "superUserKeyFile", "logsDir"):
             if result.get(key):
                 lines.append(f"  {key:<18} {result[key]}")
+    elif command == "monitor hotswap":
+        status = "APPLIED" if result.get("ok") else f"REFUSED ({result.get('code')})"
+        lines.append(f"{status}: {result.get('message') or ''}")
+        if result.get("ok"):
+            lines.append(f"  metadataGeneration {result.get('metadataGeneration')}")
+            for cat in (result.get("catalogsUpdated") or []):
+                lines.append(f"  updated {cat}")
     elif "found" in result and "state" in result:
         lines.append(f"ScrapForAI engine: {result['state']}")
         lines.append(f"  via      : {result.get('via')}")
@@ -9030,13 +9037,16 @@ def run_monitor(args: argparse.Namespace) -> int:
         return _run_monitor_logs(args)
     if args.monitor_command == "ops":
         return _run_monitor_ops(args)
+    if args.monitor_command == "hotswap":
+        return _run_monitor_hotswap(args)
     if args.monitor_command == "ingress":
         return _run_monitor_ingress(args)
     if args.monitor_command == "clone":
         return _run_monitor_clone(args)
     if args.monitor_command == "clone-remove":
         return _run_monitor_clone_remove(args)
-    raise CliError("usage: npdev monitor {scan|probe|engine|engine-start|logs|ops|ingress|clone|clone-remove}")
+    raise CliError(
+        "usage: npdev monitor {scan|probe|engine|engine-start|logs|ops|hotswap|ingress|clone|clone-remove}")
 
 
 def _run_monitor_engine_start(args: argparse.Namespace) -> int:
@@ -9166,6 +9176,122 @@ def _run_monitor_clone_remove(args: argparse.Namespace) -> int:
     if not args.json:
         print(f"removed {result['removed']} (ports released: {result['portsReleased']})")
     return 0
+
+
+def _run_monitor_hotswap(args: argparse.Namespace) -> int:
+    """R1.7 dev-loop closer: the CLI trigger for `MetadataHotSwapController#apply`, pushing an
+    already-classified METADATA_ONLY change's descriptive catalogs (compiled-metadata.json,
+    metadata/*.manifest.json) into a RUNNING app's JVM with no restart. `Update-AppMetadata.ps1`
+    already runs `:generator:classifyModelChange` and hands this verb its report's own
+    classification/classificationReasons plus the SAME `--emitMetadataTo` scratch directory it wrote
+    -- unchanged, matching `MetadataHotSwapController.ApplyRequest`'s own shape exactly so a caller
+    that already ran the classifier can pass its output straight through.
+
+    Reuses `npdev_monitor.probe_app` for both facts this needs -- is the app running, and where is
+    its Super User key (`_ops/SUPER_USER_KEY.txt`, `SuperUserBootstrapper`'s own file) -- rather than
+    re-deriving app discovery a second time. Authenticates with the `X-Super-User-Key` header
+    (`SuperUserCredentialAuthFilter`), never the business `X-Api-Key` path: `/apply` requires
+    SUPERUSER specifically because an `auth.mode=none` app grants ADMIN to every anonymous caller.
+
+    Every expected outcome -- app not running, no key on disk, the endpoint refusing a non-
+    METADATA_ONLY classification, an app generated before R1.7 with no endpoint at all -- comes back
+    as a structured `ok: false` result (exit 2), same convention `monitor clone`/`monitor clone-
+    remove` already use, never a traceback. The raw Super User key is read only to build the request
+    header and is never placed in `result`, so `_print_result`'s redaction has nothing to catch and
+    nothing to miss."""
+    import urllib.error
+    import urllib.request
+
+    app_dir = Path(args.app_dir).expanduser().resolve()
+    result: dict = {
+        "schemaVersion": "npdev-monitor-hotswap.v1", "command": "monitor hotswap",
+        "ok": False, "code": None, "message": None, "appDir": str(app_dir),
+    }
+
+    def _refuse(code: str, message: str) -> int:
+        result["code"] = code
+        result["message"] = message
+        _print_result(result, args)
+        return 2
+
+    if args.classification != "METADATA_ONLY":
+        return _refuse(
+            "NOT_METADATA_ONLY",
+            f"refusing locally: classification is {args.classification!r}, not METADATA_ONLY -- the "
+            "endpoint would refuse this too (HTTP 409), but there is no point making the call.")
+
+    source_root = Path(args.metadata_source_root).expanduser().resolve()
+    if not source_root.is_dir():
+        return _refuse("METADATA_SOURCE_ROOT_NOT_FOUND",
+                        f"--metadata-source-root does not exist: {source_root}")
+
+    app_record = npdev_monitor.probe_app(app_dir, origin="explicit",
+                                         health_timeout=min(args.timeout, 3.0))
+    if not app_record.get("isAppRoot"):
+        return _refuse("NOT_AN_APP", app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        return _refuse(
+            "APP_NOT_RUNNING",
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')} -- hot swap needs a RUNNING app; start it first.")
+
+    key_file = app_record.get("superUserKeyFile")
+    if not key_file:
+        return _refuse(
+            "SUPERUSER_KEY_NOT_FOUND",
+            "no SUPER_USER_KEY.txt found under this app's _ops directory -- either an app generated "
+            "before R1.7's SuperUserBootstrapper, or the key was already relocated/rotated elsewhere.")
+    try:
+        raw_key = Path(key_file).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        return _refuse("SUPERUSER_KEY_UNREADABLE", f"found {key_file} but could not read it: {exc}")
+    if not raw_key:
+        return _refuse("SUPERUSER_KEY_EMPTY", f"{key_file} exists but is empty")
+
+    base_url = app_record.get("probeBaseUrl")
+    body = json.dumps({
+        "classification": args.classification,
+        "classificationReasons": list(args.reason or []),
+        "metadataSourceRoot": str(source_root),
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        base_url + "/api/admin/runtime/metadata-hotswap/apply",
+        data=body, method="POST",
+        headers={"Content-Type": "application/json", "X-Super-User-Key": raw_key},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=args.timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raw_body = exc.read().decode("utf-8", "replace")
+        try:
+            payload = json.loads(raw_body)
+        except json.JSONDecodeError:
+            payload = {}
+        if exc.code == 404:
+            return _refuse(
+                "ENDPOINT_NOT_FOUND",
+                f"HTTP 404 from {base_url} -- this app predates R1.7's MetadataHotSwapController and "
+                "has no /metadata-hotswap/apply endpoint. Regenerate it, or fall back to a restart.")
+        code = payload.get("code") or f"HTTP_{exc.code}"
+        message = payload.get("message") or f"HTTP {exc.code}: {raw_body[:300]}"
+        return _refuse(code, message)
+    except urllib.error.URLError as exc:
+        return _refuse("UNREACHABLE", f"could not reach {base_url}: {exc.reason}")
+
+    result["ok"] = bool(payload.get("ok", True))
+    result["metadataGeneration"] = payload.get("metadataGeneration")
+    result["appliedAt"] = payload.get("appliedAt")
+    result["catalogsUpdated"] = payload.get("catalogsUpdated")
+    result["classificationReasons"] = payload.get("classificationReasons")
+    if result["ok"]:
+        result["code"] = "APPLIED"
+        result["message"] = f"metadata hot swap applied, generation {result['metadataGeneration']}"
+    else:
+        result["code"] = payload.get("code") or "UNKNOWN"
+        result["message"] = payload.get("message")
+    _print_result(result, args)
+    return 0 if result["ok"] else 2
 
 
 def _run_monitor_logs(args: argparse.Namespace) -> int:
@@ -11298,6 +11424,27 @@ def build_parser() -> argparse.ArgumentParser:
                              help="The acknowledgement token a destructive script demands. The window "
                                   "must be at least as careful as the terminal.")
     monitor_ops.add_argument("--json", action="store_true")
+
+    monitor_hotswap = monitor_sub.add_parser(
+        "hotswap",
+        help="R1.7: push an already-classified METADATA_ONLY change into a RUNNING app's own "
+             "metadata catalogs with no restart (MetadataHotSwapController#apply). "
+             "`Update-AppMetadata.ps1` calls this before falling back to a restart.",
+    )
+    monitor_hotswap.add_argument("--app-dir", required=True)
+    monitor_hotswap.add_argument(
+        "--classification", required=True,
+        help="Exactly `:generator:classifyModelChange`'s own report.classification. Anything other "
+             "than METADATA_ONLY is refused locally, with no HTTP call made.")
+    monitor_hotswap.add_argument(
+        "--reason", action="append", default=[],
+        help="Repeatable. report.classificationReasons, one per flag, passed through unchanged.")
+    monitor_hotswap.add_argument(
+        "--metadata-source-root", required=True,
+        help="The directory `:generator:classifyModelChange`'s own --emitMetadataTo wrote -- read "
+             "by the RUNNING APP's JVM (same machine), not uploaded over HTTP.")
+    monitor_hotswap.add_argument("--timeout", type=float, default=15.0)
+    monitor_hotswap.add_argument("--json", action="store_true")
 
     monitor_clone = monitor_sub.add_parser(
         "clone",
