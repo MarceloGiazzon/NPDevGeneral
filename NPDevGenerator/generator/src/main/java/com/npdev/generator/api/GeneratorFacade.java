@@ -14,6 +14,7 @@ import com.npdev.generator.emitters.EntityEmitter;
 import com.npdev.generator.emitters.GeneratedFolderSignatureEmitter;
 import com.npdev.generator.emitters.InfoPageEmitter;
 import com.npdev.generator.emitters.MetadataManifestAssetEmitter;
+import com.npdev.generator.emitters.ModelSurfaceEmitter;
 import com.npdev.generator.emitters.PluginRequirementAssetEmitter;
 import com.npdev.generator.emitters.RuntimeApiEmitter;
 import com.npdev.generator.emitters.RuntimeAuthPropertiesEmitter;
@@ -188,6 +189,10 @@ public final class GeneratorFacade {
 
         new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath, superUserRole);
         new InfoPageEmitter(templates, writer).emit(model, databasePlan);
+        // R10.2: schema-driven model surface, emitted unconditionally (like info.html) rather than
+        // gated on UI_GENERATE_BUSINESS_UI -- it walks the canonical model JSON itself, not the
+        // business UI's panels, so it has no dependency on that flag being on.
+        new ModelSurfaceEmitter(templates, writer).emit(model);
         if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
             new BusinessUiEmitter(templates, writer).emit(model, superUserRole, settingResolver);
             // Phase 7: provenance/store/box-view admin surfaces ride along with the business UI,
