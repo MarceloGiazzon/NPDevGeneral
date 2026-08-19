@@ -1,10 +1,15 @@
 package com.npdev.adapters.documentrender.inproc;
 
+import com.npdev.kernel.CapabilityCall;
+import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ports.DocumentRenderContract;
 import com.npdev.kernel.ports.DocumentRenderContract.RenderOptions;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -69,6 +74,79 @@ class DocumentRenderInProcAdapterTest {
                 DocumentRenderContract.DocumentRenderException.class,
                 () -> adapter.render("<html><body><table><tr><td>unclosed", RenderOptions.defaults()));
         assertTrue(exception.getCause() != null, "the underlying library failure must be preserved as the cause");
+    }
+
+    /**
+     * R6.3 (RUN-18): the {@code documentRender} capability dispatch path -- the same entry point a
+     * flow's capabilityCall step uses, not the typed {@link #render} method REST already calls.
+     * Asserts real PDF bytes come back base64-encoded, decodable, and round-trip byte-identical.
+     */
+    @Test
+    void invokeViaCapabilityCallRendersAndReturnsBase64Pdf() {
+        CapabilityCall call = new CapabilityCall(
+                "documentRender",
+                "DocumentRenderCapability",
+                "document-render-inproc",
+                "render",
+                List.of(printDocumentHtml())
+        );
+
+        CapabilityResult result = adapter.invoke(call, Map.of());
+
+        assertTrue(result.ok());
+        Map<?, ?> value = (Map<?, ?>) result.value();
+        assertEquals("application/pdf", value.get("contentType"));
+        assertEquals("document.pdf", value.get("filename"));
+        byte[] decoded = Base64.getDecoder().decode((String) value.get("contentBase64"));
+        assertEquals(((Number) value.get("sizeBytes")).intValue(), decoded.length);
+        assertEquals("%PDF-", new String(decoded, 0, 5, StandardCharsets.US_ASCII));
+    }
+
+    @Test
+    void invokeHonorsMapPayloadPageOptionsAndFilename() {
+        CapabilityCall call = new CapabilityCall(
+                "documentRender",
+                "DocumentRenderCapability",
+                "document-render-inproc",
+                "render",
+                List.of(Map.of(
+                        "html", printDocumentHtml(),
+                        "pageSize", "Letter",
+                        "marginMm", 10.0,
+                        "filename", "invoice.pdf"
+                ))
+        );
+
+        CapabilityResult result = adapter.invoke(call, Map.of());
+
+        assertTrue(result.ok());
+        Map<?, ?> value = (Map<?, ?>) result.value();
+        assertEquals("invoice.pdf", value.get("filename"));
+    }
+
+    @Test
+    void invokeFailsClosedForAnUnsupportedOperationRatherThanRendering() {
+        CapabilityCall call = new CapabilityCall(
+                "documentRender", "DocumentRenderCapability", "document-render-inproc", "delete", List.of()
+        );
+
+        CapabilityResult result = adapter.invoke(call, Map.of());
+
+        assertTrue(!result.ok());
+        assertEquals("DOCUMENT_RENDER_OPERATION_UNSUPPORTED", result.error().code());
+    }
+
+    @Test
+    void invokeReturnsANamedFailureForMalformedHtmlRatherThanThrowing() {
+        CapabilityCall call = new CapabilityCall(
+                "documentRender", "DocumentRenderCapability", "document-render-inproc", "render",
+                List.of("<html><body><table><tr><td>unclosed")
+        );
+
+        CapabilityResult result = adapter.invoke(call, Map.of());
+
+        assertTrue(!result.ok());
+        assertEquals("DOCUMENT_RENDER_FAILED", result.error().code());
     }
 
     private static String printDocumentHtml() {
