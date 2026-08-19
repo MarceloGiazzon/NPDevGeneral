@@ -3,8 +3,9 @@ title: >-
   R5.6 per-locale labels never reach a generated app -- CompiledMetadataCanonicalJson drops them
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-19
+closed: 2026-08-19
 source: >-
   Found 2026-08-19 immediately after R5.6 landed (commit 8884d11d), by reading the metadata writer
   rather than trusting the DSL suite's green.
@@ -44,14 +45,29 @@ detail: |
      `LabelResolver.resolve` when serving UI metadata. The natural place to populate it is the
      generated `RuntimeContextService`, from `Accept-Language` or the existing `X-Tag-*` convention.
 
-  Until both land, treat per-locale labels as an authoring-layer feature only, and do not describe
-  the platform as supporting bilingual deployments.
+  **CLOSED the same day.** Both halves landed. `CompiledMetadataCanonicalJson` now emits
+  `labelLocales`/`shortLabelLocales` beside every `label`/`shortLabel` across all 8 label sites
+  (`grep -c getLabelLocales` on that file: 0 -> 10). The generated `RuntimeContextService` populates
+  `ExecutionContext`'s `locale` tag from an explicit `X-Tag-locale` header or, failing that,
+  `Accept-Language` -- on both the auth-disabled dev path and the authenticated path.
+  `PermissionAwareUiMetadataService` and `RuntimeMetadataService` resolve through `LabelResolver`
+  before serving.
+
+  Proven live against a booted app, not inferred -- three calls to
+  `GET /api/v1/runtime/metadata/ui/bundle?concept=CanaryTask`:
+  no locale header -> `"label": "Canary task"`; `X-Tag-locale: pt-BR` -> `"Tarefa canaria"`;
+  `Accept-Language: pt-BR,pt;q=0.9,en;q=0.8` -> `"Tarefa canaria"`.
+
+  Footnote worth keeping: the proof used a locale-patched copy of `npdev-canary`, because
+  `dsl-conformance-max` does not boot -- a pre-existing `RuntimePluginAdapterRegistry`
+  capability-binding gap for `auditLog`/`audit-log-inproc`, unrelated to this work and still open.
 guard:
   kind: manual
   ref: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java
   asserts: >-
     CompiledMetadataCanonicalJson emits per-locale label maps, not only the default text -- i.e.
     `grep -c getLabelLocales` on that file is greater than 0, and a generated app serves a locale
-    other than the default. Measured RED on 2026-08-19: exactly 0 occurrences, so every locale map
-    an author declares is dropped on the way to the app.
+    other than the default. Measured RED on 2026-08-19 (exactly 0 occurrences, every authored locale
+    map dropped on the way to the app) and GREEN the same day (10 occurrences, and a booted app
+    returning "Tarefa canaria" for pt-BR versus "Canary task" with no locale header).
   provenRed: true
