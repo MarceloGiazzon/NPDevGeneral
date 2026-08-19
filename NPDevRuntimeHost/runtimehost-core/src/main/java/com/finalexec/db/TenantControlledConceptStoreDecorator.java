@@ -94,6 +94,14 @@ public final class TenantControlledConceptStoreDecorator implements ConceptStore
         return effectiveStore(tenantId).aggregate(tenantId, conceptName, query);
     }
 
+    /** R5.2 (RUN-1 item 4): same reasoning as {@link #query} immediately above -- forwards to the
+     *  resolved delegate's own pushdown override, not {@link ConceptStore}'s
+     *  fetch-all-then-scan-in-the-JVM default. */
+    @Override
+    public boolean existsUnique(String tenantId, String conceptName, List<String> fieldNames, List<Object> values, String excludeId) {
+        return effectiveStore(tenantId).existsUnique(tenantId, conceptName, fieldNames, values, excludeId);
+    }
+
     private ConceptStore effectiveStore(String tenantId) {
         return isAuditedForTenant(tenantId) ? new AuditingConceptStoreDecorator(delegate, conceptName) : delegate;
     }

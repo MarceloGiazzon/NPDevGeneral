@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.SqlTypeSupport;
 import com.npdev.dsl.v1.query.GroupByJoinGrammar;
 import com.npdev.kernel.concepts.ConceptAggregateEngine;
 import com.npdev.kernel.concepts.ConceptAggregateQuery;
@@ -18,6 +19,7 @@ import com.npdev.kernel.storage.sql.H2Dialect;
 import com.npdev.kernel.storage.sql.PostgresDialect;
 import com.npdev.kernel.storage.sql.SqlDialect;
 import com.npdev.kernel.storage.sql.SqlDialects;
+import com.npdev.kernel.storage.sql.SqlType;
 import com.npdev.kernel.storage.sql.UpsertPlan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -216,6 +218,147 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         } finally {
             releaseConnection(connection);
         }
+    }
+
+    /**
+     * R5.2 (closes RUN-1 item 4): the pushdown counterpart of {@link ConceptStore#existsUnique}'s
+     * interface default. Before this override, EVERY create/update of a concept with a {@code
+     * unique: true} (or compound-unique) invariant called {@link #findAll} first -- loading and
+     * deserializing the tenant's ENTIRE table into the JVM just to answer one yes/no question, the
+     * platform's worst remaining data-scale landmine.
+     *
+     * <p><b>How this stays byte-for-byte identical to the old full scan.</b> Per-field, the {@code
+     * WHERE} predicate below is deliberately a SUPERSET of {@link ConceptStore#uniqueValuesCollide},
+     * not an attempt to replicate it exactly in SQL text -- doing the comparison in SQL only ever
+     * needs to be at least as inclusive as the JVM rule, never bit-exact, because every row the query
+     * returns is re-checked against the real {@link ConceptStore#uniqueValuesCollide} below before it
+     * can flip the answer to {@code true}. That is what makes an engine-formatting wrinkle (a {@code
+     * DECIMAL} column's scale, a driver's date-to-text rendering, MySQL's {@code CAST} rejecting
+     * {@code VARCHAR}) harmless instead of a silent correctness bug: the SQL side can only ever be
+     * WRONG in the direction of "too many candidates", and the JVM re-check throws every false
+     * positive away. Concretely:
+     * <ul>
+     *   <li>A text-shaped column (string/enum, and anything {@link SqlTypeSupport}'s own default
+     *       maps to {@code VARCHAR}) compares
+     *       {@code LOWER(dialect.trimmedText(dialect.cast(column, TEXT)))} against the incoming
+     *       value's own {@code String.valueOf(...).trim().toLowerCase()} -- for a text column the
+     *       cast is an identity, so it is exact, not just a superset, and reuses the column's own
+     *       pre-existing DB unique index only when the value also happens to already be stored in
+     *       that exact case/trim -- which is the common case, and the reason a real duplicate-field
+     *       create is fast even before any future functional index exists. {@code trimmedText} (not
+     *       a bare {@code TRIM(...)}) because single-argument {@code TRIM} did not exist in T-SQL
+     *       before SQL Server 2017 -- see that method's javadoc.</li>
+     *   <li>A non-text column (numeric/boolean/date/datetime/reference) compares natively
+     *       ({@code column = ?}, the incoming value coerced via {@link #coerceValue} exactly the way
+     *       the write path already coerces it) -- native SQL equality on a fixed-scale/typed column
+     *       is provably a superset of {@link ConceptStore#uniqueValuesCollide}'s "neither side is a
+     *       String" branch (SQL's {@code 42 = 42.0000} is true; the JVM rule's
+     *       {@code String.valueOf} comparison for that same pair is false), and this branch is a real
+     *       indexed lookup TODAY because it reuses the plain unique index/constraint the schema
+     *       emitter already creates for {@code unique: true} fields.</li>
+     * </ul>
+     *
+     * <p>No {@code LIMIT} on the candidate query: the DB-level unique index is case-sensitive and
+     * untrimmed (see {@code currentTenantId()}'s javadoc in service-base.mustache), so more than one
+     * pre-existing row COULD differ only by case/whitespace and all of them must be considered, not
+     * just the first one SQL happens to return. In practice this still means "zero rows, or a
+     * small handful", never the whole table -- that is the measured fix.
+     */
+    @Override
+    public boolean existsUnique(String tenantId, String conceptName, List<String> fieldNames, List<Object> values, String excludeId) {
+        if (fieldNames == null || fieldNames.isEmpty() || values == null || fieldNames.size() != values.size()) {
+            return false;
+        }
+        for (Object value : values) {
+            if (value == null) {
+                return false;
+            }
+        }
+        ConceptShape shape = shape(conceptName);
+        List<String> columns = new ArrayList<>();
+        for (String fieldName : fieldNames) {
+            columns.add(requireColumn(shape, fieldName));
+        }
+
+        List<String> whereClauses = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        whereClauses.add("tenant_id = ?");
+        params.add(tenantId);
+        for (int i = 0; i < columns.size(); i++) {
+            String column = columns.get(i);
+            Object value = values.get(i);
+            String dslType = shape.dslTypeByColumn().get(column.toLowerCase(Locale.ROOT));
+            if (isTextLikeDslType(dslType)) {
+                whereClauses.add("LOWER(" + dialect.trimmedText(dialect.cast(sqlId(column), SqlType.TEXT)) + ") = ?");
+                params.add(String.valueOf(value).trim().toLowerCase(Locale.ROOT));
+            } else {
+                whereClauses.add(sqlId(column) + " = ?");
+                params.add(coerceValue(column, value, dslType));
+            }
+        }
+        if (excludeId != null) {
+            whereClauses.add(sqlId(shape.idColumn()) + " <> ?");
+            params.add(coerceId(excludeId));
+        }
+        List<String> selectColumns = new ArrayList<>();
+        selectColumns.add(sqlId(shape.idColumn()));
+        for (String column : columns) {
+            selectColumns.add(sqlId(column));
+        }
+        String sql = "SELECT " + String.join(", ", selectColumns) + " FROM " + sqlId(shape.tableName())
+                + " WHERE " + String.join(" AND ", whereClauses);
+
+        Connection connection = openConnection();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            bindParams(statement, params, 1);
+            SqlDialect connectionDialect = SqlDialects.forConnection(connection);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    String candidateId = String.valueOf(connectionDialect.readValue(resultSet.getObject(1)));
+                    if (excludeId != null && excludeId.equalsIgnoreCase(candidateId)) {
+                        continue;
+                    }
+                    boolean allMatch = true;
+                    for (int i = 0; i < fieldNames.size(); i++) {
+                        Object existingValue = connectionDialect.readValue(resultSet.getObject(i + 2));
+                        if (!ConceptStore.uniqueValuesCollide(existingValue, values.get(i))) {
+                            allMatch = false;
+                            break;
+                        }
+                    }
+                    if (allMatch) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed checking uniqueness for concept " + conceptName + " from JDBC store", exception);
+        } finally {
+            releaseConnection(connection);
+        }
+    }
+
+    /**
+     * R5.2: whether {@code dslType}'s stored column reads back as a Java {@link String} (so the
+     * ORIGINAL {@code left instanceof String || right instanceof String} branch of {@link
+     * ConceptStore#uniqueValuesCollide} would be taken purely because of the STORED side, regardless
+     * of the incoming value's own type). Built as "known non-text types" rather than "known text
+     * types" so it agrees with {@link SqlTypeSupport#sqlType}'s own {@code default -> VARCHAR} --
+     * an unrecognized/future DSL type is text-shaped there, so it must be text-shaped here too.
+     */
+    private static boolean isTextLikeDslType(String dslType) {
+        if (dslType == null || dslType.isBlank()) {
+            return true;
+        }
+        String normalized = dslType.trim().toLowerCase(Locale.ROOT);
+        if (isNumericDslType(normalized)) {
+            return false;
+        }
+        return switch (normalized) {
+            case "boolean", "date", "datetime", "reference", "uuid", "object", "array", "file", "json" -> false;
+            default -> true;
+        };
     }
 
     /**

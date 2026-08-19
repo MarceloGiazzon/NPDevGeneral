@@ -3,8 +3,9 @@ title: >-
   Generated CRUD list endpoints are unbounded on three paths
 type: BUG
 severity: HIGH
-status: PARTIAL
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-18
 verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R8a). Three paths load an
@@ -93,3 +94,44 @@ detail: |
   replacement as an explicitly flagged follow-up"). No behavior change shipped here for this part --
   the existing (memory-safety-unbounded, but semantically well-understood) pre-check is untouched,
   so nothing regresses; it remains the ledger's open item for whoever picks up R8a's item 4 next.
+
+  **2026-08-18: item 4 CLOSED by R5.2 -- see ledger/items/RUN-16.yml for the full account.**
+
+  PRECISION ON WHAT "PUSHED DOWN" BOUGHT, because the word "indexed" was in this paragraph and was
+  not earned for the common case. The predicate emitted for a TEXT-shaped column is
+  `LOWER(trimmedText(cast(col AS TEXT))) = ?` (JdbcBusinessConceptStore:292). That is
+  function-wrapped and therefore NOT sargable: no plain B-tree index on the column can serve it, so
+  the database still SCANS for string uniqueness -- which is the ordinary case (email, username,
+  code). The measured 7.4x (167ms vs 1235ms over 100k rows) is real, but its mechanism is "stop
+  transferring and deserializing every row into the JVM", not "seek an index". Non-text columns
+  compare natively and can genuinely use the existing unique constraint's index.
+  So RUN-1 item 4's own scope -- eliminate the full-tenant JVM scan per create/update -- IS closed,
+  and that is what DONE here means. The roadmap R5.2 wording "performs an indexed lookup" is NOT
+  fully met for text fields; a functional/expression index over the same LOWER/TRIM expression is
+  the remaining step and is deliberately out of scope (it is a schema-emitter change). Anyone citing
+  this item for index behaviour should read this paragraph first.
+  `existsUniqueInConceptStore`/`existsUniqueCompoundInConceptStore` now delegate to a new
+  `ConceptStore#existsUnique` port method, pushed down to a candidate-narrowing SQL
+  `WHERE` on the JDBC store (`JdbcBusinessConceptStore#existsUnique`) instead of
+  `conceptStore.findAll(...)`. The exact `uniqueValuesEqual` comparison semantics (trim +
+  case-insensitive when either side is a String, cross-type numeric-string collision, null never
+  collides, tenant scoping, self-exclusion) are preserved byte-for-byte -- pinned by
+  `ConceptStoreExistsUniqueTest` (kernel default) and `JdbcBusinessConceptStoreExistsUniqueTest`
+  (real H2). Measured over an identical 100k-row H2 table in the same JVM: the new pushdown
+  completed in 167ms vs. 1235ms for the old full scan (7.4x), even under real concurrent build load
+  on the measuring machine. All four of RUN-1's original items are now DONE; this item closes.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/db/JdbcBusinessConceptStoreExistsUniqueTest.java#existsUniqueOverOneHundredThousandRowsIsDramaticallyFasterThanTheOldFullScanItReplaced
+  asserts: >-
+    The last of RUN-1's four sub-items (the uniqueness pre-check full scan) is closed: existsUnique
+    over a 100k-row H2 table returns the correct answer while completing at least 3x faster than the
+    old ConceptStore#findAll full-scan path over the identical table in the same run. Items 1-3 (the
+    read-capping/truncation-header half) were already guarded by their own R8a-era proof --
+    NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/DefaultConceptGatewayTest.java's
+    1000/1001-row LIMIT-boundary test, see this item's own detail above.
+  provenRed: false
+  provenRedNote: >-
+    See ledger/items/RUN-16.yml's provenRedNote -- the same guard test compares live against the
+    still-present old findAll() path rather than reproducing a reverted checkout.

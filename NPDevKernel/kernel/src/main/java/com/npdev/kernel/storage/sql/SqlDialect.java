@@ -344,6 +344,29 @@ public interface SqlDialect {
     }
 
     /**
+     * R5.2 (RUN-1 item 4): {@code expression} with leading/trailing whitespace stripped, portably.
+     *
+     * <p><b>Why not the single-argument ANSI {@code TRIM(expression)}.</b> It looks like the obvious
+     * spelling and is wrong on one engine: {@code TRIM(x)} (no {@code BOTH}/{@code LEADING}/
+     * {@code TRAILING FROM}) was only added to T-SQL in <b>SQL Server 2017</b>, and this dialect's own
+     * class javadoc targets SQL Server 2016+ -- so the obvious spelling is a syntax error on the
+     * oldest engine version this platform claims to support. {@code LTRIM(RTRIM(expression))} has no
+     * such gap: both single-sided trims are plain ANSI SQL every version of H2, Postgres, MySQL and
+     * SQL Server (including 2016) has always had.
+     *
+     * <p><b>Why this is a default method, not a per-dialect one.</b> Same reasoning as {@link
+     * #nullsFirstAscending}: every engine answers "strip whitespace from both ends" with the
+     * identical nested expression, so there is no per-engine fact to encode -- the default IS the
+     * dialect answer, uniformly.
+     *
+     * @param expression the already-safe SQL expression to trim (a column reference, or the result
+     *                    of another dialect call such as {@link #cast})
+     */
+    default String trimmedText(String expression) {
+        return "LTRIM(RTRIM(" + expression + "))";
+    }
+
+    /**
      * A {@code SELECT} that takes a write lock on the rows it reads, so a check-then-act is atomic.
      *
      * <p><b>Built here rather than suffixed, because the lock is not always a suffix.</b> Three
