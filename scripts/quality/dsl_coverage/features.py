@@ -18,7 +18,7 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
     _all_steps, _flows, _has_aggregate_on_commit, _has_aggregate_on_validate,
     _has_arithmetic_derived_expression,
     _has_capability_policy, _has_composite_index, _has_concept_access, _has_concept_extends,
-    _has_concept_soft_delete,
+    _has_concept_soft_delete, _has_field_access,
     _has_conversion_op, _has_date_field, _has_decimal_field, _has_file_field, _has_flow_io_schema,
     _has_flow_start_endpoint, _has_groupby_cross_context_join, _has_groupby_join,
     _has_groupby_multi_hop_join, _has_await_timeout, _has_on_failure, _has_parallel_await_foreach,
@@ -152,6 +152,12 @@ FEATURE_DETECTORS = {
     # isRowReadable/isRowWritable, fail-closed on a malformed expression), just never declared by
     # any real/fixture model before this.
     "concept.access": _has_concept_access,
+    # R5.5 (Roadmap Wave 1, 2026-08-19): field-level authorization (field.access.read/write) --
+    # confirmed genuinely wired end-to-end (DefaultConceptGateway's field-level read-masking in
+    # filterVisibleFields and deniedWriteFields-driven write rejection, fail-closed on a malformed
+    # expression via the same evaluateAccessRule concept.access already uses), the next rung below
+    # concept.access on the role-ceiling -> row-scope -> field-scope ladder.
+    "field.access": _has_field_access,
     # R5.4 (Roadmap Collection 2026-08-18): concept.softDelete -- deletedAt-flip delete, deleted-row-
     # excluding reads (list/page/aggregate/existsUnique/reference finders), a restore action, and
     # unique-among-live-rows semantics instead of a physical DELETE.

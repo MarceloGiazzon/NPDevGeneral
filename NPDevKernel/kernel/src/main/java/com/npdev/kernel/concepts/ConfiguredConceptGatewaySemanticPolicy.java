@@ -3,6 +3,7 @@ package com.npdev.kernel.concepts;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledConceptAccess;
 import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledFieldAccess;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -138,8 +139,18 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
                 schema == null ? null : schema.getDefaultExpression(),
                 schema == null ? null : schema.getDerivedExpression(),
                 false,
-                field.getReferenceTarget()
+                field.getReferenceTarget(),
+                fieldAccessRulesOf(field.getAccess())
         );
+    }
+
+    /** R5.5: a field's own declared {read, write} rule -- reuses {@link AccessRules}, the SAME
+     *  two-property shape {@code concept.access} already uses, one rung down the ladder. */
+    private static AccessRules fieldAccessRulesOf(CompiledFieldAccess access) {
+        if (access == null) {
+            return null;
+        }
+        return new AccessRules(access.getRead(), access.getWrite());
     }
 
     private static List<InvariantDefinition> invariantsOf(CompiledConcept concept) {
@@ -391,14 +402,46 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     @Override
     public ConceptRecord filterVisibleFields(ConceptRecord record, ConceptGatewayRequestContext request) {
         ConceptDefinition concept = concept(request);
-        if (concept == null || concept.hiddenFields().isEmpty()) {
+        if (concept == null || (concept.hiddenFields().isEmpty() && !hasFieldReadAccessRules(concept))) {
             return record;
         }
         Map<String, Object> visible = new LinkedHashMap<>(record.data());
         for (String hiddenField : concept.hiddenFields()) {
             visible.remove(hiddenField);
         }
+        // R5.5: field-level read authorization -- evaluated against the RECORD'S OWN RAW data
+        // (record.data(), not the partially-filtered `visible` map), same reasoning LNCH-13's
+        // row-level check already documents above: a hidden field the rule references, or a field
+        // whose own access.read rule references ANOTHER field this loop hasn't reached yet, must
+        // still be visible to the expression itself. A denied field is OMITTED from the response
+        // entirely (removed from `visible`), never returned masked/null -- returning it as null
+        // would still confirm to the caller that a value is present, just not what it is; the
+        // caller cannot tell a denied field apart from a field that was never set.
+        for (FieldDefinition field : concept.fields().values()) {
+            if (field.access() == null || !hasText(field.access().read())) {
+                continue;
+            }
+            if (!visible.containsKey(field.name())) {
+                continue;
+            }
+            if (!evaluateAccessRule(field.access().read(), record.data(), request.executionContext())) {
+                visible.remove(field.name());
+            }
+        }
         return new ConceptRecord(record.conceptName(), record.id(), record.tenantId(), visible);
+    }
+
+    /** R5.5: does ANY field on this concept declare a {@code field.access.read} rule? Guards the
+     *  fast path in {@link #filterVisibleFields} the same way {@link #hasRowReadScope} guards
+     *  {@code query}'s extra count -- a concept with no field-level read rule at all pays nothing
+     *  extra. */
+    private static boolean hasFieldReadAccessRules(ConceptDefinition concept) {
+        for (FieldDefinition field : concept.fields().values()) {
+            if (field.access() != null && hasText(field.access().read())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -442,6 +485,45 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
                 .map(ConceptRecord::data)
                 .orElse(request.data());
         return evaluateAccessRule(concept.access().write(), subject, request.executionContext());
+    }
+
+    /**
+     * R5.5: field-level write authorization -- see the interface javadoc for the full contract.
+     * Mirrors {@link #isRowWritable}'s subject choice (previous record if present, else incoming
+     * data) so a field rule can reference sibling fields the same way {@code concept.access.write}
+     * already can. Only a field the caller actually attempted to CHANGE is ever evaluated: a field
+     * absent from the incoming data, or present with the SAME value the record already had, is
+     * skipped -- this is what lets a client resend the whole record (a plain HTML form's readonly
+     * input still round-trips its current value) without tripping a denial on fields it never
+     * touched.
+     */
+    @Override
+    public List<String> deniedWriteFields(ConceptGatewayRequestContext request) {
+        ConceptDefinition concept = concept(request);
+        if (concept == null) {
+            return List.of();
+        }
+        Map<String, Object> incoming = request.data();
+        Map<String, Object> previousData = request.previousRecord().map(ConceptRecord::data).orElse(Map.of());
+        Map<String, Object> subject = request.previousRecord().map(ConceptRecord::data).orElse(incoming);
+        List<String> denied = new ArrayList<>();
+        for (FieldDefinition field : concept.fields().values()) {
+            if (field.access() == null || !hasText(field.access().write())) {
+                continue;
+            }
+            if (!incoming.containsKey(field.name())) {
+                continue;
+            }
+            Object incomingValue = incoming.get(field.name());
+            Object previousValue = previousData.get(field.name());
+            if (Objects.equals(normalizeComparable(incomingValue), normalizeComparable(previousValue))) {
+                continue;
+            }
+            if (!evaluateAccessRule(field.access().write(), subject, request.executionContext())) {
+                denied.add(field.name());
+            }
+        }
+        return List.copyOf(denied);
     }
 
     private static boolean evaluateAccessRule(String expression, Map<String, Object> recordData, ExecutionContext context) {
@@ -762,7 +844,11 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             boolean hidden,
             /** S4: this field's declared {@code reference.target} concept name, or null if this
              *  field isn't a reference at all. */
-            String referenceTarget
+            String referenceTarget,
+            /** R5.5: this field's own declared {read, write} authorization rule, or null if this
+             *  field declares no field-level rule. Reuses {@link AccessRules}, the same shape
+             *  {@code concept.access} uses -- field scope is one rung down the SAME ladder. */
+            AccessRules access
     ) {
         public FieldDefinition(
                 String name,
@@ -772,7 +858,7 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
                 String defaultExpression,
                 String derivedExpression
         ) {
-            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, false, null);
+            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, false, null, null);
         }
 
         /** S4: pre-existing 7-arg shape (name..hidden, no referenceTarget), preserved so callers
@@ -786,7 +872,22 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
                 String derivedExpression,
                 boolean hidden
         ) {
-            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, hidden, null);
+            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, hidden, null, null);
+        }
+
+        /** S4/R5.5 boundary: pre-existing 8-arg shape (name..referenceTarget, no access), preserved
+         *  so callers that predate field-level access keep compiling unchanged. */
+        public FieldDefinition(
+                String name,
+                boolean required,
+                List<String> enumValues,
+                Object defaultValue,
+                String defaultExpression,
+                String derivedExpression,
+                boolean hidden,
+                String referenceTarget
+        ) {
+            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, hidden, referenceTarget, null);
         }
 
         public FieldDefinition {

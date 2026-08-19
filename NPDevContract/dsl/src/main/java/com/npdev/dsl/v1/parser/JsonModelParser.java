@@ -283,6 +283,8 @@ public final class JsonModelParser {
                 );
                 FileMetadataAst fileMetadata = parseFileMetadata(f.get("file"));
                 FieldPickerAst picker = parseFieldPicker(f.get("picker"));
+                FieldAccessAst fieldAccess = parseFieldAccess(
+                        f.get("access"), "concepts[" + name + "].fields[" + fname + "].access");
 
                 fields.add(new FieldAst(
                         fname,
@@ -301,7 +303,8 @@ public final class JsonModelParser {
                         renamedFrom,
                         fileMetadata,
                         sensitive,
-                        picker
+                        picker,
+                        fieldAccess
                 ));
             }
 
@@ -1873,6 +1876,18 @@ public final class JsonModelParser {
         String filter = readText(node, "filter");
         boolean multiSelect = node.has("multiSelect") && node.get("multiSelect").asBoolean(false);
         return new FieldPickerAst(filter, multiSelect);
+    }
+
+    /** R5.5: parses a field's `access: {read, write}` block -- same shape/grammar as a concept's
+     *  own {@code access}, one rung down the ladder. */
+    private static FieldAccessAst parseFieldAccess(JsonNode node, String path) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException(path + " must be an object");
+        }
+        return new FieldAccessAst(readText(node, "read"), readText(node, "write"));
     }
 
     /**

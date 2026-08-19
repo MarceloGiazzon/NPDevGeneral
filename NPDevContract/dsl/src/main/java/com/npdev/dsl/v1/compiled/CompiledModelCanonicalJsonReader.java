@@ -668,7 +668,8 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "renamedFrom"),
                 toFileMetadata(node.get("file")),
                 booleanValue(node, "sensitive"),
-                toFieldPicker(node.get("picker"))
+                toFieldPicker(node.get("picker")),
+                toFieldAccess(node.get("access"))
         );
     }
 
@@ -678,6 +679,15 @@ public final class CompiledModelCanonicalJsonReader {
             return null;
         }
         return new CompiledFieldPicker(optionalText(node, "filter"), booleanValue(node, "multiSelect"));
+    }
+
+    /** R5.5: reads a field's declared {read, write} authorization rule -- same shape as
+     *  {@link #toConceptAccess}, one rung down the ladder. */
+    private static CompiledFieldAccess toFieldAccess(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        return new CompiledFieldAccess(optionalText(node, "read"), optionalText(node, "write"));
     }
 
     /**

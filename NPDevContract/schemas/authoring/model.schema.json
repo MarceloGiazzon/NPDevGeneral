@@ -1576,6 +1576,21 @@
             }
           }
         },
+        "access": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "R5.5: field-level (not row-level) authorization -- the next rung on the ladder below concept.access: role ceiling (permission) -> row scope (concept.access) -> field scope (this). Each expression is evaluated per-record through the platform's unified expression language (ComputedExpression), with $user.id/$user.tenantId/$user.actorId/$user.roles available alongside the record's own fields, exactly like concept.access. read gates whether this field's value may appear in a read/list/query response for a given record (denied means the field key is OMITTED from the response, never returned masked/null). write gates whether a save may set/change this field's value (denied means the WHOLE write is rejected, never silently dropped). Absent = no additional field-level restriction beyond the concept's own row-level access and role permissions.",
+          "properties": {
+            "read": {
+              "type": "string",
+              "minLength": 1
+            },
+            "write": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
         "file": {
           "type": "object",
           "description": "Metadata for a file-typed field (LIFT-UPLOAD). The persisted value is a FileHandle (or list, if multiple), never raw bytes.",

@@ -102,7 +102,10 @@
           "name": "status",
           "type": "string",
           "required": true,
-          "ui": { "label": "Status" }
+          "ui": { "label": "Status" },
+          "access": {
+            "write": "customerEmail == $user.id"
+          }
         },
         {
           "name": "lineCount",
