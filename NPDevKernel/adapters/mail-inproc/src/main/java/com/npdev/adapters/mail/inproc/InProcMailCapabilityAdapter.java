@@ -5,6 +5,7 @@ import com.npdev.kernel.CapabilityErrorKind;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ports.CapabilityAdapter;
 import com.npdev.kernel.ports.EmailCapability;
+import com.npdev.kernel.ports.MailAttachment;
 import com.npdev.kernel.ports.MailMessage;
 import com.npdev.kernel.ports.MailPayload;
 import com.npdev.kernel.ports.MailSendResult;
@@ -62,6 +63,13 @@ public final class InProcMailCapabilityAdapter implements CapabilityAdapter, Ema
         record.put("to", rendered.to());
         record.put("subject", rendered.subject());
         record.put("body", rendered.body());
+        // R6.3 (RUN-18): htmlBody is only recorded when present -- Map.copyOf (below) rejects null
+        // values, and the pre-R6.3 delivery shape had no such key at all, so this stays additive.
+        if (rendered.hasHtmlBody()) {
+            record.put("htmlBody", rendered.htmlBody());
+        }
+        record.put("attachmentCount", rendered.attachments().size());
+        record.put("attachmentFilenames", rendered.attachments().stream().map(MailAttachment::filename).toList());
         record.put("status", "sent");
         record.put("adapterId", adapterId());
         record.put("sentAt", Instant.EPOCH.toString());

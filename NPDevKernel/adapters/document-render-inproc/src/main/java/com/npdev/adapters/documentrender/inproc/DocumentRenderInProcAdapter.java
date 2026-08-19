@@ -1,10 +1,18 @@
 package com.npdev.adapters.documentrender.inproc;
 
+import com.npdev.kernel.CapabilityCall;
+import com.npdev.kernel.CapabilityErrorKind;
+import com.npdev.kernel.CapabilityResult;
+import com.npdev.kernel.ports.CapabilityAdapter;
 import com.npdev.kernel.ports.DocumentRenderContract;
+import com.npdev.kernel.ports.DocumentRenderPayload;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * REG-12 Slice 3 (D-A1): the default, pure-JVM {@link DocumentRenderContract} adapter --
@@ -12,8 +20,61 @@ import java.io.IOException;
  * throwaway spike ahead of this class; see `docs/archive/programme-history/REG12_DOCUMENT_EXPORT_PLAN.md` P0). Accepts the
  * CSS-subset limitation this honestly documents (no flexbox/grid layout, no JS) in exchange for
  * running anywhere the JVM does.
+ *
+ * <p><b>R6.3 (RUN-18):</b> this class's original javadoc claimed rendering "lives behind a
+ * port/adapter pair rather than a capability" -- true when written (REG-12 Slice 3 had exactly one
+ * caller, the REST-only {@code DocumentRenderController}), but it also meant no flow step could ever
+ * call it, which is precisely the gap R6.3 closes. It now ALSO implements {@link CapabilityAdapter}
+ * (capability {@code documentRender}, operation {@code render}) so a flow's capabilityCall step can
+ * dispatch to it exactly like {@code mail}/{@code webhook} already do, while {@link
+ * DocumentRenderContract#render} itself -- the typed direct-call path {@code DocumentRenderController}
+ * uses -- is unchanged.</p>
  */
-public final class DocumentRenderInProcAdapter implements DocumentRenderContract {
+public final class DocumentRenderInProcAdapter implements CapabilityAdapter, DocumentRenderContract {
+
+    @Override
+    public String adapterId() {
+        return "document-render-inproc";
+    }
+
+    @Override
+    public String capability() {
+        return "documentRender";
+    }
+
+    @Override
+    public String capabilityType() {
+        return "DocumentRenderCapability";
+    }
+
+    @Override
+    public CapabilityResult invoke(CapabilityCall call, Map<String, Object> contextState) {
+        if (!"render".equals(call.operation())) {
+            return CapabilityResult.failure(
+                    "DOCUMENT_RENDER_OPERATION_UNSUPPORTED",
+                    "Unsupported documentRender operation: " + call.operation(),
+                    CapabilityErrorKind.CONTRACT,
+                    Map.of("operation", call.operation())
+            );
+        }
+        DocumentRenderPayload.RenderRequest request = DocumentRenderPayload.parse(call.args());
+        try {
+            byte[] pdfBytes = render(request.html(), request.toRenderOptions());
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("contentBase64", Base64.getEncoder().encodeToString(pdfBytes));
+            result.put("contentType", "application/pdf");
+            result.put("filename", request.filenameOrDefault());
+            result.put("sizeBytes", pdfBytes.length);
+            return CapabilityResult.success(result);
+        } catch (DocumentRenderException e) {
+            return CapabilityResult.failure(
+                    "DOCUMENT_RENDER_FAILED",
+                    e.getMessage(),
+                    CapabilityErrorKind.PERMANENT,
+                    Map.of()
+            );
+        }
+    }
 
     /**
      * REG-16-resid Round 6 (R6-F3): refuse to fetch anything while rendering, except inline
