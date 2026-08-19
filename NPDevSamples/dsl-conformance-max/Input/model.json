@@ -84,6 +84,13 @@
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         {
+          "name": "orderNumber",
+          "type": "string",
+          "required": false,
+          "defaultExpression": "nextNumber('orderNumber')",
+          "ui": { "label": "Order number" }
+        },
+        {
           "name": "customerEmail",
           "renamedFrom": "email",
           "type": "string",
@@ -466,6 +473,14 @@
         "correlationId": "orderId",
         "reference": "txnRef"
       }
+    }
+  ],
+
+  "sequences": [
+    {
+      "name": "orderNumber",
+      "format": "ORD-{year}-{seq:4}",
+      "scope": "tenant"
     }
   ],
 

@@ -83,7 +83,8 @@ public class NpdevCapabilityBindingConfig {
             CompiledModel compiledModel,
             ConceptStore conceptStore,
             AuditLogStore auditLogStore,
-            ObjectProvider<org.springframework.transaction.PlatformTransactionManager> transactionManager
+            ObjectProvider<org.springframework.transaction.PlatformTransactionManager> transactionManager,
+            ObjectProvider<DataSource> dataSourceProvider
     ) {
         // B18 (Move 9 A2, docs/ACCEPTED_BOUNDARIES.md): a real transaction manager (present against
         // any real DataSource-backed profile) closes the row-authz check-then-act race; its absence
@@ -93,12 +94,21 @@ public class NpdevCapabilityBindingConfig {
         com.npdev.kernel.ports.TransactionRunner transactionRunner = manager == null
                 ? com.npdev.kernel.ports.TransactionRunner.none()
                 : new SpringTransactionRunner(manager);
+        // R5.3: same "degrade to in-memory when there is no real DataSource" posture as the
+        // transaction runner above -- a JDBC-backed allocator with no DataSource (InMemory mode)
+        // would have nothing to allocate against. Its allocation SQL runs on the SAME ambient
+        // connection SpringTransactionRunner opens above, so a nextNumber() default and the concept
+        // row it defaults onto commit or roll back together -- see JdbcSequenceAllocator's javadoc.
+        var dataSource = dataSourceProvider.getIfAvailable();
+        com.npdev.kernel.ports.SequenceAllocator sequenceAllocator = dataSource == null
+                ? com.npdev.kernel.ports.SequenceAllocator.inMemory()
+                : new com.finalexec.db.JdbcSequenceAllocator(dataSource);
         return new DefaultConceptGateway(
                 conceptStore,
                 PermissionEvaluator.allowAll(),
                 com.npdev.kernel.ports.TenantIsolationPolicy.STRICT_EQUALS,
                 auditLogStore,
-                RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(compiledModel),
+                RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(compiledModel, sequenceAllocator),
                 new InMemoryConceptGatewayTraceSink(),
                 transactionRunner
         );

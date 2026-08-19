@@ -617,7 +617,8 @@ public final class ModelCompiler {
                 toCompiledProperties(modelAst.getProperties()),
                 toCompiledContexts(modelAst.getContexts()),
                 conversions,
-                toCompiledWebhooks(modelAst.getWebhooks())
+                toCompiledWebhooks(modelAst.getWebhooks()),
+                toCompiledSequences(modelAst.getSequences())
         );
     }
 
@@ -783,6 +784,19 @@ public final class ModelCompiler {
         for (com.npdev.dsl.v1.ast.WebhookAst webhookAst : webhookAsts) {
             compiled.add(new com.npdev.dsl.v1.compiled.CompiledWebhook(
                     webhookAst.source(), webhookAst.hmacSecretEnvVar(), webhookAst.eventName(), webhookAst.fieldMapping()));
+        }
+        return compiled;
+    }
+
+    /** R5.3: compiles the model-declared document-numbering counters -- no origin (like webhooks
+     *  above, a sequence's {@code name} is deliberately never pack-qualified; see
+     *  {@link com.npdev.dsl.v1.ast.SequenceAst}). */
+    private static List<com.npdev.dsl.v1.compiled.CompiledSequence> toCompiledSequences(
+            List<com.npdev.dsl.v1.ast.SequenceAst> sequenceAsts) {
+        List<com.npdev.dsl.v1.compiled.CompiledSequence> compiled = new ArrayList<>();
+        for (com.npdev.dsl.v1.ast.SequenceAst sequenceAst : sequenceAsts) {
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledSequence(
+                    sequenceAst.name(), sequenceAst.format(), sequenceAst.scope()));
         }
         return compiled;
     }

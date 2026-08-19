@@ -137,6 +137,11 @@ public final class CompiledModelCanonicalJsonReader {
             webhooks.add(toWebhook(node));
         }
 
+        List<CompiledSequence> sequences = new ArrayList<>();
+        for (JsonNode node : array(root, "sequences")) {
+            sequences.add(toSequence(node));
+        }
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -163,7 +168,8 @@ public final class CompiledModelCanonicalJsonReader {
                 properties,
                 contexts,
                 conversions,
-                webhooks
+                webhooks,
+                sequences
         );
     }
 
@@ -179,6 +185,11 @@ public final class CompiledModelCanonicalJsonReader {
                 text(node, "hmacSecretEnvVar"),
                 text(node, "eventName"),
                 toStringMap(node.get("fieldMapping")));
+    }
+
+    /** R5.3: reads a single model-declared document-numbering counter. */
+    private static CompiledSequence toSequence(JsonNode node) {
+        return new CompiledSequence(text(node, "name"), text(node, "format"), text(node, "scope"));
     }
 
     /** B20 (S2): reads a single declared bounded context (name + $ref). S8 Wave 4: plus the

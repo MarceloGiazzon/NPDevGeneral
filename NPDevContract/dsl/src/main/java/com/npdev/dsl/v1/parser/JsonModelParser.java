@@ -592,6 +592,7 @@ public final class JsonModelParser {
         contexts.addAll(parseContexts(root.get("contexts")));
         List<com.npdev.dsl.v1.ast.ConversionAst> conversions = parseConversions(root.get("conversions"));
         webhooks.addAll(parseWebhooks(root.get("webhooks")));
+        List<com.npdev.dsl.v1.ast.SequenceAst> sequences = parseSequences(root.get("sequences"));
 
         return new ModelAst(
                 namespace,
@@ -622,7 +623,8 @@ public final class JsonModelParser {
                 contexts,
                 conversions,
                 physicalQualifierByConceptName,
-                webhooks
+                webhooks,
+                sequences
         );
     }
 
@@ -766,6 +768,30 @@ public final class JsonModelParser {
                     requiredText(webhookNode, "hmacSecretEnvVar"),
                     requiredText(webhookNode, "eventName"),
                     parseStringMap(webhookNode.get("fieldMapping"))
+            ));
+        }
+        return out;
+    }
+
+    /** R5.3: parses the optional top-level {@code sequences} array -- {@code name} + {@code format}
+     *  + optional {@code scope}. No pack-origin lookup (same reasoning as webhooks above): a
+     *  sequence's identity ({@code name}) is referenced as an opaque literal argument to {@code
+     *  nextNumber('name')} inside another field's defaultExpression TEXT, deliberately never
+     *  namespace-qualified by pack composition -- see {@link com.npdev.dsl.v1.ast.SequenceAst}'s
+     *  own javadoc. */
+    private static List<com.npdev.dsl.v1.ast.SequenceAst> parseSequences(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.SequenceAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("sequences must be an array");
+        }
+        for (JsonNode sequenceNode : node) {
+            out.add(new com.npdev.dsl.v1.ast.SequenceAst(
+                    requiredText(sequenceNode, "name"),
+                    requiredText(sequenceNode, "format"),
+                    readText(sequenceNode, "scope")
             ));
         }
         return out;

@@ -7,12 +7,17 @@ import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
+import com.npdev.dsl.v1.compiled.CompiledSequence;
 import com.npdev.dsl.v1.compiled.CompiledStateMachineState;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.dsl.v1.expr.SequenceNumberFormat;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.ports.SequenceAllocator;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -28,13 +33,34 @@ import java.util.regex.Pattern;
 
 public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGatewaySemanticPolicy {
     private final Map<String, ConceptDefinition> conceptsByName;
+    private final Map<String, CompiledSequence> sequencesByName;
+    private final SequenceAllocator sequenceAllocator;
 
     public ConfiguredConceptGatewaySemanticPolicy(List<ConceptDefinition> concepts) {
+        this(concepts, List.of(), SequenceAllocator.inMemory());
+    }
+
+    /**
+     * R5.3: adds the declared {@code sequences[]} (document-numbering counters, see {@code
+     * SequenceAst}) and the allocator that resolves a field's {@code nextNumber('name')}
+     * defaultExpression -- see {@link #evaluateFieldDefault}. The single-argument constructor above
+     * keeps every existing caller compiling unchanged, defaulting to an in-memory allocator (correct
+     * for tests and the {@code *-inproc} adapters; a real app wires a JDBC-backed one -- see {@link
+     * SequenceAllocator}'s own javadoc).
+     */
+    public ConfiguredConceptGatewaySemanticPolicy(
+            List<ConceptDefinition> concepts, List<CompiledSequence> sequences, SequenceAllocator sequenceAllocator) {
         Map<String, ConceptDefinition> byName = new LinkedHashMap<>();
         for (ConceptDefinition concept : concepts == null ? List.<ConceptDefinition>of() : concepts) {
             byName.put(normalizeKey(concept.name()), concept);
         }
         this.conceptsByName = Map.copyOf(byName);
+        Map<String, CompiledSequence> sequencesByNameBuilder = new LinkedHashMap<>();
+        for (CompiledSequence sequence : sequences == null ? List.<CompiledSequence>of() : sequences) {
+            sequencesByNameBuilder.put(normalizeKey(sequence.name()), sequence);
+        }
+        this.sequencesByName = Map.copyOf(sequencesByNameBuilder);
+        this.sequenceAllocator = Objects.requireNonNull(sequenceAllocator, "sequenceAllocator");
     }
 
     public static ConfiguredConceptGatewaySemanticPolicy empty() {
@@ -53,6 +79,14 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
      * a test exercises save/patch/delete against a real compiled model.
      */
     public static ConfiguredConceptGatewaySemanticPolicy fromCompiledModel(CompiledModel compiledModel) {
+        return fromCompiledModel(compiledModel, SequenceAllocator.inMemory());
+    }
+
+    /** R5.3: {@link #fromCompiledModel(CompiledModel)} with an explicit {@link SequenceAllocator}
+     *  -- the production wiring path (see {@code NpdevCapabilityBindingConfig.conceptGateway},
+     *  RuntimeHost) supplies a JDBC-backed one when a real DataSource is available. */
+    public static ConfiguredConceptGatewaySemanticPolicy fromCompiledModel(
+            CompiledModel compiledModel, SequenceAllocator sequenceAllocator) {
         if (compiledModel == null) {
             return empty();
         }
@@ -60,7 +94,8 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         for (CompiledConcept concept : compiledModel.getConcepts()) {
             definitions.add(toConceptDefinition(concept));
         }
-        return new ConfiguredConceptGatewaySemanticPolicy(definitions);
+        return new ConfiguredConceptGatewaySemanticPolicy(
+                definitions, compiledModel.getSequences(), sequenceAllocator);
     }
 
     private static ConceptDefinition toConceptDefinition(CompiledConcept concept) {
@@ -207,7 +242,7 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             if (isBlankValue(data.get(field.name()))) {
                 Object defaultValue = field.defaultValue();
                 if (defaultValue == null && hasText(field.defaultExpression())) {
-                    defaultValue = evaluateValueExpression(field.defaultExpression(), data);
+                    defaultValue = evaluateFieldDefault(field.defaultExpression(), data, request.tenantId());
                 }
                 if (defaultValue != null) {
                     data.put(field.name(), defaultValue);
@@ -446,6 +481,50 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     private static Object evaluateValueExpression(String expression, Map<String, Object> data) {
         return ValueExpressionEvaluator.evaluate(expression, data);
     }
+
+    /**
+     * R5.3: a field's {@code defaultExpression} evaluator, widened to recognize {@code
+     * nextNumber('name')} BEFORE falling through to the generic pure {@link
+     * ValueExpressionEvaluator} -- allocation is a real side effect ({@link #sequenceAllocator}
+     * may be JDBC-backed), which {@link ValueExpressionEvaluator} deliberately never is (it stays
+     * pure so a backfill preview can call it too without allocating anything). Only reachable from
+     * {@code defaultExpression} -- {@code derivedExpression} never routes through this method (see
+     * {@link #applyDefaultsAndDerivedValues}), because a derived value is recomputed on every save
+     * and would otherwise burn a fresh number on every unrelated update; {@code
+     * SequenceValidation} (DSL) refuses {@code nextNumber()} there at author time.
+     *
+     * <p>An unrecognized sequence name (should already be impossible -- {@code SequenceValidation}
+     * requires every {@code nextNumber('name')} to reference a declared sequence) falls through to
+     * the generic evaluator rather than throwing, so a hand-edited compiled model degrades the same
+     * way any other unrecognized function call does (evaluates to null) instead of failing the
+     * write outright.
+     */
+    private Object evaluateFieldDefault(String expression, Map<String, Object> data, String tenantId) {
+        Matcher matcher = NEXT_NUMBER_PATTERN.matcher(expression == null ? "" : expression.trim());
+        if (matcher.matches()) {
+            CompiledSequence sequence = sequencesByName.get(normalizeKey(matcher.group(1)));
+            if (sequence != null) {
+                return allocateSequenceNumber(sequence, tenantId);
+            }
+        }
+        return evaluateValueExpression(expression, data);
+    }
+
+    /** R5.3: composes the allocator's scope key (sequence name + tenant segment, if {@code scope:
+     *  "tenant"} + any date-bucket {@link SequenceNumberFormat#scopeKeySuffix} derives from the
+     *  format's own date tokens) and renders the allocated counter value through the sequence's
+     *  {@code format} template. */
+    private Object allocateSequenceNumber(CompiledSequence sequence, String tenantId) {
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        String scopeKey = sequence.name()
+                + ("tenant".equals(sequence.scope()) ? "|" + (tenantId == null ? "" : tenantId) : "")
+                + SequenceNumberFormat.scopeKeySuffix(sequence.format(), today);
+        long next = sequenceAllocator.allocateNext(scopeKey);
+        return SequenceNumberFormat.render(sequence.format(), next, today);
+    }
+
+    private static final Pattern NEXT_NUMBER_PATTERN =
+            Pattern.compile("^nextNumber\\(\\s*['\"]([^'\"]*)['\"]\\s*\\)$");
 
     private static final Pattern UNIQUE_BY_PATTERN =
             Pattern.compile("^([A-Za-z_][A-Za-z0-9_]*)\\.uniqueBy\\(([A-Za-z_][A-Za-z0-9_]*)\\)$");

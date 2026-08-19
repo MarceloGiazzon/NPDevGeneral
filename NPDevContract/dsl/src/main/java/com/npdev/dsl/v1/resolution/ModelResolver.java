@@ -125,7 +125,12 @@ public final class ModelResolver {
                 // webhook has no `extends`/specialization concept of its own for this resolver to
                 // expand; ModelSourceResolver already rewrote its `eventName` field (the pack
                 // composition step, upstream of this specialization resolver) if it was pack-local.
-                source.getWebhooks()
+                source.getWebhooks(),
+                // Whole-list pass-through, same reasoning -- a sequence has no `extends`/
+                // specialization concept either, and its own `name` is deliberately never rewritten
+                // by pack composition (see SequenceAst's javadoc), so there is nothing here for
+                // this resolver to expand or rename.
+                source.getSequences()
         );
         return ResolvedModel.from(resolvedAst);
     }

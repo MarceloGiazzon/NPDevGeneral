@@ -70,6 +70,7 @@ public final class CompiledModelCanonicalJson {
         root.set("contexts", toContexts(model));
         root.set("conversions", toConversions(model));
         root.set("webhooks", toWebhooks(model));
+        root.set("sequences", toSequences(model));
         return root;
     }
 
@@ -88,6 +89,22 @@ public final class CompiledModelCanonicalJson {
             webhooks.add(node);
         }
         return webhooks;
+    }
+
+    /** R5.3: writes the model-declared document-numbering counters, sorted by name (deterministic-
+     *  generation gate, same discipline every other array here follows). */
+    private static ArrayNode toSequences(CompiledModel model) {
+        ArrayNode sequences = JsonNodeFactory.instance.arrayNode();
+        List<CompiledSequence> sorted = new ArrayList<>(model.getSequences());
+        sorted.sort(Comparator.comparing(sequence -> normalize(sequence.name())));
+        for (CompiledSequence sequence : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(sequence.name()));
+            node.put("format", safe(sequence.format()));
+            node.put("scope", safe(sequence.scope()));
+            sequences.add(node);
+        }
+        return sequences;
     }
 
     /** S7 Phase B (B13): writes the declared conversion vocabulary, sorted by id (deterministic-

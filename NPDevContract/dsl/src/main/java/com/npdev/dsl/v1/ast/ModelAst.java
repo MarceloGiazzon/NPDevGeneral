@@ -38,6 +38,7 @@ public final class ModelAst {
     private final List<ConversionAst> conversions;
     private final Map<String, String> physicalQualifierByConceptName;
     private final List<WebhookAst> webhooks;
+    private final List<SequenceAst> sequences;
 
     public ModelAst(String namespace, String version, List<? extends EntityAst> entities) {
         this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -539,6 +540,46 @@ public final class ModelAst {
             Map<String, String> physicalQualifierByConceptName,
             List<WebhookAst> webhooks
     ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                contexts, conversions, physicalQualifierByConceptName, webhooks, List.of());
+    }
+
+    /** R5.3: canonical constructor, adds {@code sequences} (model-declared document-numbering
+     *  counters -- see {@link SequenceAst}). */
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<SelectorAst> selectors,
+            List<DocumentAst> documents,
+            List<String> parserWarnings,
+            ExternalAiAst externalAi,
+            SettingsAst settings,
+            List<RoleAst> roles,
+            List<PropertyScopeAst> propertyScopes,
+            List<PropertyAst> properties,
+            List<ContextAst> contexts,
+            List<ConversionAst> conversions,
+            Map<String, String> physicalQualifierByConceptName,
+            List<WebhookAst> webhooks,
+            List<SequenceAst> sequences
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -569,6 +610,7 @@ public final class ModelAst {
         this.physicalQualifierByConceptName = physicalQualifierByConceptName == null
                 ? Map.of() : Map.copyOf(physicalQualifierByConceptName);
         this.webhooks = webhooks == null ? new ArrayList<>() : new ArrayList<>(webhooks);
+        this.sequences = sequences == null ? new ArrayList<>() : new ArrayList<>(sequences);
     }
 
     public String getNamespace() { return namespace; }
@@ -699,6 +741,12 @@ public final class ModelAst {
      *  with no webhooks behaves exactly as it did before this feature existed). */
     public List<WebhookAst> getWebhooks() {
         return Collections.unmodifiableList(webhooks);
+    }
+
+    /** R5.3: model-declared document-numbering counters, empty when the model declares none (a
+     *  model with no sequences behaves exactly as it did before this feature existed). */
+    public List<SequenceAst> getSequences() {
+        return Collections.unmodifiableList(sequences);
     }
 
     private static List<ConceptAst> toConcepts(List<? extends EntityAst> source) {
