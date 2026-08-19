@@ -445,6 +445,13 @@
         "$ref": "#/$defs/context"
       },
       "description": "B20 (S2): bounded-context declarations. Each names a context and $ref's the fragment file (composed via the same pack/fragment $ref machinery as `fragments`/`packs`) whose concepts/queries/panels/flows belong to that context. Cross-context references use context::Concept (D1); a fragment may only reference a context its own `imports[]` (pack.schema.json) declares (D3) -- an undeclared or unresolvable reference is a compile error, never silent."
+    },
+    "webhooks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/webhook"
+      },
+      "description": "R6.2: model-declared inbound webhook doors -- POST /api/hooks/{source} verifies an HMAC-SHA256 signature against a named env var and, once verified, publishes eventName into the flow engine's event store so a flow parked on awaitEvent can be resumed by a third party holding no NPDev credential."
     }
   },
   "$defs": {
@@ -466,6 +473,40 @@
             "minLength": 1
           },
           "description": "Platform permission names (e.g. EXECUTE_FLOW, READ_EXECUTIONS) this role MAY hold -- a declared ceiling, not an assignment. Validated against the real Permission enum at runtime boot, not by this schema (the schema layer has no dependency on the kernel module)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "webhook": {
+      "type": "object",
+      "required": [
+        "source",
+        "hmacSecretEnvVar",
+        "eventName"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
+          "description": "Path segment identifying this webhook door: POST /api/hooks/{source}. Deliberately NOT namespace-qualified by pack composition -- a third party posts to a fixed, predictable URL."
+        },
+        "hmacSecretEnvVar": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the environment variable holding the HMAC-SHA256 verification secret -- never a literal secret value in the model, never committed."
+        },
+        "eventName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Flow event name published into the event store once the signature verifies; must name a member of this model's own events[]."
+        },
+        "fieldMapping": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Target event-payload field name -> dot-path into the inbound JSON body. Absent/empty means the raw parsed JSON body becomes the event payload unchanged."
         }
       },
       "additionalProperties": false

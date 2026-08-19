@@ -447,6 +447,25 @@
       "payload": [
         { "name": "widgetOrderId", "type": "uuid" }
       ]
+    },
+    {
+      "name": "PaymentConfirmed",
+      "payload": [
+        { "name": "correlationId", "type": "string" },
+        { "name": "reference", "type": "string" }
+      ]
+    }
+  ],
+
+  "webhooks": [
+    {
+      "source": "payment-processor",
+      "hmacSecretEnvVar": "NPDEV_WEBHOOK_PAYMENT_PROCESSOR_SECRET",
+      "eventName": "PaymentConfirmed",
+      "fieldMapping": {
+        "correlationId": "orderId",
+        "reference": "txnRef"
+      }
     }
   ],
 
@@ -1262,6 +1281,26 @@
         },
         {
           "name": "return-approval-outcome",
+          "type": "return",
+          "value": "$input"
+        }
+      ]
+    },
+    {
+      "name": "AwaitPaymentConfirmation",
+      "concept": "WidgetOrder",
+      "steps": [
+        {
+          "name": "await-payment-confirmation",
+          "type": "awaitEvent",
+          "awaitEvent": "PaymentConfirmed",
+          "match": {
+            "correlation": true
+          },
+          "awaitRef": "paymentConfirmation"
+        },
+        {
+          "name": "return-payment-outcome",
           "type": "return",
           "value": "$input"
         }

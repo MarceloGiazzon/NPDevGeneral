@@ -29,6 +29,7 @@ public final class CompiledModel {
     private final List<CompiledProperty> properties;
     private final List<CompiledContext> contexts;
     private final List<CompiledConversion> conversions;
+    private final List<CompiledWebhook> webhooks;
 
     public CompiledModel(String namespace, String version, Map<String, ? extends CompiledEntity> entitiesByName) {
         this(namespace, "1.0.0", version, entitiesByName, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -387,6 +388,41 @@ public final class CompiledModel {
             List<CompiledContext> contexts,
             List<CompiledConversion> conversions
     ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, List.of());
+    }
+
+    /** R6.2: canonical constructor, adds {@code webhooks} (model-declared inbound webhook doors --
+     *  see {@link CompiledWebhook}). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings,
+            List<CompiledRole> roles,
+            List<CompiledPropertyScope> propertyScopes,
+            List<CompiledProperty> properties,
+            List<CompiledContext> contexts,
+            List<CompiledConversion> conversions,
+            List<CompiledWebhook> webhooks
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -416,6 +452,7 @@ public final class CompiledModel {
         this.properties = properties == null ? List.of() : List.copyOf(properties);
         this.contexts = contexts == null ? List.of() : List.copyOf(contexts);
         this.conversions = conversions == null ? List.of() : List.copyOf(conversions);
+        this.webhooks = webhooks == null ? List.of() : List.copyOf(webhooks);
     }
 
     public String getNamespace() { return namespace; }
@@ -550,6 +587,25 @@ public final class CompiledModel {
     /** S7 Phase B (B13): declared conversions, empty when the model declares none. */
     public List<CompiledConversion> getConversions() {
         return Collections.unmodifiableList(conversions);
+    }
+
+    /** R6.2: model-declared inbound webhook doors, empty when the model declares none. */
+    public List<CompiledWebhook> getWebhooks() {
+        return Collections.unmodifiableList(webhooks);
+    }
+
+    /** R6.2: the single webhook whose {@code source} matches the given path segment, or empty --
+     *  the lookup {@code WebhookInboundController} uses for {@code POST /api/hooks/{source}}. */
+    public Optional<CompiledWebhook> findWebhookBySource(String source) {
+        if (source == null || source.isBlank()) {
+            return Optional.empty();
+        }
+        for (CompiledWebhook webhook : webhooks) {
+            if (webhook.source().equals(source)) {
+                return Optional.of(webhook);
+            }
+        }
+        return Optional.empty();
     }
 
     public Optional<CompiledFlow> findFlow(String flowName) {

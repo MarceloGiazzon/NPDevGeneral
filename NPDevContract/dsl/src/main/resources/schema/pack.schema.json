@@ -258,6 +258,16 @@
         ]
       }
     },
+    "webhooks": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/webhook" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      },
+      "description": "R6.2: a pack may declare inbound webhook doors alongside its other members. `source` is never namespace-qualified by pack composition (see model.schema.json's webhook $def)."
+    },
     "propertyScopes": {
       "type": "array",
       "items": {

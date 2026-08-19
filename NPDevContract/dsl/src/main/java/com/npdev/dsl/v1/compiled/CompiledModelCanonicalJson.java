@@ -69,7 +69,25 @@ public final class CompiledModelCanonicalJson {
         root.set("properties", toProperties(model));
         root.set("contexts", toContexts(model));
         root.set("conversions", toConversions(model));
+        root.set("webhooks", toWebhooks(model));
         return root;
+    }
+
+    /** R6.2: writes the model-declared inbound webhook doors, sorted by source (deterministic-
+     *  generation gate, same discipline every other array here follows). */
+    private static ArrayNode toWebhooks(CompiledModel model) {
+        ArrayNode webhooks = JsonNodeFactory.instance.arrayNode();
+        List<CompiledWebhook> sorted = new ArrayList<>(model.getWebhooks());
+        sorted.sort(Comparator.comparing(webhook -> normalize(webhook.source())));
+        for (CompiledWebhook webhook : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("source", safe(webhook.source()));
+            node.put("hmacSecretEnvVar", safe(webhook.hmacSecretEnvVar()));
+            node.put("eventName", safe(webhook.eventName()));
+            node.set("fieldMapping", toStringMap(webhook.fieldMapping()));
+            webhooks.add(node);
+        }
+        return webhooks;
     }
 
     /** S7 Phase B (B13): writes the declared conversion vocabulary, sorted by id (deterministic-

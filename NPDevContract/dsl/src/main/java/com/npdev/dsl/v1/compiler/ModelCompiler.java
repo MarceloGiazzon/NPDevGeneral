@@ -616,7 +616,8 @@ public final class ModelCompiler {
                 toCompiledPropertyScopes(modelAst.getPropertyScopes()),
                 toCompiledProperties(modelAst.getProperties()),
                 toCompiledContexts(modelAst.getContexts()),
-                conversions
+                conversions,
+                toCompiledWebhooks(modelAst.getWebhooks())
         );
     }
 
@@ -769,6 +770,19 @@ public final class ModelCompiler {
         for (com.npdev.dsl.v1.ast.RoleAst roleAst : roleAsts) {
             compiled.add(new com.npdev.dsl.v1.compiled.CompiledRole(
                     roleAst.name(), roleAst.grants(), toCompiledOrigin(roleAst.origin())));
+        }
+        return compiled;
+    }
+
+    /** R6.2: compiles the model-declared inbound webhook doors -- no origin (unlike roles/events/...,
+     *  a webhook's identity is a wire path segment, deliberately never pack-qualified; see
+     *  {@link com.npdev.dsl.v1.ast.WebhookAst}). */
+    private static List<com.npdev.dsl.v1.compiled.CompiledWebhook> toCompiledWebhooks(
+            List<com.npdev.dsl.v1.ast.WebhookAst> webhookAsts) {
+        List<com.npdev.dsl.v1.compiled.CompiledWebhook> compiled = new ArrayList<>();
+        for (com.npdev.dsl.v1.ast.WebhookAst webhookAst : webhookAsts) {
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledWebhook(
+                    webhookAst.source(), webhookAst.hmacSecretEnvVar(), webhookAst.eventName(), webhookAst.fieldMapping()));
         }
         return compiled;
     }

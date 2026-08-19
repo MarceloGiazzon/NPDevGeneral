@@ -83,7 +83,14 @@ public final class ModelSourceResolver {
             "aggregates",
             "autoPanels",
             "documents",
-            "selectors"
+            "selectors",
+            // R6.2 (2026-08-19): webhooks[] threaded exactly like the PACK-11 four keys above --
+            // composer support here first, pack.schema.json permission second (relaxing the schema
+            // alone would accept a pack's webhooks[] file and drop its content in silence, REG-108's
+            // X0 shape). Its `eventName` field also needs a rewriteKnownMemberReferenceFields entry
+            // (the "PACK-11 fifth place" for any member kind carrying a reference of its own) --
+            // see that method's own "webhooks" branch.
+            "webhooks"
     );
     private static final Set<String> ROOT_SCALAR_KEYS = orderedSet(
             "$schema",
@@ -1197,6 +1204,13 @@ public final class ModelSourceResolver {
         } else if ("events".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             rewriteTextField(object, "conceptName", conceptRewriteMap, qualifiedReferenceValidator);
+        } else if ("webhooks".equals(rootKey) && parentKey.isBlank()) {
+            // R6.2 (the "PACK-11 fifth place"): a webhook names the event it publishes on a
+            // verified request. `source` itself is deliberately NOT rewritten here -- unlike every
+            // other MODEL_ARRAY_KEYS member, a webhook's identity is a wire path segment a third
+            // party posts to; qualifying it would make POST /api/hooks/{source} depend on pack
+            // composition order, which the external contract cannot tolerate (see WebhookAst).
+            rewriteTextField(object, "eventName", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
         } else if ("bindings".equals(rootKey) && parentKey.isBlank()) {
             rewriteTextField(object, "capability", resolverFor(rewriteMaps, ambiguousNames, "capabilities"), qualifiedReferenceValidator);
         } else if ("properties".equals(rootKey) && parentKey.isBlank()) {

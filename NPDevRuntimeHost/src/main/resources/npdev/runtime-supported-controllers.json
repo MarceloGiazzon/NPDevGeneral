@@ -6,6 +6,7 @@
   "allowedControllers": [
     "AgentProxyController",
     "AggregateApiController",
+    "WebhookInboundController",
     "ConceptQueryController",
     "PropertyResolverController",
     "DirectExecutionGatewayController",

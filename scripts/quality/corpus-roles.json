@@ -42,6 +42,7 @@
     "AppGen/apps/p77-hookproof": "dsl-fixture",
     "AppGen/apps/p77-hookproof-pg": "engine-variant",
     "AppGen/apps/pack-sample": "dsl-fixture",
+    "AppGen/apps/payment-webhook-rehearsal": "repro-case",
     "AppGen/apps/s1-scale-canary": "repro-case",
     "AppGen/apps/simple-consumer-h2server": "dsl-fixture",
     "AppGen/apps/simple-log-mysql": "engine-variant",
