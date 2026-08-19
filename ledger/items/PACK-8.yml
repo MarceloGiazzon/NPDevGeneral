@@ -139,14 +139,6 @@ detail: |
   - `from` is direct-app-import-only -- a pack's OWN transitive packs[] dependencies (discovered via
     PackDependencyGraphWalker.defaultPackFile's local-file convention) cannot yet use `from`.
     pack.schema.json is untouched.
-  - A remote pack containing fragments ($ref-based sub-files alongside pack.json, valid for a LOCAL
-    pack today) will fail resolution with a confusing "... escapes the model root" error --
-    resolvePackFragment's containment check (ModelSourceResolver.resolveJsonRefUnderRoot) always
-    validates a fragment against the APP's own rootDirectory in addition to the pack's own directory,
-    and a PackCache-resident file is never under the app's root. Not hit by this slice's own proof
-    (single-file pack.json, no fragments) but a real limitation for a remote pack that uses
-    fragments. Needs that check widened to skip the app-root boundary specifically for cache-resident
-    packs, keeping only the pack's-own-directory boundary -- next slice's first fix.
   - check-container-images-pinned.py is NOT yet extended to pack coordinates (the card's own "Breaks"
     section asks for this) -- `from` accepts a mutable tag today (matching the card's own worked
     example, `identity:2.1.0`), not only a pinned digest.
@@ -191,6 +183,23 @@ detail: |
   No unrelated bugs found and filed separately this session -- every limitation and fix recorded
   above is a direct, in-scope consequence of this exact feature (found while building or reviewing
   it), not a pre-existing defect, so all of it is recorded here rather than as standalone REG items.
+
+  R8.1 fix (Roadmap Collection 2026-08-18, "pull forward" item, this session): the fragment-escape
+  limitation above is FIXED. resolveJsonRefUnderRoot now detects when a fragment's containment
+  directory (the pack's own directory) is itself outside the app's rootDirectory -- the signature of
+  a cache-resident (remote) pack -- and skips the app-root boundary check for that call, enforcing
+  only the pack's-own-directory boundary. A LOCAL pack's containment directory is always under the
+  model root, so this changes nothing for it. Live-verified: PackFromCoordinateResolutionTest gained
+  `aFragmentStructuredRemotePackFetchesAndGeneratesFullyOfflineFromCache` (a real git+file:// pack
+  with a `fragments[]` entry fetches via `pack add`, the source repo is then deleted, and `generate`
+  still merges both the pack's own concept and its fragment's concept) and
+  `aFragmentEscapingItsOwnPackDirectoryStillRefusesEvenWhenThePackIsCacheResident` (a RED control: a
+  NESTED fragment -- one reached from another fragment, since pack.json's own $ref values are
+  schema-regex-refused for literal ".." before ever reaching this code -- that tries to climb out of
+  its own cache entry still refuses, naming "escapes the pack directory"). Both tests were confirmed
+  to fail without the fix (verified by stashing it and re-running) before being confirmed to pass
+  with it. PackCacheTest's digest-collision test doc comment updated to stop calling this "not
+  reachable through the real pipeline" now that it is.
 guard:
   kind: test
   ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/PackFromCoordinateResolutionTest.java

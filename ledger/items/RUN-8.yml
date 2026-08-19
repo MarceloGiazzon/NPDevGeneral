@@ -1,0 +1,84 @@
+id: RUN-8
+title: >-
+  Nothing polls the durable scheduled-event table, so a delayed event in an unattended app never
+  fires -- the only caller of processDueScheduledEvents was a REST poke
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R2 item R2.3 -- "The durable table,
+  `due_at`, and the multi-instance `claimScheduledEvent` all exist, but nothing polls it." Verified
+  before any change; the substrate claim held and one location detail did not (below).
+surface: kernel/scheduler, adapters/resume-bootstrap-spring
+files:
+  - NPDevKernel/adapters/resume-bootstrap-spring/src/main/java/com/npdev/adapters/resumebootstrap/spring/ScheduledEventDrainRunner.java
+  - NPDevKernel/adapters/resume-bootstrap-spring/src/main/java/com/npdev/adapters/resumebootstrap/spring/NpdevSchedulerConfig.java
+  - NPDevKernel/adapters/resume-bootstrap-spring/src/test/java/com/npdev/adapters/resumebootstrap/spring/ScheduledEventDrainRunnerIT.java
+detail: |
+  MEASURED vs the roadmap: the substrate was complete as claimed -- `claimScheduledEvent` is a real
+  compare-and-set on `status`, and `NpdevScheduledEventTable` declares `due_at` plus a
+  `(status, due_at)` index. One detail was wrong: `processDueScheduledEvents` lives on
+  `GeneratedCrudRuntimeSupport` (expression-cel adapter), NOT on `KernelRunner`. It returns a
+  summary map (scanned/processed/skipped/failed/status) and swallows its own SQL errors.
+
+  CONFIRMED UNCALLED BY ANY TIMER: its only production caller was `RuntimeSchedulesController`'s
+  `POST /api/runtime/schedules/process-due`. The only other repo-wide hit is a Mockito stub. So a
+  delayed event in an app nobody was poking simply never fired.
+
+  `ScheduledEventDrainRunner` mirrors the existing `ResumeSchedulerRunner` deliberately and exactly
+  -- same `@Scheduled poll()` shape, same `schedulerEnabled` skip posture, same `MetricsSink`
+  reporting (under `schedule_drain` names), same batch-limit-with-fallback constructor. Two
+  deliberate divergences, both load-bearing:
+    - `forceDue` is pinned FALSE. Passing `true` drops the `due_at <= ?` predicate, which would make
+      every modelled delay fire immediately -- i.e. it would reintroduce the exact class of bug R2.4
+      exists to fix.
+    - It does NOT write `SchedulerRuntimeState`, which the health indicator reads as the resume
+      sweep's single liveness signal; a second writer would make that signal ambiguous.
+
+  PROPERTY: reuses `npdev.scheduler.tick-millis` (falling back to `npdev.resume.pollMs`, then 2000)
+  -- the identical expression the resume sweep already uses. A drain-specific knob was deliberately
+  NOT invented: it would be undocumented and unvalidated by `StartupValidator`.
+
+  The `@Bean` binding `runtimeSupport::processDueScheduledEvents` lives in `NpdevSchedulerConfig`
+  because `expression-cel` and `resume-bootstrap-spring` are SIBLING adapters -- the RuntimeHost is
+  the only place that has both. The runner therefore takes a one-method `ScheduledEventDrain` seam
+  rather than creating an adapter-to-adapter dependency.
+
+  PROVEN RED THEN GREEN: `ScheduledEventDrainRunnerIT` boots an `AnnotationConfigApplicationContext`
+  with `@EnableScheduling` at a 50 ms tick, plants a PENDING row due 60 s ago plus a CONTROL row due
+  in an hour, and asserts the first flips to PROCESSED. It never calls the drain itself -- it asserts
+  the call arrived on a **scheduler thread, not the JUnit thread**, that `forceDue` was FALSE, and
+  that the control row stayed PENDING (so `due_at` is genuinely honoured rather than force-fired).
+  DDL copied verbatim from the generator's emitted `V1__npdev_schema_realization.sql`. With
+  `@Scheduled` removed the IT fails at the "drained by the timer" assertion; annotation restored.
+
+  RESULTS (independently re-run by the orchestrator with `--rerun-tasks`):
+  `:adapters:resume-bootstrap-spring:test` 2 tests, 0 failures -- `ScheduledEventDrainRunnerIT`
+  4.08s PASS. `:kernel:test` 530 tests, 0 failures, 16 skipped. `run-runtimehost-gate.ps1` passed,
+  which is what proves the `NpdevSchedulerConfig` change compiles and runs inside a real assembled
+  app. **Engine: H2 only** -- no Testcontainers, consistent with
+  `scripts/policy/local-test-profile.json`; Postgres/MySQL/SQL Server coverage rides CI.
+
+  **R2.4's gap confirmed precisely, and NOT fixed here (it is the next item and needs its own
+  BREAKING.md entry):** `ScheduleEventStep.java:79-93` computes `scheduledForEpochMs` into the
+  envelope's METADATA and then immediately does `eventStore.append` + `eventBus.publish` + resumes
+  waiters. So the flow-step `SCHEDULE_EVENT` fires NOW and merely labels itself
+  `deliveryMode: scheduled`; it never writes an `npdev_scheduled_event` row at all. Only the
+  ORCHESTRATION `scheduleEvent` action persists a real `due_at`. This item gives R2.4 a working
+  destination; the flow step still has to be redirected into the table.
+
+  A coupling worth knowing before either poller grows: Spring's default task-scheduler pool size is
+  1, so the drain and the resume sweep now share one thread. Fine at a 2 s cadence with both
+  batch-limited, but it is a real constraint if either is ever allowed to run long.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/resume-bootstrap-spring/src/test/java/com/npdev/adapters/resumebootstrap/spring/ScheduledEventDrainRunnerIT.java
+  asserts: >-
+    a scheduled event whose due_at has passed is drained by the TIMER with no REST poke -- proven by
+    asserting the drain call arrived on a scheduler thread rather than the JUnit thread -- while a
+    control row due in an hour stays PENDING, so due_at is honoured rather than force-fired, and
+    forceDue is FALSE. Observed red with @Scheduled removed.
+  provenRed: true

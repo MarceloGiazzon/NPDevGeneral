@@ -5,6 +5,91 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-19 — a generated app's background launcher moved into the emitter, and its log file moved with it (R9.4)
+
+**What changes.** The duplicate-PID guard, port-conflict guard and log archiving used to exist only
+in `Build-NpdevApp.ps1`'s inlined `$StartApp` text, so only AppGen-built apps had guarded launchers.
+They now live in `OperationalRunbookEmitter`, which means **every** generated app gets
+`Start-App.ps1`/`Stop-App.ps1` — plus new POSIX twins `start-app.sh`/`stop-app.sh`, where the
+toolbox previously had exactly one `.sh` script.
+
+**Your existing invocations still work.** `_ops\Start-App.ps1` and `_ops\Stop-App.ps1` exist at both
+known paths — the outer `<OutRoot>\_ops` and `<OutRoot>\App\_ops` — under the same names and the same
+calling convention. The outer pair are now two-line shims delegating to `App\_ops`, the same pattern
+already used for `Run-FinalApp.ps1`/`Build-FinalApp.ps1`, so the guard logic exists in exactly one
+place without breaking `Rebuild-And-Restage.ps1`, `New-AppConsole.ps1` or `Update-AppMetadata.ps1`,
+all of which invoke those scripts by name at the outer path.
+
+**What actually changes for you: the log file moved.** `Start-App.ps1` now writes stdout to
+`App\logs\app-<UTC timestamp>.log` instead of a fixed `_ops\app.out.log`, and **no longer writes
+`app.out.history.log` at all**. Anything tailing or parsing either of those two fixed filenames needs
+to look in `App\logs\` and pick the newest `app-*.log` — which is what `New-AppConsole.ps1`'s own
+status tail was changed to do in this same commit. The new location is deliberate: it is the `logs`
+directory every regeneration already spares, and it shares R9.2's newest-20 retention pruning, so
+background and foreground launches draw on one bounded budget rather than two unbounded ones.
+
+**Codemod.** None — no model file changes shape, and no script invocation changes. The only migration
+is the log path above, which is a read-side concern for tooling you own.
+
+## 2026-08-18 — a `scheduleEvent` flow step with a non-zero delay no longer fires immediately (R2.4)
+
+**What changes.** A flow step `"type": "scheduleEvent"` with `delaySeconds`/`delayMinutes`/`delayMs`
+greater than zero used to publish its event **during the flow execution**, stamping the delay onto
+the envelope as metadata "for a consumer to honor" — with no consumer that honored it. The canonical
+demo's `AppointmentReminderDue`, modelled at `delayMinutes: 1440`, arrived instantly. It now writes a
+PENDING `npdev_scheduled_event` row and is published by the R2.3 drain once `due_at` passes, so the
+reminder actually arrives 24 hours later.
+
+**`delaySeconds: 0` is unchanged in every respect** — same publish, same ordering, same synchronous
+resume of waiting instances, byte-for-byte the old path. Zero-delay was deliberately *not* routed
+through the table, which would have added a scheduler tick of latency to every model already using
+it.
+
+**Who is affected.** Any model with a `scheduleEvent` step whose delay is greater than zero. Because
+the event is no longer published at execution time, within that execution it is now absent from
+`ExecutionResult.getEmittedEvents()` and from the event store; a downstream step can no longer read
+`$lastEvent` from a delayed schedule; and the step's trace info reports `scheduledEventName`/
+`scheduledEventId` instead of `emittedEventName`/`emittedEventId`. There is also a new failure mode:
+a delayed step returns `EVENT_PERSIST_FAILED` naming `DeferredEventScheduler` when no durable
+scheduler is bound or the row cannot be written. That is deliberate — there is **no publish-now
+fallback**, because silently firing a 24-hour reminder immediately is the exact defect this change
+removes.
+
+**Known limitation, not introduced here but now more visible.** The drain publishes with a fresh
+correlation id (it ignores the row's stored `trigger_correlation_id`), so a deferred event does not
+satisfy an `AWAIT_EVENT` declaring `matchCorrelation: true`. The orchestration-level `scheduleEvent`
+action has always behaved this way; fixing it needs tenant propagation the scheduled-event table has
+no column for. Until that lands, do not model a delayed self-wake against a correlated await.
+
+**Codemod.** None, and none is needed: no model file changes shape. Every affected model is already
+spelled correctly — it simply now behaves the way it always read as behaving. A model that silently
+depended on the instant fire should reduce its delay to `0`, which is a one-value edit and is the
+honest expression of that intent.
+
+## 2026-08-18 — the model/rule/orchestration editor draft endpoints are deleted (R10.1)
+
+**What changes.** Every generated app's `AdminController` used to expose
+`GET`/`POST`/`DELETE /api/admin/model/editor/draft`, `.../model/rules/draft`, and
+`.../model/orchestration/draft` — server-side draft state, held in a plain static field, that a
+save never wrote back into `model.json`. That was the only one-way door in the authoring loop: a
+draft could silently diverge from the source model forever, and a full round-trip through it
+dropped 14 of the DSL's root sections. All nine mappings (three draft kinds × GET/POST/DELETE) are
+now deleted outright, along with their backing helpers (`DraftKind`, `saveDraft`,
+`readDraftOrModel`, `buildEmptyDraft`) and the now-unused `NPDevModelProvider` dependency they were
+the only consumer of. `GET /api/admin/model/export` and `GET /api/admin/model/ui` (`/ui-model`) are
+unaffected — they are a separate, read-only projection of the compiled model, not the draft
+mechanism. `POST /api/admin/model/sync-status` also stays; it only reports drift and never held
+draft state.
+
+**Who is affected.** The shipped React editor bundle (`static-react/`, no in-repo producer since
+2026-08-17) called these endpoints to save drafts from its Model/Rule/Orchestration editor panels;
+those saves now 404. This is an accepted, deliberate consequence of the owner decision recorded in
+`ledger/items/EDIT-3.yml` (Roadmap Collection 2026-08-18, R10.0): demote the shipped editor to a
+read-only viewer and make CLI/MCP authoring (`npdev validate`/`npdev add`/hand-editing `model.json`)
+the only write path, until R10.2 replaces the viewer with a surface emitted from the compiled model
+itself. No model DSL shape changed and no existing `model.json` needs rewriting, so there is no
+`npdev migrate` codemod for this entry.
+
 ## 2026-08-18 — `schemaLifecycle.strategy: RecreateOnAppStart` is deprecated in favour of `Ephemeral` (STOR-16)
 
 **What changes.** There is now a fourth `schemaLifecycle.strategy`, `Ephemeral`, meaning *this

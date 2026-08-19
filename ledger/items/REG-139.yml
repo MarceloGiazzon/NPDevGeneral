@@ -155,3 +155,11 @@ resolution: |
   own draft (giving it the same live REST round-trip `RuleEditorPanel` already has) was judged out
   of scope here: it is new data-flow wiring, not a fix to a crash, and the plan's own DoD items are
   all satisfiable without it.
+
+  2026-08-18 (R10.1, following EDIT-3's read-only-editor decision): `GET/POST/DELETE
+  /api/admin/model/editor/draft` and its rule/orchestration siblings were deleted outright from
+  `npdev-runtime-admin-controller.mustache` -- the endpoints this item's fix hardened no longer
+  exist at all. This item stays DONE (the fix was real and verified at the time), but its own
+  live-verification steps above are no longer re-runnable: the harness check named in step 3 was
+  rewritten to assert 404, and the client-side panels this fix touched live in the parked-out
+  NPDevEditor tree per BREAKING.md, same as EDIT-1/EDIT-2.

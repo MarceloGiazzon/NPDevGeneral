@@ -1,0 +1,50 @@
+id: RUN-10
+title: >-
+  The scheduled-event drain publishes with a FRESH correlation id, so a deferred event never
+  satisfies an AWAIT_EVENT declaring matchCorrelation:true
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-18
+source: >-
+  Found while implementing R2.4 (RUN-9) -- disclosed by the implementer rather than left for a user
+  to discover, and deliberately filed instead of being fixed inside that item.
+surface: kernel/scheduler, adapters/expression-cel
+files:
+  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/adapters/expression/cel/GeneratedCrudRuntimeSupport.java
+detail: |
+  `processDueScheduledEvents` ignores the row's stored `trigger_correlation_id` and publishes the due
+  event under a fresh correlation id. So a deferred event does not match an `AWAIT_EVENT` step that
+  declares `matchCorrelation: true` -- the waiter it was scheduled to wake stays parked.
+
+  **This predates R2.4**: the orchestration-level `scheduleEvent` action has always behaved this way,
+  and while the flow step fired instantly nobody could hit it through that path. R2.4 makes the flow
+  step genuinely deferred, which routes far more traffic through this drain and therefore makes the
+  limitation reachable and worth naming.
+
+  WHY IT WAS NOT FIXED INSIDE R2.4, recorded so the next person does not rediscover the wall: simply
+  propagating the stored correlation id is not sufficient. `enforceCorrelationOwnership` needs a
+  tenant, the `npdev_scheduled_event` table has **no tenant column**, and publishing with a
+  correlation id whose ownership cannot be verified would throw. So the honest fix is a schema
+  addition plus tenant propagation through the drain -- a real slice with its own migration, not a
+  line change smuggled into a behaviour-change item that already carries a BREAKING.md entry.
+
+  USER-VISIBLE CONSEQUENCE, and the reason this is filed rather than merely noted in a comment: the
+  most natural thing an author will now model on top of R2.4 -- "schedule a reminder in 24h, and have
+  this same flow instance wake on it" -- silently does not work if the await is correlated. It does
+  work with an uncorrelated await. Documented in docs/FLOWS.md §7 under R2.4's entry so the trap is
+  visible at the point of authoring, not only here.
+
+  Relevant to R2.5 (durable await timeouts + onTimeout), which the roadmap sequences next and which
+  is exactly the "wait for approval, escalate after N hours" shape most likely to want a correlated
+  delayed wake. Worth closing before or alongside it.
+guard:
+  kind: manual
+  ref: >-
+    Model a flow that schedules an event with delaySeconds > 0 and awaits it with
+    matchCorrelation:true; after the drain publishes, the instance remains WAITING_EVENT. The same
+    model with matchCorrelation absent/false resumes normally.
+  asserts: >-
+    a deferred event published by the drain carries the correlation id it was scheduled with, so a
+    correlated await is satisfied -- currently false
+  provenRed: false
