@@ -16,13 +16,15 @@ from .constants import FLOW_STEP_TYPES  # noqa: F401 - the table expands one ent
 
 from .detectors_model import (  # noqa: F401 - every name the table below references
     _all_steps, _flows, _has_aggregate_on_commit, _has_aggregate_on_validate,
+    _has_arithmetic_derived_expression,
     _has_capability_policy, _has_composite_index, _has_concept_access, _has_concept_extends,
     _has_conversion_op, _has_date_field, _has_decimal_field, _has_file_field, _has_flow_io_schema,
     _has_flow_start_endpoint, _has_groupby_cross_context_join, _has_groupby_join,
-    _has_groupby_multi_hop_join, _has_on_failure, _has_parallel_await_foreach,
+    _has_groupby_multi_hop_join, _has_await_timeout, _has_on_failure, _has_parallel_await_foreach,
     _has_parallel_await_multistep_foreach, _has_post_checkpoint,
     _has_procedure_create_if_missing, _has_procedure_step_type, _has_renamed_field,
-    _has_sensitive_field, _has_settings, _has_step_type, _nonempty,
+    _has_schedule_event_with_delay, _has_sensitive_field, _has_settings, _has_step_type,
+    _has_widened_branch_condition, _nonempty,
 )
 
 from .detectors_ui import (  # noqa: F401 - every name the table below references
@@ -96,9 +98,18 @@ FEATURE_DETECTORS = {
     "flow.specializes": lambda m: any("specializes" in f for f in _flows(m)),
     "flow.hooks": lambda m: any(f.get("hooks") for f in _flows(m)),
     "step.onFailure": _has_on_failure,
+    # R2.5: an awaitEvent step's durable timeout + onTimeout escalation branch -- see
+    # _has_await_timeout's own docstring for why this is tracked apart from "step.awaitEvent".
+    "step.awaitEvent.timeout": _has_await_timeout,
     "step.forEach.parallelAwait": _has_parallel_await_foreach,
     "step.forEach.parallelAwait.multiStep": _has_parallel_await_multistep_foreach,
     **{f"step.{t}": (lambda m, t=t: _has_step_type(m, t)) for t in FLOW_STEP_TYPES},
+    # R2.4: scheduleEvent's two delivery modes are two code paths now, not one path with a label --
+    # see _has_schedule_event_with_delay. Tracked separately for the same reason
+    # "query.groupBy.join.multiHop" is tracked apart from "query.groupBy.join": the base feature is
+    # satisfied by either mode alone, so a corpus carrying only one leaves the other unexercised.
+    "step.scheduleEvent.deferred": lambda m: _has_schedule_event_with_delay(m, True),
+    "step.scheduleEvent.immediate": lambda m: _has_schedule_event_with_delay(m, False),
     # Move 4 (docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md): procedure.patchConcept and aggregate.onCommit
     # are new features, not caught by the flow-only _all_steps() above -- a procedure's steps live
     # under "procedures", not "flows". Tracked separately so a regression to either has the same
@@ -157,6 +168,16 @@ FEATURE_DETECTORS = {
     # type the DSL previously had no way to express (every existing sample worked around it with a
     # priceCents-style integer field name).
     "type.decimal": _has_decimal_field,
+    # R4.1 (roadmap): a default/derivedExpression using arithmetic (+ - * / %), e.g.
+    # "quantity * unitPrice" -- distinct from the plain concat/coalesce/trim/uppercase/lowercase/
+    # identifier shape every prior corpus example used. See _has_arithmetic_derived_expression's
+    # own docstring for why this was a validator-only ceiling, not a runtime gap.
+    "field.derivedExpression.arithmetic": _has_arithmetic_derived_expression,
+    # R4.2 (roadmap): a flow BRANCH step's condition using the widened ComputedExpression grammar
+    # (&&, ||, or an ordered comparison) rather than the ==/!=-only shape KernelRunner.
+    # evaluateCondition's legacy matcher was previously capped at. See
+    # _has_widened_branch_condition's own docstring for why this was zero-witness before.
+    "step.branch.condition.widenedGrammar": _has_widened_branch_condition,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): panelAction.binding=conceptQuery -- zero
     # declarations AND zero test coverage anywhere before this (unlike most other Wave 5 items);
     # PanelRuntimeConceptQueryActionTest (RuntimeHost) now proves it end-to-end.
