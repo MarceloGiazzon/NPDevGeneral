@@ -13,6 +13,7 @@
     "ExecutionMonitorController",
     "RuntimeMetadataController",
     "RuntimeMetadataValidationController",
+    "MetadataHotSwapController",
     "RuntimeUiMetadataController",
     "RuntimeSchedulesController",
     "RuntimePluginStatusController",
