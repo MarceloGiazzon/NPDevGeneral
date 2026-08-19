@@ -79,7 +79,9 @@ public final class MySqlDialect implements SqlDialect {
             StorageCapability.OPTIMISTIC_LOCKING,
             // R8c: native "FOR UPDATE SKIP LOCKED" since MySQL 8.0 GA (this platform already
             // targets 8.4 elsewhere -- see SqlDialect#keyableTextColumnType's javadoc).
-            StorageCapability.SKIP_LOCKED_READS);
+            StorageCapability.SKIP_LOCKED_READS,
+            // R9.3: GET_LOCK/RELEASE_LOCK, session-scoped and needing no table.
+            StorageCapability.SESSION_ADVISORY_LOCK);
     // SNAPSHOT_RESTORE absent: mysqldump is an external tool, not something the platform can drive
     // as an engine operation, and declaring it would be a promise the generator trusts wrongly.
 
@@ -413,6 +415,36 @@ public final class MySqlDialect implements SqlDialect {
                 // MySQL accepts ADD COLUMN, but the statement is about to be wrapped in a string
                 // literal, so any IF NOT EXISTS the caller left in would be a syntax error inside it.
                 SqlDdlGuards.stripIfNotExists(alterStatement));
+    }
+
+    @Override
+    public String guardedCreateSchema(String schemaName) {
+        // MySQL's SCHEMA and DATABASE are the same object, and IF NOT EXISTS is native on both.
+        return "CREATE SCHEMA IF NOT EXISTS " + schemaName;
+    }
+
+    /** R9.3. MySQL keys advisory locks by NAME, not by number as Postgres does. */
+    @Override
+    public Object advisoryLockKey(String lockName) {
+        return lockName;
+    }
+
+    /**
+     * R9.3. Timeout 0 makes {@code GET_LOCK} return immediately -- the non-blocking probe this
+     * contract requires.
+     *
+     * <p>{@code COALESCE} is load-bearing, not defensive: {@code GET_LOCK} returns <b>NULL</b> (not
+     * 0) when the attempt errors out, and a NULL read back as an int is 0 only by accident of the
+     * driver. Normalising in SQL keeps "did I get it" a single unambiguous integer everywhere.
+     */
+    @Override
+    public String tryAdvisoryLockSql() {
+        return "SELECT COALESCE(GET_LOCK(?, 0), 0)";
+    }
+
+    @Override
+    public String releaseAdvisoryLockSql() {
+        return "SELECT COALESCE(RELEASE_LOCK(?), 0)";
     }
 
     /**

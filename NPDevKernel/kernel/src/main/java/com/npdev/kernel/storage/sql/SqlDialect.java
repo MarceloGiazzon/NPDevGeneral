@@ -657,6 +657,85 @@ public interface SqlDialect {
      */
     String guardedAddColumn(String tableName, String columnName, String alterStatement);
 
+    /**
+     * {@code CREATE SCHEMA <name>} made idempotent.
+     *
+     * <p>Added for R9.3's migration mutex, whose H2 fallback has to put its lock table in a schema
+     * Flyway does not manage (see {@link StorageCapability#SESSION_ADVISORY_LOCK}). Implemented on
+     * all four engines rather than only H2 -- the guard shape is exactly {@link
+     * #guardedCreateTable}'s, and leaving three of them to throw would be a fifth engine's problem
+     * discovered at its first boot rather than here.
+     *
+     * @param schemaName the schema, for engines that need a catalog lookup rather than a keyword
+     */
+    String guardedCreateSchema(String schemaName);
+
+    // ------------------------------------------------------- session-scoped migration mutex
+
+    /*
+     * ------------------------------------------------------------------------------------------
+     * R9.3. NPDev serializes concurrent boots on a named mutex held across the whole
+     * migrate/realize window. Three engines have a real advisory lock; H2 has none and falls back
+     * to a row lock (MigrationMutex). These three methods exist so the FALLBACK is chosen by
+     * capability, and so no caller ever spells `pg_try_advisory_lock` -- which is precisely what
+     * MigrationClaimStore used to do inline, undetected by check-dialect-sites.py only because it
+     * had no pattern for advisory locks yet. It has one now.
+     *
+     * Every implementation returns ONE statement with ONE `?` placeholder, yielding ONE row whose
+     * first column is 1 (acquired/released) or 0. Normalising to an integer in SQL is deliberate:
+     * the three engines disagree three ways -- Postgres returns a boolean, MySQL returns 1/0/NULL,
+     * SQL Server returns a procedure code that is >= 0 on success and negative on failure -- and
+     * the kernel is JDBC-free by design (see PaginationClause), so it cannot hand back a reader.
+     * ------------------------------------------------------------------------------------------
+     */
+
+    /**
+     * The value to bind to {@link #tryAdvisoryLockSql()}/{@link #releaseAdvisoryLockSql()} for a
+     * logical lock name, ready for {@code PreparedStatement.setObject}.
+     *
+     * <p>{@code Object} rather than {@code String} because Postgres keys advisory locks by
+     * {@code bigint} while MySQL and SQL Server key them by name -- a single Java type would force
+     * one of them to a cast at the call site, and a cast is dialect-bound SQL.
+     *
+     * @throws UnsupportedStorageCapabilityException when this engine has no advisory lock
+     */
+    default Object advisoryLockKey(String lockName) {
+        require(StorageCapability.SESSION_ADVISORY_LOCK);
+        return lockName;
+    }
+
+    /**
+     * A NON-BLOCKING attempt at the session-scoped mutex: one row, first column 1 when this session
+     * now holds it, 0 when someone else does.
+     *
+     * <p><b>Non-blocking on purpose, on every engine.</b> MySQL, SQL Server and H2 can all wait
+     * server-side with a timeout; Postgres cannot ({@code lock_timeout} does not apply to advisory
+     * locks, and {@code pg_advisory_lock} waits forever). Rather than let one engine's boot hang
+     * indefinitely while the other three time out, the WAITING is done by the caller as a bounded
+     * retry, so the deadline is one number with identical meaning everywhere.
+     *
+     * @throws UnsupportedStorageCapabilityException when this engine has no advisory lock
+     */
+    default String tryAdvisoryLockSql() {
+        require(StorageCapability.SESSION_ADVISORY_LOCK);
+        throw new UnsupportedStorageCapabilityException(name(), StorageCapability.SESSION_ADVISORY_LOCK);
+    }
+
+    /**
+     * Releases the session-scoped mutex: one row, first column 1 when it was held and is now
+     * released.
+     *
+     * <p>Belt and braces only -- every engine here releases a session-scoped lock by itself when
+     * the connection dies, which is what makes a mutex leaked by a crashed boot self-healing rather
+     * than a deadlock every future boot inherits.
+     *
+     * @throws UnsupportedStorageCapabilityException when this engine has no advisory lock
+     */
+    default String releaseAdvisoryLockSql() {
+        require(StorageCapability.SESSION_ADVISORY_LOCK);
+        throw new UnsupportedStorageCapabilityException(name(), StorageCapability.SESSION_ADVISORY_LOCK);
+    }
+
     // ------------------------------------------------------------------ honesty
 
     /**

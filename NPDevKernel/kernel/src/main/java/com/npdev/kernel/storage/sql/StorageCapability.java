@@ -83,5 +83,35 @@ public enum StorageCapability {
      * rule) rather than assuming, so a future fifth engine without this capability fails loudly
      * instead of silently losing the double-resume guard.
      */
-    SKIP_LOCKED_READS
+    SKIP_LOCKED_READS,
+
+    /**
+     * A named mutex the engine scopes to the SESSION that took it, needing <b>no table to exist</b>
+     * and released by the engine itself the moment that session's connection dies.
+     *
+     * <p><b>R9.3: the property that makes a FIRST-EVER boot lockable at all.</b> NPDev's migration
+     * mutex has to be held across {@code flyway.migrate()}, and on a virgin database there is
+     * nothing to lock -- every table NPDev owns is about to be created by the migration this lock
+     * is protecting. Worse, creating one early is not merely useless but actively breaking:
+     * self-bootstrapping any table into Flyway's schema ahead of {@code flyway.migrate()} makes
+     * Flyway refuse the boot outright with <i>"Found non-empty schema(s) 'public' but no schema
+     * history table"</i> (REG-7.2, verified live on {@code simple-user-registry-h2local}). A lock
+     * that needs no table is the only kind that can close that window without re-opening REG-7.2.
+     *
+     * <p><b>Splits the matrix three-to-one</b> -- unlike {@link #SKIP_LOCKED_READS}, this is a
+     * capability an engine genuinely lacks, which is exactly why it is a capability and not an
+     * assumption:
+     * <pre>
+     *   Postgres    pg_try_advisory_lock(bigint) / pg_advisory_unlock -- session-scoped
+     *   MySQL       GET_LOCK(name, timeout) / RELEASE_LOCK(name)      -- session-scoped
+     *   SQL Server  sp_getapplock @LockOwner='Session' / sp_releaseapplock
+     *   H2          NONE. H2 has no advisory-lock function of any kind, so the migration mutex
+     *               falls back to a row lock held open in its own transaction, in a DEDICATED
+     *               schema Flyway does not manage (see MigrationMutex) -- which needs a table, and
+     *               therefore has to keep that table out of Flyway's way rather than not need one.
+     * </pre>
+     * Ask with {@link SqlDialect#supports(StorageCapability)} and branch on the ANSWER, never on
+     * the engine name: that is what keeps the fallback one code path instead of three.
+     */
+    SESSION_ADVISORY_LOCK
 }

@@ -73,6 +73,8 @@ public final class FlowStepDefinition {
     private final boolean parallelAwait;
     private final List<FlowStepDefinition> onFailureSteps;
     private final String procedureName;
+    private final Long timeoutSeconds;
+    private final List<FlowStepDefinition> onTimeoutSteps;
 
     private FlowStepDefinition(
             String name,
@@ -314,6 +316,8 @@ public final class FlowStepDefinition {
         this.onFailureSteps = List.of();
         this.procedureName = procedureName;
         this.parallelAwait = parallelAwait;
+        this.timeoutSeconds = null;
+        this.onTimeoutSteps = List.of();
     }
 
     /**
@@ -360,6 +364,8 @@ public final class FlowStepDefinition {
                 : Collections.unmodifiableList(new ArrayList<>(onFailureSteps));
         this.procedureName = source.procedureName;
         this.parallelAwait = source.parallelAwait;
+        this.timeoutSeconds = source.timeoutSeconds;
+        this.onTimeoutSteps = source.onTimeoutSteps;
     }
 
     /** LNCH-17: attaches declared compensation steps to an already-built step. */
@@ -369,6 +375,70 @@ public final class FlowStepDefinition {
 
     public List<FlowStepDefinition> getOnFailureSteps() {
         return onFailureSteps;
+    }
+
+    /**
+     * R2.5 (durable await timeouts): copy constructor used only by {@link #withTimeout}, the same
+     * attach-after-the-fact pattern {@link #withOnFailure} already uses -- only {@link
+     * Type#AWAIT_EVENT} ever sets this, so threading it through every factory method (map,
+     * forEach, capabilityCall, ...) would be dead plumbing everywhere else.
+     */
+    private FlowStepDefinition(FlowStepDefinition source, Long timeoutSeconds, List<FlowStepDefinition> onTimeoutSteps) {
+        this.name = source.name;
+        this.type = source.type;
+        this.checkpoint = source.checkpoint;
+        this.invariantScope = source.invariantScope;
+        this.invariants = source.invariants;
+        this.capability = source.capability;
+        this.capabilityType = source.capabilityType;
+        this.capabilityAdapterId = source.capabilityAdapterId;
+        this.capabilityExecutionPolicy = source.capabilityExecutionPolicy;
+        this.capabilityInputSchema = source.capabilityInputSchema;
+        this.capabilityOutputSchema = source.capabilityOutputSchema;
+        this.operation = source.operation;
+        this.inputRef = source.inputRef;
+        this.argsRefs = source.argsRefs;
+        this.outputRef = source.outputRef;
+        this.eventName = source.eventName;
+        this.payloadRef = source.payloadRef;
+        this.eventDataRefs = source.eventDataRefs;
+        this.condition = source.condition;
+        this.thenSteps = source.thenSteps;
+        this.elseSteps = source.elseSteps;
+        this.awaitEventName = source.awaitEventName;
+        this.awaitRef = source.awaitRef;
+        this.awaitMatchCorrelation = source.awaitMatchCorrelation;
+        this.awaitPayloadMatchRefs = source.awaitPayloadMatchRefs;
+        this.delaySeconds = source.delaySeconds;
+        this.mapFromRef = source.mapFromRef;
+        this.mapToRef = source.mapToRef;
+        this.returnRef = source.returnRef;
+        this.collectionRef = source.collectionRef;
+        this.itemKey = source.itemKey;
+        this.loopSteps = source.loopSteps;
+        this.maxLoopIterations = source.maxLoopIterations;
+        this.onFailureSteps = source.onFailureSteps;
+        this.procedureName = source.procedureName;
+        this.parallelAwait = source.parallelAwait;
+        this.timeoutSeconds = timeoutSeconds;
+        this.onTimeoutSteps = onTimeoutSteps == null
+                ? List.of()
+                : Collections.unmodifiableList(new ArrayList<>(onTimeoutSteps));
+    }
+
+    /** R2.5: attaches a durable await deadline (seconds from when the step first parks) and the
+     *  escalation steps to run once it passes without the awaited event arriving. */
+    public FlowStepDefinition withTimeout(long timeoutSeconds, List<FlowStepDefinition> onTimeoutSteps) {
+        return new FlowStepDefinition(this, timeoutSeconds, onTimeoutSteps);
+    }
+
+    /** R2.5: {@code null} means no timeout -- the pre-R2.5 default (wait forever). */
+    public Long getTimeoutSeconds() {
+        return timeoutSeconds;
+    }
+
+    public List<FlowStepDefinition> getOnTimeoutSteps() {
+        return onTimeoutSteps;
     }
 
     public static FlowStepDefinition invariant(String name, InvariantCheckpoint checkpoint, List<String> invariants) {

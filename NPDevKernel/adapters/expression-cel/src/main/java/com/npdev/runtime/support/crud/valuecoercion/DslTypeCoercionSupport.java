@@ -14,6 +14,7 @@ import java.util.UUID;
 
 import static com.npdev.runtime.support.GeneratedCrudRuntimeSupport.OBJECT_MAPPER;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.normalizeType;
+import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toBigDecimal;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toBoolean;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toInteger;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toLong;
@@ -35,6 +36,20 @@ public final class DslTypeCoercionSupport {
         if ("uuid".equals(dslType) || "reference".equals(dslType)) {
             UUID uuid = toUuid(rawValue);
             return uuid == null ? rawValue : uuid;
+        }
+        // R4.1 (roadmap): a defaultExpression/derivedExpression computed through ComputedExpression
+        // (e.g. "quantity * unitPrice") yields a raw Long/Double, not a BigDecimal -- unlike a
+        // client-submitted JSON value, which Jackson already binds straight into the DTO's
+        // BigDecimal field before this method ever sees it. Left uncoerced, that Long/Double reached
+        // JdbcBusinessConceptStore unchanged and failed to bind against a DECIMAL column (measured
+        // live: H2 "NumberFormatException: Character array is missing 'e' notation exponential
+        // mark" from a schemaless MERGE). A decimal field's default/derived arithmetic was refused
+        // at author time until this same roadmap item widened the validator, so this path was never
+        // exercised end-to-end before. toBigDecimal (ValueCoercionSupport) is the existing helper
+        // used to convert a raw payload value into a decimal field's DTO/response shape elsewhere.
+        if ("decimal".equals(dslType) && !(rawValue instanceof java.math.BigDecimal)) {
+            java.math.BigDecimal decimal = toBigDecimal(rawValue);
+            return decimal == null ? rawValue : decimal;
         }
         if (!"object".equals(dslType) && !"array".equals(dslType)) {
             return rawValue;

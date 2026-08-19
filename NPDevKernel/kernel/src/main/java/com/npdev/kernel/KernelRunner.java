@@ -1,5 +1,6 @@
 package com.npdev.kernel;
 
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.capability.CapabilityPolicyOverride;
 import com.npdev.kernel.capability.CapabilityPolicyOverrides;
@@ -18,6 +19,7 @@ import com.npdev.kernel.ports.CircuitBreakerStateStore;
 import com.npdev.kernel.ports.EventBus;
 import com.npdev.kernel.ports.EventStore;
 import com.npdev.kernel.ports.CorrelationOwnershipStore;
+import com.npdev.kernel.ports.DeferredEventScheduler;
 import com.npdev.kernel.ports.FlowDefinitionProvider;
 import com.npdev.kernel.ports.FlowInstanceStore;
 import com.npdev.kernel.ports.IdProvider;
@@ -42,6 +44,7 @@ import com.npdev.kernel.security.PermissionRequirement;
 import com.npdev.kernel.security.PermissionSubject;
 
 
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Collections;
@@ -90,6 +93,11 @@ final EventBus eventBus;
     // to know about; CallProcedureStep fails cleanly with NO_PROCEDURE_RUNNER when unset.
     private ProcedureExecutor procedureExecutor;
     private Map<String, ProcedureDefinition> procedureRegistry = Map.of();
+    // R2.4: optional, set-after-construction for the same reason procedureExecutor above is -- the
+    // durable scheduled-event table lives in an adapter that depends on this module, so the binding
+    // arrives from outside. Left null, a scheduleEvent step with delaySeconds > 0 fails cleanly
+    // (see ScheduleEventStep); it is never treated as "publish now".
+    DeferredEventScheduler deferredEventScheduler;
     private final ThreadLocal<String> currentFlowContext = new ThreadLocal<>();
     private static final Object UNRESOLVED = new Object();
     private static final int CIRCUIT_FAILURE_THRESHOLD = 5;
@@ -118,6 +126,17 @@ final EventBus eventBus;
     ) {
         this.procedureExecutor = procedureExecutor;
         this.procedureRegistry = procedureRegistry == null ? Map.of() : Map.copyOf(procedureRegistry);
+        return this;
+    }
+
+    /**
+     * R2.4: binds the durable scheduled-event table to the {@code scheduleEvent} flow step, so a
+     * declared delay is honoured rather than stamped on an event that fires immediately. Follows
+     * {@link #withProcedureExecutor}'s precedent -- an optional collaborator none of this class's
+     * 16 constructors needs to know about.
+     */
+    public KernelRunner withDeferredEventScheduler(DeferredEventScheduler deferredEventScheduler) {
+        this.deferredEventScheduler = deferredEventScheduler;
         return this;
     }
 
@@ -931,6 +950,35 @@ final EventBus eventBus;
                 existing.executionId(),
                 resumeContext
         );
+    }
+
+    /**
+     * R2.2: return a STUCK execution to the resume sweep. This is the operator's recovery path for
+     * the one status nothing else moves out of -- {@code ResumeCoordinator.resumeAllWaitingExecutions}
+     * only ever claims WAITING_EVENT rows, and {@link #resumeExecution} refuses anything that is
+     * neither WAITING_EVENT nor RUNNING, so before this method the only way out of STUCK was SQL.
+     *
+     * <p>It deliberately does NOT resume inline. The instance goes back to WAITING_EVENT with a
+     * cleared eligibility timestamp, and the next sweep (2s by default) picks it up through the
+     * ordinary path -- including its idempotency and correlation checks -- rather than this method
+     * re-implementing any of that. A caller that wants the retry to happen now can publish the
+     * awaited event, which resumes matching waiters synchronously.
+     *
+     * @return the persisted post-transition instance, or empty if no such execution exists
+     * @throws IllegalStateException if the execution is not un-stickable -- see
+     *         {@link FlowInstance#withUnstuck(long)} for the two cases
+     */
+    public Optional<FlowInstance> unstickExecution(String executionId) {
+        if (executionId == null || executionId.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<FlowInstance> instanceOpt = flowInstanceStore.findByExecutionId(executionId);
+        if (instanceOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        FlowInstance unstuck = instanceOpt.get().withUnstuck(nowEpochMillis());
+        flowInstanceStore.update(unstuck);
+        return Optional.of(unstuck);
     }
 
     @Override
@@ -2822,11 +2870,29 @@ CapabilityCall call = new CapabilityCall(
         return Map.of("value", rawPayload);
     }
 
+    /**
+     * R4.2 (roadmap): a BRANCH step's {@code condition} used to be a hand-rolled {@code ==}/
+     * {@code !=}-only matcher -- no {@code &&}, {@code ||}, {@code >}, or arithmetic. Now tries the
+     * full {@link ComputedExpression} grammar FIRST, falling through to the legacy matcher below on
+     * {@link ComputedExpression.ExpressionException} (a parse failure, or a top-level result that
+     * isn't a {@code Boolean} -- e.g. a bare truthy field reference whose value is a non-boolean
+     * String) -- the same ordering {@code CelInvariantEngine.evaluateExpression} already established
+     * for invariant expressions (LIFT-EXPR-P2), so a condition this evaluator cannot make sense of
+     * always falls back rather than throwing. {@link ConditionScope} resolves each {@code $ref}/
+     * bare-token through the SAME {@link #resolveReferenceStrict} the legacy matcher below uses, so
+     * a condition that parses under both engines resolves its operands identically either way.
+     */
     static boolean evaluateCondition(String expression, Map<String, Object> state, Object input) {
         if (expression == null || expression.isBlank()) {
             return false;
         }
         String trimmed = expression.trim();
+
+        try {
+            return ComputedExpression.evaluateBoolean(trimmed, new ConditionScope(state, input));
+        } catch (ComputedExpression.ExpressionException notComputedExpression) {
+            // fall through to the legacy matcher below.
+        }
 
         if ("true".equalsIgnoreCase(trimmed)) return true;
         if ("false".equalsIgnoreCase(trimmed)) return false;
@@ -2891,6 +2957,43 @@ CapabilityCall call = new CapabilityCall(
         return !("false".equalsIgnoreCase(text)
                 || "0".equals(text)
                 || "null".equalsIgnoreCase(text));
+    }
+
+    /**
+     * R4.2: bridges a {@link ComputedExpression} variable lookup to the SAME {@link
+     * #resolveReferenceStrict} the legacy condition matcher uses, so {@code $saved.status} /
+     * {@code $input.qty} / a bare state key resolve identically under either engine. {@code
+     * containsKey} always answers {@code true} (mirroring {@code CelInvariantEngine.FieldPathScope})
+     * so {@link ComputedExpression.Node#eval} always takes the {@code get} branch instead of trying
+     * its own dotted-map walk over this synthetic view.
+     */
+    private static final class ConditionScope extends AbstractMap<String, Object> {
+        private final Map<String, Object> state;
+        private final Object input;
+
+        ConditionScope(Map<String, Object> state, Object input) {
+            this.state = state;
+            this.input = input;
+        }
+
+        @Override
+        public Object get(Object key) {
+            if (!(key instanceof String token)) {
+                return null;
+            }
+            Object resolved = resolveReferenceStrict(token, state, input);
+            return resolved == UNRESOLVED ? null : resolved;
+        }
+
+        @Override
+        public boolean containsKey(Object key) {
+            return true;
+        }
+
+        @Override
+        public Set<Entry<String, Object>> entrySet() {
+            return Set.of();
+        }
     }
 
     static Object resolveReference(String reference, Map<String, Object> state, Object input) {

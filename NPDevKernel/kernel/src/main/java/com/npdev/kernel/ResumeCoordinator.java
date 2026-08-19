@@ -39,6 +39,31 @@ final class ResumeCoordinator {
     private static final String FLOW_RESUME_IDEMPOTENCY_CAPABILITY = "__flow_resume";
 
     /**
+     * R2.1: the error code every "there is simply nothing to resume ON yet" branch records. Three
+     * branches of {@link #resumeAllWaitingExecutions} feed it to {@link #persistResumeBackoff} --
+     * the instance carries no wait criteria, the event store holds no candidate event, and the
+     * resume re-parked still WAITING_EVENT -- and NONE of them is a failure of anything. They are
+     * the ordinary state of a flow parked on an approval that has not happened.
+     */
+    private static final String QUIET_WAIT_ERROR_CODE = "missing_event";
+
+    /**
+     * R2.1 ("kill the ~75-minute STUCK ceiling"): the cap a quiet wait is measured against, i.e.
+     * none. {@link FlowInstance#markResumeFailure} already treats a non-positive {@code maxAttempts}
+     * as "never exhausted", so the quiet branches keep the exponential delay -- which is genuinely
+     * useful, it backs a fruitless poll off to one sweep per {@link #RESUME_MAX_DELAY_MS} -- and
+     * give up only the cap.
+     * <p>
+     * Before R2.1 the quiet branches shared {@link #RESUME_MAX_ATTEMPTS} with real failures, and
+     * {@link #resumeDelayMillis}'s ladder (5s, doubling, capped at 300s) sums to 4_515s across 20
+     * misses. So ~75 minutes of quiet drove ANY untouched instance to STUCK -- a terminal status
+     * from which a later matching event can never revive it -- while docs/FLOWS.md advertises waits
+     * that last days or weeks. A real {@code exception:*} out of {@code resumeExecution} still
+     * counts against {@link #RESUME_MAX_ATTEMPTS} and still ends in STUCK.
+     */
+    private static final int RESUME_NO_ATTEMPT_CAP = 0;
+
+    /**
      * R8c (RUN-2): one opaque id per JVM/classloader load, so every claim this process makes
      * against {@link com.npdev.kernel.ports.FlowInstanceStore#claimWaitingEligibleToResume} is
      * attributable to it. Never consulted for authorization -- purely a debugging/observability
@@ -66,7 +91,6 @@ final class ResumeCoordinator {
         if (envelope == null) {
             return FlowEngine.ResumeOutcome.noMatch();
         }
-        long now = KernelRunner.nowEpochMillis();
         List<FlowInstance> waitingInstances = collectWaitingCandidates(runner, lookupCorrelationId, envelope.eventName());
         if (waitingInstances.isEmpty()) {
             return FlowEngine.ResumeOutcome.noMatch();
@@ -82,9 +106,15 @@ final class ResumeCoordinator {
             if (currentExecutionId != null && currentExecutionId.equals(instance.executionId())) {
                 continue;
             }
-            if (!instance.isResumeEligible(now)) {
-                continue;
-            }
+            // R2.1: NO isResumeEligible check here. This is the synchronous event-ARRIVAL path
+            // (publishExternalEvent / emitEvent / scheduleEvent), and the invariant the catch block
+            // below already states -- "Backoff is only for scheduled scans" -- was being violated
+            // one line above the match: an instance sitting in its 5s..300s scheduled-sweep backoff
+            // was skipped even when the event that just arrived was exactly the one it waits for.
+            // The event survives in the event store, so nothing was lost, but revival was deferred
+            // by up to the current backoff for no reason. The eligibility check's other half
+            // (status == WAITING_EVENT) is redundant here: matchesWaitingResumeCriteria asserts it,
+            // and collectWaitingCandidates only ever returns waiting rows.
             if (!matchesWaitingResumeCriteria(runner, instance, envelope)) {
                 continue;
             }
@@ -377,9 +407,22 @@ final class ResumeCoordinator {
         if (instance == null) {
             throw new IllegalArgumentException("instance must be non-null");
         }
-        long delayMs = resumeDelayMillis(instance.resumeAttemptCount() + 1);
+        boolean quietWait = QUIET_WAIT_ERROR_CODE.equals(errorCode);
+        // R2.1: resumeAttemptCount tallies both kinds, so a real failure arriving after a long
+        // quiet wait would find the counter already far past RESUME_MAX_ATTEMPTS and go STUCK on
+        // its FIRST fault -- strictly worse than the 20 retries that path had before the cap was
+        // lifted off quiet waits. Start a fresh streak whenever the kind changes over.
+        FlowInstance streakBase = quietWait || !QUIET_WAIT_ERROR_CODE.equals(instance.lastResumeErrorCode())
+                ? instance
+                : instance.withResumeStreakReset();
+        long delayMs = resumeDelayMillis(streakBase.resumeAttemptCount() + 1);
         long nextEligible = nowEpochMs + delayMs;
-        return instance.markResumeFailure(errorCode, nowEpochMs, nextEligible, RESUME_MAX_ATTEMPTS);
+        return streakBase.markResumeFailure(
+                errorCode,
+                nowEpochMs,
+                nextEligible,
+                quietWait ? RESUME_NO_ATTEMPT_CAP : RESUME_MAX_ATTEMPTS
+        );
     }
 
     private static FlowInstance persistResumeBackoff(KernelRunner runner, FlowInstance instance, String errorCode, long nowEpochMs) {
@@ -387,6 +430,14 @@ final class ResumeCoordinator {
         runner.flowInstanceStore.update(updated);
         runner.emitOperationalFailureEvent(updated);
         return updated;
+    }
+
+    /** R2.5: {@code true} once a timed await's persisted deadline has passed -- {@code false} for
+     *  every untimed await (the vast majority) since {@link FlowStateCodec#awaitDeadlineEpochMs}
+     *  returns {@code null} when the state blob carries no deadline field at all. */
+    private static boolean isAwaitTimeoutExpired(Map<String, Object> state, long now) {
+        Long deadlineEpochMs = FlowStateCodec.awaitDeadlineEpochMs(state);
+        return deadlineEpochMs != null && now >= deadlineEpochMs;
     }
 
     private static long resumeDelayMillis(int nextAttempt) {
@@ -468,15 +519,25 @@ final class ResumeCoordinator {
                 if (waitCriteria.awaitEventName() == null || waitCriteria.awaitEventName().isBlank()) {
                     FlowInstance latest = runner.flowInstanceStore.findByExecutionId(waitingInstance.executionId())
                             .orElse(waitingInstance);
-                    persistResumeBackoff(runner, latest, "missing_event", KernelRunner.nowEpochMillis());
+                    persistResumeBackoff(runner, latest, QUIET_WAIT_ERROR_CODE, KernelRunner.nowEpochMillis());
                     continue;
                 }
                 hasCandidateEvent = findAwaitedEventForInstance(runner, waitingInstance, waitCriteria, false).isPresent();
             }
-            if (!hasCandidateEvent) {
+            // R2.5 (durable await timeouts): a timed await with no candidate event yet is still
+            // "quiet" in the ordinary sense, but if its deadline has already passed it must be
+            // resumed anyway -- resumeExecution re-enters AwaitEventStep.execute, which is where
+            // the actual deadline-vs-now comparison and onTimeout branch live (see that class).
+            // FlowStateCodec.awaitDeadlineEpochMs reads the SAME _npdev.await state blob the
+            // instance was parked with, so this is naturally a no-op (null) for every untimed await
+            // and for a parallelAwait forEach (which uses a different, prefixed state key -- see
+            // that method's own javadoc), leaving their existing quiet-backoff behavior untouched.
+            boolean timeoutExpired = !hasCandidateEvent
+                    && isAwaitTimeoutExpired(waitingInstance.state(), now);
+            if (!hasCandidateEvent && !timeoutExpired) {
                 FlowInstance latest = runner.flowInstanceStore.findByExecutionId(waitingInstance.executionId())
                         .orElse(waitingInstance);
-                persistResumeBackoff(runner, latest, "missing_event", KernelRunner.nowEpochMillis());
+                persistResumeBackoff(runner, latest, QUIET_WAIT_ERROR_CODE, KernelRunner.nowEpochMillis());
                 continue;
             }
 
@@ -496,7 +557,7 @@ final class ResumeCoordinator {
                 if (result.getStatus() == ExecutionStatus.WAITING_EVENT) {
                     FlowInstance latest = runner.flowInstanceStore.findByExecutionId(waitingInstance.executionId())
                             .orElse(waitingInstance);
-                    persistResumeBackoff(runner, latest, "missing_event", KernelRunner.nowEpochMillis());
+                    persistResumeBackoff(runner, latest, QUIET_WAIT_ERROR_CODE, KernelRunner.nowEpochMillis());
                 } else {
                     resumedCount++;
                 }
