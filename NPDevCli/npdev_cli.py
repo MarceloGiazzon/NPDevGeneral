@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
@@ -7238,6 +7239,78 @@ def _run_pack_gradle_task_with_tamper_guard(task: str, model_path: Path, args: a
     return code
 
 
+def _classify_pack_signature(pack_id: str, entry: dict, trust: dict, allow_unsigned: bool) -> dict:
+    """R8.7's per-pack-entry trust decision, factored out of `_verify_pack_signatures` (R8.3: so
+    `run_pack_verify` below can classify the SAME way -- read-only, never mutating/raising -- rather
+    than inventing a second notion of "is this pack ok"). Pure: fetches the detached signature (the
+    one real network/git call, via `_fetch_pack_signature` -- its own CliError on an actual fetch
+    failure propagates unchanged, never conflated with "unsigned") and returns a dict, never raises
+    for a classification outcome:
+
+        {"status": "LOCAL" | "VERIFIED" | "UNSIGNED_ACCEPTED" | "UNSIGNED_REFUSED"
+                  | "UNKNOWN_SIGNER" | "BAD_SIGNATURE",
+         "message": "" or a REFUSED (...) sentence naming exactly which of the three named classes
+                     applies (see `_verify_pack_signatures`'s own doc for what each means),
+         "signatureField": the dict to store as entry["signature"], or None when nothing should be
+                            written (a refusal, or a LOCAL pack that was never checked at all)}
+
+    `_verify_pack_signatures` (mutating, used by `pack add`/`pack update`) turns a *_REFUSED/
+    UNKNOWN_SIGNER/BAD_SIGNATURE status into the exact same CliError + lock-rollback it always did;
+    `run_pack_verify` reports every status back to the caller instead, so several packs' failures
+    can be seen together rather than stopping at the first one.
+    """
+    from_coord = str(entry.get("from") or "")
+    digest = str(entry.get("digest") or "")
+    if not from_coord or not digest:
+        return {"status": "LOCAL", "message": "", "signatureField": None}
+
+    mode = trust["mode"]
+    trusted_keys = trust["trustedKeys"]
+    sig_record = _fetch_pack_signature(from_coord, digest)  # CliError propagates as-is (fetch failure)
+
+    if sig_record is None:
+        if mode == "enforce":
+            return {"status": "UNSIGNED_REFUSED", "signatureField": None, "message": (
+                f"REFUSED (UNSIGNED, trust mode 'enforce'): pack '{pack_id}' @ "
+                f"{entry.get('resolvedVersion')} ({from_coord}) has no detached signature for "
+                f"digest {digest} -- 'enforce' mode never accepts an unsigned pack, and "
+                f"--allow-unsigned cannot override it. Publish a signed version, or relax "
+                f"npdev-trust.json's mode to 'warn'."
+            )}
+        if not allow_unsigned:
+            return {"status": "UNSIGNED_REFUSED", "signatureField": None, "message": (
+                f"REFUSED (UNSIGNED): pack '{pack_id}' @ {entry.get('resolvedVersion')} "
+                f"({from_coord}) has no detached signature for digest {digest}. Pass "
+                f"--allow-unsigned to accept it explicitly -- that decision is recorded in "
+                f"npdev.lock, not silently inherited."
+            )}
+        return {"status": "UNSIGNED_ACCEPTED", "message": "",
+                "signatureField": {"status": "unsigned", "allowedUnsigned": True}}
+
+    key_id = str(sig_record.get("keyId") or "")
+    trusted_public_key_hex = trusted_keys.get(key_id)
+    if not trusted_public_key_hex:
+        return {"status": "UNKNOWN_SIGNER", "signatureField": None, "message": (
+            f"REFUSED (UNKNOWN_SIGNER): pack '{pack_id}' @ {entry.get('resolvedVersion')} "
+            f"({from_coord}) is signed by keyId '{key_id}', which is not in "
+            f"npdev-trust.json's trustedKeys. Add it there once verified through another "
+            f"channel -- --allow-unsigned has no effect here, this pack IS signed, just not by "
+            f"a key you trust yet."
+        )}
+    try:
+        signature_bytes = bytes.fromhex(str(sig_record.get("signature") or ""))
+        public_key_bytes = bytes.fromhex(trusted_public_key_hex)
+        ed25519_verify(signature_bytes, digest.encode("utf-8"), public_key_bytes)
+    except ValueError as bad_signature:
+        return {"status": "BAD_SIGNATURE", "signatureField": None, "message": (
+            f"REFUSED (BAD_SIGNATURE): pack '{pack_id}' @ {entry.get('resolvedVersion')}'s "
+            f"detached signature does not verify against trusted key '{key_id}' for digest "
+            f"{digest} -- {bad_signature}. This is either tampering or a corrupted publish."
+        )}
+    return {"status": "VERIFIED", "message": "",
+            "signatureField": {"status": "verified", "keyId": key_id, "algorithm": "ed25519"}}
+
+
 def _verify_pack_signatures(model_path: Path, before_text: str | None, args: argparse.Namespace) -> None:
     """R8.7: after a successful packAdd/packUpdate fetch (and after R8.6's tamper guard has already
     passed), verify every REMOTE pack entry's detached Ed25519 signature against
@@ -7260,6 +7333,11 @@ def _verify_pack_signatures(model_path: Path, before_text: str | None, args: arg
     On ANY refusal, npdev.lock is restored to `before_text` first (the same rollback discipline
     `_guard_against_remote_pack_tamper` already established), so a caller never ends up with a lock
     that trusts content this check just refused.
+
+    The actual per-entry decision lives in `_classify_pack_signature` (R8.3 factored this out so
+    `npdev pack verify` can reuse it read-only) -- this function's own job is just: loop, translate
+    a refusal classification into the CliError + rollback this command has always raised, and persist
+    an accepted classification's `signature` field exactly as before.
     """
     lock_path = _pack_lock_path(model_path)
     if not lock_path.is_file():
@@ -7273,8 +7351,6 @@ def _verify_pack_signatures(model_path: Path, before_text: str | None, args: arg
         return
 
     trust = _load_pack_trust_config(model_path)
-    mode = trust["mode"]
-    trusted_keys = trust["trustedKeys"]
     allow_unsigned = bool(getattr(args, "allow_unsigned", False))
 
     def _refuse(message: str) -> None:
@@ -7289,58 +7365,218 @@ def _verify_pack_signatures(model_path: Path, before_text: str | None, args: arg
         entry = packs[pack_id]
         if not isinstance(entry, dict):
             continue
-        from_coord = str(entry.get("from") or "")
-        digest = str(entry.get("digest") or "")
-        if not from_coord or not digest:
-            continue  # a LOCAL pack (no `from`) never went over the network -- nothing to verify
-
-        sig_record = _fetch_pack_signature(from_coord, digest)  # CliError propagates as-is (fetch failure)
-
-        if sig_record is None:
-            if mode == "enforce":
-                _refuse(
-                    f"REFUSED (UNSIGNED, trust mode 'enforce'): pack '{pack_id}' @ "
-                    f"{entry.get('resolvedVersion')} ({from_coord}) has no detached signature for "
-                    f"digest {digest} -- 'enforce' mode never accepts an unsigned pack, and "
-                    f"--allow-unsigned cannot override it. Publish a signed version, or relax "
-                    f"npdev-trust.json's mode to 'warn'."
-                )
-            if not allow_unsigned:
-                _refuse(
-                    f"REFUSED (UNSIGNED): pack '{pack_id}' @ {entry.get('resolvedVersion')} "
-                    f"({from_coord}) has no detached signature for digest {digest}. Pass "
-                    f"--allow-unsigned to accept it explicitly -- that decision is recorded in "
-                    f"npdev.lock, not silently inherited."
-                )
-            entry["signature"] = {"status": "unsigned", "allowedUnsigned": True}
-            changed = True
+        result = _classify_pack_signature(pack_id, entry, trust, allow_unsigned)
+        if result["status"] == "LOCAL":
             continue
-
-        key_id = str(sig_record.get("keyId") or "")
-        trusted_public_key_hex = trusted_keys.get(key_id)
-        if not trusted_public_key_hex:
-            _refuse(
-                f"REFUSED (UNKNOWN_SIGNER): pack '{pack_id}' @ {entry.get('resolvedVersion')} "
-                f"({from_coord}) is signed by keyId '{key_id}', which is not in "
-                f"npdev-trust.json's trustedKeys. Add it there once verified through another "
-                f"channel -- --allow-unsigned has no effect here, this pack IS signed, just not by "
-                f"a key you trust yet."
-            )
-        try:
-            signature_bytes = bytes.fromhex(str(sig_record.get("signature") or ""))
-            public_key_bytes = bytes.fromhex(trusted_public_key_hex)
-            ed25519_verify(signature_bytes, digest.encode("utf-8"), public_key_bytes)
-        except ValueError as bad_signature:
-            _refuse(
-                f"REFUSED (BAD_SIGNATURE): pack '{pack_id}' @ {entry.get('resolvedVersion')}'s "
-                f"detached signature does not verify against trusted key '{key_id}' for digest "
-                f"{digest} -- {bad_signature}. This is either tampering or a corrupted publish."
-            )
-        entry["signature"] = {"status": "verified", "keyId": key_id, "algorithm": "ed25519"}
+        if result["status"] in ("UNSIGNED_REFUSED", "UNKNOWN_SIGNER", "BAD_SIGNATURE"):
+            _refuse(result["message"])
+        entry["signature"] = result["signatureField"]
         changed = True
 
     if changed:
         lock_path.write_text(json.dumps(lock_doc, indent=2) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------------------------
+# R8.3: `npdev pack verify` -- the pack conformance harness. Composes what already exists rather
+# than inventing a second notion of "is this pack ok": `_pack_content_digest`/
+# `_pack_content_digest_of_dir` (R8.6) for the digest, `_classify_pack_signature`/
+# `_load_pack_trust_config` (R8.7, factored out above) for signing/trust, and a small, DECLARED-
+# SHALLOW structural check against the real `NPDevContract/schemas/pack.schema.json` for shape.
+#
+# PREMISE CHECK: does a full JSON-Schema validation of a pack.json already exist anywhere this
+# module can reuse? `validate_json_schema` (this file) wraps the SAME ajv-based
+# `validate-json-schema.mjs` every model.schema.json check already uses -- tried it directly
+# against pack.schema.json first, before writing any of this: MissingRefError, because
+# pack.schema.json's concept/panel/flow/... items `$ref` into "model.schema.json#/$defs/..." by a
+# bare relative filename, and the Node validator (`scripts/quality/json-schema-validator/
+# validate-json-schema.mjs`) only ever `ajv.compile()`s the ONE schema file it was pointed at --
+# it never registers model.schema.json as a second schema ajv could resolve that $ref against.
+# Fixing that is a change to `validate-json-schema.mjs`, which is outside this module's owned
+# surface (NPDevCli/npdev_cli.py + its tests) -- so `_pack_schema_shallow_check` below deliberately
+# validates only the pack.json document's OWN top-level shape (required/type/pattern/const/enum/
+# minLength/additionalProperties, one level into a plain nested object like `forkedFrom`) and does
+# NOT attempt to validate INSIDE a `concepts`/`panels`/... array item, since those items are exactly
+# what the unreachable $refs describe. That deeper shape is not unchecked in practice: it is what
+# `npdev pack add`'s own Gradle-backed compile step already validates the moment the pack is
+# actually consumed -- duplicating it here in a second, necessarily-approximate form is the exact
+# "one place updated, its twin forgotten" hazard CLAUDE.md's REG-108/REG-104 note warns about, so
+# this deliberately stays a top-level check plus a pointer to where the deep one already lives.
+# ---------------------------------------------------------------------------------------------
+
+def _pack_schema_shallow_check_value(value: object, subschema: dict, path: str) -> list[str]:
+    violations: list[str] = []
+    expected_type = subschema.get("type")
+    if expected_type == "string":
+        if not isinstance(value, str):
+            violations.append(f"{path}: expected a string, got {type(value).__name__}")
+            return violations
+        min_length = subschema.get("minLength")
+        if min_length is not None and len(value) < min_length:
+            violations.append(f"{path}: shorter than minLength {min_length}")
+        pattern = subschema.get("pattern")
+        if pattern and not re.match(pattern, value):
+            violations.append(f"{path}: {value!r} does not match required pattern {pattern!r}")
+        const = subschema.get("const")
+        if const is not None and value != const:
+            violations.append(f"{path}: must equal {const!r}, got {value!r}")
+        enum = subschema.get("enum")
+        if enum and value not in enum:
+            violations.append(f"{path}: must be one of {enum}, got {value!r}")
+    elif expected_type == "array":
+        if not isinstance(value, list):
+            violations.append(f"{path}: expected an array, got {type(value).__name__}")
+            return violations
+        min_items = subschema.get("minItems")
+        if min_items is not None and len(value) < min_items:
+            violations.append(f"{path}: has {len(value)} entr(y/ies), fewer than minItems {min_items}")
+        # Deliberately no per-item validation -- see this section's own module comment: array items
+        # here are exactly the $ref-into-model.schema.json shapes this shallow checker cannot resolve.
+    elif expected_type == "object":
+        if not isinstance(value, dict):
+            violations.append(f"{path}: expected an object, got {type(value).__name__}")
+            return violations
+        if "$ref" not in subschema and ("properties" in subschema or "required" in subschema):
+            violations.extend(_pack_schema_shallow_check(value, subschema, _path=path))
+    return violations
+
+
+def _pack_schema_shallow_check(doc: object, schema: dict, *, _path: str = "") -> list[str]:
+    if not isinstance(doc, dict):
+        return [f"{_path or '/'}: expected a JSON object, got {type(doc).__name__}"]
+    violations: list[str] = []
+    for key in schema.get("required") or []:
+        if key not in doc:
+            violations.append(f"{_path}/{key}: required property is missing")
+    properties = schema.get("properties") or {}
+    if schema.get("additionalProperties") is False:
+        allowed = set(properties.keys())
+        for key in doc.keys():
+            if key not in allowed:
+                violations.append(f"{_path}/{key}: unexpected property (not declared by pack.schema.json)")
+    for key, subschema in properties.items():
+        if key in doc:
+            violations.extend(_pack_schema_shallow_check_value(doc[key], subschema, f"{_path}/{key}"))
+    return violations
+
+
+def _verify_pack_standalone(pack_path: Path, args: argparse.Namespace) -> dict:
+    """`--pack` mode: structural (shallow) schema check + content digest (always computed;
+    optionally checked against `--against-digest`) + an optional signature/trust check when
+    `--from` names an already-published git+ coordinate for this exact content."""
+    pack_dir: Path | None = None
+    if pack_path.is_dir():
+        pack_dir = pack_path
+        pack_json_path = pack_path / "pack.json"
+    else:
+        pack_json_path = pack_path
+    if not pack_json_path.is_file():
+        return {"ok": False, "mode": "pack", "pack": str(pack_json_path),
+                "reason": "NOT_FOUND", "message": f"no pack.json found at {pack_json_path}"}
+
+    try:
+        doc = read_json(pack_json_path)
+    except CliError as malformed:
+        return {"ok": False, "mode": "pack", "pack": str(pack_json_path),
+                "reason": "MALFORMED_JSON", "message": str(malformed)}
+
+    schema = read_json(repo_root() / "NPDevContract" / "schemas" / "pack.schema.json")
+    violations = _pack_schema_shallow_check(doc, schema)
+    schema_ok = not violations
+
+    computed_digest = (
+        _pack_content_digest_of_dir(pack_dir) if pack_dir is not None
+        else _pack_content_digest({"pack.json": pack_json_path.read_bytes()})
+    )
+    against_digest = getattr(args, "against_digest", None)
+    digest_ok = True
+    digest_reason = None
+    if against_digest and against_digest != computed_digest:
+        digest_ok = False
+        digest_reason = (f"DIGEST_MISMATCH: expected {against_digest}, computed {computed_digest} "
+                          f"-- the pack's content does not match what was declared/locked")
+
+    signature_result = None
+    signature_ok = True
+    from_coord = getattr(args, "from_coord", None)
+    if from_coord:
+        trust_override = getattr(args, "trust", None)
+        trust_path = Path(trust_override).expanduser().resolve() if trust_override else pack_json_path
+        trust = _load_pack_trust_config(trust_path)
+        allow_unsigned = bool(getattr(args, "allow_unsigned", False))
+        fake_entry = {"from": from_coord, "digest": computed_digest, "resolvedVersion": doc.get("version")}
+        signature_result = _classify_pack_signature(str(doc.get("pack") or "?"), fake_entry, trust, allow_unsigned)
+        signature_ok = signature_result["status"] in ("LOCAL", "VERIFIED", "UNSIGNED_ACCEPTED")
+
+    ok = schema_ok and digest_ok and signature_ok
+    return {
+        "ok": ok, "mode": "pack", "pack": str(pack_json_path),
+        "packId": doc.get("pack"), "version": doc.get("version"),
+        "schemaValid": schema_ok, "schemaViolations": violations,
+        "digest": computed_digest, "digestOk": digest_ok, "digestReason": digest_reason,
+        "signature": signature_result,
+    }
+
+
+def _verify_pack_model(model_path: Path, args: argparse.Namespace) -> dict:
+    """`--model` mode: read-only re-check of every REMOTE pack entry currently in `model_path`'s
+    npdev.lock against npdev-trust.json, via the exact same `_classify_pack_signature` `pack add`/
+    `pack update` use -- never mutates the lock (unlike `_verify_pack_signatures`), and reports
+    every pack's outcome instead of stopping at the first refusal."""
+    lock_path = _pack_lock_path(model_path)
+    if not lock_path.is_file():
+        return {"ok": False, "mode": "model", "model": str(model_path), "packs": [],
+                "reason": "NO_LOCK", "message": f"no {PACK_LOCK_FILE_NAME} found next to {model_path} "
+                                                 f"-- run `npdev pack add` first"}
+    try:
+        lock_doc = json.loads(lock_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as malformed:
+        return {"ok": False, "mode": "model", "model": str(model_path), "packs": [],
+                "reason": "MALFORMED_LOCK", "message": f"{lock_path} is not valid JSON: {malformed}"}
+    packs = lock_doc.get("packs")
+    if not isinstance(packs, dict):
+        packs = {}
+
+    trust = _load_pack_trust_config(model_path)
+    allow_unsigned = bool(getattr(args, "allow_unsigned", False))
+    results = []
+    ok = True
+    for pack_id in sorted(packs):
+        entry = packs[pack_id]
+        if not isinstance(entry, dict):
+            continue
+        classification = _classify_pack_signature(pack_id, entry, trust, allow_unsigned)
+        passed = classification["status"] in ("LOCAL", "VERIFIED", "UNSIGNED_ACCEPTED")
+        ok = ok and passed
+        results.append({
+            "pack": pack_id, "status": classification["status"], "ok": passed,
+            "resolvedVersion": entry.get("resolvedVersion"),
+            "reason": classification["message"] or None,
+        })
+    return {"ok": ok, "mode": "model", "model": str(model_path), "trustMode": trust["mode"], "packs": results}
+
+
+def run_pack_verify(args: argparse.Namespace) -> int:
+    """R8.3: `npdev pack verify` -- refuses a malformed/untrusted pack with a NAMED reason per
+    failure class (SCHEMA_INVALID's own violation strings, DIGEST_MISMATCH, UNSIGNED_REFUSED,
+    UNKNOWN_SIGNER, BAD_SIGNATURE -- see `_verify_pack_signatures`'s doc for what the last three
+    mean) and passes a conforming one -- exactly the done-when. Returns 0 when everything checked
+    passes, 2 on any structured refusal (same convention `pack publish` already uses), never
+    raising CliError for an ordinary "this pack failed a check" outcome.
+    """
+    pack = getattr(args, "pack", None)
+    model = getattr(args, "model", None)
+    if bool(pack) == bool(model):
+        raise CliError("`pack verify` requires exactly one of --pack or --model")
+
+    report = (
+        _verify_pack_standalone(Path(pack).expanduser().resolve(), args) if pack
+        else _verify_pack_model(Path(model).expanduser().resolve(), args)
+    )
+    print(json.dumps(report, indent=2))
+    if report.get("message"):
+        print(report["message"])
+    return 0 if report.get("ok") else 2
 
 
 def run_pack_add(args: argparse.Namespace) -> int:
@@ -9050,6 +9286,416 @@ def _run_monitor_ops(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
+# R9.5: `npdev package` + `npdev upgrade` -- deploy a generated app without the build toolchain.
+#
+# PREMISE CHECK (done before writing any of this):
+#   1. "There is no way today to deploy a generated app to a machine without the build toolchain."
+#      TRUE for producing a portable artifact -- nothing bundles a runnable jar + the minimal
+#      launcher into one distributable unit. FALSE as a claim about what RUNNING an already-built
+#      app needs: `App/_ops/Start-App.ps1` (read before writing any of this) launches it with
+#      `java -jar <FinalExec-*.jar> --server.port=... --spring.profiles.active=...` -- a JRE and
+#      PowerShell, never the Gradle wrapper and never a JDK. The gap this closes is packaging +
+#      an in-place upgrade that preserves data, not the ability to run without a build toolchain,
+#      which already existed for anyone who copied the right files by hand.
+#   2. "resolved-db-plan.json carries a DB password" -- TRUE, and confirmed by reading a real one
+#      under Build\generated-finalapps: `npdev_monitor.redact()` is reused here (not
+#      reimplemented) for the exact same reason `monitor logs export` already uses it.
+#   3. "resolved-db-plan.json is NOT what a running app connects to; the real datasource URL is
+#      baked into application-npdev-db.properties INSIDE the built jar." Independently confirmed
+#      here (not just cited): read `App/build/resources/main/application-npdev-db.properties` on a
+#      real built sample and the jar's own `BOOT-INF/classes/application-npdev-db.properties`
+#      (`jar tf`) -- both carry `spring.datasource.url`/username/password; the `_ops` plan does
+#      not feed the JVM at all, exactly the finding `npdev_monitor._detect_datasource_sharing`
+#      already made and documents for `monitor clone`. Consequence for `package`/`upgrade`:
+#      neither command can "retarget a database" by editing the plan -- doing so would change
+#      nothing about where the running JVM connects. Retargeting would require overriding Spring's
+#      OWN datasource properties at launch (`--spring.datasource.url=...` / `SPRING_DATASOURCE_*`
+#      env vars, ordinary Spring Boot property precedence) -- NOT attempted here; out of scope for
+#      this done-when, which only asks for install/upgrade, not re-pointing at a different DB.
+#
+# App discovery reuses `npdev_monitor.probe_app` -- the SAME resolution `npdev service
+# install/uninstall` already relies on (`_run_service_op`, a few hundred lines below): it tells
+# in-app (_ops inside the app) apart from the legacy-shared layout (_ops beside a separate App/
+# dir) and returns `finalAppRoot` (jar/data/logs/secrets) and `opsDir` (the toolbox) separately,
+# which is more correct than guessing a fixed relative layout a second time.
+# ---------------------------------------------------------------------------------------------
+
+PACKAGE_SCHEMA_VERSION = "npdev-package.v1"
+PACKAGE_MANIFEST_NAME = "npdev-package.json"
+UPGRADE_HISTORY_NAME = "npdev-upgrade-history.json"
+# The three directories a regeneration spares (CLAUDE.md's own three-seam rule, enforced across
+# Build-NpdevApp.ps1 / Build-ClaudeApp.ps1 / FinalAppAssembler.java) must never be bundled into a
+# distributable package and never overwritten by an upgrade. Reusing `npdev monitor clone`'s own
+# constant here rather than retyping the literal set a further time.
+PACKAGE_SPARED_DIR_NAMES = npdev_monitor._CLONE_SPARED_DIR_NAMES
+# Runtime STATE, not code/config -- excluded from the `_ops` tree `_copy_ops_tree` bundles/overlays.
+# resolved-db-plan.json is handled separately (always redacted, see run_package's own comment); the
+# rest are things only a RUNNING install should ever have (a tracked PID, a stderr scratch file, a
+# one-time bootstrap secret, and any rolled log file).
+_PACKAGE_OPS_STATE_EXCLUDES = {"resolved-db-plan.json", "app.pid", "app.stderr.log", "SUPER_USER_KEY.txt"}
+
+
+def _copy_ops_tree(ops_src: Path, ops_dest: Path) -> list[str]:
+    """Copies the WHOLE `_ops` toolbox, not a curated subset -- found live, the hard way: a first
+    cut of `run_package` bundled a hand-picked 5-script list (Start/Stop-App, Start/Stop-
+    Environment, Status-App), and the resulting package's OWN `Start-App.ps1` failed the moment it
+    was actually run, with `Create-Environment.ps1 is not recognized` -- `Start-Environment.ps1`
+    calls it, and it was not on the curated list. There is no declared, closed set of which `_ops`
+    script calls which other one, so the only bundling rule that cannot go stale the same way again
+    is "everything that is not runtime state" (`_PACKAGE_OPS_STATE_EXCLUDES` above). Also serves
+    `run_upgrade`'s overlay: copying a package's `_ops` tree onto an EXISTING target only overwrites
+    files the package actually carries, leaving target-only state (a live PID, a real
+    SUPER_USER_KEY.txt) untouched -- the same reason those names are excluded going INTO the package
+    in the first place."""
+    ops_dest.mkdir(parents=True, exist_ok=True)
+    copied: list[str] = []
+    for item in ops_src.rglob("*"):
+        if not item.is_file():
+            continue
+        rel = item.relative_to(ops_src)
+        if rel.name in _PACKAGE_OPS_STATE_EXCLUDES or rel.name.endswith(".log"):
+            continue
+        dest = ops_dest / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(item, dest)
+        copied.append(rel.as_posix())
+    return copied
+
+
+def _find_runnable_jar(final_app_root: Path) -> Path:
+    """The exact selection `App/_ops/Start-App.ps1` makes at launch time (read verbatim before
+    writing this): `build/libs/FinalExec-*.jar`, excluding `*-plain.jar` (Spring Boot's
+    dependency-free jar, not runnable stand-alone). Deliberately NOT `npdev_monitor._newest_jar`
+    -- that helper is for an informational display row and does not exclude `-plain.jar`, which
+    would be a real defect here since this jar is the one `upgrade` actually launches."""
+    candidates = [
+        p for p in final_app_root.rglob("FinalExec-*.jar")
+        if p.parent.name == "libs" and p.parent.parent.name == "build" and not p.name.endswith("-plain.jar")
+    ]
+    if not candidates:
+        raise CliError(
+            f"no runnable jar found under {final_app_root} (looked for build/libs/FinalExec-*.jar, "
+            f"excluding *-plain.jar) -- build the app first (Build-NpdevApp.ps1 / gradlew bootJar)"
+        )
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
+def _app_java_version(final_app_root: Path) -> str:
+    props_path = final_app_root / "gradle.properties"
+    if props_path.is_file():
+        value = npdev_monitor._read_properties_file(props_path).get("npdevAppJavaVersion")
+        if value:
+            return value
+    return "17"  # FinalAppAssembler#appendAppJavaVersionDefault's own default (CLAUDE.md)
+
+
+def _app_datasource_summary(final_app_root: Path) -> dict:
+    """Ground truth per `npdev_monitor._detect_datasource_sharing`'s own doc:
+    `application-npdev-db.properties` is baked INTO the built jar and is what the JVM actually
+    reads; `_ops/resolved-db-plan.json` is not. Informational only, and REDACTED before it ever
+    goes into a package manifest -- the properties file itself still carries the real credential
+    for a non-embedded engine (that is baked into the shipped jar regardless of anything this
+    command does; redacting the manifest's own copy of the URL does not remove it from the jar,
+    which is a real, separately-scoped limitation reported rather than hidden)."""
+    candidates = list(final_app_root.rglob("application-npdev-db.properties"))
+    if not candidates:
+        return {"engine": None, "url": None,
+                "note": "application-npdev-db.properties not found (app not yet built) -- "
+                        "database configuration unknown"}
+    props = npdev_monitor._read_properties_file(candidates[0])
+    return {
+        "engine": props.get("npdev.database.engine"),
+        "url": npdev_monitor.redact(props.get("spring.datasource.url", "")),
+    }
+
+
+def run_package(args: argparse.Namespace) -> int:
+    """R9.5: bundle an ALREADY-BUILT FinalApp's runnable jar + the minimal `_ops` launcher into a
+    self-contained artifact -- no Gradle wrapper, no JDK, no source, no source-machine data. See
+    this section's own module doc for what a target machine genuinely needs to RUN it.
+    """
+    app_record = npdev_monitor.probe_app(Path(args.app).expanduser().resolve(), include_info=False)
+    if not app_record.get("isAppRoot"):
+        raise CliError(app_record.get("detail") or f"not a generated NPDev app: {args.app}")
+
+    final_app_root = Path(app_record["finalAppRoot"])
+    ops_dir = Path(app_record["opsDir"]) if app_record.get("opsDir") else final_app_root / "_ops"
+    jar_path = _find_runnable_jar(final_app_root)
+
+    plan_path = ops_dir / "resolved-db-plan.json"
+    plan = read_json(plan_path) if plan_path.is_file() else {}
+    app_id = app_record.get("name") or final_app_root.name
+
+    out_path = Path(args.out).expanduser().resolve()
+    as_zip = bool(getattr(args, "zip", False)) or out_path.suffix.lower() == ".zip"
+    if out_path.exists() and not getattr(args, "force", False):
+        raise CliError(f"{out_path} already exists -- pass --force to overwrite")
+
+    with tempfile.TemporaryDirectory(prefix="npdev-package-") as staging_raw:
+        staging = Path(staging_raw)
+        package_app_dir = staging / "app"
+        (package_app_dir / "build" / "libs").mkdir(parents=True, exist_ok=True)
+        jar_dest = package_app_dir / "build" / "libs" / jar_path.name
+        shutil.copy2(jar_path, jar_dest)
+
+        # R9.5 real-boot finding (found by actually booting a packaged app, not by reading code):
+        # `npdev-generated/` is read off the FILESYSTEM at boot, twice over, never off the
+        # classpath/jar -- so a package that omits it does not run at all, on any profile:
+        #   1. `npdev.runtime.plugin-package-directory` (the `trial`/`filesystem`/`external-*`
+        #      profiles' `filesystem-folder` discovery mode) names
+        #      `./npdev-generated/src/main/resources/npdev/plugin-packages`, relative to the JVM's
+        #      cwd. A package bundling only the jar failed to boot a real sample
+        #      (r94-simple-user-registry) with `IllegalStateException: Runtime plugin package
+        #      directory does not exist`.
+        #   2. `StrictExecutionValidator` (application-prod.properties' own comment: "the strict
+        #      npdev-generated/ hash check ... stays ON") hashes the ENTIRE `npdev-generated/` tree
+        #      against `npdev-generated/src/main/resources/npdev/support/
+        #      generated-folder.signature.properties` and refuses to boot if it is missing or
+        #      altered -- bundling only the plugin-packages subfolder still failed, with
+        #      `StrictExecutionViolationException: Strict execution signature is missing`.
+        # The only bundling rule immune to a THIRD such surprise is "the whole directory, not a
+        # subpath of it" -- `npdev-generated/` is itself generator OUTPUT (never user data), so
+        # shipping all of it is no different in kind from shipping the jar.
+        npdev_generated_relpath = Path("npdev-generated")
+        npdev_generated_src = final_app_root / npdev_generated_relpath
+        bundled_npdev_generated = npdev_generated_src.is_dir()
+        if bundled_npdev_generated:
+            shutil.copytree(npdev_generated_src, package_app_dir / npdev_generated_relpath)
+
+        ops_dest = package_app_dir / "_ops"
+        copied_scripts = _copy_ops_tree(ops_dir, ops_dest)
+
+        # CLAUDE.md: resolved-db-plan.json carries a DB password -- anything that copies it off the
+        # machine (which is the entire point of `package`) MUST go through npdev_monitor.redact()
+        # first, exactly the rule `monitor logs export` already follows.
+        if plan_path.is_file():
+            (ops_dest / "resolved-db-plan.json").write_text(
+                json.dumps(npdev_monitor.redact(plan), indent=2) + "\n", encoding="utf-8")
+
+        for candidate in (final_app_root / ".npdev-root", ops_dir.parent / ".npdev-root"):
+            if candidate.is_file():
+                shutil.copy2(candidate, package_app_dir / ".npdev-root")
+                break
+
+        # Only *.example templates ship -- never a real secret, matching the platform's own
+        # "only agent-proxy.env.example is ever emitted" convention (CLAUDE.md's agent-proxy note).
+        secrets_dest = package_app_dir / "secrets"
+        secrets_dest.mkdir(parents=True, exist_ok=True)
+        example_names = []
+        secrets_src = final_app_root / "secrets"
+        if secrets_src.is_dir():
+            for example in secrets_src.glob("*.example"):
+                shutil.copy2(example, secrets_dest / example.name)
+                example_names.append(example.name)
+
+        # data/ and logs/ ship EMPTY -- a fresh install (or `upgrade`'s target) grows its own,
+        # exactly as a first-ever generation does. Shipping the source machine's data would defeat
+        # the entire point of a portable package.
+        (package_app_dir / "data").mkdir(parents=True, exist_ok=True)
+        (package_app_dir / "logs").mkdir(parents=True, exist_ok=True)
+
+        java_version = _app_java_version(final_app_root)
+        manifest = {
+            "schemaVersion": PACKAGE_SCHEMA_VERSION,
+            "packagedAt": _utc_now(),
+            "sourceAppRoot": str(final_app_root),
+            "appId": app_id,
+            "jarFileName": jar_dest.name,
+            "jarSha256": f"sha256:{hashlib.sha256(jar_dest.read_bytes()).hexdigest()}",
+            "javaVersionRequired": java_version,
+            "database": _app_datasource_summary(final_app_root),
+            "serverPort": plan.get("serverPort"),
+            "defaultSpringProfiles": plan.get("defaultSpringProfiles"),
+            "sparedDirectories": sorted(PACKAGE_SPARED_DIR_NAMES),
+            "opsScripts": copied_scripts,
+            "bundledNpdevGenerated": bundled_npdev_generated,
+            "secretsTemplates": example_names,
+            "runtimeRequirement": (
+                f"a JRE matching javaVersionRequired ({java_version}) on PATH as `java`, plus "
+                "PowerShell (pwsh or Windows PowerShell) to run _ops\\Start-App.ps1 -- NEITHER the "
+                "Gradle wrapper NOR a JDK NOR this repo's source are required to RUN a packaged "
+                "app (only to BUILD one in the first place)."
+            ),
+        }
+        (staging / PACKAGE_MANIFEST_NAME).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        if as_zip:
+            if out_path.exists():
+                out_path.unlink()
+            with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for file_path in staging.rglob("*"):
+                    if file_path.is_file():
+                        zf.write(file_path, file_path.relative_to(staging).as_posix())
+        else:
+            if out_path.exists():
+                shutil.rmtree(out_path)
+            shutil.copytree(staging, out_path)
+
+    result = {"ok": True, "out": str(out_path), "zip": as_zip, "manifest": manifest}
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def _read_package_manifest(package_arg: str) -> tuple[dict, Path]:
+    """(manifest, packageAppDir). Accepts a directory (what `package` writes by default) or a
+    `.zip` (extracted to a throwaway temp dir this process leaks intentionally for the life of the
+    command -- `run_upgrade` reads it once before exiting, and cleaning it up mid-copy would be
+    more failure surface than a few extra MB in the OS temp dir)."""
+    package_path = Path(package_arg).expanduser().resolve()
+    if package_path.is_file() and package_path.suffix.lower() == ".zip":
+        extract_dir = Path(tempfile.mkdtemp(prefix="npdev-upgrade-extract-"))
+        with zipfile.ZipFile(package_path) as zf:
+            zf.extractall(extract_dir)
+        root = extract_dir
+    elif package_path.is_dir():
+        root = package_path
+    else:
+        raise CliError(f"{package_path} is not a package directory or .zip (produced by `npdev package`)")
+    manifest_path = root / PACKAGE_MANIFEST_NAME
+    if not manifest_path.is_file():
+        raise CliError(f"{root} has no {PACKAGE_MANIFEST_NAME} -- not a package `npdev package` produced")
+    manifest = read_json(manifest_path)
+    if manifest.get("schemaVersion") != PACKAGE_SCHEMA_VERSION:
+        raise CliError(f"{manifest_path}: unrecognized schemaVersion {manifest.get('schemaVersion')!r}, "
+                        f"expected {PACKAGE_SCHEMA_VERSION!r}")
+    return manifest, root / "app"
+
+
+def _hash_tree(root: Path) -> dict:
+    """relative-posix-path -> sha256 for every FILE under `root` -- used to prove a spared
+    directory (data/logs/secrets) is byte-identical before and after an upgrade, the done-when's
+    "without data loss" made checkable instead of merely asserted."""
+    out: dict = {}
+    if not root.is_dir():
+        return out
+    for path in root.rglob("*"):
+        if path.is_file():
+            out[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return out
+
+
+def run_upgrade(args: argparse.Namespace) -> int:
+    """R9.5: install `--package` onto `--target`, or upgrade it in place, WITHOUT touching
+    data/logs/secrets -- the same three directories a regeneration spares. `--target` not existing
+    (or not yet a discoverable app) is treated as a fresh install, not an error.
+    """
+    manifest, package_app_dir = _read_package_manifest(args.package)
+
+    target_input = Path(args.target).expanduser().resolve()
+    target_record = npdev_monitor.probe_app(target_input, include_info=False)
+    fresh_install = not target_record.get("isAppRoot")
+
+    if fresh_install:
+        target_final_app_root = target_input
+        target_final_app_root.mkdir(parents=True, exist_ok=True)
+        # A fresh target has nothing to preserve selectively -- seed it wholesale from the package,
+        # then let the same jar-swap/ops-copy logic below run over it (idempotent: it just re-copies
+        # what is already there).
+        shutil.copytree(package_app_dir, target_final_app_root, dirs_exist_ok=True)
+        target_ops_dir = target_final_app_root / "_ops"
+    else:
+        target_final_app_root = Path(target_record["finalAppRoot"])
+        target_ops_dir = (Path(target_record["opsDir"]) if target_record.get("opsDir")
+                          else target_final_app_root / "_ops")
+        if target_record.get("listening") and not getattr(args, "force", False):
+            raise CliError(
+                f"{target_final_app_root} looks like it is still running (pid "
+                f"{target_record.get('pid')} listening on port {target_record.get('port')}) -- "
+                f"stop it first (_ops/Stop-App.ps1) or pass --force to upgrade anyway (NOT "
+                f"recommended: files on disk would be swapped underneath the running JVM)."
+            )
+
+    spared_before = {name: _hash_tree(target_final_app_root / name) for name in sorted(PACKAGE_SPARED_DIR_NAMES)}
+
+    # Jar swap: remove every existing FinalExec-*.jar under target/build/libs first, so
+    # Start-App.ps1's own `Select-Object -First 1` over `FinalExec-*.jar` can never pick a stale
+    # jar left sitting alongside the new one.
+    target_libs = target_final_app_root / "build" / "libs"
+    target_libs.mkdir(parents=True, exist_ok=True)
+    removed_jars = []
+    if not fresh_install:
+        # On a fresh install the copytree above already placed the package's own jar and nothing
+        # else -- reporting it as "removed" would misleadingly suggest a stale jar existed.
+        for stale in target_libs.glob("FinalExec-*.jar"):
+            if stale.name not in removed_jars:
+                removed_jars.append(stale.name)
+            stale.unlink()
+    package_libs = package_app_dir / "build" / "libs"
+    new_jar = next(package_libs.glob("FinalExec-*.jar"), None)
+    if new_jar is None:
+        raise CliError(f"{package_app_dir} has no build/libs/FinalExec-*.jar -- not a usable package")
+    shutil.copy2(new_jar, target_libs / new_jar.name)
+
+    # `npdev-generated/` is CODE too -- see `run_package`'s own doc for why bundling the WHOLE
+    # directory (not just its plugin-packages subfolder) is load-bearing: the plugin discovery AND
+    # the strict-execution signature check both read it off disk, relative to the JVM's cwd, at
+    # boot. Refreshed on every upgrade like the jar and _ops scripts, never spared.
+    npdev_generated_relpath = Path("npdev-generated")
+    package_npdev_generated = package_app_dir / npdev_generated_relpath
+    updated_npdev_generated = False
+    if package_npdev_generated.is_dir():
+        target_npdev_generated = target_final_app_root / npdev_generated_relpath
+        if target_npdev_generated.exists():
+            shutil.rmtree(target_npdev_generated)
+        shutil.copytree(package_npdev_generated, target_npdev_generated)
+        updated_npdev_generated = True
+
+    # _ops scripts are CODE, always overwritten by an upgrade -- unlike resolved-db-plan.json below,
+    # which is INSTALL-SPECIFIC state (the port/engine this particular target was set up with).
+    # `_copy_ops_tree` is an OVERLAY here (target_ops_dir already exists): it only overwrites files
+    # the package itself carries, leaving target-only state (app.pid, SUPER_USER_KEY.txt, a live
+    # log) alone -- the same exclusion list that kept them out of the package in the first place.
+    package_ops_dir = package_app_dir / "_ops"
+    updated_scripts = _copy_ops_tree(package_ops_dir, target_ops_dir)
+
+    target_plan_path = target_ops_dir / "resolved-db-plan.json"
+    wrote_fresh_plan = False
+    if not target_plan_path.is_file() or fresh_install:
+        package_plan_path = package_ops_dir / "resolved-db-plan.json"
+        if package_plan_path.is_file():
+            shutil.copy2(package_plan_path, target_plan_path)
+            wrote_fresh_plan = True
+
+    marker_src = package_app_dir / ".npdev-root"
+    if marker_src.is_file() and not (target_final_app_root / ".npdev-root").is_file():
+        shutil.copy2(marker_src, target_final_app_root / ".npdev-root")
+
+    spared_after = {name: _hash_tree(target_final_app_root / name) for name in sorted(PACKAGE_SPARED_DIR_NAMES)}
+    data_preserved = spared_before == spared_after
+
+    history_path = target_ops_dir / UPGRADE_HISTORY_NAME
+    history = (read_json(history_path) if history_path.is_file()
+              else {"schemaVersion": "npdev-upgrade-history.v1", "entries": []})
+    history.setdefault("entries", []).append({
+        "at": _utc_now(),
+        "fromPackage": str(Path(args.package).expanduser().resolve()),
+        "removedJars": removed_jars,
+        "installedJar": new_jar.name,
+        "jarSha256": manifest.get("jarSha256"),
+        "freshInstall": fresh_install,
+        "dataPreserved": data_preserved,
+    })
+    history_path.write_text(json.dumps(history, indent=2) + "\n", encoding="utf-8")
+
+    result = {
+        "ok": True,
+        "target": str(target_final_app_root),
+        "freshInstall": fresh_install,
+        "removedJars": removed_jars,
+        "installedJar": new_jar.name,
+        "updatedOpsScripts": updated_scripts,
+        "updatedNpdevGenerated": updated_npdev_generated,
+        "wroteFreshDbPlan": wrote_fresh_plan,
+        "dataPreserved": data_preserved,
+        "sparedDirectories": sorted(PACKAGE_SPARED_DIR_NAMES),
+    }
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+# ---------------------------------------------------------------------------------------------
 # MON-22 follow-up: `npdev service install|uninstall` -- a THIN wrapper over the four scripts
 # OperationalRunbookEmitter (R9.6) already writes into every generated app's `_ops`
 # (Install-Service.ps1/Uninstall-Service.ps1 on Windows, install-service.sh/uninstall-service.sh
@@ -9987,6 +10633,42 @@ def build_parser() -> argparse.ArgumentParser:
         "--out", required=True, help="path to write the private keyfile (JSON) to",
     )
 
+    # R8.3: the pack conformance harness -- composes R8.6's digest and R8.7's signature/trust
+    # machinery (`_classify_pack_signature`, factored out of `_verify_pack_signatures` for exactly
+    # this reuse) rather than a second notion of "is this pack ok". See `run_pack_verify`'s own doc.
+    pack_verify = pack_sub.add_parser(
+        "verify",
+        help="Conformance harness (R8.3): check a pack.json's structure/digest/signature, or "
+             "re-check every REMOTE pack a model's npdev.lock currently trusts, without mutating "
+             "anything.",
+    )
+    pack_verify.add_argument(
+        "--pack", default=None,
+        help="path to a pack.json file, or a directory containing one -- checks schema "
+             "conformance + content digest (and, with --from, its detached signature). Mutually "
+             "exclusive with --model.")
+    pack_verify.add_argument(
+        "--model", default=None,
+        help="path to a model.json -- re-checks every REMOTE pack entry in its npdev.lock against "
+             "npdev-trust.json, read-only (never rewrites the lock). Mutually exclusive with --pack.")
+    pack_verify.add_argument(
+        "--against-digest", dest="against_digest", default=None, metavar="<sha256:...>",
+        help="--pack only: fail with DIGEST_MISMATCH unless the pack's own recomputed content "
+             "digest equals this")
+    pack_verify.add_argument(
+        "--from", dest="from_coord", default=None, metavar="<git+coordinate>",
+        help="--pack only: also verify the pack's detached signature for this ALREADY-PUBLISHED "
+             "git+ coordinate, the same way `pack add` does")
+    pack_verify.add_argument(
+        "--trust", default=None,
+        help="--pack only: path to the npdev-trust.json to check the signature against "
+             "(default: sibling of --pack)")
+    pack_verify.add_argument(
+        "--allow-unsigned", dest="allow_unsigned", action="store_true",
+        help="treat an unsigned pack (or unsigned locked entry) as passing, same meaning as "
+             "`pack add --allow-unsigned`",
+    )
+
     # R1.5 (roadmap 2026-08-18 R1.5): "npdev init" scaffolds a whole app; before this, growing one
     # meant hand-editing model.json against the 4x-mirrored schema with no help until `npdev
     # validate model` failed. `add` writes ONE schema-valid member into the correct top-level
@@ -10440,6 +11122,43 @@ def build_parser() -> argparse.ArgumentParser:
              "no-op when nothing is installed -- so this prints the command that WOULD run instead "
              "of running it.")
     service_uninstall.add_argument("--json", action="store_true")
+
+    # R9.5: deploy without the toolchain. `package` bundles an already-built app's runnable jar +
+    # minimal `_ops` launcher; `upgrade` installs (or in-place upgrades) that bundle onto a target,
+    # never touching data/logs/secrets. See `run_package`/`run_upgrade`'s own module doc for the
+    # premises checked before writing either.
+    package_parser = subparsers.add_parser(
+        "package",
+        help="Bundle an already-built FinalApp's runnable jar + minimal _ops launcher into a "
+             "self-contained, distributable artifact (R9.5) -- no Gradle wrapper, no JDK, no "
+             "source, no source-machine data.",
+    )
+    package_parser.add_argument(
+        "--app", required=True,
+        help="a generated, ALREADY-BUILT NPDev app directory (the one `npdev monitor probe` sees) "
+             "-- must already have a runnable jar under build/libs; this command never builds one")
+    package_parser.add_argument("--out", required=True,
+                                help="output directory, or a .zip path, to write the package to")
+    package_parser.add_argument("--zip", action="store_true",
+                                help="force a single .zip artifact even when --out has no .zip suffix")
+    package_parser.add_argument("--force", action="store_true", help="overwrite --out if it already exists")
+
+    upgrade_parser = subparsers.add_parser(
+        "upgrade",
+        help="Install or in-place upgrade a `npdev package` artifact onto a target app directory "
+             "(R9.5), WITHOUT touching data/logs/secrets -- the same three directories a "
+             "regeneration spares.",
+    )
+    upgrade_parser.add_argument("--package", required=True,
+                                help="a package directory or .zip produced by `npdev package`")
+    upgrade_parser.add_argument(
+        "--target", required=True,
+        help="the app directory to install into (created fresh if it does not yet exist) or "
+             "upgrade in place (if it does)")
+    upgrade_parser.add_argument(
+        "--force", action="store_true",
+        help="upgrade even though the target looks like it is still running (NOT recommended -- "
+             "stop it first with _ops/Stop-App.ps1)")
 
     report = subparsers.add_parser(
         "report", help="Produce or bootstrap the evidence and status reports."
@@ -10909,6 +11628,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_pack_publish(args)
         if args.command == "pack" and args.pack_command == "sign-keygen":
             return run_pack_sign_keygen(args)
+        if args.command == "pack" and args.pack_command == "verify":
+            return run_pack_verify(args)
         if args.command == "pack" and args.pack_command == "search":
             return run_pack_search(args)
         if args.command == "pack" and args.pack_command == "build-catalog":
@@ -10917,6 +11638,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_service_install(args)
         if args.command == "service" and args.service_command == "uninstall":
             return run_service_uninstall(args)
+        if args.command == "package":
+            return run_package(args)
+        if args.command == "upgrade":
+            return run_upgrade(args)
         if args.command == "add" and args.add_command == "concept":
             return run_add_member(args, "concept")
         if args.command == "add" and args.add_command == "panel":
