@@ -39,6 +39,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 
 public final class GeneratorFacade {
 
@@ -93,7 +94,25 @@ public final class GeneratorFacade {
     ) throws Exception {
         generate(model, outRoot, schemaRealizationDir, null, modelSourcePath,
                 legacyInMemoryPlan(model, outRoot, schemaRealizationDir, modelSourcePath),
-                List.of(), null, linkedSealedPackAliases);
+                List.of(), null, linkedSealedPackAliases, Map.of());
+    }
+
+    /**
+     * GAP-1: convenience twin of the 5-arg overload directly above, for callers/tests that ALSO want
+     * {@code extensionFieldOrigins} (see the 9-arg overload's own doc) threaded into the generated UI
+     * manifest without constructing a real {@link ResolvedModelSource}/{@link GeneratedDatabasePlan}.
+     */
+    public void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path schemaRealizationDir,
+            Path modelSourcePath,
+            List<String> linkedSealedPackAliases,
+            Map<String, Map<String, String>> extensionFieldOrigins
+    ) throws Exception {
+        generate(model, outRoot, schemaRealizationDir, null, modelSourcePath,
+                legacyInMemoryPlan(model, outRoot, schemaRealizationDir, modelSourcePath),
+                List.of(), null, linkedSealedPackAliases, extensionFieldOrigins);
     }
 
     public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir, GeneratedDatabasePlan databasePlan) throws Exception {
@@ -203,11 +222,44 @@ public final class GeneratorFacade {
                 outRoot,
                 schemaRealizationDir,
                 resolvedModelSource,
+                databasePlan,
+                migrationPlanDestructiveItemStableStrings,
+                destructiveAcknowledgmentToken,
+                linkedSealedPackAliases,
+                Map.of()
+        );
+    }
+
+    /**
+     * PACK-10 step 4/GAP-1 wiring: {@code extensionFieldOrigins} is {@code
+     * com.npdev.generator.packs.PackExtensionComposer.ExtensionComposition#extensionFieldOrigins()} --
+     * per-concept, per-field attribution of which extension pack added a field, threaded straight into
+     * {@link BusinessUiEmitter}'s {@code extensionSource} manifest attribute. Empty for every existing
+     * caller (the 8-arg overload above delegates here with {@code Map.of()}) -- zero behavior change
+     * when the app composes no extension packs.
+     */
+    public void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path schemaRealizationDir,
+            ResolvedModelSource resolvedModelSource,
+            GeneratedDatabasePlan databasePlan,
+            List<String> migrationPlanDestructiveItemStableStrings,
+            String destructiveAcknowledgmentToken,
+            List<String> linkedSealedPackAliases,
+            Map<String, Map<String, String>> extensionFieldOrigins
+    ) throws Exception {
+        generate(
+                model,
+                outRoot,
+                schemaRealizationDir,
+                resolvedModelSource,
                 resolvedModelSource == null ? null : resolvedModelSource.rootModelPath(),
                 databasePlan,
                 migrationPlanDestructiveItemStableStrings,
                 destructiveAcknowledgmentToken,
-                linkedSealedPackAliases
+                linkedSealedPackAliases,
+                extensionFieldOrigins
         );
     }
 
@@ -220,7 +272,7 @@ public final class GeneratorFacade {
             GeneratedDatabasePlan databasePlan
     ) throws Exception {
         generate(model, outRoot, schemaRealizationDir, resolvedModelSource, modelSourcePath, databasePlan,
-                List.of(), null, List.of());
+                List.of(), null, List.of(), Map.of());
     }
 
     private void generate(
@@ -232,7 +284,8 @@ public final class GeneratorFacade {
             GeneratedDatabasePlan databasePlan,
             List<String> migrationPlanDestructiveItemStableStrings,
             String destructiveAcknowledgmentToken,
-            List<String> linkedSealedPackAliases
+            List<String> linkedSealedPackAliases,
+            Map<String, Map<String, String>> extensionFieldOrigins
     ) throws Exception {
         // REG-44: fail BEFORE emitting anything. A model that declares row-level access rules while
         // crud.kernelControlled is false would generate an app that silently enforces neither them nor
@@ -261,7 +314,8 @@ public final class GeneratorFacade {
         // business UI's panels, so it has no dependency on that flag being on.
         new ModelSurfaceEmitter(templates, writer).emit(model);
         if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
-            new BusinessUiEmitter(templates, writer).emit(appOwnedSourceModel, superUserRole, settingResolver);
+            new BusinessUiEmitter(templates, writer).emit(
+                    appOwnedSourceModel, superUserRole, settingResolver, extensionFieldOrigins);
             // Phase 7: provenance/store/box-view admin surfaces ride along with the business UI,
             // since they are only reachable through its super-user admin nav.
             new BoxManifestEmitter().emit(model, writer);

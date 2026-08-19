@@ -432,6 +432,23 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("readOnly", field.isId());
             node.put("sortable", isSortable(field));
             node.put("filterable", isFilterable(field));
+            // R5.5/GAP-2: R5.5 shipped SERVER enforcement of `field.access {read, write}` -- a
+            // denied write throws FIELD_SCOPE_DENIED, a denied read is stripped from the response
+            // entirely -- but left the generated UI with no idea a field was gated at all, so it
+            // rendered a normal editable input the server would then reject. These two flags are
+            // the "resolved" (DSL-declared -> UI-consumable boolean) form of that rule, never the
+            // rule itself: this generic UI has no evaluator for the declared expression (it may
+            // reference the caller's role/tenant/row-owner, none of which the tiny values-only
+            // evaluator in business-ui-app.mustache's evaluateWhen() has access to), so a field
+            // that declares ANY access.write rule is flagged unconditionally -- the UI is a
+            // courtesy that renders it read-only rather than guessing who the rule would actually
+            // allow; the SERVER remains the only real enforcement point regardless of these flags.
+            // accessReadScoped is exposed for symmetry/future use (e.g. a "restricted" hint) --
+            // a denied READ is already simply absent from the record the server returns, so no
+            // client-side gating is needed for it; every field-value renderer here already
+            // tolerates `undefined` (see renderFieldValue/createInput's null-or-undefined checks).
+            node.put("accessReadScoped", field.getAccess() != null && field.getAccess().getRead() != null);
+            node.put("accessWriteScoped", field.getAccess() != null && field.getAccess().getWrite() != null);
             node.put("showInDefaultWebUi", isShowInUi(field));
             node.put("tab", firstNonBlank(fieldUiString(field, CompiledPresentationMetadata::getTab), ""));
             node.put("column", fieldUiInt(field, CompiledPresentationMetadata::getColumn));
