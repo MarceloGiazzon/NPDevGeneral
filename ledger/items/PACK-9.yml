@@ -59,3 +59,56 @@ detail: |
   -- genuinely needs new DSL syntax plus a real design decision (how a pack author writes a binding
   reference, how the expression language distinguishes it from a literal, how/when the rewrite pass
   runs relative to compilation) before implementation, not a quick pass alongside smaller items.
+
+  2026-08-19 (R8.9, this session): the DSL-side half landed and is solid --
+  `PackRoleBindingRewriter`/`PackRoleBindingRewriteTest` (both in
+  `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/`), the `role('name')` token, and
+  `packs[].provides.roleBindings`, wired through `ModelSourceResolver`/`PackDependencyGraphWalker`/
+  `PackValidation`, all pre-existed this session, committed and green. Attempted to close the item
+  against its own done-when (two apps binding the same pack's `role('approver')`-equivalent token to
+  different concrete roles, live-verified enforcing correctly in both; an unbound role refusing at
+  composition naming the pack and key) and got a SPLIT result:
+
+  - **Item 2 (unbound refusal) is fully proven, live, not just by unit test.** Ran the real generator
+    (`:generator:run`, not a mocked resolver) against a throwaway model importing the `labeling` pack
+    with NO `provides.roleBindings` declared. It failed at composition with exactly:
+    `pack 'labeling' (via app -> labeling) references role('curator'), which the app does not declare
+    in provides.roleBindings.'curator' -- composition refuses (an unbound role must fail at
+    composition, never silently reach runtime)` -- names both the pack (`labeling`) and the unbound
+    key (`curator`), plus the exact JSON path to fix. `PackRoleBindingRewriteTest.
+    unboundRoleTokenRefusesNamingThePackAndTheKey` covers the same shape and still passes (verified
+    this session, `:dsl:test --tests PackRoleBindingRewriteTest`, 3/3 green).
+
+  - **Item 1 (two-app live enforcement) could NOT be proven, and the reason is outside this item's own
+    surface.** Built two new fixture apps, `NPDevSamples/pack9-role-binding-a` and `-b` (repro-case,
+    `scripts/quality/corpus-roles.json`), both composing the exact same `labeling` pack
+    (`dsl-conformance-max`'s copy, byte-identical) but binding `curator` to a different concrete role
+    each (`CURATOR_A` / `CURATOR_B`). Generated, built, and booted BOTH as real FinalApps (H2Local,
+    apikey auth) on ports 8410/8411 -- `npdev-canary` was not used as the base since it is explicitly
+    frozen ("do not add features"); these two are plain siblings of it instead. Confirmed the
+    compile-time half worked perfectly first: each app's own `compiled-model.json` carries its own
+    literal (`CURATOR_A` / `CURATOR_B`) exactly 4 times, zero leftover `role('curator')` tokens, in
+    both apps.
+
+    Then drove real HTTP traffic (`POST /api/concepts/labeling_labels`, the labeling pack's generated
+    CRUD endpoint) with actors holding each concrete role. Every combination was DENIED on BOTH apps,
+    including the case that should have succeeded (an actor holding the app's own correctly-bound
+    role). Root cause, confirmed by reading `ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule`
+    (`NPDevKernel/kernel/.../concepts/`) and reproduced live via stack trace
+    (`ConceptGatewayAccessDeniedException: Concept Gateway denied row-level write access`): it calls
+    `ComputedExpression.evaluateBoolean(expression, scope)` with an EMPTY `FunctionRegistry`, so the
+    labeling pack's `access.write` rule -- `$user.roles.contains(role('curator'))`, the ONLY existing
+    corpus usage of this idiom -- throws `"unknown function: contains"` on every evaluation, which the
+    method's own catch block turns into a silent `false` (fail-closed by design, but here masking a
+    permanently-broken rule rather than a genuinely denied actor). **This is a pre-existing NPDevKernel
+    defect, not something the PACK-9 rewrite mechanism itself got wrong** -- filed as `REG-195` (new
+    this session) rather than fixed here, per this item's explicit ownership boundary
+    (`NPDevKernel/**` is out of scope; ownership belongs to a separate workstream this session).
+
+  **Because item 1's own explicit non-negotiable ("enforces correctly at runtime in both,
+  live-verified") could not be met** -- the only mechanism the DSL layer offers for a pack to express
+  "does the actor hold role X" inside a row-level rule is currently inert at runtime, independent of
+  which concrete role the app bound -- **PACK-9 stays OPEN.** Re-attempt once REG-195 is fixed (a real
+  `FunctionRegistry` threaded into `ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule`,
+  registering at least `contains`); the two fixture apps and their live-boot recipe above should
+  reproduce cleanly against a fixed kernel with no DSL-side changes needed.
