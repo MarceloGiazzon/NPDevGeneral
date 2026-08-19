@@ -1,0 +1,67 @@
+id: PACK-14
+title: >-
+  A second concept-to-pack export ships in every generated app's admin UI -- single-concept and
+  reference-blind, the exact two defects PACK-13's CLI verb was built to fix
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-19
+source: >-
+  Found by the R8.2 implementation while verifying the roadmap's claim that the PowerShell script was
+  "the only path from a working app concept to a reusable pack". That premise was FALSE. Confirmed
+  independently by the orchestrator against the emitted controller and its UI caller.
+surface: generator/pack-emitters
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-pack-catalog-controller.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+detail: |
+  `GeneratedPackCatalogController.exportConceptToPack` (`business-ui-pack-catalog-controller.mustache:240-241`,
+  `POST /api/admin/packs/export`) is a fully independent export path, called from the business UI at
+  `business-ui-app.mustache:1802`. It ships in EVERY generated app, so it is not a dev-only
+  convenience -- it is the button an analyst actually finds.
+
+  It has the same two limitations the roadmap attributed solely to the now-deleted PowerShell script:
+    - **Single-concept**: it takes one `conceptName` (line 244) and fails with 404 if that one name
+      does not match (line 294). There is no member set.
+    - **Reference-blind**: it copies the concept's JSON with no classification of
+      `fields[].reference` / `satelliteOf` targets. A concept exported this way carries references
+      that may point at concepts which did not travel with it, and nothing says so.
+
+  So closing R8.2 by deleting `NPDevSamples/scripts/packs/export-concept-to-pack.ps1` and adding
+  `npdev pack export` (PACK-13) removed the path nobody used and left the path everybody sees.
+
+  WHAT PACK-13 ESTABLISHED THAT THIS PATH SHOULD ADOPT: every reference target is classified three
+  ways -- rewritten to intra-pack form when the target is also exported; left qualified and declared
+  in the pack's `packs[]` at a `^major.minor` constraint when it is a real sibling pack; and
+  otherwise the export is REFUSED by default, naming each `concept.field -> target` offender, with an
+  explicit `--allow-unresolved-refs` override that still records the dangling reference in
+  `metadata.unresolvedReferences` rather than dropping it silently. That is the behaviour worth
+  sharing, not the CLI plumbing.
+
+  RIGHT FIX, and the reason this is filed rather than done: the controller should DELEGATE to the
+  same export logic the CLI verb uses instead of growing a second copy of the classification rules --
+  the roadmap's own R8.2 entry anticipates this ("a later Store 'export as pack' button calls the
+  same path"). That is a real design step: the CLI logic currently lives in Python
+  (`NPDevCli/npdev_cli.py`) while the controller is emitted Java, so "call the same path" needs a
+  decision about where the single implementation lives. Making that decision is the work; copying the
+  rules into the mustache would be the wrong answer and is explicitly not what this item asks for.
+
+  Not urgent-severity because the export produces a pack that fails loudly at composition rather than
+  silently corrupting anything -- but it is exactly the "two implementations of one idea" shape the
+  standing no-parallel-implementations rule exists to prevent, and it is now measurably true rather
+  than suspected.
+guard:
+  kind: manual
+  ref: >-
+    In a generated app, POST /api/admin/packs/export with a conceptName whose concept has a reference
+    to a concept NOT being exported. Today it succeeds and emits a pack carrying an unresolvable
+    reference with no warning. Compare with `npdev pack export` over the same concept, which refuses
+    and names the offending field.
+  asserts: >-
+    the generated app's own export path applies the same reference classification and refusal rules as
+    `npdev pack export`, from one implementation rather than two
+  provenRed: false
+  provenRedNote: >-
+    Established by reading the emitted controller (single `conceptName` at line 244, 404 at line 294,
+    no reference handling) and its UI caller, not by running an export against a live app. Recorded as
+    a code-cited observation.

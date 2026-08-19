@@ -1,0 +1,75 @@
+id: QUAL-19
+title: >-
+  runtimehost-core's test task is invoked by no gate and no CI workflow, so 19 tests across three
+  items run only when someone remembers to type the command
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-19
+source: >-
+  Found by the orchestrator while verifying RUN-15 (R2.7) and QUAL-18 (R3.2). Both agents
+  independently put their tests in runtimehost-core/src/test and both declared `kind: test` guards,
+  which would have asserted an automatic enforcement that does not exist.
+surface: quality/gates
+files:
+  - NPDevRuntimeHost/runtimehost-core/settings.gradle
+  - scripts/quality/run-runtimehost-gate.ps1
+detail: |
+  `NPDevRuntimeHost/runtimehost-core` is a STANDALONE Gradle root project -- it has its own
+  `settings.gradle` declaring `rootProject.name = 'runtimehost-core'`, and is not included as a
+  subproject from any other settings.gradle. Nothing invokes its `test` task:
+
+    - `run-runtimehost-gate.ps1` runs `test` in the ASSEMBLED SAMPLE APP root, not in
+      runtimehost-core.
+    - The other five gate scripts that mention runtimehost-core
+      (run-boundary-lock-check, run-observability-hardening, run-runtime-security-consistency,
+      run-publication-runtime-sql-neutrality-check, and classify_runtimehost_sources) reference it
+      only as `.java` SOURCE FILE PATHS for static inspection -- none runs a build.
+    - No `.github/workflows/*.yml` references it.
+
+  It has a complete test setup (`useJUnitPlatform()`, spring-boot-starter-test,
+  junit-platform-launcher at build.gradle:122-142), so tests placed there compile and pass when run
+  by hand -- which is exactly what makes the gap invisible.
+
+  **The pre-existing single test proves this was already known and already worked around rather than
+  fixed**: `NpdevFileStoreConfigTest` (REG-166) carries a manual guard whose ref is literally
+  `cd NPDevRuntimeHost/runtimehost-core && ./gradlew test --tests com.finalexec.config.NpdevFileStoreConfigTest`.
+  One manual test is a defensible exception; it silently became the house style the moment two
+  parallel agents chose the same directory on the same day.
+
+  CURRENT EXPOSURE -- 19 tests, none automatically run:
+    - SeedDataServiceGenerativeSeedTest -- 14 (QUAL-18 / R3.2)
+    - CronFireClaimStoreTest -- 3, NpdevCronSchedulerServiceMultiInstanceTest -- 1 (RUN-15 / R2.7)
+    - NpdevFileStoreConfigTest -- 1 (REG-166, pre-existing)
+  RUN-15's is the one that matters most: it is the two-real-instance exactly-once cron proof, the
+  item's entire definition of done.
+
+  Both guards were corrected to `kind: manual` with the invocation spelled out, so the ledger no
+  longer overstates enforcement. That is honesty, not a fix -- the tests still do not run.
+
+  This is the same family as CLAUDE.md's documented trap that RuntimeHost tests naming
+  `com.npdev.generated.` are excluded from the `test` task unconditionally, so a green RuntimeHost
+  gate is not evidence they passed. Different mechanism (module never built vs. sources excluded),
+  identical consequence: a test that looks like coverage and is not.
+
+  SMALLEST FIX (not applied): add a runtimehost-core `test` invocation to `run-runtimehost-gate.ps1`
+  alongside the assembled-app run. It needs a decision first, which is why this is filed rather than
+  done: the module resolves its kernel/contract dependencies from the staged
+  `runtimehost-libs` fileTree, so the gate would need the jars staged before the step -- the gate
+  already runs `sync-runtimehost-libs.ps1`, so the ordering likely works, but that must be measured
+  on a clean checkout rather than assumed.
+guard:
+  kind: manual
+  ref: >-
+    grep for an invocation of runtimehost-core's `test` task across scripts/quality/*.ps1 and
+    .github/workflows/*.yml -- today there is none; every hit is a .java source-path reference for a
+    static check. Confirm by checking that NPDevRuntimeHost/runtimehost-core/settings.gradle declares
+    its own rootProject and is included by no other settings.gradle.
+  asserts: >-
+    tests placed in runtimehost-core/src/test are executed by an automated gate, so a ledger item may
+    legitimately carry a kind: test guard pointing there
+  provenRed: false
+  provenRedNote: >-
+    Established by reading the gate scripts, the workflows and the module's settings.gradle, not by
+    running anything -- the assertion is about what is NOT invoked, which has no failing run to
+    capture. The 19 affected tests were counted directly from their @Test annotations.

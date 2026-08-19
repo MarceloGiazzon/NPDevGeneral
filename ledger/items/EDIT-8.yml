@@ -1,0 +1,137 @@
+id: EDIT-8
+title: >-
+  Every dashboard chart/table/KPI was a dead end -- clicking a bar segment now navigates to the
+  source concept's grid pre-filtered to exactly that slice
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R7.5 -- "Attach each KPI/bar/line/
+  table datum's groupBy keys as a click target navigating to the source concept's grid pre-filtered
+  to that slice." Blocked by R7.3 (structured per-column filters + filter-honoring export, EDIT-6),
+  which had already landed.
+surface: generator/business-ui
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-query-controller.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache
+detail: |
+  MEASURED BEFORE-STATE: `shell.js.mustache`'s `renderKpiGadget`/`renderTableGadget`/`renderXyChart`
+  (Move 10 B2, LC-B2) fetched `/api/queries/{name}` and painted numbers/bars/lines/rows with zero
+  click handlers anywhere -- confirmed by reading the source, not assumed. The premise was true.
+
+  NO NEW FILTER FORMAT, NO NEW ENDPOINT -- extends exactly what R7.3/EDIT-6 already shipped:
+    - `GeneratedQueryController.runAggregate` (business-ui-query-controller.mustache) now also
+      returns `concept` (the query's source concept) and `groupBy` (each declared groupBy field
+      with its `bucket`, null for a plain field) alongside the existing `rows`. Both were already
+      known server-side (`query.concept()`, `query.groupBy()`) -- this only exposes them.
+    - shell.js's gadget renderers build a `field:eq:value` clause per non-bucketed groupBy key
+      present in the clicked datum's row -- THE SAME DSL string `buildWhereParam`
+      (business-ui-app.mustache, R7.3) already builds from column filters -- and hand it to the grid
+      via a `?where=` suffix riding the EXISTING hash-based deep link (`businessHref`/`sectionAnchor`
+      <-> `sectionId`). A bucketed groupBy field (e.g. a month-truncated date) is deliberately
+      excluded: the row holds the bucket LABEL, not the raw stored value, so an eq filter against
+      the raw field would silently match nothing.
+    - business-ui-app.mustache's hash router gained `parseHashRoute` (splits a hash into its section
+      id and optional `?where=`) and `applyDrilldownFilter` (writes into the SAME
+      `panel.columnFilters` structure R7.3's own filter-row controls read/write, restricted to
+      fields the concept declares filterable and to operators that field actually offers), so the
+      applied filter is VISIBLE in the column-filter row, not a silent server-only filter.
+    - KPI (no per-row slice -- it sums across all rows) and table-gadget rows both got the same
+      treatment; a table bound to a non-aggregate (plain) query is unaffected (no `concept` in that
+      response), preserving backward compatibility for that binding.
+    - Every clickable bar/line point got `role="button"` + `aria-label` (the category label) plus an
+      SVG `<title>` tooltip -- needed for a11y (an SVG shape has no text of its own) and, as a direct
+      benefit, for a reliable browser-routine selector.
+
+  A REAL, PREVIOUSLY-UNDISCOVERED TEMPLATE DEFECT WAS FOUND AND FIXED WHILE VERIFYING, NOT ROUTED
+  AROUND: `NPDevShell.setContext` (shell.js.mustache) unconditionally re-applied the GuidePage using
+  `currentGuidePageName()` (a static `<meta name="npdev-guide-page">` tag that only ever exists on a
+  hand-authored companion page) -- and `applyActiveGuidePage` (business-ui-app.mustache) calls
+  `setContext` immediately after its own explicit `applyGuidePage(concept.guidePage)`, on EVERY
+  render. In host mode (the generic business UI) no such meta tag exists, so `setContext` always fell
+  through to `manifest.defaultGuidePage` ("Default"), silently undoing the concept's own GuidePage
+  choice in the same call stack -- before the next paint. This made ANY concept-level `ui.guidePage`
+  override with gadgets/regions/theme DISTINCT from Default silently ineffective; it was invisible
+  until now because `ui.frame.mode`-driven minimal/none chrome hiding is independently enforced by
+  `applyFrameMode`'s own CSS classes, which masked the same underlying bug for that one prior use
+  case. Fixed by making `setContext` re-apply whichever GuidePage is CURRENTLY active
+  (`document.body.dataset.guidePage`) instead of recomputing from the meta tag every time, falling
+  back to the meta tag only when no page is active yet (the genuine hand-authored-page case). Root
+  cause distinguished from a routine bug by DIRECT OBSERVATION (an `evaluate` step dumping
+  `document.body.className`/`dataset.guidePage`/rightbar computed style live against the running
+  app), not by re-reading the code and guessing.
+
+  A SEPARATE, ORDINARY ROUTINE-TIMING ISSUE (not a template defect, confirmed by direct observation
+  per the same discipline): the routine's own `assertCount` right after a create's form-detach raced
+  `submitForm`'s `onDone()` (detaches the form) against its own next line, `await
+  reloadAfterMutation(concept)` (refetches into `#concept-<Name>`, a different DOM root from the
+  form's `el.modalRoot`) -- the grid DOES converge on its own with no manual reload, just not
+  instantly. Fixed with a 700ms wait in the routine, not a template change.
+
+  BROWSER-VERIFIED, real and in the foreground, against `http://127.0.0.1:8583`
+  (`simple-user-registry-h2local`, full `Rebuild-And-Restage.ps1 -SkipLibs` regeneration): the app's
+  User concept was given a `department` string field, a `UsersByDepartment` query (`groupBy:
+  [department]`, `count` aggregate), and a `UserDashboard` GuidePage (assigned to User via
+  `config.json`'s `overrides."concept:User"."ui.guidePage"`, NOT a concept-level `guidePage` field --
+  the schema rejected that on the first attempt) carrying a `bar` gadget bound to the query.
+
+  `r7-5-dashboard-drilldown.json`: **50/50 steps passed, `green: true`**, recorded via
+  `npdev explore run --ledger-id EDIT-8` (which records through the same `evaluate_verdict` `npdev
+  explore record` itself uses -- one function decides green, not this report). REAL MEASURED ROW
+  COUNTS: created 3 fresh Users (2 `department=Engineering`, 1 `department=Sales`) -> grid shows all
+  3 -> the Users-by-Department bar chart renders exactly 2 bars (`rect[aria-label="Engineering"]`,
+  `rect[aria-label="Sales"]`, each count=1) -> **clicked the Engineering bar -> URL hash gained
+  `?where=department...` -> the department column-filter control shows the applied filter -> grid
+  narrowed from 3 rows to EXACTLY 2 rows, both Engineering, zero Sales rows** -> clicked the Sales bar
+  -> grid narrowed to EXACTLY 1 row (the Sales user), zero Engineering rows. Both directions asserted
+  (present AND absent), so a filter that merely failed to exclude anything would have failed the run.
+
+  `green: true` required a narrow `allowedConsoleErrorSubstrings` override in the app's (regenerated,
+  ephemeral) `_ops/exploration-config.json` for the SAME pre-auth-first-navigation 401s R7.3/R7.4
+  already excused (`/api/me`, `/api/properties*`, `/api/workspace_menus`, `/api/concepts/users`) plus
+  one new one this feature adds to that same pre-auth window (`/api/queries/UsersByDepartment`) --
+  MON-12-style named excuses, all firing only before the routine's deliberate `#apiKey` reload. No
+  blanket console excuse was added.
+
+  `check-deterministic-generation.ps1` passed (`simple-contact-intake`, two full generations, 0
+  differing files).
+
+  SCOPE: the frozen T1 canary fixture (`NPDevSamples/npdev-canary`) was not touched. `business-ui-
+  style.mustache` was considered but not touched -- inline `cursor:pointer` + a native SVG `<title>`
+  tooltip were sufficient, so no CSS class was added. Deliberately NOT done: replicating a query's own
+  declared `where`/`having` predicate into the drill-down link (only the clicked datum's groupBy keys
+  are used, matching the roadmap's literal wording); a plain (non-aggregate) query bound to a table/
+  KPI gadget stays non-clickable (no `concept` in that response shape); bucketed groupBy fields are
+  excluded from the drill-down clause rather than best-effort matched.
+guard:
+  kind: manual
+  ref: >-
+    D:\WorkSpace\NPDev\AppGen\apps\simple-user-registry-h2local\explorations\
+    r7-5-dashboard-drilldown.json -- run with `npdev explore run --app-dir <generated app> --file
+    <routine> --credential apiKey=<key>`. Evidence copied out to
+    D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\r7-5-evidence\ (run.json, the routine, and the
+    exploration-config.json console-error override) because a generated app's `_ops/` -- unlike
+    `data`/`logs`/`secrets` -- is NOT spared across regeneration. DELIBERATELY `manual`: the routine
+    lives with an AppGen app, which CLAUDE.md defines as source-of-truth layer 2 ("not a git repo"),
+    so no repo-rooted path can name it -- same reason EDIT-5's/EDIT-6's/EDIT-7's guards are manual.
+  asserts: >-
+    clicking a bar segment in a dashboard gadget navigates the SAME grid, in place, to exactly the
+    clicked slice's rows (measured: 3 -> 2 for the Engineering slice, 3 -> 1 for the Sales slice, with
+    both presence and absence of the excluded rows asserted) -- through the EXISTING R7.3 `where` DSL
+    riding the EXISTING hash-based deep link, with the applied filter visible in the grid's own
+    column-filter row, not just a silent server-side narrowing.
+  provenRed: true
+  provenRedNote: >-
+    Two distinct real reds, not a hypothetical: (1) source-read confirmed the pre-R7.5
+    kpi/bar/line/table renderers had zero click handlers and the aggregate query response carried no
+    `concept`/`groupBy` -- an observation, not an inference. (2) A live run against this item's OWN
+    mid-implementation state (drill-down click handlers and server fields already added, but BEFORE
+    the `setContext` fix below) genuinely failed: `waitForSelector` for the chart svg timed out at
+    30s because `document.body.dataset.guidePage` read back as "Default" instead of "UserDashboard"
+    -- confirmed by an `evaluate` step dumping live DOM/CSS state, not by reasoning about the code.
+    That failure was diagnosed to its root cause (setContext clobbering the just-applied GuidePage)
+    and fixed in the template; the immediately following run, with no other change, went green.
