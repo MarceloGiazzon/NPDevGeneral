@@ -5274,6 +5274,364 @@ def _seed_human_summary(result: dict) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------------------------
+# R3.7: `npdev bench` -- per-app latency probe with saved baselines.
+#
+# PREMISES CHECKED FIRST (CLAUDE.md's own warning that several roadmap premises were false):
+#   - The nightly scale ladder (`scripts/proofs/run-scale-proof.ps1`,
+#     `scripts/policy/scale-proof-baseline.json`, `schemas/ai/scale-proof-report.schema.json`) DOES
+#     measure latency+memory and DOES save baselines -- but it is a synthetic-model harness bound to
+#     ONE hardcoded panel name (`ScaleProofPanel`) at model-synthesis time, PowerShell-driven, and
+#     scoped under `scripts/proofs/` (a different agent's surface this round). It answers "does the
+#     platform scale" as a maintenance/nightly concern, not "is THIS app slow right now" as a
+#     tester's on-demand question. Extending it to accept an arbitrary already-generated app's
+#     concept/panel plan would mean teaching a PowerShell proof script to read the same manifests
+#     this module already reads in Python for `test`/`seed`/`explore generate` -- a bigger, riskier
+#     change than the roadmap's own `M` sizing implies, for a genuinely different consumer. So this
+#     is a NEW verb in the CLI (matching `test`/`seed`'s own shape), not an extension of the ladder;
+#     the two intentionally share almost nothing except "measure HTTP latency with repeat samples".
+#   - `npdev monitor probe` reports app identity/health, never per-request timing -- nothing to
+#     extend there either.
+#   - R3.2 (`npdev seed`, generative `$gen` tokens) is already DONE (QUAL-18/QUAL-19), so this item's
+#     stated blocker is clear: an app can already be loaded to 100k+ rows before benching it.
+#
+# ENDPOINT PLAN, model-derived like `_rest_smoke_layer` and `explore generate` (no per-app config):
+#   - "concept list" checks reuse the EXACT source `_rest_smoke_layer` already reads
+#     (`info.json`'s `concepts: [{name, route}]`, `GET /api/<route>`) -- this is RUN-1's own surface,
+#     the landmine RUN-16 fixed part of and this item exists to let people measure without hand-rolling
+#     a timing comparison the way RUN-16 had to.
+#   - "panel" checks read `generated-ui-manifest.json`'s `panels[]` (the same manifest `explore
+#     generate` already parses) and GET `/api/runtime/metadata/ui/panels/<name>`
+#     (`RuntimeUiMetadataController.loadPanel`, verified by reading the controller, not assumed).
+#     This single generic endpoint IS the roadmap's "query" leg too: a panel's GET already executes
+#     its declared dataSource queries server-side and returns their rows -- there is no separate
+#     ad-hoc query endpoint outside a panel (confirmed by grep: no `/api/query*` mapping exists
+#     anywhere in runtime-host). So "concept list/panel/query" collapses to two endpoint KINDS, not
+#     three, and that collapse is stated here rather than silently assumed.
+#
+# MEASUREMENT HONESTY (the point of this item, and the RUN-16 lesson it exists to generalize):
+#   - Every report states its OWN sample count, mean and stdev next to p50/p95 -- never a bare
+#     number pretending to be exact.
+#   - The regression signal is RELATIVE (new p50 >= --regression-threshold times the saved p50),
+#     never an absolute millisecond ceiling. RUN-16 measured a plain "<300ms" absolute threshold
+#     flaking at 365ms under ordinary multi-agent machine contention while the SAME code was 167ms
+#     otherwise -- a swing from noise alone bigger than many real regressions. The default threshold
+#     (1.5x) sits well above that measured noise band without being so loose it misses a real
+#     regression.
+#   - A failed sample is counted and reported, never silently dropped from the total -- `failures`
+#     names the first few reasons and `failuresTruncated` says how many more were cut, so nothing
+#     measured is hidden even when the printed list is bounded.
+# ---------------------------------------------------------------------------------------------
+
+BENCH_SCHEMA_VERSION = "npdev-bench-report.v1"
+BENCH_REPORT_FILENAME = "npdev-bench-report.json"
+BENCH_BASELINE_FILENAME = "bench-baseline.json"
+BENCH_BASELINE_SCHEMA_VERSION = "npdev-bench-baseline.v1"
+# Matches the scale-proof ladder's own latency phase (20 requests) -- not copied blindly, but there
+# is no reason to invent a different default sample count for the same kind of measurement.
+DEFAULT_BENCH_SAMPLES = 20
+DEFAULT_BENCH_REGRESSION_THRESHOLD = 1.5
+
+
+def _bench_plan(app_record: dict, final_app_root: Path, *,
+                 concepts: list[str] | None, panels: list[str] | None) -> tuple[list[dict], list[str]]:
+    """The endpoint plan: every concept-list endpoint the app publishes, plus every panel endpoint,
+    unless narrowed by --concept/--panel. Returns (plan, warnings) -- a name that does not exist is a
+    WARNING (visible in both the JSON and the human summary), not a silent no-op."""
+    import npdev_explore
+
+    warnings: list[str] = []
+    plan: list[dict] = []
+
+    info = app_record.get("info") or {}
+    all_concepts = [c for c in (info.get("concepts") or [])
+                     if isinstance(c, dict) and c.get("name") and c.get("route")]
+    wanted_concepts = set(concepts) if concepts else None
+    if wanted_concepts:
+        missing = wanted_concepts - {c["name"] for c in all_concepts}
+        if missing:
+            warnings.append(f"--concept named {sorted(missing)}, not in info.json concepts -- skipped")
+    for concept in all_concepts:
+        if wanted_concepts and concept["name"] not in wanted_concepts:
+            continue
+        plan.append({"id": f"list:{concept['name']}", "kind": "concept-list",
+                     "name": concept["name"], "path": "/api/" + concept["route"]})
+
+    manifest_path = npdev_explore._manifest_path(final_app_root)
+    all_panels: list[dict] = []
+    if manifest_path is None:
+        warnings.append(f"no generated-ui-manifest.json under {final_app_root} -- panel endpoints "
+                         "skipped (concept-list checks still run; regenerate the app to add them)")
+    else:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+        all_panels = [p for p in (manifest.get("panels") or []) if isinstance(p, dict) and p.get("name")]
+    wanted_panels = set(panels) if panels else None
+    if wanted_panels:
+        missing = wanted_panels - {p["name"] for p in all_panels}
+        if missing:
+            warnings.append(f"--panel named {sorted(missing)}, not in generated-ui-manifest.json "
+                             "panels -- skipped")
+    for panel in all_panels:
+        if wanted_panels and panel["name"] not in wanted_panels:
+            continue
+        import urllib.parse
+        plan.append({"id": f"panel:{panel['name']}", "kind": "panel", "name": panel["name"],
+                     "path": "/api/runtime/metadata/ui/panels/" + urllib.parse.quote(panel["name"], safe="")})
+
+    return plan, warnings
+
+
+def _bench_measure_endpoint(base_url: str, headers: dict[str, str], path: str,
+                             samples: int, timeout: float) -> tuple[list[float], list[str]]:
+    """Repeat GET `path` `samples` times, wall-clock each one with a monotonic clock. Returns
+    (latencies_ms for the requests that answered 2xx, failure reasons for the rest) -- a non-2xx or
+    unreachable sample is a counted failure, never folded into the timing average."""
+    import time
+    import urllib.error
+    import urllib.request
+
+    latencies_ms: list[float] = []
+    failures: list[str] = []
+    for _ in range(samples):
+        request = urllib.request.Request(base_url + path, headers=headers)
+        started = time.perf_counter()
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                response.read()
+                status = response.status
+        except urllib.error.HTTPError as exc:
+            exc.read()
+            failures.append(f"HTTP {exc.code}")
+            continue
+        except urllib.error.URLError as exc:
+            failures.append(f"request failed: {exc.reason}")
+            continue
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        if 200 <= status < 300:
+            latencies_ms.append(elapsed_ms)
+        else:
+            failures.append(f"HTTP {status}")
+    return latencies_ms, failures
+
+
+def _bench_percentile(sorted_ms: list[float], pct: float) -> float:
+    """Nearest-rank percentile over an already-sorted sample -- simple, deterministic, and needs no
+    third-party stats library. `pct=50`/`pct=95` are the roadmap's own stated p50/p95."""
+    n = len(sorted_ms)
+    if n == 1:
+        return sorted_ms[0]
+    index = max(0, min(n - 1, round(pct / 100 * (n - 1))))
+    return sorted_ms[index]
+
+
+def _bench_stats(latencies_ms: list[float]) -> dict:
+    """Never a bare number: sample count, mean and stdev travel with p50/p95 so a reader can judge
+    the noise floor rather than trust one figure."""
+    import statistics
+
+    n = len(latencies_ms)
+    if n == 0:
+        return {"samples": 0, "minMs": None, "maxMs": None, "meanMs": None,
+                "p50Ms": None, "p95Ms": None, "stdevMs": None}
+    sorted_ms = sorted(latencies_ms)
+    return {
+        "samples": n,
+        "minMs": round(sorted_ms[0], 3),
+        "maxMs": round(sorted_ms[-1], 3),
+        "meanMs": round(statistics.fmean(sorted_ms), 3),
+        "p50Ms": round(_bench_percentile(sorted_ms, 50), 3),
+        "p95Ms": round(_bench_percentile(sorted_ms, 95), 3),
+        "stdevMs": round(statistics.pstdev(sorted_ms), 3) if n > 1 else 0.0,
+    }
+
+
+def _bench_baseline_path(app_dir: Path, override: str | None) -> Path:
+    return Path(override).expanduser() if override else app_dir / "_ops" / BENCH_BASELINE_FILENAME
+
+
+def _load_bench_baseline(path: Path) -> dict:
+    """Absent or unreadable is a first-run, not an error -- `run_bench` establishes it. A corrupt
+    file is treated the same way rather than raised, since a bench run must not be blockable by a
+    hand-edited baseline file; it will be overwritten with a good one at the end of this run."""
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    endpoints = data.get("endpoints")
+    return endpoints if isinstance(endpoints, dict) else {}
+
+
+def _compare_to_baseline(stats: dict, baseline_entry: dict | None, threshold: float) -> dict:
+    """RELATIVE comparison only (RUN-16's lesson) -- never an absolute ms ceiling. No baseline entry,
+    or zero successful samples on either side, means "nothing to compare" rather than a manufactured
+    regression."""
+    if not baseline_entry or not stats.get("samples") or not baseline_entry.get("p50Ms"):
+        return {"hasBaseline": bool(baseline_entry), "regressed": False}
+    baseline_p50 = baseline_entry["p50Ms"]
+    ratio = stats["p50Ms"] / baseline_p50
+    return {
+        "hasBaseline": True,
+        "baselineP50Ms": baseline_p50,
+        "baselineSamples": baseline_entry.get("samples"),
+        "baselineMeasuredAt": baseline_entry.get("measuredAt"),
+        "ratio": round(ratio, 3),
+        "thresholdRatio": threshold,
+        "regressed": ratio >= threshold,
+    }
+
+
+def run_bench(args: argparse.Namespace) -> dict:
+    """R3.7: probe a RUNNING app's concept-list and panel/query endpoints with repeated samples,
+    report p50/p95/mean/stdev per endpoint, and diff against a saved per-app baseline.
+
+    Same refuse-rather-than-report-zeros rule `run_test`/`run_seed` already follow: a non-running
+    app is a CliError, not a report full of failed samples that would look like a real measurement.
+    """
+    import time
+
+    app_dir = Path(args.app_dir).expanduser().resolve()
+    app_record = npdev_monitor.probe_app(app_dir, include_info=True)
+    if not app_record.get("isAppRoot"):
+        raise CliError(app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        raise CliError(
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')}. `npdev bench` measures a RUNNING app -- start it "
+            f"first (_ops/Start-App.ps1, or the Monitor's Start).")
+
+    final_app_root = Path(app_record["finalAppRoot"])
+    plan, warnings = _bench_plan(app_record, final_app_root,
+                                  concepts=args.concept or None, panels=args.panel or None)
+    if not plan:
+        raise CliError("nothing to bench: " + ("; ".join(warnings) if warnings else
+                       "the app publishes no concepts and declares no panels."))
+
+    base_url = app_record.get("probeBaseUrl")
+    headers = {}
+    if app_record.get("apiKey"):
+        headers[app_record.get("authHeader") or "X-Api-Key"] = app_record["apiKey"]
+
+    baseline_path = _bench_baseline_path(app_dir, args.baseline_path)
+    baseline = _load_bench_baseline(baseline_path)
+    baseline_existed = bool(baseline)
+
+    started_at = _utc_now()
+    begin = time.time()
+    endpoints = []
+    for entry in plan:
+        latencies_ms, failures = _bench_measure_endpoint(
+            base_url, headers, entry["path"], args.samples, args.timeout)
+        stats = _bench_stats(latencies_ms)
+        comparison = _compare_to_baseline(stats, baseline.get(entry["id"]), args.regression_threshold)
+        endpoints.append({
+            **entry,
+            "stats": stats,
+            "failedSamples": len(failures),
+            # First few reasons only, with the drop COUNTED rather than hidden -- CLAUDE.md's own
+            # "if you bound coverage, SAY what was dropped" rule.
+            "failures": failures[:5],
+            "failuresTruncated": max(0, len(failures) - 5),
+            "baseline": comparison,
+        })
+
+    regressed = [e for e in endpoints if e["baseline"]["regressed"]]
+    all_failed = [e for e in endpoints if e["stats"]["samples"] == 0]
+    no_baseline = [e for e in endpoints if not e["baseline"]["hasBaseline"]]
+
+    report = {
+        "schemaVersion": BENCH_SCHEMA_VERSION,
+        "command": "bench",
+        "appDir": str(app_dir),
+        "appName": app_record.get("name"),
+        "baseUrl": base_url,
+        "startedAt": started_at,
+        "durationMs": int((time.time() - begin) * 1000),
+        "samplesPerEndpoint": args.samples,
+        "regressionThreshold": args.regression_threshold,
+        "warnings": warnings,
+        "endpoints": endpoints,
+        "counts": {
+            "total": len(endpoints),
+            "measured": len(endpoints) - len(all_failed),
+            "allFailed": len(all_failed),
+            "noBaseline": len(no_baseline),
+            "regressed": len(regressed),
+        },
+        "ok": not regressed and not all_failed,
+        "baselinePath": str(baseline_path),
+        "baselineExistedBefore": baseline_existed,
+    }
+
+    # The FIRST run against an app always establishes the baseline -- there is nothing yet to
+    # protect, and refusing to record one would make the very next run useless too. After that, a
+    # baseline is only overwritten with --update-baseline: the same explicit-promotion discipline
+    # `explore accept` uses for one screenshot, so a bench run that catches a real regression does
+    # not quietly erase the evidence by being run a second time.
+    should_update = bool(args.update_baseline) or not baseline_existed
+    if should_update:
+        new_baseline = dict(baseline)
+        for endpoint in endpoints:
+            if endpoint["stats"]["samples"] == 0:
+                continue  # never baseline an endpoint that produced zero successful samples
+            new_baseline[endpoint["id"]] = {
+                "name": endpoint["name"], "kind": endpoint["kind"], "path": endpoint["path"],
+                "samples": endpoint["stats"]["samples"], "p50Ms": endpoint["stats"]["p50Ms"],
+                "p95Ms": endpoint["stats"]["p95Ms"], "meanMs": endpoint["stats"]["meanMs"],
+                "measuredAt": started_at,
+            }
+        baseline_path.parent.mkdir(parents=True, exist_ok=True)
+        baseline_path.write_text(json.dumps(
+            {"schemaVersion": BENCH_BASELINE_SCHEMA_VERSION, "appName": app_record.get("name"),
+             "endpoints": new_baseline}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    report["baselineUpdated"] = should_update
+
+    # Same non-redaction guarantee `run_test` documents: every field here is composed explicitly
+    # from measured facts, and the only place this command holds the app's API key is the request
+    # header, which never reaches the report.
+    out = Path(args.report_out).expanduser() if args.report_out else app_dir / "_ops" / BENCH_REPORT_FILENAME
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    report["reportPath"] = str(out)
+    return report
+
+
+def _bench_human_summary(result: dict) -> str:
+    if result["counts"]["regressed"]:
+        verdict = "REGRESSED"
+    elif result["counts"]["allFailed"]:
+        verdict = "FAILED"
+    else:
+        verdict = "OK"
+    lines = [f"{verdict}  {result['appName']}  {result['baseUrl']}  "
+             f"({result['counts']['measured']}/{result['counts']['total']} endpoint(s) measured, "
+             f"{result['samplesPerEndpoint']} sample(s) each, {result['durationMs']} ms total)"]
+    for warning in result["warnings"]:
+        lines.append(f"  ! {warning}")
+    for endpoint in result["endpoints"]:
+        stats = endpoint["stats"]
+        if not stats["samples"]:
+            lines.append(f"  [FAILED]     {endpoint['kind']:<12} {endpoint['name']:<24} "
+                         f"0/{result['samplesPerEndpoint']} sample(s) succeeded -- "
+                         f"{'; '.join(endpoint['failures']) or 'no successful sample'}")
+            continue
+        baseline = endpoint["baseline"]
+        tag = "REGRESSED" if baseline["regressed"] else ("no-baseline" if not baseline["hasBaseline"] else "ok")
+        line = (f"  [{tag:<10}] {endpoint['kind']:<12} {endpoint['name']:<24} "
+                f"p50={stats['p50Ms']}ms p95={stats['p95Ms']}ms mean={stats['meanMs']}ms "
+                f"stdev={stats['stdevMs']}ms n={stats['samples']}")
+        if baseline["hasBaseline"]:
+            line += f"  (baseline p50={baseline['baselineP50Ms']}ms, ratio={baseline['ratio']}x)"
+        if endpoint["failedSamples"]:
+            line += f"  [{endpoint['failedSamples']} failed sample(s)]"
+        lines.append(line)
+    lines.append(f"  baseline: {result['baselinePath']} "
+                 f"({'updated' if result['baselineUpdated'] else 'unchanged -- pass --update-baseline to promote this run'})")
+    lines.append(f"  report: {result['reportPath']}")
+    return "\n".join(lines)
+
+
 def _screen_auth_headers(args: argparse.Namespace) -> dict[str, str]:
     if getattr(args, "token_file", None):
         token = Path(args.token_file).expanduser().read_text(encoding="utf-8").strip()
@@ -8300,6 +8658,44 @@ def build_parser() -> argparse.ArgumentParser:
                           help="HTTP timeout in seconds -- a large seed (thousands of records) can take a while.")
     seed_run.add_argument("--json", action="store_true")
 
+    # R3.7. No plan file, same as `test`/`seed`: every endpoint is discovered from the app's own
+    # info.json + generated-ui-manifest.json.
+    bench = subparsers.add_parser(
+        "bench",
+        help="Probe a RUNNING app's concept-list and panel/query endpoints with repeated samples, "
+             "report p50/p95/mean/stdev per endpoint, and flag a regression against a saved per-app "
+             "baseline. Relative threshold, not an absolute ms budget -- an absolute one flaked "
+             "under ordinary machine load (RUN-16).",
+    )
+    bench.add_argument("--app-dir", required=True, help="A generated, RUNNING app (the one `npdev monitor probe` sees).")
+    bench.add_argument("--concept", action="append", default=[],
+                       help="Limit concept-list checks to this concept (repeatable). Default: every "
+                            "concept the app publishes.")
+    bench.add_argument("--panel", action="append", default=[],
+                       help="Limit panel checks to this panel (repeatable). Default: every panel the "
+                            "app declares.")
+    bench.add_argument("--samples", type=int, default=DEFAULT_BENCH_SAMPLES,
+                       help=f"GET requests per endpoint (default {DEFAULT_BENCH_SAMPLES}, matching "
+                            "the scale-proof ladder's own latency phase). More samples narrow the "
+                            "p95 estimate at the cost of run time.")
+    bench.add_argument("--timeout", type=float, default=30.0, help="Per-request timeout in seconds.")
+    bench.add_argument("--regression-threshold", type=float, default=DEFAULT_BENCH_REGRESSION_THRESHOLD,
+                       dest="regression_threshold",
+                       help="Flag a regression when the new p50 is at least this many times the "
+                            f"saved baseline p50 (default {DEFAULT_BENCH_REGRESSION_THRESHOLD}x -- "
+                            "relative, not an absolute ms budget; a fixed millisecond ceiling flaked "
+                            "under ordinary multi-agent machine load, see ledger RUN-16).")
+    bench.add_argument("--baseline-path", default=None,
+                       help=f"Default: <app-dir>/_ops/{BENCH_BASELINE_FILENAME}.")
+    bench.add_argument("--update-baseline", action="store_true",
+                       help="Promote this run's measurements to the saved baseline. The FIRST run "
+                            "against an app always establishes the baseline; after that, it is only "
+                            "overwritten explicitly, the same promotion discipline `explore accept` "
+                            "uses for one screenshot.")
+    bench.add_argument("--report-out", default=None,
+                       help=f"Where to write the report. Default: <app-dir>/_ops/{BENCH_REPORT_FILENAME}.")
+    bench.add_argument("--json", action="store_true")
+
     report = subparsers.add_parser(
         "report", help="Produce or bootstrap the evidence and status reports."
     )
@@ -8790,6 +9186,11 @@ def main(argv: list[str] | None = None) -> int:
             result = run_seed(args)
             print(json.dumps(result, indent=2, ensure_ascii=False) if args.json
                   else _seed_human_summary(result))
+            return 0 if result.get("ok") else 2
+        if args.command == "bench":
+            result = run_bench(args)
+            print(json.dumps(result, indent=2, ensure_ascii=False) if args.json
+                  else _bench_human_summary(result))
             return 0 if result.get("ok") else 2
         if args.command == "loop" and args.loop_command == "run":
             result = run_closed_loop(args)
