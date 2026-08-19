@@ -1,0 +1,152 @@
+id: QUAL-18
+title: >-
+  Seeds had no way to generate volume -- every demo/bench dataset had to be hand-written row by row,
+  so "demo-ready in one command" and load-shaped testing were both unreachable
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R3 item R3.2 -- "$gen:<generator>
+  value tokens + a count shorthand in SeedDataService's expansion, RNG seeded by seed id for
+  reproducibility; a CLI verb wrapping the existing admin seed endpoints."
+surface: runtimehost/seed, cli/seed
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/seed/SeedDataService.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/seed/SeedDataServiceGenerativeSeedTest.java
+  - NPDevContract/schemas/seed.schema.json
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_seed_cli.py
+detail: |
+  PREMISES CHECKED AGAINST REAL CODE FIRST, per the roadmap's own warning that four prior items had
+  false premises:
+    - **The admin seed endpoints are real and exactly as described**: `DataSeedAdminController`
+      (`GET /api/admin/seeds`, `POST /api/admin/seeds/{id}/run`), ADMIN-or-SUPERUSER-gated via a
+      manual `requireAdmin` check, `tenantId` override SUPERUSER-only. Confirmed by reading the
+      controller before writing a client for it.
+    - **`seed.schema.json` has exactly ONE copy** (`NPDevContract/schemas/seed.schema.json`), unlike
+      `model.schema.json`'s four -- confirmed by repo-wide grep before editing, not assumed from the
+      model-schema precedent. It is also not read by any script (grep found only itself), so it is
+      documentation, not a wired contract -- edited anyway for correctness (see BONUS FIX below).
+    - **REG-189 (bare-object one-seed manifest) was read first** and its fix left untouched;
+      `SeedDataServiceListAvailableTest`'s five tests (both one-seed and many-seed shapes) still pass
+      unmodified, and the live scratch app built for this item's own DoD measurement is itself a
+      one-seed app -- `npdev seed list` against it correctly showed the one declared seed, a live
+      REG-189 regression check as a side effect.
+    - **Ordering**: `SeedDataService.run()` already processes `declaredRecords` sequentially --
+      each top-level record's full expansion is saved before the next one starts -- so
+      `$gen:ref-pick-random:<concept>` "just works" AS LONG AS the referent concept's records are
+      declared earlier in the file, which is the existing convention `$ref:alias` already relies on.
+      No new ordering mechanism was needed; this is a real finding (not assumed), verified by both a
+      forward test (`refPickRandomOnlyPicksAmongIdsAlreadyCreatedEarlierInTheFile`) and a reversed-order
+      failure test (`refPickRandomFailsWithANamedErrorWhenTheReferentHasNotBeenSeededYet`).
+
+  WHAT WAS BUILT:
+    - Six `$gen:<generator>[:<args>]` value tokens for `smart`-kind `data` fields, resolved shallowly
+      (top-level fields only, matching `$ref:`'s own shallow resolution): `name` (built-in first/last
+      name corpus), `words[:count]` (default 5), `date-range:<minIso>:<maxIso>`,
+      `decimal-range:<min>:<max>` (scale matched to the more precise input, minimum 2),
+      `enum-pick:<v1>,<v2>,...`, and `ref-pick-random:<concept>` (random id among that concept's
+      records already saved earlier in this run; empty-pool is a NAMED `IllegalArgumentException`,
+      never a silent/empty pick).
+    - `count` shorthand: an alternative to `repeatOver` with no index variables -- bulk-generates N
+      copies of `data`, meant to pair with `$gen:*` rather than `$var` substitution. Mutually
+      exclusive with `repeatOver` and `alias` (same rule `repeatOver` already enforced for `alias`).
+    - One `Random` per `run()`, seeded by `seedId.hashCode()` (JLS-specified, stable across
+      JVMs/runs) -- every `$gen:` draw across the whole run shares this RNG in file/declaration
+      order, so a re-run of the same seed id draws the identical sequence.
+    - **Record ids stay `UUID.randomUUID()`, deliberately NOT seeded.** Making id generation
+      deterministic too was considered and rejected: it would make re-running the same seed against
+      a NON-EMPTY database (an admin clicking "Run seed" twice, which today just doubles the rows)
+      collide on primary key instead. The reproducibility test therefore compares field VALUES
+      (order-independent) and, for `ref-pick-random`, the RELATIVE POOL POSITION chosen -- not raw id
+      equality -- which is the honest shape of what "seeded by seed id" can promise once ids are
+      excluded on purpose.
+    - `raw`-kind seeds reject `count` and `$gen:` tokens at load time (fail-fast, before any record
+      is saved), mirroring the existing `alias`/`repeatOver`/`$ref:` rejections exactly.
+    - `npdev seed list|run` (NPDevCli): thin wrapper, same `--app-dir` + `probe_app` shape `npdev
+      test` already uses -- refuses (does not report zeros) against a non-running app, authenticates
+      with whatever `X-Api-Key` the probe resolves (absent entirely for an `auth.mode=none` dev app).
+      No new server-side surface.
+
+  BONUS FIX, found while extending the same schema clause this item needed to touch anyway (not a
+  separate audit): the pre-existing `oneOf: [{required:[data]}, {required:[repeatOver]}]` was
+  actually WRONG for every existing `repeatOver` record -- a `repeatOver` record has always required
+  BOTH `data` (the template) and `repeatOver`, and JSON Schema's `oneOf` requires EXACTLY one
+  sub-schema to match, so an object satisfying both `required` clauses fails `oneOf`. Verified with
+  `jsonschema` directly: a `repeatOver`+`data` instance was REJECTED by the unmodified schema.
+  Replaced with an `allOf` of targeted `not`/`if-then` clauses (alias excludes both bulk mechanisms;
+  the two bulk mechanisms exclude each other; either one requires `data`), verified against 8
+  representative valid/invalid instances including the one the old schema silently rejected.
+
+  MEASURED, against a real generated FinalApp on H2 (not simulated): a throwaway 3-concept model
+  (Customer, Product, Order -- Order carries TWO `reference`-typed fields, to Customer and to
+  Product) authored at `D:\WorkSpace\NPDev\AppGen\apps\_scratch\seed-r32-bench` (outside this repo,
+  per the source-of-truth layering), generated+built+booted via the normal AppGen pipeline, with a
+  seed declaring Customer count=1000, Product count=1000, Order count=3000 (5,000 total) using all
+  six generators plus two `ref-pick-random` fields on Order.
+    - **Load time**: run 1 (cold) `elapsedMs: 24589` (SeedDataService-internal) / CLI `durationMs:
+      24781`; run 2 (warm) `elapsedMs: 14593` / CLI `durationMs: 14741`. Both comfortably under the
+      60s done-when bar.
+    - **Reproducibility, live**: DB reset between runs, both runs' Customer and Product rows fetched
+      via REST and compared with ids stripped, order-independent -- **1000/1000 Customer and
+      1000/1000 Product records byte-identical** across the two runs. Order's own live comparison
+      hit an unrelated pre-existing platform behavior (RUN-1's generic list endpoint caps at 1000
+      rows with no stable cross-run ordering guarantee), so comparing two 1000-of-3000 samples isn't
+      a valid population comparison -- not chased further, since it is not this item's defect and
+      the SAME code path (`SeedDataService.run()`) already has full-visibility proof for Order
+      specifically via the unit test below (byte-identical `amount`/`status`, and identical
+      `ref-pick-random` POOL POSITION for `customerId`/`productId` across both runs).
+    - **CLI verb, live**: `npdev seed list` and `npdev seed run` both exercised against the booted
+      app over real HTTP with the app's real generated API key; `seed list` on this one-seed app is
+      also the REG-189 live regression check noted above.
+
+  DELIBERATELY NOT DONE:
+    - Record ids were not made deterministic (see above -- a considered rejection, not an oversight).
+    - `$gen:` resolution is shallow (top-level `data` fields only), matching `$ref:`'s existing
+      shallow behavior; a nested-object generator use case was not requested and was not built.
+    - No attempt was made to work around the generic list endpoint's 1000-row cap to get a live,
+      full-population Order comparison -- out of scope (a pre-existing, unrelated platform limit).
+    - No new server-side endpoint or auth mode was added for the CLI verb; it calls exactly the two
+      endpoints that already existed.
+guard:
+  # kind: manual, NOT test -- deliberately. The 14 tests below are real and pass, but
+  # NPDevRuntimeHost/runtimehost-core is a STANDALONE Gradle root project (its own settings.gradle,
+  # rootProject.name = 'runtimehost-core'); it is not included as a subproject anywhere, and no
+  # run-*.ps1 gate or .github workflow invokes its `test` task. Every gate reference to
+  # runtimehost-core reads .java files for static checks only. Note NPDevCli/tests/test_seed_cli.py
+  # (the CLI half of this item, 14 tests) IS genuinely gated via the Python suite -- only the
+  # SeedDataService half is manual. Tracked for wiring by QUAL-19.
+  kind: manual
+  ref: >-
+    cd NPDevRuntimeHost/runtimehost-core && ./gradlew test --tests
+    com.finalexec.seed.SeedDataServiceGenerativeSeedTest
+    (source: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/seed/SeedDataServiceGenerativeSeedTest.java,
+    twoRunsOfTheSameSeedIdProduceIdenticalGeneratedData). The CLI half is gated: NPDevCli/tests/test_seed_cli.py
+  asserts: >-
+    Two independent `SeedDataService.run()` calls for the same seed id, against two fresh in-memory
+    ConceptGateway fakes, produce byte-identical non-id field values (name/words/date-range/
+    decimal-range/enum-pick) for every Customer and Order record in save order, and identical
+    ref-pick-random POOL POSITIONS for Order.customerId even though the referenced Customer's literal
+    id differs between runs (ids are intentionally not seeded). Sibling tests in the same file cover
+    the count shorthand, all six generators individually, the reference-ordering hazard (both the
+    success and the reversed-order failure case), raw-seed rejection of count/$gen, and backward
+    compatibility (a seed using only pre-existing alias/repeatOver/$ref shapes, no $gen or count,
+    produces the same counts/values it always did). The live H2/CLI measurement (5,000 records, two
+    full runs, under a minute both times) is evidenced by measurement in this file's `detail:`, not by
+    an automated test -- the scratch app that produced it lives outside this repo
+    (`D:\WorkSpace\NPDev\AppGen\apps\_scratch\seed-r32-bench`, source-of-truth layer 2) and is not
+    itself a guardable artifact.
+  provenRed: false
+  provenRedNote: >-
+    The $gen tokens and count shorthand did not exist before this item, so there was no prior
+    behavior to catch red -- these tests were written alongside the implementation, not before it (the
+    session that authored SeedDataService's changes was itself interrupted and resumed under a fresh
+    context, and by the time this ledger item was filed the implementation already existed). Instead,
+    correctness was verified going forward: 24 JUnit tests (14 SeedDataServiceGenerativeSeedTest + 5
+    pre-existing SeedDataServiceListAvailableTest run alongside them as a live regression check + a
+    schema self-validation script) all green in the same run, and the DoD's own load-time/
+    reproducibility claims were independently measured against a real booted app rather than assumed
+    from the tests.

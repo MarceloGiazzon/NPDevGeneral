@@ -1,0 +1,136 @@
+id: PACK-13
+title: >-
+  The only path from a working app concept to a reusable pack was an external one-concept
+  PowerShell script with zero reference handling -- add a real `npdev pack export` verb,
+  multi-member, with cross-concept references rewritten to intra-pack form
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R8.2 -- "The only path from a
+  working app concept to a reusable pack is an external one-concept PowerShell script -- violating
+  the standing 'the platform emits solutions' rule. A real CLI verb: multi-member export with refs
+  rewritten to intra-pack form."
+surface: cli/pack
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_pack_export.py
+detail: |
+  `npdev pack export --model <path> --concepts A,B,C --pack <name> --author <author> [...]`, a new
+  subcommand alongside `pack add|update|list|why|diff|publish`.
+
+  **PREMISE CHECK -- "one-concept" was TRUE, but "the ONLY path" was FALSE.**
+  `NPDevSamples/scripts/packs/export-concept-to-pack.ps1` really did take exactly one `-ConceptName`
+  (singular), copied that concept's raw JSON verbatim into a new `pack.json`, and did zero reference
+  rewriting and zero schema validation -- confirmed by reading it in full, not assumed. But a SECOND,
+  independently-built, equally single-concept, equally reference-blind path already existed: the
+  generated app's own `POST /api/admin/packs/export`
+  (`GeneratedPackCatalogController.exportConceptToPack`, in
+  `business-ui-pack-catalog-controller.mustache`) -- a Store-panel admin action that does the exact
+  same raw-concept-copy with no ref handling, reachable only from a sample's local dev checkout.
+  Left untouched here (it lives in a generator template this task does not own, and the roadmap's own
+  Done-When only names the `.ps1`), but the roadmap's "the ONLY path is a PowerShell script" framing
+  was already false before this change -- recorded here rather than silently accepted.
+
+  **THE SUBSTANTIVE PART: what happens to a reference whose target is NOT in the exported set.**
+  Every `fields[].reference` (both the shorthand-string and `{target: ...}` object forms
+  model.schema.json's `field.reference` allows) and every concept's own `satelliteOf` among the
+  concepts being exported is classified three ways:
+    1. Target's bare name is one of the OTHER concepts in the same export -> rewritten to INTRA-PACK
+       (bare) form, whatever qualifier it carried before. This is the actual "refs rewritten to
+       intra-pack form" the roadmap names, and it is what lets a multi-concept subgraph (e.g. an
+       order + its lines) compose cleanly under a brand-new pack id.
+    2. Target already carries `otherPack::Name` and `otherPack` is a real sibling under
+       `NPDevContract/packs` -- a genuine cross-pack dependency (cross-pack references are
+       qualifier-stable regardless of who does the referencing, per
+       `ModelSourceResolver.QUALIFIED_REF_NOOP`). Left as-is, and `otherPack` is added to the new
+       pack's own `packs[]` (PK-3) with a `^major.minor` constraint read from that sibling's live
+       `version` -- so the emitted dependency is composable, not a guess.
+    3. Anything else (a bare name outside the export set, or a qualifier naming an unknown pack) is
+       NON-PORTABLE: a pack cannot reach back into the app that imports it (packs compose INTO apps,
+       never the reverse -- the same rule the WmsOffice pack-extraction session already established
+       by hand). Per this repo's house style (MON-18: "unsupported dependencies reported BY NAME
+       rather than silently skipped"), the export REFUSES by default, naming every
+       `concept.field -> target` offender and suggesting a fix (add it to `--concepts`, or restructure
+       via `satelliteOf` first). `--allow-unresolved-refs` overrides -- but still never drops
+       anything: the reference is written through unchanged AND recorded in the pack's own
+       `metadata.unresolvedReferences`, a durable audit trail, not silence.
+  Deliberately scoped to `concepts[]` only (fields' `reference` + `satelliteOf`), matching BOTH
+  pre-existing single-concept export paths -- panels/queries/flows/etc. carry their own much larger
+  reference vocabulary (`ModelSourceResolver.rewriteKnownMemberReferenceFields`'s ~20-member dispatch
+  table) that no concept-export path, old or new, has ever touched. Not attempted here; would be
+  speculative scope beyond what "concept export" has ever meant in this codebase.
+
+  **A REAL BUG FOUND BY SMOKE-TESTING BEFORE THE FORMAL TEST SUITE EXISTED.** The new subparser's
+  natural flag name, `--version` (matching pack.schema.json's own `version` field and the old
+  script's `-Version`), collides with the TOP-LEVEL parser's global `--version`
+  (`action="store_true"`) in argparse's single shared `Namespace` -- `main()` checks `if
+  args.version:` before any command dispatch, so with a truthy string default ("1.0.0") every
+  `npdev pack export` call silently printed the version banner and exited 0, never reaching the
+  export logic at all. First `python npdev_cli.py pack export ...` smoke run reproduced this live
+  (exit 0, banner only, model never read). Fixed by giving the subparser's `--version` an explicit
+  `dest="pack_version"` so it can no longer alias the global flag; confirmed both the export path and
+  `npdev --version` work correctly afterward.
+
+  **ROUND TRIP -- MEASURED, not asserted (the DoD).** Exported a two-concept pack (`Project` +
+  `ProjectLine`, one intra-set reference authored with a spurious wrong qualifier to prove the
+  rewrite actually rewrites, one real cross-pack reference to `identity::User`) into a throwaway
+  directory, `$ref`'d it from a throwaway app model, vendored a local copy of `NPDevContract/packs/
+  identity` next to it (required: `PackDependencyGraphWalker.defaultPackFile` resolves a transitive
+  `packs[]` dependency as `<rootDirectory>/packs/<packId>/pack.json` -- "still local files only, no
+  registry yet", PK-3 -- so a transitive dependency is NOT found via any global registry, matching
+  the WmsOffice pack-extraction session's independent finding that `npdev pack add` is needed
+  whenever the graph has a transitive dependency), ran `npdev pack add` (wrote `npdev.lock`,
+  resolving both `rttestpack` and transitively `identity`), then `npdev validate model` through the
+  real Gradle/ai-tools-jar-backed DSL composer. Result: **0 errors**, `status: "warning"` (24
+  warnings, every one pre-existing `missing_concept_label`/`missing_field_label` UX noise on
+  `identity::*` and the newly-composed `<pack>::Project`/`<pack>::ProjectLine` -- the exact same
+  "0 errors, all pre-existing missing-ui-label noise" shape the WmsOffice pack-extraction session
+  measured independently). This proves both the intra-pack rewrite and the cross-pack dependency
+  declaration are consumable by the real composer, not just plausible-looking JSON.
+
+  **THE .PS1 IS DELETED, not delegated** -- fully superseded, nothing else in the repo executes it
+  (confirmed by grep: only doc/comment mentions remained, no invoking script). It lived at
+  `NPDevSamples/scripts/packs/export-concept-to-pack.ps1`, OUTSIDE `scripts/policy/
+  script-inventory-policy.json`'s governed `inventoryRoot` ("scripts", the repo-root directory, not
+  `NPDevSamples/scripts`) and absent from `scripts/policy/script-invocation-declarations.json` --
+  confirmed by reading both policies' actual scope before deleting, so `run-script-inventory-check.ps1`
+  needs no companion edit here (its policy JSONs were already never tracking this file).
+
+  NUMBERS: 6 new tests in `NPDevCli/tests/test_pack_export.py` (4 fast structural + 1 real
+  end-to-end round trip, ~4s total locally), full `NPDevCli/tests` suite **325 passed, 0 regressions**
+  (was 319 before this change). Not breaking: purely additive CLI verb, no DSL/generated-code/API
+  change, so no `npdev migrate` codemod or BREAKING.md entry applies.
+
+  **NOT DONE, stated plainly**: `GeneratedPackCatalogController.exportConceptToPack` (the generated
+  app's own admin-UI export button) was not touched -- it remains single-concept and reference-blind,
+  a separate, smaller-scoped gap for whoever next touches that mustache template (not claimed by this
+  item's file ownership). No `--pack export`-equivalent surfaced in the React admin UI or the MCP
+  tool surface; this is CLI-only, matching how `pack add/update/list/why/diff/publish` are CLI-only
+  today.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_pack_export.py
+  asserts: >-
+    `npdev pack export` rewrites an intra-export-set reference to bare/intra-pack form even when
+    authored with a spurious qualifier, declares a real `packs[]` dependency (with a version
+    constraint read from the live sibling pack) for a genuine cross-pack reference, and REFUSES by
+    default -- naming the exact concept.field and target -- on a reference to a concept outside the
+    exported set and outside any known sibling pack, writing nothing; `--allow-unresolved-refs`
+    overrides without dropping anything, recording it in the pack's own metadata instead. The
+    heaviest test (`PackExportRoundTripTest`) proves the roadmap's own Done-When by measurement: the
+    exported pack, composed back into a throwaway model via the real `npdev pack add` +
+    `npdev validate model` (Gradle/ai-tools-backed DSL composer, not a mock), validates with zero
+    errors.
+  provenRed: false
+  provenRedNote: >-
+    The verb did not exist, so `test_pack_export.py` itself was never run against unfixed code. One
+    real defect WAS caught live before the formal suite was written, outside this guard's own test
+    file: a `--version` flag on the new subparser collided with the top-level parser's global
+    `--version` in argparse's shared Namespace, silently short-circuiting every `pack export`
+    invocation into the version banner (exit 0, no export attempted) -- reproduced with a direct
+    `python npdev_cli.py pack export ...` smoke run before any unit test existed, then fixed via an
+    explicit `dest="pack_version"`.

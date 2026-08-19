@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import copy
 import shutil
 import hashlib
 import json
@@ -244,6 +245,49 @@ def read_json(path: Path) -> dict:
 def require_identifier(value: object, label: str, pattern: str) -> None:
     if not isinstance(value, str) or not re.match(pattern, value):
         raise CliError(f"{label} is missing or invalid: {value!r}")
+
+
+# R1.5 (roadmap 2026-08-18 R1.5): the 4 of ModelSourceResolver.java's 18 MODEL_ARRAY_KEYS entries
+# `npdev add` scaffolds -- not a Python port of the resolver (nothing here composes fragments/
+# packs; that stays resolve_split_model's job below), just the kind-name -> top-level-array-key
+# agreement for the four member kinds this verb supports.
+ADD_MEMBER_ARRAY_KEYS = {
+    "concept": "concepts",
+    "panel": "panels",
+    "flow": "flows",
+    "procedure": "procedures",
+}
+
+# FlowValidation.BUILTIN_CAPABILITY_OPERATIONS / PackValidation (dsl module): these capability
+# names/types resolve even when the model declares no capabilities[] at all -- e.g. every flow's
+# createConcept/updateConcept step is backed by the builtin "persistence" capability's "save"
+# operation for free, which is exactly why the default flow/procedure stubs below need no
+# capabilities[] scaffolding of their own. Mirrored here (lowercase) so --from's self-containment
+# scan does not misreport a capabilityCall step as broken just because the model has no
+# capabilities[] declared.
+ADD_BUILTIN_CAPABILITIES = {
+    "persistencecapability", "persistence", "messagingcapability", "emailcapability",
+    "fiscalcapability", "signaturecapability", "eventbus", "invariantengine",
+}
+
+
+def _add_humanize_label(name: str) -> str:
+    """PascalCase/camelCase/snake_case -> "Spaced label" -- seeds a UX-friendly ui.label/title on
+    a scaffolded member so `npdev add`'s own output doesn't ship the missing_concept_label /
+    missing_field_label warning every hand-authored corpus model already avoids."""
+    spaced = re.sub(r"(?<!^)(?=[A-Z])", " ", name.replace("_", " ")).strip()
+    spaced = re.sub(r"\s+", " ", spaced)
+    return (spaced[:1].upper() + spaced[1:]) if spaced else name
+
+
+def _add_kebab_route(name: str) -> str:
+    spaced = re.sub(r"(?<!^)(?=[A-Z])", "-", name)
+    spaced = re.sub(r"[_\s]+", "-", spaced)
+    return "/" + re.sub(r"-+", "-", spaced).strip("-").lower()
+
+
+def _add_lower_first(name: str) -> str:
+    return (name[:1].lower() + name[1:]) if name else name
 
 
 def validate_json_schema(schema: Path, instance: Path) -> dict:
@@ -5142,6 +5186,94 @@ def _fetch_json(url: str, headers: dict[str, str]) -> dict:
         raise CliError(f"GET {url} failed: {exc.reason}")
 
 
+SEED_SCHEMA_VERSION = "npdev-seed-cli.v1"
+
+
+def run_seed(args: argparse.Namespace) -> dict:
+    """R3.2: a thin CLI wrapper around `DataSeedAdminController`'s two EXISTING endpoints --
+    `GET /api/admin/seeds` (list) and `POST /api/admin/seeds/{id}/run` -- no new server-side
+    surface. Same `--app-dir` + `npdev_monitor.probe_app` shape `run_test` already uses: resolve
+    the app, refuse (not report zeros) if it isn't a healthy running generated app, then call it
+    with whatever `X-Api-Key` the app is actually configured to accept (`apiKey`/`authHeader` from
+    the probe -- absent entirely for an `auth.mode=none` dev app, where ADMIN is granted to every
+    anonymous caller so no key is needed at all).
+    """
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    import time
+
+    if args.seed_command not in ("list", "run"):
+        raise CliError("usage: npdev seed {list|run}")
+
+    app_dir = Path(args.app_dir).expanduser().resolve()
+    app_record = npdev_monitor.probe_app(app_dir, include_info=True)
+    if not app_record.get("isAppRoot"):
+        raise CliError(app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        raise CliError(
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')}. `npdev seed` calls a RUNNING app's admin seed "
+            f"endpoints -- start it first (_ops/Start-App.ps1, or the Monitor's Start).")
+
+    base_url = app_record.get("probeBaseUrl")
+    headers = {}
+    if app_record.get("apiKey"):
+        headers[app_record.get("authHeader") or "X-Api-Key"] = app_record["apiKey"]
+
+    if args.seed_command == "list":
+        seeds = _fetch_json(base_url + "/api/admin/seeds", headers)
+        return {
+            "schemaVersion": SEED_SCHEMA_VERSION, "command": "seed list", "ok": True,
+            "appDir": str(app_dir), "appName": app_record.get("name"), "baseUrl": base_url,
+            "seeds": seeds,
+        }
+
+    # seed run
+    path = f"/api/admin/seeds/{urllib.parse.quote(args.id, safe='')}/run"
+    if args.tenant_id:
+        path += "?" + urllib.parse.urlencode({"tenantId": args.tenant_id})
+    request = urllib.request.Request(base_url + path, method="POST", headers=headers)
+    started = time.time()
+    try:
+        with urllib.request.urlopen(request, timeout=args.timeout) as response:
+            report = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")[:500]
+        raise CliError(f"POST {path} -> HTTP {exc.code}: {body}")
+    except urllib.error.URLError as exc:
+        raise CliError(f"POST {path} failed: {exc.reason}")
+    return {
+        "schemaVersion": SEED_SCHEMA_VERSION, "command": "seed run", "ok": bool(report.get("ok")),
+        "appDir": str(app_dir), "appName": app_record.get("name"), "baseUrl": base_url,
+        "durationMs": int((time.time() - started) * 1000), "report": report,
+    }
+
+
+def _seed_human_summary(result: dict) -> str:
+    if result["command"] == "seed list":
+        seeds = result.get("seeds") or []
+        lines = [f"{result['appName']}  {result['baseUrl']}  -- {len(seeds)} seed(s) declared"]
+        for seed in seeds:
+            detail = f" -- {seed['description']}" if seed.get("description") else ""
+            lines.append(f"  {seed['id']}  [{seed.get('kind', 'smart')}]  {seed.get('label')}{detail}")
+        if not seeds:
+            lines.append("  (this app declares no seeds under definition/seeds/)")
+        return "\n".join(lines)
+
+    # seed run
+    report = result.get("report") or {}
+    verdict = "OK" if report.get("ok") else "FAILED"
+    lines = [f"{verdict}  seed '{report.get('seedId')}'  ({result['durationMs']} ms)"]
+    for concept, count in (report.get("createdCounts") or {}).items():
+        lines.append(f"  {concept}: {count} created")
+    if not report.get("ok"):
+        lines.append(f"  failed at record[{report.get('failedRecordIndex')}] "
+                      f"({report.get('failedConcept')}, alias={report.get('failedAlias')}): "
+                      f"{report.get('failureMessage')}")
+    return "\n".join(lines)
+
+
 def _screen_auth_headers(args: argparse.Namespace) -> dict[str, str]:
     if getattr(args, "token_file", None):
         token = Path(args.token_file).expanduser().read_text(encoding="utf-8").strip()
@@ -6000,6 +6132,609 @@ def run_pack_list(args: argparse.Namespace) -> int:
 
 def run_pack_why(args: argparse.Namespace) -> int:
     return _run_pack_gradle_task("packWhy", Path(args.model), {"packId": args.pack_id})
+
+
+def _pack_export_reference_targets(concept: dict):
+    """Yields (fieldLabel, get, set) for every reference-bearing string this exporter rewrites:
+    each `fields[].reference` (either the shorthand string form or the `{target: ...}` object
+    form -- model.schema.json's `field.reference` is a `oneOf` of both) and the concept's own
+    `satelliteOf` (PK-6: a pack-qualified reference to a satellite's base concept). Deliberately
+    scoped to `concepts[]` only, matching both pre-existing single-concept export paths
+    (NPDevSamples/scripts/packs/export-concept-to-pack.ps1 and the generated
+    GeneratedPackCatalogController's /api/admin/packs/export) -- panels/queries/flows/etc. carry
+    their own much larger reference vocabulary (ModelSourceResolver.rewriteKnownMemberReferenceFields)
+    that no concept-export path has ever touched.
+    """
+    concept_name = concept.get("name", "?")
+    satellite_of = concept.get("satelliteOf")
+    if isinstance(satellite_of, str) and satellite_of:
+        def _get_sat():
+            return concept.get("satelliteOf")
+
+        def _set_sat(value):
+            concept["satelliteOf"] = value
+
+        yield f"{concept_name}.satelliteOf", _get_sat, _set_sat
+    for field in concept.get("fields", None) or []:
+        if not isinstance(field, dict):
+            continue
+        field_name = field.get("name", "?")
+        reference = field.get("reference")
+        if isinstance(reference, str) and reference:
+            def _get_str(f=field):
+                return f.get("reference")
+
+            def _set_str(value, f=field):
+                f["reference"] = value
+
+            yield f"{concept_name}.{field_name}.reference", _get_str, _set_str
+        elif isinstance(reference, dict) and isinstance(reference.get("target"), str) and reference.get("target"):
+            def _get_obj(f=field):
+                return f["reference"]["target"]
+
+            def _set_obj(value, f=field):
+                f["reference"]["target"] = value
+
+            yield f"{concept_name}.{field_name}.reference.target", _get_obj, _set_obj
+
+
+def run_pack_export(args: argparse.Namespace) -> int:
+    """R8.2: a real `npdev pack export` verb, replacing the ONLY-previously-real path from a
+    working app concept to a reusable pack -- an external one-concept PowerShell script
+    (NPDevSamples/scripts/packs/export-concept-to-pack.ps1) that copied a concept's raw JSON
+    verbatim into a new pack.json with zero reference handling and zero schema validation.
+    (A second, equally single-concept, equally reference-blind path also existed: the generated
+    app's own `POST /api/admin/packs/export`, `GeneratedPackCatalogController.exportConceptToPack`
+    -- out of scope here since it lives in a mustache template this task does not own, but the
+    roadmap's "the ONLY path is a PowerShell script" premise was already false before this change.)
+
+    Multi-member: `--concepts A,B,C` exports several concepts from the same source `concepts[]`
+    array (an app model.json's own root-declared concepts, or another pack.json's) into one new
+    pack.json, together.
+
+    Reference handling is the substantive part (the roadmap's own framing). Every
+    `fields[].reference` / `satelliteOf` string among the exported concepts is classified:
+      - target's bare name is one of the OTHER exported concepts -> rewritten to INTRA-PACK form
+        (the bare name), regardless of what qualifier it carried before. This is what lets a
+        multi-concept subgraph compose cleanly under its new pack id.
+      - target already carries a `otherPack::Name` qualifier and `otherPack` is a real sibling
+        pack under NPDevContract/packs -- a genuine cross-pack dependency. Left AS-IS (cross-pack
+        references are qualifier-stable regardless of which pack does the referencing -- see
+        ModelSourceResolver's QUALIFIED_REF_NOOP), and `otherPack` is added to the new pack's
+        own `packs[]` (PK-3 transitive dependency) with a `^major.minor` constraint read from that
+        sibling pack's own current version, so composition can actually find it.
+      - anything else (a bare name that is not among the exported concepts, or a qualifier naming
+        an unknown pack) is NON-PORTABLE: it points at something that will not travel with the
+        pack, and a pack cannot reach back into the app that imports it (packs compose INTO apps,
+        never the reverse). Silently dropping such a reference, or silently leaving it dangling,
+        would produce a pack.json that LOOKS exported but fails to compose later with no context
+        connecting the failure back to this export. Consistent with this repo's house style
+        (MON-18: "unsupported dependencies reported BY NAME rather than silently skipped"), this
+        refuses the export by default, naming every offending concept.field -> target, unless the
+        caller passes --allow-unresolved-refs -- which still does not drop anything: the reference
+        is written through unchanged and the pack.json's own `metadata.unresolvedReferences`
+        records exactly what was left dangling, as a durable, honest audit trail, not silence.
+    """
+    model_path = Path(args.model).expanduser().resolve()
+    source = read_json(model_path)
+    if not isinstance(source.get("concepts"), list):
+        raise CliError(f"{model_path} has no top-level 'concepts' array to export from")
+
+    concept_names = [name.strip() for name in str(args.concepts).split(",") if name.strip()]
+    if not concept_names:
+        raise CliError("--concepts must name at least one concept (comma-separated)")
+    duplicate_requests = {name for name in concept_names if concept_names.count(name) > 1}
+    if duplicate_requests:
+        raise CliError(f"--concepts named the same concept more than once: {sorted(duplicate_requests)}")
+
+    by_name = {}
+    for candidate in source["concepts"]:
+        if isinstance(candidate, dict) and isinstance(candidate.get("name"), str):
+            by_name[candidate["name"]] = candidate
+    missing = [name for name in concept_names if name not in by_name]
+    if missing:
+        available = ", ".join(sorted(by_name)) or "(none)"
+        raise CliError(
+            f"Concept(s) not found in {model_path}: {', '.join(missing)}. Available concepts: {available}"
+        )
+
+    require_identifier(args.pack, "pack name", r"^[a-z][a-z0-9_-]*$")
+
+    root = repo_root()
+    pack_schema_path = root / "NPDevContract" / "schemas" / "pack.schema.json"
+    pack_schema = read_json(pack_schema_path)
+    valid_categories = pack_schema.get("properties", {}).get("category", {}).get("enum") or []
+    category = args.category or "other"
+    if valid_categories and category not in valid_categories:
+        raise CliError(f"category must be one of: {', '.join(valid_categories)}, got: {category}")
+
+    forked_pack = (args.forked_from_pack or "").strip()
+    forked_version = (args.forked_from_version or "").strip()
+    if bool(forked_pack) != bool(forked_version):
+        raise CliError("--forked-from-pack and --forked-from-version must both be set together "
+                        "(forkedFrom.version is required by pack.schema.json)")
+
+    packs_root = root / "NPDevContract" / "packs"
+    out_root = Path(args.out_dir).expanduser().resolve() if getattr(args, "out_dir", None) else packs_root
+    pack_dir = out_root / args.pack
+    pack_json_path = pack_dir / "pack.json"
+    if pack_json_path.exists():
+        raise CliError(f"Pack already exists, refusing to overwrite: {pack_json_path} "
+                        f"(choose a different --pack or remove it first)")
+
+    export_set = set(concept_names)
+    exported_concepts = [copy.deepcopy(by_name[name]) for name in concept_names]
+
+    rewrites: list[dict] = []
+    cross_pack_versions: dict[str, str] = {}
+    unresolved: list[dict] = []
+    for concept in exported_concepts:
+        for field_label, get_target, set_target in _pack_export_reference_targets(concept):
+            target = get_target()
+            local_name = target.split("::", 1)[-1] if "::" in target else target
+            if local_name in export_set:
+                if target != local_name:
+                    set_target(local_name)
+                    rewrites.append({"field": field_label, "from": target, "to": local_name})
+                continue
+            if "::" in target:
+                prefix = target.split("::", 1)[0]
+                sibling_pack_json = packs_root / prefix / "pack.json"
+                if sibling_pack_json.exists():
+                    sibling = read_json(sibling_pack_json)
+                    version = str(sibling.get("version", "")).strip()
+                    parts = version.split(".")
+                    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+                        cross_pack_versions[prefix] = f"^{parts[0]}.{parts[1]}"
+                    else:
+                        cross_pack_versions.setdefault(prefix, "^0.0")
+                    continue
+            unresolved.append({"field": field_label, "target": target})
+
+    if unresolved and not getattr(args, "allow_unresolved_refs", False):
+        lines = "; ".join(f"{item['field']} -> {item['target']!r}" for item in unresolved)
+        raise CliError(
+            "Refusing to export: the following reference(s) point outside the exported concept set "
+            f"and outside any known sibling pack under {packs_root}: {lines}. "
+            "Either add the target concept to --concepts, restructure the source model to split the "
+            "dependency via `satelliteOf` before exporting (see the WmsOffice pack-extraction recipe: "
+            "packs cannot reach back into the app that imports them), or pass --allow-unresolved-refs "
+            "to export anyway with the reference left as-is and recorded in the pack's own "
+            "metadata.unresolvedReferences."
+        )
+
+    pack_doc: dict = {
+        "$schema": "../../schemas/pack.schema.json",
+        "dslVersion": "1.0.0",
+        "pack": args.pack,
+        "version": args.pack_version or "1.0.0",
+        "description": args.description or f"Exported from concept(s) {', '.join(concept_names)} in {model_path}.",
+        "category": category,
+        "author": args.author,
+    }
+    if args.namespace:
+        pack_doc["namespace"] = args.namespace
+    if forked_pack:
+        pack_doc["forkedFrom"] = {
+            "pack": forked_pack,
+            "version": forked_version,
+            "originAuthor": (args.forked_from_author or "").strip(),
+        }
+    if cross_pack_versions:
+        pack_doc["packs"] = [
+            {"pack": pack_id, "version": version} for pack_id, version in sorted(cross_pack_versions.items())
+        ]
+    if unresolved:
+        pack_doc["metadata"] = {"unresolvedReferences": unresolved}
+    pack_doc["concepts"] = exported_concepts
+
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    pack_json_path.write_text(json.dumps(pack_doc, indent=2) + "\n", encoding="utf-8")
+
+    if unresolved:
+        for item in unresolved:
+            print(f"WARNING  unresolved reference left as-is: {item['field']} -> {item['target']!r}",
+                  file=sys.stderr)
+
+    report = {
+        "exported": True,
+        "pack": args.pack,
+        "packJsonPath": str(pack_json_path),
+        "concepts": concept_names,
+        "rewrittenReferences": rewrites,
+        "crossPackDependencies": pack_doc.get("packs", []),
+        "unresolvedReferences": unresolved,
+    }
+    print(json.dumps(report, indent=2))
+    return 0
+
+
+def _add_known_names(resolved_model: dict, array_key: str) -> set[str]:
+    return {
+        member.get("name") for member in (resolved_model.get(array_key) or [])
+        if isinstance(member, dict) and isinstance(member.get("name"), str)
+    }
+
+
+def _add_bare_name(value: str) -> str:
+    return value.split("::", 1)[-1] if "::" in value else value
+
+
+def _add_normalize_step_type(value: object) -> str:
+    return (value or "").strip().lower() if isinstance(value, str) else ""
+
+
+def _add_flatten_steps(steps):
+    """Yield every step in a flow/procedure step list, including ones nested under branch/loop
+    containers (`then`/`else`/`steps` -- both $defs.flowStep and $defs.procedureStep in
+    model.schema.json use the identical nesting shape)."""
+    for step in steps or []:
+        if not isinstance(step, dict):
+            continue
+        yield step
+        yield from _add_flatten_steps(step.get("then"))
+        yield from _add_flatten_steps(step.get("else"))
+        yield from _add_flatten_steps(step.get("steps"))
+
+
+def _add_scan_concept_references(member: dict, known: dict[str, set[str]]) -> list[str]:
+    missing = []
+    for label, get_target, _set_target in _pack_export_reference_targets(member):
+        target = get_target()
+        if isinstance(target, str) and target and _add_bare_name(target) not in known["concepts"]:
+            missing.append(f"{label} -> {target!r} (concept not found)")
+    for extra_field in ("extends", "specializes"):
+        target = member.get(extra_field)
+        if isinstance(target, str) and target and _add_bare_name(target) not in known["concepts"]:
+            missing.append(f"{member.get('name')}.{extra_field} -> {target!r} (concept not found)")
+    return missing
+
+
+def _add_scan_panel_references(member: dict, known: dict[str, set[str]]) -> list[str]:
+    missing = []
+    panel_name = member.get("name", "?")
+    for data_source in member.get("dataSources", None) or []:
+        if not isinstance(data_source, dict):
+            continue
+        label = f"{panel_name}.dataSources[{data_source.get('name', '?')}]"
+        for field, kind_key, kind_label in (
+            ("concept", "concepts", "concept"),
+            ("query", "queries", "query"),
+            ("procedure", "procedures", "procedure"),
+            ("onRowLoad", "procedures", "procedure"),
+        ):
+            target = data_source.get(field)
+            if isinstance(target, str) and target and _add_bare_name(target) not in known[kind_key]:
+                missing.append(f"{label}.{field} -> {target!r} ({kind_label} not found)")
+    for action in member.get("actions", None) or []:
+        if not isinstance(action, dict):
+            continue
+        label = f"{panel_name}.actions[{action.get('name', '?')}]"
+        target = action.get("procedure")
+        if isinstance(target, str) and target and _add_bare_name(target) not in known["procedures"]:
+            missing.append(f"{label}.procedure -> {target!r} (procedure not found)")
+        target = action.get("flow")
+        if isinstance(target, str) and target and _add_bare_name(target) not in known["flows"]:
+            missing.append(f"{label}.flow -> {target!r} (flow not found)")
+        if action.get("binding") == "conceptQuery":
+            target = action.get("concept")
+            if isinstance(target, str) and target and _add_bare_name(target) not in known["concepts"]:
+                missing.append(f"{label}.concept -> {target!r} (concept not found)")
+    return missing
+
+
+# FlowValidation.java's own switch (validateFlowSteps): these step types resolve their `scope` /
+# `procedure` / `capability` / `event` against the model exactly the way validated here -- see
+# validatePersistenceMutationAliasStep, validateCallProcedureStep, validateEventStep.
+_ADD_FLOW_CONCEPT_SCOPE_TYPES = {"createconcept", "updateconcept", "invariantcheck"}
+
+
+def _add_scan_flow_references(member: dict, known: dict[str, set[str]]) -> list[str]:
+    missing = []
+    flow_name = member.get("name", "?")
+    concept = member.get("concept") or (member.get("input") or {}).get("concept")
+    if isinstance(concept, str) and concept and _add_bare_name(concept) not in known["concepts"]:
+        missing.append(f"{flow_name}.concept -> {concept!r} (concept not found)")
+    for step in _add_flatten_steps(member.get("steps")):
+        step_type = _add_normalize_step_type(step.get("type"))
+        label = f"{flow_name}.steps[{step.get('name', '?')}]"
+        if step_type in _ADD_FLOW_CONCEPT_SCOPE_TYPES:
+            scope = step.get("scope")
+            if isinstance(scope, str) and scope and _add_bare_name(scope) not in known["concepts"]:
+                missing.append(f"{label}.scope -> {scope!r} (concept not found)")
+        if step_type == "callprocedure":
+            procedure = step.get("procedure")
+            if isinstance(procedure, str) and procedure and _add_bare_name(procedure) not in known["procedures"]:
+                missing.append(f"{label}.procedure -> {procedure!r} (procedure not found)")
+        if step_type == "capabilitycall":
+            capability = step.get("capability")
+            if (isinstance(capability, str) and capability
+                    and capability.lower() not in ADD_BUILTIN_CAPABILITIES
+                    and _add_bare_name(capability) not in known["capabilities"]):
+                missing.append(f"{label}.capability -> {capability!r} (capability not found)")
+        if step_type in {"emitevent", "awaitevent", "scheduleevent"}:
+            event = step.get("event") or step.get("awaitEvent")
+            if isinstance(event, str) and event and _add_bare_name(event) not in known["events"]:
+                missing.append(f"{label}.event -> {event!r} (event not found)")
+    return missing
+
+
+# PackValidation.java's own PROCEDURE_*_STEP_TYPES constants -- mirrored here (lowercase, both the
+# hyphenated and camelCase spellings the DSL accepts) so the scan agrees exactly with which step
+# types actually get a concept/procedure/capability existence check at semantic-validation time.
+_ADD_PROCEDURE_CONCEPT_STEP_TYPES = {
+    "conceptquery", "readconcept", "read_concept", "listconcepts", "list_concepts",
+    "runquery", "run_query", "conceptcreate", "conceptupdate", "saveconcept", "save_concept",
+    "conceptdelete", "deleteconcept", "delete_concept", "patchconcept",
+}
+_ADD_PROCEDURE_CALL_STEP_TYPES = {"procedurecall", "callprocedure", "call_procedure"}
+_ADD_PROCEDURE_CAPABILITY_STEP_TYPES = {"capabilitycall", "callcapability", "call_capability"}
+
+
+def _add_scan_procedure_references(member: dict, known: dict[str, set[str]]) -> list[str]:
+    missing = []
+    procedure_name = member.get("name", "?")
+    for step in _add_flatten_steps(member.get("steps")):
+        step_type = _add_normalize_step_type(step.get("type"))
+        label = f"{procedure_name}.steps[{step.get('name', '?')}]"
+        if step_type in _ADD_PROCEDURE_CONCEPT_STEP_TYPES:
+            concept = step.get("concept")
+            if not (isinstance(concept, str) and _add_bare_name(concept) in known["concepts"]):
+                missing.append(f"{label}.concept -> {concept!r} (concept not found)")
+        if step_type in _ADD_PROCEDURE_CALL_STEP_TYPES:
+            procedure = step.get("procedure")
+            if not (isinstance(procedure, str) and _add_bare_name(procedure) in known["procedures"]):
+                missing.append(f"{label}.procedure -> {procedure!r} (procedure not found)")
+        if step_type in _ADD_PROCEDURE_CAPABILITY_STEP_TYPES:
+            capability = step.get("capability")
+            if not (isinstance(capability, str) and (
+                    capability.lower() in ADD_BUILTIN_CAPABILITIES
+                    or _add_bare_name(capability) in known["capabilities"])):
+                missing.append(f"{label}.capability -> {capability!r} (capability not found)")
+    return missing
+
+
+def _add_scan_member_references(kind: str, member: dict, resolved_model: dict) -> list[str]:
+    """--from's safety net: an exemplar copied out of another sample can carry references (a
+    concept's own `reference`/`extends`/`specializes`, a panel's dataSource/action, a flow's
+    concept/procedure/event, a procedure's concept/procedure/capability) that simply do not exist
+    in the model being added to. Writing such a member anyway would produce something
+    `npdev validate model` immediately rejects -- exactly what R1.5's own Done-When forbids
+    ("passes validation with zero errors on first try"). Returns every dangling reference, by
+    name, so the caller can refuse the same way MON-18/PACK-13 already do (named offenders, not a
+    silent drop or a silent write), rather than shipping a member that looks right and isn't.
+
+    Deliberately scoped to the reference shapes the real semantic validators (FlowValidation,
+    PackValidation, PanelValidation, ConceptValidation) actually enforce -- not every field a step
+    can carry (e.g. capabilityCall's operation-arity match is left to `npdev validate model`
+    itself), matching PACK-13's own precedent of not attempting the full ~20-member reference
+    vocabulary exhaustively.
+    """
+    known = {
+        "concepts": _add_known_names(resolved_model, "concepts"),
+        "queries": _add_known_names(resolved_model, "queries"),
+        "procedures": _add_known_names(resolved_model, "procedures"),
+        "flows": _add_known_names(resolved_model, "flows"),
+        "events": _add_known_names(resolved_model, "events"),
+        "capabilities": {c.get("name") for c in (resolved_model.get("capabilities") or [])
+                         if isinstance(c, dict) and isinstance(c.get("name"), str)},
+    }
+    if kind == "concept":
+        return _add_scan_concept_references(member, known)
+    if kind == "panel":
+        return _add_scan_panel_references(member, known)
+    if kind == "flow":
+        return _add_scan_flow_references(member, known)
+    if kind == "procedure":
+        return _add_scan_procedure_references(member, known)
+    raise CliError(f"unsupported member kind: {kind}")
+
+
+def _add_load_exemplar_member(root: Path, kind: str, from_spec: str, new_name: str) -> tuple[dict, str, Path]:
+    """Resolves --from `<sample>` or `<sample>::<MemberName>` against NPDevSamples/<sample>/Input/
+    model.json (the shape every sample but npdev-init-seed uses) or NPDevSamples/<sample>/
+    model.json (npdev-init-seed's own flat shape -- the same two-candidate lookup `npdev init
+    --from` already uses).
+
+    PREMISE CHECK (R1.5's own roadmap text): "with `--from` copying an exemplar out of the RAG
+    corpus" is FALSE as literally stated. `NPDevMcp/server.py`'s `tool_search_examples` reads
+    `<Build>/npdev-ai/rag-index.json` -- ranked TEXT CHUNKS for an AI agent to read, built by
+    `scripts/ai/build_knowledge.py` from `knowledge/cards/` + golden scenarios, and not guaranteed
+    to exist in a fresh checkout (a Build-root artifact -- CLAUDE.md's own "ephemeral" tier). There
+    is no structured concept/panel/flow/procedure JSON in it to copy; there is nothing there for
+    `--from` to extract a member out of. The real, in-repo, always-present, already-proven source
+    of a "real, working" member is `NPDevSamples/` -- the exact corpus `npdev init --from` already
+    draws whole-app seeds from, and the one CLAUDE.md itself names as the DSL-feature reference
+    corpus ("Adding a DSL feature? Add a real example to NPDevSamples/dsl-conformance-max").
+    """
+    sample = from_spec.split("::", 1)[0]
+    member_name = from_spec.split("::", 1)[1] if "::" in from_spec else None
+    sample_dir = root / "NPDevSamples" / sample
+    array_key = ADD_MEMBER_ARRAY_KEYS[kind]
+    candidate_paths = [sample_dir / "Input" / "model.json", sample_dir / "model.json"]
+    for candidate_model in candidate_paths:
+        if not candidate_model.exists():
+            continue
+        exemplar_model = read_json(candidate_model)
+        candidates = [m for m in (exemplar_model.get(array_key) or [])
+                      if isinstance(m, dict) and isinstance(m.get("name"), str)]
+        if member_name:
+            chosen = next((m for m in candidates if m["name"] == member_name), None)
+            if chosen is None:
+                available = ", ".join(sorted(m["name"] for m in candidates)) or "(none)"
+                raise CliError(
+                    f"--from {from_spec!r}: no {kind} named {member_name!r} in {candidate_model}. "
+                    f"Available {array_key}: {available}"
+                )
+        else:
+            if not candidates:
+                raise CliError(
+                    f"--from {from_spec!r}: {candidate_model} declares no {array_key} to copy from."
+                )
+            chosen = candidates[0]
+        member = copy.deepcopy(chosen)
+        source_name = member["name"]
+        member["name"] = new_name
+        # The member's own identity label is refreshed to match NAME (a concept named "Owner"
+        # should not keep displaying the exemplar's "Canary owner"); everything else -- invariant
+        # names, step names, field names -- is left exactly as copied. Those stay internally
+        # consistent regardless of the rename (an invariant's own name is only ever referenced
+        # from within its own concept, which is copied whole), so rewriting them would be
+        # cosmetic-only churn with no correctness payoff, unlike the top-level display label.
+        if kind == "concept" and isinstance(member.get("ui"), dict) and isinstance(member["ui"].get("label"), str):
+            member["ui"]["label"] = _add_humanize_label(new_name)
+        if kind == "panel" and isinstance(member.get("title"), str):
+            member["title"] = _add_humanize_label(new_name)
+        return member, source_name, candidate_model
+    raise CliError(
+        f"--from sample not found: {sample!r} "
+        f"(looked for {candidate_paths[0]} and {candidate_paths[1]})"
+    )
+
+
+def _add_default_stub(kind: str, name: str, concept: str | None) -> dict:
+    """No --from: a minimal, self-contained, schema-AND-semantically-valid member. Every shape
+    here is lifted verbatim in structure from a real, currently-passing corpus fixture (`concept`
+    from NPDevSamples/npdev-init-seed/model.json's own Patient; `flow`/`procedure` step shapes from
+    NPDevSamples/npdev-canary/Input/model.json's CreateCanaryTask/SaveCanaryTaskProcedure; `panel`
+    from dsl-conformance-max's WidgetOrderReviewPanel, which proves a concept-bound dataSource
+    needs neither `layout` nor `fieldBindings`) rather than hand-derived from schema alone, so a
+    subtle semantic-only rule (e.g. ConceptValidation's "must have exactly 1 id field",
+    FlowValidation's "flow.concept or flow.input.concept is required") can't be missed by reading
+    the JSON Schema in isolation.
+    """
+    if kind == "concept":
+        return {
+            "name": name,
+            "ui": {"label": _add_humanize_label(name)},
+            "fields": [
+                {"name": "id", "type": "uuid", "id": True, "required": True},
+                {"name": "label", "type": "string", "required": True, "ui": {"label": "Label"}},
+            ],
+        }
+    if kind == "panel":
+        return {
+            "name": name,
+            "route": _add_kebab_route(name),
+            "title": _add_humanize_label(name),
+            "dataSources": [
+                {"name": _add_lower_first(concept), "concept": concept},
+            ],
+        }
+    if kind == "flow":
+        return {
+            "name": name,
+            "input": {"concept": concept, "mode": "create"},
+            "steps": [
+                {"name": f"save-{_add_lower_first(concept)}", "type": "createConcept",
+                 "scope": concept, "input": "$input", "output": "$saved"},
+                {"name": "return-saved", "type": "return", "value": "$saved"},
+            ],
+        }
+    if kind == "procedure":
+        return {
+            "name": name,
+            "parameters": [{"name": "id", "type": "uuid", "required": True}],
+            "steps": [
+                {"name": f"read-{_add_lower_first(concept)}", "type": "readConcept",
+                 "concept": concept, "id": "$id", "target": "result"},
+                {"name": "return-result", "type": "return", "value": "$result"},
+            ],
+        }
+    raise CliError(f"unsupported member kind: {kind}")
+
+
+def run_add_member(args: argparse.Namespace, kind: str) -> int:
+    """R1.5: `npdev add concept|panel|flow|procedure NAME` writes one schema-valid member into the
+    correct top-level model array (MODEL_ARRAY_KEYS knowledge -- ADD_MEMBER_ARRAY_KEYS above),
+    seeding its required fields, refusing (naming the offender) rather than silently overwriting
+    when NAME already exists -- MON-18/PACK-13 house style. `--from <sample>[::<Member>]` copies a
+    real member out of NPDevSamples/ instead of writing a blank stub (see
+    _add_load_exemplar_member's docstring for why that is NOT the RAG corpus the roadmap named).
+
+    Existence checks (duplicate name, --concept, --from's reference scan) run against the
+    FRAGMENT-COMPOSED view (`resolve_split_model`, the same resolver `npdev inspect app`/`npdev
+    dev`'s watch-set use) rather than the raw root file alone, so a concept declared in a $ref'd
+    fragment (bounded-context style, S3) is correctly seen as already existing. The new member is
+    still appended to --model's OWN top-level array, never into a fragment -- authoring always
+    targets the file the caller named.
+    """
+    model_path = Path(args.model).expanduser().resolve()
+    if not model_path.exists():
+        raise CliError(f"model not found: {model_path}")
+    root_model = read_json(model_path)
+    array_key = ADD_MEMBER_ARRAY_KEYS[kind]
+
+    name = (args.name or "").strip()
+    if not name:
+        raise CliError(f"{kind} name must not be blank")
+    if "::" in name:
+        raise CliError(f"{kind} name must not contain '::' (that is the pack-qualifier separator): {name!r}")
+
+    uncomposed: list[str] = []
+    resolved_model = resolve_split_model(model_path, collect_uncomposed=uncomposed)
+
+    existing_names = _add_known_names(resolved_model, array_key)
+    if name in existing_names:
+        raise CliError(
+            f"Refusing to add: a {kind} named {name!r} already exists in {model_path} (composed "
+            f"view -- it may come from a $ref fragment, not the root file itself). Choose a "
+            f"different name, or edit the existing declaration directly."
+        )
+
+    concept = getattr(args, "concept", None)
+    from_spec = getattr(args, "from_exemplar", None)
+    source_note = None
+
+    if kind != "concept":
+        known_concepts = _add_known_names(resolved_model, "concepts")
+        if concept:
+            if concept not in known_concepts:
+                raise CliError(
+                    f"--concept {concept!r} not found in {model_path} (composed view). Existing "
+                    f"concepts: {', '.join(sorted(known_concepts)) or '(none)'} -- add it first "
+                    f"with `npdev add concept {concept}`."
+                )
+        elif not from_spec:
+            raise CliError(
+                f"--concept is required when scaffolding a {kind} without --from (every {kind} in "
+                f"this DSL binds to an existing concept -- model.schema.json's own {kind} "
+                f"definition and, for flow, JsonModelParser itself, both enforce it)."
+            )
+
+    if from_spec:
+        member, source_name, source_path = _add_load_exemplar_member(repo_root(), kind, from_spec, name)
+        missing = _add_scan_member_references(kind, member, resolved_model)
+        if missing:
+            raise CliError(
+                f"Refusing to add: --from {from_spec!r} (source {kind} {source_name!r} in "
+                f"{source_path}) references the following, which do not exist in {model_path}: "
+                + "; ".join(missing)
+                + f". Add the missing member(s) first (e.g. `npdev add concept <Name>`), or omit "
+                  f"--from and let scaffolding seed a self-contained stub instead."
+            )
+        source_note = f"{from_spec} (source {kind}: {source_name}, {source_path})"
+    else:
+        member = _add_default_stub(kind, name, concept)
+
+    root_model.setdefault(array_key, [])
+    if not isinstance(root_model.get(array_key), list):
+        raise CliError(f"{model_path}: top-level {array_key!r} is not an array, refusing to append")
+    root_model[array_key].append(member)
+    model_path.write_text(json.dumps(root_model, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    report = {
+        "added": True,
+        "kind": kind,
+        "name": name,
+        "modelPath": str(model_path),
+        "arrayKey": array_key,
+        "concept": concept,
+        "from": source_note,
+        "uncomposedContributions": uncomposed,
+    }
+    print(json.dumps(report, indent=2))
+    return 0
 
 
 def _print_boundary_limits(report: dict) -> None:
@@ -7169,6 +7904,42 @@ def build_parser() -> argparse.ArgumentParser:
     pack_why.add_argument("--model", required=True, help="path to the model.json to resolve")
     pack_why.add_argument("pack_id", metavar="<packId>", help="the pack id to explain")
 
+    # R8.2: multi-member "export a working concept into a reusable pack" verb, replacing the
+    # external one-concept PowerShell script (NPDevSamples/scripts/packs/export-concept-to-pack.ps1)
+    # as the real path -- see run_pack_export's own docstring for the reference-rewriting rules.
+    pack_export = pack_sub.add_parser(
+        "export", help="Export one or more concepts from a model/pack into a new, reusable pack.json."
+    )
+    pack_export.add_argument("--model", required=True,
+                              help="path to the model.json (or pack.json) to export concepts from")
+    pack_export.add_argument("--concepts", required=True,
+                              help="comma-separated concept names to export together, e.g. Order,OrderLine")
+    pack_export.add_argument("--pack", required=True, help="new pack identifier (pack.schema.json's pattern)")
+    pack_export.add_argument("--author", required=True, help="attribution for who published this pack")
+    pack_export.add_argument("--category", default="other", help="pack.schema.json category (default: other)")
+    pack_export.add_argument("--description", default="", help="pack description (default: auto-generated)")
+    # dest is deliberately NOT "version" -- the top-level parser already owns a global --version
+    # (action="store_true", dest="version") and `main()` checks `if args.version:` before any
+    # command dispatch; a same-named subparser dest here would silently overwrite it in the shared
+    # Namespace and short-circuit every `pack export` call into the version banner (caught live).
+    pack_export.add_argument("--version", dest="pack_version", default="1.0.0",
+                              help="initial pack version (default: 1.0.0)")
+    pack_export.add_argument("--namespace", default="", help="optional Java/package namespace")
+    pack_export.add_argument("--out-dir", dest="out_dir", default="",
+                              help="directory to write <pack>/pack.json under "
+                                   "(default: NPDevContract/packs, the platform's own pack corpus)")
+    pack_export.add_argument("--forked-from-pack", dest="forked_from_pack", default="",
+                              help="attribution: pack this was forked from")
+    pack_export.add_argument("--forked-from-version", dest="forked_from_version", default="",
+                              help="attribution: version this was forked from")
+    pack_export.add_argument("--forked-from-author", dest="forked_from_author", default="",
+                              help="attribution: original author of the forked-from pack")
+    pack_export.add_argument("--allow-unresolved-refs", dest="allow_unresolved_refs", action="store_true",
+                              help="export even if a reference targets a concept outside the exported "
+                                   "set and outside any known sibling pack; the reference is left as-is "
+                                   "and recorded in the pack's own metadata.unresolvedReferences instead "
+                                   "of refusing the export")
+
     pack_diff = pack_sub.add_parser(
         "diff", help="Classify every difference between two pack.json documents as ADDITIVE/BREAKING/PATCH."
     )
@@ -7186,6 +7957,80 @@ def build_parser() -> argparse.ArgumentParser:
         "--write", action="store_true",
         help="apply the change: write an empty migrations chain entry into <newPack.json> when the "
              "publish is allowed and non-breaking; without this flag, only reports what would happen",
+    )
+
+    # R1.5 (roadmap 2026-08-18 R1.5): "npdev init" scaffolds a whole app; before this, growing one
+    # meant hand-editing model.json against the 4x-mirrored schema with no help until `npdev
+    # validate model` failed. `add` writes ONE schema-valid member into the correct top-level
+    # array, reusing the kind -> array-key agreement ModelSourceResolver.MODEL_ARRAY_KEYS already
+    # keys 18 ways (ADD_MEMBER_ARRAY_KEYS mirrors the 4 this verb supports).
+    add = subparsers.add_parser(
+        "add", help="Scaffold one schema-valid concept/panel/flow/procedure into an existing model.json."
+    )
+    add_sub = add.add_subparsers(dest="add_command")
+
+    add_concept = add_sub.add_parser(
+        "concept",
+        help="Add a concept with a minimal valid field set (an id field + one more), or --from an exemplar.",
+    )
+    add_concept.add_argument("name", help="New concept name. Refused if one already exists (by this name).")
+    add_concept.add_argument("--model", required=True, help="path to the model.json to add into")
+    add_concept.add_argument(
+        "--from", dest="from_exemplar", default=None, metavar="SAMPLE[::MEMBER]",
+        help="Copy a real concept out of NPDevSamples/<SAMPLE> (Input/model.json, or model.json for "
+             "npdev-init-seed's own flat layout -- the same lookup `npdev init --from` uses) instead "
+             "of writing a blank stub, renamed to NAME. Omit ::MEMBER to take the sample's first "
+             "concept. Refused if the exemplar references anything not already in --model.",
+    )
+
+    add_panel = add_sub.add_parser(
+        "panel", help="Add a panel with a concept-bound dataSource, or --from an exemplar."
+    )
+    add_panel.add_argument("name", help="New panel name. Refused if one already exists (by this name).")
+    add_panel.add_argument("--model", required=True, help="path to the model.json to add into")
+    add_panel.add_argument(
+        "--concept", default=None,
+        help="Concept this panel's dataSource binds to -- must already exist in --model. Required "
+             "unless --from supplies its own concept-bound content.",
+    )
+    add_panel.add_argument(
+        "--from", dest="from_exemplar", default=None, metavar="SAMPLE[::MEMBER]",
+        help="Copy a real panel out of NPDevSamples/<SAMPLE> instead of writing a blank stub, "
+             "renamed to NAME. Omit ::MEMBER to take the sample's first panel.",
+    )
+
+    add_flow = add_sub.add_parser(
+        "flow", help="Add a flow with a createConcept/return skeleton bound to --concept, or --from an exemplar."
+    )
+    add_flow.add_argument("name", help="New flow name. Refused if one already exists (by this name).")
+    add_flow.add_argument("--model", required=True, help="path to the model.json to add into")
+    add_flow.add_argument(
+        "--concept", default=None,
+        help="Concept this flow operates on -- must already exist in --model (JsonModelParser "
+             "refuses any flow with neither flow.concept nor flow.input.concept). Required unless "
+             "--from supplies its own concept binding.",
+    )
+    add_flow.add_argument(
+        "--from", dest="from_exemplar", default=None, metavar="SAMPLE[::MEMBER]",
+        help="Copy a real flow out of NPDevSamples/<SAMPLE> instead of writing a blank stub, "
+             "renamed to NAME. Omit ::MEMBER to take the sample's first flow.",
+    )
+
+    add_procedure = add_sub.add_parser(
+        "procedure",
+        help="Add a procedure with a readConcept/return skeleton bound to --concept, or --from an exemplar.",
+    )
+    add_procedure.add_argument("name", help="New procedure name. Refused if one already exists (by this name).")
+    add_procedure.add_argument("--model", required=True, help="path to the model.json to add into")
+    add_procedure.add_argument(
+        "--concept", default=None,
+        help="Concept this procedure reads -- must already exist in --model. Required unless --from "
+             "supplies its own concept-bound steps.",
+    )
+    add_procedure.add_argument(
+        "--from", dest="from_exemplar", default=None, metavar="SAMPLE[::MEMBER]",
+        help="Copy a real procedure out of NPDevSamples/<SAMPLE> instead of writing a blank stub, "
+             "renamed to NAME. Omit ::MEMBER to take the sample's first procedure.",
     )
 
     migration = subparsers.add_parser(
@@ -7431,6 +8276,29 @@ def build_parser() -> argparse.ArgumentParser:
     test.add_argument("--engine-root", default=None, help="Browser layer: where the engine is installed.")
     test.add_argument("--engine-api-key", default=None, help="Browser layer: the ENGINE's key, not the app's.")
     test.add_argument("--json", action="store_true")
+
+    # R3.2: no new server-side surface -- a thin wrapper around DataSeedAdminController's existing
+    # GET /api/admin/seeds and POST /api/admin/seeds/<id>/run, same --app-dir + probe_app shape
+    # `test` uses above.
+    seed = subparsers.add_parser(
+        "seed",
+        help="List or run an app's declared seed/mock-data sets via its admin seed endpoints "
+             "(GET/POST /api/admin/seeds).",
+    )
+    seed_sub = seed.add_subparsers(dest="seed_command")
+
+    seed_list = seed_sub.add_parser("list", help="List the seeds this app declares.")
+    seed_list.add_argument("--app-dir", required=True, help="A generated, RUNNING app (the one `npdev monitor probe` sees).")
+    seed_list.add_argument("--json", action="store_true")
+
+    seed_run = seed_sub.add_parser("run", help="Run one declared seed.")
+    seed_run.add_argument("--app-dir", required=True, help="A generated, RUNNING app (the one `npdev monitor probe` sees).")
+    seed_run.add_argument("--id", required=True, help="The seed's id, as shown by `npdev seed list`.")
+    seed_run.add_argument("--tenant-id", default=None,
+                          help="SUPERUSER only: target a specific tenant's seed run instead of the caller's own.")
+    seed_run.add_argument("--timeout", type=float, default=120.0,
+                          help="HTTP timeout in seconds -- a large seed (thousands of records) can take a while.")
+    seed_run.add_argument("--json", action="store_true")
 
     report = subparsers.add_parser(
         "report", help="Produce or bootstrap the evidence and status reports."
@@ -7844,10 +8712,20 @@ def main(argv: list[str] | None = None) -> int:
             return run_pack_list(args)
         if args.command == "pack" and args.pack_command == "why":
             return run_pack_why(args)
+        if args.command == "pack" and args.pack_command == "export":
+            return run_pack_export(args)
         if args.command == "pack" and args.pack_command == "diff":
             return run_pack_diff(args)
         if args.command == "pack" and args.pack_command == "publish":
             return run_pack_publish(args)
+        if args.command == "add" and args.add_command == "concept":
+            return run_add_member(args, "concept")
+        if args.command == "add" and args.add_command == "panel":
+            return run_add_member(args, "panel")
+        if args.command == "add" and args.add_command == "flow":
+            return run_add_member(args, "flow")
+        if args.command == "add" and args.add_command == "procedure":
+            return run_add_member(args, "procedure")
         if args.command == "author" and args.author_command == "diff-gate":
             return run_author_diff_gate(args)
         if args.command == "author" and args.author_command == "submit":
@@ -7907,6 +8785,11 @@ def main(argv: list[str] | None = None) -> int:
             # which run_test raises as a CliError rather than reporting as a result.
             print(json.dumps(result, indent=2, ensure_ascii=False) if args.json
                   else _test_human_summary(result))
+            return 0 if result.get("ok") else 2
+        if args.command == "seed":
+            result = run_seed(args)
+            print(json.dumps(result, indent=2, ensure_ascii=False) if args.json
+                  else _seed_human_summary(result))
             return 0 if result.get("ok") else 2
         if args.command == "loop" and args.loop_command == "run":
             result = run_closed_loop(args)
