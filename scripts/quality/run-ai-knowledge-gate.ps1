@@ -716,6 +716,19 @@ try {
         $failures += "a ledger item's falsifiable-DONE guard is missing or unresolvable: see scripts/quality/check-done-item-guards.py output above, and scripts/policy/done-item-guard-policy.json"
     }
 
+    # QUAL-23 (2026-08-19): reconciles NPDevKernel/settings.gradle's adapter list against both CI
+    # workflows' hand-maintained `:adapters:<name>:test` allowlists -- the same "declared source of
+    # truth vs. what actually runs" shape as check-test-task-coverage.py (Test-task coverage, above),
+    # applied to kernel adapter modules instead of custom Gradle Test tasks. Measured RED on
+    # 2026-08-19: 21 of 41 modules were in neither workflow, including expression-cel and the two
+    # RUN-4 hanging-socket proof adapters. See scripts/quality/check-ci-adapter-coverage.py's own
+    # EXCLUDED table for the one deliberate, reviewed exception (postgres-test-support).
+    Write-Host "[37/37] Checking every kernel adapter module runs its tests in some CI workflow..."
+    & $py "scripts/quality/check-ci-adapter-coverage.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a kernel adapter module runs its tests in NO CI workflow and is not excluded: see scripts/quality/check-ci-adapter-coverage.py output above"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

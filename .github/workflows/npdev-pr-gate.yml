@@ -144,6 +144,39 @@ jobs:
             :adapters:bulkhead-postgres:test \
             --no-daemon --console=plain
 
+      # QUAL-23 (2026-08-19): the same 17 previously-CI-uncovered adapters added to
+      # npdev-ci-validation.yml's Linux job, mirrored here so a regression in any of them shows red
+      # on the PR itself instead of waiting for that job's nightly/push-to-main-only schedule (its
+      # Linux job does not run on `pull_request`). None need Docker/Postgres -- plain H2/in-memory/
+      # loopback-socket unit tests, verified per-module (no testcontainers import or dependency)
+      # before adding. `file-store-objectstore` is the one exception: it needs a real MinIO
+      # Testcontainers container, so it stays in npdev-ci-validation.yml only, alongside that job's
+      # existing Postgres Testcontainers step, rather than adding a second container pull to every PR.
+      - name: "Kernel adapter tests (previously CI-uncovered, QUAL-23)"
+        working-directory: NPDevKernel
+        timeout-minutes: 20
+        run: |
+          sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
+          ./gradlew \
+            :adapters:auth-context-jwt:test \
+            :adapters:authz-default:test \
+            :adapters:document-render-inproc:test \
+            :adapters:document-render-stub:test \
+            :adapters:expression-cel:test \
+            :adapters:external-ai-inproc:test \
+            :adapters:external-ai-http:test \
+            :adapters:external-ai-pack-core:test \
+            :adapters:json-jackson:test \
+            :adapters:mail-inproc:test \
+            :adapters:mail-smtp:test \
+            :adapters:metrics-micrometer:test \
+            :adapters:resume-bootstrap-spring:test \
+            :adapters:runtime-validation:test \
+            :adapters:schema-validator-default:test \
+            :adapters:tracing-redaction-default:test \
+            :adapters:webhook-http:test \
+            --no-daemon --console=plain
+
       - name: Generator unit tests
         working-directory: NPDevGenerator
         # REG-176: packagedProofTest now runs the 3 packaged-app-boot proofs SERIALLY
