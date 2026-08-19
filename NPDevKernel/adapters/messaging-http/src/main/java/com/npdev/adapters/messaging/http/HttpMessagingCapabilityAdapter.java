@@ -82,24 +82,34 @@ import java.util.function.Function;
  * {@code HttpMessagingCapabilityAdapter} received the POST and invoked app B's locally registered
  * handler for that topic.
  *
- * <h2>Not wired into a generated FinalApp's Spring container in this round</h2>
+ * <h2>Two ways to reach the inbound path: embedded server, or a direct in-process call</h2>
  *
- * <p>A real two-process proof needs {@code com.finalexec.api} controller (RuntimeHost) plumbing --
- * {@code NpdevCapabilityBindingConfig} constructing this adapter from a model's capability binding,
- * an allowlisted controller class exposing {@link #INBOUND_PATH}, and a
- * {@code runtime-supported-controllers.json} entry. Those files are outside this module's owned
- * surface for this round (R6.4 owns {@code NPDevKernel/adapters/**} only). Proven here instead: two
- * separately configured instances of this class, each running its OWN embedded {@link HttpServer}
- * receiver bound to a real loopback port, exchanging a real HTTP POST -- an honest substitute for two
- * booted FinalApps, not a mock.
+ * <p>{@link #handleInboundDelivery} is this class's own embedded {@link HttpServer} route handler,
+ * started only when an instance is constructed with a non-null {@code inboundListenAddress} -- real
+ * wire transport, a genuine second HTTP server. This module's own tests use it to prove two
+ * independently configured instances really exchange a signed HTTP POST over a real loopback socket,
+ * an honest substitute for two booted FinalApps.
+ *
+ * <p>A RuntimeHost-generated FinalApp does not need a second listening socket: the app already has its
+ * own front door (Spring MVC), so {@code com.finalexec.api.MessagingDeliveryController} (RuntimeHost,
+ * wired by {@code NpdevCapabilityBindingConfig}) reads an inbound request's headers/body itself and
+ * calls {@link #receiveInboundDelivery} directly, in-process -- the SAME verify/dedupe/dispatch logic
+ * {@link #handleInboundDelivery} runs, extracted so both callers share it, with no embedded
+ * {@link HttpServer}, no loopback socket, and no extra network hop in that path. Consequently the
+ * FinalApp's {@code httpMessagingCapabilityAdapter} bean is constructed with a null
+ * {@code inboundListenAddress}; {@link #inboundPort()} only applies to an instance that opted into the
+ * embedded-server path.
  */
 public final class HttpMessagingCapabilityAdapter implements CapabilityAdapter, MessagingCapability, AutoCloseable {
 
     public static final String INBOUND_PATH = "/npdev/messaging/deliver";
 
-    private static final String SIGNATURE_HEADER = "X-Npdev-Messaging-Signature";
+    /** Public: a same-JVM in-process caller (e.g. RuntimeHost's {@code MessagingDeliveryController})
+     *  needs the exact header name to read from its own inbound request and pass to
+     *  {@link #receiveInboundDelivery}. */
+    public static final String SIGNATURE_HEADER = "X-Npdev-Messaging-Signature";
+    public static final String SENDER_HEADER = "X-Npdev-Messaging-Sender";
     private static final String DELIVERY_ID_HEADER = "X-Npdev-Messaging-Delivery";
-    private static final String SENDER_HEADER = "X-Npdev-Messaging-Sender";
     private static final String HMAC_ALGORITHM = "HmacSHA256";
 
     private static final String IDEMPOTENCY_CAPABILITY = "MessagingCapability";
@@ -426,17 +436,79 @@ public final class HttpMessagingCapabilityAdapter implements CapabilityAdapter, 
     // ------------------------------------------------------------------ inbound: receive
 
     /**
-     * The embedded receiver's one route. Verifies the sender is a configured, correctly-signed peer,
-     * then dedupes and dispatches -- see the class javadoc for the full at-least-once/idempotent-
-     * receiver contract. Always writes a response and closes the exchange; never lets an exception
-     * escape uncaught (the JDK {@link HttpServer}'s default behaviour for an uncaught handler
+     * The directly-callable entry point: verify/dedupe/dispatch an inbound delivery, given exactly the
+     * raw material an HTTP POST to {@link #INBOUND_PATH} would carry -- the {@value #SENDER_HEADER} and
+     * {@value #SIGNATURE_HEADER} header values, and the raw (unparsed) request body bytes. Performs
+     * EXACTLY what {@link #handleInboundDelivery} performs: unknown-sender rejection, fail-closed
+     * secret check, constant-time signature verification, {@code deliveryId} dedupe through the
+     * injected {@link IdempotencyStore}, subscriber dispatch, and the same outcome classification --
+     * see the class javadoc for the full at-least-once/idempotent-receiver contract. This is the ONLY
+     * copy of that logic; {@link #handleInboundDelivery} (the embedded-server route) calls this same
+     * method rather than duplicating it.
+     *
+     * <p>Never throws for a caller-facing outcome (a forged signature, an unknown sender, a failing
+     * subscriber) -- every such case is a returned {@link InboundDeliveryResult}, never an exception,
+     * so an in-process caller (e.g. a Spring controller) can translate {@code statusCode}/{@code body}
+     * straight into its own HTTP response without a try/catch. An unrecoverable adapter-internal fault
+     * (e.g. a JSON-serialization bug in an ack body) is still an exception, exactly as it always was
+     * from {@link #respondFromResult}.
+     *
+     * @param senderAppId     the value of the {@value #SENDER_HEADER} header, or {@code null}/blank if
+     *                        absent
+     * @param signatureHeader the value of the {@value #SIGNATURE_HEADER} header, or {@code null} if
+     *                        absent
+     * @param rawBody         the exact bytes of the request body, unparsed -- the signature is verified
+     *                        over these bytes, so a caller must not re-serialize or otherwise alter them
+     *                        before passing them in
+     */
+    public InboundDeliveryResult receiveInboundDelivery(String senderAppId, String signatureHeader, byte[] rawBody) {
+        Objects.requireNonNull(rawBody, "rawBody");
+        if (senderAppId == null || senderAppId.isBlank()) {
+            return errorResult(401, "MESSAGING_SENDER_UNKNOWN", "missing " + SENDER_HEADER + " header");
+        }
+        MessagingPeerProfile peer = peersByAppId.get(MessagingPeerProfile.normalize(senderAppId));
+        if (peer == null) {
+            return errorResult(401, "MESSAGING_SENDER_NOT_TRUSTED",
+                    "sender '" + senderAppId + "' is not a configured peer");
+        }
+        String secret = hmacSecretLookup.apply(peer.hmacSecretEnvVar());
+        if (secret == null || secret.isBlank()) {
+            return errorResult(401, "MESSAGING_SECRET_NOT_CONFIGURED",
+                    "no HMAC secret configured (env var " + peer.hmacSecretEnvVar() + ") for peer '"
+                            + peer.peerAppId() + "'");
+        }
+        if (signatureHeader == null || !verifySignature(secret, rawBody, signatureHeader)) {
+            return errorResult(401, "MESSAGING_SIGNATURE_INVALID", "signature verification failed");
+        }
+
+        JsonNode envelope;
+        try {
+            envelope = objectMapper.readTree(rawBody);
+        } catch (IOException e) {
+            return errorResult(400, "MESSAGING_BODY_NOT_JSON", "request body must be a JSON object");
+        }
+        String topic = envelope.path("topic").asText(null);
+        String deliveryId = envelope.path("deliveryId").asText(null);
+        if (topic == null || topic.isBlank() || deliveryId == null || deliveryId.isBlank()) {
+            return errorResult(400, "MESSAGING_ENVELOPE_INVALID",
+                    "envelope must carry non-blank 'topic' and 'deliveryId'");
+        }
+        Map<String, Object> payload = readPayload(envelope);
+
+        return processInboundDelivery(topic, deliveryId, payload);
+    }
+
+    /**
+     * The embedded receiver's one route -- a thin HTTP-transport adapter over
+     * {@link #receiveInboundDelivery}. Always writes a response and closes the exchange; never lets an
+     * exception escape uncaught (the JDK {@link HttpServer}'s default behaviour for an uncaught handler
      * exception is a bare 500 with no body, which would defeat the named-error-code contract every
      * other branch here honours).
      */
     private void handleInboundDelivery(HttpExchange exchange) {
         try {
             if (!"POST".equals(exchange.getRequestMethod())) {
-                respond(exchange, 405, "MESSAGING_METHOD_NOT_ALLOWED", "only POST is accepted", null);
+                respondFromResult(exchange, errorResult(405, "MESSAGING_METHOD_NOT_ALLOWED", "only POST is accepted"));
                 return;
             }
 
@@ -444,51 +516,13 @@ public final class HttpMessagingCapabilityAdapter implements CapabilityAdapter, 
             try {
                 rawBody = exchange.getRequestBody().readAllBytes();
             } catch (IOException e) {
-                respond(exchange, 400, "MESSAGING_BODY_UNREADABLE", "failed reading request body", null);
+                respondFromResult(exchange, errorResult(400, "MESSAGING_BODY_UNREADABLE", "failed reading request body"));
                 return;
             }
 
             String senderAppId = firstHeader(exchange, SENDER_HEADER);
-            if (senderAppId == null || senderAppId.isBlank()) {
-                respond(exchange, 401, "MESSAGING_SENDER_UNKNOWN", "missing " + SENDER_HEADER + " header", null);
-                return;
-            }
-            MessagingPeerProfile peer = peersByAppId.get(MessagingPeerProfile.normalize(senderAppId));
-            if (peer == null) {
-                respond(exchange, 401, "MESSAGING_SENDER_NOT_TRUSTED",
-                        "sender '" + senderAppId + "' is not a configured peer", null);
-                return;
-            }
-            String secret = hmacSecretLookup.apply(peer.hmacSecretEnvVar());
-            if (secret == null || secret.isBlank()) {
-                respond(exchange, 401, "MESSAGING_SECRET_NOT_CONFIGURED",
-                        "no HMAC secret configured (env var " + peer.hmacSecretEnvVar() + ") for peer '"
-                                + peer.peerAppId() + "'", null);
-                return;
-            }
             String signatureHeader = firstHeader(exchange, SIGNATURE_HEADER);
-            if (signatureHeader == null || !verifySignature(secret, rawBody, signatureHeader)) {
-                respond(exchange, 401, "MESSAGING_SIGNATURE_INVALID", "signature verification failed", null);
-                return;
-            }
-
-            JsonNode envelope;
-            try {
-                envelope = objectMapper.readTree(rawBody);
-            } catch (IOException e) {
-                respond(exchange, 400, "MESSAGING_BODY_NOT_JSON", "request body must be a JSON object", null);
-                return;
-            }
-            String topic = envelope.path("topic").asText(null);
-            String deliveryId = envelope.path("deliveryId").asText(null);
-            if (topic == null || topic.isBlank() || deliveryId == null || deliveryId.isBlank()) {
-                respond(exchange, 400, "MESSAGING_ENVELOPE_INVALID",
-                        "envelope must carry non-blank 'topic' and 'deliveryId'", null);
-                return;
-            }
-            Map<String, Object> payload = readPayload(envelope);
-
-            processInboundDelivery(exchange, topic, deliveryId, payload);
+            respondFromResult(exchange, receiveInboundDelivery(senderAppId, signatureHeader, rawBody));
         } finally {
             exchange.close();
         }
@@ -499,15 +533,14 @@ public final class HttpMessagingCapabilityAdapter implements CapabilityAdapter, 
      * {@link #inFlightDeliveryLocks}) so two literally-simultaneous deliveries of the same id cannot
      * both observe "not yet recorded" and both invoke subscribers.
      */
-    private void processInboundDelivery(HttpExchange exchange, String topic, String deliveryId, Map<String, Object> payload) {
+    private InboundDeliveryResult processInboundDelivery(String topic, String deliveryId, Map<String, Object> payload) {
         String tenantId = "cross-app-messaging:" + appId;
         Object lock = inFlightDeliveryLocks.computeIfAbsent(deliveryId, key -> new Object());
         synchronized (lock) {
             Optional<IdempotencyRecord> existing =
                     idempotencyStore.find(tenantId, IDEMPOTENCY_CAPABILITY, IDEMPOTENCY_OPERATION, deliveryId);
             if (existing.isPresent() && existing.get().success()) {
-                respond(exchange, 200, null, null, ackBody("duplicate", deliveryId, topic));
-                return;
+                return new InboundDeliveryResult(200, ackBody("duplicate", deliveryId, topic));
             }
 
             Map<String, Object> messageForHandlers = new LinkedHashMap<>(payload);
@@ -518,16 +551,15 @@ public final class HttpMessagingCapabilityAdapter implements CapabilityAdapter, 
             } catch (RuntimeException handlerFailure) {
                 idempotencyStore.saveFailure(tenantId, IDEMPOTENCY_CAPABILITY, IDEMPOTENCY_OPERATION, deliveryId,
                         handlerFailure.getClass().getSimpleName(), System.currentTimeMillis());
-                respond(exchange, 500, "MESSAGING_SUBSCRIBER_FAILED",
-                        "a local subscriber for topic '" + topic + "' failed: " + handlerFailure.getMessage(), null);
-                return;
+                return errorResult(500, "MESSAGING_SUBSCRIBER_FAILED",
+                        "a local subscriber for topic '" + topic + "' failed: " + handlerFailure.getMessage());
             }
 
             idempotencyStore.saveSuccess(tenantId, IDEMPOTENCY_CAPABILITY, IDEMPOTENCY_OPERATION, deliveryId,
                     "{\"delivered\":" + delivered + "}", System.currentTimeMillis());
             Map<String, Object> ack = ackBody("delivered", deliveryId, topic);
             ack.put("delivered", delivered);
-            respond(exchange, 200, null, null, ack);
+            return new InboundDeliveryResult(200, ack);
         }
     }
 
@@ -548,17 +580,22 @@ public final class HttpMessagingCapabilityAdapter implements CapabilityAdapter, 
         return ack;
     }
 
-    private void respond(HttpExchange exchange, int statusCode, String code, String message, Map<String, Object> successBody) {
+    private static InboundDeliveryResult errorResult(int statusCode, String code, String message) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", false);
+        body.put("code", code);
+        body.put("message", message == null ? "" : message);
+        return new InboundDeliveryResult(statusCode, body);
+    }
+
+    /** Writes an {@link InboundDeliveryResult} to the embedded server's exchange -- the ONLY remaining
+     *  caller of this is {@link #handleInboundDelivery}; an in-process caller of
+     *  {@link #receiveInboundDelivery} reads {@code statusCode}/{@code body} directly instead. */
+    private void respondFromResult(HttpExchange exchange, InboundDeliveryResult result) {
         try {
-            Map<String, Object> body = successBody != null ? successBody : new LinkedHashMap<>();
-            if (successBody == null) {
-                body.put("ok", false);
-                body.put("code", code);
-                body.put("message", message == null ? "" : message);
-            }
-            byte[] bytes = objectMapper.writeValueAsBytes(body);
+            byte[] bytes = objectMapper.writeValueAsBytes(result.body());
             exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(statusCode, bytes.length);
+            exchange.sendResponseHeaders(result.statusCode(), bytes.length);
             try (OutputStream out = exchange.getResponseBody()) {
                 out.write(bytes);
             }
@@ -672,6 +709,19 @@ public final class HttpMessagingCapabilityAdapter implements CapabilityAdapter, 
         }
         throw new IllegalArgumentException(
                 "messaging.publish payload must be a map containing at least 'topic'; got: " + payload.getClass());
+    }
+
+    /**
+     * The outcome of {@link #receiveInboundDelivery}: an HTTP-shaped status code and a JSON-ready body
+     * -- ack (2xx) or {@code {ok:false, code, message}} error (4xx/5xx), identical to what the embedded
+     * server has always written to the wire. Deliberately dumb (no behaviour beyond the two accessors)
+     * so any caller -- the embedded {@link HttpServer} route or an in-process Spring controller -- can
+     * turn it into its own response type without depending on anything JDK-HTTP-specific.
+     */
+    public record InboundDeliveryResult(int statusCode, Map<String, Object> body) {
+        public InboundDeliveryResult {
+            Objects.requireNonNull(body, "body");
+        }
     }
 
     private record Subscription(String id, String topic, Consumer<Map<String, Object>> handler) {

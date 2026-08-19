@@ -7,6 +7,7 @@
     "AgentProxyController",
     "AggregateApiController",
     "WebhookInboundController",
+    "MessagingDeliveryController",
     "ConceptQueryController",
     "PropertyResolverController",
     "DirectExecutionGatewayController",
