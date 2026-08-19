@@ -437,6 +437,8 @@ final class HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest {
                         // clean CI runner only explicitly-built adapters exist -> compile error. Build them.
                         ":adapters:mail-inproc:jar",
                         ":adapters:mail-smtp:jar",
+                        ":adapters:messaging-http:jar",
+                        ":adapters:messaging-inproc:jar",
                         ":adapters:persistence-inproc:jar",
                         ":adapters:persistence-postgres:jar",
                         ":adapters:resume-bootstrap-spring:jar",

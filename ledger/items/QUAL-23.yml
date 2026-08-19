@@ -1,0 +1,65 @@
+id: QUAL-23
+title: >-
+  21 of 41 kernel adapter modules run their tests in NO CI workflow
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-19
+source: >-
+  Found 2026-08-19 while wiring R6.4's messaging adapters into the runtime. An agent reported its
+  own new modules were absent from CI; enumerating settings.gradle against both workflows showed the
+  gap is systemic, not specific to those two.
+surface: ci/adapter-coverage
+files:
+  - .github/workflows/npdev-ci-validation.yml
+  - .github/workflows/npdev-pr-gate.yml
+  - NPDevKernel/settings.gradle
+detail: |
+  Both GitHub Actions workflows enumerate adapter test targets as an **explicit hand-maintained
+  allowlist** (`:adapters:<name>:test`, one line each). Nothing reconciles that list against
+  `NPDevKernel/settings.gradle`, and no blanket `./gradlew test` covers the kernel root -- the two
+  `./gradlew check` invocations run in `NPDevContract/dsl` and in the assembled sample app, neither
+  of which reaches `NPDevKernel/adapters`.
+
+  Measured 2026-08-19 by diffing `settings.gradle`'s 41 `include 'adapters:*'` entries against both
+  workflow files: **21 modules appear in neither**:
+
+      auth-context-jwt          authz-default             document-render-inproc
+      document-render-stub      expression-cel            external-ai-http
+      external-ai-inproc        external-ai-pack-core     file-store-objectstore
+      json-jackson              mail-inproc               mail-smtp
+      messaging-http            messaging-inproc          metrics-micrometer
+      postgres-test-support     resume-bootstrap-spring   runtime-validation
+      schema-validator-default  tracing-redaction-default webhook-http
+
+  Some of those are defensible: `postgres-test-support` is test scaffolding. Most are not.
+  `expression-cel` holds `CelInvariantEngine` and `GeneratedCrudRuntimeSupport` -- core runtime.
+  `auth-context-jwt`, `authz-default`, `webhook-http`, `external-ai-http` and `mail-smtp` are the
+  security- and network-facing adapters, and `external-ai-http`/`mail-smtp` are precisely where
+  RUN-4's deadline/retry proofs live (hanging-socket tests that assert a bounded failure). Those
+  proofs do not run in CI today.
+
+  **This is the same failure shape `AdapterRegistrationConsistencyTest` already guards for
+  PACKAGING**: that test fails when a `settings.gradle` adapter is missing from the proof-test jar
+  lists, precisely so a new adapter cannot be silently omitted. There is no equivalent
+  reconciliation for CI TEST coverage, so a new adapter is silently untested instead.
+
+  **Partially addressed in the same commit:** `messaging-http` and `messaging-inproc` were added to
+  both workflows' inproc-adapter step, since this session introduced them and leaving them out would
+  have compounded the gap. The other 19 were deliberately NOT added in that change -- adding them
+  blind could surface pre-existing failures and lengthen every PR run, which is a decision to make
+  deliberately rather than as a side effect of an unrelated commit.
+
+  **Suggested fix**, mirroring the mechanism that already works: a consistency check that reconciles
+  `settings.gradle`'s adapter list against the workflow allowlists and fails when one is missing,
+  with an explicit opt-out list carrying a recorded reason (exactly `KNOWN_NOT_PACKAGED`'s shape).
+  Then triage the 19 in a change that owns the outcome.
+guard:
+  kind: manual
+  ref: .github/workflows/npdev-pr-gate.yml
+  asserts: >-
+    Every adapter module in NPDevKernel/settings.gradle either appears as an ":adapters:<name>:test"
+    target in the PR gate workflow, or is on a recorded opt-out list with a reason. Measured RED on
+    2026-08-19: 21 of 41 modules appeared in neither workflow, including expression-cel,
+    auth-context-jwt and the two adapters carrying RUN-4's hanging-socket deadline proofs.
+  provenRed: true

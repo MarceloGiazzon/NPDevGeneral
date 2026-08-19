@@ -46,6 +46,17 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
         if (uri.startsWith("/api/hooks/")) {
             return true;
         }
+        // R6.4: the cross-app messaging door is the same shape as the webhook door above, for the
+        // same reason -- the caller is another NPDev APP, not a human, and it holds no X-Api-Key.
+        // It authenticates by an HMAC-SHA256 signature over the payload that
+        // HttpMessagingCapabilityAdapter verifies itself (plus a trusted-sender check and a
+        // deliveryId dedupe) before anything is dispatched. Demanding an api-key here would make
+        // peer delivery impossible in apikey mode, which is the DEFAULT -- exempting it does not
+        // widen access, because the adapter rejects a forged signature or an unknown sender with
+        // 401 before any subscriber runs.
+        if (uri.startsWith("/npdev/messaging/")) {
+            return true;
+        }
         // An earlier filter in the chain (e.g. SuperUserCredentialAuthFilter, order -110) may already
         // have authenticated this request via a completely independent credential (the ControlPanel's
         // X-Super-User-Key) and set the claims attribute. This filter must not clobber that

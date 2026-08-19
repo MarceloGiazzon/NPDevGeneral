@@ -127,6 +127,8 @@ jobs:
             :adapters:events-inproc:test \
             :adapters:flowinstance-inproc:test \
             :adapters:idempotency-inproc:test \
+            :adapters:messaging-http:test \
+            :adapters:messaging-inproc:test \
             :adapters:notification-inproc:test \
             :adapters:persistence-inproc:test \
             :adapters:tracing-inproc:test \
