@@ -204,6 +204,67 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
         assertEquals("Ana", nonManagerView.data().get("employeeName"));
     }
 
+    /**
+     * REG-195: a row-level {@code access.write} rule using {@code $user.roles.contains(...)} --
+     * the only idiom this platform's docs/corpus use for a role-membership check -- must grant
+     * access to an actor whose roles satisfy it and deny one whose roles don't, i.e. the two
+     * cases must produce DIFFERENT outcomes. Before the fix both returned denied: the function
+     * call unconditionally threw "unknown function: contains" against an empty registry, and the
+     * fail-closed catch silently turned that into false regardless of the actor's roles.
+     */
+    @Test
+    void grantsRowWriteAccessWhenActorRoleSatisfiesContainsAccessRule() {
+        ConceptGateway gateway = ConceptGateways.inMemory(curatedLabelPolicy());
+        ExecutionContext curator = new ExecutionContext("tenant-a", "curator-1", Map.of(), java.util.Set.of("CURATOR"));
+
+        ConceptRecord saved = gateway.save(
+                new ConceptWriteRequest("Label", "label-1", null, Map.of("text", "hello")),
+                curator
+        );
+
+        assertEquals("label-1", saved.id());
+    }
+
+    @Test
+    void deniesRowWriteAccessWhenActorRoleFailsContainsAccessRule() {
+        ConceptGateway gateway = ConceptGateways.inMemory(curatedLabelPolicy());
+        ExecutionContext nonCurator = new ExecutionContext("tenant-a", "operator-a", Map.of(), java.util.Set.of("USER"));
+
+        assertThrows(
+                ConceptGatewayAccessDeniedException.class,
+                () -> gateway.save(
+                        new ConceptWriteRequest("Label", "label-1", null, Map.of("text", "hello")),
+                        nonCurator
+                )
+        );
+    }
+
+    private static ConfiguredConceptGatewaySemanticPolicy curatedLabelPolicy() {
+        return new ConfiguredConceptGatewaySemanticPolicy(List.of(
+                new ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition(
+                        "Label",
+                        Map.of(
+                                "text",
+                                new ConfiguredConceptGatewaySemanticPolicy.FieldDefinition(
+                                        "text",
+                                        false,
+                                        List.of(),
+                                        null,
+                                        null,
+                                        null
+                                )
+                        ),
+                        List.of(),
+                        null,
+                        java.util.Set.of(),
+                        new ConfiguredConceptGatewaySemanticPolicy.AccessRules(
+                                null,
+                                "$user.roles.contains('CURATOR')"
+                        )
+                )
+        ));
+    }
+
     private static ConfiguredConceptGatewaySemanticPolicy payrollPolicy() {
         return new ConfiguredConceptGatewaySemanticPolicy(List.of(
                 ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition.of(
