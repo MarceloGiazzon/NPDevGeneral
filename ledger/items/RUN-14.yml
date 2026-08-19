@@ -1,0 +1,157 @@
+id: RUN-14
+title: >-
+  `webhook.post` only appended to an in-memory list -- a modeled app could not call any external
+  system; add webhook-http, a real outbound adapter cloning external-ai-http's fail-closed posture
+type: GAP
+severity: HIGH
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R6 item R6.1 -- "the outbound half of
+  app-to-app eventing." Confirmed against real code before starting: InProcWebhookCapabilityAdapter
+  .post really did nothing but `deliveries.add(Map.copyOf(request))`.
+surface: kernel/adapters/webhook
+files:
+  - NPDevKernel/adapters/webhook-http/build.gradle
+  - NPDevKernel/adapters/webhook-http/src/main/java/com/npdev/adapters/webhook/http/HttpWebhookCapabilityAdapter.java
+  - NPDevKernel/adapters/webhook-http/src/main/java/com/npdev/adapters/webhook/http/WebhookDestinationProfile.java
+  - NPDevKernel/adapters/webhook-http/src/main/java/com/npdev/adapters/webhook/http/WebhookEgressDeniedException.java
+  - NPDevKernel/adapters/webhook-http/src/main/java/com/npdev/adapters/webhook/http/WebhookDeliveryRecordStore.java
+  - NPDevKernel/adapters/webhook-http/src/test/java/com/npdev/adapters/webhook/http/HttpWebhookCapabilityAdapterTest.java
+  - NPDevKernel/adapters/webhook-http/src/test/java/com/npdev/adapters/webhook/http/WebhookDeliveryRecordStoreTest.java
+  - NPDevKernel/settings.gradle
+detail: |
+  New adapter `webhook-http` (adapterId `webhook-http`, capability `webhook`, capabilityType
+  `WebhookCapability`, operation `post`), cloned from `HttpExternalAiCapabilityAdapter`'s posture
+  rather than invented fresh: fail-closed destination allowlist, adapter-owned per-request timeout,
+  bounded local retry, HMAC-SHA256 request signing, and an optional delivery-record store reusing
+  `npdev_scheduled_event`'s claim/attempt column shape.
+
+  **Fail-closed allowlist is HOST-scoped, not URL-scoped, and that is the SSRF-guard design.** The
+  payload's `url` (typically read back from application data, e.g. a saved subscription record) is
+  never trusted by itself: the adapter extracts its host and checks that against a server-side
+  `List<WebhookDestinationProfile>` configured at construction time. An empty list denies EVERY
+  destination (`WEBHOOK_EGRESS_DENIED_NO_ALLOWLIST`); a host absent from a non-empty list is denied
+  by name (`WEBHOOK_EGRESS_DENIED_HOST_NOT_ALLOWED`); a matched host whose configured HMAC secret
+  env var is unset or blank is denied (`WEBHOOK_EGRESS_DENIED_NO_SECRET`) rather than sending
+  unsigned. No permissive/default-allow mode exists anywhere in the class.
+
+  **HMAC secret is never a literal.** `WebhookDestinationProfile` carries only an environment
+  variable NAME; the value is resolved at call time via a `Function<String,String>` lookup
+  (defaulting to `System::getenv`), exactly `HttpExternalAiCapabilityAdapter`'s api-key-by-reference
+  shape. Nothing in this adapter, its tests, or the ledger contains a real secret value.
+
+  **Timeout + bounded retry is the RUN-4 (R8d) mechanism, reused verbatim in shape.** A
+  `Duration requestTimeout` (default 30s -- shorter than external-ai-http's 120s, because a webhook
+  receiver is expected to acknowledge quickly, not run a long generation) applies via
+  `HttpRequest.Builder#timeout` regardless of which `HttpClient` sends it; `send()` retries only
+  `IOException` (covers a timed-out request) and 429/5xx responses, never a 4xx or an egress denial.
+
+  **Delivery-record persistence: built, tested, and DELIBERATELY NOT centrally registered.**
+  `WebhookDeliveryRecordStore` manages its own `npdev_webhook_delivery` table (id, destination_host,
+  url, payload, status, attempt_count, response_status, last_error, created_at, updated_at,
+  delivered_at) using nothing but the existing `SqlDialect` abstraction (`guardedCreateTable`,
+  `keyableTextColumnType`, `defaultableTextColumnType`, `timestampColumnType`, `jsonColumnType`) --
+  no new SqlDialect method was needed, so that STOP condition never fired. `claim()`/`markDelivered()`/
+  `markFailed()` mirror `ScheduledEventSql.claim()`/`markProcessed()`/`markFailed()`'s optimistic
+  `UPDATE ... WHERE id = ? AND status = ?` shape one-for-one, proven against a real H2 connection
+  (`WebhookDeliveryRecordStoreTest`, 5/5 green, including a claim-race test showing only the first of
+  two concurrent claims against the same fromStatus wins).
+
+  What this store is NOT: wired into `NpdevInternalTables.all()` / the generator's
+  `SchemaRealizationEmitter`, so `npdev_webhook_delivery` does not yet appear in a generated app's
+  schema. Both of those files are shared kernel/generator surfaces outside this round's ownership
+  (`NPDevKernel/adapters/webhook-http/**` only); `NpdevInternalTablesSourceOfTruthTest` asserts the
+  registry's table set as a CLOSED set, so touching the registry also means touching that test --
+  and a concurrently-running session in this same live working tree (not a separate branch) was, at
+  the same time, adding its OWN new internal table (a cron-fire claim table, RUN-2 lease pattern) to
+  those exact two files. Editing them too would have risked silently clobbering that work with no
+  merge. Registering `npdev_webhook_delivery` centrally so it ships in real generated apps is
+  follow-up work for whoever owns that surface next.
+
+  **Backward compatibility: untouched, not merely preserved.** `webhook-inproc` (adapterId
+  `webhook-inproc`) was not modified at all -- `InProcWebhookCapabilityAdapter.post` still appends to
+  its in-memory list exactly as before, and the one live sample bound to it
+  (`medium-expense-approval`) is unaffected. No BREAKING.md entry, no `npdev migrate` codemod: this
+  is a pure addition (a new adapter alongside the old one), not a change to the DSL, generated code
+  layout, or an existing internal API.
+
+  **No DSL schema change, and therefore no dsl-conformance-max example was required.** A binding's
+  `adapter` field (`NPDevContract/schemas/model.schema.json` `$defs.binding.properties.adapter`) is
+  `{"type": "string", "minLength": 1}` with no enum -- adapter ids are resolved at Spring-wiring
+  time, not validated by the DSL schema. `webhook-http` needed no schema, `pack.schema.json`, or
+  `ModelResolver` changes; the capability/operation contract (`webhook`/`post`) it implements
+  already existed and is unchanged.
+
+  **Registration: settings.gradle only.** `include 'adapters:webhook-http'` added, following the
+  exact same one-line pattern as every other adapter. RuntimeHost Spring wiring (a bean registering
+  `webhook-http` as a selectable binding target in a generated app, analogous to
+  `NpdevPluginConfig.webhookInProcRuntimePluginRealizationProvider` /
+  `NpdevExternalAiConfig`'s `npdev.externalai.http.*` properties) was deliberately NOT done this
+  round -- it is a separate vertical slice (a real configuration surface for the destination
+  allowlist has to be designed, not assumed) and `NpdevPluginConfig.java` is a shared RuntimeHost
+  file with no owner assigned this round; touching it without being asked carries the same
+  live-working-tree collision risk as the dbschema registry above. The adapter is fully built,
+  compiled, and tested; wiring it into a bootable generated app is the next step.
+
+  DEFINITION OF DONE, proven as three SEPARATE tests, never collapsed into one happy path
+  (`:adapters:webhook-http:test`, 12/12 green):
+  (a) `aFlowCapabilityCallDeliversASignedPostToARealLocalServerAndTheSignatureVerifies` -- drives the
+  adapter through `invoke(CapabilityCall, Map)`, the same entry point a flow's `capabilityCall` step
+  uses, against a real loopback `com.sun.net.httpserver.HttpServer`; asserts the server received the
+  exact body (with `url` stripped -- it is routing metadata, not application data) and that
+  independently recomputing HMAC-SHA256 over the received bytes with the same secret matches the
+  `X-Npdev-Webhook-Signature` header the adapter sent.
+  (b) `requestTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer` -- cloned from
+  `HttpExternalAiCapabilityAdapterTest`'s RUN-4 test verbatim in shape: a real loopback
+  `ServerSocket` accepts the TCP connection and never answers; asserts the call resolves in well
+  under 5s (not an unbounded hang) and that exactly `maxRetries + 1 = 2` real connections were
+  accepted.
+  (c) `anUnlistedHostIsDeniedFailClosedWithANamedError` -- asserts `WebhookEgressDeniedException`
+  with code `WEBHOOK_EGRESS_DENIED_HOST_NOT_ALLOWED` naming the denied host; companion tests cover
+  the empty-allowlist (`WEBHOOK_EGRESS_DENIED_NO_ALLOWLIST`) and missing-secret
+  (`WEBHOOK_EGRESS_DENIED_NO_SECRET`) fail-closed paths.
+
+  RED->GREEN independently proven for (c), live in this session: temporarily disabled the
+  host-not-allowed branch (`if (false && destination == null)`), re-ran
+  `anUnlistedHostIsDeniedFailClosedWithANamedError` alone, and watched it fail with a
+  `NullPointerException` instead of the expected `WebhookEgressDeniedException` (the call fell
+  through to `requireHmacSecret(null)`). Restored the branch and re-ran the full suite: 12/12 green
+  again. See `guard.provenRedNote` -- this is new capability, not a regression fix, so there is no
+  prior "unfixed" adapter version to run red against; the transient-disable exercise is the
+  equivalent evidence for a from-scratch feature. The hanging-socket (b) and no-allowlist/no-secret
+  (c) variants were not independently RED-proven this same way (doing so for (b) would have removed
+  the request timeout entirely, risking an unbounded hang of the test JVM) -- their correctness
+  rests on the tests themselves failing loudly if the corresponding checks were removed (proven by
+  direct code inspection: each assertion targets a specific branch with no other path that could
+  satisfy it) plus RUN-4's own already-provenRed evidence for the identical retry/timeout shape.
+
+  GATES: `:adapters:webhook-http:test` 12/12 (7 in `HttpWebhookCapabilityAdapterTest`, 5 in
+  `WebhookDeliveryRecordStoreTest`), `:adapters:webhook-http:compileJava`/`compileTestJava` clean.
+  Full-repo gate suite (`run-all-gates.ps1`) NOT run this session -- four other sessions were
+  concurrently editing this same working tree, so a full-repo run would have graded in-flight,
+  unrelated work rather than this change; scoped module verification is the correct substitute per
+  this repo's own Fast Lane / T1 tiering.
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/adapters/webhook-http/src/test/java/com/npdev/adapters/webhook/http/HttpWebhookCapabilityAdapterTest.java#anUnlistedHostIsDeniedFailClosedWithANamedError
+  asserts: >-
+    Given a non-empty destination allowlist that does NOT contain the host of the caller-supplied
+    URL, adapter.post(...) throws WebhookEgressDeniedException with code
+    WEBHOOK_EGRESS_DENIED_HOST_NOT_ALLOWED naming the denied host, and no HTTP request is ever sent.
+    Sibling tests in the same file cover the other two DoD claims: a real signed POST reaching a
+    live local HttpServer with independently-verified HMAC-SHA256 (aFlowCapabilityCallDelivers...),
+    and RUN-4-style bounded retry against a real hanging loopback ServerSocket
+    (requestTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer).
+  provenRed: true
+  provenRedNote: >-
+    New capability, not a regression fix -- there is no prior "unfixed" adapter version to run this
+    test against. RED evidence obtained by temporarily disabling the host-not-allowed branch in
+    HttpWebhookCapabilityAdapter.requireAllowedDestination (`if (false && destination == null)`),
+    re-running the guard test alone (FAILED: NullPointerException at
+    HttpWebhookCapabilityAdapterTest.java:191, not the expected WebhookEgressDeniedException),
+    restoring the branch, and re-running the full 12-test suite green again. Both gradle runs were
+    executed live this session, not simulated.
