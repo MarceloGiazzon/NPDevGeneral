@@ -11,6 +11,7 @@ import com.npdev.generator.bonds.BondModelSupport;
 import com.npdev.generator.bonds.BondModelSupport.Bond;
 import com.npdev.generator.bonds.BondModelSupport.Cardinality;
 import com.npdev.generator.output.GeneratedSourceWriter;
+import com.npdev.generator.packs.LinkedSealedPack;
 import com.npdev.generator.templates.TemplateEngine;
 
 import java.util.ArrayList;
@@ -38,6 +39,20 @@ public final class ServiceEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model, boolean kernelControlled, SettingResolver settingResolver) {
+        emit(model, kernelControlled, settingResolver, List.of());
+    }
+
+    /**
+     * BUILD-2 (REST-layer follow-on, ledger item BUILD-2): {@code linkedSealedPacks} names the packs
+     * this app links as precompiled sealed jars (see {@code SealedPackJarBuilder}) rather than
+     * generating their own entity sources -- for each such concept, the generated service must
+     * import and instantiate the REAL entity class the sealed jar contains ({@link
+     * LinkedSealedPack#resolve}'s {@code entityPackage}/{@code entityTypeName}), not the app's own
+     * default {@code com.npdev.generated.entities.<AliasQualifiedName>}. Empty for every existing
+     * caller -- {@code entityPackage} stays the constant default and {@code entityTypeName} stays
+     * identical to {@code entityName}, so the rendered output is byte-for-byte unchanged.
+     */
+    public void emit(CompiledModel model, boolean kernelControlled, SettingResolver settingResolver, List<LinkedSealedPack> linkedSealedPacks) {
         Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept entity : model.getConcepts()) {
 
@@ -126,13 +141,23 @@ public final class ServiceEmitter extends AbstractEmitter {
                 expressionInvariants.add(expr);
             }
 
+            // BUILD-2: a concept whose entity actually lives in a linked sealed pack's own jar
+            // resolves to that jar's REAL package + bare class name here; every other concept
+            // (every existing caller, since linkedSealedPacks is empty) keeps today's constant
+            // default package and entityTypeName == entityName -- zero rendered-output change.
+            Optional<LinkedSealedPack.ConceptLinkage> linkage =
+                    LinkedSealedPack.resolve(entity.getName(), linkedSealedPacks);
+
             Map<String, Object> ctx = new HashMap<>();
             ctx.put("packageName", "com.npdev.generated.services");
             ctx.put("conceptName", entity.getName());
             ctx.put("entityName", entity.getClassName());
             ctx.put("idFieldName", idField.getName());
             ctx.put("idFieldCapName", cap(idField.getName()));
-            ctx.put("entityPackage", "com.npdev.generated.entities");
+            ctx.put("entityPackage", linkage.map(LinkedSealedPack.ConceptLinkage::entityPackage)
+                    .orElse("com.npdev.generated.entities"));
+            ctx.put("entityTypeName", linkage.map(LinkedSealedPack.ConceptLinkage::entityTypeName)
+                    .orElse(entity.getClassName()));
             ctx.put("repoPackage", "com.npdev.generated.repositories");
             ctx.put("dtoPackage", "com.npdev.generated.dtos");
             ctx.put("fields", fields);
