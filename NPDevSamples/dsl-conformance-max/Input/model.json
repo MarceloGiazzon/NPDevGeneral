@@ -165,6 +165,22 @@
           "type": "integer",
           "required": true,
           "ui": { "label": "Quantity" }
+        },
+        {
+          "name": "unitPrice",
+          "type": "decimal",
+          "precision": 12,
+          "scale": 2,
+          "required": true,
+          "ui": { "label": "Unit price" }
+        },
+        {
+          "name": "lineTotal",
+          "type": "decimal",
+          "precision": 12,
+          "scale": 2,
+          "derivedExpression": "quantity * unitPrice",
+          "ui": { "label": "Line total" }
         }
       ],
       "invariants": [
@@ -418,6 +434,18 @@
       "name": "WidgetOrderLineApprovalRecorded",
       "payload": [
         { "name": "sku", "type": "string" }
+      ]
+    },
+    {
+      "name": "WidgetOrderManagerApproved",
+      "payload": [
+        { "name": "approvedBy", "type": "string" }
+      ]
+    },
+    {
+      "name": "WidgetOrderApprovalEscalated",
+      "payload": [
+        { "name": "widgetOrderId", "type": "uuid" }
       ]
     }
   ],
@@ -956,11 +984,29 @@
           "output": "$orderId"
         },
         {
+          "name": "flag-bulk-order",
+          "type": "branch",
+          "condition": "$saved.lineCount > 5 && $saved.status == \"open\"",
+          "then": [
+            { "name": "mark-bulk-order", "type": "map", "input": "$saved.lineCount", "output": "$bulkOrderFlag" }
+          ],
+          "else": [
+            { "name": "mark-standard-order", "type": "map", "input": "$saved.status", "output": "$bulkOrderFlag" }
+          ]
+        },
+        {
           "name": "score-order-risk",
           "type": "generatedAction",
           "actionName": "ScoreWidgetOrderRisk",
           "input": "$saved",
           "output": "$riskScore"
+        },
+        {
+          "name": "announce-order-placed",
+          "type": "scheduleEvent",
+          "event": "WidgetOrderPlaced",
+          "from": "$saved",
+          "delaySeconds": 0
         },
         {
           "name": "schedule-review",
@@ -1187,6 +1233,35 @@
         },
         {
           "name": "return-processed-parallel",
+          "type": "return",
+          "value": "$input"
+        }
+      ]
+    },
+    {
+      "name": "EscalateWidgetOrderApproval",
+      "concept": "WidgetOrder",
+      "steps": [
+        {
+          "name": "await-manager-approval",
+          "type": "awaitEvent",
+          "awaitEvent": "WidgetOrderManagerApproved",
+          "match": {
+            "correlation": true
+          },
+          "awaitRef": "managerApproval",
+          "timeout": 259200,
+          "onTimeout": [
+            {
+              "name": "escalate-approval",
+              "type": "emitEvent",
+              "event": "WidgetOrderApprovalEscalated",
+              "payload": "$input"
+            }
+          ]
+        },
+        {
+          "name": "return-approval-outcome",
           "type": "return",
           "value": "$input"
         }

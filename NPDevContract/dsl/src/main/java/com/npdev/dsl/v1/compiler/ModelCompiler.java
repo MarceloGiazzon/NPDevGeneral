@@ -1592,6 +1592,16 @@ public final class ModelCompiler {
                     invariantRefsByConcept,
                     invariantRefAliasByConcept
             );
+            // R2.5: an awaitEvent step's escalation branch, compiled the same recursive way as
+            // every other nested step list above.
+            List<CompiledFlowStep> onTimeoutSteps = compileFlowSteps(
+                    stepAst.getOnTimeoutSteps(),
+                    capabilityTypesByName,
+                    operationsByCapability,
+                    flowConcept,
+                    invariantRefsByConcept,
+                    invariantRefAliasByConcept
+            );
 
             out.add(new CompiledFlowStep(
                     stepAst.getName(),
@@ -1622,7 +1632,9 @@ public final class ModelCompiler {
                     stepAst.getMaxLoopIterations(),
                     onFailureSteps,
                     stepAst.getProcedure(),
-                    stepAst.getParallelAwait()
+                    stepAst.getParallelAwait(),
+                    stepAst.getTimeoutSeconds(),
+                    onTimeoutSteps
             ));
         }
         return out;

@@ -388,7 +388,9 @@ final class PanelValidation {
             RegionMountAst region = entry.getValue();
             if ("component".equals(region.render()) && !hasText(region.component())) {
                 errors.add(panelLabel + " transaction.regions." + address
-                        + ": render is \"component\" but no component name is declared");
+                        + ": render is \"component\" but no component name is declared"
+                        + " -- suggestedFix: declare component with the component's name on this region, "
+                        + "or change render away from \"component\" to a render mode that needs no name");
             }
         }
     }

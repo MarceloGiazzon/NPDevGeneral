@@ -63,8 +63,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.npdev.dsl.v1.validation.SemanticValidator.normalize;
@@ -82,12 +80,6 @@ final class FieldValueValidation {
 
     private FieldValueValidation() {
     }
-
-    private static final Pattern VALUE_BEHAVIOR_IDENTIFIER_PATTERN =
-            Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*$");
-
-    private static final Set<String> VALUE_BEHAVIOR_FUNCTIONS =
-            Set.of("concat", "coalesce", "trim", "uppercase", "lowercase");
 
     static void validateObjectFieldSchema(String entityName, FieldAst field, List<String> errors) {
         SchemaAst schema = field.getSchema();
@@ -123,7 +115,9 @@ final class FieldValueValidation {
         }
         if (precision != null && scale != null && scale > precision) {
             errors.add("Entity " + entityName + " field " + field.getName()
-                    + ": decimal scale (" + scale + ") must not exceed precision (" + precision + ")");
+                    + ": decimal scale (" + scale + ") must not exceed precision (" + precision + ")"
+                    + " -- suggestedFix: lower scale to at most " + precision + ", or raise precision to at "
+                    + "least " + scale + "; scale counts digits AFTER the point and precision counts them all");
         }
     }
 
@@ -157,7 +151,9 @@ final class FieldValueValidation {
             for (String requiredField : schema.getRequired()) {
                 if (!propertyNames.contains(normalize(requiredField))) {
                     errors.add("Entity " + entityName + " field " + fieldName
-                            + ": object schema at " + schemaPath + " marks missing required property " + requiredField);
+                            + ": object schema at " + schemaPath + " marks missing required property " + requiredField
+                            + " -- suggestedFix: add a property named '" + requiredField + "' to properties at "
+                            + schemaPath + ", or drop '" + requiredField + "' from that schema's required[]");
                 }
             }
             for (Map.Entry<String, SchemaAst> property : schema.getProperties().entrySet()) {
@@ -351,148 +347,40 @@ final class FieldValueValidation {
         return refs;
     }
 
+    /**
+     * R4.1 (roadmap): the author-time shape check for a defaultExpression/derivedExpression used
+     * to be a hand-rolled recognizer capped at a five-name function whitelist (concat/coalesce/
+     * trim/uppercase/lowercase) that had no notion of an operator at all -- {@code "quantity *
+     * unitPrice"} failed to parse as anything (not a literal, not a bare identifier, no '(' to
+     * make it a call), so the single most common derived field in any business app was refused at
+     * author time even though the runtime already evaluated it.
+     *
+     * <p>The runtime ({@code SchemaExpressionSupport.evaluateSchemaExpression}, the
+     * expression-cel adapter's {@code applySchemaValueBehaviors}) has evaluated the full {@link
+     * ComputedExpression} grammar -- arithmetic, comparison, logical, function calls, lambdas --
+     * for every default/derived expression all along, trying it first and only falling back to a
+     * legacy literal-evaluator for the small set of things it doesn't parse. This method now
+     * validates the identical grammar the runtime evaluates, the same widening
+     * {@code ConceptValidation.validateAccessExpression}/{@code referencedFields} already applied
+     * to invariant and row-level access expressions (LIFT-EXPR-P3) -- one grammar, one validator,
+     * instead of a second hand-rolled one that only understood a subset. A call to a function the
+     * runtime does not (yet) register -- e.g. a future {@code nextNumber()}/{@code role()} -- now
+     * parses here too, since {@link ComputedExpression} accepts any call syntax; it evaluates to
+     * null at runtime (the existing lenient fallback) until such a function is actually
+     * registered, exactly the "rides the same widened path" future work the roadmap calls out.
+     */
     private static ValueExpressionAnalysis analyzeValueBehaviorExpression(String expression) {
         String trimmed = expression == null ? "" : expression.trim();
         if (trimmed.isBlank()) {
             return new ValueExpressionAnalysis(false, List.of(), "expression must be non-blank");
         }
-        if (isValueLiteral(trimmed)) {
-            return new ValueExpressionAnalysis(true, List.of(), null);
+        try {
+            ComputedExpression.validate(trimmed);
+        } catch (ComputedExpression.ExpressionException syntaxError) {
+            return new ValueExpressionAnalysis(false, List.of(),
+                    "unsupported syntax: " + trimmed + " (" + syntaxError.getMessage() + ")");
         }
-        if (VALUE_BEHAVIOR_IDENTIFIER_PATTERN.matcher(trimmed).matches()) {
-            return new ValueExpressionAnalysis(true, List.of(trimmed), null);
-        }
-        int openParen = trimmed.indexOf('(');
-        if (openParen <= 0 || !trimmed.endsWith(")") || !isBalancedValueExpression(trimmed)) {
-            return new ValueExpressionAnalysis(false, List.of(), "unsupported syntax: " + trimmed);
-        }
-
-        String functionName = trimmed.substring(0, openParen).trim();
-        if (!VALUE_BEHAVIOR_FUNCTIONS.contains(normalize(functionName))) {
-            return new ValueExpressionAnalysis(false, List.of(), "unsupported function: " + functionName);
-        }
-
-        String argsBody = trimmed.substring(openParen + 1, trimmed.length() - 1);
-        List<String> args = splitTopLevelArguments(argsBody);
-        if (args == null) {
-            return new ValueExpressionAnalysis(false, List.of(), "malformed function arguments");
-        }
-        if (("trim".equalsIgnoreCase(functionName)
-                || "uppercase".equalsIgnoreCase(functionName)
-                || "lowercase".equalsIgnoreCase(functionName))
-                && args.size() != 1) {
-            return new ValueExpressionAnalysis(false, List.of(), functionName + " requires exactly one argument");
-        }
-        if (("concat".equalsIgnoreCase(functionName) || "coalesce".equalsIgnoreCase(functionName)) && args.isEmpty()) {
-            return new ValueExpressionAnalysis(false, List.of(), functionName + " requires at least one argument");
-        }
-
-        List<String> references = new ArrayList<>();
-        for (String arg : args) {
-            ValueExpressionAnalysis nested = analyzeValueBehaviorExpression(arg);
-            if (!nested.valid()) {
-                return nested;
-            }
-            references.addAll(nested.references());
-        }
-        return new ValueExpressionAnalysis(true, List.copyOf(references), null);
-    }
-
-    private static boolean isValueLiteral(String expression) {
-        String trimmed = expression == null ? "" : expression.trim();
-        if (trimmed.isBlank()) {
-            return false;
-        }
-        if ((trimmed.startsWith("\"") && trimmed.endsWith("\""))
-                || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
-            return trimmed.length() >= 2;
-        }
-        if ("null".equalsIgnoreCase(trimmed)
-                || "true".equalsIgnoreCase(trimmed)
-                || "false".equalsIgnoreCase(trimmed)) {
-            return true;
-        }
-        return trimmed.matches("-?\\d+(\\.\\d+)?");
-    }
-
-    private static boolean isBalancedValueExpression(String expression) {
-        int depth = 0;
-        boolean inSingle = false;
-        boolean inDouble = false;
-        for (int index = 0; index < expression.length(); index++) {
-            char current = expression.charAt(index);
-            if (current == '\'' && !inDouble) {
-                inSingle = !inSingle;
-                continue;
-            }
-            if (current == '"' && !inSingle) {
-                inDouble = !inDouble;
-                continue;
-            }
-            if (inSingle || inDouble) {
-                continue;
-            }
-            if (current == '(') {
-                depth++;
-            } else if (current == ')') {
-                depth--;
-                if (depth < 0) {
-                    return false;
-                }
-            }
-        }
-        return depth == 0 && !inSingle && !inDouble;
-    }
-
-    private static List<String> splitTopLevelArguments(String argsBody) {
-        List<String> args = new ArrayList<>();
-        if (argsBody == null) {
-            return args;
-        }
-        StringBuilder current = new StringBuilder();
-        int depth = 0;
-        boolean inSingle = false;
-        boolean inDouble = false;
-        for (int index = 0; index < argsBody.length(); index++) {
-            char currentChar = argsBody.charAt(index);
-            if (currentChar == '\'' && !inDouble) {
-                inSingle = !inSingle;
-                current.append(currentChar);
-                continue;
-            }
-            if (currentChar == '"' && !inSingle) {
-                inDouble = !inDouble;
-                current.append(currentChar);
-                continue;
-            }
-            if (!inSingle && !inDouble) {
-                if (currentChar == '(') {
-                    depth++;
-                } else if (currentChar == ')') {
-                    depth--;
-                    if (depth < 0) {
-                        return null;
-                    }
-                } else if (currentChar == ',' && depth == 0) {
-                    String candidate = current.toString().trim();
-                    if (candidate.isEmpty()) {
-                        return null;
-                    }
-                    args.add(candidate);
-                    current.setLength(0);
-                    continue;
-                }
-            }
-            current.append(currentChar);
-        }
-        if (depth != 0 || inSingle || inDouble) {
-            return null;
-        }
-        String tail = current.toString().trim();
-        if (!tail.isEmpty()) {
-            args.add(tail);
-        }
-        return args;
+        return new ValueExpressionAnalysis(true, List.copyOf(ComputedExpression.referencedFields(trimmed)), null);
     }
 
     private record ValueExpressionAnalysis(boolean valid, List<String> references, String error) {

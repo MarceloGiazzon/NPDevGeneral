@@ -1035,7 +1035,9 @@ public final class ModelResolver {
                 step.getMaxLoopIterations(),
                 cloneSteps(step.getOnFailureSteps()),
                 step.getProcedure(),
-                step.getParallelAwait()
+                step.getParallelAwait(),
+                step.getTimeoutSeconds(),
+                cloneSteps(step.getOnTimeoutSteps())
         );
     }
 

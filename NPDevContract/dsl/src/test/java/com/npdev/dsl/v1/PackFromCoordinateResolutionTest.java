@@ -100,6 +100,139 @@ class PackFromCoordinateResolutionTest {
         assertEquals(resolved.resolvedRoot().toString(), resolvedAgain.resolvedRoot().toString());
     }
 
+    /**
+     * R8.1: a fragment-structured pack is the NORMAL shape for anything beyond a toy pack, and it
+     * used to die with a misleading "escapes the model root" error the moment it was fetched into
+     * the cache -- {@code resolveJsonRefUnderRoot} required every file the pack's OWN fragments
+     * pulled in to also live under the APP's model root, which a cache-resident pack never does by
+     * construction. This is the exact repro PACK-8.yml and {@code PackCacheTest}'s digest-collision
+     * test both point at as "not reachable through the real pipeline today".
+     *
+     * <p>Deliberately puts the app's model.json under a directory ({@code app/}) that is a SIBLING
+     * of the redirected pack-cache root, not an ancestor of it -- every other test in this class
+     * writes {@code model.json} directly into {@code temp}, which also happens to be the pack-cache
+     * override's parent, so the cache entry is (accidentally, for those tests) still nested UNDER
+     * the model root and the old app-root check would never have fired. The real default cache
+     * root ({@code ~/.npdev/packs}) is never under an app's own directory, so this layout is the one
+     * that actually reproduces the defect.
+     */
+    @Test
+    void aFragmentStructuredRemotePackFetchesAndGeneratesFullyOfflineFromCache() throws Exception {
+        Path appDir = Files.createDirectories(temp.resolve("app"));
+        Path repo = initRepo(temp.resolve("catalog-repo"));
+        Files.writeString(repo.resolve("pack.json"), """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "catalog",
+                  "version": "1.0.0",
+                  "concepts": [
+                    { "name": "Product", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ],
+                  "fragments": [
+                    { "$ref": "fragments/variant.json" }
+                  ]
+                }
+                """);
+        Files.createDirectories(repo.resolve("fragments"));
+        Files.writeString(repo.resolve("fragments").resolve("variant.json"), """
+                {
+                  "concepts": [
+                    { "name": "Variant", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+        commitAndTag(repo, "v1.0.0");
+        String from = fileCoordinate(repo, "v1.0.0");
+
+        Path model = appDir.resolve("model.json");
+        Files.writeString(model, """
+                {
+                  "namespace": "pk5.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "from": "%s" } ]
+                }
+                """.formatted(from));
+
+        ModelSourceResolver.PackCliResolution resolution =
+                new ModelSourceResolver().resolvePackGraphForCli(model, NetworkPolicy.ALLOWED);
+        PackLockFile.of(resolution.lockEntries()).write(resolution.rootDirectory());
+        deleteRecursively(repo);
+
+        ResolvedModelSource resolved = new ModelSourceResolver().resolve(model);
+        assertTrue(containsConceptNamed(resolved.resolvedRoot(), "catalog::Product"),
+                "the pack's own root concept must have been merged");
+        assertTrue(containsConceptNamed(resolved.resolvedRoot(), "catalog::Variant"),
+                "the fragment's concept must have been merged -- this is what used to throw "
+                        + "\"escapes the model root\" for every cache-resident fragment");
+    }
+
+    /**
+     * R8.1's RED control, kept alongside the fix above: a fragment that tries to escape ITS OWN
+     * pack directory (not the app's model root -- the boundary this fix removed) must still refuse.
+     * Removing the app-root check must not have widened the hole to "anything under the cache root".
+     * Same sibling-directory layout as the test above, for the same reason.
+     *
+     * <p>The escaping {@code $ref} lives in a NESTED fragment (one reached from another fragment),
+     * not in {@code pack.json} itself -- {@code pack.json}'s own {@code $ref} values are schema-
+     * validated against a regex that already refuses a literal {@code ".."} segment (confirmed by
+     * running this same escape directly in {@code pack.json}: it fails schema validation before
+     * ever reaching {@code resolveJsonRefUnderRoot}). A fragment file is not re-validated against
+     * that schema, so this is the shape that actually exercises the runtime containment check this
+     * test is for.
+     */
+    @Test
+    void aFragmentEscapingItsOwnPackDirectoryStillRefusesEvenWhenThePackIsCacheResident() throws Exception {
+        Path appDir = Files.createDirectories(temp.resolve("app"));
+        Path cacheRoot = temp.resolve("pack-cache");
+        // The escape target: one level above ANY digest entry directory
+        // (<cacheRoot>/sha256/<digest>/../outside.json resolves here), so it exists before the
+        // fetch runs regardless of what digest this pack.json ends up hashing to.
+        Files.createDirectories(cacheRoot.resolve("sha256"));
+        Files.writeString(cacheRoot.resolve("sha256").resolve("outside.json"), "{}");
+
+        Path repo = initRepo(temp.resolve("catalog-repo"));
+        Files.writeString(repo.resolve("pack.json"), """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "catalog",
+                  "version": "1.0.0",
+                  "fragments": [
+                    { "$ref": "level1.json" }
+                  ]
+                }
+                """);
+        Files.writeString(repo.resolve("level1.json"), """
+                {
+                  "fragments": [
+                    { "$ref": "../outside.json" }
+                  ]
+                }
+                """);
+        commitAndTag(repo, "v1.0.0");
+        String from = fileCoordinate(repo, "v1.0.0");
+
+        Path model = appDir.resolve("model.json");
+        Files.writeString(model, """
+                {
+                  "namespace": "pk5.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "from": "%s" } ]
+                }
+                """.formatted(from));
+
+        // The escape is caught during resolution, which resolvePackGraphForCli (phase 1, "pack add")
+        // already performs in full -- it never gets as far as writing a lock.
+        IOException failure = assertThrows(IOException.class,
+                () -> new ModelSourceResolver().resolvePackGraphForCli(model, NetworkPolicy.ALLOWED));
+        assertTrue(failure.getMessage().contains("escapes the pack directory"), failure.getMessage());
+    }
+
     @Test
     void generateRefusesWithNoLockAtAllNamingPackAdd() throws Exception {
         Path repo = initRepo(temp.resolve("identity-repo"));

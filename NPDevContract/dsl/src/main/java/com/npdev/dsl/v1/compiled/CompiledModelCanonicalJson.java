@@ -1414,6 +1414,17 @@ public final class CompiledModelCanonicalJson {
             } else {
                 stepNode.put("parallelAwait", flowStep.getParallelAwait());
             }
+            // R2.5 (durable await timeouts): an awaitEvent step's optional durable wait deadline
+            // (seconds) + its escalation steps. The generator only ever reads THIS canonical JSON
+            // (never StepAst/CompiledFlowStep directly, per CLAUDE.md), so a field missing from
+            // this writer or its reader counterpart below is invisible downstream even though it
+            // compiled correctly -- REG-104's exact shape.
+            if (flowStep.getTimeoutSeconds() == null) {
+                stepNode.putNull("timeoutSeconds");
+            } else {
+                stepNode.put("timeoutSeconds", flowStep.getTimeoutSeconds());
+            }
+            stepNode.set("onTimeoutSteps", toFlowSteps(flowStep.getOnTimeoutSteps()));
             steps.add(stepNode);
         }
         return steps;

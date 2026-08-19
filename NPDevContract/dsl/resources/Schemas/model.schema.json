@@ -2840,6 +2840,18 @@
             "$ref": "#/$defs/flowStep"
           },
           "description": "LNCH-17: compensation steps run in reverse completion order if a later step in the same flow terminally fails. Not a distributed transaction -- best-effort cleanup, per the saga pattern; see docs/architecture/FLOW_TRANSACTION_CONTRACT.md."
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "R2.5: an awaitEvent step's durable wait deadline in seconds, measured from when the step first parks (not from flow start). Checked by the resume sweep against the persisted flow instance, so it survives a process restart -- once it passes without the awaited event arriving, the flow resumes into onTimeout instead of re-parking. Absent means no timeout (wait forever, the pre-R2.5 default)."
+        },
+        "onTimeout": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowStep"
+          },
+          "description": "R2.5: escalation steps run once timeout's deadline passes without the awaited event arriving -- e.g. notify a manager, then let the flow continue past the await. Requires timeout to be set."
         }
       },
       "allOf": [
