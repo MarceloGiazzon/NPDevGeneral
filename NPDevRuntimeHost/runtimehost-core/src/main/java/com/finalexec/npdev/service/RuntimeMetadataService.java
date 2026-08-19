@@ -2,6 +2,7 @@ package com.finalexec.npdev.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.kernel.i18n.LabelResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
@@ -166,8 +167,14 @@ public class RuntimeMetadataService {
     }
 
     public Map<String, Object> concept(String conceptName) {
+        return concept(conceptName, null);
+    }
+
+    /** R5.6 locale-aware overload -- see {@link #resolveLabels(Map, String)}. {@code requestedLocale}
+     * null behaves byte-identical to {@link #concept(String)}. */
+    public Map<String, Object> concept(String conceptName, String requestedLocale) {
         return withReadLock(() -> {
-            Map<String, Object> response = buildCatalogResponse("concepts", conceptName, null, null);
+            Map<String, Object> response = buildCatalogResponse("concepts", conceptName, null, null, requestedLocale);
             List<Map<String, Object>> items = extractItems(response);
             if (items.isEmpty()) {
                 throw new NoSuchElementException("Runtime metadata concept not found: " + conceptName);
@@ -187,7 +194,12 @@ public class RuntimeMetadataService {
     }
 
     public Map<String, Object> fields(String conceptName, String fieldPath) {
-        return withReadLock(() -> buildCatalogResponse("fields", conceptName, null, fieldPath));
+        return fields(conceptName, fieldPath, null);
+    }
+
+    /** R5.6 locale-aware overload -- see {@link #resolveLabels(Map, String)}. */
+    public Map<String, Object> fields(String conceptName, String fieldPath, String requestedLocale) {
+        return withReadLock(() -> buildCatalogResponse("fields", conceptName, null, fieldPath, requestedLocale));
     }
 
     public Map<String, Object> enums(String conceptName, String fieldPath) {
@@ -207,8 +219,13 @@ public class RuntimeMetadataService {
     }
 
     public Map<String, Object> actions(String conceptName, String ownerName) {
+        return actions(conceptName, ownerName, null);
+    }
+
+    /** R5.6 locale-aware overload -- see {@link #resolveLabels(Map, String)}. */
+    public Map<String, Object> actions(String conceptName, String ownerName, String requestedLocale) {
         return withReadLock(() -> {
-            Map<String, Object> response = buildCatalogResponse("actions", conceptName, ownerName, null);
+            Map<String, Object> response = buildCatalogResponse("actions", conceptName, ownerName, null, requestedLocale);
             response.put("actionKinds", distinctValues(extractItems(response), "kind"));
             response.put("permissionHints", distinctValues(extractItems(response), "permissionHint"));
             return response;
@@ -234,7 +251,16 @@ public class RuntimeMetadataService {
     }
 
     public Map<String, Object> catalog(String catalogName, String conceptName, String ownerName, String fieldPath) {
-        return withReadLock(() -> buildCatalogResponse(catalogName, conceptName, ownerName, fieldPath));
+        return catalog(catalogName, conceptName, ownerName, fieldPath, null);
+    }
+
+    /** R5.6 locale-aware overload -- see {@link #resolveLabels(Map, String)}. Generic over
+     * {@code catalogName}, so this single overload is what {@code PermissionAwareUiMetadataService
+     * .rawCatalogItems} routes every one of the bundle's unfiltered catalogs (layout/enums/
+     * references/transitions/validation/invocations) through to localize them too. */
+    public Map<String, Object> catalog(
+            String catalogName, String conceptName, String ownerName, String fieldPath, String requestedLocale) {
+        return withReadLock(() -> buildCatalogResponse(catalogName, conceptName, ownerName, fieldPath, requestedLocale));
     }
 
     /** F2.2: the UI-contract bundle's {@code modelHash} -- the same fingerprint
@@ -251,15 +277,24 @@ public class RuntimeMetadataService {
     }
 
     public Map<String, Object> previewSupport(String conceptName) {
+        return previewSupport(conceptName, null);
+    }
+
+    /** R5.6 locale-aware overload -- see {@link #resolveLabels(Map, String)}. Every derived view
+     * built below (listColumns/actionSummaries/summaryFields/...) reads {@code "label"} off
+     * {@code fieldItems}/{@code actionItems}/{@code layoutItems}, already resolved by
+     * {@link #filteredItems(String, String, String, String, String)} at this point -- so those
+     * derived builders need no locale awareness of their own. */
+    public Map<String, Object> previewSupport(String conceptName, String requestedLocale) {
         return withReadLock(() -> {
-            Map<String, Object> conceptResponse = concept(conceptName);
+            Map<String, Object> conceptResponse = concept(conceptName, requestedLocale);
             Map<String, Object> concept = castMap(conceptResponse.get("concept"));
-            List<Map<String, Object>> fieldItems = filteredItems("fields", conceptName, null, null);
-            List<Map<String, Object>> enumItems = filteredItems("enums", conceptName, null, null);
-            List<Map<String, Object>> referenceItems = filteredItems("references", conceptName, null, null);
-            List<Map<String, Object>> actionItems = filteredItems("actions", conceptName, null, null);
-            List<Map<String, Object>> layoutItems = filteredItems("layout", conceptName, null, null);
-            List<Map<String, Object>> validationItems = filteredItems("validationHints", conceptName, null, null);
+            List<Map<String, Object>> fieldItems = filteredItems("fields", conceptName, null, null, requestedLocale);
+            List<Map<String, Object>> enumItems = filteredItems("enums", conceptName, null, null, requestedLocale);
+            List<Map<String, Object>> referenceItems = filteredItems("references", conceptName, null, null, requestedLocale);
+            List<Map<String, Object>> actionItems = filteredItems("actions", conceptName, null, null, requestedLocale);
+            List<Map<String, Object>> layoutItems = filteredItems("layout", conceptName, null, null, requestedLocale);
+            List<Map<String, Object>> validationItems = filteredItems("validationHints", conceptName, null, null, requestedLocale);
 
             Map<String, Object> response = baseResponse();
             response.put("concept", concept);
@@ -481,9 +516,20 @@ public class RuntimeMetadataService {
             String ownerName,
             String fieldPath
     ) {
+        return buildCatalogResponse(requestedCatalog, conceptName, ownerName, fieldPath, null);
+    }
+
+    private Map<String, Object> buildCatalogResponse(
+            String requestedCatalog,
+            String conceptName,
+            String ownerName,
+            String fieldPath,
+            String requestedLocale
+    ) {
         String resolvedCatalog = normalizeCatalogName(requestedCatalog);
         Map<String, Object> manifest = new LinkedHashMap<>(loadManifest(resolvedCatalog));
-        List<Map<String, Object>> filteredItems = filteredItems(resolvedCatalog, conceptName, ownerName, fieldPath);
+        List<Map<String, Object>> filteredItems =
+                filteredItems(resolvedCatalog, conceptName, ownerName, fieldPath, requestedLocale);
 
         manifest.put("endpointVersion", ENDPOINT_VERSION);
         manifest.put("requestedCatalog", requestedCatalog);
@@ -525,6 +571,29 @@ public class RuntimeMetadataService {
             String ownerName,
             String fieldPath
     ) {
+        return filteredItems(catalogName, conceptName, ownerName, fieldPath, null);
+    }
+
+    /**
+     * R5.6: locale-aware sibling of the 4-arg overload above. Every catalog manifest item this
+     * loads already carries {@code labelLocales}/{@code shortLabelLocales} (EDIT-13,
+     * {@code CompiledMetadataCanonicalJson}) alongside its plain {@code label}/{@code shortLabel} --
+     * resolved HERE, at the point items first enter the RuntimeHost service layer, so every
+     * downstream consumer (previewSupport's listColumns/actionSummaries, the admin catalog
+     * endpoints, PermissionAwareUiMetadataService's enrichment) sees an already-correct plain string
+     * and none of them need their own locale awareness. {@code requestedLocale == null} (every
+     * existing 4-arg call site, and the ADMIN {@code RuntimeMetadataController}, which never reads a
+     * caller locale) is byte-identical to the pre-R5.6 shape: {@link #resolveLabels} is a no-op for
+     * a null locale, so a plain-string model -- and every caller that never threads a locale -- is
+     * unaffected by this change.
+     */
+    private List<Map<String, Object>> filteredItems(
+            String catalogName,
+            String conceptName,
+            String ownerName,
+            String fieldPath,
+            String requestedLocale
+    ) {
         List<Map<String, Object>> sourceItems = extractItems(loadManifest(normalizeCatalogName(catalogName)));
         List<Map<String, Object>> filtered = new ArrayList<>();
         for (Map<String, Object> item : sourceItems) {
@@ -537,9 +606,49 @@ public class RuntimeMetadataService {
             if (!matchesOwnerName(item, ownerName)) {
                 continue;
             }
-            filtered.add(item);
+            filtered.add(resolveLabels(item, requestedLocale));
         }
         return filtered;
+    }
+
+    /**
+     * R5.6: resolves every {@code "<x>"}/{@code "<x>Locales"} pair this service's catalog items
+     * carry ({@code label}/{@code labelLocales}, {@code shortLabel}/{@code shortLabelLocales}) to
+     * plain text for {@code requestedLocale}, via the kernel's {@link LabelResolver} -- the same
+     * fallback rule (exact tag -> same language -> default) every other R5.6 caller uses. The raw
+     * {@code "<x>Locales"} map is dropped from the returned item once resolved: the point of doing
+     * this server-side is that a client receives a ready-to-render label, never a map it has to
+     * interpret itself.
+     *
+     * <p>{@code requestedLocale == null} returns {@code item} completely unchanged (not even a copy)
+     * -- the exact byte-identical behavior every pre-R5.6 caller already had, and the guarantee that
+     * a plain-string-labeled model (whose {@code labelLocales} is always an empty map either way) is
+     * never affected by this method existing.
+     */
+    private static Map<String, Object> resolveLabels(Map<String, Object> item, String requestedLocale) {
+        if (requestedLocale == null || requestedLocale.isBlank()) {
+            return item;
+        }
+        Map<String, Object> resolved = new LinkedHashMap<>(item);
+        resolveLabelPair(resolved, "label", "labelLocales", requestedLocale);
+        resolveLabelPair(resolved, "shortLabel", "shortLabelLocales", requestedLocale);
+        return resolved;
+    }
+
+    private static void resolveLabelPair(
+            Map<String, Object> item, String textKey, String localesKey, String requestedLocale) {
+        if (!item.containsKey(textKey)) {
+            return;
+        }
+        Object localesRaw = item.remove(localesKey);
+        if (!(localesRaw instanceof Map<?, ?> localesMap) || localesMap.isEmpty()) {
+            return;
+        }
+        Object textRaw = item.get(textKey);
+        String defaultText = textRaw == null ? "" : String.valueOf(textRaw);
+        Map<String, String> locales = new LinkedHashMap<>();
+        localesMap.forEach((key, value) -> locales.put(String.valueOf(key), value == null ? "" : String.valueOf(value)));
+        item.put(textKey, LabelResolver.resolve(defaultText, locales, requestedLocale));
     }
 
     private boolean matchesConcept(String catalogName, Map<String, Object> item, String conceptName) {
