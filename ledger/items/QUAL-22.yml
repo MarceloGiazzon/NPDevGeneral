@@ -1,0 +1,60 @@
+id: QUAL-22
+title: >-
+  run-runtimehost-gate.ps1 is RED on roadmap/wave1-2026-08-19 -- NonDefaultRuntimeSurfaceProfileIntegrationTest
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-19
+source: >-
+  Found 2026-08-19 while verifying R4.4 (aggregate invariants). The gate was not in the previous
+  session's green list, so nothing had run it on this branch until now.
+surface: runtimehost/surface-profile
+files:
+  - NPDevRuntimeHost/src/test/java/com/finalexec/NonDefaultRuntimeSurfaceProfileIntegrationTest.java
+  - scripts/quality/run-runtimehost-gate.ps1
+detail: |
+  `run-runtimehost-gate.ps1` fails on branch `roadmap/wave1-2026-08-19`:
+
+      NonDefaultRuntimeSurfaceProfileIntegrationTest
+        > nonDefaultRuntimeProfileExposesSupportedCoreAndNonDefaultControllersOnly() FAILED
+          java.lang.IllegalStateException at DefaultCacheAwareContextLoaderDelegate.java:180
+          Caused by: org.springframework.beans.factory.UnsatisfiedDependencyException at ConstructorResolver.java:804
+          Caused by: org.springframework.beans.factory.NoSuchBeanDefinitionException at DefaultListableBeanFactory.java:2322
+
+  A Spring context load failure for the `npdev.runtime.surface-profile=non-default` @SpringBootTest:
+  some bean's required constructor argument has no candidate in that profile.
+
+  **Attributed by a control run, not by reading.** It was first seen while R4.4 added an
+  `ObjectProvider<InvariantEngine>` to `AggregateRuntime`'s @Autowired constructor, which was the
+  obvious suspect (the InvariantEngine bean is built from CompiledModel, so resolving it eagerly
+  forces that chain at context startup). Two measurements ruled that out:
+
+  1. R4.4 was rewritten to resolve the engine LAZILY (a `Supplier<InvariantEngine>` field, resolved
+     on first use inside the pre-commit slot), so nothing is instantiated at startup. Gate still
+     RED, same test: **601 tests completed, 1 failed**.
+  2. A control run with `AggregateRuntime.java` restored to HEAD and the new test file removed
+     entirely -- i.e. the branch with no R4.4 RuntimeHost change at all -- is **also RED on the same
+     test: 596 tests completed, 1 failed**.
+
+  601 - 596 = the 5 tests R4.4 added, and both runs carry exactly one failure, so R4.4's own tests
+  pass and this failure predates it. The lazy form was kept anyway: it is strictly better than
+  forcing CompiledModel-derived bean creation at startup for every app, including surface profiles
+  that never commit an aggregate.
+
+  **Not yet root-caused.** The failing bean is not named in the console output, and
+  `run-runtimehost-gate.ps1` cleans the sample `Output/` tree on the way out, taking the
+  `TEST-*.xml` (which carries the full `No qualifying bean of type ...` text) with it. Whoever picks
+  this up should re-run the gate and capture that XML before cleanup, or run the assembled sample's
+  `:test` task directly against `NPDevSamples/simple-contact-intake/Output/App`.
+
+  Related: REG-112/QUAL-5/REG-163 already record that a RuntimeHost test naming
+  `com.npdev.generated.` never runs in any gate; this one DOES run, and is red.
+guard:
+  kind: manual
+  ref: scripts/quality/run-runtimehost-gate.ps1
+  asserts: >-
+    `pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1` completes without
+    NonDefaultRuntimeSurfaceProfileIntegrationTest failing. Measured RED on 2026-08-19 both with and
+    without the R4.4 change present, which is what established that this is pre-existing rather than
+    caused by it.
+  provenRed: true

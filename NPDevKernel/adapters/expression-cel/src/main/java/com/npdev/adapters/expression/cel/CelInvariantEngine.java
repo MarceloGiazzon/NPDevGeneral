@@ -1,5 +1,7 @@
 package com.npdev.adapters.expression.cel;
 
+import com.npdev.dsl.v1.compiled.CompiledAggregate;
+import com.npdev.dsl.v1.compiled.CompiledAggregateInvariant;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
@@ -290,6 +292,129 @@ public final class CelInvariantEngine implements InvariantEngine {
         }
         return new InvariantEvaluationResult(violations);
     }
+
+    /**
+     * R4.4 (Roadmap Wave 1 2026-08-19): evaluates a declared aggregate's {@code invariants[]}
+     * against its draft tree -- root fields bound directly by name, plus each declared collection
+     * bound by name to its list of row maps, exactly the shape {@code AggregateRuntime}'s
+     * {@code rootDraft}/reloaded tree already uses for {@code onValidate}/{@code onCommit}. Reuses
+     * the same {@link ComputedExpression} grammar and function registry (all/exists/uniqueBy/
+     * matches, plus {@code sum} above) concept-level invariant expressions already get -- no
+     * separate evaluator. Returns one {@link InvariantEngine.Violation} per failed invariant, in
+     * declaration order, with {@code invariantRef} set to the invariant's own {@code name} so a
+     * caller can name the failing rule; an empty result means every invariant passed.
+     *
+     * @throws NullPointerException if {@code aggregate} is null
+     */
+    /**
+     * R4.4: the port-shaped entry point {@code AggregateRuntime} actually calls. Same evaluation as
+     * the {@link CompiledAggregate} overload below -- that one is the convenience for a caller that
+     * already holds the compiled type; this one keeps DSL types out of the kernel port.
+     */
+    @Override
+    public List<InvariantEngine.Violation> evaluateAggregateInvariants(
+            String aggregateName,
+            String rootConcept,
+            List<InvariantEngine.AggregateInvariantSpec> invariants,
+            Map<String, Object> draftTree
+    ) {
+        if (invariants == null || invariants.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Object> tree = draftTree == null ? Map.of() : draftTree;
+        List<InvariantEngine.Violation> violations = new ArrayList<>();
+        for (InvariantEngine.AggregateInvariantSpec invariant : invariants) {
+            ExpressionResult result = evaluateExpression(tree, invariant.expression(), Map.of());
+            if (result.ok()) {
+                continue;
+            }
+            String detail = result.details();
+            String message = invariant.message() != null
+                    ? invariant.message()
+                    : "Aggregate " + aggregateName + " invariant '" + invariant.name() + "' violated"
+                            + (detail == null || detail.isBlank() ? "" : ": " + detail);
+            violations.add(new InvariantEngine.Violation(
+                    "AGGREGATE_INVARIANT_FAIL",
+                    message,
+                    invariant.name(),
+                    rootConcept,
+                    null,
+                    null,
+                    null,
+                    result.fieldPath() == null ? Map.of() : Map.of("fieldPath", result.fieldPath())
+            ));
+        }
+        return List.copyOf(violations);
+    }
+
+    public List<InvariantEngine.Violation> evaluateAggregateInvariants(
+            CompiledAggregate aggregate, Map<String, Object> draftTree) {
+        Objects.requireNonNull(aggregate, "aggregate");
+        Map<String, Object> tree = draftTree == null ? Map.of() : draftTree;
+        List<InvariantEngine.Violation> violations = new ArrayList<>();
+        for (CompiledAggregateInvariant invariant : aggregate.invariants()) {
+            if (invariant.expression() == null) {
+                // Compile-time validation (AggregateValidation) requires a non-blank expression;
+                // this branch is a defensive no-op for a hand-built CompiledAggregate that skipped it.
+                continue;
+            }
+            ExpressionResult result = evaluateExpression(tree, invariant.expression(), Map.of());
+            if (result.ok()) {
+                continue;
+            }
+            String ruleName = invariant.name() == null ? "<unnamed>" : invariant.name();
+            String detail = result.details();
+            String message = invariant.message() != null
+                    ? invariant.message()
+                    : "Aggregate " + aggregate.name() + " invariant '" + ruleName + "' violated"
+                            + (detail == null || detail.isBlank() ? "" : ": " + detail);
+            violations.add(new InvariantEngine.Violation(
+                    "AGGREGATE_INVARIANT_FAIL",
+                    message,
+                    ruleName,
+                    aggregate.root(),
+                    null,
+                    null,
+                    null,
+                    result.fieldPath() == null ? Map.of() : Map.of("fieldPath", result.fieldPath())
+            ));
+        }
+        return List.copyOf(violations);
+    }
+
+    /**
+     * R4.4: the one-call convenience the aggregate commit's pre-commit slot needs --
+     * {@code AggregateRuntime.commitInternal} already runs a declared {@code onValidate} procedure
+     * here, BEFORE the root upsert (and every recursive child upsert), throwing
+     * {@code IllegalStateException} naming what failed on a non-ok result; {@code
+     * AggregateApiController} already catches that exact exception type and surfaces its message
+     * as the commit API's error response. This method throws the SAME exception type/shape (naming
+     * every failing invariant, not just the first) so wiring it into that slot is a one-line
+     * addition beside the existing onValidate call, reusing the atomicity {@code AggregateRuntime}'s
+     * own {@code TransactionTemplate} already provides for that slot (throwing before any write is
+     * attempted means there is nothing to roll back). Returns normally when every invariant passes.
+     *
+     * @throws IllegalStateException naming every failing rule, if any invariant is violated
+     */
+    public void assertAggregateInvariants(CompiledAggregate aggregate, Map<String, Object> draftTree) {
+        List<InvariantEngine.Violation> violations = evaluateAggregateInvariants(aggregate, draftTree);
+        if (violations.isEmpty()) {
+            return;
+        }
+        StringBuilder names = new StringBuilder();
+        StringBuilder details = new StringBuilder();
+        for (InvariantEngine.Violation violation : violations) {
+            if (names.length() > 0) {
+                names.append(", ");
+                details.append("; ");
+            }
+            names.append(violation.invariantRef());
+            details.append(violation.message());
+        }
+        throw new IllegalStateException(
+                "Aggregate " + aggregate.name() + " invariant(s) violated: " + names + " -- " + details);
+    }
+
     public record EntityRules(
             Set<String> requiredFields,
             Set<String> uniqueFields,
@@ -871,6 +996,32 @@ public final class CelInvariantEngine implements InvariantEngine {
 
         functions.put("all", (args, vars) -> evaluateQuantifier(args, vars, hintRef, true));
         functions.put("exists", (args, vars) -> evaluateQuantifier(args, vars, hintRef, false));
+
+        // R4.4 (Roadmap Wave 1 2026-08-19): collection.sum(field) -- the aggregation an aggregate
+        // invariant needs to express e.g. "lines.sum(qty) <= totalQty". Not boolean-shaped itself
+        // (its result composes into a Binary comparison, e.g. <=, at the call site), so unlike
+        // all/exists/uniqueBy it never sets a FailureHint on its own -- a false top-level result
+        // built from it falls through to evaluateExpression's generic "expression evaluated to
+        // false" message with the simple-comparison fieldPath heuristic. A null/missing collection
+        // sums to zero (BigDecimal.ZERO), matching all()'s vacuous-true-on-empty convention rather
+        // than throwing, so a not-yet-populated collection never crashes an otherwise-valid draft.
+        functions.put("sum", (args, vars) -> {
+            Object collectionValue = args.get(0).eval(vars);
+            String fieldName = args.get(1).describeFieldPath();
+            if (fieldName == null) {
+                fieldName = String.valueOf(args.get(1).eval(vars));
+            }
+            Iterable<?> iterable = toIterable(collectionValue);
+            if (iterable == null) {
+                return BigDecimal.ZERO;
+            }
+            BigDecimal total = BigDecimal.ZERO;
+            for (Object item : iterable) {
+                Object value = readFieldValue(item, fieldName);
+                total = total.add(toSummableDecimal(value));
+            }
+            return total;
+        });
 
         ComputedExpression.ExprFunction conflictsFn = (args, vars) -> {
             String resourceFieldPath = args.get(0).describeFieldPath();
@@ -1616,6 +1767,27 @@ public final class CelInvariantEngine implements InvariantEngine {
     private static BigDecimal toBigDecimal(Number n) {
         if (n instanceof BigDecimal bd) return bd;
         return new BigDecimal(n.toString());
+    }
+
+    /** R4.4: {@code sum()}'s per-item field coercion -- a null/blank/non-numeric item field
+     *  contributes zero rather than throwing, so one malformed row doesn't crash the whole
+     *  aggregate-invariant evaluation (the caller's other checks, e.g. an {@code all(...)} clause
+     *  on the same collection, are what should flag a malformed row). */
+    private static BigDecimal toSummableDecimal(Object value) {
+        if (value instanceof BigDecimal bd) {
+            return bd;
+        }
+        if (value instanceof Number n) {
+            return new BigDecimal(n.toString());
+        }
+        if (value instanceof String s && !s.isBlank()) {
+            try {
+                return new BigDecimal(s.trim());
+            } catch (NumberFormatException ignored) {
+                return BigDecimal.ZERO;
+            }
+        }
+        return BigDecimal.ZERO;
     }
 
     private static Object parseLiteral(String literal) {

@@ -35,6 +35,7 @@ import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.GeneratedActionDescriptorAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
+import com.npdev.dsl.v1.ast.AggregateInvariantAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
@@ -103,6 +104,7 @@ import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationTrigger;
 import com.npdev.dsl.v1.compiled.CompiledOrigin;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
+import com.npdev.dsl.v1.compiled.CompiledAggregateInvariant;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelComputed;
@@ -995,8 +997,23 @@ public final class ModelCompiler {
                 compileAggregateCollections(aggregateAst.collections()),
                 onCommit,
                 sortObjectMap(aggregateAst.metadata()),
-                onValidate
+                onValidate,
+                // npdev-aggregate-invariant-four-place (R4.4): parser -> HERE -> canonical writer+reader.
+                compileAggregateInvariants(aggregateAst.invariants())
         );
+    }
+
+    /** R4.4: pass-through compile of aggregates[].invariants[] -- no specialization concept
+     *  applies to an aggregate invariant (it is not a concept-level rule), so this is a direct
+     *  1:1 mapping, same shape as {@link #compileAggregateCollections}. */
+    private static List<CompiledAggregateInvariant> compileAggregateInvariants(
+            List<AggregateInvariantAst> invariantAsts) {
+        List<CompiledAggregateInvariant> compiled = new ArrayList<>();
+        for (AggregateInvariantAst invariantAst : invariantAsts) {
+            compiled.add(new CompiledAggregateInvariant(
+                    invariantAst.name(), invariantAst.expression(), invariantAst.message()));
+        }
+        return compiled;
     }
 
     /** Move 6 Move B: an aggregate-bound AutoPanel's transaction.hooks.onValidate/onCommit is an
