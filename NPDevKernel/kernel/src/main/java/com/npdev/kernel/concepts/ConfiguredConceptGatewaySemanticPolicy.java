@@ -526,6 +526,34 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         return List.copyOf(denied);
     }
 
+    /**
+     * REG-195: an access rule is evaluated via the plain two-argument {@code evaluateBoolean},
+     * which resolves to an EMPTY {@link ComputedExpression.FunctionRegistry} -- so
+     * {@code $user.roles.contains(...)}, the only idiom this platform's own docs/corpus use for
+     * "does the actor have role X" inside {@code access.read}/{@code access.write}, throws
+     * "unknown function: contains" and the catch below turned that into a permanent, silent deny
+     * regardless of the actor's roles. {@code contains} does not exist in ANY {@code
+     * ComputedExpression} caller yet (not just this one) -- it is registered here, scoped to
+     * access-rule evaluation, following the extension pattern {@code docs/EXPRESSIONS.md} already
+     * documents ("a function registry is just a Map ... a future call site can register its own
+     * without touching the grammar itself") rather than reaching into the invariant engine's
+     * adapter-side registry, which kernel has no dependency on.
+     */
+    private static final ComputedExpression.FunctionRegistry ACCESS_RULE_FUNCTIONS =
+            ComputedExpression.FunctionRegistry.of(Map.of(
+                    "contains", (args, vars) -> {
+                        Object receiver = args.get(0).eval(vars);
+                        Object needle = args.get(1).eval(vars);
+                        if (receiver instanceof java.util.Collection<?> collection) {
+                            return collection.contains(needle);
+                        }
+                        if (receiver instanceof String haystack) {
+                            return needle != null && haystack.contains(String.valueOf(needle));
+                        }
+                        return false;
+                    }
+            ));
+
     private static boolean evaluateAccessRule(String expression, Map<String, Object> recordData, ExecutionContext context) {
         Map<String, Object> scope = new LinkedHashMap<>(recordData == null ? Map.of() : recordData);
         ExecutionContext effectiveContext = context == null ? ExecutionContext.anonymous() : context;
@@ -534,7 +562,7 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         scope.put("$user.tenantId", effectiveContext.tenantId());
         scope.put("$user.roles", effectiveContext.roles());
         try {
-            return ComputedExpression.evaluateBoolean(expression, scope);
+            return ComputedExpression.evaluateBoolean(expression, scope, ACCESS_RULE_FUNCTIONS);
         } catch (ComputedExpression.ExpressionException malformed) {
             // Fail closed: a row-level access rule that doesn't evaluate cleanly must never
             // silently grant access -- SemanticValidator already rejects this at model-compile
