@@ -52,6 +52,15 @@ class CliError(Exception):
     pass
 
 
+class PackCatalogPublishRefusal(CliError):
+    """R8.5: the specific "this would mutate an already-published version" refusal
+    `_push_pack_to_catalog` raises. A distinct type from the generic `CliError` other failures in
+    that same function raise (a bad --catalog-repo, a failed git command) so `run_pack_publish` can
+    turn ONLY this one into a clean `{"ok": false}` report + exit 2 -- matching the existing publish
+    gate's own 0-allowed/2-refused convention -- while a genuine usage/git error still surfaces as
+    the usual CliError/exit 1."""
+
+
 def repo_root() -> Path:
     env_root = os.environ.get("NPDEV_ROOT")
     if env_root:
@@ -6023,6 +6032,13 @@ def run_pack_publish(args: argparse.Namespace) -> int:
     field. The Gradle task itself always exits 0 (ignoreExitValue, same convention as validateModel
     and packDiff above), precisely so a refusal surfaces as a report instead of a Gradle build
     failure with no structured detail.
+
+    R8.5 `--push`: once (and ONLY once) this gate itself reports `allowed`, also commits
+    <new_pack> (+ a regenerated catalog-index.json, R8.4's own format) into the local git working
+    copy named by `--catalog-repo`, and pushes both the branch and the pack's own release tag to
+    `--remote`. See `_push_pack_to_catalog` for the local-first immutability refusal (an
+    already-published version's content can never be mutated, checked against on-disk bytes only,
+    before `git add`/`commit`/`push` ever runs) -- OCI is out of scope; the catalog is git-only.
     """
     root = repo_root()
     wrapper = gradle_wrapper(root)
@@ -6066,7 +6082,171 @@ def run_pack_publish(args: argparse.Namespace) -> int:
 
     print(json.dumps(report, indent=2))
     print(report.get("message", ""))
-    return 0 if report.get("allowed") else 2
+    if not report.get("allowed"):
+        return 2
+
+    if getattr(args, "push", False):
+        try:
+            push_report = _push_pack_to_catalog(new_pack, args)
+        except PackCatalogPublishRefusal as refusal:
+            push_report = {"ok": False, "pushed": False, "mutated": True, "message": str(refusal)}
+            print(json.dumps(push_report, indent=2))
+            return 2
+        print(json.dumps(push_report, indent=2))
+        return 0 if push_report.get("ok") else 2
+
+    return 0
+
+
+def _run_git(args: list[str], cwd: Path, *, check: bool = True) -> subprocess.CompletedProcess:
+    """Runs `git <args>` in `cwd` (a catalog repo, never THIS repo -- see this module's own R8.5
+    doc). Captured, never inherited, so a caller can fold a failure into the same structured
+    CliError convention every other pack command already uses."""
+    completed = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True)
+    if check and completed.returncode != 0:
+        raise CliError(
+            f"git {' '.join(args)} failed in {cwd} (exit {completed.returncode}): "
+            f"{(completed.stderr or completed.stdout or '').strip()}"
+        )
+    return completed
+
+
+def _pack_content_digest(file_bytes_by_relpath: dict) -> str:
+    """R8.6: a Python port of `PackCache#sha256OfTree`
+    (NPDevContract/dsl/.../pack/PackCache.java) -- SHA-256 over every `(path, bytes)` pair, sorted
+    by normalized ('/'-separated) relative path, each pair contributing `path_utf8 + NUL +
+    content_bytes + NUL` to the digest. Byte-for-byte the same algorithm PK-5 already uses to
+    content-address the machine-wide pack cache, so a digest computed here is directly comparable
+    to one `PackLockFile`/`PackCache` wrote -- not a new digest scheme, and deliberately NOT a
+    tarball hash (whose bytes would depend on mtimes/permissions/entry ordering, none of which are
+    part of a pack's actual CONTENT)."""
+    digest = hashlib.sha256()
+    for relpath in sorted(file_bytes_by_relpath):
+        digest.update(relpath.encode("utf-8"))
+        digest.update(b"\x00")
+        digest.update(file_bytes_by_relpath[relpath])
+        digest.update(b"\x00")
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _pack_content_digest_of_dir(root: Path) -> str:
+    """`_pack_content_digest` read from an existing directory tree, skipping any `.git` subtree --
+    matches `PackCache.copyTree`/`sha256OfTree`'s own exclusion so a digest computed over a
+    catalog-repo working-copy directory is comparable to one computed over a freshly-fetched tree."""
+    files: dict = {}
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        if ".git" in path.relative_to(root).parts:
+            continue
+        files[path.relative_to(root).as_posix()] = path.read_bytes()
+    return _pack_content_digest(files)
+
+
+def _push_pack_to_catalog(new_pack_path: Path, args: argparse.Namespace) -> dict:
+    """R8.5: commits `new_pack_path` (+ a regenerated `catalog-index.json`, R8.4's own writer --
+    `_scan_pack_catalog_entries`/`_write_pack_catalog_index`, never a second index format) into the
+    LOCAL git working copy named by `--catalog-repo`, and -- only when `--push` was actually passed
+    -- pushes both the commit's branch and the pack's own release tag to `--remote`.
+
+    Immutability refusal happens FIRST, comparing on-disk bytes only (this catalog-repo working
+    copy's OWN currently-checked-out `packs/<id>/pack.json`, no `git fetch`/`ls-remote` and no
+    `git add`/`commit`/`push` yet at this point) -- a push that would need to be undone afterwards
+    is not a guard; this one runs before any of `git add`/`commit`/`push` is ever invoked. A caller
+    is expected to keep `--catalog-repo` reasonably up to date (`git pull`) the same way any
+    git-based publish workflow requires; `git push`'s own non-fast-forward rejection is the
+    remaining backstop for a stale local clone, exercised for real by this module's own tests.
+    """
+    if not getattr(args, "catalog_repo", None):
+        raise CliError("--push requires --catalog-repo (a local git working copy of the catalog repo)")
+    catalog_repo = Path(args.catalog_repo).expanduser().resolve()
+    if not (catalog_repo / ".git").exists():
+        raise CliError(f"--catalog-repo {catalog_repo} is not a git working copy (no .git found there)")
+
+    new_pack = read_json(new_pack_path)
+    pack_id = new_pack.get("pack")
+    version = new_pack.get("version")
+    if not pack_id or not version:
+        raise CliError(f"{new_pack_path} has no 'pack'/'version' -- cannot publish it to the catalog")
+
+    new_pack_bytes = Path(new_pack_path).read_bytes()
+    target_dir = catalog_repo / "packs" / pack_id
+    target_file = target_dir / "pack.json"
+    new_digest = _pack_content_digest({"pack.json": new_pack_bytes})
+
+    if target_file.is_file():
+        existing = read_json(target_file)
+        existing_version = existing.get("version")
+        existing_digest = _pack_content_digest_of_dir(target_dir)
+        if existing_version == version:
+            if existing_digest == new_digest:
+                return {
+                    "ok": True, "pushed": False, "mutated": False, "alreadyPublished": True,
+                    "packId": pack_id, "version": version,
+                    "message": f"pack '{pack_id}' @ {version} is already published in the catalog "
+                               f"with identical content -- nothing to commit or push.",
+                }
+            raise PackCatalogPublishRefusal(
+                f"REFUSED (before any git add/commit/push): pack '{pack_id}' version {version} is "
+                f"already published in {target_file} with DIFFERENT content -- published digest "
+                f"{existing_digest}, this publish's digest {new_digest}. An already-published "
+                f"version is immutable; bump the version to publish new content."
+            )
+        # A different version than what's currently published -- a legitimate new release, proceed.
+
+    remote = getattr(args, "remote", None) or "origin"
+    repository_url = getattr(args, "repository_url", None)
+    if not repository_url:
+        origin = _run_git(["remote", "get-url", remote], catalog_repo, check=False)
+        repository_url = (origin.stdout or "").strip()
+        if not repository_url:
+            raise CliError(
+                f"--repository-url was not given and could not be read from --catalog-repo's "
+                f"'{remote}' remote -- pass --repository-url explicitly"
+            )
+
+    tag_template = getattr(args, "tag_template", None) or "v{version}"
+    branch = getattr(args, "branch", None)
+    if not branch:
+        branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], catalog_repo).stdout.strip()
+    tag = tag_template.format(pack=pack_id, version=version)
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_file.write_bytes(new_pack_bytes)
+
+    entries, problems = _scan_pack_catalog_entries(catalog_repo, repository_url, tag_template)
+    catalog_index_path = catalog_repo / "catalog-index.json"
+    _write_pack_catalog_index(catalog_index_path, repository_url, entries)
+
+    user_name = getattr(args, "git_user_name", None) or "npdev-pack-publish"
+    user_email = getattr(args, "git_user_email", None) or "npdev-pack-publish@localhost"
+    _run_git(["add", target_file.relative_to(catalog_repo).as_posix(), "catalog-index.json"], catalog_repo)
+    _run_git(
+        ["-c", f"user.name={user_name}", "-c", f"user.email={user_email}",
+         "commit", "--quiet", "-m", f"publish {pack_id} v{version}"],
+        catalog_repo,
+    )
+    commit_sha = _run_git(["rev-parse", "HEAD"], catalog_repo).stdout.strip()
+    _run_git(["tag", tag], catalog_repo)
+
+    stripped_url = repository_url.rstrip("/")
+    if stripped_url.endswith(".git"):
+        stripped_url = stripped_url[: -len(".git")]
+    coordinate = f"git+{stripped_url}.git//packs/{pack_id}@{tag}"
+
+    pushed = False
+    if getattr(args, "push", False):
+        _run_git(["push", remote, branch], catalog_repo)
+        _run_git(["push", remote, tag], catalog_repo)
+        pushed = True
+
+    return {
+        "ok": True, "pushed": pushed, "mutated": False, "alreadyPublished": False,
+        "packId": pack_id, "version": version, "tag": tag, "branch": branch, "remote": remote,
+        "coordinate": coordinate, "commit": commit_sha,
+        "catalogRepo": str(catalog_repo), "catalogIndexPath": str(catalog_index_path),
+        "problems": problems,
+    }
 
 
 def _add_merge_args(parser: argparse.ArgumentParser) -> None:
@@ -6602,15 +6782,115 @@ def _run_pack_gradle_task(task: str, model_path: Path, extra_props: dict[str, st
     return 2 if report.get("status") == "failed" else 0
 
 
+def _pack_lock_path(model_path: Path) -> Path:
+    return Path(model_path).expanduser().resolve().parent / PACK_LOCK_FILE_NAME
+
+
+def _read_lock_entries_from_text(text: str | None) -> dict:
+    """Parses an `npdev.lock` document's `packs` object. Never raises -- a missing, corrupt or
+    unexpectedly-shaped lock is just "nothing to compare against" (empty dict), since this is only
+    ever used for the drift COMPARISON below, never as the source of truth PackLockFile itself is."""
+    if not text:
+        return {}
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    packs = data.get("packs") if isinstance(data, dict) else None
+    return packs if isinstance(packs, dict) else {}
+
+
+def _guard_against_remote_pack_tamper(model_path: Path, before_text: str | None, task: str) -> None:
+    """R8.6: refuse -- LOCALLY, restoring the previous npdev.lock, before anything downstream ever
+    reads the newly-cached bytes as trustworthy -- when `<task>` (packAdd/packUpdate, which just
+    re-ran the real PK-5 fetch+digest machinery over the network) reports the SAME `from` coordinate
+    at the SAME resolvedVersion as before, but with a DIFFERENT content digest.
+
+    That combination -- same coordinate, same version, different bytes -- is never a legitimate
+    outcome: a real new release always bumps the version (that is what PackPublishGate/semver
+    honesty exists to enforce on the publishing side). It is exactly the signature of a mutated git
+    tag: an attacker (or a broken CI job) force-moved the tag this coordinate names to point at
+    different content without changing the version string the lock already trusted.
+
+    Deliberately reuses the digest RemotePackFetcher/PackCache/PackLockFile already computed on
+    both the prior AND the fresh fetch (no independent digest computation here, no new fetch
+    primitive) -- this function only ever compares two already-trustworthy strings the Java PK-5
+    machinery wrote into npdev.lock before and after this call.
+    """
+    lock_path = _pack_lock_path(model_path)
+    after_text = lock_path.read_text(encoding="utf-8") if lock_path.is_file() else None
+    before_entries = _read_lock_entries_from_text(before_text)
+    after_entries = _read_lock_entries_from_text(after_text)
+
+    mismatches = []
+    for pack_id, new_entry in after_entries.items():
+        old_entry = before_entries.get(pack_id)
+        if not isinstance(old_entry, dict) or not isinstance(new_entry, dict):
+            continue
+        old_from = str(old_entry.get("from") or "")
+        new_from = str(new_entry.get("from") or "")
+        if not old_from or old_from != new_from:
+            continue  # not a remote pack held at the same coordinate before -- nothing to compare
+        old_version = str(old_entry.get("resolvedVersion") or "")
+        new_version = str(new_entry.get("resolvedVersion") or "")
+        old_digest = str(old_entry.get("digest") or "")
+        new_digest = str(new_entry.get("digest") or "")
+        if old_version and old_version == new_version and old_digest and old_digest != new_digest:
+            mismatches.append((pack_id, old_from, old_version, old_digest, new_digest))
+
+    if not mismatches:
+        return
+
+    # Restore the lock to what it was before this call, BEFORE reporting anything -- the freshly
+    # (re-)fetched content must never be left as what npdev.lock trusts once its digest is shown to
+    # disagree with what was previously locked at the same coordinate and version.
+    if before_text is not None:
+        lock_path.write_text(before_text, encoding="utf-8")
+    else:
+        lock_path.unlink(missing_ok=True)
+
+    lines = [
+        f"REFUSED: `npdev pack {task}` re-fetched a REMOTE pack whose tag now points at DIFFERENT "
+        f"content under an UNCHANGED version -- the signature of a mutated/moved git tag. "
+        f"{lock_path} has been restored to its previous, trusted contents; nothing was left pointing "
+        f"at the mutated fetch.",
+    ]
+    for pack_id, from_coord, version, old_digest, new_digest in mismatches:
+        lines.append(
+            f"  pack '{pack_id}' @ {version} ({from_coord}): locked digest {old_digest} != "
+            f"freshly re-fetched digest {new_digest}"
+        )
+    lines.append(
+        "A legitimate content change always ships under a NEW version (see `npdev pack publish`'s "
+        "semver-honesty gate) -- npdev never silently accepts a content change under a version "
+        "number it has already locked."
+    )
+    raise CliError("\n".join(lines))
+
+
+def _run_pack_gradle_task_with_tamper_guard(task: str, model_path: Path) -> int:
+    """Wraps `_run_pack_gradle_task` for `packAdd`/`packUpdate` -- the two tasks that actually
+    touch the network and can rewrite npdev.lock with freshly-fetched remote content -- with the
+    R8.6 tamper guard above. `packList`/`packWhy` never fetch or rewrite the lock, so they call
+    `_run_pack_gradle_task` directly, unwrapped.
+    """
+    lock_path = _pack_lock_path(model_path)
+    before_text = lock_path.read_text(encoding="utf-8") if lock_path.is_file() else None
+    code = _run_pack_gradle_task(task, model_path)
+    if code == 0:
+        _guard_against_remote_pack_tamper(model_path, before_text, task)
+    return code
+
+
 def run_pack_add(args: argparse.Namespace) -> int:
     from_catalog = getattr(args, "from_catalog", None)
     if from_catalog:
         _add_pack_from_catalog(Path(args.model), from_catalog, args)
-    return _run_pack_gradle_task("packAdd", Path(args.model))
+    return _run_pack_gradle_task_with_tamper_guard("packAdd", Path(args.model))
 
 
 def run_pack_update(args: argparse.Namespace) -> int:
-    return _run_pack_gradle_task("packUpdate", Path(args.model))
+    return _run_pack_gradle_task_with_tamper_guard("packUpdate", Path(args.model))
 
 
 def run_pack_list(args: argparse.Namespace) -> int:
@@ -6649,6 +6929,9 @@ def run_pack_why(args: argparse.Namespace) -> int:
 # NPR is left to the repo owner (or R8.5's future `pack publish --push`), not done by this command.
 # ---------------------------------------------------------------------------------------------
 
+PACK_LOCK_FILE_NAME = "npdev.lock"  # matches PackLockFile.FILE_NAME (Java) -- kept as a literal
+# here rather than shelled out to read: this string is a stable, documented file name, not a value
+# that can drift independently of the format checks in NPDevContract/dsl's own tests.
 PACK_CATALOG_SCHEMA_VERSION = "npdev-pack-catalog.v1"
 # The real NPR pack repo (github.com/MarceloGiazzon/NPR) -- confirmed live and reachable while this
 # was built (README.md + packs/user/pack.json fetched for real over HTTPS). It has no
@@ -6779,25 +7062,20 @@ def run_pack_search(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_pack_build_catalog(args: argparse.Namespace) -> int:
-    """R8.4 (shared index format with R8.5): scans a local checkout of an NPR-shaped pack repo
+def _scan_pack_catalog_entries(repo_dir: Path, repository_url: str, tag_template: str) -> tuple[list[dict], list[str]]:
+    """R8.4/R8.5 shared core: scans a local checkout of an NPR-shaped pack repo
     (`packs/<name>/pack.json` per pack -- the layout github.com/MarceloGiazzon/NPR already uses)
-    and writes `catalog-index.json`, the artifact `pack search` fetches. Writes a LOCAL FILE ONLY
-    -- publishing it (committing + pushing to the catalog repo) is a separate, manual step today,
-    or R8.5's future `pack publish --push`; this command never touches git or the network.
-
-    `--tag-template` exists because NPR's own convention today is a single repo-wide release tag
-    (`v1.0.0`), confirmed live -- there is exactly one published pack as of this writing, so a real
-    per-pack tagging scheme has never actually been exercised with two packs at different versions.
-    Stated plainly rather than invented: whoever publishes a second pack to NPR must decide that
-    scheme for real, and this template is the seam the decision plugs into.
+    and returns `(entries, problems)` in the exact shape `catalog-index.json`'s own `packs[]` uses.
+    Pulled out of `run_pack_build_catalog` (its sole caller until R8.5) so `pack publish --push`
+    reuses the SAME index-building logic instead of a second, drifting implementation -- both
+    commands must always compute an entry's `from` coordinate identically, since a discrepancy
+    there is exactly the kind of bug that only shows up as "catalog says X but git has Y".
     """
-    repo_dir = Path(args.repo_dir).expanduser().resolve()
     packs_dir = repo_dir / "packs"
     if not packs_dir.is_dir():
         raise CliError(f"no packs/ directory under {repo_dir} -- expected {packs_dir}")
 
-    repo_url = args.repository_url.rstrip("/")
+    repo_url = repository_url.rstrip("/")
     if repo_url.endswith(".git"):
         repo_url = repo_url[: -len(".git")]
 
@@ -6814,7 +7092,7 @@ def run_pack_build_catalog(args: argparse.Namespace) -> int:
         if not pack_id or not version:
             problems.append(f"{pack_json}: missing 'pack' or 'version' -- skipped")
             continue
-        tag = args.tag_template.format(pack=pack_id, version=version)
+        tag = tag_template.format(pack=pack_id, version=version)
         subpath = pack_json.parent.relative_to(repo_dir).as_posix()
         coordinate = f"git+{repo_url}.git//{subpath}@{tag}"
         entries.append({
@@ -6826,15 +7104,38 @@ def run_pack_build_catalog(args: argparse.Namespace) -> int:
             "path": subpath,
             "from": coordinate,
         })
+    return entries, problems
 
+
+def _write_pack_catalog_index(out_path: Path, repository_url: str, entries: list[dict]) -> dict:
     catalog = {
         "schemaVersion": PACK_CATALOG_SCHEMA_VERSION,
-        "repository": args.repository_url,
+        "repository": repository_url,
         "generatedAt": _utc_now(),
         "packs": entries,
     }
-    out_path = Path(args.out).expanduser() if args.out else repo_dir / "catalog-index.json"
     out_path.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return catalog
+
+
+def run_pack_build_catalog(args: argparse.Namespace) -> int:
+    """R8.4 (shared index format with R8.5): scans a local checkout of an NPR-shaped pack repo
+    (`packs/<name>/pack.json` per pack -- the layout github.com/MarceloGiazzon/NPR already uses)
+    and writes `catalog-index.json`, the artifact `pack search` fetches. Writes a LOCAL FILE ONLY
+    -- publishing it (committing + pushing to the catalog repo) is a separate, manual step today,
+    or via R8.5's `pack publish --push`; this command itself still never touches git or the network.
+
+    `--tag-template` exists because NPR's own convention today is a single repo-wide release tag
+    (`v1.0.0`), confirmed live -- there is exactly one published pack as of this writing, so a real
+    per-pack tagging scheme has never actually been exercised with two packs at different versions.
+    Stated plainly rather than invented: whoever publishes a second pack to NPR must decide that
+    scheme for real, and this template is the seam the decision plugs into.
+    """
+    repo_dir = Path(args.repo_dir).expanduser().resolve()
+    entries, problems = _scan_pack_catalog_entries(repo_dir, args.repository_url, args.tag_template)
+
+    out_path = Path(args.out).expanduser() if args.out else repo_dir / "catalog-index.json"
+    _write_pack_catalog_index(out_path, args.repository_url, entries)
 
     report = {
         "schemaVersion": "npdev-pack-catalog-build.v1",
@@ -8032,7 +8333,9 @@ def run_monitor(args: argparse.Namespace) -> int:
         return _run_monitor_logs(args)
     if args.monitor_command == "ops":
         return _run_monitor_ops(args)
-    raise CliError("usage: npdev monitor {scan|probe|engine|engine-start|logs|ops}")
+    if args.monitor_command == "ingress":
+        return _run_monitor_ingress(args)
+    raise CliError("usage: npdev monitor {scan|probe|engine|engine-start|logs|ops|ingress}")
 
 
 def _run_monitor_engine_start(args: argparse.Namespace) -> int:
@@ -8096,6 +8399,33 @@ def _run_monitor_engine_start(args: argparse.Namespace) -> int:
         process.terminate()
         emit({"kind": "stopped", "exitCode": None, "detail": "interrupted"})
         return 0
+
+
+def _run_monitor_ingress(args: argparse.Namespace) -> int:
+    """R9.7: one shared reverse-proxy config for every app on THIS box, generated from the Monitor's
+    own inventory rather than hand-maintained. Read for discovery, write for the single artifact --
+    the same split `monitor logs export` already uses."""
+    paths = _split_paths(args.paths)
+    result = npdev_monitor.write_shared_ingress(
+        paths,
+        Path(args.out),
+        max_depth=args.depth,
+        mode=args.mode,
+        base_domain=args.base_domain,
+        upstream_host=args.upstream_host,
+        health_timeout=args.health_timeout,
+    )
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+    print(f"wrote {result['outPath']}")
+    print(f"scanned {result['scannedApps']} app(s): {len(result['routed'])} routed, "
+          f"{len(result['skipped'])} skipped")
+    for entry in result["routed"]:
+        print(f"  ROUTE   {entry.get('slug')} -> {args.upstream_host}:{entry.get('port')}")
+    for entry in result["skipped"]:
+        print(f"  SKIP    {entry.get('name')}: {entry.get('reason')}")
+    return 0
 
 
 def _run_monitor_logs(args: argparse.Namespace) -> int:
@@ -9084,6 +9414,45 @@ def build_parser() -> argparse.ArgumentParser:
         help="apply the change: write an empty migrations chain entry into <newPack.json> when the "
              "publish is allowed and non-breaking; without this flag, only reports what would happen",
     )
+    # R8.5: once (and only once) the gate above reports `allowed`, commit <newPack.json> + a
+    # regenerated catalog-index.json (R8.4's own format) into a local git working copy of the
+    # catalog repo, and (with --push) push both the branch and the pack's own release tag.
+    pack_publish.add_argument(
+        "--push", action="store_true",
+        help="also commit (and push) <newPack.json> + a regenerated catalog-index.json into "
+             "--catalog-repo. Refuses -- locally, before any git add/commit/push -- a republish "
+             "that would change an already-published version's content. Requires --catalog-repo.",
+    )
+    pack_publish.add_argument(
+        "--catalog-repo", dest="catalog_repo", default=None,
+        help="path to a local git working copy of the catalog repo (e.g. a clone of "
+             "github.com/MarceloGiazzon/NPR) to publish into. Required with --push.",
+    )
+    pack_publish.add_argument(
+        "--repository-url", dest="repository_url", default=None,
+        help="public repo URL baked into the catalog's 'from' coordinates (default: read from "
+             "--catalog-repo's --remote remote)",
+    )
+    pack_publish.add_argument(
+        "--tag-template", dest="tag_template", default="v{version}",
+        help="how the pack's release tag is named, templated with {pack}/{version} "
+             "(default: v{version}, matching `pack build-catalog`'s own default)",
+    )
+    pack_publish.add_argument(
+        "--remote", default="origin", help="git remote name to push to (default: origin)",
+    )
+    pack_publish.add_argument(
+        "--branch", default=None,
+        help="branch to commit and push (default: --catalog-repo's currently checked-out branch)",
+    )
+    pack_publish.add_argument(
+        "--git-user-name", dest="git_user_name", default=None,
+        help="git author name for the publish commit (default: npdev-pack-publish)",
+    )
+    pack_publish.add_argument(
+        "--git-user-email", dest="git_user_email", default=None,
+        help="git author email for the publish commit (default: npdev-pack-publish@localhost)",
+    )
 
     # R1.5 (roadmap 2026-08-18 R1.5): "npdev init" scaffolds a whole app; before this, growing one
     # meant hand-editing model.json against the 4x-mirrored schema with no help until `npdev
@@ -9648,6 +10017,23 @@ def build_parser() -> argparse.ArgumentParser:
     monitor_logs.add_argument("--runs", type=int, default=5,
                               help="export only: how many recent exploration runs to include.")
     monitor_logs.add_argument("--json", action="store_true")
+
+    monitor_ingress = monitor_sub.add_parser(
+        "ingress",
+        help="Generate ONE shared reverse-proxy config for every app on this box (R9.7).",
+    )
+    monitor_ingress.add_argument("--paths", required=True,
+                                 help="One or more directories to search, separated by ';' (or ':' on POSIX).")
+    monitor_ingress.add_argument("--out", required=True, help="The Caddyfile to write.")
+    monitor_ingress.add_argument("--depth", type=int, default=4)
+    monitor_ingress.add_argument("--mode", default="path", choices=["path", "hostname"],
+                                 help="Route each app by URL path prefix (default) or by hostname.")
+    monitor_ingress.add_argument("--base-domain", default="localhost",
+                                 help="hostname mode only: each app becomes <app>.<base-domain>.")
+    monitor_ingress.add_argument("--upstream-host", default="127.0.0.1",
+                                 help="Host the proxy dials each app on (default 127.0.0.1).")
+    monitor_ingress.add_argument("--health-timeout", type=float, default=1.0)
+    monitor_ingress.add_argument("--json", action="store_true")
 
     monitor_ops = monitor_sub.add_parser(
         "ops", help="Run one of the app's own generated _ops scripts (the Monitor's run-command strip)."

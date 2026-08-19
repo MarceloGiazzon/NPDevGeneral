@@ -153,6 +153,135 @@ class ProbeFacts(unittest.TestCase):
             self.assertEqual(record["health"], "stopped")
 
 
+def _app_record(name: str, *, status: str = "ok", health: str = "running", port: int | None = 8080) -> dict:
+    return {"name": name, "status": status, "health": health, "port": port}
+
+
+class SharedIngress(unittest.TestCase):
+    """R9.7. `npdev monitor ingress` generates ONE shared
+    Caddy config for the whole box from the Monitor's own live app inventory -- the per-app
+    `deploy/Caddyfile` every generated app ships claims the box's 80/443 exclusively, so at most one
+    app could ever get TLS through it; this is the box-level answer instead."""
+
+    def test_the_same_app_discovered_at_two_nesting_levels_is_routed_once(self):
+        """A generated app satisfies the discovery rule at BOTH `<app>` and its nested `<app>/App`,
+        so `scan_paths` returns it twice. Measured against this machine's real Build root: 51 records
+        for 8 distinct running apps, and without the guard the config emitted `npdev-canary` AND
+        `npdev-canary-2` both reverse-proxying 127.0.0.1:8103 -- a phantom second instance."""
+        apps = [
+            _app_record("npdev-canary", port=8103),
+            _app_record("npdev-canary", port=8103),
+        ]
+        config = npdev_monitor.shared_ingress_config(apps, mode="path")
+
+        self.assertEqual([r["slug"] for r in config["routed"]], ["npdev-canary"])
+        self.assertNotIn("npdev-canary-2", config["caddyfile"])
+        self.assertEqual(len(config["skipped"]), 1)
+        self.assertIn("another nesting level", config["skipped"][0]["reason"])
+
+    def test_two_different_apps_on_one_port_refuse_the_second_route(self):
+        """Only one process can listen on a port, so routing both would proxy the second app's URL
+        to the FIRST app's process -- silently serving the wrong application. Observed live: a stale
+        port in one app's plan put `thirdparty-probe` on `npdev-canary`'s 8103."""
+        apps = [
+            _app_record("npdev-canary", port=8103),
+            _app_record("thirdparty-probe", port=8103),
+        ]
+        config = npdev_monitor.shared_ingress_config(apps, mode="path")
+
+        self.assertEqual([r["name"] for r in config["routed"]], ["npdev-canary"])
+        self.assertEqual(len(config["skipped"]), 1)
+        self.assertEqual(config["skipped"][0]["name"], "thirdparty-probe")
+        self.assertIn("conflict", config["skipped"][0]["reason"])
+        self.assertIn("npdev-canary", config["skipped"][0]["reason"],
+                      "the refusal must name the app that already owns the port")
+        self.assertEqual(config["caddyfile"].count("reverse_proxy 127.0.0.1:8103"), 1)
+
+    def test_only_running_apps_with_a_port_are_routed(self):
+        apps = [
+            _app_record("healthy-one", port=8081),
+            _app_record("healthy-two", port=8082),
+            _app_record("stopped-app", health="stopped", port=8090),
+            _app_record("starting-app", health="starting", port=8091),
+            _app_record("error-app", health="error", port=8092),
+            _app_record("not-an-app", status="not-an-app", health="unknown", port=None),
+            _app_record("no-port-app", port=None),
+        ]
+        config = npdev_monitor.shared_ingress_config(apps, mode="path")
+        routed_names = sorted(a["name"] for a in config["routed"])
+        skipped_names = sorted(s["name"] for s in config["skipped"])
+        self.assertEqual(routed_names, ["healthy-one", "healthy-two"])
+        self.assertEqual(skipped_names, [
+            "error-app", "no-port-app", "not-an-app", "starting-app", "stopped-app",
+        ])
+        # Every skip is NAMED with a reason -- never a silent drop.
+        for entry in config["skipped"]:
+            self.assertTrue(entry["reason"])
+
+    def test_path_mode_routes_by_slug_prefix_to_each_apps_port(self):
+        apps = [_app_record("My App", port=8081), _app_record("Other App", port=8082)]
+        config = npdev_monitor.shared_ingress_config(apps, mode="path")
+        self.assertIn("handle_path /my-app/*", config["caddyfile"])
+        self.assertIn("reverse_proxy 127.0.0.1:8081", config["caddyfile"])
+        self.assertIn("handle_path /other-app/*", config["caddyfile"])
+        self.assertIn("reverse_proxy 127.0.0.1:8082", config["caddyfile"])
+        self.assertIn("tls internal", config["caddyfile"])
+        # ONE shared site, not one per app, in path mode.
+        self.assertEqual(config["caddyfile"].count(":443 {"), 1)
+
+    def test_hostname_mode_routes_each_app_to_its_own_site_and_cert(self):
+        apps = [_app_record("My App", port=8081), _app_record("Other App", port=8082)]
+        config = npdev_monitor.shared_ingress_config(apps, mode="hostname", base_domain="localhost")
+        self.assertIn("my-app.localhost {", config["caddyfile"])
+        self.assertIn("other-app.localhost {", config["caddyfile"])
+        self.assertEqual(config["caddyfile"].count("tls internal"), 2)
+
+    def test_name_collision_after_slugging_gets_a_distinct_route_not_a_silent_overwrite(self):
+        apps = [_app_record("My App", port=8081), _app_record("my-app", port=8082)]
+        config = npdev_monitor.shared_ingress_config(apps, mode="path")
+        slugs = [a["slug"] for a in config["routed"]]
+        self.assertEqual(len(slugs), len(set(slugs)), "two apps must never collapse onto one route")
+        self.assertIn("handle_path /my-app/*", config["caddyfile"])
+        self.assertIn("handle_path /my-app-2/*", config["caddyfile"])
+
+    def test_empty_inventory_still_produces_a_valid_fallback_config(self):
+        for mode in ("path", "hostname"):
+            config = npdev_monitor.shared_ingress_config([], mode=mode)
+            self.assertEqual(config["routed"], [])
+            self.assertIn("tls internal", config["caddyfile"])
+            self.assertIn("404", config["caddyfile"])
+
+    def test_same_inventory_produces_byte_identical_output(self):
+        # The platform's generator-determinism requirement, applied to this generator too: same
+        # inventory in, same bytes out, every time -- no timestamps, no absolute paths.
+        apps = [_app_record("App One", port=8081), _app_record("App Two", port=8082)]
+        first = npdev_monitor.shared_ingress_config(apps, mode="path")["caddyfile"]
+        second = npdev_monitor.shared_ingress_config(list(reversed(apps)), mode="path")["caddyfile"]
+        self.assertEqual(first, second)
+
+    def test_unknown_mode_is_rejected_rather_than_silently_defaulted(self):
+        with self.assertRaises(ValueError):
+            npdev_monitor.shared_ingress_config([_app_record("x")], mode="bogus")
+
+    def test_write_shared_ingress_writes_lf_not_crlf_and_reports_what_it_wrote(self):
+        # feedback_pathlib_write_text_crlf_on_windows: write_bytes only, never write_text, so the
+        # LF the Caddyfile text was built with is not silently widened to CRLF on Windows.
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_app(root, "demo", plan={**DEFAULT_PLAN, "serverPort": 59998})
+            out_path = root / "ingress" / "Caddyfile"
+            with mock.patch.object(
+                npdev_monitor, "scan_paths",
+                return_value={"apps": [_app_record("demo", port=8081)], "searched": []},
+            ):
+                result = npdev_monitor.write_shared_ingress([str(root)], out_path, mode="path")
+            self.assertEqual(result["outPath"], str(out_path.resolve()))
+            self.assertEqual(result["scannedApps"], 1)
+            raw = out_path.read_bytes()
+            self.assertNotIn(b"\r\n", raw)
+            self.assertIn(b"reverse_proxy 127.0.0.1:8081", raw)
+
+
 class Redaction(unittest.TestCase):
     """D10/E3-a. The export bundle is the MOST likely thing to be pasted into a chat window."""
 
