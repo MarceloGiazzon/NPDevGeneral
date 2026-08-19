@@ -72,20 +72,39 @@ final class PackDependencyGraphWalker {
      *  pack's file lives in the shared {@link PackCache}, which can be on a different filesystem
      *  root than the app -- {@link Path#relativize} across drive roots throws on Windows). */
     private final Map<String, String> fromByPackId = new LinkedHashMap<>();
+    /** PACK-9: the path that first reached each packId (mirrors {@link #packRequirements}'s own
+     *  path-recording, but for EVERY resolved pack, not just ones with a non-empty {@code requires})
+     *  -- needed so a {@code role('logicalName')} refusal can name "via a -> b -> c" the same way the
+     *  existing {@code requires.roles} presence refusal already does. */
+    private final Map<String, List<String>> pathByPackId = new LinkedHashMap<>();
     private boolean anyRemoteDirectImport = false;
     private final NetworkPolicy networkPolicy;
+    /** PACK-9: the app's root {@code provides} object -- {@code null} for the CLI-only paths
+     *  ({@code pack add}/{@code update}/{@code list}/{@code why}), whose own merged output is never
+     *  consumed by their callers (see {@link #applyMigrationChains}'s doc for the same distinction).
+     *  Non-null only for the real generate/validate path. */
+    private final JsonNode provides;
+    /** PACK-9: whether {@code role('logicalName')} tokens in a resolved pack's JSON should be
+     *  rewritten (and an unbound one refused) during this run -- false for every CLI-only path, so
+     *  {@code npdev pack add/update/list/why} never refuses over a binding its own throwaway merge
+     *  result doesn't need. */
+    private final boolean rewriteRoleBindings;
 
     private PackDependencyGraphWalker(
             ModelSourceResolver resolver,
             ModelSourceResolver.ResolutionState state,
             String rootDslVersion,
-            NetworkPolicy networkPolicy
+            NetworkPolicy networkPolicy,
+            JsonNode provides,
+            boolean rewriteRoleBindings
     ) {
         this.resolver = resolver;
         this.state = state;
         this.rootDirectory = state.rootDirectory;
         this.rootDslVersion = rootDslVersion;
         this.networkPolicy = networkPolicy;
+        this.provides = provides;
+        this.rewriteRoleBindings = rewriteRoleBindings;
     }
 
     static List<ModelSourceResolver.PackRequirementEntry> resolve(
@@ -93,9 +112,10 @@ final class PackDependencyGraphWalker {
             ArrayNode packsNode,
             ObjectNode resolved,
             Path modelFile,
-            ModelSourceResolver.ResolutionState state
+            ModelSourceResolver.ResolutionState state,
+            JsonNode provides
     ) throws IOException {
-        return resolve(resolver, packsNode, resolved, modelFile, state, true);
+        return resolve(resolver, packsNode, resolved, modelFile, state, true, provides);
     }
 
     /**
@@ -112,7 +132,8 @@ final class PackDependencyGraphWalker {
             ObjectNode resolved,
             Path modelFile,
             ModelSourceResolver.ResolutionState state,
-            boolean enforceLock
+            boolean enforceLock,
+            JsonNode provides
     ) throws IOException {
         String rootDslVersion = ModelSourceResolver.textOrBlank(resolved.get("dslVersion"));
         // PK-5 step 2 ("Distribution", PACK-ROADMAP.md card PK-5): this is the ONLY call site
@@ -120,7 +141,8 @@ final class PackDependencyGraphWalker {
         // NetworkPolicy.DENIED is hardcoded here -- not threaded in from any caller -- so a future
         // edit cannot quietly reintroduce a fetch on this path without also having to change this
         // literal line. See NetworkPolicy's own doc for the full guarantee.
-        PackDependencyGraphWalker walker = new PackDependencyGraphWalker(resolver, state, rootDslVersion, NetworkPolicy.DENIED);
+        PackDependencyGraphWalker walker =
+                new PackDependencyGraphWalker(resolver, state, rootDslVersion, NetworkPolicy.DENIED, provides, true);
         walker.run(packsNode, resolved, modelFile, enforceLock);
         return walker.packRequirements;
     }
@@ -141,7 +163,8 @@ final class PackDependencyGraphWalker {
             NetworkPolicy networkPolicy
     ) throws IOException {
         String rootDslVersion = ModelSourceResolver.textOrBlank(resolved.get("dslVersion"));
-        PackDependencyGraphWalker walker = new PackDependencyGraphWalker(resolver, state, rootDslVersion, networkPolicy);
+        PackDependencyGraphWalker walker =
+                new PackDependencyGraphWalker(resolver, state, rootDslVersion, networkPolicy, null, false);
         walker.run(packsNode, resolved, modelFile, false);
         return walker;
     }
@@ -310,6 +333,14 @@ final class PackDependencyGraphWalker {
             String qualifier = qualifierById.computeIfAbsent(packId, id -> id);
             ObjectNode packNode = packNodeById.get(packId);
             Path packFile = packFileById.get(packId);
+            if (rewriteRoleBindings) {
+                // PACK-9: expand any role('logicalName') token this pack's own JSON carries into the
+                // app's bound concrete role name BEFORE the merge below copies its content into
+                // `resolved` -- downstream (JsonModelParser onward) never sees the token, only the
+                // literal it expands to (see PackRoleBindingRewriter's own doc).
+                packNode = PackRoleBindingRewriter.rewrite(
+                        packId, pathByPackId.getOrDefault(packId, List.of(packId)), packNode, provides, packFile);
+            }
             Map<String, Map<String, String>> rewriteMaps = ModelSourceResolver.buildRewriteMaps(qualifier, packNode);
             ModelSourceResolver.mergePackConcepts(qualifier, packNode, resolved, packFile, rewriteMaps);
             ModelSourceResolver.mergePackNonConceptArrays(qualifier, packNode, resolved, packFile, rewriteMaps);
@@ -409,6 +440,7 @@ final class PackDependencyGraphWalker {
         }
         packNodeById.put(packId, packNode);
         packFileById.put(packId, packFile);
+        pathByPackId.put(packId, pathToThisPack);
         if (packNodeById.size() > MAX_RESOLVED_PACKS) {
             throw ModelSourceResolver.error(packFile, "/packs", "Pack dependency graph resolves more than "
                     + MAX_RESOLVED_PACKS + " distinct packs -- this is a denial-of-service guard, not a real limitation");

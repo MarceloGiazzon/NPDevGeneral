@@ -23,7 +23,7 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
     _has_flow_start_endpoint, _has_groupby_cross_context_join, _has_groupby_join,
     _has_groupby_multi_hop_join, _has_await_timeout, _has_on_failure, _has_parallel_await_foreach,
     _has_parallel_await_multistep_foreach, _has_post_checkpoint,
-    _has_procedure_create_if_missing, _has_procedure_step_type, _has_renamed_field,
+    _has_procedure_create_if_missing, _has_procedure_step_type, _has_query_where_v2, _has_renamed_field,
     _has_schedule_event_with_delay, _has_sensitive_field, _has_settings, _has_step_type,
     _has_widened_branch_condition, _nonempty,
 )
@@ -75,6 +75,10 @@ FEATURE_DETECTORS = {
     # S8 W1.1 (roadmap deferred item #1): the join chain widened from exactly one hop to a capped
     # multi-hop chain (GroupByJoinGrammar.MAX_JOIN_HOPS).
     "query.groupBy.join.multiHop": _has_groupby_multi_hop_join,
+    # R4.3 lockstep fix (Roadmap Wave 1 gap closure): the query predicate v2 grammar (OR-groups,
+    # in, contains/startsWith, is-null, reference-path joins) -- see _has_query_where_v2's own
+    # docstring for why this needed its own tracked feature, distinct from plain "queries" above.
+    "query.where.v2": _has_query_where_v2,
     "procedures": lambda m: _nonempty(m, "procedures"),
     "panels": lambda m: _nonempty(m, "panels"),
     "ruleProfiles": lambda m: _nonempty(m, "ruleProfiles"),
@@ -278,4 +282,11 @@ FEATURE_DETECTORS = {
     # per-op-tracked-separately discipline as copy/split/lookup above.
     "conversions.op.merge": lambda m: _has_conversion_op(m, "merge"),
     "conversions.op.convert": lambda m: _has_conversion_op(m, "convert"),
+    # PACK-9: an app's root provides.roleBindings map -- the app-visible half of the role('logicalName')
+    # compile-time binding token (PackRoleBindingRewriter, NPDevContract/dsl parser package). The
+    # token itself lives inside a pack.json a composing app imports, not in model.json, so it is
+    # invisible to this scanner (find_models only walks model.json, the same limit that made
+    # _merge_context_fragments necessary for contexts[]); roleBindings presence in model.json is the
+    # reachable, correct signal that a real corpus model exercises the feature end to end.
+    "provides.roleBindings": lambda m: bool((m.get("provides") or {}).get("roleBindings")),
 }

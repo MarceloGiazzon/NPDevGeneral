@@ -136,7 +136,7 @@ final class PackValidation {
                 errors.add("Query " + query.name() + ": concept not found: " + query.concept());
             }
             validateParameterNames("Query " + query.name(), query.parameters(), errors);
-            validateQueryWhereCompiles(query, errors);
+            validateQueryWhereCompiles(query, concept, entitiesByLower, errors);
             if (query.isAggregate() && concept != null) {
                 validateAggregateQuery(query, concept, entitiesByLower, errors);
             }
@@ -159,52 +159,203 @@ final class PackValidation {
      * refuse it rather than silently compare every row against the seven-character literal
      * {@code ":name"} (REG-101's own corpus witness, before this fix).
      *
-     * <p><b>R4.3 (Roadmap Wave 1): deliberately STILL v1 here, not
-     * {@link QueryPredicateGrammar#parseGroups}.</b> R4.3 wired the v2 grammar (OR-groups, {@code
-     * in}, {@code contains}/{@code startsWith}, {@code is null}/{@code is not null}, a reference-path
-     * left side) all the way to real SQL in {@code JdbcBusinessConceptStore} (query()/aggregate(),
-     * via {@code ConceptQueryPredicateCompiler#compileToConceptQueryFilters} and {@code
-     * ConceptQuery.Operator#OR_GROUPS}) -- proven by a direct H2 integration test
-     * ({@code JdbcBusinessConceptStorePredicateV2Test}). It did NOT widen this method to accept v2
-     * syntax, because this method's only production runtime consumer for a declared
-     * {@code queries[].where} is {@code DefaultProcedureExecutor}'s {@code runQuery} step
-     * ({@code com.npdev.kernel.procedures}), which still compiles {@code where} with the v1-only
-     * {@code ConceptQueryPredicateCompiler#compile}. Loosening validation here without rewiring that
-     * call site would let an author declare {@code where: "a == 1 || b == 2"}, have it validate
-     * cleanly, and then throw at the FIRST {@code runQuery} invocation -- exactly the
-     * validates-clean-then-throws-at-runtime trap this method's own REG-101 fix (above) exists to
-     * prevent. The two must move together in the SAME change: rewire
-     * {@code DefaultProcedureExecutor#runQuery} onto {@code compileToConceptQueryFilters}, THEN widen
-     * this method to {@code parseGroups} (plus the join-path field/type/{@code access.read} checks
-     * {@link #validateGroupByField} already does for {@code groupBy}, since a predicate join carries
-     * the identical information-disclosure shape). Until both land together, this method staying
-     * v1-only is the correct, honest state -- not an oversight.
+     * <p><b>R4.3 lockstep fix (Roadmap Wave 1 gap closure): now {@link QueryPredicateGrammar#parseGroups},
+     * not {@link QueryPredicateGrammar#parse}.</b> R4.3 wired the v2 grammar (OR-groups, {@code in},
+     * {@code contains}/{@code startsWith}, {@code is null}/{@code is not null}, a reference-path left
+     * side) all the way to real SQL in {@code JdbcBusinessConceptStore} (query()/aggregate(), via
+     * {@code ConceptQueryPredicateCompiler#compileToConceptQueryFilters} and {@code
+     * ConceptQuery.Operator#OR_GROUPS}) -- proven by a direct H2 integration test ({@code
+     * JdbcBusinessConceptStorePredicateV2Test}), but originally left this method on the v1-only
+     * grammar because its only production runtime consumer for a declared {@code queries[].where},
+     * {@code DefaultProcedureExecutor}'s {@code runQuery} step ({@code com.npdev.kernel.procedures}),
+     * still compiled {@code where} with the v1-only {@code ConceptQueryPredicateCompiler#compile}.
+     * That call site now uses {@code compileToConceptQueryFilters} (the SAME change that landed this
+     * widening), so this method accepting v2 syntax and {@code runQuery} executing it are back in
+     * lockstep -- REG-101's validates-clean-then-throws-at-runtime trap does not reopen.
+     *
+     * <p>A reference-path clause gets the SAME join-path field/reference/{@code access.read} checks
+     * {@link #validateGroupByField} already applies to a {@code groupBy} join (see
+     * {@link #validatePredicatePath}) -- a predicate join carries the identical information-disclosure
+     * shape, but with NO runtime backstop the way {@code groupBy} has one ({@code
+     * DefaultConceptGateway#aggregate}'s hard stop): {@code DefaultConceptGateway#query}'s row-level
+     * {@code access.read} filter only ever inspects the BASE concept's own fetched records (see that
+     * method's own comments), never a concept merely NAMED inside a {@code where} predicate string, and
+     * {@code JdbcBusinessConceptStore}'s join rendering has no {@code access.read} awareness at all.
+     * So unlike {@code groupBy} (where the compile-time refusal is a documented, liftable "accepted
+     * boundary" until {@code access.read} gains a SQL translation), a predicate join into a restricted
+     * concept has no runtime enforcement to lift TO -- this refusal is the only enforcement point,
+     * full stop.
+     *
+     * <p>A plain (non-join) field on the left is NOT checked for existence on the concept -- matching
+     * both this method's own pre-existing v1 behavior (which never checked either) and what the
+     * runtime enforces (neither {@code ConceptQueryPredicateCompiler} nor the stores validate a field
+     * name against the schema; an unknown plain field is simply a filter that never matches, exactly
+     * as before this widening). Widening validation to accept v2 syntax must not silently become
+     * stricter than the v1 contract already was for the shapes v1 could already express.
      */
-    private static void validateQueryWhereCompiles(QueryAst query, List<String> errors) {
+    private static void validateQueryWhereCompiles(
+            QueryAst query, ConceptAst concept, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         if (!hasText(query.where())) {
             return;
         }
-        List<QueryPredicateGrammar.Clause> clauses;
+        String here = "Query " + query.name();
+        List<List<QueryPredicateGrammar.PredicateClause>> groups;
         try {
-            clauses = QueryPredicateGrammar.parse(query.where());
+            groups = QueryPredicateGrammar.parseGroups(query.where());
         } catch (QueryPredicateGrammar.UnsupportedPredicateException unsupported) {
-            errors.add("Query " + query.name() + ": where cannot be compiled -- " + unsupported.getMessage());
+            errors.add(here + ": where cannot be compiled -- " + unsupported.getMessage());
             return;
         }
         Set<String> declaredParameters = query.parameters().stream()
                 .map(ProcedureParameterAst::name)
                 .map(SemanticValidator::normalize)
                 .collect(Collectors.toSet());
-        for (QueryPredicateGrammar.Clause clause : clauses) {
-            if (clause.literal() instanceof QueryPredicateGrammar.Literal.Placeholder placeholder
-                    && !declaredParameters.contains(normalize(placeholder.name()))) {
-                errors.add("Query " + query.name() + ": where references bind placeholder :" + placeholder.name()
-                        + ", which is not declared in this query's parameters[] (declared: "
-                        + (declaredParameters.isEmpty() ? "none" : new TreeSet<>(declaredParameters)) + ")"
-                        + " -- suggestedFix: add a parameter named '" + placeholder.name() + "' to this "
-                        + "query's parameters[], or change the placeholder to one already declared there");
+        Map<String, FieldAst> fieldsByLower = null;
+        if (concept != null) {
+            fieldsByLower = new HashMap<>();
+            for (FieldAst field : concept.getFields()) {
+                fieldsByLower.put(normalize(field.getName()), field);
             }
         }
+        for (List<QueryPredicateGrammar.PredicateClause> group : groups) {
+            for (QueryPredicateGrammar.PredicateClause clause : group) {
+                validatePredicateLiteralPlaceholders(here, clause, declaredParameters, errors);
+                if (concept != null) {
+                    validatePredicatePath(here, clause.path(), concept, fieldsByLower, entitiesByLower, errors);
+                }
+            }
+        }
+    }
+
+    /**
+     * R4.3 lockstep fix: the v2 sibling of the placeholder check {@code validateQueryWhereCompiles}'s
+     * v1 body used to run inline -- a {@code :name} literal must name a declared parameter, same
+     * REG-101 rule, extended to check every value inside an {@code in (...)} list ({@link
+     * QueryPredicateGrammar.PredicateLiteral.Values}), matching exactly what {@code
+     * ConceptQueryPredicateCompiler#resolvePredicateLiteral} enforces at runtime for the same shape.
+     */
+    private static void validatePredicateLiteralPlaceholders(
+            String here, QueryPredicateGrammar.PredicateClause clause, Set<String> declaredParameters, List<String> errors) {
+        QueryPredicateGrammar.PredicateLiteral literal = clause.literal();
+        if (literal instanceof QueryPredicateGrammar.PredicateLiteral.Values values) {
+            for (QueryPredicateGrammar.PredicateLiteral element : values.values()) {
+                validateOnePredicatePlaceholder(here, element, declaredParameters, errors);
+            }
+        } else {
+            validateOnePredicatePlaceholder(here, literal, declaredParameters, errors);
+        }
+    }
+
+    private static void validateOnePredicatePlaceholder(
+            String here, QueryPredicateGrammar.PredicateLiteral literal, Set<String> declaredParameters, List<String> errors) {
+        if (literal instanceof QueryPredicateGrammar.PredicateLiteral.Placeholder placeholder
+                && !declaredParameters.contains(normalize(placeholder.name()))) {
+            errors.add(here + ": where references bind placeholder :" + placeholder.name()
+                    + ", which is not declared in this query's parameters[] (declared: "
+                    + (declaredParameters.isEmpty() ? "none" : new TreeSet<>(declaredParameters)) + ")"
+                    + " -- suggestedFix: add a parameter named '" + placeholder.name() + "' to this "
+                    + "query's parameters[], or change the placeholder to one already declared there");
+        }
+    }
+
+    /**
+     * R4.3 lockstep fix: validates ONE {@code where} predicate clause's left-hand path. A plain field
+     * ({@link GroupByJoinGrammar.Target.Direct}) is deliberately left unchecked -- see this method's
+     * caller's own javadoc for why. A reference-path join ({@link GroupByJoinGrammar.Target.Join})
+     * gets the identical hop-by-hop walk {@link #validateGroupByField} uses for a {@code groupBy}
+     * join (field exists, is a declared reference field, target concept resolves, an optional
+     * trailing context matches the actual target, and -- the hard stop -- no hop's target concept may
+     * declare {@code access.read}), kept as its own copy rather than a shared extraction so a change
+     * to one cannot silently alter the other's error text (both are validated by exact-message tests).
+     */
+    private static void validatePredicatePath(
+            String here,
+            GroupByJoinGrammar.Target path,
+            ConceptAst concept,
+            Map<String, FieldAst> fieldsByLower,
+            Map<String, ConceptAst> entitiesByLower,
+            List<String> errors
+    ) {
+        if (path instanceof GroupByJoinGrammar.Target.Direct) {
+            return;
+        }
+        GroupByJoinGrammar.Target.Join join = (GroupByJoinGrammar.Target.Join) path;
+        String rawPathText = renderPredicatePath(join);
+        ConceptAst currentConcept = concept;
+        Map<String, FieldAst> currentFieldsByLower = fieldsByLower;
+        int totalHops = join.referenceFields().size();
+        for (int hopIndex = 0; hopIndex < totalHops; hopIndex++) {
+            String referenceFieldName = join.referenceFields().get(hopIndex);
+            FieldAst referenceField = currentFieldsByLower.get(normalize(referenceFieldName));
+            if (referenceField == null) {
+                errors.add(here + ": where join field not found on concept " + currentConcept.getName() + ": "
+                        + referenceFieldName);
+                return;
+            }
+            if (!hasText(referenceField.getReferenceTarget())) {
+                errors.add(here + ": where join field " + referenceFieldName + " on concept "
+                        + currentConcept.getName() + " is not a reference field -- cannot join through it "
+                        + "(named compile error, not a silently dropped clause)");
+                return;
+            }
+
+            String targetConceptName = referenceField.getReferenceTarget();
+            ConceptAst targetConcept = entitiesByLower.get(normalize(targetConceptName));
+            if (targetConcept == null) {
+                errors.add(here + ": where join field " + referenceFieldName + " targets unknown concept "
+                        + targetConceptName + " -- unresolvable join path");
+                return;
+            }
+
+            boolean isLastHop = hopIndex == totalHops - 1;
+            if (isLastHop && join.context() != null) {
+                String expectedPrefix = join.context() + "::";
+                if (!targetConceptName.startsWith(expectedPrefix)) {
+                    errors.add(here + ": where join \"" + rawPathText + "\" declares context '"
+                            + join.context() + "', but reference field " + referenceFieldName
+                            + "'s actual target is " + targetConceptName + " -- the declared context does not "
+                            + "match where the joined concept actually lives");
+                    return;
+                }
+            }
+
+            // No runtime backstop exists for this (unlike groupBy's DefaultConceptGateway#aggregate
+            // hard stop) -- see this method's caller's own javadoc. Refusing here is the only
+            // enforcement point, not a liftable "accepted boundary".
+            if (targetConcept.getAccess() != null && hasText(targetConcept.getAccess().getRead())) {
+                errors.add(here + ": where join \"" + rawPathText + "\" crosses into concept "
+                        + targetConcept.getName() + ", which declares access.read -- a predicate join has "
+                        + "no row-level enforcement at runtime the way this query's own base concept does "
+                        + "(DefaultConceptGateway#query filters only the base concept's fetched records), so "
+                        + "leaving this unrefused would let a caller infer " + targetConcept.getName()
+                        + "'s restricted row values through repeated queries -- suggestedFix: drop the join "
+                        + "into " + targetConcept.getName() + " from this query's where, or remove "
+                        + "access.read from " + targetConcept.getName() + " if its rows are not actually "
+                        + "restricted");
+                return;
+            }
+
+            currentConcept = targetConcept;
+            currentFieldsByLower = new HashMap<>();
+            for (FieldAst field : currentConcept.getFields()) {
+                currentFieldsByLower.put(normalize(field.getName()), field);
+            }
+        }
+
+        FieldAst targetField = currentFieldsByLower.get(normalize(join.targetField()));
+        if (targetField == null) {
+            errors.add(here + ": where join target field not found on concept " + currentConcept.getName()
+                    + ": " + join.targetField() + " -- unresolvable join path");
+        }
+    }
+
+    /** Renders a {@link GroupByJoinGrammar.Target.Join} back to the dotted-path text an author wrote
+     *  -- used only for error messages here. Deliberately duplicated rather than shared with {@code
+     *  ConceptQueryPredicateCompiler#predicatePathText} (kernel): this module cannot depend on the
+     *  kernel, the same reason {@code QueryPredicateGrammar} itself was lifted into this module. */
+    private static String renderPredicatePath(GroupByJoinGrammar.Target.Join join) {
+        String prefix = join.context() == null ? "" : join.context() + "::";
+        return prefix + String.join(".", join.referenceFields()) + "." + join.targetField();
     }
 
     private static final Set<String> AGGREGATE_NUMERIC_TYPES = Set.of("int", "integer", "long", "decimal");

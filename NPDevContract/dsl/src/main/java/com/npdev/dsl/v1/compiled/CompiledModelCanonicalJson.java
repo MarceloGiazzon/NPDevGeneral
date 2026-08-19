@@ -314,9 +314,42 @@ public final class CompiledModelCanonicalJson {
                 node.put("marginMm", document.marginMm());
             }
             node.set("metadata", toObjectMap(document.metadata()));
+            node.put("aggregate", safe(document.aggregate()));
+            node.set("bands", toDocumentBands(document.bands()));
+            node.set("logo", toDocumentLogo(document.logo()));
             documents.add(node);
         }
         return documents;
+    }
+
+    /** R5.7: a document band's {@code fields} round-trips through the same {@link
+     *  #toPanelFieldBindings} a panel's {@code fieldBindings} already uses. */
+    private static ArrayNode toDocumentBands(List<CompiledDocumentBand> bands) {
+        ArrayNode out = JsonNodeFactory.instance.arrayNode();
+        if (bands == null) {
+            return out;
+        }
+        for (CompiledDocumentBand band : bands) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(band.name()));
+            node.put("kind", safe(band.kind()));
+            node.put("collection", safe(band.collection()));
+            if (band.label() != null || !band.labelLocales().isEmpty()) {
+                node.set("label", toLabelNode(band.label(), band.labelLocales()));
+            }
+            node.set("fields", toPanelFieldBindings(band.fields()));
+            out.add(node);
+        }
+        return out;
+    }
+
+    private static JsonNode toDocumentLogo(CompiledDocumentLogo logo) {
+        if (logo == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("field", safe(logo.field()));
+        return node;
     }
 
     private static ArrayNode toAutoPanels(CompiledModel model) {

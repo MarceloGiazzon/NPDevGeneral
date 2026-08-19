@@ -1224,16 +1224,62 @@ public final class JsonModelParser {
             throw new IOException("documents must be an array");
         }
         for (JsonNode documentNode : node) {
+            String name = requiredText(documentNode, "name");
             out.add(new DocumentAst(
-                    requiredText(documentNode, "name"),
+                    name,
                     requiredText(documentNode, "concept"),
                     readText(documentNode, "title"),
                     readText(documentNode, "pageSize"),
                     readOptionalDouble(documentNode, "marginMm"),
-                    parseObjectMap(documentNode.get("metadata"))
+                    parseObjectMap(documentNode.get("metadata")),
+                    readText(documentNode, "aggregate"),
+                    parseDocumentBands(documentNode.get("bands"), "documents[" + name + "].bands"),
+                    parseDocumentLogo(documentNode.get("logo"), "documents[" + name + "].logo")
             ));
         }
         return out;
+    }
+
+    /**
+     * R5.7: a document band's {@code fields} reuses {@link #parsePanelFieldBindings} verbatim -- the
+     * same bare property-name-plus-{@code ui} shape a panel's {@code fieldBindings} already parses,
+     * per R5.7's "reuse the existing panel-binding shapes" mandate.
+     */
+    private static List<DocumentBandAst> parseDocumentBands(JsonNode node, String fieldPath) throws IOException {
+        List<DocumentBandAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException(fieldPath + " must be an array");
+        }
+        for (JsonNode bandNode : node) {
+            String name = requiredText(bandNode, "name");
+            out.add(new DocumentBandAst(
+                    name,
+                    requiredText(bandNode, "kind"),
+                    readText(bandNode, "collection"),
+                    readLabelText(bandNode, "label"),
+                    readLabelLocales(bandNode, "label"),
+                    parsePanelFieldBindings(bandNode.get("fields"), fieldPath + "[" + name + "].fields")
+            ));
+        }
+        return out;
+    }
+
+    /**
+     * R5.7: {@code logo.field} names a property on the document's bound concept -- never a URL, so
+     * there is nothing here for a malicious model to point at an internal host. See
+     * {@link DocumentLogoAst}'s javadoc.
+     */
+    private static DocumentLogoAst parseDocumentLogo(JsonNode node, String fieldPath) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException(fieldPath + " must be an object");
+        }
+        return new DocumentLogoAst(requiredText(node, "field"));
     }
 
     private static List<AggregateAst> parseAggregates(JsonNode node) throws IOException {

@@ -47,6 +47,12 @@
     { "$ref": "packs/labeling/pack.json", "as": "labeling" }
   ],
 
+  "provides": {
+    "roleBindings": {
+      "curator": "WidgetLabelCurator"
+    }
+  },
+
   "fragments": [
     { "$ref": "fragments/auditLog.json" }
   ],
@@ -122,6 +128,16 @@
             "maxSizeBytes": 5242880
           },
           "ui": { "label": "Purchase order (PDF)" }
+        },
+        {
+          "name": "companyLogo",
+          "type": "file",
+          "required": false,
+          "file": {
+            "contentTypes": ["image/png", "image/jpeg"],
+            "maxSizeBytes": 1048576
+          },
+          "ui": { "label": "Company logo" }
         },
         {
           "name": "requestedShipDate",
@@ -796,6 +812,45 @@
       "marginMm": 18,
       "metadata": {
         "purpose": "Coverage for documents[]: only superuser-admin-console declared one."
+      }
+    },
+    {
+      "name": "WidgetOrderInvoice",
+      "concept": "WidgetOrder",
+      "aggregate": "WidgetOrderAggregate",
+      "title": "Widget order invoice",
+      "pageSize": "A4",
+      "marginMm": 15,
+      "logo": {
+        "field": "companyLogo"
+      },
+      "bands": [
+        {
+          "name": "header",
+          "kind": "header",
+          "label": "Order",
+          "fields": [
+            { "field": "orderNumber", "ui": { "label": "Order number" } },
+            { "field": "customerEmail", "ui": { "label": "Customer" } },
+            { "field": "status", "ui": { "label": "Status" } },
+            { "field": "requestedShipDate", "ui": { "label": "Requested ship date" } }
+          ]
+        },
+        {
+          "name": "lines",
+          "kind": "lineItems",
+          "collection": "lines",
+          "label": "Line items",
+          "fields": [
+            { "field": "sku", "ui": { "label": "SKU" } },
+            { "field": "quantity", "ui": { "label": "Qty" } },
+            { "field": "unitPrice", "ui": { "label": "Unit price" } },
+            { "field": "lineTotal", "ui": { "label": "Line total" } }
+          ]
+        }
+      ],
+      "metadata": {
+        "purpose": "R5.7 coverage: an aggregate-bound document with a header band, a lineItems band (WidgetOrderAggregate's 'lines' collection), and a logo bound to a stored image field -- the canonical invoice shape (header + line-item table + logo)."
       }
     }
   ],
