@@ -680,6 +680,97 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+/* R7.6: the CSV import dialog (openImportDialog, business-ui-app.mustache). Deliberately reuses
+   .modal/.modal-backdrop/.modal-actions as-is (no width override) -- the preview table gets its OWN
+   horizontal scroll container instead of widening the dialog, so it never fights the 720px modal
+   every other dialog in this app already uses. */
+.import-modal-body {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.import-intro {
+  margin: 0;
+  color: #4c5a69;
+  font-size: 13px;
+}
+
+.import-file-label,
+.import-paste-label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #1c2333;
+}
+
+.import-paste-area {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.import-preview-wrap {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid #e7ebf0;
+  border-radius: 6px;
+}
+
+.import-error {
+  padding: 10px 12px;
+  color: #a32424;
+  font-size: 13px;
+}
+
+.import-summary {
+  font-size: 13px;
+  color: #4c5a69;
+}
+
+.import-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.import-preview-table th,
+.import-preview-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e7ebf0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.import-preview-table th {
+  position: sticky;
+  top: 0;
+  background: var(--np-grid-head-bg, #f9fafc);
+  color: var(--np-grid-head-text, #4c5a69);
+}
+
+.import-row-invalid td,
+.import-row-rejected td {
+  background: rgba(163, 36, 36, .06);
+}
+
+.import-row-created td {
+  background: rgba(31, 122, 77, .06);
+}
+
+.import-row-skipped td {
+  background: rgba(163, 114, 15, .05);
+  color: #8a97a8;
+}
+
+.import-row-note td {
+  white-space: normal;
+  color: #a32424;
+  font-size: 11px;
+  padding-top: 0;
+}
+
 .enum-value {
   display: inline-flex;
   align-items: center;

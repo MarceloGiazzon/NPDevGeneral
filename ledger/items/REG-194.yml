@@ -1,0 +1,60 @@
+id: REG-194
+title: >-
+  humanize() spaces every capital, so an ALL-CAPS enum value renders as "H I G H" -- affecting every
+  label in every generated app, not just enums
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-19
+source: >-
+  Found by the R7.6 (EDIT-11) CSV import work while rendering PurchaseOrder's enum column, disclosed
+  as out of scope. Reproduced independently by the orchestrator.
+surface: generator/business-ui
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+detail: |
+  `humanize` (business-ui-app.mustache:114-119) is:
+
+      String(str).replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
+
+  It inserts a space before EVERY capital, which is correct for camelCase and wrong for anything
+  already upper-case. Measured directly:
+
+      "inProgress" -> "In Progress"   (correct -- the case it was written for)
+      "status"     -> "Status"        (correct)
+      "HIGH"       -> "H I G H"       (wrong)
+      "OPEN"       -> "O P E N"       (wrong)
+
+  ALL-CAPS is the ordinary convention for enum values in this platform's own corpus, so the wrong
+  case is not exotic. The blast radius is wider than enums: `humanize` is the generic
+  identifier-to-label helper, so any ALL-CAPS or acronym-containing value routed through it degrades
+  the same way -- an `ID`, `URL` or `SKU` inside an identifier gets spaced out too.
+
+  Why it survived: the function is correct for the case it was written for (camelCase field names),
+  and enum VALUES only started flowing through the same helper as field NAMES as the UI grew. Nobody
+  looked at an all-caps value until a CSV preview put one in a column header-adjacent position.
+
+  SMALLEST FIX (not applied -- it is a rendering change across every generated app's labels, so it
+  wants its own slice with a browser check): only split a capital that FOLLOWS a lower-case letter or
+  digit, e.g. `replace(/([a-z0-9])([A-Z])/g, "$1 $2")`, leaving runs of capitals intact. Decide
+  deliberately what "HIGH" should render as -- "HIGH" (leave acronyms alone) or "High" (title-case a
+  fully-capitalised token) -- because those are different products, and pick one rather than letting
+  the regex decide by accident.
+
+  Deliberately filed rather than fixed inside R7.6: changing it there would have altered labels
+  throughout the app under a commit about CSV import, and the browser routine that proves R7.6 asserts
+  on some of those labels.
+guard:
+  kind: manual
+  ref: >-
+    In a generated app, render any concept with an ALL-CAPS enum value (PurchaseOrder.priority in
+    AppGen/apps/payment-webhook-rehearsal is one) and read the grid cell -- today it shows "H I G H".
+    Or evaluate humanize("HIGH") in the browser console against business-ui-app.mustache:114.
+  asserts: >-
+    humanize renders camelCase identifiers as spaced words while leaving runs of capitals intact, so
+    an enum value or acronym is not exploded letter by letter
+  provenRed: false
+  provenRedNote: >-
+    Reproduced by running the exact regex from the emitted source over real inputs, and observed in a
+    live app by the R7.6 work, but not captured by a test written to force it -- there is no unit test
+    over humanize today.
