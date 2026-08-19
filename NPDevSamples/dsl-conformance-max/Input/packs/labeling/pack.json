@@ -99,5 +99,15 @@
         }
       ]
     }
+  ],
+  "seeds": [
+    {
+      "concept": "Label",
+      "alias": "defaultLabel",
+      "data": {
+        "text": "Default",
+        "color": "gray"
+      }
+    }
   ]
 }

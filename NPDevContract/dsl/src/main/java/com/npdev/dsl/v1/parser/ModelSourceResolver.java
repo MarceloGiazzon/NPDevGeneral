@@ -101,7 +101,22 @@ public final class ModelSourceResolver {
             // pack-declared sequence -- the same reasoning webhooks[].source already established for
             // a wire-visible identity. SequenceValidation instead requires global name uniqueness
             // across the fully-resolved model, closing the loop WebhookValidation closes for source.
-            "sequences"
+            "sequences",
+            // R8.8 (Roadmap Wave 2, 2026-08-19): seeds[] threaded the same way, but with the
+            // OPPOSITE reference-rewriting posture from every kind above: a seed's `concept` field
+            // is REWRITTEN to pack-qualified form when pack/context-declared, but deliberately NOT
+            // via the shared rewriteKnownMemberReferenceFields/resolveUnqualifiedReferences path
+            // every other kind uses -- that path's later global pass would silently resolve an
+            // unowned bare concept name to some OTHER pack's same-named concept the moment it
+            // happens to be globally unique, which is exactly wrong here: inserting rows into a
+            // concept another pack owns, unattended, at that pack's own first boot, is a materially
+            // different hazard than merely reading/joining it. mergeQualifiedNonConceptArrays' own
+            // "seeds" branch resolves `concept` ONLY against the SAME pack/context's own local
+            // concept map and throws immediately if it does not resolve there -- a compile error,
+            // not a silent cross-pack fix. A seed record also has no `name` field, so it never
+            // participates in the generic name-qualification/duplicate-name-within-a-pack check
+            // every sibling kind above gets for free.
+            "seeds"
     );
     private static final Set<String> ROOT_SCALAR_KEYS = orderedSet(
             "$schema",
@@ -938,6 +953,20 @@ public final class ModelSourceResolver {
         globalRewriteMaps.put("capabilities", mergedCapabilities);
 
         for (String kind : MODEL_ARRAY_KEYS) {
+            // R8.8: seeds[] is deliberately excluded from this GLOBAL cross-pack pass -- see
+            // rewriteSeedConceptOwnership's javadoc. A pack/context-declared seed's `concept` was
+            // already resolved (or rejected) against ONLY its own declaring pack/context's local
+            // concepts by mergeQualifiedNonConceptArrays; letting this generic walker visit it again
+            // here would (a) risk resolving an otherwise-unowned bare name to some OTHER pack's
+            // same-named concept via the unqualified-reference convenience every other kind gets,
+            // exactly the hazard seed ownership must never be subject to, and (b) recurse into each
+            // record's `data` -- an arbitrary business payload, not DSL structure -- looking for
+            // field names like `conceptRef`/`domainType` to rewrite. A root-declared seed needs no
+            // pass here either: root concepts are never namespace-qualified, so there is nothing to
+            // resolve.
+            if ("seeds".equals(kind)) {
+                continue;
+            }
             JsonNode array = resolved.get(kind);
             if (array == null || !array.isArray()) {
                 continue;
@@ -1021,11 +1050,65 @@ public final class ModelSourceResolver {
                         ((ObjectNode) rewritten).put("name", qualifierId + "::" + localName);
                     }
                 }
-                rewritePackLocalConceptReferencesInPlace(rewritten, rewriteMaps, ambiguousNames, key, qualifiedReferenceValidator);
+                if ("seeds".equals(key)) {
+                    // R8.8: deliberately bypasses rewritePackLocalConceptReferencesInPlace below --
+                    // see rewriteSeedConceptOwnership's own javadoc for why.
+                    rewriteSeedConceptOwnership(kindLabel, qualifierId, rewritten, mapFor(rewriteMaps, "concepts"), sourceFile, key);
+                } else {
+                    rewritePackLocalConceptReferencesInPlace(rewritten, rewriteMaps, ambiguousNames, key, qualifiedReferenceValidator);
+                }
                 target.add(rewritten);
             }
             resolved.set(key, target);
         }
+    }
+
+    /**
+     * R8.8: a pack/context's own seed may only target a concept IT OWNS -- rewritten to
+     * {@code qualifierId::concept} here (using ONLY this pack/context's own local concept map,
+     * built by {@link #buildRewriteMaps} from its own raw JSON, never the whole resolved model),
+     * and a concept this pack/context does not declare is a compile error, thrown immediately.
+     *
+     * <p>Deliberately isolated from {@link #rewritePackLocalConceptReferencesInPlace}/
+     * {@link #rewriteKnownMemberReferenceFields} for two reasons: (1) that shared walker is reused
+     * UNCHANGED by {@link #resolveUnqualifiedReferences}'s later GLOBAL pass, which would silently
+     * "fix" an unowned bare reference the moment some OTHER pack happens to declare a same-named
+     * concept -- exactly the hazard {@link #MODEL_ARRAY_KEYS}' own "seeds" comment warns about; (2)
+     * that walker also recurses into EVERY nested field looking for known reference field names
+     * ({@code conceptRef}/{@code domainType}, rewritten unconditionally at any depth), and a
+     * seed's {@code data} is an arbitrary business payload mirroring the TARGET concept's own
+     * schema -- a business field genuinely named e.g. "domainType" must never be mistaken for a DSL
+     * reference and silently rewritten. Skipping the walker entirely for {@code seeds} protects
+     * {@code data} from that hazard for free; nothing else in the seed record shape ({@code
+     * alias}/{@code id}/{@code repeatOver}/{@code count}) contains a reference to any other member
+     * kind.
+     *
+     * <p>An already-qualified {@code concept} (containing {@code ::}, e.g. an explicit
+     * self-reference or an attempt at a cross-pack one) is deliberately NOT specially unwrapped --
+     * {@code localConcepts} is keyed by bare local names only, so it never matches and always fails
+     * ownership, the same simple, safe default every other MODEL_ARRAY_KEYS kind's OWN-concept-only
+     * fields (documents/selectors) leave to plain bare-name authoring.
+     */
+    private static void rewriteSeedConceptOwnership(
+            String kindLabel,
+            String qualifierId,
+            JsonNode seedRecord,
+            Map<String, String> localConcepts,
+            Path sourceFile,
+            String key
+    ) throws IOException {
+        if (!seedRecord.isObject() || !seedRecord.has("concept") || !seedRecord.get("concept").isTextual()) {
+            return; // malformed -- pack.schema.json's own required:["concept"] already refuses this file.
+        }
+        String authored = seedRecord.get("concept").asText();
+        String qualified = localConcepts.get(authored);
+        if (qualified == null) {
+            throw error(sourceFile, "/" + key, kindLabel + " '" + qualifierId + "' declares a seed for concept '"
+                    + authored + "', which it does not own -- a seed may only target a concept declared by the "
+                    + "SAME " + kindLabel.toLowerCase(Locale.ROOT) + " (declare '" + authored + "' in "
+                    + qualifierId + "'s own concepts[], or remove this seed)");
+        }
+        ((ObjectNode) seedRecord).put("concept", qualified);
     }
 
     /** B20 (S2): same field walk, plus a hook invoked for every reference already qualified

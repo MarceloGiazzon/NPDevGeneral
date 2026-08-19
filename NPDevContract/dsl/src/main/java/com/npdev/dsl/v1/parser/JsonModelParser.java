@@ -594,6 +594,7 @@ public final class JsonModelParser {
         List<com.npdev.dsl.v1.ast.ConversionAst> conversions = parseConversions(root.get("conversions"));
         webhooks.addAll(parseWebhooks(root.get("webhooks")));
         List<com.npdev.dsl.v1.ast.SequenceAst> sequences = parseSequences(root.get("sequences"));
+        List<com.npdev.dsl.v1.ast.SeedAst> seeds = parseSeeds(root.get("seeds"));
 
         return new ModelAst(
                 namespace,
@@ -625,7 +626,8 @@ public final class JsonModelParser {
                 conversions,
                 physicalQualifierByConceptName,
                 webhooks,
-                sequences
+                sequences,
+                seeds
         );
     }
 
@@ -794,6 +796,60 @@ public final class JsonModelParser {
                     requiredText(sequenceNode, "format"),
                     readText(sequenceNode, "scope")
             ));
+        }
+        return out;
+    }
+
+    /** R8.8: parses the optional top-level {@code seeds} array -- {@code concept} + optional
+     *  {@code alias}/{@code id}/{@code data}/{@code repeatOver}/{@code count}, the EXISTING
+     *  app-level seed record shape ({@code NPDevContract/schemas/seed.schema.json}'s {@code
+     *  $defs/record}). No pack-origin lookup here (unlike {@code roles}/{@code events}/...): a
+     *  seed record has no {@code name} to key an origin lookup by, and its {@code concept} field
+     *  was already rewritten to pack-qualified form (when pack/context-declared) upstream by
+     *  {@code ModelSourceResolver.mergeQualifiedNonConceptArrays}'s own "seeds" branch, which also
+     *  enforces that a pack/context may only seed a concept it owns. Declaration order is
+     *  preserved -- see {@link com.npdev.dsl.v1.ast.SeedAst}'s own javadoc for why. */
+    private static List<com.npdev.dsl.v1.ast.SeedAst> parseSeeds(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.SeedAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("seeds must be an array");
+        }
+        for (JsonNode seedNode : node) {
+            out.add(new com.npdev.dsl.v1.ast.SeedAst(
+                    requiredText(seedNode, "concept"),
+                    readText(seedNode, "alias"),
+                    readText(seedNode, "id"),
+                    parseObjectMap(seedNode.get("data")),
+                    parseSeedRepeatOverVars(seedNode.get("repeatOver")),
+                    seedNode.has("count") && !seedNode.get("count").isNull() ? seedNode.get("count").asInt() : null
+            ));
+        }
+        return out;
+    }
+
+    /** R8.8: parses {@code seeds[].repeatOver.vars} -- an object of {@code [min, max]} inclusive
+     *  integer pairs, the same bulk-generation shape {@code SeedDataService.expandSmartRecord}
+     *  already reads from the app-level convention's JSON directly. */
+    private static Map<String, List<Integer>> parseSeedRepeatOverVars(JsonNode repeatOverNode) throws IOException {
+        Map<String, List<Integer>> out = new LinkedHashMap<>();
+        if (repeatOverNode == null || repeatOverNode.isNull()) {
+            return out;
+        }
+        JsonNode varsNode = repeatOverNode.get("vars");
+        if (varsNode == null || !varsNode.isObject()) {
+            return out;
+        }
+        Iterator<String> varNames = varsNode.fieldNames();
+        while (varNames.hasNext()) {
+            String varName = varNames.next();
+            JsonNode range = varsNode.get(varName);
+            if (range == null || !range.isArray() || range.size() != 2) {
+                throw new IOException("seeds[].repeatOver.vars." + varName + " must be a [min, max] pair");
+            }
+            out.put(varName, List.of(range.get(0).asInt(), range.get(1).asInt()));
         }
         return out;
     }

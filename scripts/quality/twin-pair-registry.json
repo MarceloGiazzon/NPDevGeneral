@@ -419,6 +419,24 @@
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java"
       ]
+    },
+    {
+      "id": "seed-ast-compiled-four-place",
+      "citedBy": "R8.8 (Roadmap Collection 2026-08-18)",
+      "description": "seeds[] needs the same live path roles[]/sequences[] need -- parser, compiler, ModelResolver, and the canonical writer+reader pair -- plus ModelSourceResolver.MODEL_ARRAY_KEYS, because a pack is the primary author of seed data here and a top-level array key missing from that set is silently discarded for pack-contributed content with no error anywhere (REG-108's exact shape). Drop it from any one of these files and a pack's declared seed rows parse clean and never reach ModelSeedRunner at boot. NOT guarded here: NPDevCli/npdev_cli.py's own Python MODEL_ARRAY_KEYS copy (the build-free `npdev inspect` / `validate --structural-only` path) also needs \"seeds\". It was tried in this rule and MEASURED toothless -- the file contains the literal \"seeds\" anyway as the /api/admin/seeds REST path of the `npdev seed` verb, so the field-in-all-files check passes even with the whitelist entry deleted. A listed-but-unenforceable file is worse than an honest omission, so it is called out here instead.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "seeds"
+      ],
+      "caseSensitive": false,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+      ]
     }
   ]
 }

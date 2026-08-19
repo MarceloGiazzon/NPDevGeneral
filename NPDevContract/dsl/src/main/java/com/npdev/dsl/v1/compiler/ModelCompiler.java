@@ -617,7 +617,8 @@ public final class ModelCompiler {
                 toCompiledContexts(modelAst.getContexts()),
                 conversions,
                 toCompiledWebhooks(modelAst.getWebhooks()),
-                toCompiledSequences(modelAst.getSequences())
+                toCompiledSequences(modelAst.getSequences()),
+                toCompiledSeeds(modelAst.getSeeds())
         );
     }
 
@@ -796,6 +797,22 @@ public final class ModelCompiler {
         for (com.npdev.dsl.v1.ast.SequenceAst sequenceAst : sequenceAsts) {
             compiled.add(new com.npdev.dsl.v1.compiled.CompiledSequence(
                     sequenceAst.name(), sequenceAst.format(), sequenceAst.scope()));
+        }
+        return compiled;
+    }
+
+    /** R8.8: compiles the model/pack-declared first-boot seed rows -- no origin lookup (a seed
+     *  record has no {@code name} to key one by; ownership of a pack-declared seed's target
+     *  concept was already enforced at pack-composition time, see {@link
+     *  com.npdev.dsl.v1.ast.SeedAst}). Order is preserved untouched, unlike every sibling {@code
+     *  toCompiledX} above -- see that class's javadoc for why. */
+    private static List<com.npdev.dsl.v1.compiled.CompiledSeed> toCompiledSeeds(
+            List<com.npdev.dsl.v1.ast.SeedAst> seedAsts) {
+        List<com.npdev.dsl.v1.compiled.CompiledSeed> compiled = new ArrayList<>();
+        for (com.npdev.dsl.v1.ast.SeedAst seedAst : seedAsts) {
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledSeed(
+                    seedAst.concept(), seedAst.alias(), seedAst.id(), seedAst.data(),
+                    seedAst.repeatOverVars(), seedAst.count()));
         }
         return compiled;
     }

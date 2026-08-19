@@ -278,6 +278,16 @@
       },
       "description": "R5.3: a pack may declare document-numbering counters alongside its other members. `name` is never namespace-qualified by pack composition (see model.schema.json's sequence $def)."
     },
+    "seeds": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/seed" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      },
+      "description": "R8.8: a pack may declare first-boot seed rows alongside its other members. `concept` MUST name a concept this SAME pack declares -- rewritten to its pack-qualified form by pack composition, and a seed naming a concept the pack does not own is a compile error (see model.schema.json's seed $def and ModelSourceResolver's seeds handling)."
+    },
     "propertyScopes": {
       "type": "array",
       "items": {

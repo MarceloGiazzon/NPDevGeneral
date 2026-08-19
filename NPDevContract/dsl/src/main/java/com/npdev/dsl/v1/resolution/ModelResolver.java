@@ -130,7 +130,13 @@ public final class ModelResolver {
                 // specialization concept either, and its own `name` is deliberately never rewritten
                 // by pack composition (see SequenceAst's javadoc), so there is nothing here for
                 // this resolver to expand or rename.
-                source.getSequences()
+                source.getSequences(),
+                // R8.8: whole-list pass-through -- a seed has no `extends`/specialization concept
+                // either, and its own `concept` was already rewritten to pack-qualified form (when
+                // pack/context-declared) upstream by ModelSourceResolver, so there is nothing here
+                // for this resolver to expand or rename. Order is preserved untouched (never
+                // sorted), unlike every sibling list above -- see SeedAst's javadoc for why.
+                source.getSeeds()
         );
         return ResolvedModel.from(resolvedAst);
     }
