@@ -229,6 +229,67 @@ textarea {
   color: #a32424;
 }
 
+/* R7.1. The toast host must outrank .modal-backdrop (z-index 10): the .status line above lives
+   inside #app, which the backdrop covers, so a save rejected from a modal form used to report onto
+   an invisible line. pointer-events is off on the host and back on for each toast, so the empty
+   column never swallows clicks on the page beneath it. */
+.toast-host {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 60;
+  display: grid;
+  gap: 8px;
+  width: min(380px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 10px 11px 13px;
+  border: 1px solid #d8dee7;
+  border-left: 4px solid #4c5a69;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(24, 32, 42, .22);
+  color: #1c2333;
+  font-size: 14px;
+  pointer-events: auto;
+}
+
+.toast.is-success {
+  border-left-color: #1f7a4d;
+}
+
+.toast.is-error {
+  border-left-color: #a32424;
+}
+
+.toast-message {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.toast-close {
+  flex-shrink: 0;
+  min-height: 22px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #4c5a69;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.toast-close:hover {
+  border-color: transparent;
+  background: #eef1f5;
+  color: #1c2333;
+}
+
 .api-key-field {
   display: grid;
   gap: 4px;
@@ -303,6 +364,55 @@ textarea {
   width: min(360px, 100%);
 }
 
+/* R7.4: the saved-views toolbar and column-visibility toggle, rendered only when a concept opts
+   in (savedViewsSupported) -- mirrors .filters' own flex-row rhythm. */
+.views-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e7ebf0;
+}
+
+.views-bar-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4c5a69;
+}
+
+.views-select {
+  min-height: 34px;
+  padding: 2px 8px;
+  max-width: 260px;
+}
+
+.columns-toggle {
+  padding: 8px 16px 0;
+}
+
+.columns-toggle summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4c5a69;
+}
+
+.columns-toggle-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 8px 0 12px;
+  font-size: 13px;
+}
+
+.columns-toggle-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
 .records {
   width: 100%;
   border-collapse: collapse;
@@ -338,6 +448,37 @@ textarea {
   cursor: pointer;
 }
 
+/* R7.3: the per-column filter row rendered directly under the header row -- kept visually
+   distinct (its own background, no border-bottom to double up with the header's) so it reads as
+   "controls for this column" rather than a second header line. */
+.records tr.filter-row td {
+  padding: 6px 10px;
+  background: var(--np-grid-head-bg, #f9fafc);
+  border-bottom: 1px solid #e7ebf0;
+  vertical-align: middle;
+}
+
+.column-filter {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.column-filter-op {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.column-filter-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 28px;
+  padding: 2px 6px;
+  font-size: 12.5px;
+}
+
 .records .row-actions {
   justify-content: flex-end;
 }
@@ -346,6 +487,25 @@ textarea {
   padding: 24px;
   color: #6b7786;
   text-align: center;
+}
+
+/* R7.2: a fresh/filtered-empty grid's onboarding call-to-action -- "(empty)" used to be the whole
+   message, indistinguishable from a broken app. */
+.empty-state {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.empty-state-message {
+  margin: 0;
+}
+
+.empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
 }
 
 .pager {
@@ -472,6 +632,26 @@ textarea {
 
 .field-hidden {
   display: none !important;
+}
+
+/* R7.1. A rejected save marks the offending field here and appends a .field-error note; no
+   control's value is ever rewritten, so everything the user typed survives the rejection. */
+.form-field.has-error input,
+.form-field.has-error select,
+.form-field.has-error textarea {
+  border-color: #a32424;
+  outline-color: #a32424;
+}
+
+.form-field.has-error .field-label-text {
+  color: #a32424;
+}
+
+.field-error {
+  margin-top: 2px;
+  color: #a32424;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .enum-value {

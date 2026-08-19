@@ -97,7 +97,7 @@ public final class GeneratorMain {
 
         // Compose the built-in NPDev internal tables (identity + workspace packs) when enabled.
         if (settingResolver.value(NpdevSettings.INTERNAL_TABLES, SettingTarget.app())) {
-            compiled = composeBuiltinInternalTables(compiled);
+            compiled = composeBuiltinInternalTables(compiled, a.runtimeHostRoot);
         }
 
         // Compose any explicitly-installed third-party packs (config.json's packs.included list --
@@ -107,7 +107,7 @@ public final class GeneratorMain {
         // every admin-only check (BusinessUiEmitter/RuntimeApiEmitter/BoxManifestEmitter) keys on.
         List<String> installedPackAliases = readInstalledPackAliases(config);
         if (!installedPackAliases.isEmpty()) {
-            compiled = composeInstalledPacks(compiled, installedPackAliases);
+            compiled = composeInstalledPacks(compiled, installedPackAliases, a.runtimeHostRoot);
         }
 
         GeneratedDatabasePlan databasePlan = new UserDatabaseDefinitionLoader()
@@ -271,8 +271,8 @@ public final class GeneratorMain {
         }
     }
 
-    private static CompiledModel composeBuiltinInternalTables(CompiledModel app) {
-        Path packsDir = locatePlatformPacksDir("internal.tables is enabled");
+    private static CompiledModel composeBuiltinInternalTables(CompiledModel app, String runtimeHostRoot) {
+        Path packsDir = locatePlatformPacksDir("internal.tables is enabled", runtimeHostRoot);
         BuiltinPackComposer composer = new BuiltinPackComposer();
         List<CompiledConcept> builtin = new java.util.ArrayList<>();
         for (String alias : BuiltinPackComposer.BUILTIN_PACK_ALIASES) {
@@ -291,8 +291,8 @@ public final class GeneratorMain {
      * existing admin-only check keys correctly: an installed third-party pack's concepts render as
      * ordinary business concepts, not admin-gated internal tables.
      */
-    private static CompiledModel composeInstalledPacks(CompiledModel app, List<String> aliases) {
-        Path packsDir = locatePlatformPacksDir("packs.included is non-empty");
+    private static CompiledModel composeInstalledPacks(CompiledModel app, List<String> aliases, String runtimeHostRoot) {
+        Path packsDir = locatePlatformPacksDir("packs.included is non-empty", runtimeHostRoot);
         BuiltinPackComposer composer = new BuiltinPackComposer();
         List<CompiledConcept> installed = new java.util.ArrayList<>();
         for (String alias : aliases) {
@@ -373,13 +373,28 @@ public final class GeneratorMain {
         return List.copyOf(aliases);
     }
 
-    private static Path locatePlatformPacksDir(String reason) {
+    private static Path locatePlatformPacksDir(String reason, String runtimeHostRoot) {
         Path start = Path.of("").toAbsolutePath().normalize();
         Path workspaceRoot = resolveSplitWorkspaceRoot(start);
+        if (workspaceRoot == null && runtimeHostRoot != null && !runtimeHostRoot.isBlank()) {
+            // The CWD walk above assumes this process was launched from somewhere inside the
+            // platform checkout. AppGen's "direct Java" fast generation path (Build-NpdevApp.ps1)
+            // instead launches from the cached generator-runtime distribution under
+            // AppGen/generator-runtime, which lives OUTSIDE any repo checkout by design (that is
+            // what makes the cache portable) -- so the CWD walk can never succeed from there, and
+            // internal.tables/packs.included failed unconditionally for every app built that way.
+            // --runtimeHostTemplate already names NPDevRuntimeHost inside the real checkout (every
+            // caller passes it, to stage the FinalApp's own template), so walking up from IT finds
+            // the same workspace root the CWD walk was trying to find -- reusing the identical
+            // content-based predicate (resolveSplitWorkspaceRoot), not a second resolution strategy.
+            Path fromTemplate = Path.of(runtimeHostRoot).toAbsolutePath().normalize();
+            workspaceRoot = resolveSplitWorkspaceRoot(fromTemplate);
+        }
         if (workspaceRoot == null) {
             throw new IllegalStateException(
                     reason + " but the NPDev workspace root could not be located from "
-                            + start + " (needed to find NPDevContract/packs).");
+                            + start + " or from --runtimeHostTemplate ('" + runtimeHostRoot
+                            + "') -- needed to find NPDevContract/packs.");
         }
         Path packsDir = workspaceRoot.resolve("NPDevContract").resolve("packs");
         if (!Files.isDirectory(packsDir)) {

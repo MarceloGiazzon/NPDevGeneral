@@ -33,9 +33,20 @@
     store: { packs: [], discoverable: false, loading: false, loaded: false, filter: "", installedIntents: {} },
     boxView: { boxes: [], note: "", loading: false, loaded: false },
     promotion: { currentStage: "", history: [], loading: false, loaded: false, attempted: false },
+    // R7.2: the named seed/mock datasets declared under an app's definition/seeds/ (see
+    // DataSeedAdminController) -- loaded once (gated on ADMIN/SUPERUSER, the same guard the
+    // endpoint itself enforces server-side) so an empty grid's onboarding CTA can offer "Load
+    // sample data" instead of leaving a first-run app looking permanently dead.
+    seeds: { available: [], loading: false, loaded: false },
     // Keyed by declared Panel name -- deliberately separate from state.panels (per-CONCEPT grid
     // pagination state, a pre-existing and unrelated use of that name).
-    declaredPanels: {}
+    declaredPanels: {},
+    // R7.4: the model's declared properties[]/propertyScopes[] (see PropertyResolverController),
+    // fetched once at bootstrap. Saved views are pure opt-in progressive enhancement on top of the
+    // existing property cascade -- an app that declares no `views__<Concept>` property renders no
+    // views UI at all, so this stays null/[] harmlessly for every app that predates this feature.
+    propertyDeclarations: null,
+    propertyScopesInfo: null
   };
 
   // The header/side-nav chrome this used to own (app-bar, #sideNav, #layoutRoot, nav-collapse
@@ -262,6 +273,62 @@
     el.status.classList.toggle("is-error", Boolean(error));
   }
 
+  // R7.1. setStatus writes into el.status, which lives in the authbar strip at the top of #app --
+  // and .modal-backdrop (position:fixed, inset:0, z-index 10) covers #app outright. So a save that
+  // failed from a modal form reported its error onto a line the user could not see, behind the
+  // dimming layer. Toasts are the fix: one fixed host, appended to <body> above the backdrop, so
+  // the same message lands where the user is actually looking regardless of presentation.
+  const TOAST_TIMEOUT_MS = 6000;
+  el.toastHost = document.createElement("div");
+  el.toastHost.className = "toast-host";
+  el.toastHost.setAttribute("role", "region");
+  el.toastHost.setAttribute("aria-label", "Notifications");
+  document.body.appendChild(el.toastHost);
+
+  // Errors never auto-dismiss -- a validation message the user has to act on must not vanish while
+  // they are reading the field it points at. Success toasts fade on their own.
+  function toast(message, kind) {
+    const copy = text(message).trim();
+    if (!copy) {
+      return null;
+    }
+    const node = document.createElement("div");
+    node.className = "toast is-" + (kind || "info");
+    node.setAttribute("role", kind === "error" ? "alert" : "status");
+    const body = document.createElement("div");
+    body.className = "toast-message";
+    body.textContent = copy;
+    node.appendChild(body);
+    const dismiss = button("×", "toast-close", function () { dismissToast(node); });
+    dismiss.setAttribute("aria-label", "Dismiss");
+    node.appendChild(dismiss);
+    el.toastHost.appendChild(node);
+    if (kind !== "error") {
+      node.dataset.autoDismiss = String(setTimeout(function () { dismissToast(node); }, TOAST_TIMEOUT_MS));
+    }
+    return node;
+  }
+
+  function dismissToast(node) {
+    if (!node) {
+      return;
+    }
+    if (node.dataset.autoDismiss) {
+      clearTimeout(Number(node.dataset.autoDismiss));
+    }
+    if (node.parentNode) {
+      node.parentNode.removeChild(node);
+    }
+  }
+
+  // Feedback surface for anything the user WROTE (create/update/delete, panel row add/remove, an
+  // action run). Read-only chatter ("... loaded.") deliberately stays on setStatus alone, so the
+  // toast stack only ever carries outcomes the user asked for.
+  function notify(message, error) {
+    setStatus(message, error);
+    return toast(message, error ? "error" : "success");
+  }
+
   function headers() {
     const result = { "Content-Type": "application/json" };
     const apiKey = el.apiKey.value.trim();
@@ -277,7 +344,14 @@
     const contentType = response.headers.get("content-type") || "";
     const payload = contentType.includes("application/json") ? await response.json() : await response.text();
     if (!response.ok) {
-      throw new Error(errorMessage(payload, response.status));
+      // R7.1: the 4xx body a generated CRUD endpoint returns is field-addressable (see
+      // fieldViolations) and collapsing it to a message string threw that detail away here, at the
+      // one seam every caller goes through. Carry the parsed body and the status on the Error;
+      // .message is unchanged, so every existing `catch (error) { ... error.message }` still works.
+      const failure = new Error(errorMessage(payload, response.status));
+      failure.status = response.status;
+      failure.payload = payload;
+      throw failure;
     }
     return payload;
   }
@@ -298,42 +372,237 @@
         sort: defaultSort.field || concept.idField,
         direction: defaultSort.direction || "asc",
         filter: "",
+        // R7.3: one { operator, value } entry per filterable column the user has touched, keyed by
+        // field name. Empty-value entries are inert (buildWhereParam skips them) rather than
+        // deleted, so a control's operator choice survives even while its value is blank.
+        columnFilters: {},
         records: [],
         totalElements: 0,
         loading: false,
-        formMode: null
+        formMode: null,
+        // R7.4: which model-declared columns the user has hidden from this grid (names, not
+        // indices, so hiding survives a column being reordered upstream), and the saved-views
+        // cache/selection -- both purely client-side until a Save action writes them out.
+        hiddenColumns: [],
+        savedViews: { mine: [], shared: [], loaded: false, loading: false },
+        activeViewToken: ""
       };
     }
     return state.panels[concept.conceptName];
   }
 
-  function listUrl(concept) {
-    const panel = panelState(concept);
+  // R7.3: per-column structured filters ride the SAME `where` DSL (field:op:value, comma-joined
+  // clauses, AND-combined) the generated CRUD controller already parses for both its SQL-pushdown
+  // list path and its legacy free-text-filter path (see business-concept-crud-controller.mustache's
+  // parseWhereClauses) -- LNCH-5 shipped that server contract, but nothing in this UI ever built a
+  // `where` string until now. Only "eq"/"ne"/"contains" are accepted server-side (parseWhereClause
+  // rejects any other operator token), so the control set below is deliberately limited to those.
+  const FILTER_OPERATOR_LABELS = { contains: "contains", eq: "=", ne: "≠" };
+
+  function filterOperatorsFor(field) {
+    if (field.type === "boolean") {
+      return ["eq"];
+    }
+    if (field.enumValues && field.enumValues.length) {
+      return ["eq", "ne"];
+    }
+    if (field.type === "number" || field.type === "integer" || field.type === "decimal"
+        || field.type === "date" || field.type === "datetime") {
+      return ["eq", "ne"];
+    }
+    return ["contains", "eq", "ne"];
+  }
+
+  // Columns eligible for a structured filter control: visible on the grid (matches what the user
+  // can actually see being narrowed) AND declared filterable -- the same flag that already gates
+  // the free-text substring box server-side, so a field that box can't reach can't be filtered here
+  // either. R7.4: `panel` is optional so pre-existing callers keep working unchanged; passing it
+  // additionally excludes columns the user has hidden (see visibleFields).
+  function filterableVisibleFields(concept, panel) {
+    return visibleFields(concept, panel).filter(function (field) { return Boolean(field.filterable); });
+  }
+
+  // Lazily materializes a panel's per-field filter entry so a control always has somewhere to keep
+  // its operator/value without needing a parallel "have I been touched yet" check at every call site.
+  function columnFilterState(panel, field) {
+    if (!panel.columnFilters[field.name]) {
+      panel.columnFilters[field.name] = { operator: filterOperatorsFor(field)[0], value: "" };
+    }
+    return panel.columnFilters[field.name];
+  }
+
+  function columnFiltersActive(panel) {
+    return Object.keys(panel.columnFilters || {}).some(function (name) {
+      const entry = panel.columnFilters[name];
+      return entry && String(entry.value || "").length > 0;
+    });
+  }
+
+  // Builds the `where` query param from every column filter that currently has a value. Field names
+  // come from the manifest (never user input), so this cannot smuggle an arbitrary clause the server
+  // wouldn't otherwise accept.
+  function buildWhereParam(concept, panel) {
+    const clauses = [];
+    filterableVisibleFields(concept, panel).forEach(function (field) {
+      const entry = panel.columnFilters[field.name];
+      if (entry && String(entry.value || "").length > 0) {
+        clauses.push(field.name + ":" + entry.operator + ":" + entry.value);
+      }
+    });
+    return clauses.join(",");
+  }
+
+  function activeFilterSummary(concept, panel) {
+    const parts = [];
+    if (panel.filter) {
+      parts.push("search “" + panel.filter + "”");
+    }
+    filterableVisibleFields(concept, panel).forEach(function (field) {
+      const entry = panel.columnFilters[field.name];
+      if (entry && String(entry.value || "").length > 0) {
+        const opLabel = FILTER_OPERATOR_LABELS[entry.operator] || entry.operator;
+        parts.push((field.label || field.name) + " " + opLabel + " “" + entry.value + "”");
+      }
+    });
+    return parts.join("; ");
+  }
+
+  // Shared by both the grid's own list fetch and CSV export, so "what the grid shows" and "what
+  // exports" are provably built from the identical filter/sort state -- page/size are the only
+  // params each caller sets for itself afterwards.
+  function baseQueryParams(concept, panel) {
     const params = new URLSearchParams();
-    params.set("page", String(panel.page));
-    params.set("size", String(panel.size));
     params.set("sort", panel.sort);
     params.set("direction", panel.direction);
     if (panel.filter) {
       params.set("filter", panel.filter);
     }
+    const where = buildWhereParam(concept, panel);
+    if (where) {
+      params.set("where", where);
+    }
+    return params;
+  }
+
+  function listUrl(concept) {
+    const panel = panelState(concept);
+    const params = baseQueryParams(concept, panel);
+    params.set("page", String(panel.page));
+    params.set("size", String(panel.size));
     return concept.endpointBase + "?" + params.toString();
   }
 
-  // LNCH-10 slice 1: reuses the grid's current sort. Deliberately does NOT carry over page/size
-  // (an export always wants every matching row, not just the page on screen -- the export
-  // endpoint pages internally server-side) or the free-text search box's `filter` value: that
-  // box is an OR-across-every-filterable-field substring match with no SQL-pushdown equivalent
-  // (the same documented LNCH-5 boundary the grid's own structured push-down query already lives
-  // with) -- the generic export endpoint's query contract only supports structured filters, none
-  // of which this grid's UI currently exposes. See exportFilterNotice below for the on-screen
-  // disclosure of this gap rather than silently exporting something other than what's on screen.
-  function exportCsvUrl(concept) {
+  // R7.3 (REG-12 LNCH-10 follow-up): Export CSV used to hit a SEPARATE server endpoint
+  // (/api/concepts/{concept}/export.csv, ConceptQueryController) whose query parser ignores both
+  // `filter` and `where` outright -- so a filtered grid silently exported the whole table. That
+  // endpoint isn't ours to change (RuntimeHost is out of scope for this template), so instead this
+  // walks the SAME list endpoint (concept.endpointBase) the grid itself already uses, one page at a
+  // time, with the SAME filter/sort params loadPanel sends -- "export matches the on-screen rows" by
+  // construction, not by keeping two query builders in sync. EXPORT_PAGE_SIZE mirrors the CRUD
+  // controller's own MAX_PAGE_SIZE (business-concept-crud-controller.mustache); EXPORT_ROW_CAP is a
+  // client-side safety bound so a runaway loop can't hang the tab on an unexpectedly huge result.
+  const EXPORT_PAGE_SIZE = 100;
+  const EXPORT_ROW_CAP = 50000;
+
+  async function exportPanelCsv(concept) {
     const panel = panelState(concept);
-    const params = new URLSearchParams();
-    params.set("sort", panel.sort);
-    params.set("direction", panel.direction);
-    return "/api/concepts/" + encodeURIComponent(concept.conceptName) + "/export.csv?" + params.toString();
+    const fields = visibleFields(concept, panel);
+    const columns = fields.map(function (field) { return { name: field.name, label: field.label || field.name }; });
+    const rows = [];
+    let page = 0;
+    try {
+      setStatus("Preparing " + concept.displayName + " export…", false);
+      while (rows.length < EXPORT_ROW_CAP) {
+        const params = baseQueryParams(concept, panel);
+        params.set("page", String(page));
+        params.set("size", String(EXPORT_PAGE_SIZE));
+        const payload = await fetchJson(concept.endpointBase + "?" + params.toString(), {
+          method: "GET",
+          headers: headers()
+        });
+        const content = Array.isArray(payload.content) ? payload.content : [];
+        rows.push.apply(rows, content);
+        if (content.length < EXPORT_PAGE_SIZE) {
+          break;
+        }
+        page += 1;
+      }
+      downloadCsv(buildCsv(columns, rows), csvFilenameFor(concept));
+      setStatus(concept.displayName + " export ready: " + rows.length + " row(s).", false);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  }
+
+  function buildCsv(columns, rows) {
+    const lines = [columns.map(function (column) { return csvCell(column.label); }).join(",")];
+    rows.forEach(function (row) {
+      lines.push(columns.map(function (column) { return csvCell(row[column.name]); }).join(","));
+    });
+    return lines.join("\r\n") + "\r\n";
+  }
+
+  // Client-side mirror of CsvCells (NPDevRuntimeHost com.finalexec.api) so a value that started a
+  // formula (=, +, -, @, tab, CR) can't execute in a spreadsheet, while a plain negative number like
+  // -42 still exports as a number rather than a neutralized string -- same rule, same reasoning, kept
+  // in lockstep on purpose because this now IS the export path (the server's own CSV writer is no
+  // longer in this UI's request path).
+  function csvCell(value) {
+    const raw = value === null || value === undefined ? "" : String(value);
+    const cell = neutralizeCsvFormula(raw);
+    if (cell.indexOf(",") < 0 && cell.indexOf("\"") < 0 && cell.indexOf("\n") < 0 && cell.indexOf("\r") < 0) {
+      return cell;
+    }
+    return "\"" + cell.replace(/"/g, "\"\"") + "\"";
+  }
+
+  function neutralizeCsvFormula(value) {
+    if (!value) {
+      return value;
+    }
+    const first = value.charAt(0);
+    const formulaLead = first === "=" || first === "+" || first === "-" || first === "@"
+        || first === "\t" || first === "\r";
+    if (!formulaLead || isPlainCsvNumber(value)) {
+      return value;
+    }
+    return "'" + value;
+  }
+
+  function isPlainCsvNumber(value) {
+    if (value.length < 2) {
+      return false;
+    }
+    let digitSeen = false;
+    let dotSeen = false;
+    for (let index = 1; index < value.length; index += 1) {
+      const ch = value.charAt(index);
+      if (ch >= "0" && ch <= "9") {
+        digitSeen = true;
+      } else if (ch === "." && !dotSeen) {
+        dotSeen = true;
+      } else {
+        return false;
+      }
+    }
+    return digitSeen;
+  }
+
+  function csvFilenameFor(concept) {
+    const safe = String(concept.conceptName || "export").replace(/[^A-Za-z0-9_-]/g, "_");
+    return (safe || "export") + ".csv";
+  }
+
+  function downloadCsv(csvText, filename) {
+    const blob = new Blob([csvText], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
 
   async function loadPanel(concept) {
@@ -568,7 +837,7 @@
       );
       entry.lastActionName = actionName;
       entry.lastActionResult = payload.result;
-      setStatus("Action \"" + actionName + "\" completed: " + (payload.status || "OK"), payload.status === "FAILED");
+      notify("Action \"" + actionName + "\" completed: " + (payload.status || "OK"), payload.status === "FAILED");
       await loadDeclaredPanel(panelMeta);
     } catch (error) {
       setStatus(error.message, true);
@@ -588,7 +857,7 @@
           + "/dataSources/" + encodeURIComponent(dataSourceName) + "/rows",
         { method: "POST", headers: headers(), body: JSON.stringify(body) }
       );
-      setStatus("Row added to \"" + dataSourceName + "\".", false);
+      notify("Row added to \"" + dataSourceName + "\".", false);
       await loadDeclaredPanel(panelMeta);
     } catch (error) {
       setStatus(error.message, true);
@@ -603,7 +872,7 @@
           + "/dataSources/" + encodeURIComponent(dataSourceName) + "/rows/" + encodeURIComponent(id),
         { method: "DELETE", headers: headers() }
       );
-      setStatus("Row removed from \"" + dataSourceName + "\".", false);
+      notify("Row removed from \"" + dataSourceName + "\".", false);
       await loadDeclaredPanel(panelMeta);
     } catch (error) {
       setStatus(error.message, true);
@@ -1746,15 +2015,15 @@
     actions.appendChild(button("Refresh", "", function () { loadPanel(concept); }));
     actions.appendChild(button("Clear", "", function () {
       panel.filter = "";
+      panel.columnFilters = {};
       panel.page = 0;
       loadPanel(concept);
     }));
-    const exportLink = document.createElement("a");
-    exportLink.href = exportCsvUrl(concept);
-    exportLink.textContent = "Export CSV";
-    exportLink.target = "_blank";
-    exportLink.rel = "noopener";
-    actions.appendChild(exportLink);
+    // R7.3: a real <button>, not an <a href>, because the CSV is now built client-side (see
+    // exportPanelCsv) by walking the SAME list request the grid just made -- so the export can never
+    // drift from whatever filter/sort state is currently on screen.
+    const exportButton = button("Export CSV", "", function () { exportPanelCsv(concept); });
+    actions.appendChild(exportButton);
     // LNCH-10 slice 2 (REG-12): prints exactly the currently loaded page -- the same filtered/sorted
     // rows on screen, not a full-table export (Export CSV already owns "every matching row").
     actions.appendChild(button("Print", "", function () { printPanel(concept); }));
@@ -1772,11 +2041,14 @@
     header.appendChild(actions);
     section.appendChild(header);
 
-    if (panel.filter) {
+    // R7.3: previously this disclosed that Export CSV IGNORED the filter -- now that exportPanelCsv
+    // reuses the grid's own request, the honest thing to surface is confirmation of what's active,
+    // not a warning about a mismatch that no longer exists.
+    if (panel.filter || columnFiltersActive(panel)) {
       const exportNotice = document.createElement("div");
       exportNotice.className = "export-filter-notice";
-      exportNotice.textContent = "Export CSV exports every " + concept.displayName
-          + " row sorted as shown -- it does not apply the search box filter above.";
+      exportNotice.textContent = "Filtered (" + activeFilterSummary(concept, panel)
+          + ") -- Export CSV exports exactly these rows, sorted as shown.";
       section.appendChild(exportNotice);
     }
 
@@ -1802,6 +2074,17 @@
     }));
     section.appendChild(filters);
 
+    // R7.4: opt-in per concept -- only rendered when the model declares this grid's
+    // `views__<Concept>` property (see savedViewsSupported), so an app that predates the feature
+    // shows no change here at all.
+    if (savedViewsSupported(concept)) {
+      section.appendChild(buildViewsBar(concept, panel));
+      const columnsToggle = buildColumnsToggle(concept, panel);
+      if (columnsToggle) {
+        section.appendChild(columnsToggle);
+      }
+    }
+
     if (panel.loading) {
       const loading = document.createElement("div");
       loading.className = "empty";
@@ -1815,12 +2098,221 @@
     return section;
   }
 
+  // R7.3: one <td> per visible column, directly under the header row -- filterable columns get an
+  // operator+value control, everything else (id, non-filterable fields, the trailing actions column)
+  // gets an empty cell so the row still lines up with the header/body grid.
+  function buildColumnFilterRow(concept, panel, fields) {
+    const row = document.createElement("tr");
+    row.className = "filter-row";
+    fields.forEach(function (field) {
+      const td = document.createElement("td");
+      if (field.filterable) {
+        td.appendChild(buildColumnFilterControl(concept, panel, field));
+      }
+      row.appendChild(td);
+    });
+    row.appendChild(document.createElement("td"));
+    return row;
+  }
+
+  function buildColumnFilterControl(concept, panel, field) {
+    const wrap = document.createElement("div");
+    wrap.className = "column-filter";
+    // Name-based hook (independent of column order/position) for browser-verification routines and
+    // any future code that needs to find "the filter for field X" without guessing table position.
+    wrap.dataset.field = field.name;
+    const operators = filterOperatorsFor(field);
+    const entry = columnFilterState(panel, field);
+    function apply() {
+      panel.page = 0;
+      loadPanel(concept);
+    }
+    if (operators.length > 1) {
+      const opSelect = document.createElement("select");
+      opSelect.className = "column-filter-op";
+      operators.forEach(function (op) {
+        const option = document.createElement("option");
+        option.value = op;
+        option.textContent = FILTER_OPERATOR_LABELS[op] || op;
+        if (op === entry.operator) {
+          option.selected = true;
+        }
+        opSelect.appendChild(option);
+      });
+      opSelect.addEventListener("change", function () {
+        entry.operator = opSelect.value;
+        if (entry.value) {
+          apply();
+        }
+      });
+      wrap.appendChild(opSelect);
+    } else {
+      entry.operator = operators[0];
+    }
+    wrap.appendChild(buildColumnFilterValueControl(field, entry, apply));
+    return wrap;
+  }
+
+  // Type-appropriate value control: boolean/enum are closed choices (a select, so the value can
+  // never fail the server's own validation -- parseWhereClauses rejects an enum value that isn't one
+  // of the field's declared options), number/date/datetime get their native input type, everything
+  // else is free text against the "contains" operator. Mirrors createInput's type dispatch, kept
+  // separate because a filter control has no record to bind into and needs an explicit "Any" option.
+  function buildColumnFilterValueControl(field, entry, apply) {
+    if (field.type === "boolean") {
+      const select = document.createElement("select");
+      select.className = "column-filter-value";
+      [["", "Any"], ["true", "True"], ["false", "False"]].forEach(function (pair) {
+        const option = document.createElement("option");
+        option.value = pair[0];
+        option.textContent = pair[1];
+        if (pair[0] === entry.value) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+      select.addEventListener("change", function () {
+        entry.value = select.value;
+        apply();
+      });
+      return select;
+    }
+    if (field.enumValues && field.enumValues.length) {
+      const select = document.createElement("select");
+      select.className = "column-filter-value";
+      const any = document.createElement("option");
+      any.value = "";
+      any.textContent = "Any";
+      select.appendChild(any);
+      const options = (field.enumOptions && field.enumOptions.length)
+          ? field.enumOptions
+          : field.enumValues.map(function (value) { return { value: value, label: value }; });
+      options.forEach(function (opt) {
+        const option = document.createElement("option");
+        option.value = opt.value;
+        option.textContent = opt.label || opt.value;
+        if (opt.value === entry.value) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+      select.addEventListener("change", function () {
+        entry.value = select.value;
+        apply();
+      });
+      return select;
+    }
+    const input = document.createElement("input");
+    input.className = "column-filter-value";
+    input.value = entry.value || "";
+    if (field.type === "number" || field.type === "integer" || field.type === "decimal") {
+      input.type = "number";
+    } else if (field.type === "date") {
+      input.type = "date";
+    } else if (field.type === "datetime") {
+      input.type = "datetime-local";
+    } else {
+      input.type = "search";
+      input.placeholder = "contains…";
+    }
+    input.addEventListener("input", function () {
+      entry.value = input.value;
+    });
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        apply();
+      }
+    });
+    return input;
+  }
+
+  // R7.2: a fresh app's grid used to render a bare "(empty)"/"No records" line -- indistinguishable
+  // from a broken app. When no filter is active, this instead offers the two ways out of that state:
+  // create the first record by hand, or (when the app declares any definition/seeds/*.json AND the
+  // signed-in caller can reach DataSeedAdminController -- ADMIN/SUPERUSER, the identical guard the
+  // endpoint enforces server-side) load one of them. A filtered-to-empty grid gets a narrower message
+  // and no seed offer, since loading sample data wouldn't be the fix for "my filter matched nothing".
+  function buildEmptyStateCta(concept, panel) {
+    const wrap = document.createElement("div");
+    wrap.className = "empty-state";
+    const hasActiveFilter = Boolean(panel.filter) || columnFiltersActive(panel);
+    const message = document.createElement("p");
+    message.className = "empty-state-message";
+    message.textContent = hasActiveFilter
+        ? "No " + concept.displayName + " match the current filters."
+        : "No " + concept.displayName + " yet.";
+    wrap.appendChild(message);
+
+    const actions = document.createElement("div");
+    actions.className = "empty-state-actions";
+    actions.appendChild(button("Create " + concept.displayName, "primary", function () {
+      openForm(concept, "create", null);
+    }));
+    if (!hasActiveFilter && canManageSeeds() && state.seeds.loaded && state.seeds.available.length) {
+      const multiple = state.seeds.available.length > 1;
+      state.seeds.available.forEach(function (seed) {
+        const label = "Load sample data" + (multiple ? ": " + (seed.label || seed.id) : "");
+        actions.appendChild(button(label, "secondary", function () { runSeed(seed.id, concept); }));
+      });
+    }
+    wrap.appendChild(actions);
+    return wrap;
+  }
+
+  function canManageSeeds() {
+    return Boolean(state.isSuperUser || state.roles.indexOf("ADMIN") !== -1);
+  }
+
+  // Loads the app's declared seed catalog once (DataSeedAdminController: GET /api/admin/seeds is
+  // itself ADMIN/SUPERUSER-gated, so canManageSeeds() here is a UI-side mirror of that same rule, not
+  // a substitute for it -- a caller who fails the server's check simply gets an empty list here via
+  // the catch below, same as before this feature existed). Re-renders on completion so any empty grid
+  // already on screen picks up the "Load sample data" action without the user having to do anything.
+  async function loadAvailableSeeds() {
+    if (state.seeds.loaded || state.seeds.loading) {
+      return;
+    }
+    state.seeds.loading = true;
+    try {
+      const seeds = await fetchJson("/api/admin/seeds", { method: "GET", headers: headers() });
+      state.seeds.available = Array.isArray(seeds) ? seeds : [];
+    } catch (error) {
+      state.seeds.available = [];
+    }
+    state.seeds.loading = false;
+    state.seeds.loaded = true;
+    render();
+  }
+
+  async function runSeed(seedId, concept) {
+    try {
+      setStatus("Loading sample data…", false);
+      const result = await fetchJson("/api/admin/seeds/" + encodeURIComponent(seedId) + "/run", {
+        method: "POST",
+        headers: headers()
+      });
+      if (!result || result.ok === false) {
+        notify("Sample data load failed: " + (result && result.failureMessage ? result.failureMessage : "unknown error"), true);
+        return;
+      }
+      const counts = (result && result.createdCounts) || {};
+      const total = Object.keys(counts).reduce(function (sum, key) { return sum + (counts[key] || 0); }, 0);
+      notify(total + " sample record(s) loaded.", false);
+      const panel = panelState(concept);
+      panel.page = 0;
+      await loadPanel(concept);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  }
+
   function renderTable(concept, panel) {
+    const fields = visibleFields(concept, panel);
     const table = document.createElement("table");
     table.className = "records";
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
-    visibleFields(concept).forEach(function (field) {
+    fields.forEach(function (field) {
       const th = document.createElement("th");
       th.textContent = field.label || field.name;
       if (field.sortable) {
@@ -1845,21 +2337,22 @@
     actionHead.textContent = "";
     headRow.appendChild(actionHead);
     thead.appendChild(headRow);
+    thead.appendChild(buildColumnFilterRow(concept, panel, fields));
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
     if (panel.records.length === 0) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = visibleFields(concept).length + 1;
+      td.colSpan = fields.length + 1;
       td.className = "empty";
-      td.textContent = "No records";
+      td.appendChild(buildEmptyStateCta(concept, panel));
       tr.appendChild(td);
       tbody.appendChild(tr);
     } else {
       panel.records.forEach(function (record) {
         const tr = document.createElement("tr");
-        visibleFields(concept).forEach(function (field) {
+        fields.forEach(function (field) {
           const td = document.createElement("td");
           renderFieldValue(td, field, record[field.name], false);
           tr.appendChild(td);
@@ -1909,7 +2402,7 @@
   // this identical HTML shape, not a second bespoke layout.
   function printPanel(concept) {
     const panel = panelState(concept);
-    const fields = visibleFields(concept);
+    const fields = visibleFields(concept, panel);
 
     const doc = document.createElement("div");
     doc.className = "print-document";
@@ -1970,10 +2463,358 @@
     window.print();
   }
 
-  function visibleFields(concept) {
+  // R7.4: `panel` is optional (every pre-existing caller that omits it gets the full model-declared
+  // set unchanged). When passed, columns the user hid via the Columns toggle are excluded -- this is
+  // the ONE place "column set" actually takes effect, so a saved view's hiddenColumns and this
+  // function agree by construction rather than by two independent filters staying in sync.
+  function visibleFields(concept, panel) {
     const columns = concept.list && Array.isArray(concept.list.columns) ? concept.list.columns : [];
     const byName = Object.fromEntries(concept.fields.map(function (field) { return [field.name, field]; }));
-    return columns.map(function (name) { return byName[name]; }).filter(Boolean);
+    const fields = columns.map(function (name) { return byName[name]; }).filter(Boolean);
+    const hidden = panel && Array.isArray(panel.hiddenColumns) ? panel.hiddenColumns : [];
+    if (hidden.length === 0) {
+      return fields;
+    }
+    return fields.filter(function (field) { return hidden.indexOf(field.name) === -1; });
+  }
+
+  // R7.4 (R7.3 follow-up, RC-A1/RC-A3): named filter+sort+column sets per grid, persisted through
+  // the EXISTING scoped-property cascade (PropertyResolverController, GET/PUT /api/properties[/*])
+  // -- zero new server endpoints. A property must be model-declared to be settable at all
+  // (PropertyNotDeclaredException), so this feature is opt-in per concept: only a model that
+  // declares a `views__<ConceptName>` string property renders any of this UI; every other concept,
+  // and every app generated before this feature existed, is unaffected.
+  //
+  // One declared property holds BOTH "my views" and "the team's shared views" for a given grid,
+  // stored as independent rows at two different cascade scopes (settableAt should list a
+  // "$user.id"-derived scope and the implicit root scope, e.g. ["user","tenant"] -- the platform
+  // calls the latter "tenant" everywhere else in this codebase; the roadmap's "workspace" is the
+  // same root scope, just named for what it means to a reader). explain() already reports the
+  // winning row PLUS every less-specific row it overrode (PropertyExplanation.overrode), so ONE
+  // GET fetches both a user's own rows and the team's shared rows in a single round trip -- no
+  // second property, no new endpoint, and (LNCH loop) no cascade collapse hiding one behind the
+  // other the way reading a single scope's "current value" would.
+  function savedViewsPropertyKey(concept) {
+    return "views__" + String(concept.conceptName || "").replace(/[^A-Za-z0-9_]/g, "_");
+  }
+
+  function savedViewsSupported(concept) {
+    if (!Array.isArray(state.propertyDeclarations)) {
+      return false;
+    }
+    const key = savedViewsPropertyKey(concept);
+    return state.propertyDeclarations.some(function (p) { return p.name === key; });
+  }
+
+  // "user" and "tenant" are this platform's own names for the two ends of the cascade (see
+  // properties.html's identical "(tenant-wide root scope)" language) -- resolved from the model's
+  // OWN declared propertyScopes[] rather than hardcoded, so an app that named them differently
+  // still works.
+  function userScopeName() {
+    const scopes = state.propertyScopesInfo || [];
+    const found = scopes.find(function (s) { return s.from === "$user.id"; });
+    return found ? found.name : null;
+  }
+
+  function sharedScopeName() {
+    const scopes = state.propertyScopesInfo || [];
+    const found = scopes.find(function (s) { return !s.from; });
+    return found ? found.name : null;
+  }
+
+  function scopeNameForKind(scopeKind) {
+    return scopeKind === "shared" ? sharedScopeName() : userScopeName();
+  }
+
+  async function loadPropertyDeclarations() {
+    try {
+      const [props, scopes] = await Promise.all([
+        fetchJson("/api/properties", { headers: headers() }),
+        fetchJson("/api/properties/scopes", { headers: headers() })
+      ]);
+      state.propertyDeclarations = Array.isArray(props) ? props : [];
+      state.propertyScopesInfo = Array.isArray(scopes) ? scopes : [];
+    } catch (error) {
+      // Unauthenticated first paint (no API key yet) or an app with no properties[] declared at
+      // all -- either way, the views UI just stays hidden until the next successful bootstrap.
+      state.propertyDeclarations = [];
+      state.propertyScopesInfo = [];
+    }
+  }
+
+  function parseViewList(raw) {
+    if (typeof raw !== "string" || !raw) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  // Combines the ONE explain() call's winning value + overridden scopes into { mine, shared } --
+  // whichever of the two scopes has no stored row at all contributes an empty list, never an error.
+  async function fetchSavedViews(concept) {
+    const key = savedViewsPropertyKey(concept);
+    let explanation;
+    try {
+      explanation = await fetchJson("/api/properties/" + encodeURIComponent(key), { headers: headers() });
+    } catch (error) {
+      return { mine: [], shared: [] };
+    }
+    const uName = userScopeName();
+    const sName = sharedScopeName();
+    const winner = explanation.source ? explanation.source.scopeType : null;
+    const mine = winner === uName ? parseViewList(explanation.value) : [];
+    const shared = winner === sName ? parseViewList(explanation.value) : [];
+    (explanation.overrode || []).forEach(function (entry) {
+      if (entry.scopeType === sName && winner !== sName) {
+        shared.push.apply(shared, parseViewList(entry.value));
+      } else if (entry.scopeType === uName && winner !== uName) {
+        mine.push.apply(mine, parseViewList(entry.value));
+      }
+    });
+    return { mine: mine, shared: shared };
+  }
+
+  async function ensureSavedViewsLoaded(concept, force) {
+    const panel = panelState(concept);
+    if (!savedViewsSupported(concept)) {
+      return;
+    }
+    if (panel.savedViews.loading || (panel.savedViews.loaded && !force)) {
+      return;
+    }
+    panel.savedViews.loading = true;
+    try {
+      const combined = await fetchSavedViews(concept);
+      panel.savedViews.mine = combined.mine;
+      panel.savedViews.shared = combined.shared;
+      panel.savedViews.loaded = true;
+    } catch (error) {
+      panel.savedViews.mine = [];
+      panel.savedViews.shared = [];
+    } finally {
+      panel.savedViews.loading = false;
+    }
+    render();
+  }
+
+  function currentViewSnapshot(panel, name) {
+    return {
+      name: name,
+      filter: panel.filter || "",
+      columnFilters: JSON.parse(JSON.stringify(panel.columnFilters || {})),
+      sort: panel.sort,
+      direction: panel.direction,
+      hiddenColumns: (panel.hiddenColumns || []).slice()
+    };
+  }
+
+  function applySavedView(concept, view) {
+    const panel = panelState(concept);
+    panel.filter = view.filter || "";
+    panel.columnFilters = view.columnFilters ? JSON.parse(JSON.stringify(view.columnFilters)) : {};
+    panel.sort = view.sort || panel.sort;
+    panel.direction = view.direction || panel.direction;
+    panel.hiddenColumns = Array.isArray(view.hiddenColumns) ? view.hiddenColumns.slice() : [];
+    panel.page = 0;
+    loadPanel(concept);
+  }
+
+  async function saveCurrentView(concept, name, scopeKind) {
+    const scopeType = scopeNameForKind(scopeKind);
+    if (!scopeType) {
+      throw new Error("This app has no '" + scopeKind + "' property scope declared.");
+    }
+    const key = savedViewsPropertyKey(concept);
+    const combined = await fetchSavedViews(concept);
+    const list = scopeKind === "shared" ? combined.shared : combined.mine;
+    const panel = panelState(concept);
+    const next = list.filter(function (v) { return v.name !== name; });
+    next.push(currentViewSnapshot(panel, name));
+    await fetchJson("/api/properties/" + encodeURIComponent(key), {
+      method: "PUT",
+      headers: headers(),
+      body: JSON.stringify({ scopeType: scopeType, scopeId: "", value: JSON.stringify(next) })
+    });
+  }
+
+  async function deleteSavedView(concept, scopeKind, name) {
+    const scopeType = scopeNameForKind(scopeKind);
+    if (!scopeType) {
+      throw new Error("This app has no '" + scopeKind + "' property scope declared.");
+    }
+    const key = savedViewsPropertyKey(concept);
+    const combined = await fetchSavedViews(concept);
+    const list = scopeKind === "shared" ? combined.shared : combined.mine;
+    const next = list.filter(function (v) { return v.name !== name; });
+    await fetchJson("/api/properties/" + encodeURIComponent(key), {
+      method: "PUT",
+      headers: headers(),
+      body: JSON.stringify({ scopeType: scopeType, scopeId: "", value: JSON.stringify(next) })
+    });
+  }
+
+  // window.prompt/confirm mirror how this same file already asks for an enum value list (createInput)
+  // and confirms a delete (deleteRecord) -- no new modal component for a two-field ask.
+  async function promptSaveView(concept) {
+    const panel = panelState(concept);
+    const suggested = panel.activeViewToken ? panel.activeViewToken.slice(panel.activeViewToken.indexOf(":") + 1) : "";
+    const name = window.prompt("Save the current filter, sort and columns as a view named:", suggested);
+    if (name === null) {
+      return;
+    }
+    const trimmed = name.trim();
+    if (!trimmed) {
+      notify("A view needs a name.", true);
+      return;
+    }
+    const canShare = Boolean(sharedScopeName());
+    const share = canShare && window.confirm(
+        "Share \"" + trimmed + "\" with everyone in this workspace?\n\nOK = shared with the team\nCancel = just me");
+    try {
+      await saveCurrentView(concept, trimmed, share ? "shared" : "mine");
+      panel.activeViewToken = (share ? "shared:" : "mine:") + trimmed;
+      notify("View “" + trimmed + "” saved" + (share ? " (shared with the team)." : " (just for you)."), false);
+      await ensureSavedViewsLoaded(concept, true);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  }
+
+  async function deleteSelectedView(concept) {
+    const panel = panelState(concept);
+    const token = panel.activeViewToken;
+    if (!token) {
+      notify("Select a saved view to delete first.", true);
+      return;
+    }
+    const idx = token.indexOf(":");
+    const scopeKind = token.slice(0, idx);
+    const name = token.slice(idx + 1);
+    if (!window.confirm("Delete the " + (scopeKind === "shared" ? "shared" : "personal") + " view “" + name + "”?")) {
+      return;
+    }
+    try {
+      await deleteSavedView(concept, scopeKind, name);
+      panel.activeViewToken = "";
+      notify("View “" + name + "” deleted.", false);
+      await ensureSavedViewsLoaded(concept, true);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  }
+
+  function buildViewsBar(concept, panel) {
+    if (!panel.savedViews.loaded && !panel.savedViews.loading) {
+      ensureSavedViewsLoaded(concept);
+    }
+    const bar = document.createElement("div");
+    bar.className = "views-bar";
+    const label = document.createElement("span");
+    label.className = "views-bar-label";
+    label.textContent = "View:";
+    bar.appendChild(label);
+
+    const select = document.createElement("select");
+    select.className = "views-select";
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = panel.savedViews.loading ? "Loading views…" : "-- Select a saved view --";
+    select.appendChild(blank);
+    if (panel.savedViews.mine.length) {
+      const group = document.createElement("optgroup");
+      group.label = "My views";
+      panel.savedViews.mine.forEach(function (view) {
+        const opt = document.createElement("option");
+        opt.value = "mine:" + view.name;
+        opt.textContent = view.name;
+        group.appendChild(opt);
+      });
+      select.appendChild(group);
+    }
+    if (panel.savedViews.shared.length) {
+      const group = document.createElement("optgroup");
+      group.label = "Shared views";
+      panel.savedViews.shared.forEach(function (view) {
+        const opt = document.createElement("option");
+        opt.value = "shared:" + view.name;
+        opt.textContent = view.name;
+        group.appendChild(opt);
+      });
+      select.appendChild(group);
+    }
+    select.value = panel.activeViewToken || "";
+    select.addEventListener("change", function () {
+      panel.activeViewToken = select.value;
+      if (!select.value) {
+        return;
+      }
+      const idx = select.value.indexOf(":");
+      const scopeKind = select.value.slice(0, idx);
+      const name = select.value.slice(idx + 1);
+      const list = scopeKind === "shared" ? panel.savedViews.shared : panel.savedViews.mine;
+      const view = list.find(function (v) { return v.name === name; });
+      if (view) {
+        applySavedView(concept, view);
+      }
+    });
+    bar.appendChild(select);
+    bar.appendChild(button("Save view…", "", function () { promptSaveView(concept); }));
+    bar.appendChild(button("Delete view", "danger", function () { deleteSelectedView(concept); }));
+    return bar;
+  }
+
+  // A model-declared column can be hidden from THIS grid session (and, once saved, from a view) --
+  // gated behind the same savedViewsSupported flag as the views bar itself, since hiding columns is
+  // only meaningful in service of naming a set of them.
+  function buildColumnsToggle(concept, panel) {
+    const allFields = visibleFields(concept);
+    if (allFields.length <= 1) {
+      return null;
+    }
+    const details = document.createElement("details");
+    details.className = "columns-toggle";
+    const summary = document.createElement("summary");
+    summary.textContent = "Columns";
+    details.appendChild(summary);
+    const list = document.createElement("div");
+    list.className = "columns-toggle-list";
+    allFields.forEach(function (field) {
+      const row = document.createElement("label");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.dataset.field = field.name;
+      checkbox.checked = (panel.hiddenColumns || []).indexOf(field.name) === -1;
+      checkbox.addEventListener("change", function () {
+        const hidden = panel.hiddenColumns || (panel.hiddenColumns = []);
+        const at = hidden.indexOf(field.name);
+        if (checkbox.checked) {
+          if (at !== -1) {
+            hidden.splice(at, 1);
+          }
+        } else {
+          if (allFields.length - hidden.length <= 1) {
+            checkbox.checked = true;
+            notify("At least one column must stay visible.", true);
+            return;
+          }
+          if (at === -1) {
+            hidden.push(field.name);
+          }
+        }
+        panel.page = 0;
+        loadPanel(concept);
+      });
+      row.appendChild(checkbox);
+      row.appendChild(document.createTextNode(" " + (field.label || field.name)));
+      list.appendChild(row);
+    });
+    details.appendChild(list);
+    return details;
   }
 
   function formFields(concept, mode) {
@@ -2378,8 +3219,10 @@
         labelText.textContent = (field.label || field.name) + (field.required ? " *" : "");
         label.appendChild(labelText);
         const input = createInput(field, record ? record[field.name] : "", record ? record[concept.idField] : null);
-        input.addEventListener("input", function () { applyConditionals(concept, form, record); });
-        input.addEventListener("change", function () { applyConditionals(concept, form, record); });
+        // R7.1: editing a flagged field clears ONLY that field's own highlight, so fixing one
+        // problem does not hide the ones the user has not addressed yet.
+        input.addEventListener("input", function () { clearFieldErrorsIn(wrapper); applyConditionals(concept, form, record); });
+        input.addEventListener("change", function () { clearFieldErrorsIn(wrapper); applyConditionals(concept, form, record); });
         label.appendChild(input);
         wrapper.appendChild(label);
         grid.appendChild(wrapper);
@@ -2437,6 +3280,143 @@
         control.readOnly = readonly;
       }
     });
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // R7.1: per-field validation errors.
+  //
+  // NOTHING below ever writes to a control's value. That is the load-bearing property: a rejected
+  // save must keep every character the user typed, so the only mutations here are a wrapper class,
+  // an appended note element, and two ARIA attributes.
+  // ---------------------------------------------------------------------------------------------
+
+  let fieldErrorSeq = 0;
+
+  // form.elements[name] yields a RadioNodeList (no .closest) when several controls share a name,
+  // and for a name that collides with the collection's own API ("length", "item", "namedItem") it
+  // yields a number or a function. The field name here comes from a SERVER message, so it is not
+  // necessarily a real field at all -- resolve to a genuine element or to nothing.
+  function formControl(form, name) {
+    let found = form.elements[name];
+    if (found && !found.tagName && typeof found.length === "number") {
+      found = found.length ? found[0] : null;
+    }
+    return found && typeof found.closest === "function" ? found : null;
+  }
+
+  // The 422 body a generated CRUD endpoint returns for an invariant failure is
+  //   { code, concept, invariant, path, message, violations: [ { code, concept, invariant, path, message } ] }
+  // (GeneratedCrudRuntimeSupport.InvariantViolationException.toResponseBody). `path` is the DSL
+  // field name: "email" for a scalar, "address.city" for a nested object field, and the
+  // comma-joined list "a, b" for a compound-unique invariant (CelInvariantEngine's
+  // evaluateCompoundUniqueRule sets fieldPath to exactly that). A uniqueness failure is a 409 with
+  // the SAME body, not a 422, so nothing here filters on status code.
+  //
+  // A plain 400 body is only { code, message } -- no path at all -- yet its message very often does
+  // name the field, in one of two shapes, both measured against a running app rather than assumed:
+  //
+  //   "Required field is missing for User: email"   generated service-base.mustache, ends ": <field>"
+  //   "Entity User: required field 'email' is ..."  invariant path, first single-quoted token
+  //
+  // The second is exactly what the server itself scrapes (InvariantMessageSupport
+  // .extractPathFromMessage), so reusing it keeps both sides reading a message the same way. The
+  // first is anchored at end-of-message so it cannot fire on "Request body is required" or on the
+  // enum message, whose field name is followed by more text. Either way a token that is not a real
+  // field simply matches no control, and the toast reports it alone.
+  function fieldViolations(payload, message) {
+    const out = [];
+    function push(path, detail) {
+      text(path).split(",").forEach(function (segment) {
+        const name = segment.split(/[.[]/)[0].trim();
+        if (name) {
+          out.push({ field: name, message: text(detail) });
+        }
+      });
+    }
+    if (payload && typeof payload === "object") {
+      const violations = Array.isArray(payload.violations) ? payload.violations : [];
+      violations.forEach(function (violation) {
+        if (violation) {
+          push(violation.path, violation.message || message);
+        }
+      });
+      if (!out.length) {
+        push(payload.path, payload.message || message);
+      }
+    }
+    if (!out.length) {
+      const scraped = /'([^']+)'/.exec(text(message)) || /[:.]\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(text(message));
+      push(scraped ? scraped[1] : "", message);
+    }
+    return out;
+  }
+
+  function clearFieldErrorsIn(scope) {
+    Array.prototype.forEach.call(scope.querySelectorAll(".form-field.has-error"), function (wrapper) {
+      wrapper.classList.remove("has-error");
+    });
+    if (scope.classList && scope.classList.contains("has-error")) {
+      scope.classList.remove("has-error");
+    }
+    Array.prototype.forEach.call(scope.querySelectorAll(".field-error"), function (note) {
+      note.parentNode.removeChild(note);
+    });
+    Array.prototype.forEach.call(scope.querySelectorAll("[aria-invalid]"), function (control) {
+      control.removeAttribute("aria-invalid");
+      control.removeAttribute("aria-describedby");
+    });
+  }
+
+  // Marks every named field in `errors` ([{ field, message }]) and returns how many actually found a
+  // control -- the caller uses that to tell a field-addressable rejection from a generic one that
+  // only the toast can carry.
+  function applyFieldErrors(form, errors) {
+    clearFieldErrorsIn(form);
+    let addressed = 0;
+    let firstWrapper = null;
+    errors.forEach(function (entry) {
+      const control = formControl(form, entry.field);
+      const wrapper = control ? control.closest(".form-field") : null;
+      if (!wrapper || wrapper.classList.contains("has-error")) {
+        return;
+      }
+      wrapper.classList.add("has-error");
+      const note = document.createElement("span");
+      note.className = "field-error";
+      note.id = "np-field-error-" + (++fieldErrorSeq);
+      note.textContent = entry.message || "This value is not valid.";
+      wrapper.appendChild(note);
+      control.setAttribute("aria-invalid", "true");
+      control.setAttribute("aria-describedby", note.id);
+      addressed += 1;
+      if (!firstWrapper) {
+        firstWrapper = wrapper;
+      }
+    });
+    if (firstWrapper) {
+      revealFieldTab(form, firstWrapper);
+      const focusTarget = firstWrapper.querySelector("input, select, textarea");
+      if (focusTarget && !focusTarget.disabled) {
+        focusTarget.focus();
+      }
+    }
+    return addressed;
+  }
+
+  // A tabbed form can hide the offending field's whole section, which would leave the highlight
+  // applied off-screen. Click the section's own tab button so the existing tab handler does the
+  // showing -- no second copy of that logic.
+  function revealFieldTab(form, wrapper) {
+    const section = wrapper.closest(".form-tab-section");
+    if (!section || !section.classList.contains("field-hidden")) {
+      return;
+    }
+    const sections = Array.prototype.slice.call(form.querySelectorAll(".form-tab-section"));
+    const tabs = Array.prototype.slice.call(form.querySelectorAll(".form-tab"));
+    const index = sections.indexOf(section);
+    if (index >= 0 && index < tabs.length) {
+      tabs[index].click();
+    }
   }
 
   // Loads every distinct field.widget="custom" script referenced anywhere in the manifest, once,
@@ -3602,6 +4582,12 @@
     const values = currentFormValues(concept, form, record);
     const payload = {};
     const bondFieldsToSync = [];
+    // R7.1: pre-submit misses used to bail on the FIRST one with a status line the user often
+    // could not see. isFieldRequiredNow already ORs field.required with the client-side
+    // requiredWhen predicate (evaluateWhen), so a conditional requirement is caught here too --
+    // that detection always existed, only its reporting was invisible. Collect every miss instead
+    // of returning early, so one round-trip-free submit shows the user all of them at once.
+    const blocked = [];
     for (const field of formFields(concept, mode)) {
       if (!isFieldVisible(field, values)) {
         continue;
@@ -3621,8 +4607,8 @@
         let arrValue;
         try { arrValue = JSON.parse(control.value || "[]"); } catch (e) { arrValue = []; }
         if (required && (!Array.isArray(arrValue) || arrValue.length === 0)) {
-          setStatus((field.label || field.name) + " must have at least one item.", true);
-          return;
+          blocked.push({ field: field.name, message: (field.label || field.name) + " must have at least one item." });
+          continue;
         }
         payload[field.name] = arrValue;
         continue;
@@ -3637,8 +4623,8 @@
         // The hidden input holds the FileHandle JSON that createFileInput's upload set (or the
         // record's existing value, unchanged, if the author didn't pick a new file this edit).
         if (required && !control.value) {
-          setStatus((field.label || field.name) + " requires an uploaded file.", true);
-          return;
+          blocked.push({ field: field.name, message: (field.label || field.name) + " requires an uploaded file." });
+          continue;
         }
         if (control.value) {
           try { payload[field.name] = JSON.parse(control.value); } catch (e) { /* leave unset on parse failure */ }
@@ -3647,8 +4633,8 @@
       }
       const rawValue = control.type === "checkbox" ? control.checked : text(control.value).trim();
       if (required && (rawValue === "" || rawValue === null || rawValue === undefined)) {
-        setStatus((field.label || field.name) + " is required.", true);
-        return;
+        blocked.push({ field: field.name, message: (field.label || field.name) + " is required." });
+        continue;
       }
       if (rawValue !== "" || field.required || control.type === "checkbox") {
         // R5: "decimal" is deliberately excluded here -- parseFloat would round-trip an exact
@@ -3666,7 +4652,15 @@
         }
       }
     }
+    if (blocked.length) {
+      applyFieldErrors(form, blocked);
+      notify(blocked.length === 1
+        ? blocked[0].message
+        : blocked.length + " fields need attention before saving.", true);
+      return;
+    }
     const id = record ? record[concept.idField] : null;
+    clearFieldErrorsIn(form);
     try {
       const saved = await fetchJson(mode === "edit" ? concept.endpointBase + "/" + encodeURIComponent(id) : concept.endpointBase, {
         method: mode === "edit" ? "PUT" : "POST",
@@ -3685,10 +4679,14 @@
         );
       }
       onDone();
-      setStatus(mode === "edit" ? "Record updated." : "Record created.", false);
+      notify(mode === "edit" ? "Record updated." : "Record created.", false);
       await reloadAfterMutation(concept);
     } catch (error) {
-      setStatus(error.message, true);
+      // The form -- modal or inline -- stays exactly as the user left it: onDone() and
+      // reloadAfterMutation() run only on the success path above, so nothing re-renders or rebuilds
+      // it here, and applyFieldErrors touches no control's value. Everything typed is preserved.
+      applyFieldErrors(form, fieldViolations(error.payload, error.message));
+      notify(error.message, true);
     }
   }
 
@@ -3708,10 +4706,10 @@
           throw new Error(errorMessage(payload, response.status));
         }
       });
-      setStatus("Record deleted.", false);
+      notify("Record deleted.", false);
       await reloadAfterMutation(concept);
     } catch (error) {
-      setStatus(error.message, true);
+      notify(error.message, true);
     }
   }
 
@@ -3843,6 +4841,15 @@
       el.apiKey.placeholder = "dev/smoke: " + state.manifest.auth.devKeyHint;
     }
     await loadPrincipal();
+    // R7.4: awaited (not fire-and-forget) -- cheap, and every grid's first render already needs to
+    // know whether to show its Views bar, so there is no useful "later" to defer this to.
+    await loadPropertyDeclarations();
+    // R7.2: fire-and-forget -- loadAvailableSeeds() re-renders itself when it resolves, so an empty
+    // grid already on screen by then picks up the "Load sample data" action without blocking the
+    // rest of bootstrap on an admin-only lookup an ordinary user's roles will just skip.
+    if (canManageSeeds()) {
+      loadAvailableSeeds();
+    }
     // Delegates all chrome (header, nav tree, right rail) to the shared shell -- same runtime as
     // any hand-authored page, just told about business concepts/declared Panels via
     // deriveNativeGroups since those have no natural home in the shell's own generic sections.

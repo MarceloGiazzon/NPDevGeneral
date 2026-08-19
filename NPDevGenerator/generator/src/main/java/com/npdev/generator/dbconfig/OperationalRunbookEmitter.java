@@ -378,11 +378,21 @@ function Test-NpdevServerReachable {
         if (apiKey == null || apiKey.isBlank()) {
             apiKey = "dev-key";
         }
+        // R9.4: the default Spring profile a GUARDED background start (Start-App.ps1/start-app.sh)
+        // boots with. Read from the same config.runtime.springProfile the AppGen PowerShell layer's
+        // own (now-deleted) Start-App.ps1 used, via app-plan.json's springProfiles -- so an app that
+        // relies on it (dev,step0,trial's trial-mode seed data) keeps the same default now that this
+        // emitter, not that PowerShell block, owns the launcher. Deliberately NOT Run-FinalApp.ps1's
+        // 'dev'-only default: that script is unrelated and unchanged by this item.
+        String springProfile = readText(config, "runtime", "springProfile");
+        if (springProfile == null || springProfile.isBlank()) {
+            springProfile = "dev,step0,trial";
+        }
         boolean hasUserConcept = hasConcept(model, "User");
         Path runtimeHostLibs = resolveRuntimeHostLibs(normalizedFinalAppRoot);
 
         Map<String, Object> resolvedPlan = resolvedPlan(model, normalizedFinalAppRoot, opsRoot, runtimeHostLibs,
-                plan, serverPort, apiKey, hasUserConcept);
+                plan, serverPort, apiKey, hasUserConcept, springProfile);
         writeJson(opsRoot.resolve("resolved-db-plan.json"), resolvedPlan);
         write(opsRoot.resolve("Create-Environment.ps1"), createEnvironmentScript());
         write(opsRoot.resolve("Start-Environment.ps1"), startEnvironmentScript());
@@ -391,6 +401,13 @@ function Test-NpdevServerReachable {
         write(opsRoot.resolve("Build-FinalApp.ps1"), buildFinalAppScript());
         write(opsRoot.resolve("Run-FinalApp.ps1"), runFinalAppScript(serverPort));
         writeExecutable(opsRoot.resolve("run-final-app.sh"), runFinalAppScriptPosix(serverPort));
+        // R9.4: guarded background Start/Stop, promoted here from the AppGen PowerShell layer so
+        // every generation path gets the duplicate-PID guard, the port-conflict guard and
+        // restart-safe log handling -- not only apps built through Build-NpdevApp.ps1.
+        write(opsRoot.resolve("Start-App.ps1"), startAppScript());
+        writeExecutable(opsRoot.resolve("start-app.sh"), startAppScriptPosix(serverPort, springProfile));
+        write(opsRoot.resolve("Stop-App.ps1"), stopAppScript());
+        writeExecutable(opsRoot.resolve("stop-app.sh"), stopAppScriptPosix());
         write(opsRoot.resolve("Smoke-Test.ps1"), smokeTestScript());
         write(opsRoot.resolve("Print-DbConnectionInfo.ps1"), printDbConnectionInfoScript());
         write(opsRoot.resolve("Reset-Environment.ps1"), resetEnvironmentScript());
@@ -459,7 +476,8 @@ NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
             GeneratedDatabasePlan plan,
             int serverPort,
             String apiKey,
-            boolean hasUserConcept
+            boolean hasUserConcept,
+            String defaultSpringProfiles
     ) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("appId", plan.appId());
@@ -501,6 +519,10 @@ NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
         out.put("runtimeHostLibsDir", runtimeHostLibs == null ? "" : slash(runtimeHostLibs));
         out.put("serverPort", serverPort);
         out.put("apiKey", apiKey);
+        // R9.4: the Spring profile(s) Start-App.ps1/start-app.sh boot with by default (overridable
+        // via -Profile / a positional argument). NOT read by Run-FinalApp.ps1/run-final-app.sh,
+        // which keep their own long-standing 'dev' default unrelated to this field.
+        out.put("defaultSpringProfiles", defaultSpringProfiles);
         out.put("schemaFingerprint", plan.schemaFingerprint());
         // MON-9: the DB posture travels with the plan, so the Monitor can say whether this app
         // KEEPS its data. Measured 2026-08-17: `_ops/resolved-db-plan.json` is the single file
@@ -1071,6 +1093,12 @@ exit $LASTEXITCODE
      * has no seeded key of its own (see {@code application-prod.properties}), so it needs the same
      * generated {@code secrets/api-key.env} key dev already relies on, or StartupValidator refuses
      * to boot.
+     *
+     * <p>R9.2: also PRUNES {@code app-*.log} down to the newest 20 before this run's own file is
+     * written. D10 gave every run a persisted log; nothing since then ever removed one, so the
+     * directory grew by one file per run for as long as the app existed. This is the launcher-side
+     * half of R9.2's three-path fix -- the runtime host's own {@code logs/app.log} (application.
+     * properties) rolls and caps itself independently of how many times this script has run.
      */
     private static String runFinalAppScript(int serverPort) {
         return """
@@ -1086,6 +1114,21 @@ Set-Location $appRoot
 # rebuild that destroys the only thing worth having.
 $logDir = Join-Path $appRoot 'logs'
 if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
+
+# R9.2: retention pruning. Every run names a NEW timestamped file (D10 above), so without this the
+# count grows without bound across the app's lifetime -- unlike Spring's own logs/app.log (rolled
+# and capped by the runtime host itself), nothing inside the app ever revisits this directory.
+# Pruned BEFORE this run's own file is created (and so before java is even launched), not after
+# exit, so a crash mid-run -- the exact run whose evidence a tester most wants to keep -- still
+# leaves a bounded directory rather than deferring cleanup to a graceful exit that may never come.
+# $NpdevLogRetentionCount counts this run's file too, so -Skip keeps one fewer of the EXISTING
+# files: after this run's file lands, at most $NpdevLogRetentionCount remain.
+$NpdevLogRetentionCount = 20
+Get-ChildItem -LiteralPath $logDir -Filter 'app-*.log' -File -ErrorAction SilentlyContinue |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -Skip ($NpdevLogRetentionCount - 1) |
+  Remove-Item -Force -ErrorAction SilentlyContinue
+
 $logFile = Join-Path $logDir ('app-' + (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') + '.log')
 Write-Host "Logging this run to $logFile"
 """ + API_KEY_PROVISIONER + """
@@ -1134,6 +1177,17 @@ cd "$APP_ROOT"
 # failed is a rebuild that destroys the only thing worth having.
 LOG_DIR="$APP_ROOT/logs"
 mkdir -p "$LOG_DIR"
+
+# R9.2 (POSIX twin): retention pruning, same contract as Run-FinalApp.ps1's -- pruned to the
+# newest (NPDEV_LOG_RETENTION_COUNT - 1) EXISTING files BEFORE this run's own file is created (and
+# before java is launched), so a crash mid-run still leaves a bounded directory. `ls -1t` lists
+# newest-first; `tail -n +N` keeps everything from the Nth entry onward, i.e. drops the newest
+# (N-1) and deletes the rest.
+NPDEV_LOG_RETENTION_COUNT=20
+ls -1t "$LOG_DIR"/app-*.log 2>/dev/null | tail -n +"$NPDEV_LOG_RETENTION_COUNT" | while IFS= read -r old_log; do
+  rm -f "$old_log"
+done
+
 LOG_FILE="$LOG_DIR/app-$(date -u +%Y%m%dT%H%M%SZ).log"
 echo "Logging this run to $LOG_FILE"
 """ + API_KEY_PROVISIONER_SH + """
@@ -1147,6 +1201,273 @@ echo "Active Spring profile: $PROFILE"
 java -jar "$APP_ROOT/build/libs/FinalExec-0.1.0.jar" --server.port=__NPDEV_SERVER_PORT__ "--spring.profiles.active=$PROFILE" 2>&1 | tee "$LOG_FILE"
 """;
         return script.replace("__NPDEV_SERVER_PORT__", Integer.toString(serverPort));
+    }
+
+    /**
+     * R9.4: promoted from the AppGen PowerShell layer -- Build-NpdevApp.ps1 used to emit its OWN,
+     * separate {@code Start-App.ps1} into this same {@code _ops} directory (overwriting nothing of
+     * this emitter's, since this emitter never wrote one), so the duplicate-PID guard, the
+     * port-conflict guard and restart-safe log handling existed ONLY on that one pipeline. A bare
+     * {@code npdev generate} app -- or any future generation path -- had no guarded background
+     * launcher at all, only the foreground, blocking {@link #runFinalAppScript}.
+     *
+     * <p>Log handling composes with R9.2's pruning rather than reintroducing the PowerShell
+     * original's separate, UNBOUNDED {@code app.out.history.log} (appended to on every restart,
+     * never pruned): this writes into the SAME {@code logs/app-*.log} pool, pruned to the SAME
+     * newest-20 by the SAME rule {@link #runFinalAppScript} uses, so a background run and a
+     * foreground run share one bounded budget instead of two independently-growing ones. That also
+     * satisfies the original archive's actual purpose -- a first-boot Super User key banner is never
+     * at risk of being overwritten by a later restart, because each run already gets its own
+     * timestamped file.
+     */
+    private static String startAppScript() {
+        return """
+param([string]$Profile = '')
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+""" + DATA_ROOT_HELPER + """
+$appRoot = Get-NpdevAppRoot -Plan $plan
+
+# Ensures the database environment first, same as the PowerShell original -- now available on every
+# generation path because Start-Environment.ps1 is always emitted here too (Test-Path kept as a
+# defensive no-op for an app generated by an older build of this emitter).
+$startEnvScript = Join-Path $PSScriptRoot 'Start-Environment.ps1'
+if (Test-Path -LiteralPath $startEnvScript) { & $startEnvScript }
+
+$pidFile = Join-Path $PSScriptRoot 'app.pid'
+# Duplicate-PID guard: refuse a second Start while the tracked process is still alive. Without this,
+# a second launch overwrites app.pid with the new PID and Stop-App.ps1 loses track of the first,
+# still-running JVM entirely.
+if (Test-Path -LiteralPath $pidFile) {
+  $existingPidValue = 0
+  [void][int]::TryParse((Get-Content -Raw -LiteralPath $pidFile).Trim(), [ref]$existingPidValue)
+  if ($existingPidValue -gt 0) {
+    $existingProcess = Get-Process -Id $existingPidValue -ErrorAction SilentlyContinue
+    if ($null -ne $existingProcess) {
+      Write-Host "Already running (PID $existingPidValue). Stop it first with Stop-App.ps1."
+      exit 0
+    }
+  }
+}
+# Port-conflict guard: a listener on this app's port that app.pid does not account for is either
+# someone else's service or a JVM this toolbox lost track of -- either way, starting a second one on
+# the same port produces an unexplained bind failure instead of this sentence.
+$portBusy = Get-NetTCPConnection -LocalPort ([int]$plan.serverPort) -State Listen -ErrorAction SilentlyContinue
+if ($portBusy) {
+  $owners = (@($portBusy.OwningProcess) | Sort-Object -Unique) -join ', '
+  Write-Host "Port $($plan.serverPort) is already in use (PID $owners). Stop that first with Stop-App.ps1 to avoid a duplicate." -ForegroundColor Yellow
+  exit 0
+}
+
+# R9.2/R9.4: the SAME bounded pool Run-FinalApp.ps1 writes into.
+$logDir = Join-Path $appRoot 'logs'
+if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
+$NpdevLogRetentionCount = 20
+Get-ChildItem -LiteralPath $logDir -Filter 'app-*.log' -File -ErrorAction SilentlyContinue |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -Skip ($NpdevLogRetentionCount - 1) |
+  Remove-Item -Force -ErrorAction SilentlyContinue
+$logFile = Join-Path $logDir ('app-' + (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') + '.log')
+$errFile = Join-Path $PSScriptRoot 'app.stderr.log'
+
+""" + API_KEY_PROVISIONER + """
+Ensure-NpdevApiKey -AppRoot $appRoot
+""" + SECRETS_ENV_LOADER + """
+
+$jar = Get-ChildItem -LiteralPath $appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
+       Where-Object { $_.FullName -like '*\\build\\libs\\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
+if ($null -eq $jar) { Write-Host 'Runnable jar not found. Run Build-FinalApp.ps1 first.' -ForegroundColor Red; exit 1 }
+
+$effectiveProfile = if ([string]::IsNullOrWhiteSpace($Profile)) { [string]$plan.defaultSpringProfiles } else { $Profile }
+Write-Host "Starting $($plan.appId) on http://localhost:$($plan.serverPort) (profiles: $effectiveProfile)"
+Write-Host "Logging this run to $logFile"
+try {
+  $npdevProgress = [ordered]@{ schemaVersion = 'npdev-run-app-progress.v1'; phase = 'BOOT'; updatedAt = (Get-Date).ToUniversalTime().ToString('o'); pid = $PID }
+  ($npdevProgress | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $appRoot 'npdev-run-app-progress.json') -Encoding UTF8
+} catch { }
+
+$procArgs = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.profiles.active=$effectiveProfile")
+$proc = Start-Process -FilePath 'java' -ArgumentList $procArgs -WorkingDirectory $appRoot -PassThru -RedirectStandardOutput $logFile -RedirectStandardError $errFile -WindowStyle Hidden
+$proc.Id | Set-Content -LiteralPath $pidFile -Encoding ascii
+Write-Host "Started PID $($proc.Id). Logs: $logFile"
+
+$ok = $false
+for ($i = 0; $i -lt 60; $i++) {
+  Start-Sleep -Seconds 2
+  try { $h = Invoke-RestMethod -Method GET -Uri "http://localhost:$($plan.serverPort)/actuator/health" -TimeoutSec 3; if ($h.status -eq 'UP') { $ok = $true; break } } catch { }
+}
+if ($ok) {
+  Write-Host "App is UP at http://localhost:$($plan.serverPort)/actuator/health"
+  try {
+    $npdevProgress = [ordered]@{ schemaVersion = 'npdev-run-app-progress.v1'; phase = 'READY'; updatedAt = (Get-Date).ToUniversalTime().ToString('o'); pid = $PID }
+    ($npdevProgress | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $appRoot 'npdev-run-app-progress.json') -Encoding UTF8
+  } catch { }
+} else {
+  Write-Host 'App did not report healthy in time; check logs.' -ForegroundColor Yellow
+}
+
+# On a first-ever boot, SuperUserBootstrapper writes the one-time Super User key to
+# SUPER_USER_KEY.txt in the app's own working directory (it doesn't know about _ops). Relocate it
+# here so there's exactly ONE fixed, documented place to look.
+$keyFileSource = Join-Path $appRoot 'SUPER_USER_KEY.txt'
+if (Test-Path -LiteralPath $keyFileSource) {
+  $keyFileDest = Join-Path $PSScriptRoot 'SUPER_USER_KEY.txt'
+  Move-Item -LiteralPath $keyFileSource -Destination $keyFileDest -Force
+  Write-Host ''
+  Write-Host "First boot: your Super User key is saved at $keyFileDest" -ForegroundColor Green
+  Write-Host 'Open that file and paste its contents into control-panel.html to unlock it.' -ForegroundColor Green
+}
+exit 0
+""";
+    }
+
+    /**
+     * T3: the POSIX twin of {@link #startAppScript}. No POSIX twin of Start-Environment.ps1 exists
+     * yet (the toolbox's environment orchestration -- Docker profiles, the H2Server jar search -- is
+     * PowerShell-only today, same as before this item), so unlike the PowerShell version this does
+     * NOT attempt to start one; it degrades honestly to "the app process only," which already covers
+     * H2Local (no environment step needed) and matches {@code run-final-app.sh}'s own long-standing
+     * scope.
+     *
+     * <p>The port and default Spring profile are baked as plain tokens, not read from the plan's
+     * JSON at runtime -- {@code sh} has no JSON parser, the same reason {@link #runFinalAppScriptPosix}
+     * bakes its port. The port-conflict guard is best-effort: it uses {@code nc} when present and
+     * says so plainly when it is not, rather than silently skipping the check or guessing.
+     */
+    private static String startAppScriptPosix(int serverPort, String defaultSpringProfiles) {
+        String script = """
+#!/bin/sh
+# NPDev generated FinalApp guarded background launcher -- POSIX twin of Start-App.ps1.
+# Usage: ./start-app.sh [profile]
+set -e
+PROFILE="${1:-__NPDEV_DEFAULT_PROFILE__}"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+APP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+SERVER_PORT=__NPDEV_SERVER_PORT__
+PID_FILE="$SCRIPT_DIR/app.pid"
+
+# Duplicate-PID guard (POSIX twin of Start-App.ps1's).
+if [ -f "$PID_FILE" ]; then
+  existing_pid=$(cat "$PID_FILE" 2>/dev/null || true)
+  if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
+    echo "Already running (PID $existing_pid). Stop it first with ./stop-app.sh."
+    exit 0
+  fi
+fi
+
+# Port-conflict guard (POSIX twin). Best-effort: degrades honestly when `nc` is not on PATH rather
+# than silently skipping the check or guessing.
+if command -v nc >/dev/null 2>&1; then
+  if nc -z 127.0.0.1 "$SERVER_PORT" 2>/dev/null; then
+    echo "Port $SERVER_PORT is already in use. Stop that first with ./stop-app.sh to avoid a duplicate."
+    exit 0
+  fi
+else
+  echo "Note: 'nc' not found on PATH -- skipping the port-conflict check." >&2
+fi
+
+# R9.2/R9.4 (POSIX twin): the SAME bounded pool run-final-app.sh writes into (logs/app-*.log, newest
+# 20 kept) -- a background run and a foreground run share one retention budget.
+LOG_DIR="$APP_ROOT/logs"
+mkdir -p "$LOG_DIR"
+NPDEV_LOG_RETENTION_COUNT=20
+ls -1t "$LOG_DIR"/app-*.log 2>/dev/null | tail -n +"$NPDEV_LOG_RETENTION_COUNT" | while IFS= read -r old_log; do
+  rm -f "$old_log"
+done
+LOG_FILE="$LOG_DIR/app-$(date -u +%Y%m%dT%H%M%SZ).log"
+ERR_FILE="$SCRIPT_DIR/app.stderr.log"
+
+""" + API_KEY_PROVISIONER_SH + """
+ensure_npdev_api_key "$APP_ROOT"
+""" + SECRETS_ENV_LOADER_SH + """
+load_npdev_agent_proxy_env "$APP_ROOT"
+
+JAR=$(find "$APP_ROOT" -path '*/build/libs/*' -name 'FinalExec-*.jar' ! -name '*-plain.jar' 2>/dev/null | head -n 1)
+if [ -z "$JAR" ]; then
+  echo "Runnable jar not found. Build this app first (gradlew clean build, or ./Build-FinalApp.ps1)."
+  exit 1
+fi
+
+echo "Starting on http://localhost:$SERVER_PORT (profile: $PROFILE)"
+echo "Logging this run to $LOG_FILE"
+nohup java -jar "$JAR" "--server.port=$SERVER_PORT" "--spring.profiles.active=$PROFILE" >"$LOG_FILE" 2>"$ERR_FILE" &
+APP_PID=$!
+echo "$APP_PID" > "$PID_FILE"
+echo "Started PID $APP_PID. Logs: $LOG_FILE"
+
+ok=0
+i=0
+while [ "$i" -lt 60 ]; do
+  sleep 2
+  if curl -fsS "http://localhost:$SERVER_PORT/actuator/health" 2>/dev/null | grep -q '"status":"UP"'; then
+    ok=1
+    break
+  fi
+  i=$((i + 1))
+done
+if [ "$ok" = "1" ]; then
+  echo "App is UP at http://localhost:$SERVER_PORT/actuator/health"
+else
+  echo "App did not report healthy in time; check logs."
+fi
+
+KEY_FILE_SOURCE="$APP_ROOT/SUPER_USER_KEY.txt"
+if [ -f "$KEY_FILE_SOURCE" ]; then
+  KEY_FILE_DEST="$SCRIPT_DIR/SUPER_USER_KEY.txt"
+  mv -f "$KEY_FILE_SOURCE" "$KEY_FILE_DEST"
+  echo ""
+  echo "First boot: your Super User key is saved at $KEY_FILE_DEST"
+  echo "Open that file and paste its contents into control-panel.html to unlock it."
+fi
+exit 0
+""";
+        return script.replace("__NPDEV_SERVER_PORT__", Integer.toString(serverPort))
+                .replace("__NPDEV_DEFAULT_PROFILE__", defaultSpringProfiles);
+    }
+
+    /**
+     * R9.4: promoted from the AppGen PowerShell layer, same story as {@link #startAppScript}. Stops
+     * the tracked process (if any) and the database environment.
+     */
+    private static String stopAppScript() {
+        return """
+$ErrorActionPreference = 'Stop'
+$pidFile = Join-Path $PSScriptRoot 'app.pid'
+if (-not (Test-Path -LiteralPath $pidFile)) { Write-Host 'No app.pid; nothing to stop.'; exit 0 }
+$appPidValue = 0
+[void][int]::TryParse((Get-Content -Raw -LiteralPath $pidFile).Trim(), [ref]$appPidValue)
+$appProcess = if ($appPidValue -gt 0) { Get-Process -Id $appPidValue -ErrorAction SilentlyContinue } else { $null }
+if ($null -ne $appProcess) { Stop-Process -Id $appPidValue -Force; Write-Host "Stopped PID $appPidValue." }
+else { Write-Host "Process $appPidValue was not running." }
+Remove-Item -LiteralPath $pidFile -Force
+$stopEnvScript = Join-Path $PSScriptRoot 'Stop-Environment.ps1'
+if (Test-Path -LiteralPath $stopEnvScript) { & $stopEnvScript }
+exit 0
+""";
+    }
+
+    /** T3: the POSIX twin of {@link #stopAppScript}. */
+    private static String stopAppScriptPosix() {
+        return """
+#!/bin/sh
+# NPDev generated FinalApp guarded background stopper -- POSIX twin of Stop-App.ps1.
+set -e
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+PID_FILE="$SCRIPT_DIR/app.pid"
+if [ ! -f "$PID_FILE" ]; then
+  echo 'No app.pid; nothing to stop.'
+  exit 0
+fi
+APP_PID=$(cat "$PID_FILE" 2>/dev/null || true)
+if [ -n "$APP_PID" ] && kill -0 "$APP_PID" 2>/dev/null; then
+  kill "$APP_PID"
+  echo "Stopped PID $APP_PID."
+else
+  echo "Process $APP_PID was not running."
+fi
+rm -f "$PID_FILE"
+exit 0
+""";
     }
 
     private static String smokeTestScript() {
@@ -1336,9 +1657,9 @@ Run every command below **from this `_ops` directory** -- it lives inside the ap
 the paths are relative to it and stay correct wherever you copy the app to.
 
 `pwsh` is the cross-platform PowerShell binary name (Windows, Linux and macOS all install it as
-`pwsh`, never `pwsh.exe` off Windows). Steps 1, 2, 4, 5, 6 and 7 are PowerShell-only today; step 3
-(Run FinalApp) also has a POSIX shell twin, `run-final-app.sh`, for a machine with no PowerShell at
-all.
+`pwsh`, never `pwsh.exe` off Windows). Steps 1, 2, 4, 5, 6 and 7 are PowerShell-only today; steps 3
+and 3a also have POSIX shell twins (`run-final-app.sh`, `start-app.sh`/`stop-app.sh`) for a machine
+with no PowerShell at all.
 
 ```sh
 cd <this app>/_ops
@@ -1382,6 +1703,26 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File ./Run-FinalApp.ps1 -Profile prod
 
 `prod` seeds no admin API key of its own; either launcher provisions/reuses the same
 `secrets/api-key.env` key regardless of profile (see `X-Api-Key` in the console output on first run).
+
+3a. Start/Stop FinalApp (background, guarded)
+
+An alternative to step 3 for a launcher you can script against: `Start-App.ps1` runs the jar in the
+BACKGROUND, tracks its PID in `app.pid`, and waits for `/actuator/health` before returning. It
+refuses a second Start while a tracked process is still alive or something else already listens on
+this app's port (R9.4), rather than producing a second JVM `app.pid` no longer tracks.
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Start-App.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Stop-App.ps1
+```
+
+```sh
+./start-app.sh
+./stop-app.sh
+```
+
+Same log handling as step 3: each run gets its own `logs/app-<timestamp>.log`, pruned to the newest
+20 across BOTH launchers -- a background run and a foreground run share one bounded pool.
 
 4. Smoke-test FinalApp
 
