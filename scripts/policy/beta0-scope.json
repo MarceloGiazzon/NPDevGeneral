@@ -73,8 +73,8 @@
       "create-users-panel-procedure",
       "trusted-source-path-traversal"
     ],
-    "deferredRoot": "golden-ai-scenarios/deferred/trusted-source",
-    "decision": "CP3 Path B: trusted-source scenarios are excluded from active Beta0 evidence until full current proofs are active and fresh."
+    "deferredRoot": null,
+    "decision": "CP3 Path B: trusted-source scenarios were excluded from active Beta0 evidence pending full current proofs; the deferred fixtures themselves were removed as unused (never read by any script, zero validation value) -- this record stays as history of the exclusion decision, not a live path."
   },
   "aiMayGenerate": {
     "aiModel": true,

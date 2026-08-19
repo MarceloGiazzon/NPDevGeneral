@@ -97,6 +97,12 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `Build-ClaudeApp.ps1` (Claude Support Desk), `Build-AppGenApp.ps1`. Per-app `_ops` toolbox emits
   `Start-App.ps1` / `Stop-App.ps1` / `Start-Environment.ps1` (starts H2Server TCP).
 - **Validate a model:** `:NPDevContract:dsl:validateModel -PmodelPath=<p> -PreportOut=<p>`.
+- **Source-code-only archive:** `pwsh -NoProfile -File scripts/release/New-SourceZip.ps1` (add `-ListOnly`
+  to preview). Enumerates via `git ls-files`, filters through
+  `scripts/policy/source-zip-manifest.json` (production `src/main` + schemas + packs + build files +
+  CLI/MCP/Manager + the appgen/runtimehost/samples build scripts; **no** `src/test`, no
+  `scripts/quality`, no `ledger`/`docs`/`NPDevSamples`), and writes to `<BuildRoot>\source-zip\`.
+  **To change what ships, edit the manifest — the script holds no path knowledge.**
 - **Quality gates — "all gates green" means ONE command:**
   `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1` (T2). It runs **three** gates by default
   (it was four until `frontend` was removed with `NPDevEditor` on 2026-08-17 — see `BREAKING.md`), in
@@ -139,6 +145,17 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   staleness ledger every tier writes to (`scripts/quality/verification-cadence.json` +
   `scripts/quality/cadence_state.py`) — a check that goes stale past its declared `maxStaleness`
   shows up as a visible, blocking OVERDUE line, never a silent skip.
+- **Local machine resource policy:** `scripts/policy/local-test-profile.json` (read via
+  `scripts/quality/test_profile.py`) declares a `checkLevel` and which DB engines are enabled on
+  THIS machine — default `enabledEngines: [h2, sqlserver]`, so Postgres/MySQL/Docker are OFF by
+  default for local/agent work. `NPDevKernel/adapters/postgres-test-support`'s
+  `PostgresTestSupport.dataSource()` (the eager Testcontainers entry point 9+ Postgres adapter
+  tests share) and `run-item20-postgres-proof.ps1` / `run-docker-linux-proof.ps1` all check it
+  and skip cleanly (JUnit `Assumptions.assumeTrue` / `SKIPPED:` + exit 0) instead of pulling
+  Docker. **`CI=true` always bypasses the profile** — every GitHub Actions workflow sets it by
+  convention, so CI's Postgres/MySQL/Docker coverage is untouched; this file only throttles a
+  developer/agent machine. To opt back in for one run: `NPDEV_TEST_PROFILE_ENGINES=postgres` env
+  var, or `-Force` on the two proof scripts, or add the engine to `enabledEngines` in the file.
 - **AI knowledge substrate:** durable platform findings live as `knowledge/cards/*.json`
   (schema `schemas/ai/knowledge-card.schema.json`); `knowledge/platform-status.json` is a **derived**
   projection of the gaps ledger (regen via `scripts/ai/extract_platform_status.py`, never hand-edit).
