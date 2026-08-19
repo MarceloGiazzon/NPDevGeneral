@@ -1,0 +1,57 @@
+id: EDIT-13
+title: >-
+  R5.6 per-locale labels never reach a generated app -- CompiledMetadataCanonicalJson drops them
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-19
+source: >-
+  Found 2026-08-19 immediately after R5.6 landed (commit 8884d11d), by reading the metadata writer
+  rather than trusting the DSL suite's green.
+surface: dsl/metadata-projection
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/i18n/LabelResolver.java
+detail: |
+  R5.6 widened 11 AST/Compiled record pairs so every label site accepts a per-locale map, threaded it
+  through parse/compile/resolve and the canonical model round-trip, shipped `LabelResolver` with an
+  exact-tag -> language-prefix -> default fallback, a codemod and a BREAKING.md entry. All of that is
+  real and tested (`:dsl:test` 819 with the 10 new locale tests included).
+
+  **And none of it reaches a running app.** `CompiledMetadataCanonicalJson` -- the writer that
+  produces a generated app's `compiled-metadata.json`, consumed by `RuntimeApiEmitter` /
+  `MetadataManifestAssetEmitter` and served by `RuntimeUiMetadataController` -- calls
+  `getLabel()` at every site and **never `getLabelLocales()`**. Verified independently:
+  `grep -c getLabelLocales` on that file returns **0**.
+
+  So an author can declare `{"default": "Widget order", "pt-BR": "Pedido de widget"}` today, it
+  survives the DSL's own canonical model correctly, and the generated app's UI shows only the
+  default text. No locale resolution happens at generation time or at serve time. R5.6's stated
+  done-when -- "a demo app renders fully in pt-BR and en by switching user locale live" -- is
+  therefore NOT met, and the DSL suite passing proves nothing about it.
+
+  This is the fifth instance this session of the same shape: a feature that compiles, tests green,
+  and cannot be reached by a real app (see also R4.4's uncalled invariant engine, R9.7's missing CLI
+  verb, R6.4's unbound adapters, and PackExtensionComposer never being called by GeneratorFacade).
+  In every case the cause was the same -- the last wiring step crossed a module boundary the
+  implementer did not own.
+
+  **What closing it requires**, both outside the DSL:
+  1. `NPDevGenerator` -- thread `labelLocales` into `compiled-metadata.json` at every label site the
+     writer emits.
+  2. `NPDevRuntimeHost` -- read a request locale (`ExecutionContext.locale()` already exists, reading
+     the generic `tags` map under key `locale`; nothing populates it yet) and call
+     `LabelResolver.resolve` when serving UI metadata. The natural place to populate it is the
+     generated `RuntimeContextService`, from `Accept-Language` or the existing `X-Tag-*` convention.
+
+  Until both land, treat per-locale labels as an authoring-layer feature only, and do not describe
+  the platform as supporting bilingual deployments.
+guard:
+  kind: manual
+  ref: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java
+  asserts: >-
+    CompiledMetadataCanonicalJson emits per-locale label maps, not only the default text -- i.e.
+    `grep -c getLabelLocales` on that file is greater than 0, and a generated app serves a locale
+    other than the default. Measured RED on 2026-08-19: exactly 0 occurrences, so every locale map
+    an author declares is dropped on the way to the app.
+  provenRed: true
