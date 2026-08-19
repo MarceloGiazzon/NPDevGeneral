@@ -104,6 +104,19 @@ public final class AuditingConceptStoreDecorator implements ConceptStore {
         return delegate.aggregate(tenantId, conceptName, query);
     }
 
+    /**
+     * R5.2 (RUN-1 item 4): forwards to the delegate's own pushdown override (on
+     * {@link JdbcBusinessConceptStore}, a candidate-narrowing SQL {@code WHERE}) rather than falling
+     * through to {@link ConceptStore}'s default (fetch-all + scan-in-the-JVM) -- the same
+     * "without this override, wrapping a concept in this decorator silently downgrades a capability"
+     * trap {@link #query}/{@link #aggregate} above already document.
+     */
+    @Override
+    public boolean existsUnique(String tenantId, String conceptName, List<String> fieldNames, List<Object> values, String excludeId) {
+        log("existsUnique", "");
+        return delegate.existsUnique(tenantId, conceptName, fieldNames, values, excludeId);
+    }
+
     private void log(String operation, String id) {
         System.out.println("NPDev persistence adapter override [persistence-audited] concept=" + conceptName
                 + " op=" + operation + (id == null || id.isBlank() ? "" : " id=" + id));

@@ -759,4 +759,36 @@ class DialectConformanceTierATest {
             assertEquals(expected, dialect.nullsFirstAscending("c"), dialect.name());
         }
     }
+
+    // ------------------------------------------------------------------ R5.2 (RUN-1 item 4): trimmedText
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("R5.2: trimmedText never emits the single-argument ANSI TRIM -- SQL Server 2016 does not have it")
+    void trimmedTextNeverEmitsBareTrim(SqlDialect dialect) {
+        String expr = dialect.trimmedText("sku");
+        // The construct this method exists to replace: single-arg TRIM(x) did not exist in T-SQL
+        // before SQL Server 2017, and this dialect targets 2016+. If a future edit spells TRIM(...)
+        // directly, an app pinned to SQL Server 2016 gets a syntax error the H2-only local dev loop
+        // can never catch.
+        String upper = expr.toUpperCase(java.util.Locale.ROOT);
+        assertTrue(upper.contains("LTRIM") && upper.contains("RTRIM"), dialect.name() + ": " + expr);
+        // Strip the two portable forms out and confirm no OTHER "TRIM(" is left -- i.e. no bare,
+        // single-argument TRIM(...) call anywhere in the expression.
+        String withoutPortableForms = upper.replace("LTRIM(", "").replace("RTRIM(", "");
+        assertFalse(withoutPortableForms.contains("TRIM("), dialect.name() + ": emitted bare TRIM(...) -- " + expr);
+        assertTrue(expr.contains("sku"), dialect.name() + ": expression dropped -- " + expr);
+    }
+
+    @Test
+    @DisplayName("R5.2: every engine gets the IDENTICAL trimmedText expression -- there is no per-dialect answer to diverge")
+    void trimmedTextIsUniformAcrossEngines() {
+        // Same reasoning as nullsFirstAscendingIsUniformAcrossEngines above: LTRIM(RTRIM(x)) is plain
+        // ANSI SQL every engine (including SQL Server 2016) has always had, so there is no per-engine
+        // fact to encode and every dialect must return the literal same expression.
+        String expected = PostgresDialect.INSTANCE.trimmedText("c");
+        for (SqlDialect dialect : SqlDialects.all()) {
+            assertEquals(expected, dialect.trimmedText("c"), dialect.name());
+        }
+    }
 }

@@ -901,47 +901,39 @@ public class {{entityName}}ServiceBase {
         }
     }
 
+    /**
+     * R5.2 (closes RUN-1 item 4): delegates to {@link ConceptStore#existsUnique}, which pushes an
+     * indexed candidate-narrowing SQL {@code WHERE} down to the JDBC store instead of this method's
+     * old strategy -- {@code conceptStore.findAll(...)}, materializing the WHOLE tenant table into
+     * the JVM for every single create/update, the platform's worst remaining data-scale landmine.
+     * The comparison semantics are UNCHANGED: {@link ConceptStore#uniqueValuesCollide} is the exact
+     * same trim/case-insensitive-when-either-side-is-a-String, cross-type-tolerant rule this method's
+     * inline loop used to apply by calling {@link #uniqueValuesEqual} (still defined below, and still
+     * used by {@code listBy*} reference finders, which are a different call site with a different
+     * fetch-then-filter shape RUN-1's own scope never covered).
+     */
     private boolean existsUniqueInConceptStore(String fieldName, Object value, UUID excludeId) {
         if (fieldName == null || fieldName.isBlank() || value == null) {
             return false;
         }
-        String normalizedField = fieldName.trim();
-        for (ConceptRecord record : conceptStore.findAll(currentTenantId(), CONCEPT_NAME)) {
-            if (excludeId != null && String.valueOf(excludeId).equalsIgnoreCase(record.id())) {
-                continue;
-            }
-            Object existingValue = record.data().get(normalizedField);
-            if (uniqueValuesEqual(existingValue, value)) {
-                return true;
-            }
-        }
-        return false;
+        return conceptStore.existsUnique(
+                currentTenantId(), CONCEPT_NAME,
+                List.of(fieldName.trim()), List.of(value),
+                excludeId == null ? null : String.valueOf(excludeId));
     }
 
-    // LIFT-UNIQUE-P3: compound-unique pre-check, same full-scan-of-the-tenant strategy as
-    // existsUniqueInConceptStore above, extended to require every (field, value) pair to match
-    // the same candidate row (an AND across columns, not an OR of independent field checks).
+    // LIFT-UNIQUE-P3 / R5.2: compound-unique pre-check -- same delegation as
+    // existsUniqueInConceptStore above, extended to require every (field, value) pair to match the
+    // same candidate row (an AND across columns, not an OR of independent field checks). See that
+    // method's javadoc for why this no longer scans the tenant table itself.
     private boolean existsUniqueCompoundInConceptStore(List<String> fieldNames, List<Object> values, UUID excludeId) {
         if (fieldNames == null || fieldNames.isEmpty() || values == null || fieldNames.size() != values.size()) {
             return false;
         }
-        for (ConceptRecord record : conceptStore.findAll(currentTenantId(), CONCEPT_NAME)) {
-            if (excludeId != null && String.valueOf(excludeId).equalsIgnoreCase(record.id())) {
-                continue;
-            }
-            boolean allMatch = true;
-            for (int i = 0; i < fieldNames.size(); i++) {
-                Object existingValue = record.data().get(fieldNames.get(i));
-                if (!uniqueValuesEqual(existingValue, values.get(i))) {
-                    allMatch = false;
-                    break;
-                }
-            }
-            if (allMatch) {
-                return true;
-            }
-        }
-        return false;
+        return conceptStore.existsUnique(
+                currentTenantId(), CONCEPT_NAME,
+                fieldNames, values,
+                excludeId == null ? null : String.valueOf(excludeId));
     }
 
     private {{entityName}} entityFromRecord(ConceptRecord record) {
