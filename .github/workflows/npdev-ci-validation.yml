@@ -148,11 +148,59 @@ jobs:
             :adapters:tracestore-postgres:test \
             --no-daemon --console=plain
 
+      # QUAL-23 (2026-08-19): S3ObjectStoreFileStoreAdapterMinioLiveTest boots a real
+      # org.testcontainers.containers.MinIOContainer -- same Docker-on-a-Linux-runner shape as the
+      # Postgres Testcontainers step above, just a different image, so it lives here rather than in
+      # the fast inproc step below. Not added to npdev-pr-gate.yml: that job already accepts the cost
+      # of one Testcontainers image (Postgres) per PR; a second, different container image would add
+      # its own pull/start latency to every PR for a module with no other CI coverage today, which is
+      # exactly the deliberate nightly-first promotion path B21 already established for the
+      # *-postgres adapters below.
+      - name: Kernel Docker-backed adapter tests (non-Postgres)
+        working-directory: NPDevKernel
+        timeout-minutes: 20
+        run: |
+          ./gradlew :adapters:file-store-objectstore:test --no-daemon --console=plain
+
       - name: Flow compiled tests
         working-directory: NPDevKernel
         timeout-minutes: 15
         run: |
           ./gradlew :adapters:flow-compiled:test --no-daemon --console=plain
+
+      # QUAL-23 (2026-08-19): 17 kernel adapter modules with real @Test coverage that ran in NO CI
+      # workflow -- settings.gradle declared them, both workflows' hand-maintained allowlists never
+      # named them, and no blanket `./gradlew test` covers the kernel root. None of these need
+      # Docker/Postgres (plain H2/in-memory/loopback-socket unit tests -- verified per-module before
+      # adding: no org.testcontainers import, no build.gradle testcontainers dependency). Includes
+      # expression-cel (CelInvariantEngine / GeneratedCrudRuntimeSupport, core runtime) and the two
+      # adapters carrying RUN-4's hanging-socket deadline/retry proofs (external-ai-http, mail-smtp;
+      # their "hanging endpoint" is a loopback ServerSocket the test owns with a 300ms/50ms deadline,
+      # not a real network call). scripts/quality/check-ci-adapter-coverage.py reconciles this list
+      # against settings.gradle going forward so a 42nd adapter can't repeat the gap silently.
+      - name: Kernel adapter tests (previously CI-uncovered, QUAL-23)
+        working-directory: NPDevKernel
+        timeout-minutes: 25
+        run: |
+          ./gradlew \
+            :adapters:auth-context-jwt:test \
+            :adapters:authz-default:test \
+            :adapters:document-render-inproc:test \
+            :adapters:document-render-stub:test \
+            :adapters:expression-cel:test \
+            :adapters:external-ai-inproc:test \
+            :adapters:external-ai-http:test \
+            :adapters:external-ai-pack-core:test \
+            :adapters:json-jackson:test \
+            :adapters:mail-inproc:test \
+            :adapters:mail-smtp:test \
+            :adapters:metrics-micrometer:test \
+            :adapters:resume-bootstrap-spring:test \
+            :adapters:runtime-validation:test \
+            :adapters:schema-validator-default:test \
+            :adapters:tracing-redaction-default:test \
+            :adapters:webhook-http:test \
+            --no-daemon --console=plain
 
       - name: Generator unit tests
         working-directory: NPDevGenerator

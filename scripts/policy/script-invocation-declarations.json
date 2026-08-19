@@ -217,6 +217,9 @@
     "scripts/quality/check-cadence-coverage.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-ci-adapter-coverage.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-closeable-streams.py": {
       "invocation": "ci-gate"
     },

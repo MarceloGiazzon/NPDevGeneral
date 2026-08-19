@@ -3,8 +3,10 @@ title: >-
   21 of 41 kernel adapter modules run their tests in NO CI workflow
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
 source: >-
   Found 2026-08-19 while wiring R6.4's messaging adapters into the runtime. An agent reported its
   own new modules were absent from CI; enumerating settings.gradle against both workflows showed the
@@ -50,16 +52,44 @@ detail: |
   blind could surface pre-existing failures and lengthen every PR run, which is a decision to make
   deliberately rather than as a side effect of an unrelated commit.
 
-  **Suggested fix**, mirroring the mechanism that already works: a consistency check that reconciles
-  `settings.gradle`'s adapter list against the workflow allowlists and fails when one is missing,
-  with an explicit opt-out list carrying a recorded reason (exactly `KNOWN_NOT_PACKAGED`'s shape).
-  Then triage the 19 in a change that owns the outcome.
+  **Closed 2026-08-19.** Built `scripts/quality/check-ci-adapter-coverage.py`, the suggested-fix
+  mechanism: parses `settings.gradle`'s 41 adapters and both workflow files' `:adapters:<name>:test`
+  tokens, fails naming any module in neither and not on a reviewed `EXCLUDED` table (one entry,
+  `postgres-test-support` -- shared Testcontainers scaffolding, not a shipped adapter, its own tiny
+  unit suite exercised transitively by the *-postgres adapters that already build it). A second
+  control catches a stale `EXCLUDED` entry (names a module no longer in `settings.gradle`). Wired as
+  step [37/37] of `run-ai-knowledge-gate.ps1`, and separately auto-discovered by that gate's step
+  [14/36] (`--calibrate` self-test loop) since the script declares `--calibrate`.
+
+  Measured RED against the pre-fix repo (this checker's first real run, before any workflow edit):
+  22 covered, 1 excluded, **18 uncovered** (messaging-http/messaging-inproc from the source commit
+  already covered, so 18 not 19) -- exact list: auth-context-jwt, authz-default,
+  document-render-inproc, document-render-stub, expression-cel, external-ai-inproc, external-ai-http,
+  external-ai-pack-core, file-store-objectstore, json-jackson, mail-inproc, mail-smtp,
+  metrics-micrometer, resume-bootstrap-spring, runtime-validation, schema-validator-default,
+  tracing-redaction-default, webhook-http. Each was checked individually (test source dir present,
+  `build.gradle` dependencies, `org.testcontainers` imports) before adding: 17 are plain H2/in-memory/
+  loopback-socket unit tests (no Docker), added to BOTH `npdev-ci-validation.yml`'s Linux job and
+  `npdev-pr-gate.yml` so a regression shows red on the PR itself, not only nightly.
+  `file-store-objectstore` alone needs a real `MinIOContainer` (Testcontainers/Docker), so it was
+  added only to `npdev-ci-validation.yml`'s Linux job next to the existing Postgres Testcontainers
+  step, mirroring the existing nightly-first promotion path for Docker-backed adapters (B21) rather
+  than adding a second container pull to every PR. Re-running the checker after the edits: 40
+  covered, 1 excluded, 0 uncovered (GREEN). 8 of the 18 newly-added modules were spot-run for real
+  (`./gradlew :adapters:<name>:test`, separate `-PnpdevBuildRoot` to avoid colliding with a
+  concurrent `NPDevContract/dsl` edit) and passed: webhook-http, json-jackson, metrics-micrometer,
+  schema-validator-default, document-render-inproc, document-render-stub, mail-inproc,
+  external-ai-inproc (`BUILD SUCCESSFUL in 3m 17s`). The remaining 9 (including
+  `file-store-objectstore`, Docker-gated and off by default on this machine per
+  `scripts/policy/local-test-profile.json`) were `--dry-run`-verified only (task exists, resolves)
+  and are not independently proven to pass in CI -- GitHub Actions cannot be run from here.
 guard:
-  kind: manual
-  ref: .github/workflows/npdev-pr-gate.yml
+  kind: script
+  ref: scripts/quality/check-ci-adapter-coverage.py
   asserts: >-
     Every adapter module in NPDevKernel/settings.gradle either appears as an ":adapters:<name>:test"
-    target in the PR gate workflow, or is on a recorded opt-out list with a reason. Measured RED on
-    2026-08-19: 21 of 41 modules appeared in neither workflow, including expression-cel,
-    auth-context-jwt and the two adapters carrying RUN-4's hanging-socket deadline proofs.
+    target in npdev-ci-validation.yml or npdev-pr-gate.yml, or is on the script's reviewed EXCLUDED
+    table with a recorded reason; a stale EXCLUDED entry is itself flagged. Measured RED on
+    2026-08-19 (18 of 41 modules in neither workflow and not excluded), then GREEN after adding 17
+    to both workflows and 1 (file-store-objectstore, Docker-only) to the Linux nightly job alone.
   provenRed: true
