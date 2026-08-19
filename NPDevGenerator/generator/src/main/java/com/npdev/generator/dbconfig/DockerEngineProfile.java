@@ -53,7 +53,8 @@ public record DockerEngineProfile(
         String dataVolumePath,
         String composeImage,
         String backupCommand,
-        String restoreCommand
+        String restoreCommand,
+        Map<String, String> backupClientEnv
 ) {
 
     public enum Kind {
@@ -149,6 +150,15 @@ public record DockerEngineProfile(
                     + " but restoreCommand=" + hasRestore + " -- they must both be present or both "
                     + "absent. An engine that can be dumped but never restored (or restored from a "
                     + "dump nothing can produce) is worse than declaring neither.");
+        }
+        // R9.9: the scheduled-backup sidecar and its scratch-restore verify mode both run as
+        // SEPARATE containers on the compose network (not `docker compose exec` into `database`
+        // like backup.sh/restore.sh), so they need the connection facts backupClientEnv supplies.
+        // Required exactly when backupCommand/restoreCommand are -- an engine that can be dumped by
+        // hand but never on a schedule (because the sidecar has no way to reach the database) is the
+        // same "appears to work, fails in an operator's hands" trap the R9.1 comment above describes.
+        if (hasBackup) {
+            require(backupClientEnv != null && !backupClientEnv.isEmpty(), "backupClientEnv");
         }
     }
 
