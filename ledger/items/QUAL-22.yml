@@ -3,8 +3,9 @@ title: >-
   run-runtimehost-gate.ps1 is RED on roadmap/wave1-2026-08-19 -- NonDefaultRuntimeSurfaceProfileIntegrationTest
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-19
+closed: 2026-08-19
 source: >-
   Found 2026-08-19 while verifying R4.4 (aggregate invariants). The gate was not in the previous
   session's green list, so nothing had run it on this branch until now.
@@ -41,20 +42,54 @@ detail: |
   forcing CompiledModel-derived bean creation at startup for every app, including surface profiles
   that never commit an aggregate.
 
-  **Not yet root-caused.** The failing bean is not named in the console output, and
-  `run-runtimehost-gate.ps1` cleans the sample `Output/` tree on the way out, taking the
-  `TEST-*.xml` (which carries the full `No qualifying bean of type ...` text) with it. Whoever picks
-  this up should re-run the gate and capture that XML before cleanup, or run the assembled sample's
-  `:test` task directly against `NPDevSamples/simple-contact-intake/Output/App`.
+  **ROOT CAUSE (2026-08-19, same day): `NpdevCronSchedulerService` hard-requires a `DataSource`.**
+  The console output never names the failing bean, and the gate cleans the sample `Output/` tree on
+  the way out, taking the `TEST-*.xml` with it -- so this was found by restaging jars
+  (`sync-runtimehost-libs.ps1 -BuildLocalJars`), regenerating the sample by hand, and running the
+  one test directly against `NPDevSamples/simple-contact-intake/Output/App`. The message:
+
+      Error creating bean with name 'npdevCronSchedulerService'
+        defined in URL [jar:.../runtimehost-core-0.1.0.jar!/com/finalexec/scheduler/NpdevCronSchedulerService.class]:
+      Unsatisfied dependency expressed through constructor parameter 4:
+      No qualifying bean of type 'javax.sql.DataSource' available
+
+  R2.7 (cron fire claim) added `DataSource` as a REQUIRED constructor parameter on a `@Component`
+  that is enabled by default (`@ConditionalOnProperty(..., matchIfMissing = true)`). **This is not a
+  test-only problem.** A context with no DataSource is a supported configuration this codebase names
+  explicitly -- `NpdevCapabilityBindingConfig`'s own comment says "InMemory mode, no DataSource at
+  all", which is precisely why its transaction runner (B18) and sequence allocator (R5.3) resolve
+  optionally, and why `AggregateRuntime` takes an `ObjectProvider<PlatformTransactionManager>`. R2.7
+  broke that invariant, so an InMemory-mode app could no longer start at all. The integration test
+  was the canary, not the victim.
+
+  **Fix:** `ObjectProvider<DataSource>`, following the precedent the codebase already sets. Absent a
+  DataSource the scheduler still runs and simply loses the multi-instance fire claim, degrading to
+  the single-instance behaviour it had before R2.7 -- the correct degradation, since without shared
+  storage there is no second instance to coordinate with.
+
+  Two follow-on breakages, both measured rather than predicted:
+  1. Changing the signature broke `NpdevCronSchedulerServiceTest`, which constructs the service
+     directly with a real DataSource. A plain-`DataSource` overload restores it. A bare `null` is now
+     ambiguous between the two overloads and will not compile -- stated in the javadoc.
+  2. With two public constructors and no annotation, Spring stopped picking either and failed with
+     `No default constructor found`. The `ObjectProvider` constructor now carries an explicit
+     `@Autowired`.
+
+  **Verified:** `NonDefaultRuntimeSurfaceProfileIntegrationTest` `tests="1" failures="0" errors="0"`
+  against a freshly restaged, freshly generated `simple-contact-intake`, with
+  `NpdevCronSchedulerServiceTest` green in the same run.
 
   Related: REG-112/QUAL-5/REG-163 already record that a RuntimeHost test naming
   `com.npdev.generated.` never runs in any gate; this one DOES run, and is red.
 guard:
-  kind: manual
-  ref: scripts/quality/run-runtimehost-gate.ps1
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/NonDefaultRuntimeSurfaceProfileIntegrationTest.java#nonDefaultRuntimeProfileExposesSupportedCoreAndNonDefaultControllersOnly
   asserts: >-
-    `pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1` completes without
-    NonDefaultRuntimeSurfaceProfileIntegrationTest failing. Measured RED on 2026-08-19 both with and
-    without the R4.4 change present, which is what established that this is pre-existing rather than
-    caused by it.
+    The non-default runtime surface profile's Spring context loads. It could not while
+    NpdevCronSchedulerService required a DataSource, because that context has none -- the same
+    condition a real InMemory-mode app boots under. Measured RED twice on 2026-08-19 (once with the
+    concurrent R4.4 change present, once with it fully reverted, which is what established the
+    failure was pre-existing) and GREEN after the ObjectProvider fix, against a freshly restaged and
+    regenerated simple-contact-intake.
   provenRed: true
