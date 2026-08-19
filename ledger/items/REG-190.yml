@@ -1,0 +1,58 @@
+id: REG-190
+title: >-
+  BuiltinPackComposer.merge silently dropped SEVEN model sections -- the same silent-drop defect a
+  previous fix already closed once, recurred because CompiledModel kept gaining wider constructors
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Found while implementing R7.4 (EDIT-7): a model declaring `properties[]`/`propertyScopes[]`
+  together with `internal.tables=true` compiled clean and then 404'd on every property at runtime.
+surface: generator/packs
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/BuiltinPackComposer.java
+detail: |
+  `merge()` rebuilds the app's `CompiledModel` after composing built-in pack concepts into it. It
+  called an 18-argument constructor whose own comment described it as "the canonical (widest)
+  constructor". **It was not.** `CompiledModel` gained `externalAi`, `settings`, `roles`,
+  `propertyScopes`, `properties`, `contexts` and `conversions` across later waves (RC-A1, RC-B1, S2,
+  S7-B13), each adding a WIDER overload -- and this caller was never revisited. So seven model
+  sections were silently discarded whenever built-in packs were composed.
+
+  **This is a RECURRENCE, which is the important part.** A previous fix had already closed this exact
+  defect once by moving the call to what was then the widest constructor and labelling it canonical.
+  The label went stale the moment the next field family landed, and the same silent-drop returned one
+  field-family later. That is precisely the "one place updated, its twin forgotten" shape this repo
+  has been bitten by in REG-89 / REG-104 / REG-108 / REG-112.
+
+  HOW IT SURFACED: not by any gate. `properties[]` compiled without error and produced a valid model;
+  the loss only became visible at runtime as a 404 from `PropertyResolverController` on a property the
+  model plainly declared. The combination that exposes it (built-in packs + a model-declared property
+  cascade) had no corpus coverage before R7.4, which is why it sat undetected.
+
+  FIX: call the ACTUAL widest constructor (the S7 Phase B one that itself takes `conversions`) and
+  pass all seven previously-dropped accessors. Verified live -- the same app that 404'd now serves its
+  declared properties, which is what made R7.4's saved-views feature work at all.
+
+  **STRONGLY RECOMMENDED FOLLOW-UP, not done here**: register a twin-pair rule in
+  `scripts/quality/twin-pair-registry.json` binding `CompiledModel`'s widest constructor to this
+  caller, so an eighth field family cannot repeat this a third time. CLAUDE.md names exactly this
+  situation as the trigger -- "add a new rule there the next time a 'one place updated, its twin
+  forgotten' bug is found, rather than letting a fourth instance go unnoticed". A structural
+  alternative worth considering instead: give `CompiledModel` a copy-with-concepts builder so
+  `merge()` never enumerates fields at all and cannot fall behind. The builder is the better fix; the
+  twin-pair rule is the cheaper one.
+guard:
+  kind: manual
+  ref: >-
+    Generate an app whose model declares `propertyScopes[]`/`properties[]` with
+    `internal.tables=true`, boot it, and GET /api/properties -- the declared properties must resolve
+    rather than 404. Before the fix they were dropped by BuiltinPackComposer.merge and the endpoint
+    404'd despite the model compiling clean.
+  asserts: >-
+    composing built-in packs preserves every section of the app's compiled model, including
+    externalAi/settings/roles/propertyScopes/properties/contexts/conversions
+  provenRed: true

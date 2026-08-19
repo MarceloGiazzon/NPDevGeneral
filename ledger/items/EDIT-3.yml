@@ -1,0 +1,64 @@
+id: EDIT-3
+title: >-
+  R10.0: the frozen editor bundle decision -- demote to read-only, replace with an emitted
+  schema-driven surface
+type: PROCESS
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R10 "Kill the Frozen Editor Bundle",
+  item R10.0 -- explicitly flagged in the roadmap as "owner call, not engineering, pull forward":
+  the 450KB static-react editor bundle has had no in-repo producer since 2026-08-17 (NPDevEditor was
+  parked out, see BREAKING.md) and silently drops 14 DSL sections on draft round-trips (the same
+  shape of defect EDIT-1 already fixed once for 17-of-34 sections, before the parked-out React
+  source stopped being maintainable in this repo at all). This decision gates R10.1 onward.
+surface: process/editor-direction
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/static-react/
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-admin-controller.mustache
+detail: |
+  Three options were on the table, as the roadmap itself framed them:
+    (a) demote the shipped editor to a read-only viewer, delete its draft write-back endpoints now
+        (closing the one-way door where a saved draft can silently diverge from -- and never write
+        back to -- model.json), and double down on CLI/MCP authoring (R1) as the write path, with
+        R10.2 later emitting a schema-driven surface generated FROM the compiled model (so a new
+        DSL section appears in every generated app the day it lands, by construction) and R10.3
+        deleting the frozen bundle once that surface exists;
+    (b) revive the parked NPDevEditor React source and resume hand-maintaining it against a DSL
+        every other roadmap (R2/R4/R5/R6) is actively growing;
+    (c) skip straight to (a)'s R10.2/R10.3 with no interim read-only period, leaving the draft
+        write-back endpoints (and their data-loss-shaped bug) live until the replacement ships.
+
+  DECIDED: option (a), demote to read-only -- the roadmap's own embedded recommendation, confirmed
+  by the app's owner (session 2026-08-18). Rationale as stated in the roadmap and not contested:
+  reviving hand-maintained editor source against a fast-growing DSL is the costlier path with no
+  offsetting benefit once CLI/MCP authoring (R1) exists as the real write path; skipping the
+  read-only interim step leaves a known data-loss-adjacent defect (14 dropped DSL sections on a
+  draft round-trip) live for no reason once the decision itself costs nothing to make now.
+
+  This closes R10.0. It directly enables and unblocks R10.1 (delete the three draft write-back
+  endpoints -- GET/POST/DELETE model/rule/orchestration editor-draft mappings in
+  npdev-runtime-admin-controller.mustache; sync-status stays, it only reports drift; needs a
+  BREAKING.md entry and updates to Stage12UiModelRuntimeIT and
+  scripts/quality/firstrun-harness/run-readme.sh, both of which currently assert the draft endpoint
+  is reachable and returns real content), then R10.2 (emitted schema-driven surface) and R10.3
+  (delete static-react/ entirely). None of R10.1-R10.3 are implemented by this item -- this item is
+  the decision alone, per the roadmap's own explicit "Done when: the decision is recorded as a
+  ledger item with its guard."
+
+  2026-08-18, same session: R10.1 was executed on the strength of this decision and is recorded as
+  EDIT-4 (DONE, VERIFIED_LIVE) -- all nine draft mappings deleted, sync-status/export/ui-model kept
+  and re-verified, BREAKING.md entry shipped, proven against a real regenerated+booted app plus the
+  full RuntimeHost gate and a 561/561 zero-diff determinism run. R10.2 (emitted schema-driven
+  surface) and R10.3 (delete static-react/) remain open and unstarted.
+guard:
+  kind: manual
+  ref: this ledger item (EDIT-3) plus the roadmap source it decides, npdev-roadmap-collection.md R10.0
+  asserts: >-
+    the app owner has decided the frozen editor bundle's direction is (a) demote to read-only /
+    replace, not (b) revive or (c) replace-with-no-interim-step -- any future R10.1/R10.2/R10.3 work,
+    or any proposal to resume hand-maintaining NPDevEditor's React source, should check this record
+    before assuming a different direction
+  provenRed: false

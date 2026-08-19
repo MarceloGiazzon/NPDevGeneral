@@ -1,0 +1,106 @@
+id: RUN-9
+title: >-
+  A scheduleEvent flow step with delayMinutes 1440 fires INSTANTLY -- the delay is envelope metadata
+  "for a consumer to honor" and no consumer honors it
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R2 item R2.4 -- "The canonical demo's
+  `delayMinutes: 1440` reminder fires **instantly** today... removes the trap that bites the first
+  real author." Gap pinpointed precisely while closing R2.3 (RUN-8), then closed here.
+surface: kernel/flow-steps
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/DeferredEventScheduler.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java
+  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/adapters/expression/cel/GeneratedCrudRuntimeSupport.java
+  - NPDevKernel/adapters/tracing-redaction-default/
+  - NPDevSamples/dsl-conformance-max
+  - BREAKING.md
+  - docs/FLOWS.md
+detail: |
+  `ScheduleEventStep` computed `scheduledForEpochMs` into the envelope's METADATA and then
+  immediately appended, published, and resumed waiters. So the step fired NOW and merely labelled
+  itself `deliveryMode: scheduled`; it never wrote an `npdev_scheduled_event` row at all. Only the
+  ORCHESTRATION-level `scheduleEvent` action persisted a real `due_at`. docs/FLOWS.md described this
+  accurately and called the delay metadata "for a consumer to honor" -- there was no such consumer.
+
+  New port `DeferredEventScheduler` (one method), bound the way `withProcedureExecutor` already is
+  rather than adding a 17th `KernelRunner` constructor parameter. `delaySeconds > 0` hands the
+  envelope over and returns; `delaySeconds == 0` is byte-for-byte the old path.
+
+  **The most important implementation decision, and the one most likely to be undone by someone
+  "tidying up": the delayed path must NOT append to the event store.**
+  `ResumeCoordinator.findAwaitedEvent` reads the STORE, so a stored-but-unpublished envelope would
+  wake a waiter on the very next sweep and defeat the delay entirely. Appending "for consistency"
+  silently restores the bug.
+
+  PERSISTENCE REUSED, NOT REWRITTEN: `GeneratedCrudRuntimeSupport.scheduleDeferredFlowEvent` calls
+  the EXISTING `insertScheduledEvent` / `ScheduledEventSql.insert()` that the orchestration action
+  uses -- no new SQL, no second row format, and the row is exactly what R2.3's drain already
+  consumes. Column mapping: `orchestration_name`=flow, `action_index`=step index,
+  `source_event_name`=`"flow:<flow>"` (the column is NOT NULL and no source event exists),
+  `source_event_id`=execution id, `trigger_correlation_id`=correlation.
+
+  A real portability defect caught during implementation: the natural composite `schedule_key`
+  (flow|step|execution|correlation|event) runs ~160 chars and **overflows `VARCHAR(191)` on a long
+  flow or event name** -- a data-too-long insert failure on MySQL and SQL Server, i.e. exactly the
+  class of engine-specific breakage that only shows up off H2. Replaced with
+  `"flow:" + UUID.nameUUIDFromBytes(...)`, a fixed 41 chars. Duplicate key is treated as success
+  without insert, mirroring the existing `schedule_exists` semantics.
+
+  Wiring is self-registration in the `GeneratedCrudRuntimeSupport` constructor (which already
+  mutates the runner via `initializeOrchestrationSubscribers`), so **zero RuntimeHost changes** were
+  needed -- which also kept this item clear of the concurrent R9.3 work in that module.
+
+  `DefaultTraceRedactionPolicy` allowlists `scheduledEventName`/`scheduledEventId`, else a delayed
+  step would be the only event step whose redacted trace cannot name its own event.
+
+  TESTS (independently re-run by the orchestrator with `--rerun-tasks`, not taken on trust):
+  `:kernel:test` **535/0**, `:adapters:expression-cel:test` **127/0**,
+  `:adapters:resume-bootstrap-spring:test` **2/0** (R2.3's drain intact),
+  `:adapters:tracing-redaction-default:test` 11/0. Six new kernel tests -- delay routes to the
+  scheduler with a due-at inside a measured window while publishing and storing NOTHING; zero-delay
+  publishes and stores and never touches the scheduler; zero-delay **resumes a parked AWAIT_EVENT
+  instance inside the same `execute()` call** (the back-compat guard that must be able to fail);
+  delayed leaves it parked and `resumeAllWaitingExecutions` returns 0; two failure modes. Three
+  expression-cel tests on real H2 with DDL copied from `ScheduledEventDrainRunnerIT`: assert every
+  column, drain once (`no_due_records`, still PENDING, nothing published), seed `due_at` into the
+  past, drain again -> PROCESSED / `processed_at` / `attempt_count=1` and the event published by the
+  REAL drain.
+
+  CONFORMANCE (mandatory in this repo -- `check-dsl-coverage.py` fails a DSL feature with zero corpus
+  coverage): `dsl-conformance-max` gained `announce-order-placed` at `delaySeconds: 0` beside the
+  existing 3600, and two tracked features `step.scheduleEvent.immediate`/`.deferred`. The detector
+  was **RED-proven**: flipping the 0 to 5 makes the gate exit 1 naming
+  `step.scheduleEvent.immediate 0 model(s) [ZERO]`. `validateModel` passes with 0 errors/warnings.
+
+  BREAKING.md entry shipped in the same change (2026-08-18), per the standing stability policy. No
+  codemod, and none is needed: no model file changes shape -- an affected model is already spelled
+  correctly and simply now behaves the way it always read as behaving. A model that silently
+  depended on the instant fire should set its delay to 0, a one-value edit.
+
+  docs/FLOWS.md updated in the same change: its step table, its whole "Scheduling -- two mechanisms"
+  section (which stated the immediate-publish behaviour as fact), and its resume-trigger list, which
+  had counted every `SCHEDULE_EVENT` as a synchronous waiter-wake.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/ (the six R2.4 scheduleEvent tests) + NPDevKernel/adapters/expression-cel (three H2 drain round-trip tests)
+  asserts: >-
+    a scheduleEvent step with delay > 0 writes a PENDING npdev_scheduled_event row with a correct
+    due_at and publishes nothing, stores nothing, and resumes no waiter during execution -- while a
+    delay of 0 still publishes, stores, and synchronously resumes a parked AWAIT_EVENT instance in
+    the same execute() call. The full round trip is then proven against real H2: drain before due
+    yields no_due_records and the row stays PENDING; after due it flips to PROCESSED and the REAL
+    drain publishes the event.
+  provenRed: false
+  provenRedNote: >-
+    The defect direction is self-evident and was measured rather than inferred -- the old code path
+    published inline, so the "publishes nothing during execution" assertions could not have passed
+    before. Not recorded as provenRed because the tests were written alongside the implementation.
+    The conformance detector WAS proven red on purpose (flipping delaySeconds 0 -> 5 makes
+    check-dsl-coverage.py exit 1 naming the now-uncovered feature), so the coverage guard is
+    demonstrated rather than assumed.

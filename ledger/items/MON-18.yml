@@ -1,0 +1,106 @@
+id: MON-18
+title: >-
+  Every app's browser coverage has to be hand-authored routine by routine -- N concepts means N
+  hand-written CRUD routines before "browser-verified" means anything
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R3 item R3.3 -- "every new app is
+  instantly hammered: N concepts -> N green routines with zero hand-authoring; 'browser-verified'
+  becomes a measured claim."
+surface: cli/explore
+files:
+  - NPDevCli/npdev_explore.py
+  - NPDevCli/npdev_cli.py
+detail: |
+  `npdev explore generate --app-dir <app>` emits one combined create->list->edit->delete routine per
+  concept, from the model.
+
+  **THE ROADMAP POINTED AT THE WRONG SOURCE, and the correction is the design.** It says to use "the
+  probe's field inventory" -- but `info.json`/`probe_app`'s `concepts[]` carries only `{name, route}`
+  and no fields at all. The real, already-resolved inventory is `generated-ui-manifest.json` (written
+  by `BusinessUiEmitter`), which is **the exact JSON the running business UI itself fetches** to
+  decide each field's cascade-resolved `widget`, `enumOptions`, `reference{targetConcept}`,
+  `required` and `filterable`. Reading it means the generator cannot disagree with the UI it drives;
+  re-deriving the widget cascade or pack `$ref` composition in Python would have duplicated generator
+  logic and drifted.
+
+  SELECTORS VERIFIED AGAINST `business-ui-app.mustache`, not assumed: `sectionId()` is
+  `"concept-" + name.replace(/[^a-zA-Z0-9_-]/g, "-")`; fields are `[name="field"]`; a `select`-widget
+  reference is a real `<select>` while a `lookup`-widget reference -- **the type's DEFAULT** per
+  `FieldWidgetDefaults.defaultWidget` -- is a `.lookup-control` (hidden input + `.lookup-browse` +
+  `.lookup-display`) driven through a shared `.picker-dialog`. A generator written against the
+  roadmap's assumed selectors would have failed on the default case.
+
+  **A real template defect found and fixed while doing this**: `formPresentation: "modal"` renders the
+  form into `#modalRoot` rather than nesting it under `#concept-<Name>`, so scoping every locator to
+  the concept section breaks for such concepts (hit on WmsOffice's `Area`).
+
+  WHAT IT EMITS: required fields only -- the engine's 50-step cap forced that, and filling every
+  optional field blew the cap on 2 of 33 WmsOffice concepts; enum fields `selectOption` a real
+  declared value; reference fields wait for a seeded referent via `assertCount > 0` (**not**
+  `waitForSelector` on a possibly-multi-match locator, a Playwright strict-mode bug hit and fixed)
+  then pick any valid option; numerics get valid literals with one distinctive field doubling as the
+  row marker for `:has-text()`; a filterable marker adds a search + `waitForSelector(table.records)`
+  so the assertion survives a paginated, data-heavy table. Concepts are **topologically ordered by
+  required-reference dependency**, and unsupported/circular/cross-run-missing dependencies are
+  reported BY NAME rather than silently skipped. Auth mode is read from the manifest -- jwt-mode apps
+  get a real `/login.html` preamble with `valueFromCredential` (found live that WmsOffice is jwt, not
+  apiKey).
+
+  **DELETE IS DELIBERATELY HONEST, and this is the part worth preserving.** Measured live: ScrapForAI
+  registers no `page.on('dialog')` handler, so Playwright auto-dismisses the native `confirm()` that
+  `deleteRecord()` raises -- a pre-existing harness gap outside NPDevCli. So the generated routine
+  clicks Delete (proving the affordance is wired) and then asserts the row **survives**, with that
+  exact reasoning written into the step label. It never claims a deletion it cannot perform. A
+  generator that asserted the row disappeared would have produced N red routines and looked like N
+  product bugs.
+
+  **This item was only viable because MON-12 landed first**: before it, every routine that provoked a
+  validation failure was born red with no way to excuse it narrowly, so generated CRUD routines would
+  have been useless on arrival.
+
+  LIVE VERIFICATION -- the DoD names gift-idea-tracker and a WmsOffice-class app, and both were run:
+    - gift-idea-tracker **2/2 GREEN**, covering a `select`-widget reference (`personRef`), two enums
+      (`occasion`, `status`) and an optional numeric (`budget`).
+    - WmsOffice (jwt-mode, `formPresentation: modal`): routines generated for **all 33 concepts**;
+      the full `Entidade -> Armazem -> Area -> Rua -> LocalArmazenagem` dependency chain ran
+      **5/5 GREEN**, covering a `lookup`-widget required reference, an enum and two required
+      numerics; plus spot-checks on `Produto` and on `CrossDocking` (3 required references, over the
+      step cap, so it falls back to create+list-only) -- both GREEN.
+  So the DoD's "including a concept with an enum, a reference field, and a required numeric" is
+  covered by measurement, not assertion.
+
+  **NOT EXERCISED, stated plainly**: the other ~28 WmsOffice concepts were generated and
+  schema-validated but not individually run live, for time budget. Two narrow `urlContains`-scoped
+  `exploration-config.json` excuses were added for pre-existing app behaviour unrelated to this
+  generator (a `/api/me` 401 landing after theme.css's 404, and an Armazem map widget's unconditional
+  OpenStreetMap tile fetch) -- narrow named excuses in MON-12's style, never blanket.
+
+  NUMBERS: all 35 generated routines pass `validate_routine` with 0 schema errors and 0 lint
+  warnings. `check-routine-corpus-conformance.py` 29/29, unaffected by design -- it globs
+  `browser-routines/` (the repo corpus) while generated routines land in the app's own
+  `explorations/`, which are deliberately different locations. Python suite **305, unchanged**
+  (orchestrator-verified).
+
+  Feeds MON-15 (`explore coverage`) for free: generated routines reference `concept-<Name>`, the
+  exact substring coverage matches on, so an app's coverage table populates without hand-authoring.
+guard:
+  kind: test
+  ref: NPDevCli/tests/
+  asserts: >-
+    `npdev explore generate` emits schema-valid routines per concept from the generated-ui manifest,
+    using the emitter's real selectors (including the DEFAULT lookup-widget reference control, not
+    just the select variant), ordered topologically by required-reference dependency, with
+    unsupported dependencies reported by name rather than dropped. Live behaviour is evidenced by
+    measurement rather than by unit test -- gift-idea-tracker 2/2 and WmsOffice 5/5 green on the full
+    dependency chain -- because a routine's real proof is a browser run.
+  provenRed: false
+  provenRedNote: >-
+    The verb did not exist, so nothing about it could have passed before. Not recorded as provenRed
+    because the tests were written alongside the implementation; the load-bearing claims were
+    verified live on two apps of different auth modes and form presentations instead.

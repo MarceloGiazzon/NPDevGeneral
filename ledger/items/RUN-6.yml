@@ -1,0 +1,117 @@
+id: RUN-6
+title: >-
+  A quiet human wait dies terminal-STUCK after ~75 minutes while docs/FLOWS.md advertises waits
+  lasting days or weeks; a matching event cannot revive an instance mid-backoff
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R2 "A Flow Engine That Keeps Its
+  Promises", item R2.1 -- the roadmap's own framing: "the durable flow engine is the platform's
+  differentiator, and today its observable semantics lie". Confirmed against the real code before
+  any change: both defects reproduced exactly as described, at the exact line numbers cited.
+surface: kernel/resume-coordinator
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ResumeCoordinator.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/execution/FlowInstance.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerLifecycleTest.java
+  - docs/FLOWS.md
+detail: |
+  TWO defects, both in ResumeCoordinator, both measured rather than inferred.
+
+  **Defect 1 -- quiet waits were driven to a terminal status.** Three branches of
+  `resumeAllWaitingExecutions` recorded `missing_event` via `persistResumeBackoff`: the instance
+  carries no wait criteria, the event store holds no candidate event, and a resume that re-parked
+  still WAITING_EVENT. None of the three is a failure of anything -- they are the ordinary state of
+  a flow parked on an approval that has not happened yet. But all three fed the SAME
+  `RESUME_MAX_ATTEMPTS = 20` cap that real failures use, via
+  `FlowInstance.markResumeFailure`, which flips status to STUCK once `attempts >= maxAttempts`.
+  `resumeDelayMillis`'s ladder (base 5s, doubling, capped at 300s) sums to 4,515s across 20 misses
+  = **75.25 minutes**, computed from the real formula, matching the roadmap's "~75 minutes" exactly.
+  STUCK is terminal in practice (`resumeExecution`'s status guard accepts RUNNING and WAITING_EVENT
+  but not STUCK), so a later matching event could never revive the instance. This killed precisely
+  the long human waits `docs/FLOWS.md` advertises.
+
+  **Defect 2 -- a matching event could not revive an instance in backoff.** In
+  `resumeWaitingExecutionsFor` -- the SYNCHRONOUS event-arrival path, reached from
+  `EmitEventStep`, `ScheduleEventStep` and publicly via `KernelRunner.publishExternalEvent` -- an
+  `if (!instance.isResumeEligible(now)) continue;` ran BEFORE `matchesWaitingResumeCriteria`, so an
+  instance inside its 5s..300s scheduled-sweep backoff was skipped even when the event that had
+  just arrived was exactly the one it waited for. The method's own catch-block comment already
+  stated the invariant this violated: "Backoff is only for scheduled scans". Nothing was lost (the
+  event stays in the event store) but revival was deferred by up to the current backoff.
+
+  FIX, smallest coherent form -- no new state, no Clock abstraction, no config knob:
+    - `QUIET_WAIT_ERROR_CODE` + `RESUME_NO_ATTEMPT_CAP = 0` constants; the three quiet branches pass
+      the no-cap value, real `exception:*` failures keep `RESUME_MAX_ATTEMPTS`.
+      `markResumeFailure` already treated a non-positive cap as never-exhausted, so the lever
+      existed and no signature changed. The exponential DELAY is kept for both kinds -- it usefully
+      backs a fruitless poll off to one sweep per 300s; only the cap is given up.
+    - The eligibility check on the synchronous path was DELETED rather than moved after the match:
+      moving it would still skip the matching waiter, and its status half is redundant
+      (`matchesWaitingResumeCriteria` already rejects non-WAITING_EVENT, and
+      `collectWaitingCandidates` only returns waiting rows). The scheduled-sweep path still honours
+      `isResumeEligible` via the store implementations, which is correct and untouched.
+
+  **A consequence the roadmap did NOT anticipate, found while implementing and fixed in the same
+  change:** `resumeAttemptCount` is ONE field tallying both kinds. Once quiet waits stop exhausting
+  the cap, that counter can sit far above 20 by the time an event finally arrives (a wait may
+  legitimately run for weeks), so the first genuinely transient adapter fault after a long wait
+  would have been an INSTANT, unrecoverable STUCK -- strictly worse than the 20 retries that path
+  had before. `FlowInstance.withResumeStreakReset()` (zeroes the streak, touching nothing else) is
+  called at the quiet->real changeover so a real failure gets its full retry budget. Without this
+  the fix would have traded one defect for another.
+
+  PROVEN RED BEFORE GREEN, against unmodified production code -- the three new tests failed with:
+    - `resumeAllWaitingExecutionsNeverMarksQuietWaitStuck` -> "a wait with no event yet must stay
+      resumable at attempt 20 ==> expected: <WAITING_EVENT> but was: <STUCK>"
+    - `realFailureAfterALongQuietWaitStartsAFreshAttemptStreak` -> "one real failure after 137 quiet
+      misses must not be an instant STUCK ==> expected: <WAITING_EVENT> but was: <STUCK>"
+    - `publishExternalEventResumesInstanceParkedInResumeBackoff` -> "a matching event must resume
+      its waiter regardless of scheduled-sweep backoff ==> expected: <COMPLETED> but was:
+      <WAITING_EVENT>"
+  The cap regression guard passed pre-fix, as intended.
+
+  **An existing test had to be rewritten, and this is the part worth scrutinising**:
+  `resumeAllWaitingExecutionsMarksInstanceStuckWhenAttemptCapIsReached` seeded a near-cap instance
+  with `missing_event` and asserted STUCK -- it ENCODED the defect, so it could not survive the fix
+  unchanged. It was not deleted or weakened: it is now
+  `...MarksInstanceStuckWhenResumeKeepsThrowing`, driving the same cap to the same STUCK, same
+  `resume_attempt_cap` error code and same `ExecutionStuck` event, through a `FlowDefinitionProvider`
+  that throws -- i.e. through the path the cap actually exists for, which R2.1 does not change. Cap
+  coverage is preserved, not dropped.
+
+  GREEN (verified independently of the implementing agent, via a forced `--rerun-tasks` and by
+  parsing the JUnit XML rather than trusting console output): `:kernel:test` 0 failures, 0 errors;
+  `KernelRunnerLifecycleTest` 19/19 including all four R2.1-relevant tests. Adapter suites green:
+  `flowinstance-inproc` 9/9, `resume-bootstrap-spring` 1/1, `flowinstance-postgres` 8 skipped by
+  `scripts/policy/local-test-profile.json` (Testcontainers off locally by design, covered in CI).
+
+  NO BREAKING.md entry, deliberately. The repo's stability policy scopes that file to breaking
+  changes in the model DSL, generated code layout, or internal APIs; this changes none of the three.
+  It is a runtime behaviour bugfix in the direction of the documented promise, and no author could
+  reasonably have depended on "my approval flow dies after 75 minutes of quiet".
+
+  `docs/FLOWS.md` updated in the same change -- its state diagram and its WAITING_EVENT->STUCK
+  transition-table row both asserted the now-false unconditional cap.
+
+  NOT done here, and still open: R2.2 (the un-stick REST operation -- `listStuckSummaries` still has
+  no wired endpoint, so an instance stuck by a REAL repeated failure still needs SQL surgery to
+  recover) and R2.5 (durable await timeouts + onTimeout), which the roadmap sequences after this
+  item precisely because a wait had to survive to its declared deadline before deadlines could mean
+  anything.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerLifecycleTest.java (resumeAllWaitingExecutionsNeverMarksQuietWaitStuck, realFailureAfterALongQuietWaitStartsAFreshAttemptStreak, publishExternalEventResumesInstanceParkedInResumeBackoff, resumeAllWaitingExecutionsMarksInstanceStuckWhenResumeKeepsThrowing)
+  asserts: >-
+    a WAITING_EVENT instance with no event yet stays resumable through attempt 31 and emits no
+    ExecutionStuck; a real failure arriving after 137 quiet misses starts a fresh attempt streak
+    rather than an instant STUCK; a matching event delivered through publishExternalEvent resumes a
+    waiter parked inside its backoff window (with the backoff state asserted as a precondition, so
+    the test cannot pass vacuously); and a resume that keeps THROWING still reaches STUCK at the
+    20-attempt cap with the resume_attempt_cap code and ExecutionStuck event -- the cap is lifted
+    off quiet waits only, never off real failures.
+  provenRed: true

@@ -1,0 +1,96 @@
+id: MON-11
+title: >-
+  No way to run an app's whole routine corpus and get one verdict -- a tester must invoke
+  `npdev explore run` once per routine and total the results by hand
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R3 "Tester-to-Builder Harness", item
+  R3.1 -- the substrate the rest of R3 leans on ("the substrate for `npdev test`, coverage, and
+  per-sample CI browser jobs"), and the roadmap's sharpest sequencing finding: two of three
+  strategists buried this harness at the END while writing every earlier definition-of-done in terms
+  of it.
+surface: cli/explore
+files:
+  - NPDevCli/npdev_explore.py
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/
+detail: |
+  `npdev explore run` executes ONE routine. A tester with N routines ran it N times and totalled the
+  results themselves. `run_suite()` loops the app's definitions in definition order and returns one
+  suite-scoped summary, exiting nonzero if any routine is red.
+
+  **Built by reuse, not reimplementation** -- the point of the item is composition:
+    - `run_exploration` is called once per routine, unchanged. Each entry reports
+      `evaluate_verdict`'s own `green`/`reasons` VERBATIM, so the suite cannot become a second
+      opinion about what "green" means (that function's own docstring exists to guarantee `run` and
+      `record` can never disagree; a suite verb that re-judged would break exactly that).
+    - **No new lock.** `RunLock` is already taken per-run inside `run_exploration` and is keyed by
+      `app_dir`, so "serial within an app, parallel across apps" was already true by construction.
+    - Three small extractions so the suite reuses rather than copies: `definition_files()` (pulled
+      out of `list_explorations`, which now calls it -- so **listing order IS run order by
+      construction**, not by two implementations agreeing), `blocking_preflight()` (shared with
+      `run_exploration`), and `RunLock.held_by()` (shared staleness rule). Behaviour of
+      `list`/`run`/`RunLock` is unchanged.
+
+  **The refusal-handling decision, which the item genuinely had to make**: `run_exploration` raises
+  `ExploreError` for a REFUSAL (engine down, app missing, lock held) but returns normally for a
+  routine that ran and failed. Chosen semantics: **app-wide problem aborts; per-routine problem is
+  recorded and the loop continues.** A classifier re-asks only the app-wide questions after each
+  refusal, so an app that dies at routine #4 aborts at #4 rather than emitting N identical
+  diagnoses; a single malformed routine file does not cost the other nine their run. Unreached
+  routines are reported as `skipped` WITH the reason rather than dropped. Refusals are counted
+  separately from red -- a tool problem is not a test result -- but still deny overall green. If
+  nothing could run at all it raises rather than returning a zero-run summary, because an empty
+  summary reads like a pass.
+
+  **No schema added and none changed, deliberately.** The summary is not persisted: every run it
+  names is already durable at `<runId>/run.json` + `runs.jsonl`, so a suite artifact would be a
+  second copy of facts that already have a home. Notably `exploration-run.schema.json`'s existing
+  `suite` property is documented "Platform-scoped runs only" and was NOT silently repurposed for
+  app-scoped runs; per-run records keep `suite: None`. Returning a `schemaVersion` with no schema
+  file matches what `list`/`preflight`/`prune` already do.
+
+  **A roadmap error, confirmed and worked around rather than propagated:** R3.1's text says to loop
+  the app's `browser-routines/`. That directory is a separate, ad-hoc convention used only by
+  `NPDevSamples/**/demonstrate-browser.ps1` PowerShell scripts, which glob it directly and bypass
+  `npdev_explore.py` entirely. The CLI's real discovery mechanism is `definition_dirs()` ->
+  `explorations/`. The suite is built against the live mechanism, with the discrepancy noted in a
+  code comment so the next reader is not confused. Unifying the two conventions was judged out of
+  scope.
+
+  VERIFIED LIVE, with a real browser engine -- not stubbed: run against
+  `D:\WorkSpace\NPDev\Build\monitor-live`, live ScrapForAI drove both routines,
+  `01-info-page-loads` GREEN and `02-deliberately-broken` RED with its real timeout reason, process
+  **exit 2**. So the red-implies-nonzero-exit contract (the roadmap's own stated definition of done)
+  is measured, not asserted. `--keep-engine` measurably reused the engine across routines: one
+  `starting-engine` event, 27.5s -> 11.6s.
+
+  TESTS: `python -m unittest discover -s NPDevCli/tests` **244 -> 260, OK** (+16), independently
+  re-run by the orchestrator at 260/OK after the fact.
+
+  NOT done here: R3.4 (`npdev test`, which composes this suite with REST smoke + acceptance
+  scenarios) and R3.5 (`npdev explore coverage`) both list R3.1 as their blocker and are now
+  unblocked. A pre-existing nit left untouched: `run_explore`'s comment says refusals "Exit 2" while
+  `CliError` returns 1 -- both nonzero, so no behaviour is wrong, only the comment.
+guard:
+  kind: test
+  ref: NPDevCli/tests/ (the 16 suite tests added with this item)
+  asserts: >-
+    `npdev explore suite` iterates an app's definitions in definition order (the same order
+    `explore list` reports, since both now call definition_files()); a red routine forces a nonzero
+    process exit; an app-wide refusal aborts the suite while a per-routine refusal is recorded and
+    the loop continues, with unreached routines reported as skipped rather than dropped; and the
+    suite introduces no second verdict path -- each entry carries exactly what evaluate_verdict
+    decided.
+  provenRed: false
+  provenRedNote: >-
+    The gap direction is self-evident rather than inferred -- `suite` did not exist as a verb, so no
+    assertion about it could have passed before. Not recorded as provenRed because the tests were
+    written alongside the implementation. The load-bearing claim was instead verified LIVE against a
+    real browser engine: a deliberately-broken routine produced a genuine red and a real exit 2,
+    which is stronger evidence for the red-implies-nonzero contract than a stubbed test.
