@@ -408,6 +408,18 @@ function Test-NpdevServerReachable {
         writeExecutable(opsRoot.resolve("start-app.sh"), startAppScriptPosix(serverPort, springProfile));
         write(opsRoot.resolve("Stop-App.ps1"), stopAppScript());
         writeExecutable(opsRoot.resolve("stop-app.sh"), stopAppScriptPosix());
+        // R9.6: install/uninstall a supervisor around the launchers above, so a crash or a reboot is
+        // recovered from with nobody watching -- "unattended hosting... without Docker". This wraps
+        // the EXISTING launchers rather than reimplementing them: the systemd unit's ExecStart is
+        // run-final-app.sh itself (native process supervision, Restart=always); the Windows side has
+        // no way to register an arbitrary script as a true SCM service without bundling a third-party
+        // wrapper binary, so it drives the already-guarded, already-idempotent Start-App.ps1 on a
+        // recurring Scheduled Task heartbeat instead -- see installServiceScript()'s Javadoc for why.
+        String safeAppId = slugForServiceName(plan.appId());
+        write(opsRoot.resolve("Install-Service.ps1"), installServiceScript());
+        write(opsRoot.resolve("Uninstall-Service.ps1"), uninstallServiceScript());
+        writeExecutable(opsRoot.resolve("install-service.sh"), installServiceScriptPosix(safeAppId));
+        writeExecutable(opsRoot.resolve("uninstall-service.sh"), uninstallServiceScriptPosix(safeAppId));
         write(opsRoot.resolve("Smoke-Test.ps1"), smokeTestScript());
         write(opsRoot.resolve("Print-DbConnectionInfo.ps1"), printDbConnectionInfoScript());
         write(opsRoot.resolve("Reset-Environment.ps1"), resetEnvironmentScript());
@@ -1470,6 +1482,348 @@ exit 0
 """;
     }
 
+    /**
+     * R9.6: the systemd unit name / Windows Scheduled Task name derived from the app id -- one
+     * function rather than two, restricted to the character set both targets accept unconditionally
+     * (systemd unit names: {@code [A-Za-z0-9:_.-]}; Task Scheduler names are far less restrictive,
+     * but sharing one safe charset means an operator never has to quote either name specially).
+     */
+    private static String slugForServiceName(String rawAppId) {
+        String id = rawAppId == null ? "" : rawAppId;
+        String slug = id.replaceAll("[^A-Za-z0-9_.-]", "-");
+        return slug.isBlank() ? "app" : slug;
+    }
+
+    /**
+     * R9.6: "Outside Docker's restart policy, nothing restarts a crashed app or starts one at boot."
+     * Registers a Windows Scheduled Task that starts this app at boot and re-checks it every minute,
+     * calling the ALREADY-GUARDED {@code Start-App.ps1} rather than launching {@code java} itself --
+     * per the standing "supervise the existing launchers, do not write new ones" rule, and because
+     * {@code Start-App.ps1} already has the duplicate-PID guard (R9.4) this supervisor leans on: a
+     * tick that finds the app already running is a no-op, and a tick that finds it gone starts it.
+     *
+     * <p><b>This is NOT a true Windows Service (SCM) and says so in its own output.</b> {@code
+     * sc.exe}/{@code New-Service} can only register a binary that implements the Service Control
+     * Manager protocol (responds to START/STOP control codes); an arbitrary script or {@code java
+     * -jar} does not, and {@code sc start} on one fails after a timeout ("did not respond in a timely
+     * fashion", error 1053) rather than actually supervising anything. The only way to make an
+     * arbitrary process a real SCM service is a compiled service-host wrapper (NSSM, WinSW, ...) --
+     * exactly the kind of external binary dependency this platform does not bundle. A Scheduled Task
+     * with an {@code AtStartup} trigger, a repeating heartbeat trigger, and a {@code SYSTEM} principal
+     * is the standard no-third-party-binary way to get "starts at boot, supervised, no one logged in"
+     * on Windows, and is what this emits -- it will not appear in {@code services.msc}, and the
+     * README says so.
+     *
+     * <p>Heartbeat interval is 1 minute: worst-case detection latency for a crash, traded for reusing
+     * proven, already-live-verified guard logic (MON-17) instead of depending on {@code
+     * Run-FinalApp.ps1}'s exit code, which a piped foreground launcher does not always propagate
+     * faithfully (see {@link #installServiceScriptPosix} for the POSIX side, where this exact
+     * exit-code fragility is why systemd is configured {@code Restart=always} rather than {@code
+     * Restart=on-failure}).
+     *
+     * <p>Idempotent and refuses a name conflict rather than clobbering it, the MON-18/PACK-13 house
+     * style: re-running against the SAME app is a no-op; a task of the same name pointed at a
+     * DIFFERENT app's launcher is refused, naming both. {@code -DryRun} prints the would-be
+     * registration with zero side effects -- the verification path that does not require actually
+     * installing anything.
+     */
+    private static String installServiceScript() {
+        return """
+param(
+  [switch]$DryRun,
+  [switch]$Start
+)
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+""" + DATA_ROOT_HELPER + """
+$appRoot = Get-NpdevAppRoot -Plan $plan
+$safeName = ([string]$plan.appId) -replace '[^A-Za-z0-9_.-]', '-'
+if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = 'app' }
+$taskName = "npdev-$safeName"
+$startScript = Join-Path $PSScriptRoot 'Start-App.ps1'
+
+if (-not (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue)) {
+  Write-Host 'The ScheduledTasks module is not available on this machine (needs Windows 8 / Server 2012 or newer). Cannot install.' -ForegroundColor Red
+  exit 1
+}
+
+# Idempotent / refuse-and-name-the-conflict (MON-18/PACK-13 house style), checked before -DryRun even
+# branches so a dry run against a real conflict reports the refusal instead of a misleading preview.
+$existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+if ($existingTask) {
+  $existingArgs = [string]($existingTask.Actions | Select-Object -First 1).Arguments
+  if ($existingArgs -like "*$startScript*") {
+    Write-Host "Scheduled task '$taskName' is already installed for this app. Nothing to do -- run Uninstall-Service.ps1 first to reinstall."
+    exit 0
+  }
+  Write-Host "Refused: a scheduled task named '$taskName' already exists but supervises a DIFFERENT app:" -ForegroundColor Red
+  Write-Host "  existing task action : $existingArgs"
+  Write-Host "  this app's launcher  : $startScript"
+  Write-Host "This app's id collides with another app's task name. Rename one of them (a different appId), or remove the conflicting task by hand: Unregister-ScheduledTask -TaskName '$taskName'" -ForegroundColor Red
+  exit 1
+}
+
+$psExe = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
+if (-not $psExe) { $psExe = (Get-Command powershell.exe -ErrorAction SilentlyContinue).Source }
+if (-not $psExe) { Write-Host 'Neither pwsh.exe nor powershell.exe found on PATH.' -ForegroundColor Red; exit 1 }
+$argList = "-NoProfile -ExecutionPolicy Bypass -File `"$startScript`""
+
+if ($DryRun) {
+  Write-Host "[dry run] Would register scheduled task '$taskName':"
+  Write-Host "  executable  : $psExe"
+  Write-Host "  arguments   : $argList"
+  Write-Host "  working dir : $appRoot"
+  Write-Host '  triggers    : at system startup, then every 1 minute thereafter'
+  Write-Host '  runs as     : SYSTEM'
+  Write-Host '  behaviour   : each tick calls the already-guarded Start-App.ps1 -- a no-op while the'
+  Write-Host '                app is already running, a start when it is not. A crash is picked up on'
+  Write-Host '                the next tick (worst case ~1 minute); the app also comes up at boot with'
+  Write-Host '                no one logged in, because it runs as SYSTEM.'
+  Write-Host '  NOTE: this is a Scheduled Task, not a true SCM service -- it will not appear in'
+  Write-Host '  services.msc. See README_RUNBOOK.md for why.'
+  Write-Host 'Nothing was installed.'
+  exit 0
+}
+
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+  Write-Host 'Install-Service.ps1 must run elevated (as Administrator) to register a SYSTEM-level scheduled task.' -ForegroundColor Red
+  exit 1
+}
+
+$action = New-ScheduledTaskAction -Execute $psExe -Argument $argList -WorkingDirectory $appRoot
+$triggerBoot = New-ScheduledTaskTrigger -AtStartup
+$triggerHeartbeat = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration ([TimeSpan]::MaxValue)
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero)
+$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($triggerBoot, $triggerHeartbeat) -Settings $settings -Principal $principal -Description "NPDev supervisor for $($plan.appId) (R9.6). Starts at boot and re-checks every minute via the already-guarded Start-App.ps1; not a true SCM service -- see README_RUNBOOK.md." | Out-Null
+
+Write-Host "Installed scheduled task '$taskName': starts '$($plan.appId)' at boot (as SYSTEM) and re-checks every minute, restarting it via Start-App.ps1 if it is not running."
+if ($Start) {
+  Start-ScheduledTask -TaskName $taskName
+  Write-Host "Triggered an immediate run of '$taskName'."
+}
+exit 0
+""";
+    }
+
+    /**
+     * R9.6: clean removal counterpart to {@link #installServiceScript} -- "an install with no
+     * documented removal is a trap." Idempotent: no task, nothing to do, exit 0. Does NOT stop the
+     * app itself if it happens to be running; that is {@code Stop-App.ps1}'s job, named explicitly in
+     * the output so an operator does not assume one implies the other.
+     */
+    private static String uninstallServiceScript() {
+        return """
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+$safeName = ([string]$plan.appId) -replace '[^A-Za-z0-9_.-]', '-'
+if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = 'app' }
+$taskName = "npdev-$safeName"
+
+if (-not (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue)) {
+  Write-Host 'The ScheduledTasks module is not available on this machine. Nothing to remove.'
+  exit 0
+}
+
+$existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+if (-not $existingTask) {
+  Write-Host "No scheduled task named '$taskName'. Nothing to do."
+  exit 0
+}
+
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+  Write-Host 'Uninstall-Service.ps1 must run elevated (as Administrator) to remove a SYSTEM-level scheduled task.' -ForegroundColor Red
+  exit 1
+}
+
+Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+Write-Host "Removed scheduled task '$taskName'. This did NOT stop the app itself if it is currently running -- use Stop-App.ps1 for that."
+exit 0
+""";
+    }
+
+    /**
+     * R9.6: the POSIX twin of {@link #installServiceScript}, and the stronger half of the pair --
+     * Linux has a real init-system supervisor, so this registers an actual systemd unit around {@code
+     * run-final-app.sh} instead of polling. {@code Restart=always} rather than {@code on-failure} is
+     * deliberate, not a stronger-than-needed default: {@code run-final-app.sh}'s last pipeline stage
+     * is {@code tee}, and in POSIX {@code sh} (no {@code pipefail}) a pipeline's exit status is its
+     * LAST command's status -- so the script reports success (exit 0) even when {@code java} was
+     * killed out from under it, because {@code tee} itself exited cleanly on EOF. {@code
+     * Restart=on-failure} would trust that misleading exit 0 and never restart it; {@code
+     * Restart=always} restarts on ANY exit except an explicit {@code systemctl stop}, which is the
+     * correct semantics for "keep this app running" regardless of {@code run-final-app.sh}'s exit-code
+     * fidelity. {@code StartLimitIntervalSec}/{@code StartLimitBurst} cap a genuinely broken app's
+     * restart loop rather than hammering it forever.
+     *
+     * <p>{@code appId} arrives pre-sanitized ({@link #slugForServiceName}) and BAKED as a literal
+     * token, the same reason {@link #startAppScriptPosix} bakes its port and profile: {@code sh} has
+     * no JSON parser, so this script never reads {@code resolved-db-plan.json} at runtime at all.
+     *
+     * <p>Idempotent and refuse-and-name-the-conflict, same as the Windows side: the unit file carries
+     * a {@code # NPDEV_APP_ROOT=<path>} marker comment, checked by exact string match (not a regex
+     * against a path, which could contain characters a regex would interpret) before anything is
+     * written. {@code --dry-run} prints the would-be unit file content with zero side effects, and
+     * works without root -- installing for real requires root (writing under {@code
+     * /etc/systemd/system} and calling {@code systemctl}), refused with a plain message rather than a
+     * permission-denied stack trace.
+     */
+    private static String installServiceScriptPosix(String appId) {
+        String script = """
+#!/bin/sh
+# NPDev generated FinalApp -- register a systemd unit that supervises run-final-app.sh: starts at
+# boot, restarts automatically (Restart=always) if the app process ever exits. POSIX twin of
+# Install-Service.ps1 -- unlike the Windows side, this is a REAL init-system service, not a polling
+# heartbeat, because systemd can track the process directly.
+# Usage: sudo ./install-service.sh [--dry-run] [--start] [--profile <name>]
+set -e
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+APP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+
+DRY_RUN=0
+START_NOW=0
+PROFILE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    --start) START_NOW=1; shift ;;
+    --profile) PROFILE="$2"; shift 2 ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+  esac
+done
+
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "systemctl not found -- this machine does not appear to run systemd. Cannot install a systemd unit." >&2
+  exit 1
+fi
+
+UNIT_NAME="npdev-__NPDEV_SAFE_APP_ID__"
+UNIT_PATH="/etc/systemd/system/$UNIT_NAME.service"
+RUN_USER=$(id -un)
+# Falls back to the numeric GID: `id -gn` fails outright ("cannot find name for group ID ...") on any
+# account whose primary group has no /etc/group entry -- a real failure hit live while testing this
+# script, not a theoretical one, and common on minimal containers as well as this dev machine. systemd's
+# Group= directive accepts a numeric GID exactly as well as a name, so there is no loss of correctness.
+#
+# `|| true` (not `|| id -g`): under `set -e`, a plain `X=$(cmd)` assignment DOES abort the script when
+# `cmd` exits non-zero -- `|| true` is what keeps that from happening, checked SEPARATELY from what
+# the fallback should be, because `id -gn`'s failure-path stdout is not consistent across `id`
+# implementations. GNU coreutils prints NOTHING to stdout on this failure (empty, correctly triggering
+# the fallback below); the MSYS `id` this exact failure was reproduced against prints the numeric GID
+# to stdout anyway, so `id -gn 2>/dev/null || id -g` was measured live to run `id -g` a SECOND time and
+# duplicate the line. Checking emptiness after the fact is correct under both behaviours.
+RUN_GROUP=$(id -gn 2>/dev/null) || true
+if [ -z "$RUN_GROUP" ]; then
+  RUN_GROUP=$(id -g)
+fi
+
+UNIT_CONTENT="[Unit]
+Description=NPDev generated app: __NPDEV_SAFE_APP_ID__ (installed by install-service.sh, R9.6)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+# NPDEV_APP_ROOT=$APP_ROOT
+Type=simple
+WorkingDirectory=$APP_ROOT
+ExecStart=/bin/sh $APP_ROOT/_ops/run-final-app.sh $PROFILE
+Restart=always
+RestartSec=5
+User=$RUN_USER
+Group=$RUN_GROUP
+
+[Install]
+WantedBy=multi-user.target
+"
+
+if [ -f "$UNIT_PATH" ]; then
+  existing_root=$(grep -m1 '^# NPDEV_APP_ROOT=' "$UNIT_PATH" 2>/dev/null | sed 's/^# NPDEV_APP_ROOT=//')
+  if [ "$existing_root" = "$APP_ROOT" ]; then
+    echo "Unit '$UNIT_NAME' is already installed for this app ($UNIT_PATH). Nothing to do -- run uninstall-service.sh first to reinstall."
+    exit 0
+  fi
+  echo "Refused: '$UNIT_PATH' already exists and supervises a DIFFERENT app." >&2
+  echo "  existing app root : ${existing_root:-<unknown -- not an npdev-managed unit>}" >&2
+  echo "  this app's root   : $APP_ROOT" >&2
+  echo "This app's id collides with another app's unit name. Rename one of them (a different appId), or remove the conflicting unit by hand: sudo systemctl disable --now $UNIT_NAME && sudo rm $UNIT_PATH && sudo systemctl daemon-reload" >&2
+  exit 1
+fi
+
+if [ "$DRY_RUN" = "1" ]; then
+  echo "[dry run] Would write $UNIT_PATH:"
+  echo "---"
+  printf '%s\\n' "$UNIT_CONTENT"
+  echo "---"
+  echo "Would then run: systemctl daemon-reload && systemctl enable $UNIT_NAME"
+  if [ "$START_NOW" = "1" ]; then echo "Would then run: systemctl start $UNIT_NAME"; fi
+  echo "Nothing was installed."
+  exit 0
+fi
+
+if [ "$(id -u)" != "0" ]; then
+  echo "install-service.sh must run as root (sudo) to write $UNIT_PATH and register the unit with systemd." >&2
+  exit 1
+fi
+
+printf '%s\\n' "$UNIT_CONTENT" > "$UNIT_PATH"
+systemctl daemon-reload
+systemctl enable "$UNIT_NAME"
+echo "Installed and enabled '$UNIT_NAME' ($UNIT_PATH): starts at boot and restarts automatically (Restart=always) if the app process exits for any reason."
+if [ "$START_NOW" = "1" ]; then
+  systemctl start "$UNIT_NAME"
+  echo "Started '$UNIT_NAME' now."
+fi
+exit 0
+""";
+        return script.replace("__NPDEV_SAFE_APP_ID__", appId);
+    }
+
+    /**
+     * R9.6: clean removal counterpart to {@link #installServiceScriptPosix}. Idempotent: no unit
+     * file, nothing to do, exit 0. Stops the unit before disabling/removing it (systemd's own job,
+     * not a duplicate of {@code stop-app.sh}'s PID-file logic), so this alone is a complete teardown
+     * -- unlike the Windows side, which relies on the separately-documented {@code Stop-App.ps1}.
+     */
+    private static String uninstallServiceScriptPosix(String appId) {
+        String script = """
+#!/bin/sh
+# NPDev generated FinalApp -- stop, disable and remove the systemd unit install-service.sh created.
+# POSIX twin of Uninstall-Service.ps1. Usage: sudo ./uninstall-service.sh
+set -e
+UNIT_NAME="npdev-__NPDEV_SAFE_APP_ID__"
+UNIT_PATH="/etc/systemd/system/$UNIT_NAME.service"
+
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "systemctl not found -- nothing to remove."
+  exit 0
+fi
+
+if [ ! -f "$UNIT_PATH" ]; then
+  echo "No unit at $UNIT_PATH ('$UNIT_NAME'). Nothing to do."
+  exit 0
+fi
+
+if [ "$(id -u)" != "0" ]; then
+  echo "uninstall-service.sh must run as root (sudo) to stop/disable/remove $UNIT_PATH." >&2
+  exit 1
+fi
+
+systemctl stop "$UNIT_NAME" 2>/dev/null || true
+systemctl disable "$UNIT_NAME" 2>/dev/null || true
+rm -f "$UNIT_PATH"
+systemctl daemon-reload
+echo "Removed '$UNIT_NAME' ($UNIT_PATH). If the app was running, systemctl stop above already stopped it."
+exit 0
+""";
+        return script.replace("__NPDEV_SAFE_APP_ID__", appId);
+    }
+
     private static String smokeTestScript() {
         return """
 $ErrorActionPreference = 'Stop'
@@ -1657,9 +2011,10 @@ Run every command below **from this `_ops` directory** -- it lives inside the ap
 the paths are relative to it and stay correct wherever you copy the app to.
 
 `pwsh` is the cross-platform PowerShell binary name (Windows, Linux and macOS all install it as
-`pwsh`, never `pwsh.exe` off Windows). Steps 1, 2, 4, 5, 6 and 7 are PowerShell-only today; steps 3
-and 3a also have POSIX shell twins (`run-final-app.sh`, `start-app.sh`/`stop-app.sh`) for a machine
-with no PowerShell at all.
+`pwsh`, never `pwsh.exe` off Windows). Steps 1, 2, 4, 5, 6 and 7 are PowerShell-only today; steps 3,
+3a and 3b also have POSIX shell twins (`run-final-app.sh`, `start-app.sh`/`stop-app.sh`,
+`install-service.sh`/`uninstall-service.sh`) for a machine with no PowerShell at all -- 3b's two
+sides are not the same mechanism, see that section.
 
 ```sh
 cd <this app>/_ops
@@ -1723,6 +2078,36 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File ./Stop-App.ps1
 
 Same log handling as step 3: each run gets its own `logs/app-<timestamp>.log`, pruned to the newest
 20 across BOTH launchers -- a background run and a foreground run share one bounded pool.
+
+3b. Supervise as a service (optional -- survives a crash or a reboot, no Docker required)
+
+Outside Docker's restart policy, nothing restarts a crashed app or starts one at boot. `Install-Service.ps1`
+/ `install-service.sh` register a supervisor around the launchers above so this app comes back on its
+own. **Installing writes outside this app** (a systemd unit under `/etc/systemd/system`, or a Windows
+Scheduled Task) and needs elevated privileges (root / Administrator) -- pass `-DryRun` / `--dry-run`
+first to see exactly what would be registered with zero side effects. Re-running against the same app
+is a no-op; a name collision with a DIFFERENT app's service is refused, naming both.
+
+**The two platforms are NOT the same mechanism**, stated plainly rather than implied:
+- Linux/systemd gets a REAL unit (`Type=simple`, `Restart=always`) wrapping `run-final-app.sh` --
+  systemd tracks the process directly, so a crash is noticed immediately.
+- Windows has no way to register an arbitrary script as a true SCM service without a third-party
+  wrapper binary (NSSM, WinSW, ...), which this platform does not bundle. Instead this registers a
+  Scheduled Task (SYSTEM principal, starts at boot, and re-checks every minute) that calls the
+  already-guarded `Start-App.ps1` -- a no-op if the app is already running, a start if it is not. It
+  will **not** appear in `services.msc`; worst-case crash-recovery latency is ~1 minute, not instant.
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Install-Service.ps1 -DryRun   # preview only
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Install-Service.ps1          # needs an elevated shell
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Uninstall-Service.ps1
+```
+
+```sh
+sudo ./install-service.sh --dry-run   # preview only
+sudo ./install-service.sh
+sudo ./uninstall-service.sh
+```
 
 4. Smoke-test FinalApp
 
