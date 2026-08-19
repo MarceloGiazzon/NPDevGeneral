@@ -158,6 +158,27 @@ final class PackValidation {
      * naming nothing declared is a typo or a forgotten declaration, and X0's rule applies here too:
      * refuse it rather than silently compare every row against the seven-character literal
      * {@code ":name"} (REG-101's own corpus witness, before this fix).
+     *
+     * <p><b>R4.3 (Roadmap Wave 1): deliberately STILL v1 here, not
+     * {@link QueryPredicateGrammar#parseGroups}.</b> R4.3 wired the v2 grammar (OR-groups, {@code
+     * in}, {@code contains}/{@code startsWith}, {@code is null}/{@code is not null}, a reference-path
+     * left side) all the way to real SQL in {@code JdbcBusinessConceptStore} (query()/aggregate(),
+     * via {@code ConceptQueryPredicateCompiler#compileToConceptQueryFilters} and {@code
+     * ConceptQuery.Operator#OR_GROUPS}) -- proven by a direct H2 integration test
+     * ({@code JdbcBusinessConceptStorePredicateV2Test}). It did NOT widen this method to accept v2
+     * syntax, because this method's only production runtime consumer for a declared
+     * {@code queries[].where} is {@code DefaultProcedureExecutor}'s {@code runQuery} step
+     * ({@code com.npdev.kernel.procedures}), which still compiles {@code where} with the v1-only
+     * {@code ConceptQueryPredicateCompiler#compile}. Loosening validation here without rewiring that
+     * call site would let an author declare {@code where: "a == 1 || b == 2"}, have it validate
+     * cleanly, and then throw at the FIRST {@code runQuery} invocation -- exactly the
+     * validates-clean-then-throws-at-runtime trap this method's own REG-101 fix (above) exists to
+     * prevent. The two must move together in the SAME change: rewire
+     * {@code DefaultProcedureExecutor#runQuery} onto {@code compileToConceptQueryFilters}, THEN widen
+     * this method to {@code parseGroups} (plus the join-path field/type/{@code access.read} checks
+     * {@link #validateGroupByField} already does for {@code groupBy}, since a predicate join carries
+     * the identical information-disclosure shape). Until both land together, this method staying
+     * v1-only is the correct, honest state -- not an oversight.
      */
     private static void validateQueryWhereCompiles(QueryAst query, List<String> errors) {
         if (!hasText(query.where())) {

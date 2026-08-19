@@ -37,9 +37,34 @@ public final class ConceptQueryEngine {
         return ConceptPage.of(page, total, from);
     }
 
-    /** Package-visible (not private) so {@link ConceptAggregateEngine} reuses the SAME filter
-     *  evaluation for an aggregate query's pre-grouping {@code where}, rather than forking it. */
+    /**
+     * Package-visible (not private) so {@link ConceptAggregateEngine} reuses the SAME filter
+     * evaluation for an aggregate query's pre-grouping {@code where}, rather than forking it.
+     *
+     * <p>R4.3 (Roadmap Wave 1): recognises the single {@link ConceptQuery.Operator#OR_GROUPS}
+     * marker shape (see that constant's own javadoc) as an OR-of-AND, so this in-memory adapter
+     * stays behaviourally at parity with {@code JdbcBusinessConceptStore}'s SQL rendering for every
+     * shape it can actually evaluate -- see {@link #matches} for the one shape it CANNOT
+     * (a reference-path field), which it refuses rather than silently mis-evaluating.
+     */
     static boolean matchesAll(ConceptRecord record, List<ConceptQuery.Filter> filters) {
+        if (filters.isEmpty()) {
+            return true;
+        }
+        if (filters.size() == 1 && filters.get(0).operator() == ConceptQuery.Operator.OR_GROUPS) {
+            @SuppressWarnings("unchecked")
+            List<List<ConceptQuery.Filter>> groups = (List<List<ConceptQuery.Filter>>) filters.get(0).value();
+            for (List<ConceptQuery.Filter> group : groups) {
+                if (matchesAllFlat(record, group)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return matchesAllFlat(record, filters);
+    }
+
+    private static boolean matchesAllFlat(ConceptRecord record, List<ConceptQuery.Filter> filters) {
         for (ConceptQuery.Filter filter : filters) {
             if (!matches(record, filter)) {
                 return false;
@@ -49,6 +74,16 @@ public final class ConceptQueryEngine {
     }
 
     private static boolean matches(ConceptRecord record, ConceptQuery.Filter filter) {
+        if (filter.field() != null && (filter.field().indexOf('.') >= 0 || filter.field().contains("::"))) {
+            // R4.3: only JdbcBusinessConceptStore resolves a reference-path field, via a real SQL
+            // JOIN (registerJoinChain). This in-memory adapter has no access to another concept's
+            // records from here, so silently treating a dotted field as an ordinary (always-absent)
+            // key would be exactly the X0 "unenforced filter" trap -- refused loudly instead.
+            throw new UnsupportedOperationException(
+                    "ConceptQueryEngine (the in-memory adapter) does not resolve reference-path filter "
+                            + "field '" + filter.field() + "' -- only JdbcBusinessConceptStore joins one "
+                            + "(via registerJoinChain). Refused rather than silently evaluating it as absent.");
+        }
         Object actual = record.data() == null ? null : record.data().get(filter.field());
         Object expected = filter.value();
         return switch (filter.operator()) {
@@ -61,6 +96,17 @@ public final class ConceptQueryEngine {
             case CONTAINS -> actual != null && expected != null
                     && String.valueOf(actual).toLowerCase(java.util.Locale.ROOT)
                             .contains(String.valueOf(expected).toLowerCase(java.util.Locale.ROOT));
+            // R4.3: mirrors ConceptQueryFilterSupport#matchesPredicateClause's v2 semantics exactly,
+            // so the in-memory and JDBC adapters agree on every shape this evaluator can reach.
+            case STARTS_WITH -> actual != null && expected != null
+                    && String.valueOf(actual).toLowerCase(java.util.Locale.ROOT)
+                            .startsWith(String.valueOf(expected).toLowerCase(java.util.Locale.ROOT));
+            case IN -> actual != null && expected instanceof List<?> candidates
+                    && candidates.stream().anyMatch(candidate -> valuesEqual(actual, candidate));
+            case IS_NULL -> actual == null;
+            case IS_NOT_NULL -> actual != null;
+            case OR_GROUPS -> throw new IllegalArgumentException(
+                    "OR_GROUPS may only appear as the sole top-level filter, not nested inside a clause group");
         };
     }
 

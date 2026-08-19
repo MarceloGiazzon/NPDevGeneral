@@ -90,6 +90,17 @@ public final class SqlServerDialect implements SqlDialect {
     private SqlServerDialect() {
     }
 
+    /**
+     * R4.3: T-SQL's {@code CAST(expr AS varchar)} without a length defaults to <b>30 characters</b>
+     * (the CAST default, distinct from the length-1 default in a declaration). The interface default
+     * would therefore truncate silently -- a contains filter on anything longer than 30 characters
+     * matches nothing, with no error. {@code NVARCHAR(MAX)} also keeps non-BMP unicode intact, which
+     * STOR-3 already proves this engine must handle.
+     */
+    @Override
+    public String caseInsensitiveTextExpression(String expression) {
+        return "LOWER(CAST(" + expression + " AS NVARCHAR(MAX)))";
+    }
     @Override
     public String name() {
         return "sqlserver";

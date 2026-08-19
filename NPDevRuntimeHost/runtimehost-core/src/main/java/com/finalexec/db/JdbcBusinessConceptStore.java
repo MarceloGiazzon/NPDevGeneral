@@ -377,42 +377,54 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
      * a matching {@code COUNT(*)} rather than a materialize-everything count, and {@code LIMIT}/{@code
      * OFFSET} keep the JVM from ever holding more than one page. A stable {@code ORDER BY} (the id
      * column when the caller declares no sort) makes OFFSET paging deterministic.
+     *
+     * <p>R4.3 (Roadmap Wave 1): the base table is now ALWAYS aliased ({@code npdev_base}), the same
+     * convention {@link #aggregate} already established, so a {@link ConceptQuery.Filter} naming a
+     * reference-path field (see that record's own javadoc) can be resolved via a real SQL
+     * {@code JOIN} -- {@link #registerJoinChain}, reused rather than re-derived. When a predicate
+     * needs no join the emitted SQL is behaviourally identical to before (an aliased single-table
+     * {@code SELECT}, which is not a semantic change); the select list narrows from {@code *} to
+     * {@code npdev_base.*} only when a join is actually present, so a join's columns never leak into
+     * {@link #toRecord}'s column scan.
      */
     @Override
     public ConceptPage query(String tenantId, String conceptName, ConceptQuery query) {
         ConceptShape shape = shape(conceptName);
         ConceptQuery effective = query == null ? ConceptQuery.firstPage() : query;
+        String baseAlias = "npdev_base";
+
+        Map<String, JoinPlan> joinsByChainKey = new LinkedHashMap<>();
+        List<String> joinClauses = new ArrayList<>();
+        List<Object> joinParams = new ArrayList<>();
 
         List<String> whereClauses = new ArrayList<>();
-        List<Object> params = new ArrayList<>();
-        whereClauses.add("tenant_id = ?");
-        params.add(tenantId);
+        List<Object> whereParams = new ArrayList<>();
+        whereClauses.add(baseAlias + ".tenant_id = ?");
+        whereParams.add(tenantId);
         // R5.4: grids/pickers built on this method never see a soft-deleted row.
         if (shape.softDelete()) {
-            whereClauses.add("deleted_at IS NULL");
+            whereClauses.add(baseAlias + ".deleted_at IS NULL");
         }
-        for (ConceptQuery.Filter filter : effective.filters()) {
-            String column = requireColumn(shape, filter.field());
-            if (filter.operator() == ConceptQuery.Operator.CONTAINS) {
-                // CAST to VARCHAR first: Postgres's LOWER() rejects non-text input outright (unlike
-                // H2, which silently coerces), so a "contains" filter against a numeric/UUID column
-                // would otherwise work under H2 in dev and fail under Postgres in production.
-                whereClauses.add("LOWER(CAST(" + sqlId(column) + " AS VARCHAR)) LIKE ? ESCAPE '\\'");
-                params.add("%" + likeEscape(String.valueOf(filter.value()).toLowerCase(Locale.ROOT)) + "%");
-                continue;
-            }
-            String dslType = shape.dslTypeByColumn().get(column.toLowerCase(Locale.ROOT));
-            whereClauses.add(column + " " + sqlOperator(filter.operator()) + " ?");
-            params.add(coerceValue(column, filter.value(), dslType));
+        String predicateSql = renderPredicateSql(shape, baseAlias, effective.filters(),
+                joinsByChainKey, joinClauses, joinParams, whereParams, tenantId);
+        if (predicateSql != null) {
+            whereClauses.add(predicateSql);
         }
         String whereSql = String.join(" AND ", whereClauses);
-        String orderSql = orderByClause(shape, effective.sorts());
+        String orderSql = orderByClause(shape, baseAlias, effective.sorts());
+
+        String joinSql = String.join("", joinClauses);
+        String fromSql = sqlId(shape.tableName()) + " AS " + baseAlias + joinSql;
+        String selectList = joinClauses.isEmpty() ? "*" : baseAlias + ".*";
+
+        List<Object> params = new ArrayList<>(joinParams);
+        params.addAll(whereParams);
 
         Connection connection = openConnection();
         try {
             long total;
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT COUNT(*) FROM " + sqlId(shape.tableName()) + " WHERE " + whereSql)) {
+                    "SELECT COUNT(*) FROM " + fromSql + " WHERE " + whereSql)) {
                 bindParams(statement, params, 1);
                 try (ResultSet resultSet = statement.executeQuery()) {
                     resultSet.next();
@@ -421,7 +433,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             }
 
             List<ConceptRecord> items = new ArrayList<>();
-            String pageSql = dialect.paginated("SELECT * FROM " + sqlId(shape.tableName()) + " WHERE " + whereSql
+            String pageSql = dialect.paginated("SELECT " + selectList + " FROM " + fromSql + " WHERE " + whereSql
                     + orderSql + " ").stripTrailing();
             LOG.debug("npdev.query.sql concept={} sql={} limit={} offset={}",
                     conceptName, pageSql, effective.limit(), effective.offset());
@@ -508,17 +520,13 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         if (shape.softDelete()) {
             whereClauses.add(baseAlias + ".deleted_at IS NULL");
         }
-        for (ConceptQuery.Filter filter : query.filters()) {
-            String rawColumn = requireColumn(shape, filter.field());
-            String column = baseAlias + "." + rawColumn;
-            if (filter.operator() == ConceptQuery.Operator.CONTAINS) {
-                whereClauses.add("LOWER(CAST(" + sqlId(column) + " AS VARCHAR)) LIKE ? ESCAPE '\\'");
-                whereParams.add("%" + likeEscape(String.valueOf(filter.value()).toLowerCase(Locale.ROOT)) + "%");
-                continue;
-            }
-            String dslType = shape.dslTypeByColumn().get(rawColumn.toLowerCase(Locale.ROOT));
-            whereClauses.add(column + " " + sqlOperator(filter.operator()) + " ?");
-            whereParams.add(coerceValue(rawColumn, filter.value(), dslType));
+        // R4.3: shared with query() -- reuses the SAME joinsByChainKey/joinClauses/joinParams the
+        // groupBy loop above already populated, so a WHERE-clause reference-path join and a groupBy
+        // join to the same chain are deduplicated into one SQL JOIN rather than joining twice.
+        String predicateSql = renderPredicateSql(shape, baseAlias, query.filters(),
+                joinsByChainKey, joinClauses, joinParams, whereParams, tenantId);
+        if (predicateSql != null) {
+            whereClauses.add(predicateSql);
         }
         String whereSql = String.join(" AND ", whereClauses);
 
@@ -713,15 +721,15 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         return column;
     }
 
-    private String orderByClause(ConceptShape shape, List<ConceptQuery.Sort> sorts) {
+    private String orderByClause(ConceptShape shape, String baseAlias, List<ConceptQuery.Sort> sorts) {
         if (sorts.isEmpty()) {
             // OFFSET paging is only deterministic under a stable order; default to the primary key.
-            return " ORDER BY " + sqlId(shape.idColumn());
+            return " ORDER BY " + baseAlias + "." + sqlId(shape.idColumn());
         }
         List<String> terms = new ArrayList<>();
         for (ConceptQuery.Sort sort : sorts) {
             String column = requireColumn(shape, sort.field());
-            terms.add(column + (sort.descending() ? " DESC" : " ASC"));
+            terms.add(baseAlias + "." + sqlId(column) + (sort.descending() ? " DESC" : " ASC"));
         }
         return " ORDER BY " + String.join(", ", terms);
     }
@@ -735,12 +743,134 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             case GT -> ">";
             case GTE -> ">=";
             case CONTAINS -> throw new IllegalStateException("CONTAINS is compiled to LIKE, not a binary operator");
+            case STARTS_WITH -> throw new IllegalStateException("STARTS_WITH is compiled to LIKE, not a binary operator");
+            case IN -> throw new IllegalStateException("IN is compiled to IN (...), not a binary operator");
+            case IS_NULL -> throw new IllegalStateException("IS_NULL is compiled to a unary null-check, not a binary operator");
+            case IS_NOT_NULL -> throw new IllegalStateException("IS_NOT_NULL is compiled to a unary null-check, not a binary operator");
+            case OR_GROUPS -> throw new IllegalStateException("OR_GROUPS is a marker filter (nested groups), not a binary operator");
         };
     }
 
-    /** Escapes LIKE wildcard characters in a literal search term bound as a parameter. */
-    private static String likeEscape(String value) {
-        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    /**
+     * R4.3 (Roadmap Wave 1): renders {@code filters} into ONE WHERE fragment (no leading "WHERE",
+     * no leading "AND") -- either the flat AND-list shape {@link ConceptQuery.Filter} has always
+     * had, or the single {@link ConceptQuery.Operator#OR_GROUPS} marker shape (see that constant's
+     * javadoc). Registers any reference-path JOIN a clause needs via {@link #registerJoinChain},
+     * the SAME join machinery a {@code groupBy} path already uses -- keyed into the SAME
+     * {@code joinsByChainKey} map the caller passes in, so a predicate join and a {@code groupBy}
+     * join (or two predicate joins) to the same reference chain are deduplicated into one SQL
+     * {@code JOIN} rather than joining the same table twice.
+     *
+     * @return the WHERE fragment, or {@code null} when {@code filters} is empty (caller adds nothing)
+     */
+    private String renderPredicateSql(
+            ConceptShape baseShape, String baseAlias, List<ConceptQuery.Filter> filters,
+            Map<String, JoinPlan> joinsByChainKey, List<String> joinClauses, List<Object> joinParams,
+            List<Object> whereParams, String tenantId) {
+        if (filters.isEmpty()) {
+            return null;
+        }
+        if (filters.size() == 1 && filters.get(0).operator() == ConceptQuery.Operator.OR_GROUPS) {
+            @SuppressWarnings("unchecked")
+            List<List<ConceptQuery.Filter>> groups = (List<List<ConceptQuery.Filter>>) filters.get(0).value();
+            List<String> groupSqls = new ArrayList<>();
+            for (List<ConceptQuery.Filter> group : groups) {
+                List<String> clauseSqls = new ArrayList<>();
+                for (ConceptQuery.Filter clause : group) {
+                    clauseSqls.add(renderPredicateClause(baseShape, baseAlias, clause,
+                            joinsByChainKey, joinClauses, joinParams, whereParams, tenantId));
+                }
+                groupSqls.add("(" + String.join(" AND ", clauseSqls) + ")");
+            }
+            return "(" + String.join(" OR ", groupSqls) + ")";
+        }
+        List<String> clauseSqls = new ArrayList<>();
+        for (ConceptQuery.Filter filter : filters) {
+            clauseSqls.add(renderPredicateClause(baseShape, baseAlias, filter,
+                    joinsByChainKey, joinClauses, joinParams, whereParams, tenantId));
+        }
+        return String.join(" AND ", clauseSqls);
+    }
+
+    /**
+     * Renders ONE clause. {@code clause.field()} is resolved via {@link GroupByJoinGrammar#parse}
+     * ONLY when it looks like a reference path (contains {@code .} or {@code ::}) -- a plain field
+     * name takes the exact same {@link #requireColumn} path this class has always used, so the
+     * common (non-join) case is byte-for-byte unchanged and an injection attempt spelled as a plain
+     * (dot-free) field string still fails at {@link #requireColumn}'s whitelist check with the same
+     * {@link IllegalArgumentException} it always has (rather than a
+     * {@link GroupByJoinGrammar.UnsupportedGroupByPathException}, a different unchecked type that
+     * would change what callers must catch).
+     *
+     * <p>Every value is bound as a {@link PreparedStatement} parameter via {@code whereParams} --
+     * never concatenated into the returned SQL text. {@code LIKE}/{@code IN} scaffolding (wildcards,
+     * escaping, placeholder count) is delegated to {@link SqlDialect}
+     * ({@link SqlDialect#containsPattern}/{@link SqlDialect#startsWithPattern}/
+     * {@link SqlDialect#likeEscapeClause}/{@link SqlDialect#inPlaceholders}) rather than hand-rolled
+     * here, fixing the pre-R4.3 defect where {@code contains} escaped its own wildcards inline.
+     */
+    private String renderPredicateClause(
+            ConceptShape baseShape, String baseAlias, ConceptQuery.Filter clause,
+            Map<String, JoinPlan> joinsByChainKey, List<String> joinClauses, List<Object> joinParams,
+            List<Object> whereParams, String tenantId) {
+        String rawField = clause.field();
+        ConceptShape targetShape;
+        String rawColumn;
+        String columnRef;
+        if (rawField != null && (rawField.indexOf('.') >= 0 || rawField.contains("::"))) {
+            GroupByJoinGrammar.Target target = GroupByJoinGrammar.parse(rawField);
+            if (target instanceof GroupByJoinGrammar.Target.Join join) {
+                JoinPlan plan = registerJoinChain(baseShape, join.referenceFields(), baseAlias,
+                        joinsByChainKey, joinClauses, joinParams, tenantId);
+                targetShape = plan.targetShape();
+                rawColumn = requireColumn(targetShape, join.targetField());
+                columnRef = plan.alias() + "." + sqlId(rawColumn);
+            } else {
+                // Unreachable in practice (a dot/"::" always parses to a Join), kept as a safe
+                // fallback rather than an assertion so a future grammar change degrades gracefully.
+                targetShape = baseShape;
+                rawColumn = requireColumn(baseShape, ((GroupByJoinGrammar.Target.Direct) target).field());
+                columnRef = baseAlias + "." + sqlId(rawColumn);
+            }
+        } else {
+            targetShape = baseShape;
+            rawColumn = requireColumn(baseShape, rawField);
+            columnRef = baseAlias + "." + sqlId(rawColumn);
+        }
+        String dslType = targetShape.dslTypeByColumn().get(rawColumn.toLowerCase(Locale.ROOT));
+        return switch (clause.operator()) {
+            case EQ, NEQ, LT, LTE, GT, GTE -> {
+                whereParams.add(coerceValue(rawColumn, clause.value(), dslType));
+                yield columnRef + " " + sqlOperator(clause.operator()) + " ?";
+            }
+            case CONTAINS -> {
+                // The lower-cased text expression is the dialect's to spell, not this call site's:
+                // MySQL's CAST has no VARCHAR target at all, and T-SQL's length-less CAST truncates
+                // to 30 characters silently. See SqlDialect#caseInsensitiveTextExpression.
+                whereParams.add(dialect.containsPattern(String.valueOf(clause.value()).toLowerCase(Locale.ROOT)));
+                yield dialect.caseInsensitiveTextExpression(columnRef) + " LIKE ? " + dialect.likeEscapeClause();
+            }
+            case STARTS_WITH -> {
+                whereParams.add(dialect.startsWithPattern(String.valueOf(clause.value()).toLowerCase(Locale.ROOT)));
+                yield dialect.caseInsensitiveTextExpression(columnRef) + " LIKE ? " + dialect.likeEscapeClause();
+            }
+            case IN -> {
+                List<?> values = (List<?>) clause.value();
+                if (values == null || values.isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "Filter.in(" + rawField + ") requires at least one value -- an empty IN list is "
+                                    + "refused rather than silently rendered as \"no rows match\"");
+                }
+                for (Object value : values) {
+                    whereParams.add(coerceValue(rawColumn, value, dslType));
+                }
+                yield columnRef + " IN (" + dialect.inPlaceholders(values.size()) + ")";
+            }
+            case IS_NULL -> columnRef + " IS NULL";
+            case IS_NOT_NULL -> columnRef + " IS NOT NULL";
+            case OR_GROUPS -> throw new IllegalArgumentException(
+                    "OR_GROUPS may only appear as the sole top-level filter, not nested inside a clause group");
+        };
     }
 
     private int bindParams(PreparedStatement statement, List<Object> params, int startIndex) throws SQLException {
