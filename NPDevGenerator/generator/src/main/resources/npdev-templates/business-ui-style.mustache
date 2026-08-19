@@ -267,6 +267,32 @@ textarea {
   border-left-color: #a32424;
 }
 
+/* R7.7: a flow-backed invocation that returned 202 (or the panel-action equivalent, status
+   "WAITING") is shown as a pending toast, never a synchronous "completed" -- see
+   business-ui-app.mustache's trackFlowExecution. The spinner is CSS-only against the toast's own
+   ::before so it survives resolveToast() swapping the class to is-success/is-error later without
+   any extra DOM bookkeeping. */
+.toast.is-pending {
+  border-left-color: #a3720f;
+}
+
+.toast.is-pending .toast-message::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  vertical-align: -1px;
+  border: 2px solid #eadcb8;
+  border-top-color: #a3720f;
+  border-radius: 50%;
+  animation: npdev-toast-spin .8s linear infinite;
+}
+
+@keyframes npdev-toast-spin {
+  to { transform: rotate(360deg); }
+}
+
 .toast-message {
   flex: 1;
   overflow-wrap: anywhere;
