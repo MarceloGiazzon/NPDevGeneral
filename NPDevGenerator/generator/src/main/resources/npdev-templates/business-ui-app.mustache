@@ -286,7 +286,10 @@
   document.body.appendChild(el.toastHost);
 
   // Errors never auto-dismiss -- a validation message the user has to act on must not vanish while
-  // they are reading the field it points at. Success toasts fade on their own.
+  // they are reading the field it points at. Success toasts fade on their own. R7.7: "pending" is a
+  // third non-auto-dismissing kind -- a toast reporting a flow still running must stay put until
+  // resolveToast() below morphs it into success/error, exactly the async counterpart of "don't
+  // vanish while the user still needs it."
   function toast(message, kind) {
     const copy = text(message).trim();
     if (!copy) {
@@ -303,7 +306,7 @@
     dismiss.setAttribute("aria-label", "Dismiss");
     node.appendChild(dismiss);
     el.toastHost.appendChild(node);
-    if (kind !== "error") {
+    if (kind !== "error" && kind !== "pending") {
       node.dataset.autoDismiss = String(setTimeout(function () { dismissToast(node); }, TOAST_TIMEOUT_MS));
     }
     return node;
@@ -319,6 +322,64 @@
     if (node.parentNode) {
       node.parentNode.removeChild(node);
     }
+  }
+
+  // R7.7: morphs an existing "pending" toast in place into its resolved success/error state, rather
+  // than dismissing it and creating a second one -- the user's eye stays on the same element the
+  // whole time a tracked flow execution settles. Falls back to a fresh toast if the pending one was
+  // already dismissed (e.g. the user closed it manually) before the execution finished, so the
+  // outcome is still reported somewhere rather than silently dropped.
+  function resolveToast(node, success, message) {
+    if (!node || !node.parentNode) {
+      toast(message, success ? "success" : "error");
+      return;
+    }
+    node.className = "toast is-" + (success ? "success" : "error");
+    node.setAttribute("role", success ? "status" : "alert");
+    const body = node.querySelector(".toast-message");
+    if (body) {
+      body.textContent = text(message).trim();
+    }
+    if (node.dataset.autoDismiss) {
+      clearTimeout(Number(node.dataset.autoDismiss));
+      delete node.dataset.autoDismiss;
+    }
+    if (success) {
+      node.dataset.autoDismiss = String(setTimeout(function () { dismissToast(node); }, TOAST_TIMEOUT_MS));
+    }
+  }
+
+  // R7.7 (roadmap item, "Async flow-execution progress surface"): docs/UI_CONTRACT.md warns "a UI
+  // that shows Saved! on a 202 is lying" and names `execution.statusRoute` as the contract for
+  // following a flow-backed invocation's real outcome -- shipped (F2.1/F2.2) with no consumer until
+  // this. A declared Panel action bound to a flow (PanelRuntime#executeAction, binding: "flow")
+  // reaches the SAME WAITING_EVENT outcome through its own always-200 envelope instead of a raw
+  // HTTP 202 (see executeDeclaredPanelAction below) -- payload.status === "WAITING" is that
+  // envelope's equivalent of a 202. Never invent a synchronous "completed" message for it.
+  //
+  // Polling itself lives in NPDevShell (shell.js.mustache), not here: it already owns the
+  // persistent "recent executions" rail the roadmap asks for, and its own fetchJson/auth-token
+  // plumbing, so tracking one execution is a single call across that existing boundary rather than
+  // a second poller. The pending toast is created here (this file owns the toast host) and handed
+  // to NPDevShell only as an opaque resolve callback -- NPDevShell has no notion of toasts.
+  function trackFlowExecution(executionId, flowName) {
+    if (!executionId) {
+      return;
+    }
+    const label = flowName || "Flow";
+    const pending = toast(label + " is running…", "pending");
+    if (!(window.NPDevShell && typeof window.NPDevShell.trackExecution === "function")) {
+      return;
+    }
+    window.NPDevShell.trackExecution({
+      executionId: executionId,
+      flowName: label,
+      onSettled: function (outcome, detail) {
+        const failed = outcome !== "SUCCEEDED";
+        const errorSuffix = failed && detail && detail.lastErrorMessage ? ": " + detail.lastErrorMessage : "";
+        resolveToast(pending, !failed, label + (failed ? " failed" + errorSuffix + "." : " completed."));
+      }
+    });
   }
 
   // Feedback surface for anything the user WROTE (create/update/delete, panel row add/remove, an
@@ -887,7 +948,14 @@
       );
       entry.lastActionName = actionName;
       entry.lastActionResult = payload.result;
-      notify("Action \"" + actionName + "\" completed: " + (payload.status || "OK"), payload.status === "FAILED");
+      if (payload.status === "WAITING" && payload.executionId) {
+        // R7.7: a flow-bound action that parked on awaitEvent is not "completed" -- see
+        // trackFlowExecution's own comment for why this is the same lie docs/UI_CONTRACT.md warns
+        // against, reached through a Panel action instead of a raw 202.
+        trackFlowExecution(payload.executionId, (payload.result && payload.result.flowName) || actionName);
+      } else {
+        notify("Action \"" + actionName + "\" completed: " + (payload.status || "OK"), payload.status === "FAILED");
+      }
       await loadDeclaredPanel(panelMeta);
     } catch (error) {
       setStatus(error.message, true);

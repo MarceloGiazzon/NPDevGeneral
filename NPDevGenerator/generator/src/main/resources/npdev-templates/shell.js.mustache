@@ -41,10 +41,45 @@
     document.head.appendChild(link);
   })();
 
+  // R7.7: the "recent executions" rail's own CSS, self-contained here rather than added to
+  // shell.css.mustache -- this script is the only owner of the rail's DOM, and a JS-injected style
+  // block (same pattern as injectAppTheme above) keeps the feature working even on a page that
+  // never gets a shell.css update. The toggle stays hidden (display:none) until trackExecution()
+  // records a first entry, so an app with no async invocations renders its topbar exactly as
+  // before -- no empty icon, no layout shift, nothing to notice.
+  (function injectExecutionsRailStyle() {
+    if (document.querySelector('style[data-npdev-shell-executions]')) return;
+    var style = document.createElement("style");
+    style.setAttribute("data-npdev-shell-executions", "true");
+    style.textContent =
+      ".npdev-shell-executions-toggle{display:none;margin-left:8px;padding:4px 9px;border:1px solid var(--np-border,#d8dee7);" +
+      "border-radius:14px;background:var(--np-surface,#fff);color:var(--np-text,#1c2333);font-size:13px;cursor:pointer;}" +
+      ".npdev-shell-executions-toggle.npdev-shell-executions-toggle-visible{display:inline-flex;align-items:center;gap:4px;}" +
+      ".npdev-shell-executions-panel{display:none;position:fixed;top:44px;right:16px;z-index:70;width:min(320px,calc(100vw - 32px));" +
+      "max-height:360px;overflow-y:auto;background:var(--np-surface,#fff);border:1px solid var(--np-border,#d8dee7);" +
+      "border-radius:8px;box-shadow:0 12px 32px rgba(24,32,42,.22);padding:6px;}" +
+      ".npdev-shell-executions-panel.npdev-shell-executions-panel-open{display:block;}" +
+      ".npdev-shell-execution-row{display:flex;align-items:center;justify-content:space-between;gap:10px;" +
+      "padding:7px 8px;font-size:13px;border-bottom:1px solid var(--np-border,#eef1f5);}" +
+      ".npdev-shell-execution-row:last-child{border-bottom:none;}" +
+      ".npdev-shell-execution-name{overflow-wrap:anywhere;color:var(--np-text,#1c2333);}" +
+      ".npdev-shell-execution-status{flex-shrink:0;font-size:11px;font-weight:600;text-transform:uppercase;" +
+      "letter-spacing:.02em;padding:2px 6px;border-radius:10px;}" +
+      ".npdev-shell-execution-pending .npdev-shell-execution-status{background:#fbeed2;color:#8a5c00;}" +
+      ".npdev-shell-execution-succeeded .npdev-shell-execution-status{background:#d9f0e3;color:#1f7a4d;}" +
+      ".npdev-shell-execution-failed .npdev-shell-execution-status{background:#f6d9d9;color:#a32424;}";
+    document.head.appendChild(style);
+  })();
+
   var el = {};
   var state = {
     manifest: null, menuRows: [], roles: [], actorId: "", isSuperUser: false, token: null,
-    hostMode: false, deriveNativeGroups: null
+    hostMode: false, deriveNativeGroups: null,
+    // R7.7: recent flow-execution tracker entries, newest first -- see trackExecution() below.
+    // Purely in-memory (does not survive a reload), a deliberate scope cut: this is a live-session
+    // progress rail, not a durable audit log -- the real audit trail is the Execution Monitor's own
+    // /api/v1/executions/active and /history routes (ExecutionMonitorController).
+    executions: []
   };
   var gadgetRenderers = {};
   var contextState = { title: "", rows: [] };
@@ -183,6 +218,27 @@
     bar.appendChild(breadcrumb);
     el.breadcrumb = breadcrumb;
 
+    // R7.7: recent-executions rail toggle. Stays display:none (see injectExecutionsRailStyle)
+    // until the first tracked execution arrives, so an app with no async invocations shows nothing
+    // new here at all.
+    var executionsToggle = document.createElement("button");
+    executionsToggle.className = "npdev-shell-executions-toggle";
+    executionsToggle.type = "button";
+    executionsToggle.title = "Recent flow executions";
+    executionsToggle.textContent = "⏱";
+    executionsToggle.addEventListener("click", function () {
+      el.executionsPanel.classList.toggle("npdev-shell-executions-panel-open");
+    });
+    bar.appendChild(executionsToggle);
+    el.executionsToggle = executionsToggle;
+
+    var executionsPanel = document.createElement("div");
+    executionsPanel.className = "npdev-shell-executions-panel";
+    executionsPanel.setAttribute("role", "region");
+    executionsPanel.setAttribute("aria-label", "Recent flow executions");
+    bar.appendChild(executionsPanel);
+    el.executionsPanel = executionsPanel;
+
     var identity = document.createElement("span");
     identity.className = "npdev-shell-identity";
     identity.textContent = "carregando...";
@@ -256,6 +312,101 @@
     } else {
       el.identity.textContent = "nao autenticado";
     }
+  }
+
+  // ------------------------------------------------------- executions rail ----
+
+  // R7.7: the async progress surface docs/UI_CONTRACT.md's own words call for -- "a UI that shows
+  // Saved! on a 202 is lying." A caller (business-ui-app.mustache's trackFlowExecution, today's
+  // only caller) hands this an executionId once it learns a flow-backed invocation returned
+  // WAITING/202 instead of an immediate result; this function owns polling the execution's own
+  // `execution.statusRoute` (the F2.1/F2.2 metadata-catalog field this item finally consumes -- see
+  // docs/UI_CONTRACT.md) until it reaches a terminal status, keeping the rail entry's badge current
+  // the whole time, and invoking the caller's onSettled callback exactly once when it does.
+  var EXECUTION_STATUS_ROUTE_TEMPLATE = "/api/v1/executions/{executionId}/links";
+  var EXECUTION_POLL_INTERVAL_MS = 2000;
+  // ~5 minutes at the interval above -- long enough for a real awaitEvent round trip (RUN-17's own
+  // live proof resumed within one resume-sweep tick), short enough that a genuinely abandoned poll
+  // does not run forever in a background tab.
+  var EXECUTION_POLL_MAX_ATTEMPTS = 150;
+
+  function executionOutcome(status) {
+    if (status === "COMPLETED") return "SUCCEEDED";
+    if (status === "FAILED" || status === "FAILED_PERMANENT" || status === "STUCK") return "FAILED";
+    return "PENDING";
+  }
+
+  function renderExecutionsRail() {
+    if (!el.executionsToggle || !el.executionsPanel) return;
+    var hasEntries = state.executions.length > 0;
+    el.executionsToggle.classList.toggle("npdev-shell-executions-toggle-visible", hasEntries);
+    var pendingCount = state.executions.filter(function (item) { return item.outcome === "PENDING"; }).length;
+    el.executionsToggle.textContent = pendingCount ? "⏱ " + pendingCount : "⏱";
+    el.executionsPanel.innerHTML = "";
+    state.executions.forEach(function (item) {
+      var row = document.createElement("div");
+      row.className = "npdev-shell-execution-row npdev-shell-execution-" + item.outcome.toLowerCase();
+      var name = document.createElement("span");
+      name.className = "npdev-shell-execution-name";
+      name.textContent = item.flowName || item.executionId;
+      var status = document.createElement("span");
+      status.className = "npdev-shell-execution-status";
+      status.textContent = item.outcome === "PENDING" ? "pending"
+        : (item.outcome === "SUCCEEDED" ? "completed" : "failed");
+      row.appendChild(name);
+      row.appendChild(status);
+      el.executionsPanel.appendChild(row);
+    });
+  }
+
+  function upsertExecutionRailEntry(executionId, flowName, outcome) {
+    for (var i = 0; i < state.executions.length; i++) {
+      if (state.executions[i].executionId === executionId) {
+        state.executions[i].outcome = outcome;
+        renderExecutionsRail();
+        return;
+      }
+    }
+    state.executions.unshift({ executionId: executionId, flowName: flowName, outcome: outcome });
+    // A recency rail, not an audit log -- the durable record is ExecutionMonitorController's own
+    // /active and /history routes. Capped so a long session doesn't grow this list unbounded.
+    if (state.executions.length > 20) { state.executions.length = 20; }
+    renderExecutionsRail();
+  }
+
+  function pollExecution(descriptor, attempt) {
+    var route = EXECUTION_STATUS_ROUTE_TEMPLATE.replace("{executionId}", encodeURIComponent(descriptor.executionId));
+    fetchJson(route, state.token).then(function (detail) {
+      var status = (detail && detail.executionStatus) || "";
+      var outcome = executionOutcome(status);
+      upsertExecutionRailEntry(descriptor.executionId, descriptor.flowName, outcome);
+      if (outcome !== "PENDING") {
+        if (descriptor.onSettled) descriptor.onSettled(outcome, detail);
+        return;
+      }
+      if (attempt < EXECUTION_POLL_MAX_ATTEMPTS) {
+        setTimeout(function () { pollExecution(descriptor, attempt + 1); }, EXECUTION_POLL_INTERVAL_MS);
+      } else {
+        upsertExecutionRailEntry(descriptor.executionId, descriptor.flowName, "FAILED");
+        if (descriptor.onSettled) descriptor.onSettled("FAILED", detail);
+      }
+    }).catch(function () {
+      // A transient fetch error (network blip, a brief 401 while a token refreshes) should not
+      // abandon tracking -- retry on the same schedule, up to the same cap, rather than reporting a
+      // false failure for what may still resolve.
+      if (attempt < EXECUTION_POLL_MAX_ATTEMPTS) {
+        setTimeout(function () { pollExecution(descriptor, attempt + 1); }, EXECUTION_POLL_INTERVAL_MS);
+      }
+    });
+  }
+
+  // Public entry point (window.NPDevShell.trackExecution below). descriptor: { executionId,
+  // flowName, onSettled(outcome, detail) } -- onSettled is optional; the rail entry itself is
+  // useful with no callback at all.
+  function trackExecution(descriptor) {
+    if (!descriptor || !descriptor.executionId) return;
+    upsertExecutionRailEntry(descriptor.executionId, descriptor.flowName, "PENDING");
+    pollExecution(descriptor, 0);
   }
 
   // ------------------------------------------------------------------ nav ----
@@ -1008,6 +1159,9 @@
     applyGuidePage: function (name) {
       if (state.manifest) applyGuidePage(state.manifest, name);
     },
+    // R7.7: registers a flow-backed invocation that returned WAITING/202 for polling; see
+    // trackExecution() above for the descriptor shape.
+    trackExecution: trackExecution,
     mount: function (options) {
       state.hostMode = true;
       state.deriveNativeGroups = options && options.deriveNativeGroups;
