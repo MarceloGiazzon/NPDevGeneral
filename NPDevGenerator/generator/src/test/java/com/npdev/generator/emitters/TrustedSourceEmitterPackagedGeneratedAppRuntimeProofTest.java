@@ -436,7 +436,6 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 null,
                 List.of("ADMIN"),
                 "record",
-                "write",
                 new CompiledGeneratedActionDescriptorSpec(
                         "CreateItem12User",
                         List.of("Item12User"),

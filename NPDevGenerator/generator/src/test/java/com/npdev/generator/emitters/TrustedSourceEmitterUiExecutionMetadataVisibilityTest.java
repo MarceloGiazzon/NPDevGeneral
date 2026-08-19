@@ -140,7 +140,6 @@ final class TrustedSourceEmitterUiExecutionMetadataVisibilityTest {
                 null,
                 List.of("ADMIN"),
                 "record",
-                "write",
                 new CompiledGeneratedActionDescriptorSpec(
                         "CreateItem13User",
                         List.of("Item13User"),
