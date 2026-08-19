@@ -192,7 +192,7 @@
     "baselineDiff": {
       "type": ["object", "null"],
       "additionalProperties": false,
-      "description": "C3: hash compare only, never pixel diffing -- a 'green but the screen changed' signal that costs nothing because the blobs are already content-addressed.",
+      "description": "R3.6: sha256 is the cheap first filter (an unchanged screenshot is never decoded); a screenshot whose hash changed is pixel-diffed against its baseline with a per-channel tolerance, and a differing-pixel fraction over the per-screenshot threshold marks it regressed and writes a diff PNG into the content-addressed blob dir. Was hash-equality only through C3, which cried wolf on any anti-aliasing change.",
       "properties": {
         "comparedTo": { "type": ["string", "null"], "description": "runId of the accepted baseline." },
         "screenshotsChanged": { "type": "integer", "minimum": 0 },

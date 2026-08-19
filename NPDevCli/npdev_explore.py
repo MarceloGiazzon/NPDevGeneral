@@ -49,9 +49,19 @@ from pathlib import Path
 
 import npdev_jsonschema
 import npdev_monitor
+import npdev_png
 
 RUN_SCHEMA_VERSION = "npdev-exploration-run.v1"
 DEFAULT_TARGET_PATH = "/npdev-business-ui/"
+
+# R3.6: pixel-diff defaults for screenshot baseline comparison. `screenshotDiffThreshold` is the
+# FRACTION of differing pixels that still counts as "same" (per-screenshot override lives in
+# `_ops/exploration-config.json`'s `screenshotDiffThresholds`, keyed by screenshot name -- the same
+# file `load_verdict_config` already reads, so no new config surface). `_PIXEL_CHANNEL_TOLERANCE`
+# absorbs anti-aliasing / font-hinting noise between two real renders of the same page; it is not
+# (yet) per-screenshot configurable because nothing measured has needed that.
+DEFAULT_SCREENSHOT_DIFF_THRESHOLD = 0.001
+_PIXEL_CHANNEL_TOLERANCE = 24
 
 # Keys a routine FILE may carry that are NPDev's, not the engine's. `targetPath` keeps a routine
 # port-agnostic; everything else is passed through untouched.
@@ -301,12 +311,20 @@ DEFAULT_ALLOWLIST_DOC = (
 
 def load_verdict_config(app_dir: Path | None) -> dict:
     """Per-app override (D5 rule 2), read from `_ops/exploration-config.json`. An app WITH a custom
-    theme simply does not inherit the theme.css excuse -- it says so by setting `hasCustomTheme`."""
+    theme simply does not inherit the theme.css excuse -- it says so by setting `hasCustomTheme`.
+
+    R3.6: `screenshotDiffThreshold` is the default fraction-of-differing-pixels a screenshot may
+    carry against its accepted baseline before the run goes red; `screenshotDiffThresholds` overrides
+    it per screenshot NAME (the same name recorded on `evidence.screenshots[].name`). This file is
+    NPDev's own -- not the pinned `scrapforai-routine.schema.json` -- so it is the right place for a
+    threshold the engine has no opinion about."""
     config = {
         "hasCustomTheme": False,
         "inheritDefaults": True,
         "allowedConsoleErrorSubstrings": [],
         "strictNetwork": False,
+        "screenshotDiffThreshold": DEFAULT_SCREENSHOT_DIFF_THRESHOLD,
+        "screenshotDiffThresholds": {},
     }
     if app_dir is None:
         return config
@@ -469,6 +487,27 @@ def evaluate_verdict(result: dict, config: dict) -> dict:
     if network and config.get("strictNetwork"):
         reasons.append(f"{len(network)} network failure(s) (strictNetwork) -- first: {_text_of(network[0])[:200]}")
 
+    # R3.6: `evidence.screenshots[]` entries are annotated with a pixel-diff verdict BEFORE this
+    # function runs (see `compute_baseline_diff`, called earlier in `build_run_record`) -- this stays
+    # the ONE place that turns evidence into green/red (R10), it just now reads one more evidence
+    # field, the same way it already reads consoleErrors/pageErrors/etc.
+    regressed_shots = [s for s in (evidence.get("screenshots") or [])
+                       if isinstance(s, dict) and s.get("regressed")]
+    if regressed_shots:
+        first = regressed_shots[0]
+        if first.get("dimensionMismatch"):
+            detail = f"size changed {first.get('baselineSize')} -> {first.get('currentSize')}"
+        else:
+            fraction = first.get("pixelDiffFraction") or 0.0
+            threshold = first.get("pixelDiffThreshold", DEFAULT_SCREENSHOT_DIFF_THRESHOLD)
+            detail = f"{fraction:.4f} of pixels differ (threshold {threshold:.4f})"
+            if first.get("diffBlob"):
+                detail += f", diff image: {first['diffBlob']}"
+        reasons.append(
+            f"{len(regressed_shots)} screenshot(s) regressed against the accepted baseline -- "
+            f"first: {first.get('name')} -- {detail}"
+        )
+
     return {
         "green": not reasons,
         "allowedConsoleErrorSubstrings": allowed,
@@ -547,6 +586,19 @@ def store_blob(app_dir: Path, source: Path) -> tuple[str, str, int] | None:
         return f"blobs/{target.name}", digest, target.stat().st_size
     except OSError:
         return None
+
+
+def _store_blob_bytes(app_dir: Path, data: bytes, suffix: str = ".png") -> tuple[str, str, int]:
+    """Same content-addressing as `store_blob`, for bytes already in memory rather than a file on
+    disk -- what the pixel-diff image is written with. Content-addressed by ITS OWN sha256 (not the
+    baseline's or the current screenshot's), so the same diff recurring across runs is one file."""
+    digest = hashlib.sha256(data).hexdigest()
+    target_dir = blobs_dir(app_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / f"{digest}{suffix}"
+    if not target.exists():
+        target.write_bytes(data)
+    return f"blobs/{target.name}", digest, len(data)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -681,49 +733,162 @@ class RunLock:
 
 
 # ---------------------------------------------------------------------------------------------
-# Baselines (C3) -- hash compare only, never pixel diffing
+# Baselines (C3). R3.6: sha256 is still the first, cheap filter -- an unchanged screenshot is
+# skipped without ever decoding a PNG -- but a screenshot whose hash DID change is now pixel-diffed,
+# not just counted, so anti-aliasing noise does not cry wolf and a real visual regression (a moved
+# button, a broken layout) fails the run with a diff image rather than passing silently.
 # ---------------------------------------------------------------------------------------------
 
 def baseline_path(app_dir: Path, definition_stem: str) -> Path:
     return baselines_dir(app_dir) / f"{definition_stem}.baseline.json"
 
 
-def compute_baseline_diff(app_dir: Path, definition_stem: str, record: dict) -> dict | None:
+def _resolve_blob_file(app_dir: Path, relative: str | None) -> Path | None:
+    if not relative:
+        return None
+    candidate = runs_root(app_dir) / relative
+    return candidate if candidate.is_file() else None
+
+
+def _screenshot_diff_threshold(config: dict, name: str | None) -> float:
+    overrides = config.get("screenshotDiffThresholds") or {}
+    if name is not None and name in overrides:
+        try:
+            return float(overrides[name])
+        except (TypeError, ValueError):
+            pass
+    try:
+        return float(config.get("screenshotDiffThreshold", DEFAULT_SCREENSHOT_DIFF_THRESHOLD))
+    except (TypeError, ValueError):
+        return DEFAULT_SCREENSHOT_DIFF_THRESHOLD
+
+
+def _annotate_pixel_diff(app_dir: Path, name: str | None, baseline_entry: dict, current_entry: dict,
+                         config: dict) -> None:
+    """Mutates `current_entry` (one of `evidence['screenshots']`) in place with the pixel-diff
+    verdict against `baseline_entry` (the accepted baseline's same-named entry). Only called when the
+    two sha256es already differ -- never raises: a missing blob or a PNG this decoder cannot read is
+    recorded ON THE ENTRY as `pixelDiffError`, because a tool problem must not crash a run that
+    otherwise finished (the same rule `ExploreError`'s docstring states for the run as a whole)."""
+    threshold = _screenshot_diff_threshold(config, name)
+    current_entry["pixelDiffThreshold"] = threshold
+    baseline_file = _resolve_blob_file(app_dir, baseline_entry.get("blob"))
+    current_file = _resolve_blob_file(app_dir, current_entry.get("blob"))
+    if baseline_file is None or current_file is None:
+        current_entry["pixelDiffError"] = "baseline or current screenshot blob is missing on disk"
+        return
+    try:
+        diff = npdev_png.diff_png_bytes(baseline_file.read_bytes(), current_file.read_bytes(),
+                                        channel_tolerance=_PIXEL_CHANNEL_TOLERANCE)
+    except npdev_png.PngError as exc:
+        current_entry["pixelDiffError"] = str(exc)
+        return
+
+    current_entry["baselineSize"] = diff["baselineSize"]
+    current_entry["currentSize"] = diff["currentSize"]
+    current_entry["dimensionMismatch"] = diff["dimensionMismatch"]
+    if diff["dimensionMismatch"]:
+        # A dimension change is always a regression -- there is no fraction to compare to a
+        # threshold, and "the screenshot is a different shape" is never noise.
+        current_entry["regressed"] = True
+        return
+
+    current_entry["pixelDiffFraction"] = diff["diffFraction"]
+    current_entry["pixelDiffPixels"] = diff["diffPixels"]
+    current_entry["pixelDiffTotalPixels"] = diff["totalPixels"]
+    regressed = diff["diffFraction"] > threshold
+    current_entry["regressed"] = regressed
+    if regressed and diff.get("diffPng"):
+        blob, sha, _size = _store_blob_bytes(app_dir, diff["diffPng"])
+        current_entry["diffBlob"] = blob
+        current_entry["diffSha256"] = sha
+
+
+def compute_baseline_diff(app_dir: Path, definition_stem: str, record_like: dict, config: dict) -> dict | None:
+    """`record_like` needs only `.get("evidence")` and `.get("extracted")` -- called from
+    `build_run_record` BEFORE the final record dict exists, so that the pixel-diff annotations this
+    writes onto `evidence['screenshots']` entries are in place before `evaluate_verdict` runs (R10:
+    the verdict itself still lives in exactly one function; this only supplies evidence to it, the
+    same way console-error collection already does)."""
     baseline = npdev_monitor._read_json(baseline_path(app_dir, definition_stem))
     if not baseline:
         return None
-    before = {s.get("name"): s.get("sha256") for s in baseline.get("screenshots") or []}
-    after = {s.get("name"): s.get("sha256") for s in (record.get("evidence") or {}).get("screenshots") or []}
-    changed = sorted(name for name in before.keys() & after.keys() if before[name] != after[name])
+    evidence = record_like.get("evidence") or {}
+    before = {s.get("name"): s for s in baseline.get("screenshots") or []}
+    after = {s.get("name"): s for s in evidence.get("screenshots") or []}
+    changed = sorted(name for name in before.keys() & after.keys()
+                     if before[name].get("sha256") != after[name].get("sha256"))
+    for name in changed:
+        _annotate_pixel_diff(app_dir, name, before[name], after[name], config)
     return {
         "comparedTo": baseline.get("runId"),
         "screenshotsChanged": len(changed),
         "screenshotsAdded": len(after.keys() - before.keys()),
         "screenshotsRemoved": len(before.keys() - after.keys()),
         "textChanged": json.dumps(baseline.get("extracted"), sort_keys=True)
-                       != json.dumps(record.get("extracted"), sort_keys=True),
+                       != json.dumps(record_like.get("extracted"), sort_keys=True),
         "changed": changed,
     }
 
 
-def accept_baseline(app_dir: Path, run_id: str) -> dict:
+def _clean_baseline_screenshot(entry: dict) -> dict:
+    """What a baseline file stores per screenshot: identity + content address, never the pixel-diff
+    annotations `_annotate_pixel_diff` adds to a RUN's evidence (those describe a comparison against
+    the OLD baseline and would be stale/misleading sitting inside the new one)."""
+    return {"name": entry.get("name"), "blob": entry.get("blob"),
+            "sha256": entry.get("sha256"), "bytes": entry.get("bytes")}
+
+
+def accept_baseline(app_dir: Path, run_id: str, screenshot: str | None = None) -> dict:
+    """Promote a run's screenshots (and extracted text) to the accepted baseline for its definition.
+
+    `screenshot=None` replaces the WHOLE baseline (the original, still-default behaviour). Naming one
+    screenshot replaces only that entry -- read from the run -- and leaves every other screenshot's
+    EXISTING baseline entry untouched, so accepting one deliberate visual change does not also
+    silently re-baseline every other screen a real regression would otherwise have been caught on."""
     record = read_run(app_dir, run_id)
     if record is None:
         raise ExploreError(f"no such run: {run_id}")
-    stem = Path((record.get("definition") or {}).get("path") or run_id).stem
+    definition = record.get("definition") or {}
+    # PRE-EXISTING BUG, fixed here (found while wiring R3.6): falling back to `run_id` (which has no
+    # file extension, so `.stem` was the WHOLE run id, e.g. "2026-08-10T14-22-05_px") never matched
+    # the stem `build_run_record`/`compute_baseline_diff` look a baseline up by whenever a run has no
+    # `definition.path` -- which is every run whose driver does not pass `routine_file` (record_external's
+    # default, e.g. the Playwright reporter). Every such `accept` silently wrote a baseline file
+    # nothing would ever read, so the pixel-diff comparison always saw "no baseline" for those runs.
+    # `definition.scenarioName` is the SAME fallback `build_run_record` uses for its own definition
+    # stem in that case.
+    stem = Path(definition.get("path") or definition.get("scenarioName") or run_id).stem
     target = baseline_path(app_dir, stem)
     target.parent.mkdir(parents=True, exist_ok=True)
+    current_shots = (record.get("evidence") or {}).get("screenshots") or []
+    existing = npdev_monitor._read_json(target) or {}
+
+    if screenshot is None:
+        new_shots = [_clean_baseline_screenshot(s) for s in current_shots]
+        extracted = record.get("extracted")
+    else:
+        match = next((s for s in current_shots if s.get("name") == screenshot), None)
+        if match is None:
+            raise ExploreError(
+                f"run {run_id} has no screenshot named {screenshot!r} "
+                f"(has: {[s.get('name') for s in current_shots]})"
+            )
+        kept = [s for s in (existing.get("screenshots") or []) if s.get("name") != screenshot]
+        new_shots = sorted(kept + [_clean_baseline_screenshot(match)], key=lambda s: s.get("name") or "")
+        extracted = existing.get("extracted", record.get("extracted"))
+
     baseline = {
         "schemaVersion": "npdev-exploration-baseline.v1",
-        "definition": record.get("definition"),
+        "definition": definition,
         "runId": run_id,
         "acceptedAt": _utc_now(),
-        "screenshots": (record.get("evidence") or {}).get("screenshots") or [],
-        "extracted": record.get("extracted"),
+        "screenshots": new_shots,
+        "extracted": extracted,
     }
     target.write_text(json.dumps(baseline, indent=2, ensure_ascii=False), encoding="utf-8")
     return {"ok": True, "command": "explore accept", "baseline": str(target), "runId": run_id,
-            "screenshots": len(baseline["screenshots"])}
+            "screenshot": screenshot, "screenshots": len(baseline["screenshots"])}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -780,6 +945,8 @@ def prune(app_dir: Path, *, keep_per_scenario: int = 10, red_days: int = 30, dry
         for shot in (record.get("evidence") or {}).get("screenshots") or []:
             if shot.get("blob"):
                 referenced.add(Path(shot["blob"]).name)
+            if shot.get("diffBlob"):  # R3.6: the pixel-diff image, same retention as the screenshot
+                referenced.add(Path(shot["diffBlob"]).name)
         for step in record.get("steps") or []:
             if step.get("screenshot"):
                 referenced.add(Path(step["screenshot"]).name)
@@ -915,6 +1082,8 @@ def show_run(app_dir: Path, run_id: str) -> dict:
     for shot in (resolved.get("evidence") or {}).get("screenshots") or []:
         if shot.get("blob"):
             shot["resolvedPath"] = str(runs_root(app_dir) / shot["blob"])
+        if shot.get("diffBlob"):  # R3.6: an absolute path a tester can open directly
+            shot["resolvedDiffPath"] = str(runs_root(app_dir) / shot["diffBlob"])
     return {"schemaVersion": "npdev-exploration-show.v1", "command": "explore show", "ok": True, "run": resolved}
 
 
@@ -2118,7 +2287,6 @@ def build_run_record(*, app_dir: Path, repo_root: Path, result: dict, routine: d
     evidence["networkCount"] = len(evidence.pop("network", []) or [])
 
     config = load_verdict_config(app_dir)
-    verdict = evaluate_verdict({**result, "evidence": evidence}, config)
 
     definition_path = None
     if routine_file:
@@ -2126,6 +2294,16 @@ def build_run_record(*, app_dir: Path, repo_root: Path, result: dict, routine: d
             definition_path = str(routine_file.relative_to(Path(app_dir)))
         except ValueError:
             definition_path = routine_file.name
+
+    # R3.6: computed BEFORE the verdict, not after -- this annotates `evidence['screenshots']`
+    # entries with a pixel-diff regression flag in place, so `evaluate_verdict` (which only reads
+    # evidence, never touches disk) can see it. `compute_baseline_diff` returns None (and mutates
+    # nothing) on a definition's first run, before anything has been `accept`ed.
+    baseline_diff = compute_baseline_diff(
+        app_dir, Path(definition_path or stem).stem,
+        {"evidence": evidence, "extracted": result.get("extracted")}, config,
+    )
+    verdict = evaluate_verdict({**result, "evidence": evidence}, config)
 
     model_sha = None
     model_path = app_record.get("modelPath")
@@ -2166,12 +2344,11 @@ def build_run_record(*, app_dir: Path, repo_root: Path, result: dict, routine: d
         "evidence": evidence,
         "verdict": verdict,
         "extracted": result.get("extracted"),
-        "baselineDiff": None,
+        "baselineDiff": baseline_diff,
         "pinned": False,
         "ledgerId": ledger_id,
         "notes": None,
     }
-    record["baselineDiff"] = compute_baseline_diff(app_dir, Path(definition_path or stem).stem, record)
     return record
 
 

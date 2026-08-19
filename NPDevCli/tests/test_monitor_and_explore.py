@@ -27,6 +27,7 @@ import npdev_cli
 import npdev_explore
 import npdev_jsonschema
 import npdev_monitor
+import npdev_png
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -679,6 +680,217 @@ class RunRecordShape(unittest.TestCase):
             row = npdev_explore.read_index(app)[0]
             self.assertNotIn("steps", row)
             self.assertEqual(row["stepCount"], 50)
+
+
+def _solid_png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
+    pixels = bytes(rgb) * (width * height)
+    return npdev_png.encode_png(width, height, 3, pixels)
+
+
+def _png_with_changed_pixels(width: int, height: int, base_rgb: tuple[int, int, int],
+                             changed_rgb: tuple[int, int, int], count: int) -> bytes:
+    """A `base_rgb` field with the first `count` pixels (row-major) set to `changed_rgb` instead --
+    a deterministic way to build "N pixels differ" fixtures with no binary files checked in."""
+    pixels = bytearray(bytes(base_rgb) * (width * height))
+    for i in range(count):
+        pixels[i * 3:i * 3 + 3] = bytes(changed_rgb)
+    return npdev_png.encode_png(width, height, 3, bytes(pixels))
+
+
+class PixelDiffCodec(unittest.TestCase):
+    """npdev_png.py in isolation -- the codec R3.6 needed rather than a Pillow/numpy dependency."""
+
+    def test_encode_decode_roundtrips_rgb(self):
+        px = bytes([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120])  # 2x2 RGB
+        data = npdev_png.encode_png(2, 2, 3, px)
+        w, h, c, decoded = npdev_png.decode_png(data)
+        self.assertEqual((w, h, c), (2, 2, 3))
+        self.assertEqual(bytes(decoded), px)
+
+    def test_a_non_png_file_is_a_named_error_not_a_crash(self):
+        with self.assertRaises(npdev_png.PngError):
+            npdev_png.decode_png(b"this is not a png")
+
+    def test_diff_of_identical_images_is_zero(self):
+        data = _solid_png(6, 6, (10, 10, 10))
+        diff = npdev_png.diff_png_bytes(data, data)
+        self.assertFalse(diff["dimensionMismatch"])
+        self.assertEqual(diff["diffFraction"], 0.0)
+
+    def test_dimension_mismatch_is_reported_not_raised(self):
+        small = _solid_png(4, 4, (0, 0, 0))
+        big = _solid_png(4, 5, (0, 0, 0))
+        diff = npdev_png.diff_png_bytes(small, big)  # must not raise
+        self.assertTrue(diff["dimensionMismatch"])
+        self.assertIsNone(diff["diffFraction"])
+        self.assertIsNone(diff["diffPng"])
+
+
+class ScreenshotBaselinePixelDiff(unittest.TestCase):
+    """R3.6: the baseline comparison is a pure-Python pixel diff, not sha256 equality -- a 1-pixel
+    change passes below threshold, a moved/changed region fails with a written diff-image path, a
+    dimension change is a clear failure rather than a crash, and `explore accept` can re-baseline one
+    screenshot without touching the others."""
+
+    IMG_W, IMG_H = 50, 50  # 2500 pixels -- big enough that 1 pixel is comfortably under the
+                           # DEFAULT_SCREENSHOT_DIFF_THRESHOLD (0.001 = 2.5 pixels)
+
+    def _result(self, scenario: str, png_bytes: bytes, tmp: Path, name: str = "shot") -> dict:
+        png_path = Path(tmp) / f"{name}-{scenario}-{id(png_bytes)}.png"
+        png_path.write_bytes(png_bytes)
+        return {
+            "status": "passed", "scenarioName": scenario, "durationMs": 10,
+            "steps": [{"index": 0, "action": "goto", "label": "go", "status": "passed", "durationMs": 5}],
+            "evidence": {"consoleErrors": [], "pageErrors": [], "networkFailures": [],
+                         "unexpectedExternalRequests": [], "console": [], "network": [],
+                         "screenshots": [{"name": name, "path": str(png_path)}]},
+            "extracted": {},
+        }
+
+    def _record(self, app: Path, tmp: Path, scenario: str, png_bytes: bytes, name: str = "shot") -> dict:
+        result = self._result(scenario, png_bytes, tmp, name)
+        record = npdev_explore.build_run_record(
+            app_dir=app, repo_root=REPO_ROOT, result=result, routine={"scenarioName": scenario},
+            routine_file=None, driver="cli", app_record=npdev_monitor.probe_app(app),
+            started_at="2026-08-19T00:00:00Z", duration_ms=10, engine_version=None,
+        )
+        npdev_explore.append_run(app, record)
+        return record
+
+    def test_a_1_pixel_change_passes_below_threshold(self):
+        with TemporaryDirectory() as tmp:
+            app = make_app(Path(tmp), plan=DEFAULT_PLAN)
+            base = _solid_png(self.IMG_W, self.IMG_H, (10, 10, 10))
+            baseline_record = self._record(app, Path(tmp), "px", base)
+            npdev_explore.accept_baseline(app, baseline_record["runId"])
+
+            one_pixel_changed = _png_with_changed_pixels(
+                self.IMG_W, self.IMG_H, (10, 10, 10), (250, 250, 250), count=1)
+            record = self._record(app, Path(tmp), "px", one_pixel_changed)
+
+            self.assertTrue(record["verdict"]["green"], record["verdict"])
+            shot = record["evidence"]["screenshots"][0]
+            self.assertFalse(shot["regressed"])
+            self.assertGreater(shot["pixelDiffFraction"], 0.0)
+            self.assertLess(shot["pixelDiffFraction"], shot["pixelDiffThreshold"])
+            self.assertNotIn("diffBlob", shot)
+
+    def test_a_moved_region_fails_with_a_written_diff_image_path(self):
+        with TemporaryDirectory() as tmp:
+            app = make_app(Path(tmp), plan=DEFAULT_PLAN)
+            base = _solid_png(self.IMG_W, self.IMG_H, (10, 10, 10))
+            baseline_record = self._record(app, Path(tmp), "moved", base)
+            npdev_explore.accept_baseline(app, baseline_record["runId"])
+
+            # A third of the image changed -- a moved button, not rendering noise.
+            moved = _png_with_changed_pixels(
+                self.IMG_W, self.IMG_H, (10, 10, 10), (250, 250, 250),
+                count=(self.IMG_W * self.IMG_H) // 3)
+            record = self._record(app, Path(tmp), "moved", moved)
+
+            self.assertFalse(record["verdict"]["green"])
+            self.assertTrue(any("regressed" in reason for reason in record["verdict"]["reasons"]))
+            shot = record["evidence"]["screenshots"][0]
+            self.assertTrue(shot["regressed"])
+            diff_blob = shot.get("diffBlob")
+            self.assertTrue(diff_blob, "a regressed screenshot must carry a diff image path")
+            self.assertTrue((npdev_explore.runs_root(app) / diff_blob).is_file())
+
+            # `explore show` resolves it to an absolute path a tester can actually open.
+            shown = npdev_explore.show_run(app, record["runId"])
+            shown_shot = shown["run"]["evidence"]["screenshots"][0]
+            self.assertTrue(Path(shown_shot["resolvedDiffPath"]).is_file())
+
+    def test_a_dimension_mismatch_is_a_clear_failure_not_a_crash(self):
+        with TemporaryDirectory() as tmp:
+            app = make_app(Path(tmp), plan=DEFAULT_PLAN)
+            base = _solid_png(self.IMG_W, self.IMG_H, (10, 10, 10))
+            baseline_record = self._record(app, Path(tmp), "resized", base)
+            npdev_explore.accept_baseline(app, baseline_record["runId"])
+
+            resized = _solid_png(self.IMG_W + 10, self.IMG_H, (10, 10, 10))
+            record = self._record(app, Path(tmp), "resized", resized)  # must not raise
+
+            self.assertFalse(record["verdict"]["green"])
+            shot = record["evidence"]["screenshots"][0]
+            self.assertTrue(shot["dimensionMismatch"])
+            self.assertTrue(shot["regressed"])
+
+    def test_a_screenshot_below_threshold_is_excused_by_a_wider_per_screenshot_override(self):
+        with TemporaryDirectory() as tmp:
+            app = make_app(Path(tmp), plan=DEFAULT_PLAN)
+            npdev_explore.config_path(app).write_text(
+                json.dumps({"screenshotDiffThresholds": {"shot": 0.9}}), encoding="utf-8")
+            base = _solid_png(self.IMG_W, self.IMG_H, (10, 10, 10))
+            baseline_record = self._record(app, Path(tmp), "cfg", base)
+            npdev_explore.accept_baseline(app, baseline_record["runId"])
+
+            moved = _png_with_changed_pixels(
+                self.IMG_W, self.IMG_H, (10, 10, 10), (250, 250, 250),
+                count=(self.IMG_W * self.IMG_H) // 3)
+            record = self._record(app, Path(tmp), "cfg", moved)
+
+            self.assertTrue(record["verdict"]["green"], record["verdict"])
+            self.assertFalse(record["evidence"]["screenshots"][0]["regressed"])
+
+    def test_accepting_one_screenshot_leaves_the_others_baseline_alone(self):
+        with TemporaryDirectory() as tmp:
+            app = make_app(Path(tmp), plan=DEFAULT_PLAN)
+            base_a = _solid_png(10, 10, (1, 1, 1))
+            base_b = _solid_png(10, 10, (2, 2, 2))
+
+            def _two_shot_result(scenario, png_a, png_b):
+                path_a = Path(tmp) / f"a-{id(png_a)}.png"
+                path_b = Path(tmp) / f"b-{id(png_b)}.png"
+                path_a.write_bytes(png_a)
+                path_b.write_bytes(png_b)
+                return {
+                    "status": "passed", "scenarioName": scenario, "durationMs": 10,
+                    "steps": [], "evidence": {
+                        "consoleErrors": [], "pageErrors": [], "networkFailures": [],
+                        "unexpectedExternalRequests": [], "console": [], "network": [],
+                        "screenshots": [{"name": "a", "path": str(path_a)}, {"name": "b", "path": str(path_b)}],
+                    },
+                    "extracted": {},
+                }
+
+            result1 = _two_shot_result("two", base_a, base_b)
+            record1 = npdev_explore.build_run_record(
+                app_dir=app, repo_root=REPO_ROOT, result=result1, routine={"scenarioName": "two"},
+                routine_file=None, driver="cli", app_record=npdev_monitor.probe_app(app),
+                started_at="2026-08-19T00:00:00Z", duration_ms=10, engine_version=None)
+            npdev_explore.append_run(app, record1)
+            npdev_explore.accept_baseline(app, record1["runId"])
+
+            # Second run: BOTH screenshots changed.
+            new_a = _solid_png(10, 10, (200, 1, 1))
+            new_b = _solid_png(10, 10, (2, 200, 2))
+            result2 = _two_shot_result("two", new_a, new_b)
+            record2 = npdev_explore.build_run_record(
+                app_dir=app, repo_root=REPO_ROOT, result=result2, routine={"scenarioName": "two"},
+                routine_file=None, driver="cli", app_record=npdev_monitor.probe_app(app),
+                started_at="2026-08-19T00:01:00Z", duration_ms=10, engine_version=None)
+            npdev_explore.append_run(app, record2)
+
+            # Accept ONLY "a" from run2.
+            result = npdev_explore.accept_baseline(app, record2["runId"], screenshot="a")
+            self.assertEqual(result["screenshot"], "a")
+
+            new_shot_a = next(s for s in record2["evidence"]["screenshots"] if s["name"] == "a")
+            stored = npdev_monitor._read_json(npdev_explore.baseline_path(app, "two"))
+            by_name = {s["name"]: s for s in stored["screenshots"]}
+            self.assertEqual(by_name["a"]["sha256"], new_shot_a["sha256"])
+            # "b" was never told to accept, so it must still be run1's original screenshot.
+            original_shot_b = next(s for s in record1["evidence"]["screenshots"] if s["name"] == "b")
+            self.assertEqual(by_name["b"]["sha256"], original_shot_b["sha256"])
+
+    def test_accepting_an_unknown_screenshot_name_is_refused(self):
+        with TemporaryDirectory() as tmp:
+            app = make_app(Path(tmp), plan=DEFAULT_PLAN)
+            base = _solid_png(self.IMG_W, self.IMG_H, (10, 10, 10))
+            record = self._record(app, Path(tmp), "solo", base)
+            with self.assertRaises(npdev_explore.ExploreError):
+                npdev_explore.accept_baseline(app, record["runId"], screenshot="no-such-name")
 
 
 GREEN_PREFLIGHT = {

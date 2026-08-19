@@ -430,6 +430,11 @@ MODEL_ARRAY_KEYS = {
     "propertyScopes",
     "properties",
     "contexts",
+    # R8.8: pack-declared seed data. Added to ModelSourceResolver.MODEL_ARRAY_KEYS (the Java-side
+    # composer gate) in the same change; this Python copy is the build-free `npdev inspect` /
+    # `validate model --structural-only` path, and a key missing here is silently invisible to it --
+    # exactly the drift the block above was written to stop repeating.
+    "seeds",
 }
 ROOT_SCALAR_KEYS = {
     "$schema", "schemaVersion", "dslVersion", "namespace", "model", "version",
@@ -2256,7 +2261,7 @@ def run_app(args: argparse.Namespace) -> dict:
             # --- BUILD ---------------------------------------------------------------------
             result["phase"] = "BUILD"
             _write_run_app_progress(final_app_out, result["phase"])
-            build_ok, build_output, jar_path = _build_phase(final_app_out, deadline)
+            build_ok, build_output, jar_path, _ = _build_phase(final_app_out, deadline)
             if not build_ok:
                 classified = _classify_build_failure(build_output)
                 result["diagnostics"].append(classified or _diag(
@@ -4535,10 +4540,24 @@ def _classifier_command(root: Path, cli_args: list[str]) -> tuple[list[str], Pat
     return command, generator_root
 
 
-def _build_phase(app_root: Path, deadline: float) -> tuple[bool, str, Path | None]:
+def _build_phase(app_root: Path, deadline: float, *, clean: bool = True) -> tuple[bool, str, Path | None, bool]:
+    """R1.2 (incremental dev-loop builds). `clean=True` -- every caller's default, including
+    `run_app`'s one-shot GENERATE->BUILD->BOOT -- keeps the ORIGINAL command byte-for-byte:
+    `--no-daemon clean build -x test`. `clean=False` (the dev loop's default) drops both `clean` AND
+    `--no-daemon`: the generated app's own `gradle.properties` already sets `org.gradle.daemon=true`
+    (`NPDevRuntimeHost/gradle.properties`'s REG-10 comment -- copied verbatim into every generated
+    FinalApp by `FinalAppAssembler`), so a dev-loop session's consecutive builds share one warm
+    daemon instead of forking a fresh JVM per save, the same mechanism QUAL-16 measured for
+    validate/classify. Determinism is already gate-proven
+    (`scripts/hygiene/check-deterministic-generation.ps1`), so trusting incremental `build` output is
+    safe; the one real risk is a STALE incremental build failing for a reason a clean build would
+    fix, so a failed incremental build is retried ONCE with `clean` automatically -- still on the
+    warm daemon, since the retry belongs to the same dev-loop session -- and the caller never has to
+    remember a flag for it. The 4th return value says whether that automatic fallback fired.
+    """
     wrapper = app_root / ("gradlew.bat" if os.name == "nt" else "gradlew")
     if not wrapper.exists():
-        return False, f"Gradle wrapper not found in generated app: {wrapper}", None
+        return False, f"Gradle wrapper not found in generated app: {wrapper}", None, False
     env = dict(os.environ)
     if "NPDEV_RUNTIMEHOST_LIBS_DIR" not in env:
         derived = _default_runtimehost_libs_dir()
@@ -4547,15 +4566,44 @@ def _build_phase(app_root: Path, deadline: float) -> tuple[bool, str, Path | Non
         # else: leave unset -- the generated build.gradle's own "Missing NPDev RuntimeHost libs
         # manifest in <path>. Run scripts/runtimehost/sync-runtimehost-libs.ps1" error fires
         # instead of a wrong path producing a confusing downstream failure.
-    command = [str(wrapper), "--no-daemon", "--console=plain", "clean", "build", "-x", "test"]
+
+    # --no-daemon only when the CALLER asked for a clean build from the start -- a fallback clean
+    # build triggered below still belongs to an incremental (warm-daemon) session, so it keeps using
+    # the daemon rather than forking a fifth JVM on top of an already-failed cycle.
+    no_daemon = ["--no-daemon"] if clean else []
+
+    def run_once(with_clean: bool) -> subprocess.CompletedProcess:
+        tasks = (["clean", "build"] if with_clean else ["build"]) + ["-x", "test"]
+        command = [str(wrapper), *no_daemon, "--console=plain", *tasks]
+        return _run_bounded(command, str(app_root), deadline, env=env)
+
     try:
-        completed = _run_bounded(command, str(app_root), deadline, env=env)
+        completed = run_once(clean)
     except _DeadlineExceeded:
-        return False, "BUILD exceeded the overall --timeout budget.", None
+        return False, "BUILD exceeded the overall --timeout budget.", None, False
     output = (completed.stdout or "") + (completed.stderr or "")
+
+    fell_back = False
+    if completed.returncode != 0 and not clean:
+        fell_back = True
+        try:
+            retry = run_once(True)
+        except _DeadlineExceeded:
+            return (False,
+                    output + "\n\n-- incremental build failed; the automatic `clean build` fallback "
+                              "also exceeded the --timeout budget.\n",
+                    None, True)
+        retry_output = (retry.stdout or "") + (retry.stderr or "")
+        output = (
+            "incremental build failed -- automatically retried with a clean build.\n"
+            "--- incremental build output (tail) ---\n" + output[-2000:] + "\n"
+            "--- clean build output ---\n" + retry_output
+        )
+        completed = retry
+
     if completed.returncode != 0:
-        return False, output, None
-    return True, output, _find_jar(app_root)
+        return False, output, None, fell_back
+    return True, output, _find_jar(app_root), fell_back
 
 
 def _classify_model_change(root: Path, baseline: Path, current: Path, deadline: float) -> str | None:
@@ -8367,7 +8415,8 @@ def run_explore(args: argparse.Namespace) -> int:
         elif args.explore_command == "pin":
             result = npdev_explore.pin_run(Path(args.app_dir), args.run, args.ledger, args.unpin)
         elif args.explore_command == "accept":
-            result = npdev_explore.accept_baseline(Path(args.app_dir), args.run)
+            result = npdev_explore.accept_baseline(
+                Path(args.app_dir), args.run, screenshot=getattr(args, "screenshot", None))
         elif args.explore_command == "context":
             result = npdev_explore.build_context_pack(root, Path(args.app_dir), args.exemplars)
         elif args.explore_command == "repair-payload":
@@ -9747,6 +9796,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     explore_accept.add_argument("--app-dir", required=True)
     explore_accept.add_argument("--run", required=True)
+    explore_accept.add_argument(
+        "--screenshot",
+        help="Re-baseline only this screenshot, leaving every other screenshot's existing baseline "
+             "untouched. Omit to replace the whole baseline (the default). Accepting one deliberate "
+             "visual change should not silently re-baseline every other screen a real regression "
+             "would have been caught on.",
+    )
     explore_accept.add_argument("--json", action="store_true")
 
     explore_context = explore_sub.add_parser(

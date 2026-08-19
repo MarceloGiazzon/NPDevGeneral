@@ -102,7 +102,14 @@ def routed_urlopen(list_body=None, run_body=None, seen: list | None = None):
     def _open(request, timeout=None):  # noqa: ARG001 -- signature must match urlopen's
         url = request.full_url if hasattr(request, "full_url") else str(request)
         method = getattr(request, "get_method", lambda: "GET")()
-        if seen is not None:
+        # Record only the seed verb's own requests. `running()` wraps the REAL probe_app, which
+        # reaches _http_json -- and therefore this mock -- whenever _tcp_open succeeds, i.e. whenever
+        # anything at all happens to be listening on PLAN's port 8099. Recording that health probe
+        # made `len(seen) == 1` fail with "2 != 1" and pushed the seed request out of seen[0],
+        # producing three false REDs on 2026-08-19 while generated apps were being booted alongside
+        # the suite (the identical suite re-ran 449 OK minutes later). The seed verb's requests are
+        # the subject here; the probe's are not.
+        if seen is not None and "/api/admin/seeds" in url:
             seen.append((method, url, dict(getattr(request, "headers", {}) or {})))
         if method == "POST":
             return _FakeResponse(run_body if run_body is not None else RUN_RESULT_OK)
