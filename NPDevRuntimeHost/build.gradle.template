@@ -217,6 +217,17 @@ dependencies {
 
     // Runtime extension jars are staged outside the source/evidence workspace.
     implementation fileTree(dir: npdevRuntimeHostLibsDir, include: ['*.jar'])
+
+    // BUILD-2 (BT-2's own "the linking" follow-on, ledger item BUILD-2): a sealed pack jar an app
+    // links instead of generating that pack's own sources (FinalAppAssembler.linkSealedPacks) is
+    // staged INSIDE this specific app at libs/sealed-packs/ -- unlike npdevRuntimeHostLibsDir above,
+    // this is not a shared platform cache outside the workspace, it is this one app's own linked
+    // dependency. Conditional and inert (adds nothing) for every app that links no sealed pack, which
+    // is every app generated before this feature existed and every one that never opts in.
+    def npdevSealedPackJarsDir = file('libs/sealed-packs')
+    if (npdevSealedPackJarsDir.isDirectory()) {
+        implementation fileTree(dir: npdevSealedPackJarsDir, include: ['*.jar'])
+    }
 }
 
 // deps-and-java/PLAN.md W2.3/D3: this file stays a byte-for-byte, substitution-free copy
