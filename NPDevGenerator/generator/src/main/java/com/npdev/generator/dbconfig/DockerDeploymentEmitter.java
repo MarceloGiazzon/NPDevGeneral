@@ -376,8 +376,14 @@ public final class DockerDeploymentEmitter {
                     depends_on:
                       - app
                     ports:
-                      - "80:80"
-                      - "443:443"
+                      # R9.7: configurable, not hardcoded -- a box running the shared multi-app
+                      # ingress (`npdev monitor ingress`, see deploy/Caddyfile's own header) already
+                      # owns the host's 80/443, so THIS app's own single-app proxy sidecar must be
+                      # able to move aside onto different host ports rather than fail to bind. Set
+                      # PROXY_HTTP_PORT/PROXY_HTTPS_PORT in .env; the container's own listen ports
+                      # (the right-hand side, matching deploy/Caddyfile's ':443') are unaffected.
+                      - "${PROXY_HTTP_PORT:-80}:80"
+                      - "${PROXY_HTTPS_PORT:-443}:443"
                     volumes:
                       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
                       - caddy-data:/data
@@ -581,8 +587,10 @@ public final class DockerDeploymentEmitter {
                     depends_on:
                       - app
                     ports:
-                      - "80:80"
-                      - "443:443"
+                      # R9.7: configurable, not hardcoded -- see the identical comment in
+                      # dockerComposeServer's proxy service for why.
+                      - "${PROXY_HTTP_PORT:-80}:80"
+                      - "${PROXY_HTTPS_PORT:-443}:443"
                     volumes:
                       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
                       - caddy-data:/data
@@ -624,6 +632,14 @@ public final class DockerDeploymentEmitter {
                 # docker-compose.yml to switch to the Postgres-first production path.
 
                 APP_PORT=8080
+                # R9.7: host ports for THIS app's own optional `proxy` profile
+                # (`docker compose --profile proxy up`, see deploy/Caddyfile). Leave at the defaults
+                # for a single app on this box. If this box already runs the shared multi-app ingress
+                # (`npdev monitor ingress`), that ingress owns 80/443 instead -- either move this
+                # app's own sidecar aside with different values here, or skip the `proxy` profile
+                # entirely and let the shared ingress reverse-proxy straight to APP_PORT above.
+                # PROXY_HTTP_PORT=80
+                # PROXY_HTTPS_PORT=443
                 SPRING_PROFILES_ACTIVE=prod
                 NPDEV_AUTH_MODE=apikey
                 # Format: key=tenant:actor:ROLE1|ROLE2;another-key=tenant:actor:ROLE
@@ -686,6 +702,14 @@ public final class DockerDeploymentEmitter {
 
                 # App
                 APP_PORT=8080
+                # R9.7: host ports for THIS app's own optional `proxy` profile
+                # (`docker compose --profile proxy up`, see deploy/Caddyfile). Leave at the defaults
+                # for a single app on this box. If this box already runs the shared multi-app ingress
+                # (`npdev monitor ingress`), that ingress owns 80/443 instead -- either move this
+                # app's own sidecar aside with different values here, or skip the `proxy` profile
+                # entirely and let the shared ingress reverse-proxy straight to APP_PORT above.
+                # PROXY_HTTP_PORT=80
+                # PROXY_HTTPS_PORT=443
                 SPRING_PROFILES_ACTIVE=prod,postgres
                 NPDEV_AUTH_MODE=apikey
                 # Format: key=tenant:actor:ROLE1|ROLE2;another-key=tenant:actor:ROLE
@@ -733,11 +757,18 @@ public final class DockerDeploymentEmitter {
 
     private static String caddyfile(int serverPort) {
         return """
-                # LNCH-7: TLS-terminating reverse proxy recipe -- generated apps never terminate TLS
-                # themselves (see docs/DEPLOYMENT.md). Replace ':443' with your real domain once you
-                # have one; Caddy then obtains a real Let's Encrypt certificate automatically with no
-                # further config. Until then, 'tls internal' issues Caddy's own locally-trusted
-                # certificate, so HTTPS termination itself is provable without owning a domain.
+                # LNCH-7: TLS-terminating reverse proxy recipe for THIS app alone -- generated apps
+                # never terminate TLS themselves (see docs/DEPLOYMENT.md). Replace ':443' with your
+                # real domain once you have one; Caddy then obtains a real Let's Encrypt certificate
+                # automatically with no further config. Until then, 'tls internal' issues Caddy's own
+                # locally-trusted certificate, so HTTPS termination itself is provable without owning
+                # a domain.
+                #
+                # R9.7: running MORE THAN ONE generated app on the same box? Exactly one app can bind
+                # host ports 80/443 this way. `npdev monitor ingress` (see npdev_monitor.py) generates
+                # a SEPARATE, single, shared Caddyfile from the Monitor's live app inventory that
+                # fronts every healthy app at once by hostname-or-path -- use that instead of this
+                # per-app recipe when more than one app needs to be reachable simultaneously.
 
                 :443 {
                 	tls internal

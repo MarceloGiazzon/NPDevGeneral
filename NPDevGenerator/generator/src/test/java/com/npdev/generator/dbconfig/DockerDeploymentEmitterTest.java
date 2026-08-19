@@ -152,6 +152,56 @@ class DockerDeploymentEmitterTest {
     }
 
     @Test
+    void proxyHostPortsAreConfigurableViaEnvVarsNotHardcoded(@TempDir Path tempDir) throws Exception {
+        // R9.7: a box running the shared multi-app ingress already owns the host's 80/443, so this
+        // app's own single-app `proxy` sidecar must be able to move onto different host ports rather
+        // than fail to bind. Previously the compose file spelled the literal host-side "80:80" /
+        // "443:443" with no way to override it short of hand-editing the generated file.
+        Path serverSrc = Files.createDirectories(tempDir.resolve("server-src"));
+        GeneratedDatabasePlan serverPlan = loadPlan(serverSrc, "Postgres", 5432);
+        String serverCompose = Files.readString(emitCompose(tempDir.resolve("server-app"), serverPlan));
+        assertProxyPortsConfigurable(serverCompose);
+
+        Path standaloneSrc = Files.createDirectories(tempDir.resolve("standalone-src"));
+        Path definitionPath = writeDefinition(standaloneSrc, "H2Local", "", 0);
+        GeneratedDatabasePlan standalonePlan = new UserDatabaseDefinitionLoader().load(definitionPath, null);
+        String standaloneCompose = Files.readString(emitCompose(tempDir.resolve("standalone-app"), standalonePlan));
+        assertProxyPortsConfigurable(standaloneCompose);
+    }
+
+    private static void assertProxyPortsConfigurable(String compose) {
+        assertTrue(compose.contains("\"${PROXY_HTTP_PORT:-80}:80\""),
+                "the proxy service's HTTP host port must be overridable via PROXY_HTTP_PORT: " + compose);
+        assertTrue(compose.contains("\"${PROXY_HTTPS_PORT:-443}:443\""),
+                "the proxy service's HTTPS host port must be overridable via PROXY_HTTPS_PORT: " + compose);
+        assertFalse(compose.contains("\"80:80\""), "the literal hardcoded host port must be gone: " + compose);
+        assertFalse(compose.contains("\"443:443\""), "the literal hardcoded host port must be gone: " + compose);
+        // The container's OWN listen port (the right-hand side, matching deploy/Caddyfile's ':443')
+        // is a fixed protocol fact, not a deployment choice -- only the host side is configurable.
+        assertTrue(compose.contains(":80\""), "container-side port 80 must still be published: " + compose);
+        assertTrue(compose.contains(":443\""), "container-side port 443 must still be published: " + compose);
+    }
+
+    @Test
+    void envExamplesDocumentTheConfigurableProxyPorts(@TempDir Path tempDir) throws Exception {
+        GeneratedDatabasePlan serverPlan = loadPlan(Files.createDirectories(tempDir.resolve("server-src2")), "Postgres", 5432);
+        String serverEnv = Files.readString(emitAndReadEnvExample(tempDir.resolve("server-app2"), serverPlan));
+        assertTrue(serverEnv.contains("PROXY_HTTP_PORT"), serverEnv);
+        assertTrue(serverEnv.contains("PROXY_HTTPS_PORT"), serverEnv);
+
+        Path definitionPath = writeDefinition(Files.createDirectories(tempDir.resolve("standalone-src2")), "H2Local", "", 0);
+        GeneratedDatabasePlan standalonePlan = new UserDatabaseDefinitionLoader().load(definitionPath, null);
+        String standaloneEnv = Files.readString(emitAndReadEnvExample(tempDir.resolve("standalone-app2"), standalonePlan));
+        assertTrue(standaloneEnv.contains("PROXY_HTTP_PORT"), standaloneEnv);
+        assertTrue(standaloneEnv.contains("PROXY_HTTPS_PORT"), standaloneEnv);
+    }
+
+    private static Path emitAndReadEnvExample(Path appRoot, GeneratedDatabasePlan plan) throws Exception {
+        new DockerDeploymentEmitter().emit(null, appRoot, plan);
+        return appRoot.resolve(".env.example");
+    }
+
+    @Test
     void theComposeFileNamesTheServiceThatBackupAndRestoreTarget(@TempDir Path tempDir) throws Exception {
         // Locks the two together: whatever service name docker-compose.yml actually emits for the
         // database is the one backup.sh/restore.sh must exec into. This is the exact seam R9.1 found
