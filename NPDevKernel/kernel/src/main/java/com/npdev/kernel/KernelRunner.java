@@ -57,8 +57,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 /**
@@ -103,6 +107,42 @@ final EventBus eventBus;
     private static final int CIRCUIT_FAILURE_THRESHOLD = 5;
     private static final long CIRCUIT_OPEN_DURATION_MS = 30_000L;
     private static final int BULKHEAD_MAX_CONCURRENT = 10;
+
+    // R2.6 (RUN-4): the kernel-wide capability timeout backstop. Before this,
+    // CapabilityExecutionPolicy.defaults() returned timeoutMs=0 and a model that declared a
+    // capabilityPolicy without a timeout got 0 too, so invokeCapabilityOnce took the synchronous
+    // branch and a capability adapter that never returned hung the calling thread forever. The
+    // adapter-level deadlines shipped for RUN-4 cover the two NPDev network adapters only -- a
+    // custom or third-party CapabilityAdapter still has no deadline at all, which is what this
+    // backstop is for. Resolved with the same "0 means unset -> hardcoded constant" precedence
+    // resolveEffectiveCapabilityPolicy already uses for circuit/bulkhead, so a host-supplied
+    // override of exactly 0 still disables the timeout (and restores the old synchronous path).
+    //
+    // 10 minutes is deliberately far above any legitimate capability duration rather than a tuned
+    // SLA: external-ai-http alone can legitimately spend maxRetries(2)+1 attempts x 120s request
+    // timeout plus backoff, so anything under ~6 minutes would turn a hang backstop into a
+    // functional limit on a working adapter.
+    private static final long DEFAULT_CAPABILITY_TIMEOUT_MS = 600_000L;
+
+    private static final AtomicInteger CAPABILITY_THREAD_SEQUENCE = new AtomicInteger();
+
+    // R2.6 (RUN-4): the timeout branch used to be CompletableFuture.supplyAsync(supplier) with no
+    // Executor, which per the JDK contract runs on ForkJoinPool.commonPool(). That pool's workers
+    // are shared, pre-existing and reused, so they do not carry the calling thread's thread-local
+    // state -- and this kernel HAS such state on the capability call stack: currentFlowContext is
+    // set for the whole flow-step loop (see execute) and read by assertCrudInvariantPathAllowed,
+    // which is what stops the deprecated CRUD invariant path from being re-entered during flow
+    // execution. On a commonPool worker that read returns null, so the guard silently stops
+    // guarding instead of throwing. Cancelling on timeout also interrupts a SHARED pool thread.
+    // A dedicated cached pool of daemon threads fixes both: it is sized by demand exactly as the
+    // synchronous path was (one thread per in-flight capability), the threads are named so a stack
+    // dump is readable, daemon so they never hold the JVM open, and interrupting one on timeout
+    // affects nothing but that capability.
+    private static final ExecutorService CAPABILITY_EXECUTOR = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "npdev-capability-" + CAPABILITY_THREAD_SEQUENCE.incrementAndGet());
+        thread.setDaemon(true);
+        return thread;
+    });
     private static final int IDEMPOTENCY_RESULT_MAX_CHARS = 16_384;
 
     public KernelRunner withEventSchemaProvider(EventSchemaProvider provider) {
@@ -1519,7 +1559,13 @@ final EventBus eventBus;
                 override.retryMaxDelayMs(),
                 Math.max(retryBaseDelayMs, safeBase.retryDelayMs())
         );
-        long timeoutMs = nonNegativeOrDefault(override.timeoutMs(), safeBase.timeoutMs());
+        // R2.6 (RUN-4): 0 means unset here exactly as it does for circuit/bulkhead below, so an
+        // undeclared timeout -- whether from CapabilityExecutionPolicy.defaults() or from a model
+        // that declared a capabilityPolicy but no timeoutMs -- resolves to the hardcoded backstop
+        // instead of "no deadline at all". A host-supplied override of exactly 0 still wins and
+        // disables the timeout, which is the escape hatch back to the synchronous path.
+        long timeoutMsBase = safeBase.timeoutMs() > 0 ? safeBase.timeoutMs() : DEFAULT_CAPABILITY_TIMEOUT_MS;
+        long timeoutMs = nonNegativeOrDefault(override.timeoutMs(), timeoutMsBase);
         // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5 / capabilityPolicy): a declared model
         // policy's circuitOpenAfterFailures/circuitOpenMs/bulkheadMaxConcurrent now sit BETWEEN the
         // host-supplied override and the hardcoded constant -- the same 3-tier precedence retry/
@@ -2386,7 +2432,8 @@ CapabilityCall call = new CapabilityCall(
         }
 
         CompletableFuture<CapabilityResult> future = CompletableFuture.supplyAsync(
-                () -> capabilityDispatcher.invoke(call, finalContextState)
+                capabilityInvocationPropagatingCurrentFlow(call, finalContextState),
+                CAPABILITY_EXECUTOR
         );
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
@@ -2657,6 +2704,43 @@ CapabilityCall call = new CapabilityCall(
 
     static long nowEpochMillis() {
         return System.currentTimeMillis();
+    }
+
+    /**
+     * R2.6 (RUN-4): runs capabilityDispatcher.invoke on a CAPABILITY_EXECUTOR worker while making it
+     * observe the calling thread's currentFlowContext, so the timeout branch and the synchronous
+     * branch behave identically as far as this kernel's own thread-local state is concerned.
+     * Without this, assertCrudInvariantPathAllowed reads null on the worker and stops rejecting the
+     * deprecated CRUD invariant path re-entered from inside a capability during flow execution.
+     *
+     * Only this kernel's own thread-local is propagated. SLF4J's MDC (correlationId, stamped by
+     * CorrelationIdFilter) and Spring's RequestContextHolder are the other two thread-bound things
+     * a capability can care about, but neither slf4j nor Spring is on the kernel's compile
+     * classpath -- adding either as a dependency just to copy a context map is not something this
+     * item needs, and the host owns those seams.
+     */
+    private Supplier<CapabilityResult> capabilityInvocationPropagatingCurrentFlow(
+            CapabilityCall call,
+            Map<String, Object> contextState
+    ) {
+        String callerFlowContext = currentFlowContext.get();
+        return () -> {
+            String workerPrevious = currentFlowContext.get();
+            if (callerFlowContext == null) {
+                currentFlowContext.remove();
+            } else {
+                currentFlowContext.set(callerFlowContext);
+            }
+            try {
+                return capabilityDispatcher.invoke(call, contextState);
+            } finally {
+                if (workerPrevious == null) {
+                    currentFlowContext.remove();
+                } else {
+                    currentFlowContext.set(workerPrevious);
+                }
+            }
+        };
     }
 
     private void assertCrudInvariantPathAllowed() {
