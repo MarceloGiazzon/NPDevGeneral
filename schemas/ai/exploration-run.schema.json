@@ -141,7 +141,23 @@
         "green": { "type": "boolean" },
         "allowedConsoleErrorSubstrings": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["urlContains"],
+                "description": "MON-12: names the exact request a routine intends to fail, rather than a substring of the generic console TEXT. `urlContains` is required -- an entry with none is a blanket rule wearing an object, not a narrower one.",
+                "properties": {
+                  "urlContains": { "type": "string", "minLength": 1 },
+                  "status": { "type": "integer" },
+                  "textContains": { "type": "string" },
+                  "note": { "type": "string" }
+                }
+              }
+            ]
+          },
           "description": "The allowlist that was IN FORCE for this run, recorded on the run. Not a global constant read at display time -- the run has to carry what it was judged by."
         },
         "excused": {

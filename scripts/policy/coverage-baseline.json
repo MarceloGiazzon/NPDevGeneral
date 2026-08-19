@@ -43,8 +43,8 @@
       "note": "Only produced when the assembled sample app is built with -PenableCoverage=true (run-runtimehost-gate.ps1 does this and copies the report to the stable path above before its own build-cache cleanup runs). JaCoCo does NOT ship inside generated FinalApps by default -- see NPDevRuntimeHost/build.gradle.template's own gating comment."
     },
     "NPDevCli": {
-      "coveragePercent": 36.8756,
-      "measuredOn": "2026-08-18T09:03:10Z",
+      "coveragePercent": 45.7317,
+      "measuredOn": "2026-08-18T20:10:09Z",
       "reportFormat": "coverage-py-json",
       "reportGlobs": [
         "scripts/reports/out/python-coverage/npdevcli-coverage.json"

@@ -5,6 +5,8 @@ how a split silently changes what a gate covers.
 """
 from __future__ import annotations
 
+import re
+
 from .constants import FLOW_STEP_TYPES
 
 def _walk_steps(steps):
@@ -233,6 +235,57 @@ def _has_on_failure(model: dict) -> bool:
     return any("onFailure" in s and s["onFailure"] for s in _all_steps(model))
 
 
+def _schedule_event_delay_seconds(step: dict):
+    """The delay a scheduleEvent step resolves to, mirroring JsonModelParser's own precedence
+    (delaySeconds, else delayMinutes * 60, else delayMs rounded up). Returns None when the step
+    declares no delay at all -- which FlowValidation rejects, so it only happens mid-edit."""
+    raw = step.get("delaySeconds")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return int(raw)
+    raw = step.get("delayMinutes")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return int(raw) * 60
+    raw = step.get("delayMs")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return max(0, (int(raw) + 999) // 1000)
+    return None
+
+
+def _has_schedule_event_with_delay(model: dict, deferred: bool) -> bool:
+    """R2.4: the two delivery modes of scheduleEvent are now genuinely different code paths, so
+    each needs its own corpus witness -- the plain "step.scheduleEvent" feature is satisfied by
+    either one alone. A delay > 0 writes a durable npdev_scheduled_event row and publishes nothing
+    until it comes due; a delay of 0 still publishes inline and resumes waiters synchronously.
+    Before R2.4 both spellings did the same thing (fire now, label it scheduled), which is exactly
+    why the corpus only ever carried the deferred spelling and nothing noticed it was not deferred.
+    """
+    for step in _all_steps(model):
+        if str(step.get("type", "")).lower() != "scheduleevent":
+            continue
+        delay = _schedule_event_delay_seconds(step)
+        if delay is None:
+            continue
+        if (delay > 0) == deferred:
+            return True
+    return False
+
+
+def _has_await_timeout(model: dict) -> bool:
+    """R2.5 (durable await timeouts + onTimeout): an awaitEvent/awaitMatch step declaring a
+    durable wait deadline plus its escalation branch -- distinct from the plain "step.awaitEvent"
+    feature (satisfied by any await, timed or not), the same reasoning "step.onFailure" already
+    applies to onFailure. Requires BOTH timeout and a non-empty onTimeout, matching
+    FlowValidation.validateAwaitStep's own pairing rule (onTimeout without timeout is rejected;
+    timeout without onTimeout is legal but leaves the escalation half of this feature unexercised).
+    A regression that silently drops `timeout`/`onTimeout` from the compiled model on their way to
+    the generator's canonical JSON (REG-104's exact shape) would go unnoticed without this.
+    """
+    return any(
+        str(s.get("type", "")).lower() == "awaitevent" and s.get("timeout") and s.get("onTimeout")
+        for s in _all_steps(model)
+    )
+
+
 def _has_parallel_await_foreach(model: dict) -> bool:
     """S6 (B15(B), docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)): a forEach step opting into N-way
     parallel waiting -- distinct from the plain "step.forEach" feature (any forEach) and from
@@ -269,6 +322,65 @@ def _nonempty(model: dict, key: str) -> bool:
     if isinstance(value, (list, dict)):
         return len(value) > 0
     return True
+
+
+_QUOTED_LITERAL = re.compile(r"'[^']*'|\"[^\"]*\"")
+_ARITHMETIC_OPERATORS = ("+", "-", "*", "/", "%")
+
+
+def _has_arithmetic_derived_expression(model: dict) -> bool:
+    """R4.1 (roadmap): a field's default/derivedExpression exercising the arithmetic grammar
+    (+ - * / %) -- e.g. "quantity * unitPrice" -- rather than the identifier/literal/five-
+    whitelisted-string-function shape FieldValueValidation.analyzeValueBehaviorExpression used to
+    cap author-time validation at. That validator now delegates to the same ComputedExpression
+    grammar the runtime (SchemaExpressionSupport.evaluateSchemaExpression, called from
+    GeneratedCrudRuntimeSupport.applySchemaValueBehaviors) already evaluated for every default/
+    derived expression -- this was a validator-only ceiling, not a runtime gap. Zero corpus
+    coverage before this: every existing default/derivedExpression example in the corpus used only
+    concat/coalesce/trim/uppercase/lowercase or a bare literal/identifier. Strips quoted string
+    literals first so an operator character inside a string argument (e.g. concat(a, '-', b))
+    doesn't produce a false positive.
+    """
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for field in (concept.get("fields", None) or []):
+            if not isinstance(field, dict):
+                continue
+            for key in ("defaultExpression", "derivedExpression"):
+                expr = field.get(key)
+                if not isinstance(expr, str) or not expr.strip():
+                    continue
+                stripped = _QUOTED_LITERAL.sub("", expr)
+                if any(op in stripped for op in _ARITHMETIC_OPERATORS):
+                    return True
+    return False
+
+
+_ORDERED_COMPARISON_OPERATORS = ("&&", "||", ">=", "<=", ">", "<")
+
+
+def _has_widened_branch_condition(model: dict) -> bool:
+    """R4.2 (roadmap): a flow BRANCH step's {@code condition} exercising the ComputedExpression
+    grammar KernelRunner.evaluateCondition widened to (&&, ||, or an ordered comparison) rather
+    than the {@code ==}/{@code !=}-only shape every prior corpus branch condition used. Zero corpus
+    coverage before this: every existing branch step in the corpus (dsl-conformance-max's own
+    "step.branch" example included) used a bare equality/truthy check. Strips quoted string
+    literals first so an operator character inside a string operand doesn't produce a false
+    positive, then checks for `>=`/`<=` before the bare `>`/`<` they contain so a plain `>=` is not
+    also miscounted as a lone `>` -- moot for this any()-over-tuple check today, but keeps the tuple
+    order meaningful if a future caller ever needs the specific operator matched.
+    """
+    for step in _all_steps(model):
+        if str(step.get("type", "")).lower() != "branch":
+            continue
+        condition = step.get("condition")
+        if not isinstance(condition, str) or not condition.strip():
+            continue
+        stripped = _QUOTED_LITERAL.sub("", condition)
+        if any(op in stripped for op in _ORDERED_COMPARISON_OPERATORS):
+            return True
+    return False
 
 
 def _has_conversion_op(model: dict, op: str) -> bool:
