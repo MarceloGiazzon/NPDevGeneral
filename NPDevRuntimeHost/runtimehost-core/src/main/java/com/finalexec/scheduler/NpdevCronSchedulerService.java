@@ -9,6 +9,7 @@ import com.npdev.kernel.ExecutionStatus;
 import com.npdev.kernel.KernelRunner;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -17,6 +18,7 @@ import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
+import org.springframework.beans.factory.ObjectProvider;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -81,18 +83,66 @@ public class NpdevCronSchedulerService {
     private final Map<String, CronExpression> cronExpressionsByKey = new ConcurrentHashMap<>();
     private final Map<String, AtomicReference<Instant>> fireAnchorByKey = new ConcurrentHashMap<>();
 
+    /**
+     * QUAL-22: {@code dataSource} is resolved through an {@link ObjectProvider} and is OPTIONAL.
+     *
+     * <p>R2.7 introduced it as a hard constructor dependency, which made this {@code @Component} --
+     * enabled by default via {@code matchIfMissing = true} -- unsatisfiable in any context with no
+     * DataSource bean. That is not a hypothetical configuration: InMemory mode has no DataSource at
+     * all, which is exactly why {@code NpdevCapabilityBindingConfig} resolves its own transaction
+     * manager and sequence allocator the same optional way (B18 / R5.3), and why
+     * {@code AggregateRuntime} takes an {@code ObjectProvider<PlatformTransactionManager>}. It was
+     * caught by {@code NonDefaultRuntimeSurfaceProfileIntegrationTest} failing to load its context
+     * with {@code No qualifying bean of type 'javax.sql.DataSource'} on constructor parameter 4.</p>
+     *
+     * <p>Absent a DataSource the scheduler still runs; what it loses is the multi-instance fire
+     * claim, degrading to the single-instance behaviour it had before R2.7. That is the correct
+     * degradation: without shared storage there is no second instance to coordinate with.</p>
+     */
+    /**
+     * QUAL-22: kept so every direct caller that predates the ObjectProvider form -- notably
+     * {@code NpdevCronSchedulerServiceTest}, which hands in a real DataSource -- compiles and
+     * behaves unchanged. Spring uses the ObjectProvider constructor below; this one is for callers
+     * that already hold the DataSource. Passing a bare {@code null} here is ambiguous between the
+     * two overloads and will not compile; cast it, or use the ObjectProvider form.
+     *
+     * <p>Adding this second public constructor is exactly why the ObjectProvider one below carries
+     * an explicit {@code @Autowired}: with a single public constructor Spring picks it implicitly,
+     * but with two and no annotation it falls back to looking for a no-arg constructor and fails
+     * with "No default constructor found" -- measured, not assumed.</p>
+     */
     public NpdevCronSchedulerService(
             CompiledModel compiledModel,
             KernelRunner kernelRunner,
             ScheduleOutcomeTracker tracker,
-            @Value("${npdev.cronScheduler.poolSize:4}") int poolSize,
+            int poolSize,
             DataSource dataSource
     ) {
         this.compiledModel = compiledModel;
         this.kernelRunner = kernelRunner;
         this.tracker = tracker;
         this.poolSize = poolSize;
-        this.claimStore = new CronFireClaimStore(dataSource);
+        this.claimStore = dataSource == null ? null : new CronFireClaimStore(dataSource);
+    }
+
+    @Autowired
+    public NpdevCronSchedulerService(
+            CompiledModel compiledModel,
+            KernelRunner kernelRunner,
+            ScheduleOutcomeTracker tracker,
+            @Value("${npdev.cronScheduler.poolSize:4}") int poolSize,
+            ObjectProvider<DataSource> dataSource
+    ) {
+        this.compiledModel = compiledModel;
+        this.kernelRunner = kernelRunner;
+        this.tracker = tracker;
+        this.poolSize = poolSize;
+        DataSource resolved = dataSource == null ? null : dataSource.getIfAvailable();
+        this.claimStore = resolved == null ? null : new CronFireClaimStore(resolved);
+        if (resolved == null) {
+            LOG.info("No DataSource available -- cron fire claiming is disabled, so this instance "
+                    + "fires every scheduled flow itself (single-instance behaviour).");
+        }
     }
 
     @PostConstruct
@@ -170,7 +220,8 @@ public class NpdevCronSchedulerService {
 
     private void runScheduledFlow(String flowName, String tenantId, String scheduleKey) {
         Instant scheduledFireTime = advanceFireTime(scheduleKey);
-        if (scheduledFireTime != null
+        if (claimStore != null
+                && scheduledFireTime != null
                 && !claimStore.tryClaim(flowName, tenantId, scheduledFireTime, CLAIMANT_ID, 0L)) {
             LOG.fine(() -> "Scheduled flow " + flowName + " (tenant " + tenantId + ") skipped at "
                     + scheduledFireTime + " -- another instance already claimed this fire window");
