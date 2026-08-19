@@ -4639,18 +4639,31 @@
         rows.forEach(function (row) {
           const tr = document.createElement("tr");
           tr.className = "picker-row";
+          // R7.9: a picker row was only ever a click target -- the focus trap this dialog now sits
+          // in (see openModalInto) would otherwise land a Tab-only user on the search box and the
+          // Close button with every actual choice unreachable. role="button" follows the same
+          // pattern R7.5 used for the SVG dashboard shapes (makeClickableSvg in shell.js.mustache).
+          tr.tabIndex = 0;
+          tr.setAttribute("role", "button");
           columns.forEach(function (col) {
             const td = document.createElement("td");
             td.textContent = formatValue(row[col]);
             tr.appendChild(td);
           });
-          tr.addEventListener("click", function () {
+          function pickRow() {
             const isViaRef = reference.via && reference.via !== "" && reference.anchorField && reference.anchorField !== reference.targetIdField;
             const id = isViaRef ? text(row[reference.anchorField]) : text(row[reference.targetIdField]);
             const label = lookupLabel(reference, row);
             state.referenceLabels[referenceCacheKey(reference, id)] = { status: "resolved", label: label, row: row };
             onSelect(id, label);
             closeModalIn(el.pickerModalRoot);
+          }
+          tr.addEventListener("click", pickRow);
+          tr.addEventListener("keydown", function (event) {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              pickRow();
+            }
           });
           tbody.appendChild(tr);
         });
@@ -4852,12 +4865,35 @@
   // same root for the picker would destroy the parent form the instant the
   // picker opened (confirmed live: a real generator bug, found via browser
   // verification of a reference field inside a create form).
+  //
+  // R7.9: every modal (the create/edit form AND the reference picker, both routed through
+  // here) is now a real dialog for keyboard use, not just a mouse-dismissible overlay --
+  // role="dialog"/aria-modal so assistive tech announces it, Escape closes it (checked against
+  // <input type="search">'s own native Escape-to-clear: that fires first and does not stop
+  // propagation, so the dialog still closes on the same keypress), a Tab/Shift+Tab focus trap so
+  // background content behind the backdrop is never reachable (a REAL keyboard trap would be "Tab
+  // escapes forward with no way back" -- this cycles within the dialog and Escape always gets out,
+  // which is the standard WAI-ARIA dialog pattern, not the WCAG 2.1.2 failure), initial focus on
+  // the first focusable control so a keyboard user lands somewhere useful, and focus restored to
+  // whatever triggered the dialog on close so Tab order resumes where the user left off.
+  function focusableIn(root) {
+    return Array.prototype.filter.call(
+      root.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      function (node) { return node.offsetParent !== null || node === document.activeElement; }
+    );
+  }
+
   function openModalInto(root, title, content) {
     root.innerHTML = "";
+    const opener = document.activeElement;
     const backdrop = document.createElement("div");
     backdrop.className = "modal-backdrop";
     const modal = document.createElement("div");
     modal.className = "modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-label", title);
+    modal.tabIndex = -1;
     const header = document.createElement("div");
     header.className = "modal-header";
     const heading = document.createElement("h3");
@@ -4868,9 +4904,52 @@
     modal.appendChild(content);
     backdrop.appendChild(modal);
     root.appendChild(backdrop);
+
+    function trapKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeModalIn(root);
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const focusable = focusableIn(modal);
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    modal.addEventListener("keydown", trapKeydown);
+    root._npdevModalCleanup = function () {
+      modal.removeEventListener("keydown", trapKeydown);
+      if (opener && typeof opener.focus === "function" && document.contains(opener)) {
+        opener.focus();
+      }
+    };
+    // Prefer the first focusable control in the caller's OWN content (the form's first field, the
+    // picker's search box) over the header's Close button -- a keyboard user opening a create/edit
+    // form wants to start typing, not tab past chrome first. Falls back to the header, then the
+    // modal itself, so a display-only dialog is still reachable.
+    const initialFocus = focusableIn(content)[0] || focusableIn(modal)[0] || modal;
+    initialFocus.focus();
   }
 
   function closeModalIn(root) {
+    if (root._npdevModalCleanup) {
+      const cleanup = root._npdevModalCleanup;
+      root._npdevModalCleanup = null;
+      cleanup();
+    }
     root.innerHTML = "";
   }
 

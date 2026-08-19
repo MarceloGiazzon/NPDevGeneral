@@ -745,6 +745,26 @@
     node.appendChild(titleEl);
   }
 
+  // R7.9: the SAME treatment as makeClickableSvg, for the two drill-down targets that are plain
+  // HTML (a <div> KPI tile, a <table> row) rather than SVG -- both were click-only until now, so a
+  // keyboard-only user could reach every OTHER gadget's drill-down (the bar/line shapes already had
+  // makeClickableSvg) but not these two. tabIndex makes the element a real Tab stop; role="button" +
+  // Enter/Space keydown make it operable once reached, matching native <button> semantics.
+  function makeClickableElement(node, label, onClick) {
+    node.style.cursor = "pointer";
+    node.tabIndex = 0;
+    node.setAttribute("role", "button");
+    node.setAttribute("aria-label", label);
+    node.title = label;
+    node.addEventListener("click", onClick);
+    node.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        onClick();
+      }
+    });
+  }
+
   function renderKpiGadget(container, gadget) {
     fetchGadgetQuery(gadget).then(function (result) {
       var rows = (result && result.rows) || [];
@@ -755,9 +775,7 @@
       big.className = "npdev-shell-gadget-kpi";
       big.textContent = formatNumber(total);
       if (result && result.concept) {
-        big.style.cursor = "pointer";
-        big.title = "Ver " + result.concept;
-        big.addEventListener("click", function () { navigateToDrilldown(result.concept, [], {}); });
+        makeClickableElement(big, "Ver " + result.concept, function () { navigateToDrilldown(result.concept, [], {}); });
       }
       container.appendChild(big);
     }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
@@ -791,9 +809,7 @@
           tr.appendChild(td);
         });
         if (drillConcept) {
-          tr.style.cursor = "pointer";
-          tr.title = "Ver " + drillConcept;
-          tr.addEventListener("click", function () { navigateToDrilldown(drillConcept, drillKeys, row); });
+          makeClickableElement(tr, "Ver " + drillConcept, function () { navigateToDrilldown(drillConcept, drillKeys, row); });
         }
         tbody.appendChild(tr);
       });

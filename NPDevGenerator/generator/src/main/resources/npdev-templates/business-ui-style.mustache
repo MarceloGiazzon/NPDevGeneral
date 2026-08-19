@@ -1085,9 +1085,18 @@ textarea.declared-panel-edit-input {
   cursor: pointer;
 }
 
-.picker-row:hover td {
+.picker-row:hover td,
+.picker-row:focus-visible td {
   background: color-mix(in srgb, var(--np-accent, #1769aa) 10%, transparent);
   color: var(--np-accent, #1769aa);
+}
+
+/* R7.9: box-shadow (the shell's own :focus-visible ring, shell.css.mustache) is unreliable on a
+   <tr> under table layout in some engines -- the :hover-matching background above is the
+   guaranteed-visible fallback for keyboard focus on a picker row (see openPickerDialog). */
+.picker-row:focus-visible {
+  outline: 2px solid var(--np-accent, #1769aa);
+  outline-offset: -2px;
 }
 
 .array-table-editor {
