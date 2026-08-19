@@ -53,6 +53,9 @@ FEATURE_DETECTORS = {
     "autoPanels": lambda m: _nonempty(m, "autoPanels"),
     "documents": lambda m: _nonempty(m, "documents"),
     "guidePages": lambda m: _nonempty(m, "guidePages"),
+    # R6.2 (Roadmap Collection 2026-08-18): model-declared inbound webhook doors -- a new top-level
+    # array sibling of roles/aggregates above, generating POST /api/hooks/{source}.
+    "webhooks": lambda m: _nonempty(m, "webhooks"),
     "queries": lambda m: _nonempty(m, "queries"),
     # Move 10 B1 (LC-B1, MOVE10_AI_LOWCODE_PLAN Part B): query.groupBy/aggregates/having --
     # distinct from the top-level "aggregates" (Aggregate Workbench) array above, so named

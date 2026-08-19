@@ -39,6 +39,13 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
         if (uri == null) {
             return true;
         }
+        // R6.2: an inbound webhook door has its OWN independent authentication -- an HMAC-SHA256
+        // signature WebhookInboundController itself verifies, using a secret named per-webhook in
+        // the model. A third party posting e.g. a payment confirmation holds no NPDev credential at
+        // all and never will, so this filter must not demand an X-Api-Key it can never present.
+        if (uri.startsWith("/api/hooks/")) {
+            return true;
+        }
         // An earlier filter in the chain (e.g. SuperUserCredentialAuthFilter, order -110) may already
         // have authenticated this request via a completely independent credential (the ControlPanel's
         // X-Super-User-Key) and set the claims attribute. This filter must not clobber that

@@ -120,7 +120,12 @@ public final class ModelResolver {
                 // Whole-map pass-through -- keyed by qualified concept name, which specialization
                 // resolution here never renames (extends is field-inheritance, not a rename), so the
                 // keys this map already has still match after resolution.
-                source.getPhysicalQualifierByConceptName()
+                source.getPhysicalQualifierByConceptName(),
+                // Whole-list pass-through, same reasoning as aggregates/autoPanels above -- a
+                // webhook has no `extends`/specialization concept of its own for this resolver to
+                // expand; ModelSourceResolver already rewrote its `eventName` field (the pack
+                // composition step, upstream of this specialization resolver) if it was pack-local.
+                source.getWebhooks()
         );
         return ResolvedModel.from(resolvedAst);
     }

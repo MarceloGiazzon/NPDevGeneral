@@ -1,0 +1,237 @@
+id: RUN-17
+title: >-
+  No inbound door existed for the flow docs' own "payment confirmation" use case -- a third party
+  would have needed NPDev auth and envelope shape; add model-declared webhooks[] generating
+  POST /api/hooks/{source}, HMAC-verified, publishing into the same event store awaitEvent reads
+type: GAP
+severity: HIGH
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R6 item R6.2 -- "the inbound half of
+  app-to-app eventing," R6.1's (RUN-14) sibling. Confirmed against real code before starting: no
+  controller in NPDevRuntimeHost appended an EventEnvelope from an unauthenticated request, and the
+  only inbound door (DirectExecutionGatewayController) requires NPDev auth AND rejects any flow with
+  no capability-call step (webhook-driven awaitEvent flows have none) with ARCHITECTURE_BYPASS_REJECTED.
+  R2.5 (RUN-11, done same collection) and R2.1 (RUN-6, prerequisite, done) were re-verified live in
+  this session's own proof, not merely cited: a durable awaitEvent parks, survives the resume sweep's
+  backoff, and completes once a matching event exists.
+surface: dsl/schema, kernel/events, runtimehost/api
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/WebhookAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledWebhook.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ModelAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModel.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/WebhookValidation.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/SemanticValidator.java
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - NPDevContract/schemas/pack.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/pack.schema.json
+  - scripts/quality/twin-pair-registry.json
+  - scripts/quality/dsl_coverage/features.py
+  - scripts/quality/corpus-roles.json
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - NPDevSamples/dsl-conformance-max/Input/manifest.json
+  - NPDevRuntimeHost/src/main/java/com/finalexec/api/WebhookInboundController.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/JwtBearerAuthFilter.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-api-key-auth-filter.mustache
+  - NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json
+  - NPDevRuntimeHost/src/test/java/com/finalexec/api/WebhookInboundControllerTest.java
+  - AppGen/apps/payment-webhook-rehearsal/definition/config.json (external, AppGen source of truth)
+  - AppGen/apps/payment-webhook-rehearsal/definition/model.json (external, AppGen source of truth)
+  - AppGen/apps/payment-webhook-rehearsal/definition/db.definition.json (external, AppGen source of truth)
+detail: |
+  New top-level model array `webhooks[]` -- `{ source, hmacSecretEnvVar, eventName, fieldMapping }`
+  -- compiling to `CompiledWebhook`, read at REQUEST TIME by a new `WebhookInboundController`
+  (`com.finalexec.api`) exposing `POST /api/hooks/{source}`. Reuses R6.1's (`webhook-http`,
+  `ledger/items/RUN-14.yml`) exact posture rather than inventing a second style: HMAC-SHA256 over the
+  raw body, hex-encoded, header `X-Npdev-Webhook-Signature: sha256=<hex>`, secret resolved by
+  ENVIRONMENT VARIABLE NAME never a literal, fail-closed at every branch.
+
+  **Premises checked, not assumed (per this session's own standing instruction -- four premises in
+  the same roadmap collection had already been measured false).** No inbound door existed: confirmed
+  by reading every RuntimeHost controller and finding none append an `EventEnvelope`; the one
+  existing generic entry point (`DirectExecutionGatewayController`) both requires NPDev auth and
+  rejects any flow with zero capability-call steps, which every webhook-driven `awaitEvent` flow is
+  by construction. R2.1 (RUN-6)/R2.5 (RUN-11) actually work: re-verified live in this session's own
+  proof (a real create-triggered flow parks `WAITING_EVENT`, survives the resume sweep's exponential
+  backoff -- observed directly, not assumed -- and completes once a matching event exists), not
+  merely cited from their ledger entries.
+
+  **REG-108 four-place threading, done for `webhooks` exactly like PACK-11's four keys:**
+  `ModelSourceResolver.MODEL_ARRAY_KEYS`, both `pack.schema.json` copies, `ModelResolver.resolve()`
+  (whole-list pass-through -- a webhook has no `extends`/specialization of its own), and the
+  `CompiledModelCanonicalJson`/`Reader` pair. Plus REG-104's separate live-path chain (parser ->
+  compiler -> canonical writer/reader -> resolver) for the AST/compiled types themselves. All four
+  copies of `model.schema.json` carry the new `webhooks` property + `webhook` $def; verified with
+  `check-schema-mirror-consistency.py` (all green, including the legacy-copy excused-key handling).
+
+  **The "PACK-11 fifth place" the roadmap named turned out to be REAL, and distinct from the
+  four-place chain.** `ModelSourceResolver.rewriteKnownMemberReferenceFields` needed its own
+  `"webhooks".equals(rootKey)` branch to qualify `eventName` (a reference into `events[]`, the same
+  shape as `flowStep.event`) when a pack composes one. Deliberately did NOT rewrite `source` itself
+  -- unlike every other `MODEL_ARRAY_KEYS` member, a webhook's identity is a wire path segment a
+  third party posts to (`POST /api/hooks/{source}`); qualifying it `packId::source` would make the
+  URL depend on composition order, which the external contract cannot tolerate. This asymmetry is
+  why `webhooks` has no "name" field and does not get pack-namespace-qualified at all by the ordinary
+  `memberRewriteMap` mechanism (which only fires on a `name` field) -- a deliberate design choice,
+  not an oversight, documented in `WebhookAst`'s own javadoc.
+
+  Both the `pack-composition-four-place` twin-pair rule (extended with `webhooks`) and a new
+  `webhook-ast-compiled-four-place` rule (mirroring `conversions-ast-compiled-four-place`) are
+  registered in `scripts/quality/twin-pair-registry.json`; `check-twin-pair-consistency.py` passes
+  24/24 rules including both.
+
+  **Security is the point of this item, and every claim was measured live against a real booted
+  app, not asserted:**
+  - HMAC-SHA256 verification uses `MessageDigest.isEqual(byte[], byte[])` -- JDK-documented
+    constant-time specifically to defeat timing attacks -- never `String.equals`/`Arrays.equals`.
+  - A wrong signature -> `401 WEBHOOK_SIGNATURE_INVALID`. Measured: `curl` with a well-formed-but-
+    wrong hex signature against the live app -> `HTTP/1.1 401`.
+  - A missing signature header -> `401 WEBHOOK_SIGNATURE_MISSING`. Measured live -> `401`.
+  - An unconfigured secret (env var unset/blank) -> `401 WEBHOOK_SECRET_NOT_CONFIGURED`, never a
+    silent unsigned-accept fallback.
+  - An unknown `source` -> `404 WEBHOOK_SOURCE_UNKNOWN`, naming the source. Measured live -> `404`.
+  - The secret is resolved by environment-variable NAME via a `Function<String,String>` (defaulting
+    to `System::getenv`), exactly R6.1's shape -- no literal secret value anywhere in code, tests, or
+    this ledger entry.
+  - Logging never includes the presented/computed signature or the secret -- only source, event
+    name, eventId, and outcome (the `npdev_monitor.redact()` concern CLAUDE.md names).
+  - **Replay: deliberately NOT handled**, stated plainly in the controller's own javadoc rather than
+    silently omitted -- no timestamp window, no nonce/idempotency store. A captured valid request can
+    be replayed; a flow already past its `awaitEvent` is unaffected (nothing left to consume the
+    duplicate), but a flow re-parked on the same await could resume twice. Recording delivery ids
+    (mirroring R6.1's `WebhookDeliveryRecordStore`) is the natural follow-up if a specific source's
+    replay risk becomes real; the roadmap's own Definition of Done names none of it.
+
+  **Two real defects found ONLY by the live proof, exactly why CLAUDE.md says a green gate is not
+  evidence for this package:**
+  1. **Spring could not instantiate the controller at all** (`No default constructor found`) the
+     first time the app actually booted -- two constructors (the public 3-arg one Spring should
+     autowire, plus a package-private 4-arg test-only seam) with neither marked `@Autowired` broke
+     Spring's implicit single-constructor autowiring. A `@SpringBootTest`-free unit test would never
+     hit this; only a real `ApplicationContext` refresh does. Fixed by annotating the intended
+     constructor.
+  2. **The resume sweep never found the published event for a tenant-scoped flow instance.**
+     `ResumeCoordinator.findAwaitedEventForInstance` scopes its `EventStore` lookup by
+     `waitingInstance.tenantId()`; the controller's first version always published with a null
+     tenant, and `EventStore`'s tenant filter treats a non-blank query tenant as exclusive -- so the
+     event was silently invisible to any tenant-scoped instance (every apikey-mode create, even the
+     single-tenant `dev` default). Measured directly: the flow instance sat `WAITING_EVENT` past its
+     exponential backoff schedule with the matching event already present in the store. Fixed by
+     resolving the tenant from whichever `FlowInstanceStore.findWaitingByCorrelation` instance is
+     already parked on the resolved correlationId before publishing, and re-verified live end to end.
+
+  **Live proof, both DoD claims, against a real booted app
+  (`AppGen/apps/payment-webhook-rehearsal`, H2Local, port 8098, `auth.mode=apikey` default):**
+  1. `POST /api/concepts/payment_orders` (WITH NPDev `X-Api-Key`) creates a `PaymentOrder`, whose
+     create-triggered `PlacePaymentOrder` flow parks on `awaitEvent("PaymentConfirmed")` with
+     `match.correlation: true` -- logged: `{"outcome":"waiting","status":"WAITING_EVENT",...}`.
+  2. `curl -X POST /api/hooks/payment-processor` with body `{"orderId":"<correlationId>",
+     "txnRef":"TXN-R62-0002"}`, header `X-Npdev-Webhook-Signature: sha256=<real HMAC-SHA256 hex>`,
+     **NO `X-Api-Key`, NO `Authorization` header at all** -> `HTTP/1.1 200 {"ok":true,"eventId":...,
+     "eventName":"PaymentConfirmed"}`.
+  3. Within one backoff-eligible sweep tick, the SAME `executionId`/`correlationId` logged
+     `{"outcome":"success","status":"OK",...}` -- the flow instance genuinely transitioned from
+     `WAITING_EVENT` to completed, driven entirely by the unauthenticated webhook call.
+  4. Wrong signature (`sha256=` + 64 zero hex chars) against the same source -> `HTTP/1.1 401
+     {"ok":false,"code":"WEBHOOK_SIGNATURE_INVALID",...}`.
+  5. Missing signature header -> `HTTP/1.1 401 {"code":"WEBHOOK_SIGNATURE_MISSING",...}`.
+  6. Unknown source (`/api/hooks/not-a-real-webhook`) -> `HTTP/1.1 404
+     {"code":"WEBHOOK_SOURCE_UNKNOWN",...}`.
+  All six measured directly via `curl` against the booted jar, not inferred.
+
+  **The auth-filter exemption was itself a real find, not boilerplate.** Both the default apikey-mode
+  filter (`RuntimeApiKeyAuthFilter`, generated from `npdev-runtime-api-key-auth-filter.mustache` --
+  fixed in the TEMPLATE, never the generated output) and `JwtBearerAuthFilter` (jwt mode) reject any
+  `/api/**` request with no credential BEFORE it reaches a controller. Without an explicit
+  `/api/hooks/` exemption in both (added this round, same chicken-and-egg reasoning as the existing
+  login/bootstrap-admin/password-reset exemptions), a third party with no NPDev credential would have
+  been rejected `401 missing_bearer_token` / `missing_api_key` before `WebhookInboundController` ever
+  ran -- the entire feature would have been unreachable in both real auth modes.
+
+  **Conformance declares a source (this item's Definition of Done, verbatim).**
+  `NPDevSamples/dsl-conformance-max` gained a `webhooks[]` entry (`source: "payment-processor"`), a
+  `PaymentConfirmed` event, and an `AwaitPaymentConfirmation` flow awaiting it by correlation. New
+  tracked feature `webhooks` in `scripts/quality/dsl_coverage/features.py`; `check-dsl-coverage.py`
+  reports `webhooks 1 model(s) [OK]`. The conformance model.json validates clean (0 errors) via
+  `:NPDevContract:dsl:validateModel`.
+
+  **Backward compatibility: preserved, not merely claimed.** A model with no `webhooks[]` behaves
+  identically -- every new field/constructor is additive (new trailing canonical constructors on
+  `ModelAst`/`CompiledModel`, matching `roles`/`conversions`/`contexts`'s own precedent), the full
+  `:NPDevContract:dsl:test` suite is 777/778 (the 1 failure is the SAME pre-existing, unrelated
+  `AiModelToDslMappingTest` golden-scenario-count drift RUN-11 also reported, confirmed by reading
+  the actual assertion message: "expected 24 but was 22", nothing to do with webhooks). No BREAKING.md
+  entry, no `npdev migrate` codemod -- this is a pure addition to the DSL, generated code layout is
+  unchanged for any model that does not declare `webhooks[]`, and no existing internal API signature
+  changed in an incompatible way.
+
+  **A JUnit regression test was written** (`WebhookInboundControllerTest`, standalone `MockMvc`
+  harness mirroring `AgentProxyControllerTest`'s shape -- no database, no `com.npdev.generated.`
+  reference) covering all six behaviors above plus the tenant-resolution fix, and it compiles clean.
+  **Its standalone execution against the bare `NPDevRuntimeHost` template hit a pre-existing
+  environment issue** (`Failed to load JUnit Platform`, reproduced identically across three attempts
+  including `--rerun-tasks` and `--no-daemon`) unrelated to this change's own code -- consistent with
+  CLAUDE.md's own warning against building/testing RuntimeHost standalone. The live proof above is
+  the authoritative DoD evidence; the test file is a real, compiling addition for whoever next runs
+  the full `run-runtimehost-gate.ps1` generate-and-test cycle.
+
+  **What was deliberately NOT done:** no replay protection (stated above); no pack-level
+  namespace-qualification of `webhook.source` (a deliberate design choice, not a gap); no
+  `npdev_webhook_delivery`-style delivery-record persistence for inbound calls (R6.1's outbound
+  adapter has one, inbound does not -- the roadmap's Definition of Done names none of it); did not
+  touch `NPDevCli/**` (a different agent's ownership this round) or
+  `business-ui-app.mustache`/`shell.js.mustache`/`business-ui-query-controller.mustache` (a third
+  agent's ownership).
+guard:
+  kind: manual
+  ref: >-
+    Live proof against AppGen/apps/payment-webhook-rehearsal (H2Local, port 8098): create a
+    PaymentOrder via authenticated POST /api/concepts/payment_orders, then curl -X POST
+    http://localhost:8098/api/hooks/payment-processor with body {"orderId":"<correlationId from the
+    parked flow>","txnRef":"..."} and header X-Npdev-Webhook-Signature: sha256=<real HMAC-SHA256 hex
+    of the body under the env-var-named secret>, sending NO X-Api-Key/Authorization header at all.
+    Companion negative checks: same URL with a wrong-but-well-formed hex signature, with no signature
+    header, and against an unconfigured source name. A written regression test exists at
+    NPDevRuntimeHost/src/test/java/com/finalexec/api/WebhookInboundControllerTest.java covering the
+    same six behaviors via a standalone MockMvc harness (compiles clean; standalone execution against
+    the bare template hit a pre-existing environment issue unrelated to this change, see detail).
+  asserts: >-
+    (1) a correctly HMAC-signed POST to /api/hooks/{source}, presenting no NPDev credential of any
+    kind, publishes the mapped event and the genuinely WAITING flow instance transitions to
+    completed within one resume-sweep tick; (2) a wrong signature is rejected 401
+    WEBHOOK_SIGNATURE_INVALID; (3) a missing signature header is rejected 401
+    WEBHOOK_SIGNATURE_MISSING; (4) an unknown source is rejected 404 WEBHOOK_SOURCE_UNKNOWN; (5) an
+    unconfigured secret is rejected 401 WEBHOOK_SECRET_NOT_CONFIGURED rather than accepting unsigned;
+    (6) both real auth-mode filters (apikey default, jwt) let the request reach the controller with
+    no credential, and every other filter (SuperUserCredentialAuthFilter, TenantStatusFilter) is a
+    documented no-op for this path.
+  provenRed: true
+  provenRedNote: >-
+    Two genuine REDs were observed live, not simulated, both only reachable by actually booting the
+    app: (a) BeanCreationException "No default constructor found" for WebhookInboundController on
+    first real boot, caused by two constructors with neither marked @Autowired -- fixed by annotating
+    the intended one, re-verified by a clean subsequent boot. (b) the flow instance stayed
+    WAITING_EVENT indefinitely (observed past its full exponential backoff window, 00:52:46 parked to
+    00:57+ still waiting, with the matching event already present in the EventStore since 00:53:29)
+    because the controller published every event with a null tenant while ResumeCoordinator's lookup
+    scopes by the waiting instance's own non-blank tenant -- fixed by resolving the tenant from
+    FlowInstanceStore.findWaitingByCorrelation before publishing; re-verified live with a fresh
+    PaymentOrder/webhook cycle: parked at 01:02:45, webhook published at 01:02:58, flow instance
+    logged outcome "success"/"OK" at 01:03:15 for the identical executionId/correlationId. The
+    negative-path checks (wrong/missing signature, unknown source) were verified positively (curl
+    against the running app returning the exact expected status+code) rather than RED-proven by
+    disabling code, matching RUN-14's own precedent for a from-scratch feature with no prior
+    "unfixed" version to regress from.

@@ -132,6 +132,11 @@ public final class CompiledModelCanonicalJsonReader {
             conversions.add(toConversion(node));
         }
 
+        List<CompiledWebhook> webhooks = new ArrayList<>();
+        for (JsonNode node : array(root, "webhooks")) {
+            webhooks.add(toWebhook(node));
+        }
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -157,13 +162,23 @@ public final class CompiledModelCanonicalJsonReader {
                 propertyScopes,
                 properties,
                 contexts,
-                conversions
+                conversions,
+                webhooks
         );
     }
 
     /** Wave 3 (RC-B1): reads a single app-defined role -> permission-ceiling declaration. */
     private static CompiledRole toRole(JsonNode node) {
         return new CompiledRole(text(node, "name"), toStringList(node.get("grants")), toOrigin(node.get("origin")));
+    }
+
+    /** R6.2: reads a single model-declared inbound webhook door. */
+    private static CompiledWebhook toWebhook(JsonNode node) {
+        return new CompiledWebhook(
+                text(node, "source"),
+                text(node, "hmacSecretEnvVar"),
+                text(node, "eventName"),
+                toStringMap(node.get("fieldMapping")));
     }
 
     /** B20 (S2): reads a single declared bounded context (name + $ref). S8 Wave 4: plus the

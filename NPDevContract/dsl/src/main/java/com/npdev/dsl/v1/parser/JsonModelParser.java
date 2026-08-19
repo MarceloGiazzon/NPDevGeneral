@@ -192,6 +192,7 @@ public final class JsonModelParser {
         List<com.npdev.dsl.v1.ast.PropertyScopeAst> propertyScopes = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.PropertyAst> properties = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.ContextAst> contexts = new ArrayList<>();
+        List<com.npdev.dsl.v1.ast.WebhookAst> webhooks = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
@@ -590,6 +591,7 @@ public final class JsonModelParser {
         properties.addAll(parseProperties(root.get("properties")));
         contexts.addAll(parseContexts(root.get("contexts")));
         List<com.npdev.dsl.v1.ast.ConversionAst> conversions = parseConversions(root.get("conversions"));
+        webhooks.addAll(parseWebhooks(root.get("webhooks")));
 
         return new ModelAst(
                 namespace,
@@ -619,7 +621,8 @@ public final class JsonModelParser {
                 properties,
                 contexts,
                 conversions,
-                physicalQualifierByConceptName
+                physicalQualifierByConceptName,
+                webhooks
         );
     }
 
@@ -739,6 +742,30 @@ public final class JsonModelParser {
                     name,
                     parseTextArray(roleNode.get("grants")),
                     toOriginAst(originByName.get(name))
+            ));
+        }
+        return out;
+    }
+
+    /** R6.2: parses the optional top-level {@code webhooks} array -- {@code source} +
+     *  {@code hmacSecretEnvVar} + {@code eventName} + optional {@code fieldMapping}. No pack-origin
+     *  lookup (unlike {@code roles}/{@code events}/...): a webhook's identity ({@code source}) is a
+     *  wire path segment, deliberately never namespace-qualified by pack composition -- see
+     *  {@link com.npdev.dsl.v1.ast.WebhookAst}'s own javadoc. */
+    private static List<com.npdev.dsl.v1.ast.WebhookAst> parseWebhooks(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.WebhookAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("webhooks must be an array");
+        }
+        for (JsonNode webhookNode : node) {
+            out.add(new com.npdev.dsl.v1.ast.WebhookAst(
+                    requiredText(webhookNode, "source"),
+                    requiredText(webhookNode, "hmacSecretEnvVar"),
+                    requiredText(webhookNode, "eventName"),
+                    parseStringMap(webhookNode.get("fieldMapping"))
             ));
         }
         return out;
