@@ -46,6 +46,18 @@ detail: |
   table exists. Reproducing it requires an EXISTING migrated database plus a platform version that
   adds an internal table -- the precise combination no fresh-boot test can reach.
 
+  **CONFIRMED LIVE 2026-08-19, independently, by an agent that was not looking for it.** While
+  browser-verifying R7.9 (EDIT-10), an unrelated workstream hit exactly this: an app whose database
+  had already run its one-time V1 migration met a platform build carrying newly-registered internal
+  tables, and the additive-columns script failed trying to ALTER a table that did not exist --
+  surfacing as a runtime **HTTP 503**, not a clear migration error. It blocked verification across
+  THREE separate app/config combinations before that agent worked around it with a scratch database.
+  That upgrades this item's evidence from "read from the emission structure" to measured, and its
+  practical severity with it: the failure mode is a 503 on a working app after a platform upgrade,
+  which reads as an outage rather than a schema gap.
+  Note the workaround used there (a fresh database) is exactly what HIDES the bug, which is why it
+  survived this long.
+
   SMALLEST FIX (not applied here) -- with two details established by reading the code, so the next
   person does not repeat the analysis:
 

@@ -909,7 +909,6 @@ public final class JsonModelParser {
                     parseProcedureParameters(queryNode.get("parameters"), "queries[" + name + "].parameters"),
                     parseTextArray(queryNode.get("permissionRequirements")),
                     readText(queryNode, "tracePolicy"),
-                    readText(queryNode, "auditPolicy"),
                     parseObjectMap(queryNode.get("metadata")),
                     parseGroupByFields(queryNode.get("groupBy")),
                     parseAggregateFunctions(queryNode.get("aggregates")),
@@ -1004,7 +1003,6 @@ public final class JsonModelParser {
                     parseSchema(procedureNode.get("returns"), "procedures[" + name + "].returns"),
                     parseTextArray(procedureNode.get("permissionRequirements")),
                     readText(procedureNode, "tracePolicy"),
-                    readText(procedureNode, "auditPolicy"),
                     parseGeneratedActionDescriptor(procedureNode.get("actionDescriptor"), "procedures[" + name + "].actionDescriptor"),
                     parseObjectMap(procedureNode.get("metadata"))
             ));

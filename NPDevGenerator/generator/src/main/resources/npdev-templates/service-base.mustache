@@ -286,7 +286,10 @@ public class {{entityName}}ServiceBase {
         codaHook.ifPresent(hook -> hook.afterCreate("{{conceptName}}", created, crudCtx));
 {{/codaAllowed}}
 {{#kernelControlled}}
-        runtimeSupport.auditCrudMutation("{{conceptName}}", "CREATE", String.valueOf(created.getId()), "ALLOW", crudCtx);
+        // R5.1: CREATE has no "before" -- the after-snapshot is the saved entity's own field data,
+        // the same conversion mapFromEntity already performs for existsUnique/conceptStore.save.
+        runtimeSupport.auditCrudMutation("{{conceptName}}", "CREATE", String.valueOf(created.getId()), "ALLOW", crudCtx,
+                null, mapFromEntity(created));
 {{/kernelControlled}}
         runtimeSupport.recordCrudIdempotencySuccess(crudCtx.tenantId(), "{{conceptName}}", String.valueOf(created.getId()), idempotencyKey);
 {{#emitCreatedEvent}}
@@ -325,6 +328,10 @@ public class {{entityName}}ServiceBase {
         if (opt.isEmpty()) return Optional.empty();
 
         {{entityName}} existing = opt.get();
+        // R5.1: snapshot the pre-update field data BEFORE applyUpdateFields mutates `existing` in
+        // place below (the same "capture before the in-place mutation" need HARDEN-GC-P2 already
+        // documents for file fields specifically) -- this is the audit trail's "before" half.
+        Map<String, Object> auditBefore = mapFromEntity(existing);
         runtimeSupport.checkOptimisticVersion("{{conceptName}}", existing, source);
         String previousLifecycleStatus = runtimeSupport.captureLifecycleStatus("{{conceptName}}", existing);
         Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{conceptName}}", id, existing, source);
@@ -369,7 +376,8 @@ public class {{entityName}}ServiceBase {
         codaHook.ifPresent(hook -> hook.afterUpdate("{{conceptName}}", updated, crudCtx));
 {{/codaAllowed}}
 {{#kernelControlled}}
-        runtimeSupport.auditCrudMutation("{{conceptName}}", "UPDATE", String.valueOf(updated.getId()), "ALLOW", crudCtx);
+        runtimeSupport.auditCrudMutation("{{conceptName}}", "UPDATE", String.valueOf(updated.getId()), "ALLOW", crudCtx,
+                auditBefore, mapFromEntity(updated));
 {{/kernelControlled}}
         runtimeSupport.publishLifecycleTransitionEvent("{{conceptName}}", previousLifecycleStatus, updated, updatePayload);
 {{#emitUpdatedEvent}}
@@ -389,13 +397,11 @@ public class {{entityName}}ServiceBase {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "DELETE", crudCtx);
 {{/kernelControlled}}
-{{#hasFileFields}}
+        // R5.1: fetched unconditionally now, not only for concepts with file fields to
+        // cascade-delete -- the audit trail's "before" snapshot needs the row's own field data
+        // regardless.
         Optional<{{entityName}}> toDelete = persistence.findById(id);
         if (toDelete.isEmpty()) return false;
-{{/hasFileFields}}
-{{^hasFileFields}}
-        if (!persistence.existsById(id)) return false;
-{{/hasFileFields}}
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeDelete("{{conceptName}}", id, crudCtx));
 {{/codaAllowed}}
@@ -422,7 +428,22 @@ public class {{entityName}}ServiceBase {
         codaHook.ifPresent(hook -> hook.afterDelete("{{conceptName}}", id, crudCtx));
 {{/codaAllowed}}
 {{#kernelControlled}}
-        runtimeSupport.auditCrudMutation("{{conceptName}}", "DELETE", String.valueOf(id), "ALLOW", crudCtx);
+        // R5.1: "before" is the row's own field data (the audit trail's only record of what a
+        // deleted row looked like); "after" is null either way -- a soft delete's row survives in
+        // the database, but is excluded from every read the same as a physical delete, so there is
+        // no "after" state visible through this API to record. The operation name itself is what
+        // tells the two apart (SOFT_DELETE pairs with a later RESTORE event; a plain DELETE never
+        // gets one -- {{^softDelete}}this concept has no restore() endpoint at all{{/softDelete}}
+        // {{#softDelete}}see #restore below{{/softDelete}}), so a soft delete is never
+        // mistaken for -- or double-counted as -- an unrecoverable physical one.
+{{#softDelete}}
+        runtimeSupport.auditCrudMutation("{{conceptName}}", "SOFT_DELETE", String.valueOf(id), "ALLOW", crudCtx,
+                mapFromEntity(toDelete.get()), null);
+{{/softDelete}}
+{{^softDelete}}
+        runtimeSupport.auditCrudMutation("{{conceptName}}", "DELETE", String.valueOf(id), "ALLOW", crudCtx,
+                mapFromEntity(toDelete.get()), null);
+{{/softDelete}}
 {{/kernelControlled}}
 {{#emitDeletedEvent}}
         publishMutationEvent("deleted", id, null);
@@ -454,7 +475,14 @@ public class {{entityName}}ServiceBase {
         boolean restored = conceptStore.restore(currentTenantId(), CONCEPT_NAME, String.valueOf(id));
 {{#kernelControlled}}
         if (restored) {
-            runtimeSupport.auditCrudMutation("{{conceptName}}", "RESTORE", String.valueOf(id), "ALLOW", crudCtx);
+            // R5.1: "before" is deliberately omitted (null) -- the row was excluded from every read
+            // while soft-deleted, so there is no "before" snapshot this API ever saw; "after" is the
+            // now-visible-again row's own field data, re-fetched through the same JPA repository
+            // every other audit snapshot in this class uses (mapFromEntity), pairing this RESTORE
+            // event with the SOFT_DELETE event #delete recorded for the same resource id.
+            Map<String, Object> restoredData = persistence.findById(id).map(this::mapFromEntity).orElse(null);
+            runtimeSupport.auditCrudMutation("{{conceptName}}", "RESTORE", String.valueOf(id), "ALLOW", crudCtx,
+                    null, restoredData);
         }
 {{/kernelControlled}}
         return restored;

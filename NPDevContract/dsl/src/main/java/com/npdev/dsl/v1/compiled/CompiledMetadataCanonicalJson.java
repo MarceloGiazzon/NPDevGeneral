@@ -613,7 +613,6 @@ public final class CompiledMetadataCanonicalJson {
             node.set("permissionRequirements", toStringArray(procedure.permissionRequirements()));
             node.put("returnsType", procedure.returns() == null ? "" : safe(procedure.returns().getType()));
             node.put("tracePolicy", safe(procedure.tracePolicy()));
-            node.put("auditPolicy", safe(procedure.auditPolicy()));
             entries.add(node);
         }
         entries.sort(Comparator.comparing(node -> text(node, "name")));

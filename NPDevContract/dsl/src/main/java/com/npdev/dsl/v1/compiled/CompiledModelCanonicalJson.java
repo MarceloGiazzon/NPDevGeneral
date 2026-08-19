@@ -888,7 +888,6 @@ public final class CompiledModelCanonicalJson {
             node.set("parameters", toProcedureParameters(query.parameters()));
             node.set("permissionRequirements", toStringArray(query.permissionRequirements()));
             node.put("tracePolicy", safe(query.tracePolicy()));
-            node.put("auditPolicy", safe(query.auditPolicy()));
             node.set("metadata", toObjectMap(query.metadata()));
             node.set("groupBy", toGroupByFields(query.groupBy()));
             node.set("aggregates", toAggregateFunctions(query.aggregates()));
@@ -956,7 +955,6 @@ public final class CompiledModelCanonicalJson {
             node.set("returns", toSchema(procedure.returns()));
             node.set("permissionRequirements", toStringArray(procedure.permissionRequirements()));
             node.put("tracePolicy", safe(procedure.tracePolicy()));
-            node.put("auditPolicy", safe(procedure.auditPolicy()));
             node.set("actionDescriptor", toGeneratedActionDescriptor(procedure.actionDescriptor()));
             node.set("metadata", toObjectMap(procedure.metadata()));
             procedures.add(node);
