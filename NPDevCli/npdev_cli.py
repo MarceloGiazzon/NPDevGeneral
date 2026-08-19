@@ -247,6 +247,26 @@ def require_identifier(value: object, label: str, pattern: str) -> None:
         raise CliError(f"{label} is missing or invalid: {value!r}")
 
 
+def _document_kind(raw: dict, path: Path) -> str:
+    """R1.6 (`npdev impact`): 'pack' or 'model', read from the ROOT document's own declared shape
+    -- never resolve_split_model, because a pack.json's own top-level scalar keys (`pack`,
+    `category`, `author`, ...) are not in model.schema.json's ROOT_SCALAR_KEYS and resolve_split_model
+    would refuse a genuine pack.json outright (it validates against the MODEL shape only). The two
+    document kinds are told apart the same way a human would: pack.schema.json REQUIRES a top-level
+    string `pack` identifier (the pack's own id) that model.schema.json never defines at all --
+    a model's own pack DEPENDENCIES live under the plural `packs` array instead, so there is no
+    collision. `classifyModelChange`/`modelXref`/`authorDiffGate` all parse via JsonModelParser,
+    which cannot read a pack.json (different required top-level shape); `packDiff` (PackDiffEngine)
+    is the reverse -- it has no model.json input at all. This is why `impact` runs a different pair
+    of legs per kind rather than always attempting all four."""
+    if not isinstance(raw, dict):
+        raise CliError(f"{path}: must be a JSON object")
+    pack_id = raw.get("pack")
+    if isinstance(pack_id, str) and pack_id.strip():
+        return "pack"
+    return "model"
+
+
 # R1.5 (roadmap 2026-08-18 R1.5): the 4 of ModelSourceResolver.java's 18 MODEL_ARRAY_KEYS entries
 # `npdev add` scaffolds -- not a Python port of the resolver (nothing here composes fragments/
 # packs; that stays resolve_split_model's job below), just the kind-name -> top-level-array-key
@@ -4565,6 +4585,39 @@ def _classify_model_change(root: Path, baseline: Path, current: Path, deadline: 
         return report.get("classification")
 
 
+def _classify_model_change_report(root: Path, baseline: Path, current: Path, deadline: float) -> dict:
+    """R1.6 (`npdev impact`): the same `_classifier_command`/`_run_bounded` R1.1 fast path
+    `_classify_model_change` above already uses, but keeping the FULL parsed report (classification
+    + classificationReasons + the MigrationPlan) instead of collapsing it to just the classification
+    string -- `impact` is a preview report, not a boolean gate, so the reasons are the point. Raises
+    CliError on any failure (no jar/no Gradle wrapper, a timeout, an unparseable report) rather than
+    `_classify_model_change`'s `None`: that function's callers (`run_closed_loop`) treat "could not
+    classify" as merely informational inside a larger pipeline that already stopped on a real
+    failure elsewhere, but `impact` has no such earlier gate -- silently omitting this leg would be
+    exactly the "looks complete but is not" failure STEP 3 of this item's own brief warns against."""
+    with tempfile.TemporaryDirectory(prefix="npdev-impact-classify-") as tmp:
+        report_path = Path(tmp) / "classification.json"
+        resolved = _classifier_command(root, [
+            "--current", str(current), "--baseline", str(baseline), "--out", str(report_path),
+        ])
+        if resolved is None:
+            raise CliError("cannot classify the model change: no staged npdev-ai-tools.jar and no "
+                            "Gradle wrapper found.")
+        command, cwd = resolved
+        try:
+            completed = _run_bounded(command, cwd, deadline)
+        except _DeadlineExceeded:
+            raise CliError("migration classification exceeded the overall --timeout budget.")
+        if not report_path.exists():
+            detail = ((completed.stdout or "") + (completed.stderr or "")).strip()
+            raise CliError("migration classification did not produce a report"
+                            + (f": {detail[-500:]}" if detail else ""))
+        try:
+            return json.loads(report_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise CliError(f"migration classification report is not valid JSON: {exc}")
+
+
 def _metadata_only_fast_path(
         root: Path, current_model: Path, final_app_out: Path, deadline: float) -> tuple[bool, str]:
     """Move 10 C2 (already implemented, Wave 1.3): swaps compiled-model.json + re-signs the
@@ -5853,29 +5906,23 @@ def run_migration_diff(args: argparse.Namespace) -> None:
     print(f"migration diff decision report: {decision_report}")
 
 
-def run_pack_diff(args: argparse.Namespace) -> int:
-    """PK-4 Stage A: routes to the :NPDevContract:dsl:packDiff Gradle task (PackDiffMain), which
-    diffs two pack.json documents -- no database, no filesystem beyond the two files given -- and
-    classifies every difference as ADDITIVE/BREAKING/PATCH via com.npdev.dsl.v1.pack.PackDiffEngine.
-    Purely informational, same as the Java CLI it wraps: exit code is always 0 once both files were
-    readable and diffable, whatever the classification turns out to be -- `pack publish` below is
-    what refuses.
-    """
+def _pack_diff_report(old_pack: Path, new_pack: Path, out: Path | None) -> dict:
+    """PK-4 Stage A, shared by `pack diff` and `impact` (R1.6): routes to the
+    :NPDevContract:dsl:packDiff Gradle task (PackDiffMain), which diffs two pack.json documents --
+    no database, no filesystem beyond the two files given -- and classifies every difference as
+    ADDITIVE/BREAKING/PATCH via com.npdev.dsl.v1.pack.PackDiffEngine. `out`, when given, is also
+    where the report is written; otherwise a temp file that is cleaned up once read."""
     root = repo_root()
     wrapper = gradle_wrapper(root)
     if not wrapper.exists():
         raise CliError(f"Gradle wrapper not found: {wrapper}")
-
-    old_pack = Path(args.old_pack).expanduser().resolve()
-    new_pack = Path(args.new_pack).expanduser().resolve()
     if not old_pack.exists():
         raise CliError(f"old pack not found: {old_pack}")
     if not new_pack.exists():
         raise CliError(f"new pack not found: {new_pack}")
 
-    written_report = Path(args.out).expanduser().resolve() if getattr(args, "out", None) else None
     with tempfile.TemporaryDirectory(prefix="npdev-pack-diff-") as temp_dir:
-        report_target = written_report or (Path(temp_dir) / "pack-diff-report.json")
+        report_target = out or (Path(temp_dir) / "pack-diff-report.json")
         report_target.parent.mkdir(parents=True, exist_ok=True)
         gradle_args = [
             str(wrapper),
@@ -5897,7 +5944,18 @@ def run_pack_diff(args: argparse.Namespace) -> int:
                 + (f" (gradle exit {completed.returncode})" if completed.returncode else "")
                 + (f": {detail[-500:]}" if detail else "")
             )
-        report = read_json(report_target)
+        return read_json(report_target)
+
+
+def run_pack_diff(args: argparse.Namespace) -> int:
+    """PK-4 Stage A: see `_pack_diff_report`. Purely informational, same as the Java CLI it wraps:
+    exit code is always 0 once both files were readable and diffable, whatever the classification
+    turns out to be -- `pack publish` below is what refuses.
+    """
+    old_pack = Path(args.old_pack).expanduser().resolve()
+    new_pack = Path(args.new_pack).expanduser().resolve()
+    written_report = Path(args.out).expanduser().resolve() if getattr(args, "out", None) else None
+    report = _pack_diff_report(old_pack, new_pack, written_report)
 
     print(json.dumps(report, indent=2))
     return 0
@@ -5978,11 +6036,26 @@ def _add_merge_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _run_authoring_gate(args: argparse.Namespace, archive_dir: Path | None) -> dict:
-    """Shared by `author diff-gate` and `author submit`: invokes
+    """Shared by `author diff-gate` and `author submit` (and, since R1.6, `impact`): invokes
     `:generator:authorDiffGate` (AuthoringDiffGate, AI_AUTHORING_CONTRACT-2026-07-31.md Part 9,
     piece E2 -- "the load-bearing piece") and returns the parsed report. Raises CliError with the
     report's own diagnostics on failure -- never a bare non-zero exit with no explanation (C7:
     diff-gate failures must be structured, actionable diagnostics, not prose).
+
+    R1.6 fix: the Gradle subprocess is captured (matching `_classify_model_change_report`/
+    `_pack_diff_report`'s own convention), not left to inherit this process's stdout. Measured live
+    while building `impact`'s MCP tool: with the old bare `subprocess.run(..., check=True)`, the
+    caller's captured stdout was ~20s of raw Gradle build log (daemon-fork notice, task-execution
+    lines, `BUILD SUCCESSFUL in Ns`) followed by the JSON report -- harmless for a human at a
+    terminal, but it broke `npdev_impact`'s own promise of ONE parseable report for any caller that
+    reads stdout without a `--output` file (the MCP tool is exactly such a caller, and
+    `npdev_author_diff_gate`'s MCP tool had the identical, pre-existing defect). `ignoreExitValue =
+    true` on the `authorDiffGate` Gradle task (NPDevGenerator/generator/build.gradle) means a
+    'refused' gate result (exit 2 inside the JVM) never made Gradle itself exit non-zero, so
+    `check=True` was never actually the thing keeping refusals working -- switching to `check=False`
+    with an explicit decision_report existence check (identical to `_pack_diff_report`'s own
+    failure-diagnostic shape) preserves that behavior exactly while adding real detail on a genuine
+    Gradle-level failure instead of pointing at now-absent inherited console output.
     """
     root = repo_root()
     generator_root = root / "NPDevGenerator"
@@ -6040,10 +6113,15 @@ def _run_authoring_gate(args: argparse.Namespace, archive_dir: Path | None) -> d
     ]
     if os.name == "nt" and wrapper.suffix.lower() == ".bat":
         command = ["cmd.exe", "/c"] + command
-    subprocess.run(command, cwd=generator_root, check=True)
+    completed = subprocess.run(command, cwd=generator_root, check=False, capture_output=True, text=True)
 
     if not decision_report.exists():
-        raise CliError(f"diff gate did not produce a report at {decision_report} -- see Gradle output above.")
+        detail = (completed.stderr or completed.stdout or "").strip()
+        raise CliError(
+            f"diff gate did not produce a report at {decision_report}"
+            + (f" (gradle exit {completed.returncode})" if completed.returncode else "")
+            + (f": {detail[-1000:]}" if detail else "")
+        )
     return read_json(decision_report)
 
 
@@ -7295,28 +7373,25 @@ def _usage_matches(edge: dict, target: str) -> bool:
     return False
 
 
-def inspect_usage(args: argparse.Namespace) -> int:
-    model_path = Path(args.model).expanduser().resolve()
-    report = load_model_xref(model_path)
-    edges = report.get("edges") or []
+def _select_usage_edges(edges: list[dict], of: str | None) -> tuple[list[dict], str]:
+    """The `--of`/no-`--of` half of `inspect usage`'s own selection rule, shared with `impact`
+    (R1.6) so the two commands can never drift into disagreeing about what "usages of X" means.
+    `--orphans` is NOT covered here -- it is `inspect usage`'s own mode, with no `impact` analogue
+    (impact always looks at the whole model's unresolved TOTAL instead, regardless of `--of`)."""
+    if of:
+        return [e for e in edges if _usage_matches(e, of)], f"usagesOf:{of}"
+    return edges, "all"
 
-    if args.orphans:
-        selected = [e for e in edges if e.get("resolution") != "RESOLVED"]
-        mode = "orphans"
-    elif args.of:
-        selected = [e for e in edges if _usage_matches(e, args.of)]
-        mode = f"usagesOf:{args.of}"
-    else:
-        selected = edges
-        mode = "all"
 
+def _usage_report(report: dict, model_path_label: str, of: str | None, selected: list[dict], mode: str) -> dict:
+    """The result shape `inspect usage` prints, built from an already-selected edge list -- shared
+    so `impact`'s xrefUsage section is byte-for-byte the same shape, not a second rendering."""
     unresolved = [e for e in selected if e.get("resolution") == "UNRESOLVED"]
     undecidable = [e for e in selected if e.get("resolution") == "UNDECIDABLE"]
-
-    result = {
-        "model": str(model_path),
+    return {
+        "model": model_path_label,
         "mode": mode,
-        "of": args.of,
+        "of": of,
         "counts": {
             "matched": len(selected),
             "resolved": len(selected) - len(unresolved) - len(undecidable),
@@ -7328,6 +7403,22 @@ def inspect_usage(args: argparse.Namespace) -> int:
         "modelTotals": report.get("summary"),
         "edges": selected,
     }
+
+
+def inspect_usage(args: argparse.Namespace) -> int:
+    model_path = Path(args.model).expanduser().resolve()
+    report = load_model_xref(model_path)
+    edges = report.get("edges") or []
+
+    if args.orphans:
+        selected = [e for e in edges if e.get("resolution") != "RESOLVED"]
+        mode = "orphans"
+    else:
+        selected, mode = _select_usage_edges(edges, args.of)
+
+    unresolved = [e for e in selected if e.get("resolution") == "UNRESOLVED"]
+
+    result = _usage_report(report, str(model_path), args.of, selected, mode)
 
     if args.diagram:
         diagram_path = Path(args.diagram).expanduser()
@@ -7347,6 +7438,173 @@ def inspect_usage(args: argparse.Namespace) -> int:
     if args.orphans and unresolved:
         return 2
     return 0
+
+
+IMPACT_SCHEMA_VERSION = "npdev-impact-report.v1"
+
+
+def _of_names_known_concept(resolved_model: dict, of: str) -> bool | None:
+    """Best-effort existence pre-check for `impact --of`, in the fragment-COMPOSED view
+    (resolve_split_model), matching `npdev add`'s own existence-check discipline (STEP 4 of this
+    item's brief) so a concept declared only inside a $ref'd bounded-context fragment is not
+    reported as a false miss. Returns True/False only for the two target shapes this can actually
+    check (a bare Concept name, or Concept.field) -- None for a `kind:Name` target (procedure:X,
+    query:Y, ...), which names something outside the `concepts` array and is left to `--of`'s own
+    established "an unreferenced target is an empty answer, not an error" behavior."""
+    wanted = of.strip()
+    if ":" in wanted and not wanted.startswith("::"):
+        prefix, _, _ = wanted.partition(":")
+        if prefix in USAGE_TARGET_KINDS:
+            return None
+    concept_name = wanted.split(".", 1)[0]
+    return concept_name in _add_known_names(resolved_model, "concepts")
+
+
+def _impact_section(status: str, reason: str | None, report: dict | None) -> dict:
+    return {"status": status, "reason": reason, "report": report}
+
+
+def run_impact(args: argparse.Namespace) -> int:
+    """R1.6: `npdev impact --baseline <p> --current <p> [--of <target>] [--manifest <j>]` -- ONE
+    typed report composing the four separate "what breaks if I change this?" invocations that used
+    to require four separate commands: migration classification (`migration diff`'s own
+    :generator:classifyModelChange, via the R1.1 warm-jar fast path), xref usage (`inspect usage`'s
+    own :NPDevContract:dsl:modelXref, shared selection logic), pack diff (`pack diff`'s own
+    :NPDevContract:dsl:packDiff), and the AI Authoring Contract's diff-gate (`author diff-gate`'s
+    own :generator:authorDiffGate). No new diffing/classification logic lives here -- every leg
+    calls the exact function its own standalone command calls, so `impact` can never drift from
+    what running the four commands separately would report.
+
+    Deliberately does NOT generate, build, or boot anything (that is `npdev loop run`'s job, which
+    already composes diff-gate + validate + classify + run + acceptance into the HEAVY pipeline);
+    this is the light, structural preview meant to run in seconds, before any of that.
+
+    subjectKind ('model' or 'pack') is read from --baseline/--current's own top-level shape
+    (_document_kind) and decides which legs apply: JsonModelParser (migration classification, xref,
+    authoring gate) cannot parse a pack.json, and PackDiffEngine (pack diff) has no model.json
+    input -- so exactly one of the two document kinds' legs runs per call, and the other kind's legs
+    report status 'notApplicable' with a reason, never silent omission (STEP 3 measurement honesty).
+    """
+    baseline_path = Path(args.baseline).expanduser().resolve()
+    current_path = Path(args.current).expanduser().resolve()
+    if not baseline_path.exists():
+        raise CliError(f"baseline not found: {baseline_path}")
+    if not current_path.exists():
+        raise CliError(f"current not found: {current_path}")
+
+    baseline_kind = _document_kind(read_json(baseline_path), baseline_path)
+    current_kind = _document_kind(read_json(current_path), current_path)
+    if baseline_kind != current_kind:
+        raise CliError(
+            f"--baseline ({baseline_path}) looks like a {baseline_kind}.json and --current "
+            f"({current_path}) looks like a {current_kind}.json -- both must be the same kind of "
+            f"document (a model.json pair, or a pack.json pair)."
+        )
+    subject_kind = current_kind
+    of = getattr(args, "of", None)
+    manifest = getattr(args, "manifest", None)
+    if subject_kind == "pack" and of:
+        raise CliError("--of only applies to a model.json pair (xref usage has no pack.json input).")
+    if subject_kind == "pack" and manifest:
+        raise CliError("--manifest only applies to a model.json pair (the AI Authoring Contract "
+                        "diff-gate has no pack.json input).")
+
+    import time  # local, matching _run_bounded/run_closed_loop's own convention
+
+    root = repo_root()
+    timeout = float(getattr(args, "timeout", 300) or 300)
+    deadline = time.monotonic() + timeout
+
+    limitations = [
+        "xref usage cannot see a reference embedded as a literal INSIDE an expression string, e.g. "
+        "nextNumber('name') inside a defaultExpression -- the target is real but invisible to "
+        "reference-rewriting/discovery (R5.3's finding, reproduced live for that exact case).",
+        "an UNDECIDABLE xref edge (an expression outside the interaction grammar, an untyped $var, "
+        "...) means 'could not be checked', never 'checked and safe' -- see this report's own "
+        "xrefUsage.report.counts.undecidable.",
+        "pack diff (PACK-13) refuses a broken reference by NAME rather than silently dropping it, "
+        "but only for references INSIDE the exported/diffed pack's own declared members -- a "
+        "reference from outside the pack pointing INTO it is outside this report's view entirely.",
+    ]
+    problems_found = False
+
+    if subject_kind == "model":
+        # STEP 4: existence checks against the fragment-COMPOSED view, like `npdev add` -- a model
+        # split into bounded-context fragments must not report a false "cannot compose" or a false
+        # miss for --of. resolve_split_model itself raises CliError (naming the offending file) if
+        # the CURRENT model cannot be composed at all, which is a much clearer failure than letting
+        # two separate Gradle subprocesses fail cryptically a few seconds later.
+        resolved_current = resolve_split_model(current_path)
+        if of:
+            known = _of_names_known_concept(resolved_current, of)
+            if known is False:
+                limitations.append(
+                    f"--of {of!r} does not name a concept found in --current's fragment-composed "
+                    f"view -- xrefUsage below will report 0 matches; this is not necessarily wrong "
+                    f"(an empty answer is a real answer), but check for a typo or a missing fragment "
+                    f"$ref first."
+                )
+
+        migration_report = _classify_model_change_report(root, baseline_path, current_path, deadline)
+        migration_section = _impact_section("ran", None, migration_report)
+
+        xref_report = load_model_xref(current_path)
+        edges = xref_report.get("edges") or []
+        selected, mode = _select_usage_edges(edges, of)
+        xref_section_report = _usage_report(xref_report, str(current_path), of, selected, mode)
+        xref_section = _impact_section("ran", None, xref_section_report)
+        whole_model_unresolved = int((xref_report.get("summary") or {}).get("unresolved", 0))
+        if whole_model_unresolved:
+            problems_found = True
+
+        diff_gate_args = argparse.Namespace(
+            previous=str(baseline_path), submitted=str(current_path), manifest=manifest, output=None,
+        )
+        authoring_report = _run_authoring_gate(diff_gate_args, archive_dir=None)
+        authoring_reason = None if manifest else (
+            "ran with no --manifest, so it reports the same AUTHORING_MANIFEST_MISSING refusal "
+            "`author diff-gate` itself would without one -- pass --manifest for a real compliance "
+            "check (renames/removals/security-relevant deltas all declared)."
+        )
+        authoring_section = _impact_section("ran", authoring_reason, authoring_report)
+        if authoring_report.get("status") != "passed":
+            problems_found = True
+
+        pack_section = _impact_section(
+            "notApplicable",
+            "--baseline/--current are model.json, not pack.json -- pack diff (PackDiffEngine) has "
+            "no model.json input. If this app depends on packs, diff their own pack.json files "
+            "directly with `npdev pack diff`.",
+            None,
+        )
+    else:
+        pack_report = _pack_diff_report(baseline_path, current_path, None)
+        pack_section = _impact_section("ran", None, pack_report)
+
+        not_applicable_reason = (
+            "--baseline/--current are pack.json, not model.json -- JsonModelParser cannot parse a "
+            "pack.json (different required top-level shape), so migration classification / xref "
+            "usage / the AI Authoring Contract diff-gate have no input here."
+        )
+        migration_section = _impact_section("notApplicable", not_applicable_reason, None)
+        xref_section = _impact_section("notApplicable", not_applicable_reason, None)
+        authoring_section = _impact_section("notApplicable", not_applicable_reason, None)
+
+    result = {
+        "schemaVersion": IMPACT_SCHEMA_VERSION,
+        "subjectKind": subject_kind,
+        "baseline": str(baseline_path),
+        "current": str(current_path),
+        "of": of,
+        "migrationClassification": migration_section,
+        "xrefUsage": xref_section,
+        "packDiff": pack_section,
+        "authoringGate": authoring_section,
+        "limitations": limitations,
+        "problemsFound": problems_found,
+    }
+    write_or_print_json(result, getattr(args, "output", None))
+    return 2 if problems_found else 0
 
 
 # -------------------------------------------------------------------------------------------------
@@ -8462,6 +8720,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     inspect_usage_parser.add_argument("--output")
 
+    # R1.6 (roadmap 2026-08-18 R1.6): "what breaks if I change this?" used to take four separate
+    # invocations (migration diff, inspect usage, author diff-gate, pack diff) -- composed here into
+    # ONE typed report. See run_impact's own docstring for exactly what each leg reuses.
+    impact = subparsers.add_parser(
+        "impact",
+        help="One change-preview report for a baseline/current pair: migration classification + "
+             "xref usage + the AI Authoring Contract diff-gate (model.json pair), or pack diff "
+             "(pack.json pair). No generate/build/boot -- see `npdev loop run` for the heavy pipeline.",
+    )
+    impact.add_argument("--baseline", required=True, help="Previous model.json or pack.json.")
+    impact.add_argument("--current", required=True, help="Current (candidate) model.json or pack.json.")
+    impact.add_argument(
+        "--of",
+        help="Model.json pairs only: narrow xref usage to WidgetOrder.lineCount / WidgetOrder / "
+             "kind:Name, same grammar as `inspect usage --of`.",
+    )
+    impact.add_argument(
+        "--manifest",
+        help="Model.json pairs only: a npdev-authoring-submission.v1 manifest, for a real AI "
+             "Authoring Contract compliance check. Omitting it still runs the authoring-gate leg, "
+             "which then reports its own manifest-missing refusal (same as `author diff-gate`).",
+    )
+    impact.add_argument("--output")
+    impact.add_argument("--timeout", type=float, default=300.0,
+                         help="Overall budget in seconds for the Gradle-backed legs (default 300).")
+
     generate = subparsers.add_parser(
         "generate", help="Generate a complete, runnable app (or a single screen) from a model."
     )
@@ -9134,6 +9418,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "inspect" and args.inspect_command == "usage":
             return inspect_usage(args)
+        if args.command == "impact":
+            return run_impact(args)
         if args.command == "init":
             return run_init(args)
         if args.command == "setup":
