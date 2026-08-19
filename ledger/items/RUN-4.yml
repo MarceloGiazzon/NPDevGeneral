@@ -3,8 +3,9 @@ title: >-
   Capability timeout/retry default to off; neither network adapter sets a deadline
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-19
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R8d).
   CapabilityExecutionPolicy.defaults() returns zeros for timeout/retry/idempotency and neither network
@@ -107,7 +108,7 @@ detail: |
   without the other fails the gate instead of silently shipping a value that parses on one side and
   never reaches the other (REG-104's shape).
 
-  **What remains open (why this is PARTIAL, not DONE):** the kernel-wide default decision itself --
+  **What remained open until 2026-08-19 (this was why the item was PARTIAL):** the kernel-wide default decision itself --
   whether/how to give `CapabilityExecutionPolicy.defaults()` a non-zero timeout without routing
   through `ForkJoinPool.commonPool()` (e.g. a dedicated bounded executor with an `InheritableThreadLocal`-
   aware or explicit context-propagating wrapper, or restructuring `KernelRunner`'s timeout enforcement
@@ -123,16 +124,64 @@ detail: |
   "path #method" resolver can't parse. Narrowed guard.ref to one representative reference
   (HttpExternalAiCapabilityAdapterTest); the mail-smtp sibling test remains fully documented above
   and unchanged, just no longer squeezed into the one field the checker mechanically resolves.
+  **2026-08-19 (R2.6 -- the remaining half, closing this item).** The call-graph trace this item's
+  own detail asked for was done, and it found something stronger than the MDC/RequestContextHolder
+  argument it was expected to test. Traced: no CapabilityAdapter implementation in the repo
+  (document-render-inproc/stub, external-ai-http/inproc, mail-inproc/smtp, notification-inproc,
+  persistence-inproc/postgres) reads MDC or RequestContextHolder; GeneratedCrudRuntimeSupport's
+  RequestContextHolder reads sit on the CALLER side of the kernel, not inside
+  capabilityDispatcher.invoke. **But KernelRunner has its own ThreadLocal on that exact call stack:**
+  `currentFlowContext` is set at the top of the flow-step loop (KernelRunner.execute) and removed at
+  the end, `invokeCapabilityOnce` is called from inside that span, and `assertCrudInvariantPathAllowed`
+  reads it to reject the deprecated CRUD invariant path being re-entered during flow execution. On a
+  ForkJoinPool.commonPool worker that read returns null, so **the guard silently stops guarding** --
+  a defeated kernel safety check, not a degraded log field.
+
+  Directly observed RED, not argued: with the pre-change
+  `CompletableFuture.supplyAsync(supplier)` restored and a model-declared 5s timeout (a configuration
+  already reachable before this change), a dispatcher that re-enters `checkInvariants` during flow
+  execution is NOT rejected --
+  `AssertionFailedError: expected: <CRUD invariant path invoked during flow execution> but was: <NOT REJECTED>`.
+  With the fix in place the same test is green.
+
+  **What shipped:** (1) `CAPABILITY_EXECUTOR`, a dedicated cached pool of named daemon threads
+  (`npdev-capability-N`) replacing `ForkJoinPool.commonPool()` -- sized by demand exactly as the
+  synchronous path was, and cancelling on timeout now interrupts only that capability's own worker
+  instead of a shared pool thread. (2) `capabilityInvocationPropagatingCurrentFlow`, which captures
+  the caller's `currentFlowContext` and restores the worker's previous value in a finally, so the
+  timeout branch and the synchronous branch are indistinguishable as far as kernel thread-local
+  state goes. Only the kernel's own thread-local is propagated: neither slf4j nor Spring is on the
+  kernel's compile classpath, and adding a dependency purely to copy a context map is not what this
+  item needs -- the host owns those seams. (3) `DEFAULT_CAPABILITY_TIMEOUT_MS = 600_000L`, resolved
+  in `resolveEffectiveCapabilityPolicy` with the same "0 means unset -> hardcoded constant"
+  precedence circuit/bulkhead already used. That deliberately covers the case flipping
+  `CapabilityExecutionPolicy.defaults()` alone would have MISSED: a model that declares a
+  capabilityPolicy but no timeoutMs also carries timeoutMs=0 and would have kept no deadline at all.
+  A host-supplied override of exactly 0 still wins and restores the synchronous path.
+  `CapabilityExecutionPolicy`/`CompiledCapabilityExecutionPolicy` are therefore both UNCHANGED --
+  their shape and their zeros still mean "unset", so the twin-pair mirror rule needed nothing.
+
+  10 minutes is a hang backstop, not a tuned SLA: external-ai-http alone can legitimately spend
+  maxRetries(2)+1 attempts x 120s plus backoff, so anything under ~6 minutes would turn the backstop
+  into a functional limit on a working adapter.
+
+  Kernel suite after the change: **558 tests, 0 failures, 0 errors**.
+
 guard:
   kind: test
   ref: >-
-    NPDevKernel/adapters/external-ai-http/src/test/java/com/npdev/adapters/externalai/http/HttpExternalAiCapabilityAdapterTest.java#requestTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer
+    NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerCapabilityPolicyTest.java#theFlowContextGuardStillFiresInsideACapabilityRunOnTheWorkerThread
   asserts: >-
-    Pointed at a real local socket that accepts a TCP connection and never answers, the adapter
-    throws within a bounded time (not an unbounded hang) and retries exactly maxRetries+1 times
-    (asserted via a real accepted-connection count). The mail-smtp adapter has an identical sibling
-    test (SmtpMailCapabilityAdapterTest#sendTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer,
-    see detail) proving the same property there; this guard covers one representative reference per
-    R11's single-ref-per-item schema. Proves the adapter-level deadline/retry portion of this item
-    only; the kernel-wide default decision remains open (see detail).
+    With a model-declared capability timeout (the async branch), a dispatcher that re-enters the
+    deprecated CRUD invariant path from inside the capability is still rejected with "CRUD invariant
+    path invoked during flow execution" -- proving KernelRunner's currentFlowContext ThreadLocal
+    survives the thread hop, which it did not on ForkJoinPool.commonPool. Sibling tests in the same
+    class cover the rest of R2.6: capabilityRunsOnADedicatedNamedWorkerNotTheCommonPool (dedicated
+    npdev-capability-N worker, never commonPool),
+    undeclaredCapabilityTimeoutResolvesToTheKernelBackstopRatherThanNoDeadline (non-zero default),
+    aDeclaredModelTimeoutStillWinsOverTheKernelBackstop and
+    aHostOverrideOfZeroStillDisablesTheTimeoutBackstop (precedence intact). The adapter-level
+    deadline half of this item is proven by
+    HttpExternalAiCapabilityAdapterTest#requestTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer
+    and its mail-smtp sibling, both described in detail above.
   provenRed: true
