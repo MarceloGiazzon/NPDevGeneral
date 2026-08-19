@@ -95,6 +95,23 @@ public class GeneratedQueryController {
         body.put("query", query.name());
         body.put("aggregate", true);
         body.put("rows", result.rows());
+        // R7.5 (LC-B2 follow-up): a chart/table/kpi gadget only ever saw the aggregated rows, with
+        // no way back to the records that produced them -- every gadget was a dead end. `concept`
+        // names the source concept and `groupBy` echoes each declared groupBy field (with its
+        // bucket, if any) so shell.js can build a drill-down link using the row's own key values,
+        // through the SAME `where` DSL (field:eq:value) R7.3 already taught the grid -- no new
+        // filter format, no new endpoint. A bucketed field (e.g. a month-truncated date) is flagged
+        // so the client can skip it: the row holds the bucket label, not the raw stored value, and
+        // an eq filter against the raw field would not match any record.
+        body.put("concept", query.concept());
+        List<Map<String, Object>> groupByNodes = new ArrayList<>();
+        for (CompiledGroupByField field : query.groupBy()) {
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("field", field.field());
+            node.put("bucket", field.bucket());
+            groupByNodes.add(node);
+        }
+        body.put("groupBy", groupByNodes);
         return body;
     }
 

@@ -718,13 +718,22 @@
     }
   }
 
-  function showConcept(concept) {
+  // R7.5: `whereParam` is the same `where` DSL string R7.3 already builds from column filters
+  // (field:eq:value, comma-joined) -- when present (a gadget drill-down, or a bookmarked/shared
+  // deep link that carries one), it rides along in the published hash so a page reload or a second
+  // click on the same slice reproduces the identical URL rather than losing the filter.
+  function showConcept(concept, whereParam) {
     state.activeConcept = concept;
     el.app.querySelectorAll(".concept-panel").forEach(function (p) { p.style.display = "none"; });
     const section = document.getElementById(sectionId(concept));
     if (section) section.style.display = "";
     applyActiveGuidePage(concept);
-    const hash = "#" + sectionId(concept);
+    let hash = "#" + sectionId(concept);
+    if (whereParam) {
+      const params = new URLSearchParams();
+      params.set("where", whereParam);
+      hash += "?" + params.toString();
+    }
     if (window.location.hash !== hash) {
       window.location.hash = hash;
     }
@@ -750,6 +759,19 @@
     loadDeclaredPanel(panelMeta);
   }
 
+  // R7.5: splits a hash into its section id and an optional `?where=` suffix (a gadget drill-down
+  // link -- see shell.js's drilldownHref -- or a hand-typed/bookmarked deep link carrying the same
+  // shape). Section-id matching below is unchanged; the where half is only ever read by
+  // activateTarget/showConcept.
+  function parseHashRoute(hash) {
+    const raw = (hash || "").replace(/^#/, "");
+    if (!raw) return { id: "", where: "" };
+    const qIndex = raw.indexOf("?");
+    if (qIndex === -1) return { id: raw, where: "" };
+    const params = new URLSearchParams(raw.slice(qIndex + 1));
+    return { id: raw.slice(0, qIndex), where: params.get("where") || "" };
+  }
+
   // Hash-based deep-link support: lets a shell nav link (from this same page, or -- once landed --
   // a hand-authored page's link into "/npdev-business-ui/index.html#concept-Foo") open the right
   // section instead of always landing on the default. sectionId()'s output is exactly what shell.js
@@ -757,7 +779,7 @@
   // any extra coordination.
   function resolveHashTarget(hash) {
     if (!hash || !state.manifest) return null;
-    const id = hash.replace(/^#/, "");
+    const id = parseHashRoute(hash).id;
     if (!id) return null;
     const concept = visibleConcepts().find(function (c) { return sectionId(c) === id; });
     if (concept) return concept;
@@ -770,17 +792,45 @@
     return panelMeta ? panelSectionRef(panelMeta) : null;
   }
 
-  function activateTarget(target) {
+  // R7.5: applies a drill-down's `where` clause onto this concept's OWN column-filter state (the
+  // exact structure R7.3's buildColumnFilterControl reads/writes), so the filter row shows exactly
+  // what's active -- not a silent server-side-only filter -- then refetches. Restricted to fields
+  // the concept declares filterable and to operators that field actually offers; an unknown field or
+  // disallowed operator in the clause is dropped rather than forwarded, same trust boundary
+  // buildWhereParam already applies to manually-entered filters (field names only ever come from the
+  // manifest, never directly from the URL).
+  function applyDrilldownFilter(concept, whereParam) {
+    const panel = panelState(concept);
+    const filterableByName = {};
+    concept.fields.forEach(function (field) { if (field.filterable) filterableByName[field.name] = field; });
+    whereParam.split(",").forEach(function (clause) {
+      const parts = clause.split(":");
+      if (parts.length < 3) return;
+      const fieldName = parts[0];
+      const operator = parts[1];
+      const value = parts.slice(2).join(":");
+      const field = filterableByName[fieldName];
+      if (!field || !value) return;
+      if (filterOperatorsFor(field).indexOf(operator) === -1) return;
+      panel.columnFilters[fieldName] = { operator: operator, value: value };
+    });
+    panel.page = 0;
+    loadPanel(concept);
+  }
+
+  function activateTarget(target, whereParam) {
     if (!target) return;
     if (target === STORE_SECTION) { showStore(); return; }
     if (target === BOX_VIEW_SECTION) { showBoxView(); return; }
     if (target === PROMOTION_SECTION) { showPromotion(); return; }
     if (target.declaredPanel) { showDeclaredPanel(target.declaredPanel); return; }
-    showConcept(target);
+    showConcept(target, whereParam);
+    if (whereParam) applyDrilldownFilter(target, whereParam);
   }
 
   function handleHashChange() {
-    activateTarget(resolveHashTarget(window.location.hash));
+    const route = parseHashRoute(window.location.hash);
+    activateTarget(resolveHashTarget(window.location.hash), route.where);
   }
 
   window.addEventListener("hashchange", handleHashChange);
@@ -4863,7 +4913,9 @@
     // shows the right item as active from the very first paint, not just after the first click.
     const hashTarget = resolveHashTarget(window.location.hash);
     if (hashTarget) {
-      activateTarget(hashTarget);
+      // R7.5: a cold-loaded/bookmarked deep link can carry a `?where=` suffix too, not just a
+      // gadget click within the same session -- resolve it the same way handleHashChange does.
+      activateTarget(hashTarget, parseHashRoute(window.location.hash).where);
     } else {
       // render() picks concepts[0] as the default active section by position, but (unlike
       // showConcept) never actually records it into state.activeConcept -- do that here so the

@@ -529,6 +529,71 @@
     return value.toLocaleString ? value.toLocaleString() : String(value);
   }
 
+  // R7.5 (Roadmap R7.5): every gadget was a dead end -- clicking a KPI/bar/line/table datum did
+  // nothing. GeneratedQueryController.runAggregate now reports which concept an aggregate query
+  // reads from and each declared groupBy field (with its bucket, if any); these turn that into a
+  // click target landing on the SAME grid, pre-filtered to exactly the clicked slice -- through the
+  // EXISTING `where` DSL (field:eq:value, comma-joined) R7.3 already taught business-ui-app.mustache
+  // (buildWhereParam/columnFilters), carried over the EXISTING hash-based deep link
+  // (businessHref/sectionAnchor) via a `?where=` suffix on the fragment. No new filter format, no
+  // new endpoint -- this only produces a link the grid already knows how to consume. A bucketed
+  // groupBy field is excluded: the row holds the bucket label (e.g. a month name), not the raw
+  // stored value, so an eq filter against the raw field would silently match nothing.
+  function drillableKeys(result) {
+    return ((result && result.groupBy) || [])
+        .filter(function (g) { return g && g.field && !g.bucket; })
+        .map(function (g) { return g.field; });
+  }
+
+  function drilldownWhereParam(keys, row) {
+    var clauses = [];
+    (keys || []).forEach(function (key) {
+      var value = row ? row[key] : undefined;
+      if (value === undefined || value === null) return;
+      clauses.push(key + ":eq:" + value);
+    });
+    if (!clauses.length) return "";
+    var params = new URLSearchParams();
+    params.set("where", clauses.join(","));
+    return params.toString();
+  }
+
+  function drilldownHref(concept, keys, row) {
+    var whereParam = drilldownWhereParam(keys, row);
+    var base = businessHref(concept);
+    return whereParam ? base + "?" + whereParam : base;
+  }
+
+  // In host mode (gadget rail and grid are the same page -- see business-ui-app.mustache's
+  // NPDevShell.mount call), a hash change is enough: app.js's own hashchange listener does the rest.
+  // Elsewhere (a hand-authored page hosting a dashboard GuidePage) the same href is a real navigation
+  // to the generic business UI.
+  function navigateToDrilldown(concept, keys, row) {
+    var href = drilldownHref(concept, keys, row);
+    if (state.hostMode) {
+      if (window.location.hash === href) {
+        window.dispatchEvent(new Event("hashchange"));
+      } else {
+        window.location.hash = href;
+      }
+    } else {
+      window.location.href = href;
+    }
+  }
+
+  // role/aria-label make a clicked shape identifiable both to assistive tech and to a browser
+  // verification routine's selector (`[aria-label="..."]`) -- an SVG <rect>/<circle> has no visible
+  // text of its own to target otherwise. The <title> child is the native SVG hover tooltip.
+  function makeClickableSvg(node, label, onClick) {
+    node.style.cursor = "pointer";
+    node.setAttribute("role", "button");
+    node.setAttribute("aria-label", label);
+    node.addEventListener("click", onClick);
+    var titleEl = svgEl("title", {});
+    titleEl.textContent = label;
+    node.appendChild(titleEl);
+  }
+
   function renderKpiGadget(container, gadget) {
     fetchGadgetQuery(gadget).then(function (result) {
       var rows = (result && result.rows) || [];
@@ -538,6 +603,11 @@
       var big = document.createElement("div");
       big.className = "npdev-shell-gadget-kpi";
       big.textContent = formatNumber(total);
+      if (result && result.concept) {
+        big.style.cursor = "pointer";
+        big.title = "Ver " + result.concept;
+        big.addEventListener("click", function () { navigateToDrilldown(result.concept, [], {}); });
+      }
       container.appendChild(big);
     }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
   }
@@ -559,6 +629,8 @@
       thead.appendChild(htr);
       table.appendChild(thead);
       var tbody = document.createElement("tbody");
+      var drillConcept = result && result.concept;
+      var drillKeys = drillableKeys(result);
       rows.forEach(function (row) {
         var tr = document.createElement("tr");
         columns.forEach(function (c) {
@@ -567,6 +639,11 @@
           td.textContent = typeof v === "number" ? formatNumber(v) : String(v == null ? "" : v);
           tr.appendChild(td);
         });
+        if (drillConcept) {
+          tr.style.cursor = "pointer";
+          tr.title = "Ver " + drillConcept;
+          tr.addEventListener("click", function () { navigateToDrilldown(drillConcept, drillKeys, row); });
+        }
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
@@ -587,7 +664,7 @@
   // Grouped-bar / multi-line chart over the (already-aggregated) query rows: x names a groupBy
   // field (the category axis), y names an aggregates output (the value axis), series (optional)
   // names a second groupBy field that splits each category into multiple bars/lines.
-  function renderXyChart(container, rows, gadget, chartType) {
+  function renderXyChart(container, rows, gadget, chartType, result) {
     var xField = gadget.x, yField = gadget.y, seriesField = gadget.series;
     var categories = [], categorySeen = {};
     rows.forEach(function (row) {
@@ -600,11 +677,15 @@
       if (!seriesSeen[key]) { seriesSeen[key] = true; seriesValues.push(key); }
     });
     var valueByKey = {};
+    var rowByKey = {};
     rows.forEach(function (row) {
       var cKey = String(row[xField]);
       var sKey = seriesField ? String(row[seriesField]) : "_";
       valueByKey[cKey + "" + sKey] = numberOrZero(row[yField]);
+      rowByKey[cKey + "" + sKey] = row;
     });
+    var drillConcept = result && result.concept;
+    var drillKeys = drillableKeys(result);
 
     var width = 480, height = 220, padTop = 16, padRight = 12, padBottom = 30, padLeft = 46;
     var innerW = width - padLeft - padRight, innerH = height - padTop - padBottom;
@@ -646,7 +727,13 @@
           var v = valueByKey[c + "" + s] || 0;
           var x = padLeft + catBand * (ci + 0.5);
           var y = padTop + innerH - (v / maxValue) * innerH;
-          svg.appendChild(svgEl("circle", { cx: x, cy: y, r: "2.5", fill: color }));
+          var point = svgEl("circle", { cx: x, cy: y, r: "2.5", fill: color });
+          if (drillConcept) {
+            makeClickableSvg(point, c + (seriesField ? " / " + s : ""), function () {
+              navigateToDrilldown(drillConcept, drillKeys, rowByKey[c + "" + s]);
+            });
+          }
+          svg.appendChild(point);
         });
       });
     } else {
@@ -658,10 +745,16 @@
           var barH = (v / maxValue) * innerH;
           var x = padLeft + catBand * ci + (catBand - groupWidth) / 2 + si * barWidth;
           var y = padTop + innerH - barH;
-          svg.appendChild(svgEl("rect", {
+          var bar = svgEl("rect", {
             x: x, y: y, width: Math.max(1, barWidth - 2), height: Math.max(0, barH),
             fill: CHART_COLORS[si % CHART_COLORS.length]
-          }));
+          });
+          if (drillConcept) {
+            makeClickableSvg(bar, c + (seriesField ? " / " + s : ""), function () {
+              navigateToDrilldown(drillConcept, drillKeys, rowByKey[c + "" + s]);
+            });
+          }
+          svg.appendChild(bar);
         });
       });
     }
@@ -695,7 +788,7 @@
     fetchGadgetQuery(gadget).then(function (result) {
       var rows = (result && result.rows) || [];
       if (!rows.length) { gadgetMessage(container, "Sem dados."); return; }
-      renderXyChart(container, rows, gadget, chartType);
+      renderXyChart(container, rows, gadget, chartType, result);
     }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
   }
 
@@ -897,7 +990,20 @@
       if (el.breadcrumb) {
         el.breadcrumb.textContent = contextState.title ? "/ " + contextState.title : "";
       }
-      if (state.manifest) applyGuidePage(state.manifest, currentGuidePageName());
+      // R7.5 fix: re-apply whichever GuidePage is CURRENTLY active (document.body.dataset
+      // .guidePage) -- so a context refresh (e.g. new context-info rows) re-renders that page's
+      // own gadgets -- rather than unconditionally recomputing the name from the static
+      // <meta name="npdev-guide-page"> tag. That tag only ever expresses a hand-authored page's
+      // OWN fixed page-level choice; in host mode (business-ui-app.mustache) no such tag exists,
+      // so this always fell through to manifest.defaultGuidePage ("Default") -- silently undoing
+      // applyActiveGuidePage's own explicit `applyGuidePage(concept.guidePage)` call one line
+      // above this one, on EVERY render. Confirmed live: a concept's own GuidePage (distinct
+      // gadgets/regions/theme from Default) never took effect, because this line reset it back
+      // in the same call before the next paint. Falls back to the meta tag only when no page is
+      // active yet, which is exactly the hand-authored-page case the fallback exists for.
+      if (state.manifest) {
+        applyGuidePage(state.manifest, document.body.dataset.guidePage || currentGuidePageName());
+      }
     },
     applyGuidePage: function (name) {
       if (state.manifest) applyGuidePage(state.manifest, name);
