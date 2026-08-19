@@ -146,30 +146,47 @@ public class SeedDataService {
         }
         JsonNode seedFile = loadSeedFile(seedId);
         String kind = textOrDefault(seedFile, "kind", KIND_SMART);
-        if (!KIND_SMART.equals(kind) && !KIND_RAW.equals(kind)) {
-            throw new IllegalArgumentException(
-                    "Unsupported seed kind '" + kind + "' for seed " + seedId + " (expected 'smart' or 'raw')");
-        }
-
         List<JsonNode> declaredRecords = new ArrayList<>();
         JsonNode recordsNode = seedFile.get("records");
         if (recordsNode != null && recordsNode.isArray()) {
             recordsNode.forEach(declaredRecords::add);
         }
+        return runRecords(seedId, kind, declaredRecords, context);
+    }
+
+    /**
+     * R8.8: the shared expand+resolve+save core {@link #run(String, ExecutionContext)} already had
+     * -- extracted, unchanged, so {@code com.finalexec.seed.ModelSeedRunner} (the boot-time,
+     * idempotent executor for model/pack-declared {@code seeds[]}) can drive it directly against
+     * records built from the compiled model, WITHOUT going through the {@code definition/seeds/
+     * *.json} classpath-file convention {@link #run} reads from. Every record is still saved
+     * through {@link ConceptGateway#save}, the same governed write path -- this method changes
+     * nothing about HOW a record is expanded or saved, only WHERE the declared records come from.
+     *
+     * @param runId a stable id for this run, used only to seed {@code $gen}'s {@link Random} (so
+     *              two runs sharing the same id draw the identical generator sequence) and to label
+     *              the returned {@link SeedRunResult} -- {@link #run} always passes its own {@code
+     *              seedId} here, preserving that method's existing behavior exactly.
+     */
+    public SeedRunResult runRecords(String runId, String kind, List<JsonNode> declaredRecords, ExecutionContext context) {
+        if (!KIND_SMART.equals(kind) && !KIND_RAW.equals(kind)) {
+            throw new IllegalArgumentException(
+                    "Unsupported seed kind '" + kind + "' for seed " + runId + " (expected 'smart' or 'raw')");
+        }
         if (KIND_RAW.equals(kind)) {
-            validateRawRecords(seedId, declaredRecords);
+            validateRawRecords(runId, declaredRecords);
         }
 
         Map<String, String> aliasToId = new LinkedHashMap<>();
         Map<String, Integer> createdCounts = new LinkedHashMap<>();
-        // R3.2: one RNG per run, seeded by the seed's own id (String.hashCode() is JLS-specified
+        // R3.2: one RNG per run, seeded by the run's own id (String.hashCode() is JLS-specified
         // and stable across JVMs/runs) so two runs of the same seed file draw the identical
         // sequence of $gen values -- the reproducibility the roadmap item exists for. idsByConcept
         // is the ref-pick-random pool: every id actually saved this run, grouped by concept, in
         // save order -- built up as we go, so a $gen:ref-pick-random:<concept> can only ever see
         // ids from concepts whose seed records were declared (and therefore already fully saved)
         // earlier in this same file.
-        Random random = new Random(seedId.hashCode());
+        Random random = new Random(runId.hashCode());
         Map<String, List<String>> idsByConcept = new LinkedHashMap<>();
         long startedAt = System.currentTimeMillis();
 
@@ -200,7 +217,7 @@ public class SeedDataService {
                     }
                 } catch (RuntimeException exception) {
                     return SeedRunResult.failure(
-                            seedId, kind, createdCounts,
+                            runId, kind, createdCounts,
                             recordIndex, record.alias(), record.concept(),
                             exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage(),
                             System.currentTimeMillis() - startedAt
@@ -208,7 +225,7 @@ public class SeedDataService {
                 }
             }
         }
-        return SeedRunResult.success(seedId, kind, createdCounts, System.currentTimeMillis() - startedAt);
+        return SeedRunResult.success(runId, kind, createdCounts, System.currentTimeMillis() - startedAt);
     }
 
     private JsonNode loadSeedFile(String seedId) {

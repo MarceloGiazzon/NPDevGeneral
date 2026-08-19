@@ -459,6 +459,13 @@
         "$ref": "#/$defs/sequence"
       },
       "description": "R5.3: model-declared document-numbering counters (e.g. INV-2026-0001). A field's defaultExpression can call nextNumber('name') to atomically allocate the next value, formatted per this sequence's format template."
+    },
+    "seeds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/seed"
+      },
+      "description": "R8.8: model/pack-declared seed rows, reusing the existing app-level seed record shape (NPDevContract/schemas/seed.schema.json's $defs/record). Applied once, automatically, at first boot through the same governed ConceptGateway.save path every other write uses (see com.finalexec.seed.ModelSeedRunner in NPDevRuntimeHost); regenerating/restarting the app does not duplicate rows. A pack/context-declared seed's concept must name a concept the SAME pack/context owns -- rewritten to its pack-qualified form at composition time, and a seed naming a concept the pack does not own is a compile error (see ModelSourceResolver's seeds handling and SeedValidation)."
     }
   },
   "$defs": {
@@ -542,6 +549,76 @@
         }
       },
       "additionalProperties": false
+    },
+    "seed": {
+      "type": "object",
+      "required": ["concept"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "not": { "required": ["alias", "repeatOver"] },
+          "description": "Bulk-generated (repeatOver) rows can't be individually aliased."
+        },
+        {
+          "not": { "required": ["alias", "count"] },
+          "description": "Bulk-generated (count) rows can't be individually aliased."
+        },
+        {
+          "not": { "required": ["repeatOver", "count"] },
+          "description": "repeatOver and count are two alternative bulk-generation mechanisms -- use only one."
+        },
+        {
+          "if": {
+            "anyOf": [ { "required": ["repeatOver"] }, { "required": ["count"] } ]
+          },
+          "then": { "required": ["data"] },
+          "description": "Either bulk mechanism needs 'data' as the per-row template."
+        }
+      ],
+      "properties": {
+        "concept": {
+          "type": "string",
+          "minLength": 1,
+          "description": "R8.8: concept this seed row targets. For a pack/context-declared seed, must name a concept the SAME pack/context declares (compile error otherwise, thrown at pack-composition time) -- rewritten to its pack-qualified form there. A root-declared seed may name any of the model's own concepts, unrestricted, exactly like a root-declared query or panel."
+        },
+        "alias": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_]+$",
+          "description": "Optional local name a LATER seed record (anywhere in the fully resolved model) can reference via \"$ref:<alias>\". Only single (non-bulk) records may carry one -- must be unique across every declared seed."
+        },
+        "id": {
+          "type": "string",
+          "description": "Explicit id for this record; a generated UUID is used at seed-run time when absent."
+        },
+        "data": {
+          "type": "object",
+          "description": "Field values, same shape as a POST /api/<concept> body. A string value of the exact form \"$ref:<alias>\" is replaced with that alias's generated id; \"$gen:<generator>[:<args>]\" is replaced with a generated value -- see NPDevContract/schemas/seed.schema.json's genToken doc for the full generator vocabulary (name/words/date-range/decimal-range/enum-pick/ref-pick-random). Both resolve on top-level fields only."
+        },
+        "repeatOver": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["vars"],
+          "properties": {
+            "vars": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "array",
+                "items": { "type": "integer" },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "[min, max] inclusive."
+              }
+            }
+          },
+          "description": "Bulk-generates one record per combination of the declared integer ranges (Cartesian product). Mutually exclusive with 'count' and 'alias'."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Shorthand for repeatOver with no index variables: bulk-generates this many copies of 'data'. Mutually exclusive with 'repeatOver' and 'alias'."
+        }
+      }
     },
     "propertyScope": {
       "type": "object",

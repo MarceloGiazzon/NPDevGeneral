@@ -142,6 +142,11 @@ public final class CompiledModelCanonicalJsonReader {
             sequences.add(toSequence(node));
         }
 
+        List<CompiledSeed> seeds = new ArrayList<>();
+        for (JsonNode node : array(root, "seeds")) {
+            seeds.add(toSeed(node));
+        }
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -169,7 +174,8 @@ public final class CompiledModelCanonicalJsonReader {
                 contexts,
                 conversions,
                 webhooks,
-                sequences
+                sequences,
+                seeds
         );
     }
 
@@ -190,6 +196,37 @@ public final class CompiledModelCanonicalJsonReader {
     /** R5.3: reads a single model-declared document-numbering counter. */
     private static CompiledSequence toSequence(JsonNode node) {
         return new CompiledSequence(text(node, "name"), text(node, "format"), text(node, "scope"));
+    }
+
+    /** R8.8: reads a single model/pack-declared first-boot seed row. */
+    private static CompiledSeed toSeed(JsonNode node) {
+        JsonNode countNode = node.get("count");
+        return new CompiledSeed(
+                text(node, "concept"),
+                optionalText(node, "alias"),
+                optionalText(node, "id"),
+                toObjectMap(node.get("data")),
+                toSeedRepeatOverVars(node.get("repeatOver")),
+                countNode == null || countNode.isNull() ? null : countNode.asInt());
+    }
+
+    private static Map<String, List<Integer>> toSeedRepeatOverVars(JsonNode repeatOverNode) {
+        Map<String, List<Integer>> out = new LinkedHashMap<>();
+        if (repeatOverNode == null || repeatOverNode.isNull()) {
+            return out;
+        }
+        JsonNode varsNode = repeatOverNode.get("vars");
+        if (varsNode == null || !varsNode.isObject()) {
+            return out;
+        }
+        varsNode.fields().forEachRemaining(entry -> {
+            List<Integer> range = new ArrayList<>();
+            for (JsonNode bound : entry.getValue()) {
+                range.add(bound.asInt());
+            }
+            out.put(entry.getKey(), range);
+        });
+        return out;
     }
 
     /** B20 (S2): reads a single declared bounded context (name + $ref). S8 Wave 4: plus the

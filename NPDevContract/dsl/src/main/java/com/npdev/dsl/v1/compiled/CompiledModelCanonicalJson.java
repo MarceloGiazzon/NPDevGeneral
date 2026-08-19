@@ -71,6 +71,7 @@ public final class CompiledModelCanonicalJson {
         root.set("conversions", toConversions(model));
         root.set("webhooks", toWebhooks(model));
         root.set("sequences", toSequences(model));
+        root.set("seeds", toSeeds(model));
         return root;
     }
 
@@ -105,6 +106,46 @@ public final class CompiledModelCanonicalJson {
             sequences.add(node);
         }
         return sequences;
+    }
+
+    /** R8.8: writes the model/pack-declared first-boot seed rows. Deliberately NOT sorted, unlike
+     *  every sibling array above -- declaration order is semantically load-bearing (a later
+     *  record's {@code data} may reference an earlier one's {@code alias} via {@code
+     *  "$ref:<alias>"}), and {@link com.npdev.dsl.v1.compiler.ModelCompiler}/{@link
+     *  com.npdev.dsl.v1.resolution.ModelResolver} already produce this list in a deterministic
+     *  order (composition order), so preserving it here stays deterministic-generation-safe. */
+    private static ArrayNode toSeeds(CompiledModel model) {
+        ArrayNode seeds = JsonNodeFactory.instance.arrayNode();
+        for (CompiledSeed seed : model.getSeeds()) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("concept", safe(seed.concept()));
+            node.put("alias", safe(seed.alias()));
+            node.put("id", safe(seed.id()));
+            node.set("data", toObjectMap(seed.data()));
+            node.set("repeatOver", toSeedRepeatOver(seed.repeatOverVars()));
+            if (seed.count() != null) {
+                node.put("count", seed.count());
+            }
+            seeds.add(node);
+        }
+        return seeds;
+    }
+
+    private static JsonNode toSeedRepeatOver(Map<String, List<Integer>> repeatOverVars) {
+        if (repeatOverVars == null || repeatOverVars.isEmpty()) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode vars = JsonNodeFactory.instance.objectNode();
+        for (Map.Entry<String, List<Integer>> entry : repeatOverVars.entrySet()) {
+            ArrayNode range = JsonNodeFactory.instance.arrayNode();
+            for (Integer bound : entry.getValue()) {
+                range.add(bound);
+            }
+            vars.set(entry.getKey(), range);
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.set("vars", vars);
+        return node;
     }
 
     /** S7 Phase B (B13): writes the declared conversion vocabulary, sorted by id (deterministic-
