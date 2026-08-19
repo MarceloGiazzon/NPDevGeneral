@@ -19,6 +19,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -365,8 +366,21 @@ class Verdict(unittest.TestCase):
         verdict = npdev_explore.evaluate_verdict(self._result(), npdev_explore.load_verdict_config(None))
         self.assertTrue(verdict["green"])
 
+    # A REAL Chromium consoleError never puts the resource name in `text` -- only a fake test fixture
+    # would write "theme.css 404" into `text` itself. Measured on a live run (2026-08-18):
+    # {"text": "Failed to load resource: the server responded with a status of 404 ()",
+    #  "location": {"url": ".../theme.css", ...}}. These two tests used the unrealistic shape until
+    # MON-12: it silently hid that the theme.css default excuse never actually fired against a real
+    # consoleError entry (only its networkFailure sibling, which does not gate green).
+    def _theme_css_console_error(self) -> dict:
+        return {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 ()",
+            "location": {"url": "http://127.0.0.1:8199/theme.css", "line": 0, "column": 0},
+        }
+
     def test_theme_css_404_is_excused_when_no_custom_theme(self):
-        result = self._result(consoleErrors=[{"text": "Failed to load resource: theme.css 404"}])
+        result = self._result(consoleErrors=[self._theme_css_console_error()])
         verdict = npdev_explore.evaluate_verdict(result, npdev_explore.load_verdict_config(None))
         self.assertTrue(verdict["green"])
         self.assertEqual(len(verdict["excused"]), 1)
@@ -376,7 +390,7 @@ class Verdict(unittest.TestCase):
         # The whole reason the excuse is conditional. An app that ships a REAL theme whose path
         # later breaks loads unstyled, logs this exact 404, and must NOT go green.
         config = {**npdev_explore.load_verdict_config(None), "hasCustomTheme": True}
-        result = self._result(consoleErrors=[{"text": "Failed to load resource: theme.css 404"}])
+        result = self._result(consoleErrors=[self._theme_css_console_error()])
         verdict = npdev_explore.evaluate_verdict(result, config)
         self.assertFalse(verdict["green"])
 
@@ -403,6 +417,100 @@ class Verdict(unittest.TestCase):
         self.assertTrue(verdict["green"])
         self.assertEqual(verdict["excused"][0]["rule"], "app:deliberate-400")
         self.assertEqual(verdict["allowedConsoleErrorSubstrings"], ["deliberate-400"])
+
+    # MON-12. A failed-resource console error's TEXT is generic on every engine/app/request --
+    # "Failed to load resource: the server responded with a status of 409 ()" -- the request that
+    # failed is only named in `location.url`. Without a URL-matching excuse, a routine that
+    # deliberately provokes one specific 409 is structurally incapable of going green without a
+    # blanket "409" that would also hide a real one anywhere else in the run.
+
+    def test_url_naming_excuse_matches_the_named_request_only(self):
+        config = {**npdev_explore.load_verdict_config(None), "allowedConsoleErrorSubstrings": [
+            {"urlContains": "/api/concepts/users", "status": 409, "note": "r7-1 provokes EmailUnique"}]}
+        provoked = {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 409 ()",
+            "location": {"url": "http://127.0.0.1:8199/api/concepts/users", "line": 0, "column": 0},
+        }
+        verdict = npdev_explore.evaluate_verdict(self._result(consoleErrors=[provoked]), config)
+        self.assertTrue(verdict["green"])
+        self.assertIn("r7-1 provokes EmailUnique", verdict["excused"][0]["rule"])
+
+    def test_url_naming_excuse_does_NOT_excuse_a_409_on_a_different_request(self):
+        # The whole point: naming ONE request must not become a blanket "409".
+        config = {**npdev_explore.load_verdict_config(None), "allowedConsoleErrorSubstrings": [
+            {"urlContains": "/api/concepts/users", "status": 409}]}
+        unrelated = {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 409 ()",
+            "location": {"url": "http://127.0.0.1:8199/api/concepts/orders", "line": 0, "column": 0},
+        }
+        verdict = npdev_explore.evaluate_verdict(self._result(consoleErrors=[unrelated]), config)
+        self.assertFalse(verdict["green"])
+
+    def test_url_naming_excuse_respects_status_even_on_a_matching_url(self):
+        # Same request, different status -- e.g. a 500 where only a 409 was ever expected. Naming a
+        # status must narrow, not just decorate, the excuse.
+        config = {**npdev_explore.load_verdict_config(None), "allowedConsoleErrorSubstrings": [
+            {"urlContains": "/api/concepts/users", "status": 409}]}
+        wrong_status = {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 500 ()",
+            "location": {"url": "http://127.0.0.1:8199/api/concepts/users", "line": 0, "column": 0},
+        }
+        verdict = npdev_explore.evaluate_verdict(self._result(consoleErrors=[wrong_status]), config)
+        self.assertFalse(verdict["green"])
+
+    def test_an_object_excuse_with_no_urlContains_is_refused_not_widened(self):
+        # A dict with no urlContains is not a narrower rule than a string -- it is a blanket rule
+        # wearing an object, so it must match NOTHING rather than fall back to matching everything.
+        config = {**npdev_explore.load_verdict_config(None),
+                  "allowedConsoleErrorSubstrings": [{"status": 409}]}
+        provoked = {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 409 ()",
+            "location": {"url": "http://127.0.0.1:8199/api/concepts/users", "line": 0, "column": 0},
+        }
+        verdict = npdev_explore.evaluate_verdict(self._result(consoleErrors=[provoked]), config)
+        self.assertFalse(verdict["green"])
+
+    def test_url_naming_excuse_also_works_on_a_networkFailure_entry(self):
+        # networkFailure names its request as origin+pathname, not location.url -- the same config
+        # entry has to reach both evidence shapes for the same real request.
+        config = {**npdev_explore.load_verdict_config(None), "allowedConsoleErrorSubstrings": [
+            {"urlContains": "/api/concepts/users", "status": 409}], "strictNetwork": True}
+        failure = {"origin": "http://127.0.0.1:8199", "pathname": "/api/concepts/users",
+                   "method": "POST", "resourceType": "fetch", "status": 409,
+                   "unexpectedExternalOrigin": False}
+        verdict = npdev_explore.evaluate_verdict(self._result(networkFailures=[failure]), config)
+        self.assertTrue(verdict["green"])
+
+    def test_plain_string_excuses_still_work_unchanged(self):
+        # Backward compatibility: every existing app config using bare strings must keep behaving
+        # exactly as before MON-12.
+        config = {**npdev_explore.load_verdict_config(None),
+                  "allowedConsoleErrorSubstrings": ["deliberate-400"]}
+        result = self._result(consoleErrors=[{"text": "a deliberate-400 we expect"}])
+        self.assertTrue(npdev_explore.evaluate_verdict(result, config)["green"])
+
+    def test_the_default_theme_css_excuse_reaches_the_consoleError_not_just_its_networkFailure_sibling(self):
+        # The regression this fix closes: BOTH representations of the same real failed request must
+        # be excused by the default rule, not only the networkFailure one (which does not gate
+        # green). Before the fix, this exact evidence -- one consoleError, one networkFailure, both
+        # for the same theme.css 404 -- was RED, because only the networkFailure entry excused.
+        console_entry = {
+            "type": "error",
+            "text": "Failed to load resource: the server responded with a status of 404 ()",
+            "location": {"url": "http://127.0.0.1:8199/theme.css", "line": 0, "column": 0},
+        }
+        network_entry = {"origin": "http://127.0.0.1:8199", "pathname": "/theme.css",
+                         "method": "GET", "resourceType": "stylesheet", "status": 404,
+                         "unexpectedExternalOrigin": False}
+        result = self._result(consoleErrors=[console_entry], networkFailures=[network_entry])
+        verdict = npdev_explore.evaluate_verdict(result, npdev_explore.load_verdict_config(None))
+        self.assertTrue(verdict["green"], verdict)
+        kinds_excused = {e["kind"] for e in verdict["excused"]}
+        self.assertIn("consoleError", kinds_excused)
 
 
 class Retention(unittest.TestCase):
@@ -516,6 +624,42 @@ class RunRecordShape(unittest.TestCase):
             errors = npdev_jsonschema.validate(schema, record)
             self.assertEqual(errors, [], npdev_jsonschema.describe(errors))
 
+    def test_a_run_record_carrying_a_MON12_url_excuse_still_validates(self):
+        # The excused reason travels through build_run_record -> the run record -> the schema,
+        # object-shaped allowlist entry and all.
+        schema = npdev_explore.run_schema(REPO_ROOT)
+        self.assertIsNotNone(schema, "schemas/ai/exploration-run.schema.json is missing")
+        with TemporaryDirectory() as tmp:
+            app = make_app(Path(tmp), plan=DEFAULT_PLAN)
+            npdev_explore.config_path(app).write_text(json.dumps({
+                "allowedConsoleErrorSubstrings": [
+                    {"urlContains": "/api/concepts/users", "status": 409, "note": "r7-1 EmailUnique"}],
+            }), encoding="utf-8")
+            routine = {"targetPath": "/x/", "scenarioName": "s",
+                       "steps": [{"action": "goto", "url": "http://127.0.0.1:1/"}]}
+            result = {
+                "status": "passed", "durationMs": 10, "steps": [
+                    {"index": 0, "action": "goto", "label": "go", "status": "passed", "durationMs": 5}],
+                "evidence": {
+                    "consoleErrors": [{
+                        "type": "error",
+                        "text": "Failed to load resource: the server responded with a status of 409 ()",
+                        "location": {"url": "http://127.0.0.1:1/api/concepts/users", "line": 0, "column": 0},
+                    }],
+                    "pageErrors": [], "networkFailures": [], "unexpectedExternalRequests": [],
+                    "screenshots": [], "console": [], "network": [],
+                },
+                "extracted": {},
+            }
+            record = npdev_explore.build_run_record(
+                app_dir=app, repo_root=REPO_ROOT, result=result, routine=routine,
+                routine_file=None, driver="cli",
+                app_record=npdev_monitor.probe_app(app), started_at="2026-08-10T00:00:00Z",
+                duration_ms=10, engine_version=None)
+            self.assertTrue(record["verdict"]["green"], record["verdict"])
+            errors = npdev_jsonschema.validate(schema, record)
+            self.assertEqual(errors, [], npdev_jsonschema.describe(errors))
+
     def test_the_index_line_is_a_summary_not_the_whole_record(self):
         # runs.jsonl is read on every Monitor refresh; a file that grows by 40 KB per run stops
         # being cheap to read.
@@ -535,6 +679,316 @@ class RunRecordShape(unittest.TestCase):
             row = npdev_explore.read_index(app)[0]
             self.assertNotIn("steps", row)
             self.assertEqual(row["stepCount"], 50)
+
+
+GREEN_PREFLIGHT = {
+    "ok": False,
+    "checks": [
+        {"id": "app-is-generated", "name": "the target is a generated NPDev app",
+         "status": "pass", "detail": "ok"},
+        {"id": "app-healthy", "name": "the app answers /actuator/health",
+         "status": "pass", "detail": "ok"},
+        # Deliberately FAILING, and deliberately not a blocker: `run_exploration` starts the engine
+        # when it is merely absent, so a suite that refused here would be stricter than a single run.
+        {"id": "engine-available", "name": "the ScrapForAI engine is available",
+         "status": "fail", "detail": "no engine on this machine"},
+        {"id": "origin-allowlisted", "name": "the app origin will be allowlisted",
+         "status": "pass", "detail": "ok"},
+    ],
+    "app": {}, "engine": {},
+}
+
+APP_DOWN_PREFLIGHT = {
+    "ok": False,
+    "checks": [
+        {"id": "app-is-generated", "name": "the target is a generated NPDev app",
+         "status": "pass", "detail": "ok"},
+        {"id": "app-healthy", "name": "the app answers /actuator/health",
+         "status": "fail", "detail": "connection refused"},
+        {"id": "engine-available", "name": "the ScrapForAI engine is available",
+         "status": "pass", "detail": "ok"},
+        {"id": "origin-allowlisted", "name": "the app origin will be allowlisted",
+         "status": "pass", "detail": "ok"},
+    ],
+    "app": {}, "engine": {},
+}
+
+
+def fake_record(name: str, *, green: bool, status: str = "passed", reasons=None) -> dict:
+    return {"runId": f"run-{name}", "status": status, "durationMs": 7,
+            "verdict": {"green": green, "reasons": list(reasons or []),
+                        "allowedConsoleErrorSubstrings": [], "excused": []}}
+
+
+class SuiteRuns(unittest.TestCase):
+    """R3.1 `explore suite`.
+
+    Stubbed at the `run_exploration` seam ON PURPOSE. This machine has no ScrapForAI engine and no
+    booted app, and what these tests protect is the LOOP -- which definitions, in what order, how a
+    refusal is classified, what the exit code says -- not the engine round-trip, which the Phase B/D
+    acceptance walks cover. Nothing green here is evidence that a browser ran anything.
+    """
+
+    def _app(self, tmp: str, names: list[str], *, definition_names: list[str] | None = None) -> Path:
+        app = make_app(Path(tmp), plan={**DEFAULT_PLAN, "appDefinitionRoot": "../definition"})
+        mirror = npdev_explore.mirror_dir(app)
+        mirror.mkdir(parents=True, exist_ok=True)
+        for name in names:
+            (mirror / f"{name}.json").write_text(
+                json.dumps({"scenarioName": name, "mirror": True,
+                            "steps": [{"action": "goto", "url": "http://127.0.0.1:1/"}]}),
+                encoding="utf-8")
+        if definition_names:
+            own = Path(tmp) / "definition" / "explorations"
+            own.mkdir(parents=True, exist_ok=True)
+            for name in definition_names:
+                (own / f"{name}.json").write_text(
+                    json.dumps({"scenarioName": name, "mirror": False,
+                                "steps": [{"action": "goto", "url": "http://127.0.0.1:1/"}]}),
+                    encoding="utf-8")
+        return app
+
+    def _suite(self, app: Path, run_side_effect, preflight_side_effect=GREEN_PREFLIGHT, **kwargs):
+        calls: list[str] = []
+
+        def _run(_root, _app_dir, routine_file, **_kw):
+            calls.append(Path(routine_file).stem)
+            outcome = run_side_effect(Path(routine_file).stem)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+        preflights = (preflight_side_effect if isinstance(preflight_side_effect, list)
+                      else None)
+        state = {"n": 0}
+
+        def _preflight(*_a, **_k):
+            if preflights is None:
+                return preflight_side_effect
+            index = min(state["n"], len(preflights) - 1)
+            state["n"] += 1
+            return preflights[index]
+
+        with mock.patch.object(npdev_explore, "run_exploration", _run), \
+                mock.patch.object(npdev_explore, "preflight", _preflight):
+            result = npdev_explore.run_suite(REPO_ROOT, app, **kwargs)
+        return result, calls
+
+    def test_the_suite_runs_what_the_listing_shows_in_the_order_it_shows_it(self):
+        # One discovery loop for both, so "which routines does this app have?" cannot get two
+        # answers. The mirror wins a filename collision; `z` exists only in the app definition.
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["c", "a", "b"], definition_names=["a", "z"])
+            listed = [d["name"] for d in npdev_explore.list_explorations(app)["definitions"]]
+            self.assertEqual(listed, ["a", "b", "c", "z"])
+            self.assertEqual([p.stem for p in npdev_explore.definition_files(app)], listed)
+            result, calls = self._suite(app, lambda name: fake_record(name, green=True))
+            self.assertEqual(calls, listed)
+            self.assertEqual([e["name"] for e in result["runs"]], listed)
+
+    def test_a_filename_in_both_places_resolves_to_the_mirror_copy(self):
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["a"], definition_names=["a"])
+            files = npdev_explore.definition_files(app)
+            self.assertEqual(len(files), 1)
+            self.assertEqual(files[0].parent, npdev_explore.mirror_dir(app))
+
+    def test_the_suite_reports_the_verdict_it_was_given_and_never_recomputes_one(self):
+        # R10 is one verdict, full stop -- not one verdict function per command. Both rows below are
+        # deliberately inconsistent with what a naive second implementation would infer from
+        # `status`, so any recomputation inside the suite makes this test fail.
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["greenish", "reddish"])
+
+            def outcome(name):
+                if name == "greenish":
+                    return fake_record(name, green=True, status="failed")
+                return fake_record(name, green=False, status="passed",
+                                   reasons=["a reason only evaluate_verdict could have produced"])
+
+            result, _ = self._suite(app, outcome)
+            by_name = {e["name"]: e for e in result["runs"]}
+            self.assertEqual(by_name["greenish"]["outcome"], "green")
+            self.assertEqual(by_name["reddish"]["outcome"], "red")
+            self.assertEqual(by_name["reddish"]["reasons"],
+                             ["a reason only evaluate_verdict could have produced"])
+
+    def test_all_green_is_green(self):
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["a", "b"])
+            result, _ = self._suite(app, lambda name: fake_record(name, green=True))
+            self.assertTrue(result["green"])
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["counts"], {"total": 2, "green": 2, "red": 0,
+                                                "refused": 0, "skipped": 0})
+
+    def test_one_red_routine_makes_the_suite_red(self):
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["a", "b", "c"])
+            result, calls = self._suite(
+                app, lambda name: fake_record(name, green=name != "b"))
+            self.assertEqual(calls, ["a", "b", "c"], "a red routine must not stop the suite by itself")
+            self.assertFalse(result["green"])
+            self.assertEqual(result["counts"]["red"], 1)
+
+    def test_a_per_routine_refusal_is_recorded_and_the_loop_continues(self):
+        # THE DECISION: one unrunnable routine must not cost the evidence for the other two.
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["a", "b", "c"])
+
+            def outcome(name):
+                if name == "b":
+                    return npdev_explore.ExploreError("the engine refused this routine (HTTP 400)")
+                return fake_record(name, green=True)
+
+            result, calls = self._suite(app, outcome)
+            self.assertEqual(calls, ["a", "b", "c"])
+            by_name = {e["name"]: e for e in result["runs"]}
+            self.assertEqual(by_name["b"]["outcome"], "refused")
+            self.assertIn("HTTP 400", by_name["b"]["reasons"][0])
+            # D4: a tool problem is never counted as a red test result -- but it still costs green,
+            # because you did not get the evidence you asked for.
+            self.assertEqual(result["counts"]["red"], 0)
+            self.assertEqual(result["counts"]["refused"], 1)
+            self.assertEqual(result["counts"]["green"], 2)
+            self.assertFalse(result["green"])
+
+    def test_an_app_wide_refusal_aborts_and_names_what_it_skipped(self):
+        # THE OTHER HALF: when the app dies at routine #2, routines #3.. would refuse identically,
+        # and N copies of one diagnosis buries the diagnosis.
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["a", "b", "c"])
+
+            def outcome(name):
+                if name == "b":
+                    return npdev_explore.ExploreError("preflight failed: the app answers ...")
+                return fake_record(name, green=True)
+
+            # Exactly two preflights happen: once before the loop, then once more to classify `b`'s
+            # refusal. The app is healthy at the first and gone at the second, which is the whole
+            # point -- the classifier re-asks, so an app that dies at #2 aborts at #2.
+            result, calls = self._suite(
+                app, outcome, preflight_side_effect=[GREEN_PREFLIGHT, APP_DOWN_PREFLIGHT])
+            self.assertEqual(calls, ["a", "b"], "c must not be attempted once the app is down")
+            by_name = {e["name"]: e for e in result["runs"]}
+            self.assertEqual(by_name["c"]["outcome"], "skipped")
+            self.assertIn("connection refused", by_name["c"]["reasons"][0])
+            self.assertIn("connection refused", result["aborted"])
+            self.assertEqual(result["counts"], {"total": 3, "green": 1, "red": 0,
+                                                "refused": 1, "skipped": 1})
+
+    def test_stop_on_red_skips_the_rest_rather_than_shortening_the_list(self):
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["a", "b", "c"])
+            result, calls = self._suite(
+                app, lambda name: fake_record(name, green=name == "a"), stop_on_red=True)
+            self.assertEqual(calls, ["a", "b"])
+            self.assertEqual([e["outcome"] for e in result["runs"]], ["green", "red", "skipped"])
+            self.assertIn("--stop-on-red", result["stoppedEarly"])
+            self.assertIsNone(result["aborted"])
+
+    def test_only_selects_by_glob(self):
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["login-admin", "login-user", "orders"])
+            result, calls = self._suite(app, lambda name: fake_record(name, green=True),
+                                        only=["login-*"])
+            self.assertEqual(calls, ["login-admin", "login-user"])
+            self.assertEqual(result["counts"]["total"], 2)
+
+    def test_a_pattern_that_matches_nothing_is_a_refusal_not_an_empty_pass(self):
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["a"])
+            with self.assertRaises(npdev_explore.ExploreError):
+                self._suite(app, lambda name: fake_record(name, green=True), only=["nope-*"])
+
+    def test_an_app_with_no_definitions_is_a_refusal_not_an_empty_pass(self):
+        # A summary of zero runs reads like a pass, and that is the one thing it must never do.
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, [])
+            with self.assertRaises(npdev_explore.ExploreError) as caught:
+                self._suite(app, lambda name: fake_record(name, green=True))
+            self.assertIn("no routines to run", str(caught.exception))
+
+    def test_a_held_lock_refuses_before_anything_runs(self):
+        # The suite needs no lock of its own -- `run_exploration` takes the per-app one around each
+        # run, so serial-within-an-app is true by construction. What it does need is to notice the
+        # lock BEFORE producing N identical refusals.
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["a", "b"])
+            with npdev_explore.RunLock(app):
+                with self.assertRaises(npdev_explore.ExploreError) as caught:
+                    self._suite(app, lambda name: fake_record(name, green=True))
+            self.assertIn("already running", str(caught.exception))
+
+    def test_the_summary_is_not_persisted(self):
+        # Deliberate: every run it names is already durable at <runId>/run.json plus its runs.jsonl
+        # line. A stored second copy of facts derived from those is a thing that can later disagree
+        # with them -- and it is why this feature adds no schema file.
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["a"])
+            self._suite(app, lambda name: fake_record(name, green=True))
+            root = npdev_explore.runs_root(app)
+            written = [p.name for p in root.glob("*")] if root.is_dir() else []
+            self.assertEqual([p for p in written if "suite" in p.lower()], [])
+            self.assertFalse(npdev_explore.runs_index(app).exists())
+
+
+class SuiteCliContract(unittest.TestCase):
+    """R3.1's stated definition of done: the exit code carries the roll-up. Note this DIFFERS from
+    `explore run`, which exits 0 on a red run because its caller reads that one verdict -- a suite
+    is used as a gate."""
+
+    def _run_cli(self, app: Path, outcomes, **overrides) -> tuple[int, str]:
+        args = argparse.Namespace(
+            explore_command="suite", app_dir=str(app), only=[], stop_on_red=False,
+            engine_port=9999, engine_root=None, api_key=None, driver="cli",
+            var=[], credential=[], ledger_id=None, keep_engine=False, json=False)
+        for key, value in overrides.items():
+            setattr(args, key, value)
+
+        def _run(_root, _app_dir, routine_file, **_kw):
+            return outcomes(Path(routine_file).stem)
+
+        buffer = io.StringIO()
+        with mock.patch.object(npdev_explore, "run_exploration", _run), \
+                mock.patch.object(npdev_explore, "preflight", lambda *a, **k: GREEN_PREFLIGHT), \
+                redirect_stdout(buffer):
+            code = npdev_cli.run_explore(args)
+        return code, buffer.getvalue()
+
+    def _app(self, tmp: str, names: list[str]) -> Path:
+        app = make_app(Path(tmp), plan=DEFAULT_PLAN)
+        mirror = npdev_explore.mirror_dir(app)
+        mirror.mkdir(parents=True, exist_ok=True)
+        for name in names:
+            (mirror / f"{name}.json").write_text(json.dumps({"scenarioName": name, "steps": []}),
+                                                 encoding="utf-8")
+        return app
+
+    def test_all_green_exits_zero(self):
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["a", "b"])
+            code, out = self._run_cli(app, lambda name: fake_record(name, green=True))
+            self.assertEqual(code, 0)
+            self.assertIn("GREEN", out)
+
+    def test_any_red_exits_nonzero(self):
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["a", "b"])
+            code, out = self._run_cli(app, lambda name: fake_record(name, green=name == "a"))
+            self.assertEqual(code, 2)
+            self.assertIn("RED", out)
+            self.assertIn("[red    ] b", out)
+
+    def test_the_json_output_carries_the_rollup(self):
+        with TemporaryDirectory() as tmp:
+            app = self._app(tmp, ["a"])
+            code, out = self._run_cli(app, lambda name: fake_record(name, green=False), json=True)
+            payload = json.loads(out[out.index("{\n"):])
+            self.assertEqual(code, 2)
+            self.assertEqual(payload["schemaVersion"], npdev_explore.SUITE_SCHEMA_VERSION)
+            self.assertFalse(payload["ok"])
+            self.assertEqual(payload["counts"]["red"], 1)
 
 
 if __name__ == "__main__":

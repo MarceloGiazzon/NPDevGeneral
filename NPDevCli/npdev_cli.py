@@ -2036,9 +2036,22 @@ def _classify_boot_failure(log_text: str) -> dict | None:
         return _diag(
             "BOOT", "MIGRATION_CLAIM_HELD",
             "Another NPDev instance already holds the migration claim on this database.",
-            suggested_fix="Wait for it to finish, or if it crashed mid-migration, clear the stale "
-                           "claim via POST /api/admin/schema-migration/clear-claim (SUPERUSER) or the "
-                           "ControlPanel schema-migration screen.",
+            # REG-188: this refusal is now thrown by MigrationMutex (R9.3/STOR-17) -- a session-scoped
+            # lock held by an OPEN DATABASE CONNECTION, not a row. `clear-claim` only clears
+            # MigrationClaimStore's row and cannot free a live connection-held lock, so telling an
+            # operator to run it here used to send them to delete a row that was no longer the lock
+            # -- the boot would just wait out its budget and refuse again. `clear-claim` still has a
+            # real job: a genuine leftover row from before an upgrade to R9.3, with no boot actually
+            # holding the mutex.
+            suggested_fix="Wait for the holder to finish (a boot waits up to "
+                           "-Dnpdev.schema.lock.waitSeconds, default 300s, before giving up on its "
+                           "own); if it is genuinely hung rather than just slow, find and stop that "
+                           "process -- the lock is released when its database connection closes, "
+                           "which killing the process does. Only use POST "
+                           "/api/admin/schema-migration/clear-claim (SUPERUSER) or the ControlPanel "
+                           "schema-migration screen if you have confirmed no instance is actually "
+                           "migrating and this is a leftover claim row from before R9.3 -- it clears "
+                           "that row, not a live connection-held lock, and does nothing to free one.",
             help_key="migration-claim-held",
         )
     if "Web server failed to start" in log_text and "port" in log_text.lower():
@@ -4362,6 +4375,102 @@ def _default_runtimehost_libs_dir() -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
+AI_TOOLS_VALIDATOR_MAIN = "com.npdev.dsl.v1.cli.ModelValidatorMain"
+AI_TOOLS_CLASSIFIER_MAIN = "com.npdev.generator.schemaevolution.ModelChangeClassifierMain"
+
+
+def _default_ai_tools_jar() -> Path | None:
+    """R1.1 (warm standalone validator): the staged npdev-ai-tools.jar, or None to use Gradle.
+
+    Every `npdev validate model --semantic` used to fork the Gradle wrapper to reach
+    ModelValidatorMain, and so did every classifyModelChange call. Both Main classes are pure
+    stdlib+Jackson+dsl -- no Spring, no database, no codegen -- so the whole Gradle layer was buying
+    nothing but a classpath. NPDevGenerator/generator/build.gradle's `aiToolsJar` task packages both
+    entry points with their runtime deps, and scripts/runtimehost/sync-runtimehost-libs.ps1 stages it
+    here.
+
+    Measured on this machine (canonical-demo, 2026-08-18, 8 interleaved A/B pairs of
+    `npdev validate model --semantic`): median 4.61s -> 2.24s, min 3.67s -> 1.82s, 2.1x; the first
+    call of a session cost 24.4s on the Gradle path because it also started the daemon. Roughly 0.4s
+    of each figure is this CLI's own Python startup, which neither path avoids. Process inspection
+    (Win32_Process sampled every 100ms for the duration of the call) counted 0 new Gradle processes
+    on this path against 3 on the Gradle one -- `cmd.exe /c gradlew.bat`, the wrapper's own
+    `-Dorg.gradle.appname=gradlew` client JVM, and the daemon-side JVM. Note the Gradle figure is
+    already a WARM-daemon figure: gradle.properties sets org.gradle.daemon=true and this call site
+    never passed --no-daemon, so what is being removed is the client bootstrap and per-call project
+    configuration, not a single-use JVM.
+
+    Returns None whenever the jar is absent, and EVERY caller then runs the Gradle path unchanged --
+    a fresh checkout that has never run the sync script must keep working exactly as before, so this
+    is an accelerator with a mandatory fallback, not a new prerequisite.
+
+    NPDEV_AI_TOOLS_JAR overrides the location (same shape as NPDEV_RUNTIMEHOST_LIBS_DIR); pointing it
+    at a path that does not exist is also the way to force the Gradle path back on for one run.
+    Otherwise the build root comes from _ai_build_root() rather than a fourth hand-rolled copy of the
+    same resolution -- REG-128 exists because there were two, and REG-144 because one of them matched
+    the repo root by directory NAME. There is no hardcoded <drive>:/WorkSpace/... default here for
+    the same reason _default_runtimehost_libs_dir() above has none.
+    """
+    override = os.environ.get("NPDEV_AI_TOOLS_JAR", "").strip()
+    if override:
+        candidate = Path(override).expanduser()
+    else:
+        candidate = _ai_build_root() / "ai-tools" / "npdev-ai-tools.jar"
+    return candidate if candidate.is_file() else None
+
+
+def _ai_tools_command(main_class: str, cli_args: list[str]) -> list[str] | None:
+    """The `java -cp <jar> <main_class> ...` form of an AI-loop call, or None when it is unavailable.
+
+    None means either "no staged jar" or "no java anywhere" (java_launcher() already prefers
+    JAVA_HOME over PATH, W1.3 -- the Manager hands its private JDK over as JAVA_HOME alone). Both
+    are ordinary states on a fresh machine, and both must land on the Gradle path rather than fail.
+    """
+    jar = _default_ai_tools_jar()
+    if jar is None:
+        return None
+    java = java_launcher()
+    if java is None:
+        return None
+    return [java, "-cp", str(jar), main_class, *cli_args]
+
+
+# The classifier's own flag names, mapped to the Gradle PROPERTIES :generator:classifyModelChange
+# reads (its JavaExec builds these exact flags back out of them). One table, so the two call sites
+# below cannot drift into disagreeing about which spelling belongs to which path.
+_CLASSIFIER_GRADLE_PROPERTIES = {
+    "--current": "currentPath",
+    "--baseline": "baselinePath",
+    "--out": "reportOut",
+    "--emitCompiledModelTo": "emitCompiledModelTo",
+    "--emitMetadataTo": "emitMetadataTo",
+}
+
+
+def _classifier_command(root: Path, cli_args: list[str]) -> tuple[list[str], Path] | None:
+    """R1.1: (command, cwd) for one ModelChangeClassifierMain call -- direct java when the staged
+    jar is there, otherwise the unchanged :generator:classifyModelChange Gradle invocation. Returns
+    None when neither is available (no jar AND no Gradle wrapper), which both callers already treat
+    as "cannot classify"."""
+    generator_root = root / "NPDevGenerator"
+    direct = _ai_tools_command(AI_TOOLS_CLASSIFIER_MAIN, cli_args)
+    if direct is not None:
+        return direct, generator_root
+
+    wrapper = gradle_wrapper(generator_root)
+    if not wrapper.exists():
+        return None
+    command = [
+        str(wrapper), *gradle_project_cache_args("generator"),
+        ":generator:classifyModelChange", "--no-daemon", "--console=plain",
+    ]
+    for flag, value in zip(cli_args[0::2], cli_args[1::2]):
+        command.append(f"-P{_CLASSIFIER_GRADLE_PROPERTIES[flag]}={value}")
+    if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+        command = ["cmd.exe", "/c"] + command
+    return command, generator_root
+
+
 def _build_phase(app_root: Path, deadline: float) -> tuple[bool, str, Path | None]:
     wrapper = app_root / ("gradlew.bat" if os.name == "nt" else "gradlew")
     if not wrapper.exists():
@@ -4387,23 +4496,20 @@ def _build_phase(app_root: Path, deadline: float) -> tuple[bool, str, Path | Non
 
 def _classify_model_change(root: Path, baseline: Path, current: Path, deadline: float) -> str | None:
     """Move 10 C1 (already implemented, Wave 1.2): shells out to the existing, real
-    ModelChangeClassifierMain (:generator:classifyModelChange) rather than reimplementing the diff.
-    That task reads its arguments as Gradle PROPERTIES (-PcurrentPath=...), not JavaExec `args`."""
-    generator_root = root / "NPDevGenerator"
-    wrapper = gradle_wrapper(generator_root)
-    if not wrapper.exists():
-        return None
+    ModelChangeClassifierMain rather than reimplementing the diff. R1.1: reached directly through the
+    staged npdev-ai-tools.jar when it exists, else through :generator:classifyModelChange, whose task
+    reads its arguments as Gradle PROPERTIES (-PcurrentPath=...), not JavaExec `args` --
+    _classifier_command owns that translation for both call sites."""
     with tempfile.TemporaryDirectory(prefix="npdev-classify-") as tmp:
         report_path = Path(tmp) / "classification.json"
-        command = [
-            str(wrapper), *gradle_project_cache_args("generator"),
-            ":generator:classifyModelChange", "--no-daemon", "--console=plain",
-            f"-PcurrentPath={current}", f"-PbaselinePath={baseline}", f"-PreportOut={report_path}",
-        ]
-        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
-            command = ["cmd.exe", "/c"] + command
+        resolved = _classifier_command(root, [
+            "--current", str(current), "--baseline", str(baseline), "--out", str(report_path),
+        ])
+        if resolved is None:
+            return None
+        command, cwd = resolved
         try:
-            _run_bounded(command, generator_root, deadline)
+            _run_bounded(command, cwd, deadline)
         except _DeadlineExceeded:
             return None
         if not report_path.exists():
@@ -4420,23 +4526,34 @@ def _metadata_only_fast_path(
     """Move 10 C2 (already implemented, Wave 1.3): swaps compiled-model.json + re-signs the
     generated-folder signature, skipping GENERATE+BUILD entirely for a METADATA_ONLY change.
     Both underlying tasks read Gradle PROPERTIES, not JavaExec `args` -- see their own build.gradle
-    registrations (classifyModelChange / resignGeneratedFolder)."""
-    generator_root = root / "NPDevGenerator"
-    wrapper = gradle_wrapper(generator_root)
+    registrations (classifyModelChange / resignGeneratedFolder).
+
+    R1.1 speeds up the classify half only: GeneratedFolderSignatureMain lives in
+    :adapters:runtime-validation, which is not on :generator's runtime classpath and so is not in
+    npdev-ai-tools.jar. Re-signing runs once per fast path, not once per keystroke in an authoring
+    loop, so packaging a second jar to save one more fork is not worth the staging surface.
+
+    One deliberate divergence between the two paths, in the direction of safety: classifyModelChange
+    is registered with `ignoreExitValue = true`, so a `--emitCompiledModelTo` REFUSAL (the classifier
+    exits 2 without writing) still leaves the GRADLE process exiting 0 and this function reporting
+    success for a file it never wrote. Its build.gradle comment claims that exit code "must reach the
+    caller" -- with ignoreExitValue it never did. The direct path propagates the real exit code, so a
+    refusal is reported as a failure. The branch is unreachable in practice today (the only caller
+    gates on classification == METADATA_ONLY first), which is why the swallowed code went unnoticed;
+    it is left as-is on the Gradle side rather than changing behavior on the fallback path here."""
     generated_root = final_app_out / "npdev-generated"
     compiled_model_path = generated_root / "src" / "main" / "resources" / "npdev" / "compiled-model.json"
     with tempfile.TemporaryDirectory(prefix="npdev-metadata-only-") as tmp:
         report_path = Path(tmp) / "classification.json"
-        command = [
-            str(wrapper), *gradle_project_cache_args("generator"),
-            ":generator:classifyModelChange", "--no-daemon", "--console=plain",
-            f"-PcurrentPath={current_model}", f"-PbaselinePath={current_model}",
-            f"-PreportOut={report_path}", f"-PemitCompiledModelTo={compiled_model_path}",
-        ]
-        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
-            command = ["cmd.exe", "/c"] + command
+        resolved = _classifier_command(root, [
+            "--current", str(current_model), "--baseline", str(current_model),
+            "--out", str(report_path), "--emitCompiledModelTo", str(compiled_model_path),
+        ])
+        if resolved is None:
+            return False, "no Gradle wrapper and no staged npdev-ai-tools.jar -- cannot classify."
+        command, cwd = resolved
         try:
-            completed = _run_bounded(command, generator_root, deadline)
+            completed = _run_bounded(command, cwd, deadline)
         except _DeadlineExceeded:
             return False, "classifyModelChange exceeded the overall --timeout budget."
         if completed.returncode != 0:
@@ -4711,6 +4828,303 @@ def run_closed_loop(args: argparse.Namespace) -> dict:
 
     report["ok"] = True
     return report
+
+
+# ---------------------------------------------------------------------------
+# R3.4: `npdev test` -- one verb, one verdict per app. Composition only: it OWNS no runner and no
+# verdict of its own. The REST layer is derived from what the generator already published about the
+# model; the other two layers are `run_acceptance` and `npdev_explore.run_suite`, called as-is, and
+# their reports are embedded verbatim rather than re-summarised into a second vocabulary.
+# ---------------------------------------------------------------------------
+
+TEST_SCHEMA_VERSION = "npdev-test-report.v1"
+TEST_REPORT_FILENAME = "npdev-test-report.json"
+
+
+def _rest_smoke_layer(app_record: dict, timeout: float = 15.0) -> dict:
+    """Layer 1: GET every concept endpoint the app itself publishes.
+
+    The plan is MODEL-DERIVED with no per-app file, because `InfoPageEmitter` already wrote the
+    model's concepts into the app's own `static/info.json` (`concepts: [{name, route}]`, sorted) and
+    `probe_app(include_info=True)` already loads it. `/api/<route>` is the same URL that emitter
+    publishes one line away in its own Concepts rows, so this composes a path the app is known to
+    serve rather than inventing a convention.
+
+    (`compiled-metadata.json`'s invocation catalog carries the sibling `/api/concepts/<table>` form
+    and is equally model-derived. info.json wins here only because it needs no second file read: it
+    is already in hand from the probe every layer of this command shares.)
+
+    Check rows deliberately borrow `schemas/ai/ai-rest-smoke-result.schema.json`'s field names
+    (id/status/method/path/expectedStatus/actualStatus/durationMs/failures) so the one REST-smoke
+    vocabulary this repo has is not forked into a second one."""
+    import time
+    import urllib.error
+    import urllib.request
+
+    info = app_record.get("info") or {}
+    concepts = [c for c in (info.get("concepts") or [])
+                if isinstance(c, dict) and c.get("name") and c.get("route")]
+    base_url = app_record.get("probeBaseUrl")
+    layer: dict = {"layer": "rest-smoke", "source": "info.json concepts (model-derived)",
+                   "baseUrl": base_url, "checks": [],
+                   "counts": {"total": 0, "passed": 0, "failed": 0}}
+    if not app_record.get("hasInfoJson"):
+        layer.update(status="empty", green=None, detail=(
+            "this app has no generated static/info.json, so there is no published concept list to "
+            "derive a plan from. Regenerate it with a current generator."))
+        return layer
+    if not concepts:
+        layer.update(status="empty", green=None,
+                     detail="the app publishes no concepts, so there is no endpoint to GET.")
+        return layer
+
+    headers = {}
+    if app_record.get("apiKey"):
+        headers[app_record.get("authHeader") or "X-Api-Key"] = app_record["apiKey"]
+
+    for concept in concepts:
+        path = "/api/" + concept["route"]
+        started = time.time()
+        actual: int | None = None
+        failures: list[str] = []
+        request = urllib.request.Request(base_url + path, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                actual = response.status
+                response.read()
+        except urllib.error.HTTPError as exc:
+            actual = exc.code
+            failures.append(f"HTTP {exc.code}: {exc.read().decode('utf-8', 'replace')[:200]}")
+        except urllib.error.URLError as exc:
+            failures.append(f"request failed: {exc.reason}")
+        # First, so the expectation leads and the body follows. A request that never completed has
+        # no status to compare and its own `request failed: <reason>` already says more than
+        # "expected 200, got nothing" would.
+        if actual is not None and actual != 200:
+            failures.insert(0, f"expected HTTP 200, got {actual}")
+        layer["checks"].append({
+            "id": f"concept-list-{concept['name']}",
+            "concept": concept["name"],
+            "status": "passed" if not failures else "failed",
+            "method": "GET", "path": path,
+            "expectedStatus": 200, "actualStatus": actual,
+            "durationMs": int((time.time() - started) * 1000),
+            "failures": failures,
+        })
+
+    passed = sum(1 for c in layer["checks"] if c["status"] == "passed")
+    layer["counts"] = {"total": len(layer["checks"]), "passed": passed,
+                       "failed": len(layer["checks"]) - passed}
+    layer["green"] = layer["counts"]["failed"] == 0
+    layer["status"] = "green" if layer["green"] else "red"
+    return layer
+
+
+def acceptance_dirs(app_record: dict) -> list[Path]:
+    """Where an app's `*.scenario.json` files can live, in precedence order, with no per-app config.
+
+    Same layering `npdev_explore.definition_dirs` uses for routines and for the same reason: the app
+    DEFINITION (layer 2) is the truth, but a FinalApp handed over on its own must still be testable,
+    so the app's own copy is looked at too. The generated app root is listed first because a copy
+    that travelled with the app is the one that describes THAT build."""
+    directories = []
+    for root in (app_record.get("finalAppRoot"), app_record.get("appDir"),
+                 app_record.get("appDefinitionRoot")):
+        if not root:
+            continue
+        candidate = Path(root) / "acceptance"
+        if candidate not in directories:
+            directories.append(candidate)
+    return directories
+
+
+def _acceptance_layer(app_record: dict) -> dict:
+    """Layer 2: the existing `run_acceptance`, pointed at the first discovered scenario directory.
+
+    `--base-url` mode, always: the app is already booted (this command refuses otherwise), and D2's
+    own note says that mode exists precisely so a caller that already paid for a boot does not pay
+    for a second one. Its report is embedded whole -- including its approved/unapproved rule, which
+    is not restated here because there must be one place that decides it."""
+    searched = acceptance_dirs(app_record)
+    layer: dict = {"layer": "acceptance", "searched": [str(d) for d in searched],
+                   "scenariosDir": None, "report": None}
+    chosen = next((d for d in searched if d.is_dir() and any(d.glob("*.scenario.json"))), None)
+    if chosen is None:
+        layer.update(status="empty", green=None, detail=(
+            "no *.scenario.json found in: " + ("; ".join(str(d) for d in searched) or "(nowhere to look)")))
+        return layer
+
+    layer["scenariosDir"] = str(chosen)
+    report = run_acceptance(argparse.Namespace(
+        base_url=app_record["probeBaseUrl"], scenarios=str(chosen),
+        api_key=app_record.get("apiKey") or "dev-key",
+        model=None, config=None, output=None, port=None, timeout=None,
+    ))
+    layer["report"] = report
+    layer["green"] = bool(report.get("ok"))
+    layer["status"] = "green" if layer["green"] else "red"
+    return layer
+
+
+def _browser_layer(root: Path, app_dir: Path, args: argparse.Namespace) -> dict:
+    """Layer 3: `npdev_explore.run_suite`, verbatim.
+
+    "No routines at all" is asked HERE, before calling the suite, because `run_suite` raises the same
+    ExploreError for that as for an app-wide refusal, and those are different facts: an app that
+    declares no browser routines has no browser coverage to report (`empty`), while an app whose
+    engine or lock refuses is a refusal (`refused`, and not green). `explore generate` (R3.3) can
+    fill that gap, but it is a separate, deliberate step, not something this layer calls itself --
+    so `empty` stays the ORDINARY state for an app nobody has run it on, and must not read as either
+    a pass or a failure.
+
+    Everything else -- per-routine refusals, app-wide aborts, unreached routines reported as skipped
+    -- is the suite's own decision and is inherited unchanged."""
+    import npdev_explore
+
+    layer: dict = {"layer": "browser", "report": None}
+    definitions = npdev_explore.definition_files(app_dir)
+    if not definitions:
+        layer.update(status="empty", green=None, detail=(
+            "this app declares no browser routines in: "
+            + "; ".join(str(d) for d in npdev_explore.definition_dirs(app_dir))
+            + " -- so no browser coverage was measured (not a pass, and not a failure)."))
+        return layer
+    try:
+        # `keep_engine=False`, the suite's own default: a one-shot verb must not leave a process
+        # behind, and `_stop_process` only ever stops an engine THIS run started, so an engine that
+        # was already up is untouched either way. The cost is one engine startup per routine; an app
+        # with enough routines for that to matter should pre-start an engine, or drive
+        # `explore suite --keep-engine` directly, rather than have this command silently change what
+        # is running on the machine.
+        report = npdev_explore.run_suite(
+            root, app_dir,
+            engine_port=args.engine_port, configured_root=args.engine_root,
+            api_key=args.engine_api_key)
+    except npdev_explore.ExploreError as exc:
+        layer.update(status="refused", green=False, detail=str(exc))
+        return layer
+    layer["report"] = report
+    layer["green"] = bool(report.get("green"))
+    layer["status"] = "green" if layer["green"] else "red"
+    return layer
+
+
+def run_test(args: argparse.Namespace) -> dict:
+    """R3.4: compose the three layers against ONE booted app and roll them into one verdict.
+
+    A layer that is `empty` is neither green nor red -- it measured nothing, says so, and is counted
+    separately. `ok` is false when any layer is red or refused, which is what the exit code carries.
+
+    Refusing outright (rather than writing a report full of zeros) when the app is not a healthy
+    generated app is the D4/QUAL-4 rule: a tool problem must not be rendered as a test result.
+    `probe_app` already owns that diagnosis, so its own sentence is the one the user gets."""
+    import time
+
+    root = repo_root()
+    app_dir = Path(args.app_dir).expanduser().resolve()
+    app_record = npdev_monitor.probe_app(app_dir, include_info=True)
+    if not app_record.get("isAppRoot"):
+        raise CliError(app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        raise CliError(
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')}. `npdev test` measures a RUNNING app -- start it "
+            f"first (_ops/Start-App.ps1, or the Monitor's Start).")
+
+    started_at = _utc_now()
+    begin = time.time()
+    layers = [
+        _rest_smoke_layer(app_record),
+        _acceptance_layer(app_record),
+        _browser_layer(root, app_dir, args),
+    ]
+    counts = {
+        "layers": len(layers),
+        "green": sum(1 for layer in layers if layer["status"] == "green"),
+        "red": sum(1 for layer in layers if layer["status"] in ("red", "refused")),
+        "empty": sum(1 for layer in layers if layer["status"] == "empty"),
+    }
+    # A run in which NOTHING measured anything is not a pass -- `run_suite`'s rule ("a summary of
+    # zero runs reads like a pass"), one level up. It is still reported rather than raised, because
+    # unlike a suite there IS something to say: which three places were looked at and what was not
+    # there, which is the actionable half of the answer.
+    nothing_measured = counts["green"] == 0 and counts["red"] == 0
+    green = counts["red"] == 0 and not nothing_measured
+    report = {
+        "schemaVersion": TEST_SCHEMA_VERSION,
+        "command": "test",
+        "ok": green,
+        "green": green,
+        "nothingMeasured": nothing_measured,
+        "appDir": str(app_dir),
+        "appName": app_record.get("name"),
+        "baseUrl": app_record.get("probeBaseUrl"),
+        "startedAt": started_at,
+        "durationMs": int((time.time() - begin) * 1000),
+        "counts": counts,
+        "layers": layers,
+    }
+
+    # Written where the app's other run artifacts already live -- `_ops/smoke-test-report.json`, the
+    # generated toolbox's own, is the neighbour.
+    #
+    # NOT passed through `npdev_monitor.redact()`, deliberately, unlike `explore`'s output (REG-153).
+    # That function is key-NAME driven and its pattern includes `pass(word)?`, which matches the
+    # ordinary word `passed` -- so redacting this report replaces `summary.passed` and
+    # `counts.passed` with "<redacted>" and destroys the pass/fail evidence that IS the report.
+    # Widening or narrowing a shared security pattern to suit one caller is the wrong trade, so the
+    # guarantee here is the stronger one instead: no credential is put in. Every field is composed
+    # explicitly from the three layer reports, and the one place this command holds the app's API key
+    # is layer 1's request header, which never reaches the result. A test asserts exactly that.
+    out = Path(args.report_out).expanduser() if args.report_out else app_dir / "_ops" / TEST_REPORT_FILENAME
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    report["reportPath"] = str(out)
+    return report
+
+
+def _test_human_summary(result: dict) -> str:
+    verdict = "GREEN" if result["green"] else ("NOTHING MEASURED" if result["nothingMeasured"] else "RED")
+    lines = [f"{verdict}  {result['appName']}  {result['baseUrl']}  ({result['durationMs']} ms)"]
+    for layer in result["layers"]:
+        lines.append(f"  [{layer['status']:<7}] {layer['layer']}")
+        if layer.get("detail"):
+            lines.append(f"      {layer['detail']}")
+        if layer["layer"] == "rest-smoke":
+            for check in layer["checks"]:
+                if check["status"] != "passed":
+                    lines.append(f"      {check['method']} {check['path']} -- "
+                                 f"{'; '.join(check['failures'])}")
+            if layer["counts"]["total"]:
+                lines.append(f"      {layer['counts']['passed']}/{layer['counts']['total']} "
+                             f"concept endpoint(s) answered 200")
+        elif layer.get("report") and layer["layer"] == "acceptance":
+            summary = layer["report"]["summary"]
+            lines.append(f"      {summary['passed']}/{summary['approvedTotal']} approved scenario(s) "
+                         f"passed, {summary['excludedUnapproved']} unapproved excluded")
+            for scenario in layer["report"]["scenarios"]:
+                if scenario["approved"] and scenario["outcome"] != "PASS":
+                    lines.append(f"      {scenario['file']}: {scenario['outcome']}"
+                                 + (f" -- {scenario['error']}" if scenario.get("error") else ""))
+                    for assertion in scenario["assertions"]:
+                        if not assertion["passed"]:
+                            lines.append(f"        {assertion['path']} {assertion['operator']} "
+                                         f"{assertion['expected']!r}, got {assertion['actual']!r}")
+        elif layer.get("report") and layer["layer"] == "browser":
+            counts = layer["report"]["counts"]
+            lines.append(f"      {counts['green']}/{counts['total']} routine(s) green, "
+                         f"{counts['red']} red, {counts['refused']} refused, {counts['skipped']} skipped")
+            # Same rule `_explore_human_summary` follows: `refused` and `skipped` stay visually
+            # distinct from `red`, and every non-green routine names its own reason here rather than
+            # only in the JSON.
+            for entry in layer["report"]["runs"]:
+                if entry["outcome"] == "green":
+                    continue
+                lines.append(f"      [{entry['outcome']}] {entry['name']}")
+                for reason in entry.get("reasons") or []:
+                    lines.append(f"        {reason}")
+    lines.append(f"  report: {result['reportPath']}")
+    return "\n".join(lines)
 
 
 def _fetch_json(url: str, headers: dict[str, str]) -> dict:
@@ -5471,16 +5885,20 @@ def run_release_candidate(args: argparse.Namespace, root: Path) -> dict:
 def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
     """Run full structural + semantic validation via the standalone Java validator.
 
-    Invokes the :NPDevContract:dsl:validateModel Gradle task (ModelValidatorMain), which runs
-    the exact validation the generator runs -- without generating -- and writes a typed
-    npdev-validation-report.v2 report. Returns 0 when the model passes (or has warnings only),
-    2 when it has errors. The report is the loopable contract an AI-authoring agent self-corrects
-    against; here we also echo it to stdout.
+    Runs ModelValidatorMain, which runs the exact validation the generator runs -- without
+    generating -- and writes a typed npdev-validation-report.v2 report. Returns 0 when the model
+    passes (or has warnings only), 2 when it has errors. The report is the loopable contract an
+    AI-authoring agent self-corrects against; here we also echo it to stdout.
+
+    R1.1: reached directly as `java -cp npdev-ai-tools.jar ModelValidatorMain ...` when that jar is
+    staged, else through the :NPDevContract:dsl:validateModel Gradle task exactly as before. This is
+    the single hottest call in the authoring loop -- it runs after every model edit -- and the Gradle
+    layer contributed nothing but a classpath: the class is pure stdlib+Jackson+dsl. Measured
+    4.61s -> 2.24s median on canonical-demo (see _default_ai_tools_jar for the full numbers), with a
+    byte-identical report: the model path is the only environment-dependent value in it, and both
+    paths hand the validator the same resolved absolute path.
     """
     root = repo_root()
-    wrapper = gradle_wrapper(root)
-    if not wrapper.exists():
-        raise CliError(f"Gradle wrapper not found: {wrapper}")
     model = Path(model_path).expanduser().resolve()
     if not model.exists():
         raise CliError(f"model not found: {model}")
@@ -5489,26 +5907,32 @@ def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
     with tempfile.TemporaryDirectory(prefix="npdev-validate-") as temp_dir:
         report_target = written_report or (Path(temp_dir) / "validation-report.json")
         report_target.parent.mkdir(parents=True, exist_ok=True)
-        gradle_args = [
-            str(wrapper),
-            *gradle_project_cache_args("root"),
-            ":NPDevContract:dsl:validateModel",
-            f"-PmodelPath={model}",
-            f"-PreportOut={report_target}",
-            "-q",
-            "--console=plain",
-        ]
-        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
-            gradle_args = ["cmd.exe", "/c"] + gradle_args
+        command = _ai_tools_command(
+            AI_TOOLS_VALIDATOR_MAIN, [str(model), "--out", str(report_target)])
+        if command is None:
+            wrapper = gradle_wrapper(root)
+            if not wrapper.exists():
+                raise CliError(f"Gradle wrapper not found: {wrapper}")
+            command = [
+                str(wrapper),
+                *gradle_project_cache_args("root"),
+                ":NPDevContract:dsl:validateModel",
+                f"-PmodelPath={model}",
+                f"-PreportOut={report_target}",
+                "-q",
+                "--console=plain",
+            ]
+            if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+                command = ["cmd.exe", "/c"] + command
         # Capture the subprocess output: the Java validator echoes the report to stdout, but the
         # report FILE is the channel we read, and the CLI is the single stdout authority (printing
         # captured output too would emit two JSON docs). On failure, surface it in the error.
-        completed = subprocess.run(gradle_args, cwd=root, check=False, capture_output=True, text=True)
+        completed = subprocess.run(command, cwd=root, check=False, capture_output=True, text=True)
         if not report_target.exists():
             detail = (completed.stderr or completed.stdout or "").strip()
             raise CliError(
                 "validator did not produce a report"
-                + (f" (gradle exit {completed.returncode})" if completed.returncode else "")
+                + (f" (validator exit {completed.returncode})" if completed.returncode else "")
                 + (f": {detail[-500:]}" if detail else "")
             )
         report = read_json(report_target)
@@ -6110,6 +6534,28 @@ def _run_monitor_ops(args: argparse.Namespace) -> int:
     return 0 if code == 0 else 2
 
 
+def _explore_pairs(pairs: list[str]) -> dict:
+    """`--var NAME=VALUE` / `--credential NAME=VALUE` -> a dict. One parser for both flags and for
+    both `run` and `suite`, so a suite cannot interpret an override differently from a single run."""
+    parsed: dict = {}
+    for pair in pairs or []:
+        name, _, value = pair.partition("=")
+        if name:
+            parsed[name] = value
+    return parsed
+
+
+def _explore_emitter(as_json: bool):
+    """Progress events, streamed as they happen -- an exploration takes minutes and silence during
+    it is indistinguishable from a hang."""
+    if as_json:
+        return lambda event: print(json.dumps(event), flush=True)
+    return lambda event: print(
+        f"  [{event.get('kind')}] "
+        f"{event.get('phase') or event.get('state') or event.get('runId') or ''}"
+        f"{(' ' + event['name']) if event.get('name') else ''}", flush=True)
+
+
 def run_explore(args: argparse.Namespace) -> int:
     import npdev_explore
 
@@ -6128,27 +6574,23 @@ def run_explore(args: argparse.Namespace) -> int:
             result["schemaVersion"] = "npdev-exploration-preflight.v1"
             result["command"] = "explore preflight"
         elif args.explore_command == "run":
-            variables = {}
-            for pair in args.var:
-                name, _, value = pair.partition("=")
-                if name:
-                    variables[name] = value
-            credentials = {}
-            for pair in args.credential:
-                name, _, value = pair.partition("=")
-                if name:
-                    credentials[name] = value
-            emit = (lambda event: print(json.dumps(event), flush=True)) if args.json else \
-                   (lambda event: print(f"  [{event.get('kind')}] "
-                                        f"{event.get('phase') or event.get('state') or event.get('runId') or ''}",
-                                        flush=True))
             result = npdev_explore.run_exploration(
                 root, Path(args.app_dir), Path(args.file),
                 engine_port=args.engine_port, configured_root=args.engine_root, api_key=args.api_key,
-                driver=args.driver, variables=variables, credentials=credentials, ledger_id=args.ledger_id,
-                keep_engine=args.keep_engine, on_event=emit)
+                driver=args.driver, variables=_explore_pairs(args.var),
+                credentials=_explore_pairs(args.credential), ledger_id=args.ledger_id,
+                keep_engine=args.keep_engine, on_event=_explore_emitter(args.json))
             result["command"] = "explore run"
             result["ok"] = True
+        elif args.explore_command == "suite":
+            # R3.1. The roll-up decides the exit code (`ok` comes back False when anything is red,
+            # refused or skipped), which is why -- unlike `run` above -- nothing forces ok=True here.
+            result = npdev_explore.run_suite(
+                root, Path(args.app_dir), only=args.only, stop_on_red=args.stop_on_red,
+                engine_port=args.engine_port, configured_root=args.engine_root, api_key=args.api_key,
+                driver=args.driver, variables=_explore_pairs(args.var),
+                credentials=_explore_pairs(args.credential), ledger_id=args.ledger_id,
+                keep_engine=args.keep_engine, on_event=_explore_emitter(args.json))
         elif args.explore_command == "record":
             payload = read_json(Path(args.from_file))
             result = npdev_explore.record_external(
@@ -6173,8 +6615,17 @@ def run_explore(args: argparse.Namespace) -> int:
             result = npdev_explore.build_repair_payload(
                 root, Path(args.app_dir), args.prompt, run_id=args.run,
                 include_page_text=args.include_page_text)
+        elif args.explore_command == "coverage":
+            result = npdev_explore.coverage(Path(args.app_dir))
+        elif args.explore_command == "generate":
+            result = npdev_explore.generate_routines(
+                Path(args.app_dir), concepts=args.concept or None,
+                out_dir=Path(args.out_dir) if args.out_dir else None,
+                write=not args.dry_run)
         else:
-            raise CliError("usage: npdev explore {list|show|validate|preflight|run|record|prune|pin|accept|context}")
+            raise CliError("usage: npdev explore "
+                           "{list|show|validate|preflight|run|suite|record|prune|pin|accept|context|"
+                           "coverage|generate}")
     except npdev_explore.ExploreError as exc:
         # A refusal is a DIAGNOSED problem, not a crash -- and never rendered like a failed
         # exploration (D4). Exit 2, structured, with the sentence that says what to do.
@@ -6221,6 +6672,23 @@ def _explore_human_summary(command: str, result: dict) -> str:
             lines.append(f"  why-not-green: {reason}")
         for excuse in verdict.get("excused", []):
             lines.append(f"  excused ({excuse['rule']}): {excuse['text'][:120]}")
+    elif command == "suite":
+        counts = result["counts"]
+        lines.append(f"{'GREEN' if result['green'] else 'RED'}  "
+                     f"{counts['green']}/{counts['total']} green, {counts['red']} red, "
+                     f"{counts['refused']} refused, {counts['skipped']} skipped "
+                     f"({result['durationMs']} ms)")
+        for entry in result["runs"]:
+            # `refused` and `skipped` stay visually distinct from `red`: a tool problem rendered as
+            # a test result is the QUAL-4 lesson, and a shortened list with no rows for what did not
+            # run is how a stopped suite gets misread as a smaller one.
+            lines.append(f"  [{entry['outcome']:<7}] {entry['name']:<32} {entry.get('runId') or ''}")
+            for reason in entry.get("reasons") or []:
+                lines.append(f"      {reason}")
+        if result.get("aborted"):
+            lines.append(f"  aborted: {result['aborted']}")
+        elif result.get("stoppedEarly"):
+            lines.append(f"  stopped early: {result['stoppedEarly']}")
     elif command == "preflight":
         for check in result["checks"]:
             lines.append(f"  [{check['status']}] {check['name']} -- {check.get('detail')}")
@@ -6230,6 +6698,39 @@ def _explore_human_summary(command: str, result: dict) -> str:
         lines.append(f"  {result['recordsNote']}")
         for run_id, why in list(result["keptBecause"].items())[:20]:
             lines.append(f"  kept {run_id}: {why}")
+    elif command == "coverage":
+        summary = result["summary"]
+        lines.append(f"concepts: {summary['conceptsCovered']}/{summary['conceptsTotal']} covered  "
+                     f"flows: {summary['flowsCovered']}/{summary['flowsTotal']} covered")
+        for concept in result["concepts"]:
+            last_green = concept.get("lastGreenRun")
+            status = "covered" if concept["covered"] else "UNCOVERED"
+            lines.append(f"  [{status:<9}] concept {concept['name']:<24} "
+                         f"routines={','.join(concept['referencingRoutines']) or '-'}  "
+                         f"lastGreenRun={last_green['runId'] if last_green else '-'}")
+        for flow in result["flows"]:
+            status = "covered" if flow["covered"] else "UNCOVERED"
+            lines.append(f"  [{status:<9}] flow    {flow['name']:<24} "
+                         f"scenarios={','.join(flow['referencingScenarios']) or '-'}")
+        if result["uncovered"]["concepts"] or result["uncovered"]["flows"]:
+            lines.append("  UNCOVERED:")
+            if result["uncovered"]["concepts"]:
+                lines.append(f"    concepts: {', '.join(result['uncovered']['concepts'])}")
+            if result["uncovered"]["flows"]:
+                lines.append(f"    flows:    {', '.join(result['uncovered']['flows'])}")
+        else:
+            lines.append("  UNCOVERED: none")
+    elif command == "generate":
+        summary = result["summary"]
+        lines.append(f"wrote {summary['written']} routine(s) ({summary['partial']} create+list only) "
+                     f"for {summary['conceptsTotal']} concept(s); {summary['skipped']} skipped "
+                     f"-- out: {result['outDir']}")
+        for entry in result["written"]:
+            note = f"  ({entry['partial']})" if entry.get("partial") else ""
+            lines.append(f"  [written] {entry['concept']:<28} {entry['stepCount']:>3} steps  "
+                         f"{Path(entry['file']).name}{note}")
+        for row in result["skipped"]:
+            lines.append(f"  [skipped] {row['concept']:<28} {row['reason']}")
     else:
         lines.append(json.dumps(result, indent=2, ensure_ascii=False))
     return "\n".join(lines)
@@ -6913,6 +7414,24 @@ def build_parser() -> argparse.ArgumentParser:
              "the prompt this command writes when --model-command is omitted.",
     )
 
+    # R3.4. No --scenarios, no --routines, no plan file: every input is discovered from the app the
+    # --app-dir names. An option here that a user HAD to set per app would be the per-app config this
+    # item exists to remove.
+    test = subparsers.add_parser(
+        "test",
+        help="Run all three layers against ONE booted app -- model-derived REST smoke over every "
+             "concept endpoint, *.scenario.json acceptance, and the browser routine suite -- and "
+             "write one report. Exits nonzero if any layer is red.",
+    )
+    test.add_argument("--app-dir", required=True, help="A generated, RUNNING app (the one `npdev monitor probe` sees).")
+    test.add_argument("--report-out", default=None,
+                      help=f"Where to write the report. Default: <app-dir>/_ops/{TEST_REPORT_FILENAME}.")
+    test.add_argument("--engine-port", type=int, default=npdev_monitor.DEFAULT_ENGINE_PORT,
+                      help="Browser layer: the ScrapForAI engine's port.")
+    test.add_argument("--engine-root", default=None, help="Browser layer: where the engine is installed.")
+    test.add_argument("--engine-api-key", default=None, help="Browser layer: the ENGINE's key, not the app's.")
+    test.add_argument("--json", action="store_true")
+
     report = subparsers.add_parser(
         "report", help="Produce or bootstrap the evidence and status reports."
     )
@@ -7086,6 +7605,38 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Leave a self-started engine running (R2: it then needs stopping).")
     explore_run.add_argument("--json", action="store_true")
 
+    # R3.1. Same options as `run` minus `--file`, because a suite chooses its own files: it runs
+    # every definition `explore list` shows, in that order.
+    explore_suite = explore_sub.add_parser(
+        "suite",
+        help="Run EVERY routine the app declares, in `explore list` order, and roll the verdicts "
+             "up. Exits nonzero if any routine is red, refused or skipped.",
+    )
+    explore_suite.add_argument("--app-dir", required=True)
+    explore_suite.add_argument("--only", action="append", default=[], metavar="GLOB",
+                               help="Run only definitions whose name matches this fnmatch pattern "
+                                    "(e.g. --only 'login-*'), repeatable.")
+    explore_suite.add_argument("--stop-on-red", action="store_true",
+                               help="Stop at the first red routine. The rest are reported as "
+                                    "skipped, never silently dropped.")
+    explore_suite.add_argument("--engine-port", type=int, default=npdev_monitor.DEFAULT_ENGINE_PORT)
+    explore_suite.add_argument("--engine-root", default=None)
+    explore_suite.add_argument("--api-key", default=None)
+    explore_suite.add_argument("--driver", default="cli",
+                               choices=["cli", "monitor-ui", "harness", "ai-session", "playwright"])
+    explore_suite.add_argument("--var", action="append", default=[], metavar="NAME=VALUE",
+                               help="Runtime variable override applied to every routine, repeatable.")
+    explore_suite.add_argument("--credential", action="append", default=[], metavar="NAME=VALUE",
+                               help="Runtime credential override applied to every routine, "
+                                    "repeatable. Redacted from the engine's evidence, unlike --var.")
+    explore_suite.add_argument("--ledger-id", default=None,
+                               help="Link every run in this suite to a ledger item.")
+    explore_suite.add_argument("--keep-engine", action="store_true",
+                               help="Leave a self-started engine running, so routines 2..N reuse it "
+                                    "instead of paying the engine's startup each (R2: it then needs "
+                                    "stopping).")
+    explore_suite.add_argument("--json", action="store_true")
+
     explore_preflight = explore_sub.add_parser(
         "preflight", help="Report each precondition as its own row, without running anything (D4)."
     )
@@ -7162,6 +7713,34 @@ def build_parser() -> argparse.ArgumentParser:
                                       "on a tester's or a customer's machine that text is their real "
                                       "data. Recorded on the run either way.")
     explore_payload.add_argument("--json", action="store_true")
+
+    explore_coverage = explore_sub.add_parser(
+        "coverage",
+        help="R3.5: per-app table, concept -> referencing routines -> last green run, plus "
+             "flow -> referencing acceptance scenarios, with an explicit UNCOVERED section. Static "
+             "(no engine, no HTTP call) -- reads info.json, routine/scenario files, and run history.",
+    )
+    explore_coverage.add_argument("--app-dir", required=True)
+    explore_coverage.add_argument("--json", action="store_true")
+
+    explore_generate = explore_sub.add_parser(
+        "generate",
+        help="R3.3: emit a create/list/edit/delete routine per concept, built from the app's own "
+             "generated-ui-manifest.json (the same resolved widget/enum/reference facts its "
+             "business UI renders from). Written into _ops/explorations by default, so `explore "
+             "suite` picks the result up immediately.",
+    )
+    explore_generate.add_argument("--app-dir", required=True)
+    explore_generate.add_argument("--concept", action="append", default=[],
+                                  help="Limit to this concept (repeatable). Default: every concept "
+                                       "in the manifest. A concept a selected one depends on via a "
+                                       "required reference must be included too, or it is skipped.")
+    explore_generate.add_argument("--out-dir", default=None,
+                                  help="Default: <app>/_ops/explorations (the mirror `explore suite` "
+                                       "already scans first).")
+    explore_generate.add_argument("--dry-run", action="store_true",
+                                  help="Report what would be written without writing any file.")
+    explore_generate.add_argument("--json", action="store_true")
 
     # ------------------------------------------------------------------------------------------
     # E2: the provider. The CLI owns the CALL as well as the payload, so a terminal user can do
@@ -7320,6 +7899,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "acceptance" and args.acceptance_command == "run":
             result = run_acceptance(args)
             print(json.dumps(result, indent=2))
+            return 0 if result.get("ok") else 2
+        if args.command == "test":
+            result = run_test(args)
+            # R3.4's definition of done: nonzero when any layer is red. Same 0/2 mapping `run
+            # app`/`acceptance run`/`explore suite` already use -- 1 stays reserved for a refusal,
+            # which run_test raises as a CliError rather than reporting as a result.
+            print(json.dumps(result, indent=2, ensure_ascii=False) if args.json
+                  else _test_human_summary(result))
             return 0 if result.get("ok") else 2
         if args.command == "loop" and args.loop_command == "run":
             result = run_closed_loop(args)

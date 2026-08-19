@@ -378,6 +378,34 @@ def _find_info_json(app_root: Path) -> Path | None:
     return None
 
 
+def app_definition_root(app_root: Path) -> str | None:
+    """Where THIS app's definition (layer 2) lives, or None. ONE rule, because two callers ask:
+    `probe_app` publishes it as a fact, and `npdev_explore.definition_dirs` hangs its
+    `<definition>/explorations` lookup off it. A second copy here would be the twin-pair defect.
+
+    Two spellings, because the plan has two writers (CLAUDE.md's own warning): the Java
+    `OperationalRunbookEmitter` writes `appDefinitionRoot` into `resolved-db-plan.json`, while
+    `Build-NpdevApp.ps1` -- which runs LAST on the primary AppGen path and overwrites that file --
+    writes no such key and instead records the definition it read as `app-plan.json`'s
+    `webSourceDir` (`<definition>/web`). Reading only the first meant an AppGen app's
+    definition-level routines and scenarios were invisible to every caller.
+
+    Identified by CONTENTS, never by shape alone (REG-144's discipline): the parent counts only when
+    it actually holds `definition/model.json`. `webSourceDir` is written as "" for an app with no
+    `web` folder, so an absent value is an ordinary state and returns None."""
+    app_root = Path(app_root)
+    ops_dir = app_root / "_ops"
+    declared = _resolve_app_relative(
+        app_root, (_read_json(ops_dir / "resolved-db-plan.json") or {}).get("appDefinitionRoot"))
+    if declared:
+        return declared
+    web_source = str((_read_json(ops_dir / "app-plan.json") or {}).get("webSourceDir") or "").strip()
+    if not web_source:
+        return None
+    candidate = Path(web_source).parent
+    return str(candidate) if (candidate / "definition" / "model.json").is_file() else None
+
+
 def _newest_jar(app_root: Path) -> tuple[str | None, str | None]:
     libs = app_root / "build" / "libs"
     try:
@@ -450,8 +478,18 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
     # it. Reported, never silently normalised -- `_find_ops_root`'s own comment explains why a
     # fallback consulted first hands a NEW app the OLD shared toolbox. Every path below that means
     # "the app's own files" uses finalAppRoot; everything that means "the toolbox" uses app_root.
+    #
+    # `appRoot` is the SECOND SPELLING of the same fact, and honouring it is not defensive coding.
+    # This plan has two writers (CLAUDE.md's own warning) and they use different keys: the Java
+    # `OperationalRunbookEmitter.toPlanJson()` writes `finalAppPath`, while `Build-NpdevApp.ps1` --
+    # which runs LAST on the primary AppGen path and overwrites the file -- writes `appRoot`
+    # (`<out>/App`) and no `finalAppPath` at all. Reading only the Java key meant every AppGen-built
+    # app resolved its FinalApp root to `<out>`, where there is no `secrets/api-key.env`, no
+    # `npdev-generated/.../info.json` and no `build/libs` -- so the probe reported the stale plan
+    # `apiKey`, `hasInfoJson: false` and `jarPath: null` for the whole app family, each of which
+    # LOOKS like an ordinary state rather than a lookup in the wrong directory.
     final_app_root = app_root
-    declared = _resolve_app_relative(app_root, plan.get("finalAppPath"))
+    declared = _resolve_app_relative(app_root, plan.get("finalAppPath") or plan.get("appRoot"))
     if declared and Path(declared).is_dir() and Path(declared).resolve() != app_root:
         final_app_root = Path(declared).resolve()
         record["opsLayout"] = "legacy-shared"
@@ -531,7 +569,7 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
     record["dbFile"] = (
         str(Path(data_root) / f"{db_name}.mv.db") if data_root and db_name and str(engine).startswith("H2") else None
     )
-    record["appDefinitionRoot"] = _resolve_app_relative(app_root, plan.get("appDefinitionRoot"))
+    record["appDefinitionRoot"] = app_definition_root(app_root)
     model_path = _resolve_app_relative(app_root, plan.get("modelPath"))
     if not model_path and record["appDefinitionRoot"]:
         candidate = Path(record["appDefinitionRoot"]) / "definition" / "model.json"
@@ -952,8 +990,23 @@ def _no_logs_detail(source: str) -> str:
             "Manager created the directory and never wrote into it)")
 
 
+# MON-14: `pass` is spelled `pass(?![a-z])` rather than `pass(word)?` because this pattern is used
+# with `search()`, so the old form matched the word **passed** and silently replaced the value of any
+# `passed` / `summary.passed` field with <redacted>. Measured before the fix:
+#     {'summary': {'passed': 12}} -> {'summary': {'passed': '<redacted>'}}
+# That is the worst shape of bug for a redactor -- the output is still well-formed JSON, so an
+# operator gets a bundle whose numbers are quietly wrong rather than an error. And redaction is
+# MANDATORY on the export path (`npdev monitor logs export`), so anything test-shaped that ever joins
+# a bundle is corrupted by it.
+#
+# The negative lookahead is `[a-z]` under IGNORECASE, which also covers `A-Z`, so `passCount` and
+# `passRate` are excluded too, while `password`/`passwd`/`passphrase` keep matching via their own
+# alternatives and a bare `pass`, `dbPass` or `pass_value` still matches. The other stems were
+# checked for the same over-match and are fine: `keyCount` does NOT match today (verified), because
+# `key` only appears here inside `apikey`/`api[_-]?key`.
 _SECRET_KEYS = re.compile(
-    r"(pass(word)?|pwd|secret|token|apikey|api[_-]?key|authorization|credential|privatekey)",
+    r"(password|passwd|passphrase|pass(?![a-z])|pwd|secret|token|apikey|api[_-]?key"
+    r"|authorization|credential|privatekey)",
     re.IGNORECASE,
 )
 
