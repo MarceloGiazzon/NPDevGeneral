@@ -53,6 +53,9 @@ public final class H2Dialect implements SqlDialect {
             // R8c: native "FOR UPDATE SKIP LOCKED" (Oracle-style syntax) since H2 2.2.220
             // (2023-07-04); this platform already pins 2.2.224, which post-dates it.
             StorageCapability.SKIP_LOCKED_READS);
+            // PARTIAL_UNIQUE_INDEX deliberately absent -- empirically confirmed (see that
+            // capability's javadoc): H2 2.2.224 raises a syntax error on a WHERE clause attached to
+            // CREATE (UNIQUE) INDEX. H2 has no partial-index feature at all.
     // SNAPSHOT_RESTORE deliberately absent: H2's SCRIPT/RUNSCRIPT is a dump and a replay, not a
     // point-in-time snapshot the platform can restore to, and declaring it would be a promise the
     // generator trusts wrongly. The platform's own SchemaDropSnapshotWriter is an application-level
@@ -299,6 +302,11 @@ public final class H2Dialect implements SqlDialect {
     @Override
     public String guardedCreateIndex(String indexName, String tableName, String createStatement) {
         return SqlDdlGuards.insertAfterIndexKeyword(createStatement, "IF NOT EXISTS");
+    }
+
+    @Override
+    public String guardedDropIndexIfExists(String indexName, String tableName) {
+        return "DROP INDEX IF EXISTS " + indexName + ";";
     }
 
     @Override

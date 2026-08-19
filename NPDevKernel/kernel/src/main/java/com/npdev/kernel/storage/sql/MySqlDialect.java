@@ -82,6 +82,10 @@ public final class MySqlDialect implements SqlDialect {
             StorageCapability.SKIP_LOCKED_READS,
             // R9.3: GET_LOCK/RELEASE_LOCK, session-scoped and needing no table.
             StorageCapability.SESSION_ADVISORY_LOCK);
+    // PARTIAL_UNIQUE_INDEX deliberately absent: MySQL 8.x has no partial/filtered index syntax
+    // (documented engine limitation, see that capability's javadoc). The documented workaround (a
+    // generated column that is NULL for a deleted row, uniquely indexed) is separate, engine-specific
+    // DDL this platform does not emit today.
     // SNAPSHOT_RESTORE absent: mysqldump is an external tool, not something the platform can drive
     // as an engine operation, and declaring it would be a promise the generator trusts wrongly.
 
@@ -403,6 +407,26 @@ public final class MySqlDialect implements SqlDialect {
                 + "    AND TABLE_NAME = '" + escapeLiteral(tableName) + "'\n"
                 + "    AND TABLE_SCHEMA = DATABASE()",
                 createStatement);
+    }
+
+    @Override
+    public String guardedDropIndexIfExists(String indexName, String tableName) {
+        // MySQL has no "DROP INDEX IF EXISTS" (unlike DROP TABLE, which does support IF EXISTS) --
+        // same catalog-lookup + PREPARE/EXECUTE idiom as guardedCreateIndex/guardedConstraintDdl
+        // above, but with the polarity INVERTED: run the DROP only when the index IS found, a plain
+        // no-op SELECT otherwise (preparedGuard's own shared helper always guards the opposite way,
+        // "run only when NOT found", which is what every CREATE-shaped caller needs).
+        String statement = "DROP INDEX " + indexName + " ON " + tableName + ";";
+        String index = escapeLiteral(indexName);
+        String table = escapeLiteral(tableName);
+        return "SET @npdev_ddl := (SELECT IF(COUNT(*) > 0, " + quoteSqlLiteral(statement) + ", 'SELECT 1')\n"
+                + "  FROM INFORMATION_SCHEMA.STATISTICS\n"
+                + "  WHERE INDEX_NAME = '" + index + "'\n"
+                + "    AND TABLE_NAME = '" + table + "'\n"
+                + "    AND TABLE_SCHEMA = DATABASE());\n"
+                + "PREPARE npdev_stmt FROM @npdev_ddl;\n"
+                + "EXECUTE npdev_stmt;\n"
+                + "DEALLOCATE PREPARE npdev_stmt;\n";
     }
 
     @Override

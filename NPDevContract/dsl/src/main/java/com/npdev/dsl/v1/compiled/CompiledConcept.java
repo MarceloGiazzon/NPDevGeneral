@@ -10,6 +10,7 @@ public final class CompiledConcept extends CompiledEntity {
     private final String renamedFrom;
     private final String satelliteOf;
     private final CompiledOrigin origin;
+    private final boolean softDelete;
 
     public CompiledConcept(String name, String className, String tableName, List<CompiledField> fields) {
         this(name, className, tableName, fields, List.of(), List.of(), null, null, null, null, List.of());
@@ -181,6 +182,30 @@ public final class CompiledConcept extends CompiledEntity {
             String satelliteOf,
             CompiledOrigin origin
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel,
+                module, indexes, access, renamedFrom, satelliteOf, origin, false);
+    }
+
+    /** R5.4: declares this concept's rows are soft-deleted (deletedAt flipped, never physically removed) --
+     *  see isSoftDelete. */
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel,
+            String module,
+            List<CompiledIndex> indexes,
+            CompiledConceptAccess access,
+            String renamedFrom,
+            String satelliteOf,
+            CompiledOrigin origin,
+            boolean softDelete
+    ) {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
@@ -188,6 +213,7 @@ public final class CompiledConcept extends CompiledEntity {
         this.renamedFrom = renamedFrom;
         this.satelliteOf = satelliteOf;
         this.origin = origin;
+        this.softDelete = softDelete;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -218,6 +244,13 @@ public final class CompiledConcept extends CompiledEntity {
     /** PACK-2: pack-attribution provenance, or null if this concept is not pack-contributed. */
     public CompiledOrigin getOrigin() {
         return origin;
+    }
+
+    /** R5.4: true if this concept's rows are soft-deleted (a delete flips a platform-managed
+     *  deletedAt timestamp instead of removing the row); false (the default) preserves today's
+     *  physical-delete behavior exactly. */
+    public boolean isSoftDelete() {
+        return softDelete;
     }
 
     public static CompiledConcept fromLegacyEntity(CompiledEntity legacy) {

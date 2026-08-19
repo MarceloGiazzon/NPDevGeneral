@@ -91,4 +91,17 @@ public class {{entityName}}ControllerBase {
             return ResponseEntity.badRequest().body(ex.getMessage());
         }
     }
+
+{{#softDelete}}
+    /** R5.4: 404 when the id does not exist OR is not currently soft-deleted (restore is a no-op
+     *  either way at the store layer -- see {@code ConceptStore#restore}'s javadoc) -- a caller
+     *  cannot distinguish "never existed" from "already live" from this response alone, matching
+     *  {@link #deleteBase}'s own not-found-vs-already-gone ambiguity. */
+    protected ResponseEntity<?> restoreBase(UUID id) {
+        boolean restored = service.restore(id);
+        if (!restored) return ResponseEntity.notFound().build();
+        return ResponseEntity.noContent().build();
+    }
+
+{{/softDelete}}
 }

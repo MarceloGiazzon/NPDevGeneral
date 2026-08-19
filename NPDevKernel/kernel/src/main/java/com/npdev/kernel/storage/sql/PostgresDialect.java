@@ -55,7 +55,9 @@ public final class PostgresDialect implements SqlDialect {
             StorageCapability.SKIP_LOCKED_READS,
             // R9.3: pg_advisory_lock, session-scoped and needing no table -- so it can protect a
             // FIRST-EVER boot, before any NPDev table exists to lock.
-            StorageCapability.SESSION_ADVISORY_LOCK);
+            StorageCapability.SESSION_ADVISORY_LOCK,
+            // R5.4: partial index (CREATE UNIQUE INDEX ... WHERE ...) -- documented since Postgres 8.0.
+            StorageCapability.PARTIAL_UNIQUE_INDEX);
 
     private final UpsertStrategy upsert = new PostgresUpsertStrategy();
     private final ReturningStrategy returning = new PostgresReturningStrategy();
@@ -284,6 +286,11 @@ public final class PostgresDialect implements SqlDialect {
     @Override
     public String guardedCreateIndex(String indexName, String tableName, String createStatement) {
         return SqlDdlGuards.insertAfterIndexKeyword(createStatement, "IF NOT EXISTS");
+    }
+
+    @Override
+    public String guardedDropIndexIfExists(String indexName, String tableName) {
+        return "DROP INDEX IF EXISTS " + indexName + ";";
     }
 
     @Override

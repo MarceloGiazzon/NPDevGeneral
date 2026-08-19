@@ -372,6 +372,17 @@
         { "name": "productSku", "type": "string", "ui": { "label": "Product SKU (legacy)" } },
         { "name": "productId", "type": "uuid", "required": true, "ui": { "label": "Product" } }
       ]
+    },
+    {
+      "name": "WidgetSupplier",
+      "truthLevel": "T2",
+      "softDelete": true,
+      "ui": { "label": "Widget supplier" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "supplierCode", "type": "string", "required": true, "unique": true, "ui": { "label": "Supplier code" } },
+        { "name": "displayName", "type": "string", "required": true, "ui": { "label": "Name" } }
+      ]
     }
   ],
 

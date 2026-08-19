@@ -79,6 +79,14 @@ public final class TenantControlledConceptStoreDecorator implements ConceptStore
         effectiveStore(tenantId).deleteById(tenantId, conceptName, id);
     }
 
+    /** R5.4: same reasoning as {@link #query} immediately above -- forwards to the resolved
+     *  delegate's own real {@code deleted_at}-clearing override, not {@link ConceptStore}'s
+     *  {@code false} ("not supported") default. */
+    @Override
+    public boolean restore(String tenantId, String conceptName, String id) {
+        return effectiveStore(tenantId).restore(tenantId, conceptName, id);
+    }
+
     /** LNCH-5: forwards to the resolved delegate's own SQL push-down (see AuditingConceptStoreDecorator's twin). */
     @Override
     public ConceptPage query(String tenantId, String conceptName, ConceptQuery query) {

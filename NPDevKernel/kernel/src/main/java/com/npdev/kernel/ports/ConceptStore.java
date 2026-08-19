@@ -46,7 +46,35 @@ public interface ConceptStore {
      */
     ConceptRecord save(ConceptRecord record);
 
+    /**
+     * R5.4: physically removes the row -- UNCHANGED contract, still what every caller gets for a
+     * concept that does not declare {@code softDelete: true}. For a concept that DOES, a
+     * schema-aware store (see {@code JdbcBusinessConceptStore}) overrides this to flip a
+     * {@code deletedAt} timestamp instead of removing anything, and every read method on that same
+     * store (findById/findAllCapped/query/aggregate/existsUnique) then excludes the row -- so this
+     * port method's signature and physical-delete javadoc stay exactly as they always were; the
+     * soft-delete behavior is entirely an override's business, invisible at this interface.
+     */
     void deleteById(String tenantId, String conceptName, String id);
+
+    /**
+     * R5.4: the restore half of soft delete -- clears whatever {@link #deleteById} set, making the
+     * row visible to every read method again. Default {@code false} (a no-op) is deliberately the
+     * answer for any store with no schema knowledge of which concepts declare {@code softDelete} --
+     * unlike {@link #existsUnique}, this is not something a schema-agnostic default can approximate
+     * correctly (it would need to know a "deletedAt" convention this port has no opinion on), so
+     * "not supported here" is the honest default rather than a guess. A schema-aware store overrides
+     * this with a real implementation; {@code AuditingConceptStoreDecorator}/
+     * {@code TenantControlledConceptStoreDecorator} forward to whatever they wrap (same pattern R5.2/
+     * RUN-16 established for {@link #existsUnique} -- without a forwarding override, wrapping a
+     * concept in either decorator would silently downgrade restore back to this no-op default).
+     *
+     * @return true if a soft-deleted row was found and restored; false if unsupported, the row does
+     *         not exist, or the row was already live
+     */
+    default boolean restore(String tenantId, String conceptName, String id) {
+        return false;
+    }
 
     /**
      * LNCH-5: tenant-scoped, filtered, sorted, paged query. The default fetches the tenant's rows and

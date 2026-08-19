@@ -48,6 +48,13 @@ public class {{entityName}}Controller extends {{entityName}}ControllerBase {
         return deleteBase(id);
     }
 
+{{#softDelete}}
+    @PostMapping("/{id}/restore")
+    public Object restore(@PathVariable UUID id) {
+        return restoreBase(id);
+    }
+
+{{/softDelete}}
 {{#manyToManyBonds}}
     @GetMapping("/{id}/{{name}}")
     public Object list{{capName}}Members(@PathVariable UUID id) {

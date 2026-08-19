@@ -1228,6 +1228,11 @@
           "minLength": 1,
           "description": "PK-6: declares this concept is a satellite extension of a base concept owned by another pack (a pack-qualified reference, e.g. \"identity::User\"). The base pack stays untouched; this concept must also declare a unique+required `type: reference` field whose `reference.target` equals this value (the 1:1 anchor bond the satellite hangs off), enforced by SemanticValidator."
         },
+        "softDelete": {
+          "type": "boolean",
+          "default": false,
+          "description": "R5.4: this concept's rows are never physically deleted. A generated delete flips a platform-managed `deletedAt` timestamp instead of removing the row; every generated read (list/page/aggregate/existsUnique/reference finder) excludes a row with `deletedAt` set, and a generated restore action clears it. A `unique:true` field (or compound-unique invariant) is enforced among live (non-deleted) rows only -- a value freed by a soft delete can be reused immediately."
+        },
         "fields": {
           "type": "array",
           "minItems": 1,
