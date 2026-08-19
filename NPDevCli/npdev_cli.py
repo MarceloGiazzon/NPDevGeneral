@@ -6040,6 +6040,10 @@ def run_pack_publish(args: argparse.Namespace) -> int:
     already-published version's content can never be mutated, checked against on-disk bytes only,
     before `git add`/`commit`/`push` ever runs) -- OCI is out of scope; the catalog is git-only.
     """
+    if getattr(args, "sign_with", None) and not getattr(args, "push", False):
+        raise CliError("--sign-with requires --push (there is nowhere to publish a detached "
+                        "signature to without --push landing the pack in a catalog repo)")
+
     root = repo_root()
     wrapper = gradle_wrapper(root)
     if not wrapper.exists():
@@ -6143,6 +6147,322 @@ def _pack_content_digest_of_dir(root: Path) -> str:
     return _pack_content_digest(files)
 
 
+# ---------------------------------------------------------------------------------------------
+# R8.7: pack signing.
+#
+# PREMISE CHECK (done before writing any of this):
+#   1. A pack fetched from a public repo was, until this, verified only by the R8.6 content
+#      digest -- no authenticity check existed anywhere in the pipeline. TRUE: RemotePackFetcher/
+#      PackCache/PackLockFile (NPDevContract/dsl/.../pack/) content-address and re-verify on every
+#      read, but nothing anywhere asks WHO published the bytes at that digest.
+#   2. No `trust` config existed anywhere in the pack pipeline. TRUE: grepped the whole pack
+#      package and this module for "trust"/"signature"/"signing" before writing any of this --
+#      zero hits outside prose.
+#   3. The lock file can carry a new field without breaking existing locks. TRUE:
+#      `PackLockFile.read` (NPDevContract/dsl/.../pack/PackLockFile.java) only ever reads the five
+#      named fields off each pack entry via Jackson `JsonNode.get(...)`; an unrecognized sibling
+#      key (this feature's own `signature`) is silently ignored by the Java reader, never rejected
+#      -- and `PackLockFile.write` unconditionally REWRITES the whole file from its own five-field
+#      record on every `pack add`/`update`, which is exactly why `_verify_pack_signatures` below
+#      re-adds `signature` as a Python-owned overlay AFTER every Java-side fetch, the same pattern
+#      `_guard_against_remote_pack_tamper` (R8.6) already established for restoring the lock.
+#
+# SIGNING ALGORITHM: no `cryptography`/`pynacl` (or any other signing library) is installed in this
+# repo's toolchain -- checked before writing this -- and the task's own ground rules forbid adding
+# one. Python's stdlib has no asymmetric-signature primitive, so this is a compact, pure-stdlib
+# (hashlib.sha512 + Python's arbitrary-precision int/`pow`) port of the reference Ed25519 algorithm
+# (Bernstein et al., the classic ed25519.py reference implementation, RFC 8032's scheme). It is
+# verified -- NPDevCli/tests/test_pack_signing.py's Ed25519PrimitiveSelfTest -- against: many
+# random keys/messages round-tripping sign->verify; tampered message/signature/wrong-key rejection;
+# the base point's order (`l*BASE == identity`) and an encode/decode round trip. It is NOT claimed
+# to be side-channel-resistant (no constant-time guarantees anywhere in this port) -- acceptable
+# for a build-time CLI signing a public pack digest, never a runtime secret-handling path. If a
+# stronger implementation is ever wanted, the smallest upgrade is shelling out to the `git`/`ssh-
+# keygen`/`openssl` binaries already on this machine's PATH (confirmed present) for SSH- or GPG-
+# format signing -- deliberately NOT done here since that trades "no new dependency" for "a new,
+# undeclared external-binary dependency", which is the same category of problem stated differently.
+# ---------------------------------------------------------------------------------------------
+
+_ED25519_B = 256
+_ED25519_Q = 2 ** 255 - 19
+_ED25519_L = 2 ** 252 + 27742317777372353535851937790883648493
+
+
+def _ed25519_h(data: bytes) -> bytes:
+    return hashlib.sha512(data).digest()
+
+
+def _ed25519_inv(x: int) -> int:
+    return pow(x, _ED25519_Q - 2, _ED25519_Q)  # CPython's pow(base, exp, mod) is a fast C modexp
+
+
+_ED25519_D = (-121665 * _ed25519_inv(121666)) % _ED25519_Q
+_ED25519_I = pow(2, (_ED25519_Q - 1) // 4, _ED25519_Q)
+
+
+def _ed25519_xrecover(y: int) -> int:
+    xx = (y * y - 1) * _ed25519_inv(_ED25519_D * y * y + 1)
+    x = pow(xx, (_ED25519_Q + 3) // 8, _ED25519_Q)
+    if (x * x - xx) % _ED25519_Q != 0:
+        x = (x * _ED25519_I) % _ED25519_Q
+    if x % 2 != 0:
+        x = _ED25519_Q - x
+    return x
+
+
+_ED25519_BY = (4 * _ed25519_inv(5)) % _ED25519_Q
+_ED25519_BX = _ed25519_xrecover(_ED25519_BY)
+_ED25519_BASE = (_ED25519_BX % _ED25519_Q, _ED25519_BY % _ED25519_Q)
+
+
+def _ed25519_edwards(p: tuple, other: tuple) -> tuple:
+    x1, y1 = p
+    x2, y2 = other
+    x3 = (x1 * y2 + x2 * y1) * _ed25519_inv(1 + _ED25519_D * x1 * x2 * y1 * y2)
+    y3 = (y1 * y2 + x1 * x2) * _ed25519_inv(1 - _ED25519_D * x1 * x2 * y1 * y2)
+    return (x3 % _ED25519_Q, y3 % _ED25519_Q)
+
+
+def _ed25519_scalarmult(p: tuple, e: int) -> tuple:
+    if e == 0:
+        return (0, 1)
+    half = _ed25519_scalarmult(p, e // 2)
+    doubled = _ed25519_edwards(half, half)
+    return _ed25519_edwards(doubled, p) if e & 1 else doubled
+
+
+def _ed25519_encodeint(y: int) -> bytes:
+    bits = [(y >> i) & 1 for i in range(_ED25519_B)]
+    return bytes(sum(bits[i * 8 + j] << j for j in range(8)) for i in range(_ED25519_B // 8))
+
+
+def _ed25519_encodepoint(p: tuple) -> bytes:
+    x, y = p
+    bits = [(y >> i) & 1 for i in range(_ED25519_B - 1)] + [x & 1]
+    return bytes(sum(bits[i * 8 + j] << j for j in range(8)) for i in range(_ED25519_B // 8))
+
+
+def _ed25519_bit(h: bytes, i: int) -> int:
+    return (h[i // 8] >> (i % 8)) & 1
+
+
+def _ed25519_hint(m: bytes) -> int:
+    h = _ed25519_h(m)
+    return sum(2 ** i * _ed25519_bit(h, i) for i in range(2 * _ED25519_B))
+
+
+def ed25519_generate_seed() -> bytes:
+    return secrets.token_bytes(32)
+
+
+def ed25519_public_key(secret_seed: bytes) -> bytes:
+    h = _ed25519_h(secret_seed)
+    a = 2 ** (_ED25519_B - 2) + sum(2 ** i * _ed25519_bit(h, i) for i in range(3, _ED25519_B - 2))
+    return _ed25519_encodepoint(_ed25519_scalarmult(_ED25519_BASE, a))
+
+
+def ed25519_sign(message: bytes, secret_seed: bytes, public_key: bytes) -> bytes:
+    h = _ed25519_h(secret_seed)
+    a = 2 ** (_ED25519_B - 2) + sum(2 ** i * _ed25519_bit(h, i) for i in range(3, _ED25519_B - 2))
+    r = _ed25519_hint(bytes(h[i] for i in range(_ED25519_B // 8, _ED25519_B // 4)) + message)
+    r_point = _ed25519_scalarmult(_ED25519_BASE, r)
+    s = (r + _ed25519_hint(_ed25519_encodepoint(r_point) + public_key + message) * a) % _ED25519_L
+    return _ed25519_encodepoint(r_point) + _ed25519_encodeint(s)
+
+
+def _ed25519_isoncurve(p: tuple) -> bool:
+    x, y = p
+    return (-x * x + y * y - 1 - _ED25519_D * x * x * y * y) % _ED25519_Q == 0
+
+
+def _ed25519_decodeint(s: bytes) -> int:
+    return sum(2 ** i * _ed25519_bit(s, i) for i in range(_ED25519_B))
+
+
+def _ed25519_decodepoint(s: bytes) -> tuple:
+    y = sum(2 ** i * _ed25519_bit(s, i) for i in range(_ED25519_B - 1))
+    x = _ed25519_xrecover(y)
+    if (x & 1) != _ed25519_bit(s, _ED25519_B - 1):
+        x = _ED25519_Q - x
+    p = (x, y)
+    if not _ed25519_isoncurve(p):
+        raise ValueError("ed25519 point is not on the curve")
+    return p
+
+
+def ed25519_verify(signature: bytes, message: bytes, public_key: bytes) -> None:
+    """Raises ValueError naming exactly what failed (malformed length, or the actual verification
+    equality); returns None (never a bool) on success, so a caller cannot forget to check a return
+    value -- the only two outcomes are "returned" and "raised"."""
+    if len(signature) != _ED25519_B // 4:
+        raise ValueError(f"ed25519 signature must be {_ED25519_B // 4} bytes, got {len(signature)}")
+    if len(public_key) != _ED25519_B // 8:
+        raise ValueError(f"ed25519 public key must be {_ED25519_B // 8} bytes, got {len(public_key)}")
+    r_point = _ed25519_decodepoint(signature[: _ED25519_B // 8])
+    a_point = _ed25519_decodepoint(public_key)
+    s = _ed25519_decodeint(signature[_ED25519_B // 8: _ED25519_B // 4])
+    h = _ed25519_hint(_ed25519_encodepoint(r_point) + public_key + message)
+    left = _ed25519_scalarmult(_ED25519_BASE, s)
+    right = _ed25519_edwards(r_point, _ed25519_scalarmult(a_point, h))
+    if left != right:
+        raise ValueError("ed25519 signature does not verify against the given public key")
+
+
+PACK_TRUST_FILE_NAME = "npdev-trust.json"  # sibling of npdev.lock, same per-app-root convention.
+PACK_TRUST_DEFAULT_MODE = "warn"
+PACK_TRUST_MODES = ("warn", "enforce")
+
+
+def _pack_trust_path(model_path: Path) -> Path:
+    return Path(model_path).expanduser().resolve().parent / PACK_TRUST_FILE_NAME
+
+
+def _load_pack_trust_config(model_path: Path) -> dict:
+    """No `npdev-trust.json` at all is the SAFE DEFAULT (mode 'warn', zero trusted keys) -- see
+    this module's own report on why 'warn' (not 'enforce') is the default: every pack published
+    before this feature existed is unsigned, so an 'enforce'-by-default would hard-break every
+    app's existing `pack add`/`pack update` the moment this ships. 'warn' still requires
+    --allow-unsigned for every unsigned pack (never silently inherited) -- it is the flag, not the
+    mode, that keeps the done-when's "requires the explicit flag" true by default.
+    """
+    path = _pack_trust_path(model_path)
+    if not path.is_file():
+        return {"mode": PACK_TRUST_DEFAULT_MODE, "trustedKeys": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as malformed:
+        raise CliError(f"{path} is not valid JSON: {malformed}")
+    if not isinstance(data, dict):
+        raise CliError(f"{path}: expected a JSON object with 'mode'/'trustedKeys'")
+    mode = data.get("mode", PACK_TRUST_DEFAULT_MODE)
+    if mode not in PACK_TRUST_MODES:
+        raise CliError(f"{path}: 'mode' must be one of {list(PACK_TRUST_MODES)}, got {mode!r}")
+    trusted_keys = data.get("trustedKeys", {})
+    if not isinstance(trusted_keys, dict):
+        raise CliError(f"{path}: 'trustedKeys' must be an object of {{keyId: hexPublicKey}}")
+    return {"mode": mode, "trustedKeys": trusted_keys}
+
+
+_GIT_COORDINATE_TRANSPORTS = ("https", "http", "ssh", "file", "git")
+
+
+def _parse_git_coordinate(from_str: str) -> tuple[str, str, str, str]:
+    """Python port of `GitCoordinate.parse` (NPDevContract/dsl/.../pack/GitCoordinate.java) -- same
+    grammar, `git+<transport>://<repo-url>[//<subpath>]@<tag>`, tag found by the LAST '@' after the
+    scheme (a `git+ssh://git@host/repo@v1` has a legitimate `user@host` earlier in the string).
+    Returns (transport, repoUrl, subpath, tag). Raises CliError (there is no shared exception type
+    with the Java side) on a malformed coordinate."""
+    if not from_str.startswith("git+"):
+        raise CliError(f"pack signature lookup only supports git+ coordinates, got: {from_str}")
+    rest = from_str[len("git+"):]
+    scheme_sep = rest.find("://")
+    if scheme_sep <= 0:
+        raise CliError(f"git+ coordinate must be 'git+<transport>://<url>[//<subpath>]@<tag>': {from_str}")
+    transport = rest[:scheme_sep]
+    if transport not in _GIT_COORDINATE_TRANSPORTS:
+        raise CliError(f"git+ transport must be one of {list(_GIT_COORDINATE_TRANSPORTS)}, "
+                        f"got '{transport}': {from_str}")
+    after_scheme = rest[scheme_sep + 3:]
+    last_at = after_scheme.rfind("@")
+    if last_at < 0 or last_at == len(after_scheme) - 1:
+        raise CliError(f"git+ coordinate must end with '@<tag>': {from_str}")
+    tag = after_scheme[last_at + 1:]
+    url_and_subpath = after_scheme[:last_at]
+    subpath_sep = url_and_subpath.find("//")
+    if subpath_sep >= 0:
+        repo_url = url_and_subpath[:subpath_sep]
+        subpath = url_and_subpath[subpath_sep + 2:]
+    else:
+        repo_url = url_and_subpath
+        subpath = ""
+    if not repo_url:
+        raise CliError(f"git+ coordinate must name a non-blank repository URL: {from_str}")
+    return transport, repo_url, subpath, tag
+
+
+def _fetch_pack_signature(from_coordinate: str, digest: str) -> dict | None:
+    """R8.7: independently (re-)clones the SAME repo at the SAME tag `from_coordinate` names (a
+    second, small clone, separate from PK-5's own Java-side fetch -- there is no way to reach into
+    that fetch's already-deleted temp clone from here) and looks for a detached signature at
+    `signatures/sha256/<digestHex>.sig`, deliberately at the CATALOG REPO ROOT rather than inside
+    the pack's own `packs/<id>/` subpath: that subpath is exactly what `PackCache.sha256OfTree`
+    hashes into the content digest (R8.6's own doc: "the digest covers the WHOLE cached tree"), so
+    a signature file living INSIDE it would have to sign a digest that already includes its own
+    bytes -- circular. Living at the catalog root instead, in the SAME commit/tag as the pack
+    content, sidesteps that for every subpath shape `pack publish --push` produces.
+
+    Returns the parsed signature JSON, or None when no signature file exists for this digest
+    (UNSIGNED, not an error). Raises CliError only for an actual fetch/parse failure (git error,
+    malformed JSON) -- never conflated with "unsigned", which is a legitimate, expected outcome.
+    """
+    _transport, repo_url, _subpath, tag = _parse_git_coordinate(from_coordinate)
+    full_url = f"{_transport}://{repo_url}"
+    digest_hex = digest.split(":", 1)[1] if ":" in digest else digest
+    with tempfile.TemporaryDirectory(prefix="npdev-pack-sig-fetch-") as temp_dir:
+        dest = Path(temp_dir) / "clone"
+        completed = subprocess.run(
+            ["git", "clone", "--quiet", "--branch", tag, "--depth", "1", full_url, str(dest)],
+            capture_output=True, text=True,
+        )
+        if completed.returncode != 0:
+            raise CliError(
+                f"could not fetch signature metadata for pack coordinate {from_coordinate}: "
+                f"git clone failed (exit {completed.returncode}): "
+                f"{(completed.stderr or completed.stdout or '').strip()}"
+            )
+        sig_path = dest / "signatures" / "sha256" / f"{digest_hex}.sig"
+        if not sig_path.is_file():
+            return None
+        try:
+            return json.loads(sig_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as malformed:
+            raise CliError(f"signature file for {from_coordinate} is not valid JSON: {sig_path}: {malformed}")
+
+
+def _load_pack_signing_key(path: Path) -> dict:
+    if not path.is_file():
+        raise CliError(f"--sign-with key file not found: {path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as malformed:
+        raise CliError(f"--sign-with key file is not valid JSON: {path}: {malformed}")
+    for field in ("keyId", "privateKey", "publicKey"):
+        if not data.get(field):
+            raise CliError(f"--sign-with key file {path} is missing required field '{field}'")
+    return data
+
+
+def run_pack_sign_keygen(args: argparse.Namespace) -> int:
+    """R8.7: generates an Ed25519 keypair for `pack publish --sign-with`. Writes the PRIVATE key
+    (alongside its own public key + keyId, so a caller need never separately re-derive the public
+    half) to --out as JSON, best-effort chmod 600. The public key + keyId are always ALSO printed
+    to stdout on their own -- that is the only part that ever needs to leave this machine, into a
+    consumer's npdev-trust.json trustedKeys.
+    """
+    seed = ed25519_generate_seed()
+    public_key = ed25519_public_key(seed)
+    key_id = hashlib.sha256(public_key).hexdigest()[:16]
+    record = {
+        "schemaVersion": "npdev-pack-signing-key.v1",
+        "keyId": key_id,
+        "algorithm": "ed25519",
+        "privateKey": seed.hex(),
+        "publicKey": public_key.hex(),
+    }
+    out_path = Path(args.out).expanduser().resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    try:
+        os.chmod(out_path, 0o600)
+    except OSError:
+        pass  # best-effort: meaningless on some filesystems, never worth failing the command over
+    print(json.dumps({"keyId": key_id, "algorithm": "ed25519", "publicKey": public_key.hex(),
+                       "privateKeyFile": str(out_path)}, indent=2))
+    print(f"Private key written to {out_path} -- keep it secret. Share only the printed publicKey "
+          f"(a consumer adds it to npdev-trust.json under trustedKeys.{key_id}).")
+    return 0
+
+
 def _push_pack_to_catalog(new_pack_path: Path, args: argparse.Namespace) -> dict:
     """R8.5: commits `new_pack_path` (+ a regenerated `catalog-index.json`, R8.4's own writer --
     `_scan_pack_catalog_entries`/`_write_pack_catalog_index`, never a second index format) into the
@@ -6218,9 +6538,41 @@ def _push_pack_to_catalog(new_pack_path: Path, args: argparse.Namespace) -> dict
     catalog_index_path = catalog_repo / "catalog-index.json"
     _write_pack_catalog_index(catalog_index_path, repository_url, entries)
 
+    # R8.7: sign the pack's own content digest -- recomputed over the tree AS ACTUALLY WRITTEN
+    # (target_dir, post-write), not the pre-write single-file `new_digest` above, so a future
+    # fragment-carrying pack (see PackCache's own "whole tree, not just pack.json" doc) still signs
+    # what a consumer will actually fetch and digest. Written to `signatures/sha256/<hex>.sig` at
+    # the CATALOG ROOT, deliberately outside `packs/<id>/` -- see `_fetch_pack_signature`'s own doc
+    # for why (signing a digest that already contains its own signature file is circular).
+    signed_git_paths: list[str] = []
+    signature_result = None
+    sign_with = getattr(args, "sign_with", None)
+    if sign_with:
+        signing_digest = _pack_content_digest_of_dir(target_dir)
+        key_record = _load_pack_signing_key(Path(sign_with).expanduser().resolve())
+        signature_bytes = ed25519_sign(
+            signing_digest.encode("utf-8"),
+            bytes.fromhex(key_record["privateKey"]),
+            bytes.fromhex(key_record["publicKey"]),
+        )
+        digest_hex = signing_digest.split(":", 1)[1]
+        sig_dir = catalog_repo / "signatures" / "sha256"
+        sig_dir.mkdir(parents=True, exist_ok=True)
+        sig_path = sig_dir / f"{digest_hex}.sig"
+        sig_path.write_text(json.dumps({
+            "schemaVersion": "npdev-pack-signature.v1",
+            "algorithm": "ed25519",
+            "keyId": key_record["keyId"],
+            "digest": signing_digest,
+            "signature": signature_bytes.hex(),
+        }, indent=2) + "\n", encoding="utf-8")
+        signed_git_paths = [sig_path.relative_to(catalog_repo).as_posix()]
+        signature_result = {"keyId": key_record["keyId"], "digest": signing_digest, "sigPath": str(sig_path)}
+
     user_name = getattr(args, "git_user_name", None) or "npdev-pack-publish"
     user_email = getattr(args, "git_user_email", None) or "npdev-pack-publish@localhost"
-    _run_git(["add", target_file.relative_to(catalog_repo).as_posix(), "catalog-index.json"], catalog_repo)
+    _run_git(["add", target_file.relative_to(catalog_repo).as_posix(), "catalog-index.json",
+              *signed_git_paths], catalog_repo)
     _run_git(
         ["-c", f"user.name={user_name}", "-c", f"user.email={user_email}",
          "commit", "--quiet", "-m", f"publish {pack_id} v{version}"],
@@ -6245,7 +6597,7 @@ def _push_pack_to_catalog(new_pack_path: Path, args: argparse.Namespace) -> dict
         "packId": pack_id, "version": version, "tag": tag, "branch": branch, "remote": remote,
         "coordinate": coordinate, "commit": commit_sha,
         "catalogRepo": str(catalog_repo), "catalogIndexPath": str(catalog_index_path),
-        "problems": problems,
+        "problems": problems, "signed": signature_result is not None, "signature": signature_result,
     }
 
 
@@ -6868,29 +7220,138 @@ def _guard_against_remote_pack_tamper(model_path: Path, before_text: str | None,
     raise CliError("\n".join(lines))
 
 
-def _run_pack_gradle_task_with_tamper_guard(task: str, model_path: Path) -> int:
+def _run_pack_gradle_task_with_tamper_guard(task: str, model_path: Path, args: argparse.Namespace) -> int:
     """Wraps `_run_pack_gradle_task` for `packAdd`/`packUpdate` -- the two tasks that actually
     touch the network and can rewrite npdev.lock with freshly-fetched remote content -- with the
-    R8.6 tamper guard above. `packList`/`packWhy` never fetch or rewrite the lock, so they call
-    `_run_pack_gradle_task` directly, unwrapped.
+    R8.6 tamper guard above, THEN (R8.7) the signature-verification gate. `packList`/`packWhy`
+    never fetch or rewrite the lock, so they call `_run_pack_gradle_task` directly, unwrapped.
+    Order matters: a mutated-tag tamper is a stronger, unconditional signal than "unsigned" and
+    must be caught and rolled back FIRST, before signature verification ever looks at (and
+    potentially re-persists a `signature` field onto) content the tamper guard would have refused.
     """
     lock_path = _pack_lock_path(model_path)
     before_text = lock_path.read_text(encoding="utf-8") if lock_path.is_file() else None
     code = _run_pack_gradle_task(task, model_path)
     if code == 0:
         _guard_against_remote_pack_tamper(model_path, before_text, task)
+        _verify_pack_signatures(model_path, before_text, args)
     return code
+
+
+def _verify_pack_signatures(model_path: Path, before_text: str | None, args: argparse.Namespace) -> None:
+    """R8.7: after a successful packAdd/packUpdate fetch (and after R8.6's tamper guard has already
+    passed), verify every REMOTE pack entry's detached Ed25519 signature against
+    npdev-trust.json's trusted keys before this npdev.lock is allowed to stand as what the app
+    trusts. Three DISTINCT, named refusals -- never conflated into one generic message, since a
+    caller needs to know which applies:
+
+      - UNSIGNED: no detached signature was published for this pack's digest. Accepted only with
+        --allow-unsigned -- and NEVER in trust.mode 'enforce', where no flag can bypass it. When
+        accepted, the acceptance is written into npdev.lock's own entry
+        (`signature: {status: "unsigned", allowedUnsigned: true}`) so a teammate reviewing a lock
+        diff sees the decision was made explicitly, never silently inherited (the done-when's own
+        "and the lock records it").
+      - UNKNOWN_SIGNER: a signature exists but its keyId is not in npdev-trust.json's trustedKeys.
+        NEVER bypassable by --allow-unsigned -- that flag is about the ABSENCE of a signature, not
+        an untrusted identity; forcing this through would defeat the point of signing entirely.
+      - BAD_SIGNATURE: a signature exists, its signer IS trusted, but it does not verify against
+        the pack's own locked digest -- tampering or a corrupted publish. NEVER bypassable.
+
+    On ANY refusal, npdev.lock is restored to `before_text` first (the same rollback discipline
+    `_guard_against_remote_pack_tamper` already established), so a caller never ends up with a lock
+    that trusts content this check just refused.
+    """
+    lock_path = _pack_lock_path(model_path)
+    if not lock_path.is_file():
+        return
+    try:
+        lock_doc = json.loads(lock_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return  # a malformed lock is not this function's job to diagnose -- PackLockFile owns that
+    packs = lock_doc.get("packs")
+    if not isinstance(packs, dict):
+        return
+
+    trust = _load_pack_trust_config(model_path)
+    mode = trust["mode"]
+    trusted_keys = trust["trustedKeys"]
+    allow_unsigned = bool(getattr(args, "allow_unsigned", False))
+
+    def _refuse(message: str) -> None:
+        if before_text is not None:
+            lock_path.write_text(before_text, encoding="utf-8")
+        else:
+            lock_path.unlink(missing_ok=True)
+        raise CliError(message)
+
+    changed = False
+    for pack_id in sorted(packs):
+        entry = packs[pack_id]
+        if not isinstance(entry, dict):
+            continue
+        from_coord = str(entry.get("from") or "")
+        digest = str(entry.get("digest") or "")
+        if not from_coord or not digest:
+            continue  # a LOCAL pack (no `from`) never went over the network -- nothing to verify
+
+        sig_record = _fetch_pack_signature(from_coord, digest)  # CliError propagates as-is (fetch failure)
+
+        if sig_record is None:
+            if mode == "enforce":
+                _refuse(
+                    f"REFUSED (UNSIGNED, trust mode 'enforce'): pack '{pack_id}' @ "
+                    f"{entry.get('resolvedVersion')} ({from_coord}) has no detached signature for "
+                    f"digest {digest} -- 'enforce' mode never accepts an unsigned pack, and "
+                    f"--allow-unsigned cannot override it. Publish a signed version, or relax "
+                    f"npdev-trust.json's mode to 'warn'."
+                )
+            if not allow_unsigned:
+                _refuse(
+                    f"REFUSED (UNSIGNED): pack '{pack_id}' @ {entry.get('resolvedVersion')} "
+                    f"({from_coord}) has no detached signature for digest {digest}. Pass "
+                    f"--allow-unsigned to accept it explicitly -- that decision is recorded in "
+                    f"npdev.lock, not silently inherited."
+                )
+            entry["signature"] = {"status": "unsigned", "allowedUnsigned": True}
+            changed = True
+            continue
+
+        key_id = str(sig_record.get("keyId") or "")
+        trusted_public_key_hex = trusted_keys.get(key_id)
+        if not trusted_public_key_hex:
+            _refuse(
+                f"REFUSED (UNKNOWN_SIGNER): pack '{pack_id}' @ {entry.get('resolvedVersion')} "
+                f"({from_coord}) is signed by keyId '{key_id}', which is not in "
+                f"npdev-trust.json's trustedKeys. Add it there once verified through another "
+                f"channel -- --allow-unsigned has no effect here, this pack IS signed, just not by "
+                f"a key you trust yet."
+            )
+        try:
+            signature_bytes = bytes.fromhex(str(sig_record.get("signature") or ""))
+            public_key_bytes = bytes.fromhex(trusted_public_key_hex)
+            ed25519_verify(signature_bytes, digest.encode("utf-8"), public_key_bytes)
+        except ValueError as bad_signature:
+            _refuse(
+                f"REFUSED (BAD_SIGNATURE): pack '{pack_id}' @ {entry.get('resolvedVersion')}'s "
+                f"detached signature does not verify against trusted key '{key_id}' for digest "
+                f"{digest} -- {bad_signature}. This is either tampering or a corrupted publish."
+            )
+        entry["signature"] = {"status": "verified", "keyId": key_id, "algorithm": "ed25519"}
+        changed = True
+
+    if changed:
+        lock_path.write_text(json.dumps(lock_doc, indent=2) + "\n", encoding="utf-8")
 
 
 def run_pack_add(args: argparse.Namespace) -> int:
     from_catalog = getattr(args, "from_catalog", None)
     if from_catalog:
         _add_pack_from_catalog(Path(args.model), from_catalog, args)
-    return _run_pack_gradle_task_with_tamper_guard("packAdd", Path(args.model))
+    return _run_pack_gradle_task_with_tamper_guard("packAdd", Path(args.model), args)
 
 
 def run_pack_update(args: argparse.Namespace) -> int:
-    return _run_pack_gradle_task_with_tamper_guard("packUpdate", Path(args.model))
+    return _run_pack_gradle_task_with_tamper_guard("packUpdate", Path(args.model), args)
 
 
 def run_pack_list(args: argparse.Namespace) -> int:
@@ -9314,8 +9775,22 @@ def build_parser() -> argparse.ArgumentParser:
                           help="--from-catalog's own lookup only: never touch the network, use the "
                                "cached catalog (refuses if none is cached). Has no effect without "
                                "--from-catalog.")
+    # R8.7: signing/trust gate -- see _verify_pack_signatures. Required (every time, not just once)
+    # to accept ANY remote pack with no detached signature; has no effect on an UNKNOWN_SIGNER or
+    # BAD_SIGNATURE refusal (never bypassable), and no effect at all when npdev-trust.json's mode
+    # is 'enforce'.
+    pack_add.add_argument(
+        "--allow-unsigned", dest="allow_unsigned", action="store_true",
+        help="accept a remote pack with no detached signature. Recorded in npdev.lock "
+             "(signature.status='unsigned', allowedUnsigned=true). Ignored in trust mode 'enforce'.",
+    )
     pack_update = pack_sub.add_parser("update", help="Re-resolve the pack graph and rewrite npdev.lock.")
     pack_update.add_argument("--model", required=True, help="path to the model.json to resolve")
+    pack_update.add_argument(
+        "--allow-unsigned", dest="allow_unsigned", action="store_true",
+        help="accept a remote pack with no detached signature. Recorded in npdev.lock "
+             "(signature.status='unsigned', allowedUnsigned=true). Ignored in trust mode 'enforce'.",
+    )
     pack_list = pack_sub.add_parser("list", help="Print the current npdev.lock (or a live dry-run).")
     pack_list.add_argument("--model", required=True, help="path to the model.json to resolve")
     pack_why = pack_sub.add_parser("why", help="Explain why a pack resolved to its current version.")
@@ -9452,6 +9927,21 @@ def build_parser() -> argparse.ArgumentParser:
     pack_publish.add_argument(
         "--git-user-email", dest="git_user_email", default=None,
         help="git author email for the publish commit (default: npdev-pack-publish@localhost)",
+    )
+    # R8.7: sign the pushed pack's content digest and publish the detached signature alongside it,
+    # in the SAME commit/tag -- see _push_pack_to_catalog's own doc for the signing digest and
+    # _fetch_pack_signature's for why the signature lives outside packs/<id>/.
+    pack_publish.add_argument(
+        "--sign-with", dest="sign_with", default=None, metavar="<keyfile>",
+        help="path to a keyfile written by `npdev pack sign-keygen` -- sign the pushed pack's "
+             "content digest with it and publish the detached signature alongside. Requires --push.",
+    )
+
+    pack_sign_keygen = pack_sub.add_parser(
+        "sign-keygen", help="Generate an Ed25519 keypair for `pack publish --sign-with` (R8.7)."
+    )
+    pack_sign_keygen.add_argument(
+        "--out", required=True, help="path to write the private keyfile (JSON) to",
     )
 
     # R1.5 (roadmap 2026-08-18 R1.5): "npdev init" scaffolds a whole app; before this, growing one
@@ -10350,6 +10840,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_pack_diff(args)
         if args.command == "pack" and args.pack_command == "publish":
             return run_pack_publish(args)
+        if args.command == "pack" and args.pack_command == "sign-keygen":
+            return run_pack_sign_keygen(args)
         if args.command == "pack" and args.pack_command == "search":
             return run_pack_search(args)
         if args.command == "pack" and args.pack_command == "build-catalog":

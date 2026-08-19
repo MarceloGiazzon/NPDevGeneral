@@ -437,7 +437,8 @@ class PackAddFromCatalogRoundTripTest(unittest.TestCase):
                     })
 
                     add_args = argparse.Namespace(model=str(model_path), from_catalog="rtpack",
-                                                   catalog_url=catalog_url, offline=False)
+                                                   catalog_url=catalog_url, offline=False,
+                                                   allow_unsigned=True)  # R8.7: this fixture pack is unsigned
                     with redirect_stdout(io.StringIO()):
                         add_code = npdev_cli.run_pack_add(add_args)
                     self.assertEqual(0, add_code, "pack add --from-catalog must resolve and lock")
