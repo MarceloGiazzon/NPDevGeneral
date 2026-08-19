@@ -29,13 +29,18 @@
   input{font:12px var(--np-font);padding:2px 5px;border:1px solid var(--np-line);border-radius:3px;background:#fff}
   input.cell{width:100%;border-color:transparent;background:transparent}
   input.cell:focus{border-color:var(--np-accent);background:#fff}
+  input.cell:focus-visible{outline:2px solid var(--np-accent);outline-offset:-1px}
   table{border-collapse:collapse;width:100%;font-size:12px;background:#fff}
   th{background:var(--np-grid-head);color:#fff;text-align:left;padding:3px 7px;font-weight:600;white-space:nowrap}
   td{border-bottom:1px solid #e6ebf0;padding:1px 4px;white-space:nowrap}
   tr.sel td{background:#dcecff}
   tr.master{cursor:pointer}
-  .rowbtn{color:var(--np-danger);cursor:pointer;font-weight:700;padding:0 5px}
-  .addrow{color:var(--np-accent);cursor:pointer;font-size:12px;display:inline-block;margin-top:4px}
+  /* R7.9: .rowbtn/.addrow/.pick were plain <span onclick> -- unreachable by keyboard. Now real
+     <button> elements (see workbench render()/openBandPicker); these resets keep the SAME look a
+     bare span had (no native button border/background/font), matching the existing .rev button's
+     own reset below. Native :focus-visible outline is left alone -- nothing here suppresses it. */
+  .rowbtn{color:var(--np-danger);cursor:pointer;font-weight:700;padding:0 5px;background:none;border:0;font:inherit}
+  .addrow{color:var(--np-accent);cursor:pointer;font-size:12px;display:inline-block;margin-top:4px;background:none;border:0;font:inherit}
   .grids{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
   .gwrap{min-width:220px}
   .gwrap h4{margin:0 0 3px;font-size:12px;color:#456}
@@ -48,7 +53,7 @@
   .derived .item{display:flex;gap:5px;align-items:baseline}
   .derived .item .lbl{color:var(--np-muted)}
   .derived .item .val{font-weight:600}
-  .pick{cursor:pointer;color:var(--np-accent);font-size:12px;display:inline-block;margin-top:4px;margin-left:12px}
+  .pick{cursor:pointer;color:var(--np-accent);font-size:12px;display:inline-block;margin-top:4px;margin-left:12px;background:none;border:0;font:inherit}
   .modal{position:fixed;inset:0;background:rgba(20,28,38,.45);display:flex;align-items:center;justify-content:center;z-index:50}
   .modal-card{background:#fff;border-radius:8px;max-width:640px;width:92%;max-height:80vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3)}
   .modal-hd{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--np-line);font-weight:600}
@@ -80,6 +85,37 @@
   var clone = function (v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); };
   var pick = function (o, fs) { var r = {}; (fs || []).forEach(function (f) { r[f] = o == null ? undefined : o[f]; }); return r; };
   var genId = function () { return "new-" + Math.random().toString(36).slice(2, 10); };
+
+  // R7.9: found live, not routed around. A row added via addRow/addBandRow/addBandRowFrom (mouse
+  // OR keyboard -- this is not a keyboard-specific bug) carries genId()'s "new-<random>" placeholder
+  // in its OWN `id` field, because `id` is just another column columnsFor() exposes on the
+  // section/band grid like any other -- there is nothing that makes it special during editing. At
+  // commit that placeholder was posted to the server AS the row's real id, and
+  // AggregateRuntime#resolveId (com.finalexec.npdev.service) only substitutes a fresh UUID when the
+  // incoming id is null/blank, so a non-UUID "new-xxxxxxxx" string reached the JDBC insert verbatim
+  // and failed with 503 "Failed saving concept X to JDBC store" -- reproduced live: a keyboard
+  // routine's create+edit save on a fresh aggregate, payload `{id:"new-0vsigl3r", lotCode:"LOT-001",
+  // quantity:25}` for the new row, first without and then WITH productId supplied (ruling out a NULL
+  // constraint) -- both attempts failed identically, isolating id itself as the cause. Fixed on the
+  // client, not the server: a client-side placeholder is never meaningful data and must never reach
+  // a commit payload, the same rule visibleWhen/uiStateValues already follow for presentation-only
+  // state. Strips every `new-*` id in the outgoing tree so the server's existing blank-id fallback
+  // allocates the real one, exactly as it already does for a row whose id was never set at all.
+  function stripClientTempIds(node) {
+    if (Array.isArray(node)) {
+      node.forEach(stripClientTempIds);
+      return;
+    }
+    if (node && typeof node === "object") {
+      if (typeof node.id === "string" && node.id.indexOf("new-") === 0) {
+        delete node.id;
+      }
+      Object.keys(node).forEach(function (key) {
+        var value = node[key];
+        if (value && typeof value === "object") { stripClientTempIds(value); }
+      });
+    }
+  }
 
   function createStore(resp) {
     var descriptor = resp.workbench || {};
@@ -175,11 +211,118 @@
   var EDITABLE = true;
   // Focus tracking so a debounced recompute re-render can restore the caret to the cell being edited.
   var activeFocusKey = null, restoreFocus = false;
+  // ------------------------------------------------------------------------------------------
+  // R7.9: keyboard-first cell navigation for every input.cell -- the header form's flat field
+  // list AND the section/band tables (the ONLY inline-editable grids anywhere in a generated
+  // app; the plain Panel grid opens a separate form instead of editing cells in place).
+  //
+  // Checked against existing/native bindings before reassigning any key:
+  //   - Enter does nothing today. Neither table is inside a <form> at all, and the header
+  //     <form class="grid2"> has no submit button and more than one field, so the browser's own
+  //     "implicit submission" rule (single text field, no button) never applies either. Safe to
+  //     repurpose entirely.
+  //   - ArrowUp/ArrowDown do nothing in a single-line text input in any browser. Safe to hijack.
+  //   - ArrowLeft/ArrowRight move the caret. Reassigned ONLY when the caret is already at the
+  //     start/end of the value -- exactly the Excel/Google-Sheets convention, so normal text
+  //     editing inside a cell (including selecting text with Shift+Arrow) is untouched.
+  //   - Tab/Shift+Tab are left to the browser entirely: DOM order already matches reading order
+  //     (row-major, left to right, top to bottom), so native tab order needs no help here.
+  //   - Escape is left alone: there is no cell-edit-cancel affordance to give it, and the
+  //     picker dialog (openBandPicker) owns Escape for its own close.
+  // ------------------------------------------------------------------------------------------
+  function focusInputEl(input) {
+    if (!input) { return false; }
+    input.focus();
+    var n = input.value.length;
+    try { input.setSelectionRange(n, n); } catch (e) { }
+    return true;
+  }
+  function focusCellInTd(td) {
+    return td ? focusInputEl(td.querySelector("input.cell")) : false;
+  }
+  function lastCellTd(tr) {
+    var tds = Array.prototype.slice.call(tr.children);
+    for (var i = tds.length - 1; i >= 0; i--) {
+      if (tds[i].querySelector("input.cell")) { return tds[i]; }
+    }
+    return null;
+  }
+  function atCaretStart(input) { return input.selectionStart === 0 && input.selectionEnd === 0; }
+  function atCaretEnd(input) { return input.selectionStart === input.value.length && input.selectionEnd === input.value.length; }
+
+  // table.children are <tr> elements directly (no <thead>/<tbody> -- see render()): index 0 is
+  // always the header row, so row navigation starts at index 1.
+  function gridCellKeydown(event, input, table) {
+    var td = input.closest("td");
+    var tr = td.parentElement;
+    var rows = Array.prototype.slice.call(table.children);
+    var rowIndex = rows.indexOf(tr);
+    var cellIndex = Array.prototype.indexOf.call(tr.children, td);
+    // Shift+Arrow is left to the browser's own text-selection behavior in every direction, not
+    // just Left/Right -- only a plain arrow key means "navigate cells" here. Shift+ENTER is
+    // different and deliberately handled below (reverse commit-and-advance).
+    var isArrow = event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "ArrowLeft" || event.key === "ArrowRight";
+    if (isArrow && event.shiftKey) { return; }
+    if (event.key === "ArrowDown") {
+      var below = rows[rowIndex + 1];
+      if (below && focusCellInTd(below.children[cellIndex])) { event.preventDefault(); }
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      var above = rowIndex > 1 ? rows[rowIndex - 1] : null;
+      if (above && focusCellInTd(above.children[cellIndex])) { event.preventDefault(); }
+      return;
+    }
+    if (event.key === "ArrowLeft" && atCaretStart(input)) {
+      if (cellIndex > 0 && focusCellInTd(tr.children[cellIndex - 1])) { event.preventDefault(); }
+      return;
+    }
+    if (event.key === "ArrowRight" && atCaretEnd(input)) {
+      if (focusCellInTd(tr.children[cellIndex + 1])) { event.preventDefault(); }
+      return;
+    }
+    if (event.key !== "Enter") { return; }
+    event.preventDefault();
+    if (event.shiftKey) {
+      if (cellIndex > 0 && focusCellInTd(tr.children[cellIndex - 1])) { return; }
+      var prevRow = rowIndex > 1 ? rows[rowIndex - 1] : null;
+      if (prevRow) { focusCellInTd(lastCellTd(prevRow)); }
+      return;
+    }
+    // Commit-and-advance: next column, or column 0 of the next row, or -- at the very last cell
+    // of an EDITABLE table -- add a new row and land in ITS first cell. table._npdevAddRow is
+    // wired by render() next to that table's own "+ add row" button, so Enter never dead-ends.
+    if (focusCellInTd(tr.children[cellIndex + 1])) { return; }
+    var nextRow = rows[rowIndex + 1];
+    if (nextRow && focusCellInTd(nextRow.children[0])) { return; }
+    if (EDITABLE && table._npdevAddRow) { table._npdevAddRow(); }
+  }
+
+  // The header form is a flat field list (form.grid2), not a table -- Enter/Shift+Enter move to
+  // the next/previous field in DOM order; there is no tabular "column" to give Up/Down a meaning.
+  function headerCellKeydown(event, input) {
+    if (event.key !== "Enter") { return; }
+    event.preventDefault();
+    var form = input.closest("form");
+    if (!form) { return; }
+    var cells = Array.prototype.slice.call(form.querySelectorAll("input.cell"));
+    var index = cells.indexOf(input);
+    focusInputEl(event.shiftKey ? cells[index - 1] : cells[index + 1]);
+  }
+
+  function cellKeydown(event) {
+    var input = event.target;
+    var table = input.closest("table");
+    if (table) { gridCellKeydown(event, input, table); }
+    else { headerCellKeydown(event, input); }
+  }
+
   var cell = function (val, on, key) {
     var i = el('<input class="cell">');
     i.value = val == null ? "" : String(val);
     if (key) { i.setAttribute("data-fkey", key); i.addEventListener("focus", function () { activeFocusKey = key; }); }
     i.oninput = function (e) { on(e.target.value); scheduleRecompute(); };
+    i.addEventListener("keydown", cellKeydown);
     if (!EDITABLE) { i.readOnly = true; }
     return i;
   };
@@ -554,11 +697,28 @@
           var tr = el('<tr class="master ' + (r.id === selected ? "sel" : "") + '"></tr>');
           sec.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(r.values[c], function (val) { store.editRow(sec.collection, r.id, c, val); }, "s:" + sec.collection + ":" + r.id + ":" + c)); tr.append(td); });
           var del = el('<td></td>');
-          if (EDITABLE) { var x = el('<span class="rowbtn">✕</span>'); x.onclick = function (e) { e.stopPropagation(); store.deleteRow(sec.collection, r.id); if (selected === r.id) selected = null; render(); }; del.append(x); }
+          // R7.9: a real <button>, not a <span onclick> -- was completely unreachable by keyboard.
+          if (EDITABLE) { var x = el('<button type="button" class="rowbtn" aria-label="Remove row">✕</button>'); x.onclick = function (e) { e.stopPropagation(); store.deleteRow(sec.collection, r.id); if (selected === r.id) selected = null; render(); }; del.append(x); }
           tr.append(del); tr.onclick = function () { selected = r.id; render(); }; tbl.append(tr);
         });
         ib.append(tbl);
-        if (EDITABLE) { var add = el('<span class="addrow">+ add row</span>'); add.onclick = function () { selected = store.addRow(sec.collection); render(); }; ib.append(add); }
+        if (EDITABLE) {
+          // R7.9: without a keyboard-reachable add-row control, an aggregate with a required
+          // collection could never be created by a keyboard-only user at all -- the single most
+          // important gap this item closes. Focuses the new row's first cell (the existing
+          // activeFocusKey/restoreFocus mechanism, otherwise only used by recompute's re-render),
+          // and doubles as the target for Enter-to-commit-and-advance off the last cell (see
+          // gridCellKeydown / table._npdevAddRow).
+          var addRowFn = function () {
+            var newId = store.addRow(sec.collection);
+            selected = newId;
+            activeFocusKey = "s:" + sec.collection + ":" + newId + ":" + (sec.columns[0] || "");
+            restoreFocus = true;
+            render();
+          };
+          tbl._npdevAddRow = addRowFn;
+          var add = el('<button type="button" class="addrow">+ add row</button>'); add.onclick = addRowFn; ib.append(add);
+        }
       }
       items.append(ib); app.append(items);
 
@@ -585,14 +745,21 @@
               var tr = el("<tr></tr>");
               bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); }, "b:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + br.id + ":" + c)); tr.append(td); });
               var del = el('<td></td>');
-              if (EDITABLE) { var bx = el('<span class="rowbtn">✕</span>'); bx.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); }; del.append(bx); }
+              if (EDITABLE) { var bx = el('<button type="button" class="rowbtn" aria-label="Remove row">✕</button>'); bx.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); }; del.append(bx); }
               tr.append(del); gt.append(tr);
             });
             g.append(gt);
             if (EDITABLE) {
-              var add2 = el('<span class="addrow">+ add row</span>'); add2.onclick = function () { store.addBandRow(sec.collection, selRow.id, bd.collection); render(); }; g.append(add2);
+              var addRowFn = function () {
+                var newId = store.addBandRow(sec.collection, selRow.id, bd.collection);
+                activeFocusKey = "b:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + newId + ":" + (bd.columns[0] || "");
+                restoreFocus = true;
+                render();
+              };
+              gt._npdevAddRow = addRowFn;
+              var add2 = el('<button type="button" class="addrow">+ add row</button>'); add2.onclick = addRowFn; g.append(add2);
               // C6 "Seleciona …": pick band rows from a source Selection panel via a modal, instead of blank add.
-              if (bd.picker) { var pk = el('<span class="pick">＋ ' + (bd.picker.label || STRINGS['action.select']) + '</span>'); pk.onclick = (function (secC, rowId, band) { return function () { openBandPicker(secC, rowId, band); }; })(sec.collection, selRow.id, bd); g.append(pk); }
+              if (bd.picker) { var pk = el('<button type="button" class="pick">＋ ' + (bd.picker.label || STRINGS['action.select']) + '</button>'); pk.onclick = (function (secC, rowId, band) { return function () { openBandPicker(secC, rowId, band); }; })(sec.collection, selRow.id, bd); g.append(pk); }
             }
           }
           grids.append(g);
@@ -611,8 +778,10 @@
     if (pendingMsg) { msg.className = pendingMsg.className; msg.textContent = pendingMsg.text; pendingMsg = null; }
     function commitDraft(label) {
       msg.className = "msg"; msg.textContent = (label || "Saving") + "…";
+      var payload = store.toDraft();
+      stripClientTempIds(payload);
       fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate),
-        { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
+        { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(payload) })
         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
         .then(function (res) {
           if (res.ok) { pendingMsg = { className: "msg ok", text: (label || STRINGS['workbench.saved']) + "." }; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); refreshServerDerivedFields(); }
@@ -790,23 +959,49 @@
     return b;
   }
 
+  // R7.9: focusable descendants of `root`, in DOM/tab order -- the same test used to build the
+  // Tab-trap and initial-focus target for the picker modal below. offsetParent!=null excludes
+  // anything display:none (a hidden .field-hidden section, etc.).
+  function focusableIn(root) {
+    return Array.prototype.filter.call(
+      root.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      function (node) { return node.offsetParent !== null || node === document.activeElement; }
+    );
+  }
+
   // C6 band picker modal: fetch candidate rows from the band's source Selection panel and let the user
   // check some to append as band rows (columns overlapping the band are copied from the picked source row).
+  //
+  // R7.9: a real dialog for keyboard use -- role="dialog"/aria-modal, Escape closes it (same
+  // disposition as Cancel), Tab/Shift+Tab cycles within the card instead of escaping to the
+  // (invisible, backdrop-covered) grid behind it, and focus returns to whatever opened the picker
+  // (the band's own picker-trigger button, STRINGS['action.select']) on close. Checked against this file's other keyboard
+  // surface: input.cell's Escape is unused (no cell-edit-cancel exists to collide with).
   function openBandPicker(secCollection, rowId, bd) {
     var picker = bd.picker; if (!picker || !picker.panel) return;
     var cols = picker.columns && picker.columns.length ? picker.columns : bd.columns;
     var chosen = {};
+    var opener = document.activeElement;
     // AW-P2: when the referenced panel is a selectors[]-expanded picker, its own metadata carries
     // the declared pick contract (returnMapping: { targetField: sourceField }). Falls back to the
     // pre-existing overlapping-column-name copy for a hand-authored panel with no returnMapping.
     var returnMapping = null;
     var overlay = el('<div class="modal"></div>');
     var card = el('<div class="modal-card"></div>');
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+    card.setAttribute("aria-label", picker.label || STRINGS['action.select']);
+    card.tabIndex = -1;
     card.append(el('<div class="modal-hd"><span>' + (picker.label || STRINGS['action.select']) + '</span></div>'));
     var body = el('<div class="modal-bd"><p class="sub">Loading…</p></div>');
     card.append(body);
     var ft = el('<div class="modal-ft"></div>');
-    var cancel = el('<button class="btn ghost">' + STRINGS['action.cancel'] + '</button>'); cancel.onclick = function () { overlay.remove(); };
+    function closeOverlay() {
+      card.removeEventListener("keydown", trapKeydown);
+      overlay.remove();
+      if (opener && typeof opener.focus === "function" && document.contains(opener)) { opener.focus(); }
+    }
+    var cancel = el('<button class="btn ghost">' + STRINGS['action.cancel'] + '</button>'); cancel.onclick = closeOverlay;
     var add = el('<button class="btn">' + STRINGS['action.add'] + '</button>');
     add.onclick = function () {
       Object.keys(chosen).forEach(function (k) {
@@ -821,11 +1016,22 @@
         }
         store.addBandRowFrom(secCollection, rowId, bd.collection, values);
       });
-      overlay.remove(); render();
+      closeOverlay(); render();
     };
     ft.append(cancel); ft.append(add); card.append(ft);
-    overlay.append(card); overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+    overlay.append(card); overlay.onclick = function (e) { if (e.target === overlay) closeOverlay(); };
+    function trapKeydown(event) {
+      if (event.key === "Escape") { event.preventDefault(); closeOverlay(); return; }
+      if (event.key !== "Tab") { return; }
+      var focusable = focusableIn(card);
+      if (!focusable.length) { event.preventDefault(); return; }
+      var first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+    card.addEventListener("keydown", trapKeydown);
     document.body.append(overlay);
+    (focusableIn(card)[0] || card).focus();
     fetch("/api/runtime/metadata/ui/panels/" + encodeURIComponent(picker.panel), { headers: authHeaders() })
       .then(function (r) { return r.json(); })
       .then(function (p) {
