@@ -95,6 +95,15 @@ public final class MySqlDialect implements SqlDialect {
     private MySqlDialect() {
     }
 
+    /**
+     * R4.3: MySQL's {@code CAST} target list has no {@code VARCHAR} -- it accepts {@code CHAR}.
+     * {@code CAST(col AS VARCHAR)} is a syntax error here, so the interface default would make every
+     * contains/startsWith filter fail at query time on this engine.
+     */
+    @Override
+    public String caseInsensitiveTextExpression(String expression) {
+        return "LOWER(CAST(" + expression + " AS CHAR))";
+    }
     @Override
     public String name() {
         return "mysql";

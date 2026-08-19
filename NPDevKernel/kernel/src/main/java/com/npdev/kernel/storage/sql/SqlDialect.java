@@ -781,6 +781,124 @@ public interface SqlDialect {
         throw new UnsupportedStorageCapabilityException(name(), StorageCapability.SESSION_ADVISORY_LOCK);
     }
 
+    // ------------------------------------------------------- predicate grammar v2 (R4.3)
+
+    /*
+     * ------------------------------------------------------------------------------------------
+     * R4.3 (Roadmap Wave 1): the escaping/binding primitives a `contains`/`startsWith`/`in`
+     * predicate needs to render correctly on every engine WITHOUT string-concatenating a caller's
+     * value into SQL text. Every method here is a default, uniform across engines -- the same shape
+     * as #nullsFirstAscending/#trimmedText above, and for the same reason: `LIKE ... ESCAPE '\'` and
+     * `IN (?, ?, ...)` are plain ANSI SQL every engine this platform supports has always accepted
+     * identically, so there is no per-engine fact to encode. What VARIES per engine (whether LOWER()
+     * accepts a non-text column outright, as Postgres refuses and H2 silently coerces -- see
+     * JdbcBusinessConceptStore's own CAST-first comment) is a call-site concern for whichever WHERE
+     * builder consumes these, not something this seam can answer without knowing the column's type.
+     *
+     * These are additive and not yet called by any WHERE builder in this codebase -- see
+     * QueryPredicateGrammar's "PREDICATE GRAMMAR V2" section header for exactly why (a real WHERE
+     * builder for `contains`/`startsWith`/`in` lives in NPDevRuntimeHost's JdbcBusinessConceptStore,
+     * outside this change's owned surface). They exist so that work does not start from zero: the
+     * pattern/placeholder text they return is BOUND as a query parameter by the caller, never
+     * embedded in the SQL string itself -- the whole point of the "parameter binding, not string
+     * interpolation" rule this feature is built around.
+     * ------------------------------------------------------------------------------------------
+     */
+
+    /**
+     * Escapes {@code term} so it is matched LITERALLY inside a {@code LIKE} pattern this engine
+     * evaluates with {@link #likeEscapeClause()} -- escapes the engine's own escape character first
+     * (so it cannot itself be mistaken for an escape), then {@code %} and {@code _}, the two SQL
+     * wildcard characters every engine here recognises identically.
+     *
+     * <p>Returns the escaped TERM only, not a full pattern -- see {@link #containsPattern} /
+     * {@link #startsWithPattern} for the {@code %}-wrapped forms callers actually bind.
+     */
+    /**
+     * The expression to compare against a case-insensitive {@code LIKE} pattern: lower-cased, and
+     * CAST to text first so a {@code contains}/{@code startsWith} filter also works against a
+     * numeric/UUID/date column.
+     *
+     * <p><b>Unlike the escaping primitives below, this one IS a per-engine fact, and getting it
+     * wrong fails in two different silent ways.</b> The obvious spelling,
+     * {@code LOWER(CAST(col AS VARCHAR))}, is what this codebase used inline before R4.3:
+     *
+     * <ul>
+     *   <li><b>MySQL rejects it outright.</b> {@code CAST} accepts {@code CHAR}, not {@code VARCHAR}
+     *       -- {@code CAST(col AS VARCHAR)} is a syntax error, so every contains/startsWith filter
+     *       would fail at query time.</li>
+     *   <li><b>SQL Server silently truncates.</b> A length-less {@code CAST(col AS VARCHAR)} defaults
+     *       to <b>30 characters</b> in T-SQL (unlike a declaration, where it defaults to 1). A
+     *       "contains" against anything longer than 30 characters would quietly match nothing --
+     *       no error, just wrong rows.</li>
+     * </ul>
+     *
+     * <p>The CAST is not optional on any engine: Postgres's {@code LOWER()} rejects non-text input
+     * outright, while H2 silently coerces it -- so without it a filter works in H2 dev and fails in
+     * Postgres production.</p>
+     *
+     * @param expression an already-safe SQL expression (a column reference, never caller text)
+     */
+    default String caseInsensitiveTextExpression(String expression) {
+        return "LOWER(CAST(" + expression + " AS VARCHAR))";
+    }
+
+    default String likeWildcardEscape(String term) {
+        if (term == null) {
+            return "";
+        }
+        return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
+    /**
+     * The {@code ESCAPE} clause fragment to append after a {@code LIKE ?} predicate whose bound
+     * parameter came from {@link #containsPattern}/{@link #startsWithPattern} -- {@code ESCAPE '\'},
+     * identical on every engine this platform supports (Postgres, H2, MySQL and SQL Server all
+     * accept a backslash escape character in a {@code LIKE} predicate with no syntax difference).
+     */
+    default String likeEscapeClause() {
+        return "ESCAPE '\\'";
+    }
+
+    /**
+     * The full pattern for a case-normalised {@code contains} match -- {@code %term%}, with
+     * {@code term} wildcard-escaped by {@link #likeWildcardEscape}. Bind this as the {@code LIKE ?}
+     * parameter; never splice it into SQL text. Case folding (typically {@code LOWER(...)} on both
+     * sides) is the caller's job, since it depends on the column's declared type.
+     */
+    default String containsPattern(String term) {
+        return "%" + likeWildcardEscape(term) + "%";
+    }
+
+    /**
+     * The full pattern for a {@code startsWith} (prefix) match -- {@code term%}, with {@code term}
+     * wildcard-escaped by {@link #likeWildcardEscape}. Bind this as the {@code LIKE ?} parameter;
+     * never splice it into SQL text.
+     */
+    default String startsWithPattern(String term) {
+        return likeWildcardEscape(term) + "%";
+    }
+
+    /**
+     * {@code count} bind-marker placeholders for an {@code IN (?, ?, ...)} predicate, comma-joined
+     * -- e.g. {@code inPlaceholders(3)} returns {@code "?, ?, ?"}. Callers bind each value
+     * positionally, in the SAME order the {@code IN} list's own values are bound -- this method
+     * never sees or touches a value, only how many there are, which is what keeps an {@code IN}
+     * list a bind-parameter list rather than a string-concatenation surface.
+     *
+     * @throws IllegalArgumentException if {@code count} is not positive -- an empty {@code IN} list
+     *         is a caller bug (refused earlier, at the grammar layer -- see
+     *         {@code QueryPredicateGrammar.PredicateLiteral.Values}), not a "no rows match" answer
+     *         this method should render silently
+     */
+    default String inPlaceholders(int count) {
+        if (count <= 0) {
+            throw new IllegalArgumentException(
+                    "engine '" + name() + "': an IN list needs at least one bound value, got " + count);
+        }
+        return String.join(", ", java.util.Collections.nCopies(count, "?"));
+    }
+
     // ------------------------------------------------------------------ honesty
 
     /**

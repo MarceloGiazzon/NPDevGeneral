@@ -97,6 +97,27 @@ CONSTRUCTS = {
     # error 1101. Both were found at Flyway time on first boot, in CI run 31284450437 -- the
     # layer no unit test reaches, one ~12-minute round each.
     # -----------------------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------
+    # R4.3. `LOWER(CAST(col AS VARCHAR))` -- the obvious spelling of a case-insensitive
+    # contains/startsWith filter -- was assembled inline in JdbcBusinessConceptStore, outside this
+    # package, and this gate did not catch it: no construct here matched a CAST/LIKE site. It is
+    # wrong on two of the four supported engines, in two different SILENT ways. MySQL's CAST has no
+    # VARCHAR target at all (syntax error, so every contains filter fails). T-SQL's length-less CAST
+    # defaults to 30 CHARACTERS -- not the length-1 default a declaration gets -- so a contains
+    # against anything longer quietly matches nothing. Neither reproduces under H2 or Postgres,
+    # which is exactly where the inline version was written and tested.
+    # -----------------------------------------------------------------------------------------
+    "case-insensitive-text-cast": (
+        r"LOWER\s*\(\s*CAST\s*\(|\bAS\s+VARCHAR\s*\)\s*\)\s*(?:LIKE|\")",
+        "dialect.caseInsensitiveTextExpression(columnRef) -- MySQL's CAST takes CHAR not VARCHAR, "
+        "and T-SQL's length-less CAST silently truncates to 30 characters",
+    ),
+    "like-escape-clause": (
+        r"\bLIKE\s+\?\s+ESCAPE\b",
+        "dialect.likeEscapeClause() with dialect.containsPattern(...) -- keep the escape character "
+        "and the pattern in one place, and BIND the pattern instead of concatenating it",
+    ),
+
     "text-key-column": (
         r"\bTEXT\s+PRIMARY\s+KEY\b|\bTEXT\s+UNIQUE\b|\bTEXT\s+NOT\s+NULL\s+PRIMARY\s+KEY\b",
         "dialect.keyableTextColumnType() -- MySQL error 1170 (no key length), and SQL Server "

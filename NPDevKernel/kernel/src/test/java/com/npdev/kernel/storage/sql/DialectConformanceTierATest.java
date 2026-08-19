@@ -791,4 +791,66 @@ class DialectConformanceTierATest {
             assertEquals(expected, dialect.trimmedText("c"), dialect.name());
         }
     }
+
+    // ------------------------------------------------------------------ R4.3: predicate grammar v2's
+    // escaping/binding primitives (contains/startsWith LIKE patterns, IN placeholder lists)
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("R4.3: containsPattern/startsWithPattern escape the SQL wildcard characters, on every engine")
+    void containsAndStartsWithPatternsEscapeWildcards(SqlDialect dialect) {
+        // A literal search term that itself contains LIKE's own metacharacters must be matched
+        // LITERALLY -- a user searching for "50%_off" must not have that '%'/'_' interpreted as a
+        // wildcard by the engine once the pattern is bound.
+        assertEquals("%50\\%\\_off%", dialect.containsPattern("50%_off"), dialect.name());
+        assertEquals("50\\%\\_off%", dialect.startsWithPattern("50%_off"), dialect.name());
+        // The engine's own escape character, if it ever appeared in a user term, must itself be
+        // escaped FIRST -- otherwise a term containing a literal backslash could re-arm one of the
+        // '%'/'_' escapes that follows it.
+        assertEquals("%a\\\\b%", dialect.containsPattern("a\\b"), dialect.name());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("R4.3: the produced pattern is a value to BIND, never SQL text -- no quote/injection characters need escaping here")
+    void containsPatternIsABindValueNotSqlText(SqlDialect dialect) {
+        // The whole point of binding rather than interpolating: a term containing a single quote (the
+        // classic SQL-injection character) needs NO special handling from this method, because it is
+        // never spliced into the SQL string -- it travels as a PreparedStatement parameter. If this
+        // method tried to escape quotes, that would be evidence it was (wrongly) being built for
+        // string-concatenation instead.
+        String pattern = dialect.containsPattern("O'Brien");
+        assertEquals("%O'Brien%", pattern, dialect.name() + ": a bound value must carry the quote verbatim");
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("R4.3: likeEscapeClause is the literal ESCAPE '\\' fragment every engine accepts identically")
+    void likeEscapeClauseIsUniform(SqlDialect dialect) {
+        assertEquals("ESCAPE '\\'", dialect.likeEscapeClause(), dialect.name());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("R4.3: inPlaceholders renders exactly N bind markers, comma-joined, and refuses zero/negative")
+    void inPlaceholdersRendersExactlyNMarkers(SqlDialect dialect) {
+        assertEquals("?", dialect.inPlaceholders(1), dialect.name());
+        assertEquals("?, ?, ?", dialect.inPlaceholders(3), dialect.name());
+        assertEquals(5, dialect.inPlaceholders(5).chars().filter(c -> c == '?').count(), dialect.name());
+        assertThrows(IllegalArgumentException.class, () -> dialect.inPlaceholders(0), dialect.name());
+        assertThrows(IllegalArgumentException.class, () -> dialect.inPlaceholders(-1), dialect.name());
+    }
+
+    @Test
+    @DisplayName("R4.3: the LIKE/IN primitives are uniform across engines -- plain ANSI SQL, no per-engine fact to encode")
+    void likeAndInPrimitivesAreUniformAcrossEngines() {
+        String expectedContains = PostgresDialect.INSTANCE.containsPattern("a%b");
+        String expectedStartsWith = PostgresDialect.INSTANCE.startsWithPattern("a%b");
+        String expectedIn = PostgresDialect.INSTANCE.inPlaceholders(4);
+        for (SqlDialect dialect : SqlDialects.all()) {
+            assertEquals(expectedContains, dialect.containsPattern("a%b"), dialect.name());
+            assertEquals(expectedStartsWith, dialect.startsWithPattern("a%b"), dialect.name());
+            assertEquals(expectedIn, dialect.inPlaceholders(4), dialect.name());
+        }
+    }
 }
