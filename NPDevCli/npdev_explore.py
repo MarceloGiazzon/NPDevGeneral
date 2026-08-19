@@ -93,8 +93,10 @@ def definition_dirs(app_dir: Path) -> list[Path]:
     zip carries, so it must still be discoverable on a machine that has only the app."""
     app_root = Path(app_dir).expanduser().resolve()
     directories = [mirror_dir(app_root)]
-    plan = npdev_monitor._read_json(app_root / "_ops" / "resolved-db-plan.json") or {}
-    definition_root = npdev_monitor._resolve_app_relative(app_root, plan.get("appDefinitionRoot"))
+    # `app_definition_root` is the one place that knows the plan has two writers spelling this
+    # differently -- asking it, rather than reading a single plan key here, is why an AppGen-built
+    # app's definition-level routines are discoverable at all.
+    definition_root = npdev_monitor.app_definition_root(app_root)
     if definition_root:
         directories.append(Path(definition_root) / "explorations")
     return directories
@@ -284,7 +286,16 @@ DEFAULT_ALLOWLIST_DOC = (
     "declares no custom theme, and a 401 on the pre-auth first load, so with no allowlist every "
     "routine is red forever. But excuse 'theme.css 404' globally and an app that ships a REAL theme "
     "whose path later breaks loads unstyled, logs that same 404 and goes GREEN -- the excuse "
-    "outliving the reason it was written for, structurally QUAL-4's continue-on-error."
+    "outliving the reason it was written for, structurally QUAL-4's continue-on-error.\n"
+    "\n"
+    "MON-12: an entry may be a plain string (substring of the console message TEXT, as above), or an "
+    "object naming the exact request a routine intends to fail -- {\"urlContains\": \"/api/concepts/"
+    "users\", \"status\": 409, \"note\": \"r7-1 deliberately provokes EmailUnique\"}. `urlContains` is "
+    "REQUIRED (there is no object form with no URL fragment -- that would just be a blanket rule "
+    "wearing a JSON object), matched against `location.url` for a console error and the origin+path "
+    "for a network failure. `status` is optional and is read from the entry's own `status` field when "
+    "present, else parsed out of the console text (\"...status of 409...\"). Both narrow the excuse to "
+    "the one request it names; neither suppresses the error anywhere else it might appear."
 )
 
 
@@ -317,12 +328,82 @@ def _text_of(entry: object) -> str:
     return str(entry)
 
 
+# MON-12: `text` is where a WebKit/Chromium console error puts its message, and for a failed
+# resource that message is generic ("Failed to load resource: the server responded with a status of
+# 409 ()") on every engine, every app, every request -- the discriminating fact is `location.url`, a
+# sibling field `_text_of` never looks at. Measured on a real ScrapForAI run (r7-3, 2026-08-18):
+# {"type": "error", "text": "Failed to load resource: ... status of 401 ()",
+#  "location": {"url": "http://127.0.0.1:8199/api/me", "line": 0, "column": 0}}.
+# A `networkFailure` entry names its request differently (`origin` + `pathname`, or occasionally a
+# bare `url`), so this covers both shapes rather than adding a second lookup per kind.
+def _url_of(entry: object) -> str:
+    if not isinstance(entry, dict):
+        return ""
+    location = entry.get("location")
+    if isinstance(location, dict) and isinstance(location.get("url"), str):
+        return location["url"]
+    if isinstance(entry.get("url"), str):
+        return entry["url"]
+    origin = entry.get("origin")
+    pathname = entry.get("pathname")
+    if origin or pathname:
+        return f"{origin or ''}{pathname or ''}"
+    return ""
+
+
+_STATUS_IN_TEXT_RE = re.compile(r"status of (\d{3})")
+
+
+def _status_of(entry: object, text: str) -> int | None:
+    """The HTTP status, however this entry happens to carry it. A `networkFailure` has its own
+    `status` field; a `consoleError` never does -- Chromium spells it only inside `text`."""
+    if isinstance(entry, dict) and isinstance(entry.get("status"), int):
+        return entry["status"]
+    match = _STATUS_IN_TEXT_RE.search(text)
+    return int(match.group(1)) if match else None
+
+
+def _allowed_entry_matches(needle: object, entry: object, text: str) -> str | None:
+    """Returns the excuse RULE NAME for one `allowedConsoleErrorSubstrings` entry against one
+    evidence entry, or None. Two shapes (MON-12):
+
+    - a plain string: substring of `text`, as it always was -- honest for an error whose TEXT is the
+      identifying detail (a page error, a thrown message).
+    - an object naming the request: `{"urlContains": "...", "status": 409, "textContains": "...",
+      "note": "..."}`. `urlContains` is REQUIRED -- an object with none is not a narrower rule, it is
+      a blanket rule dressed as one, so it is refused (never matches) rather than silently widened.
+      `status`/`textContains` are additional AND-ed narrowing, not alternatives to `urlContains`."""
+    if isinstance(needle, str):
+        return f"app:{needle}" if needle and needle in text else None
+    if not isinstance(needle, dict):
+        return None
+    url_contains = needle.get("urlContains")
+    if not url_contains or url_contains not in _url_of(entry):
+        return None
+    text_contains = needle.get("textContains")
+    if text_contains and text_contains not in text:
+        return None
+    wanted_status = needle.get("status")
+    if wanted_status is not None and _status_of(entry, text) != wanted_status:
+        return None
+    label = needle.get("note") or url_contains
+    return f"app:{label}" + (f" (status={wanted_status})" if wanted_status is not None else "")
+
+
 def _default_excuse(kind: str, entry: object, config: dict, index: int) -> str | None:
     """Returns the RULE NAME that excuses this entry, or None. Conditional by construction."""
     text = _text_of(entry)
     lowered = text.lower()
     if kind == "consoleError":
-        if "theme.css" in lowered and not config.get("hasCustomTheme"):
+        # MON-12 corollary, found proving this fix against a real run: the SAME text-vs-url gap this
+        # item exists to close was already live in this default rule, not just in custom excuses. A
+        # `consoleError`'s `text` is Chromium's generic "...status of 404 ()" -- it never contains
+        # "theme.css", so `"theme.css" in lowered` never matched a real consoleError entry; only the
+        # sibling `networkFailure` entry (which carries `pathname` and does not gate green unless
+        # `strictNetwork`) was ever excused. Measured 2026-08-18 on a live run of r7-1: the excused
+        # list held two `networkFailure` theme.css entries and zero `consoleError` ones, so the app's
+        # OWN documented-benign 404 stayed red regardless of the allowlist. `_url_of` is the fix.
+        if _url_of(entry).lower().endswith("theme.css") and not config.get("hasCustomTheme"):
             return "default:theme-css-404-when-no-custom-theme-declared"
         # The pre-auth first load. `index == 0` is deliberately not "any 401": an app that 401s on
         # its tenth request is broken, and that is precisely the case a blanket rule would hide.
@@ -354,8 +435,8 @@ def evaluate_verdict(result: dict, config: dict) -> dict:
             text = _text_of(entry)
             rule = None
             for needle in allowed:
-                if needle and needle in text:
-                    rule = f"app:{needle}"
+                rule = _allowed_entry_matches(needle, entry, text)
+                if rule:
                     break
             if rule is None and inherit:
                 rule = _default_excuse(kind, entry, config, index if index_matters else -1)
@@ -560,21 +641,36 @@ class RunLock:
     forever -- a lock nobody can clear is worse than the collision it prevents."""
 
     def __init__(self, app_dir: Path, stale_after_seconds: int = 900):
+        self.app_dir = Path(app_dir).expanduser().resolve()
         self.path = runs_root(app_dir) / ".run.lock"
         self.stale_after = stale_after_seconds
         self.acquired = False
 
+    @staticmethod
+    def held_by(app_dir: Path, stale_after_seconds: int = 900) -> tuple[str, int] | None:
+        """(holder, age-in-seconds) while a LIVE lock is held, None when free or stale.
+
+        Extracted so `run_suite` can ask "is someone else driving this app?" without owning a second
+        copy of the staleness rule -- two staleness rules is how a suite comes to abort on a lock the
+        lock itself would have cleared."""
+        path = runs_root(app_dir) / ".run.lock"
+        if not path.exists():
+            return None
+        age = int(time.time() - path.stat().st_mtime)
+        if age >= stale_after_seconds:
+            return None
+        return path.read_text(encoding="utf-8", errors="replace").strip(), age
+
     def __enter__(self) -> "RunLock":
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        if self.path.exists():
-            age = time.time() - self.path.stat().st_mtime
-            if age < self.stale_after:
-                holder = self.path.read_text(encoding="utf-8", errors="replace").strip()
-                raise ExploreError(
-                    f"another exploration is already running for this app "
-                    f"(lock held {int(age)}s by {holder}). Stop it first, or wait."
-                )
-            self.path.unlink(missing_ok=True)
+        held = self.held_by(self.app_dir, self.stale_after)
+        if held is not None:
+            holder, age = held
+            raise ExploreError(
+                f"another exploration is already running for this app "
+                f"(lock held {age}s by {holder}). Stop it first, or wait."
+            )
+        self.path.unlink(missing_ok=True)  # only ever a stale lock by now
         self.path.write_text(f"pid={os.getpid()} at={_utc_now()}", encoding="utf-8")
         self.acquired = True
         return self
@@ -751,9 +847,22 @@ def pin_run(app_dir: Path, run_id: str, ledger_id: str | None, unpin: bool = Fal
 # list / show
 # ---------------------------------------------------------------------------------------------
 
-def list_explorations(app_dir: Path, limit: int = 100) -> dict:
+def definition_files(app_dir: Path) -> list[Path]:
+    """Every routine definition an app has, in ONE order: `definition_dirs` order (mirror first),
+    alphabetical within each directory, first spelling of a filename wins.
+
+    Extracted from `list_explorations` so that `explore list` and `explore suite` iterate the same
+    set in the same sequence BY CONSTRUCTION. A suite that ran a set the listing does not show, or
+    in a different order, is the same class of drift R10 prevents for verdicts -- and here it would
+    be silent, because both answers look plausible on their own.
+
+    NOTE for the next reader: the R3.1 roadmap line says a suite should "loop the app's
+    `browser-routines/`". That directory is a SEPARATE, ad-hoc convention -- the
+    `NPDevSamples/**/demonstrate-browser.ps1` scripts glob it directly and never enter this module.
+    `explorations/` (via `definition_dirs`) is the CLI's live discovery mechanism, so that is what a
+    suite runs. Reconciling the two conventions is its own job, deliberately not done here."""
     app_dir = Path(app_dir).expanduser().resolve()
-    definitions = []
+    files: list[Path] = []
     seen: set[str] = set()
     for directory in definition_dirs(app_dir):
         if not directory.is_dir():
@@ -762,17 +871,25 @@ def list_explorations(app_dir: Path, limit: int = 100) -> dict:
             if path.name in seen:
                 continue
             seen.add(path.name)
-            routine = npdev_monitor._read_json(path) or {}
-            definitions.append({
-                "name": path.stem,
-                "file": str(path),
-                "source": "mirror" if directory == mirror_dir(app_dir) else "app-definition",
-                "scenarioName": routine.get("scenarioName"),
-                "targetPath": routine.get("targetPath", DEFAULT_TARGET_PATH),
-                "stepCount": len(routine.get("steps") or []),
-                "contentSha256": sha256_text(json.dumps(routine, sort_keys=True)),
-                "hasBaseline": baseline_path(app_dir, path.stem).is_file(),
-            })
+            files.append(path)
+    return files
+
+
+def list_explorations(app_dir: Path, limit: int = 100) -> dict:
+    app_dir = Path(app_dir).expanduser().resolve()
+    definitions = []
+    for path in definition_files(app_dir):
+        routine = npdev_monitor._read_json(path) or {}
+        definitions.append({
+            "name": path.stem,
+            "file": str(path),
+            "source": "mirror" if path.parent == mirror_dir(app_dir) else "app-definition",
+            "scenarioName": routine.get("scenarioName"),
+            "targetPath": routine.get("targetPath", DEFAULT_TARGET_PATH),
+            "stepCount": len(routine.get("steps") or []),
+            "contentSha256": sha256_text(json.dumps(routine, sort_keys=True)),
+            "hasBaseline": baseline_path(app_dir, path.stem).is_file(),
+        })
 
     rows = read_index(app_dir)
     runs = list(reversed(rows))[:limit]
@@ -799,6 +916,795 @@ def show_run(app_dir: Path, run_id: str) -> dict:
         if shot.get("blob"):
             shot["resolvedPath"] = str(runs_root(app_dir) / shot["blob"])
     return {"schemaVersion": "npdev-exploration-show.v1", "command": "explore show", "ok": True, "run": resolved}
+
+
+# ---------------------------------------------------------------------------------------------
+# coverage -- R3.5: concept -> referencing routines -> last green run, PLUS flow -> referencing
+# acceptance scenarios, each with an explicit UNCOVERED section.
+# ---------------------------------------------------------------------------------------------
+
+def _concept_selector_needle(name: str) -> str:
+    """The routine-side half of `business-ui-app.mustache`'s `sectionId()`: a concept panel's DOM id
+    is `"concept-" + conceptName.replace(/[^a-zA-Z0-9_-]/g, "-")`, and every deterministic routine
+    step that touches that concept addresses it (or a field inside it) through that id -- see
+    `#concept-GiftIdea`, `#concept-GiftIdea [name="idea"]` in the corpus. Mirrored here in Python so
+    "does this routine reference this concept" asks the exact same question the generated page
+    answers, rather than a second guess at it."""
+    return "concept-" + re.sub(r"[^A-Za-z0-9_-]", "-", name or "")
+
+
+def _flow_execute_path(name: str) -> str:
+    """Mirrors `InfoPageEmitter.encodePathSegment()`: percent-encode everything outside the
+    unreserved set. Not `urllib.parse.quote`, which form-encodes a space as `+` -- wrong inside a
+    path segment and wrong against the URL the app actually serves."""
+    out = []
+    for byte in (name or "").encode("utf-8"):
+        char = chr(byte)
+        if char.isalnum() or char in "-._~":
+            out.append(char)
+        else:
+            out.append(f"%{byte:02X}")
+    return "/api/flows/" + "".join(out) + "/execute"
+
+
+def _last_run(rows: list[dict], routine_names: set[str], *, green_only: bool) -> dict | None:
+    """`rows` is `read_index()` order (append order, oldest first), so the LAST matching row is the
+    most recent run. Never recomputes a verdict (R10) -- `green` is read straight off the row's own
+    `verdict.green`, exactly as `evaluate_verdict` decided it when the run happened."""
+    best = None
+    for row in rows:
+        stem = Path((row.get("definition") or {}).get("path") or "").stem
+        if stem not in routine_names:
+            continue
+        if green_only and not (row.get("verdict") or {}).get("green"):
+            continue
+        best = row
+    if best is None:
+        return None
+    return {
+        "runId": best.get("runId"),
+        "startedAt": best.get("startedAt"),
+        "green": (best.get("verdict") or {}).get("green"),
+        "routine": Path((best.get("definition") or {}).get("path") or "").stem,
+    }
+
+
+def coverage(app_dir: Path) -> dict:
+    """R3.5: cross the app's own concept/flow inventory (`info.json`, `InfoPageEmitter`'s output --
+    NOT the platform's `browser-routines/` corpus, a separate ad-hoc convention `definition_files`'s
+    own docstring already distinguishes from this app-scoped one) against which routines/scenarios
+    reference each one, plus run history for "last green run". Static: no engine, no HTTP call
+    against the app -- everything here is either already on disk (routine/scenario files, run
+    history) or already published at generation time (`info.json`), so this runs on a stopped app.
+
+    CONCEPTS are matched against routine files by the deterministic selector `sectionId()` emits
+    (`#concept-<Name>`) -- see `_concept_selector_needle`. FLOWS have no browser-UI surface at all
+    (`business-ui-app.mustache` never renders a flow trigger), so flow coverage instead comes from
+    acceptance scenarios' `when.path`, matched against the flow's real execute URL
+    (`_flow_execute_path`) -- this is the roadmap's "flow coverage comes from acceptance scenarios'
+    paths" line, verified against `InfoPageEmitter`/`_run_one_scenario` rather than assumed.
+
+    No new discovery mechanism: routines come from `definition_files` (the same list/suite already
+    walk) and scenario files are found through the same three-root layering
+    (`finalAppRoot`/`appDir`/`appDefinitionRoot`, mirror-then-definition) `npdev_cli.acceptance_dirs`
+    already uses for `npdev test`'s acceptance layer, ported here as a small self-contained helper so
+    this module does not gain a dependency on the CLI module that depends on it.
+
+    SCHEMA: none, deliberately, the same call `explore list`/`suite`/`preflight`/`prune` already
+    made -- this is a computed report over data that is durable elsewhere (info.json, the routine
+    files, `runs.jsonl`), not a new fact this command is the author of. A second stored shape of
+    facts already recorded elsewhere is a thing that can disagree with them later."""
+    app_dir = Path(app_dir).expanduser().resolve()
+    app_record = npdev_monitor.probe_app(app_dir, include_info=True)
+    if not app_record.get("isAppRoot"):
+        raise ExploreError(app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if not app_record.get("hasInfoJson"):
+        raise ExploreError(
+            f"{app_record.get('name')} has no info.json (regenerate the app) -- coverage needs the "
+            "concept/flow inventory it publishes.")
+    info = app_record.get("info") or {}
+    concepts = info.get("concepts") or []
+    flows = info.get("flows") or []
+
+    # --- concept -> routines -------------------------------------------------------------------
+    routine_haystacks: dict[str, str] = {}
+    for path in definition_files(app_dir):
+        routine = npdev_monitor._read_json(path)
+        routine_haystacks[path.stem] = json.dumps(routine, ensure_ascii=False) if routine else ""
+    run_rows = read_index(app_dir)
+
+    concept_rows = []
+    for concept in concepts:
+        name = concept.get("name")
+        needle = _concept_selector_needle(name)
+        referencing = sorted(stem for stem, text in routine_haystacks.items() if needle in text)
+        names = set(referencing)
+        concept_rows.append({
+            "name": name,
+            "route": concept.get("route"),
+            "selector": "#" + needle,
+            "referencingRoutines": referencing,
+            "lastRun": _last_run(run_rows, names, green_only=False) if referencing else None,
+            "lastGreenRun": _last_run(run_rows, names, green_only=True) if referencing else None,
+            "covered": bool(referencing),
+        })
+
+    # --- flow -> acceptance scenarios ------------------------------------------------------------
+    final_app_root = app_record.get("finalAppRoot")
+    scenario_dirs: list[Path] = []
+    for root in (final_app_root, str(app_dir), app_record.get("appDefinitionRoot")):
+        if not root:
+            continue
+        candidate = Path(root) / "acceptance"
+        if candidate not in scenario_dirs:
+            scenario_dirs.append(candidate)
+    scenario_when_paths: dict[str, str] = {}
+    seen_names: set[str] = set()
+    for directory in scenario_dirs:
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob("*.scenario.json")):
+            if path.name in seen_names:
+                continue
+            seen_names.add(path.name)
+            scenario = npdev_monitor._read_json(path) or {}
+            scenario_when_paths[path.name] = str((scenario.get("when") or {}).get("path") or "")
+
+    flow_rows = []
+    for flow_name in flows:
+        expected_path = _flow_execute_path(flow_name)
+        referencing = sorted(name for name, when_path in scenario_when_paths.items()
+                             if when_path == expected_path)
+        flow_rows.append({
+            "name": flow_name,
+            "executePath": expected_path,
+            "referencingScenarios": referencing,
+            "covered": bool(referencing),
+        })
+
+    uncovered_concepts = [row["name"] for row in concept_rows if not row["covered"]]
+    uncovered_flows = [row["name"] for row in flow_rows if not row["covered"]]
+
+    return {
+        "schemaVersion": "npdev-exploration-coverage.v1",
+        "command": "explore coverage",
+        "ok": True,
+        "appDir": str(app_dir),
+        "appName": app_record.get("name"),
+        "concepts": concept_rows,
+        "flows": flow_rows,
+        # THE explicit UNCOVERED section (R3.5's own definition of done): a concept/flow with zero
+        # referencing routines/scenarios is named here, not just inferable from `covered: false`
+        # buried in a per-row field -- "says so" means its own row-set at top level.
+        "uncovered": {
+            "concepts": uncovered_concepts,
+            "flows": uncovered_flows,
+        },
+        "summary": {
+            "conceptsTotal": len(concept_rows),
+            "conceptsCovered": len(concept_rows) - len(uncovered_concepts),
+            "flowsTotal": len(flow_rows),
+            "flowsCovered": len(flow_rows) - len(uncovered_flows),
+        },
+        "routineSources": [str(d) for d in definition_dirs(app_dir)],
+        "scenarioSources": [str(d) for d in scenario_dirs],
+    }
+
+
+# ---------------------------------------------------------------------------------------------
+# generate -- R3.3: a create/list/edit/delete routine per concept, from the model
+# ---------------------------------------------------------------------------------------------
+#
+# The field inventory is NOT re-derived from model.json. WmsOffice-class apps compose concepts
+# from pack fragments (`{"$ref": "concepts/Foo.json"}`) and field.widget is a per-app CASCADE
+# (config.json `overrides` -> field's own `ui.widget` -> platform default, `BusinessUiEmitter
+# .widget()`) -- reimplementing either in Python would be a second, driftable copy of resolution
+# logic the generator already owns. `generated-ui-manifest.json` is the artefact the generator
+# writes with BOTH already fully resolved: it is the exact JSON the running app's own business UI
+# fetches (`state.manifest = await fetchJson("./generated-ui-manifest.json")`) to decide each
+# field's widget, so building routines from it guarantees the selectors this module emits match
+# what the browser actually renders, on every app, without hand-tracing the cascade.
+#
+# Selectors verified against `business-ui-app.mustache` (not assumed from the roadmap): a panel's
+# id is `sectionId()` = `"concept-" + name.replace(/[^a-zA-Z0-9_-]/g, "-")` (mirrored already by
+# `_concept_selector_needle`); a scalar field control is `[name="<field>"]`; a `select`-widget
+# reference IS that `<select>`; a `lookup`-widget reference is a `.lookup-control` sibling group
+# (hidden `[name=field]` + `.lookup-browse` button + `.lookup-display` span) opened via
+# `openPickerDialog()` (`.picker-dialog .picker-search`, `.picker-records tbody tr.picker-row`).
+
+_UNSUPPORTED_REFERENCE_WIDGETS = {"autocomplete", "multiselect", "image-select", "custom"}
+_GENERATE_MARKER_NUMBER = "94017"
+_GENERATE_EDIT_NUMBER = "94018"
+
+
+def _manifest_path(final_app_root: Path) -> Path | None:
+    """Where `BusinessUiEmitter` writes the cascade-resolved per-field manifest, mirroring
+    `npdev_monitor._find_info_json`'s own two-candidate reasoning: the GENERATED source set is what
+    a plain generation produces; the handwritten one is a fallback for an unusual layout."""
+    for relative in (
+        Path("npdev-generated") / "src" / "main" / "resources" / "static" / "npdev-business-ui"
+        / "generated-ui-manifest.json",
+        Path("src") / "main" / "resources" / "static" / "npdev-business-ui" / "generated-ui-manifest.json",
+    ):
+        candidate = Path(final_app_root) / relative
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _enum_options(field: dict) -> list[tuple[str, str]]:
+    """[(value, label), ...], deprecated options dropped, in the manifest's own declaration order --
+    mirrors `createEnumSelect`'s own fallback (`enumOptions` when present, else `enumValues` 1:1)."""
+    options = field.get("enumOptions") or []
+    out = []
+    for opt in options:
+        if not isinstance(opt, dict) or opt.get("deprecated"):
+            continue
+        value = opt.get("value")
+        if value in (None, ""):
+            continue
+        out.append((str(value), str(opt.get("label") or value)))
+    if out:
+        return out
+    return [(str(v), str(v)) for v in (field.get("enumValues") or []) if v not in (None, "")]
+
+
+def _field_kind(field: dict) -> tuple[str, object] | None:
+    """(kind, extra) this generator knows how to fill, or None -- object/array/file fields and a
+    reference rendered through a widget with no deterministic single-click selection (autocomplete's
+    live-search, multiselect's bond editor, image-select's cards, a custom widget) are honestly out
+    of scope rather than guessed at."""
+    if field.get("id"):
+        return None
+    ftype = field.get("type")
+    widget = field.get("widget")
+    if ftype == "boolean":
+        return ("boolean", None)
+    if ftype == "enum":
+        return ("enum", None) if _enum_options(field) else None
+    if ftype == "reference":
+        if widget in ("select", "lookup"):
+            return ("reference", widget)
+        return None
+    if ftype in ("string", "uuid"):
+        return ("text", None)
+    if ftype in ("int", "integer", "long", "decimal"):
+        return ("number", None)
+    if ftype == "date":
+        return ("date", None)
+    if ftype == "datetime":
+        return ("datetime", None)
+    return None
+
+
+def _dependency_target(field: dict) -> str | None:
+    """A concept C can only be auto-created once its referenced row already exists. Only a REQUIRED
+    reference with a supported widget is a hard dependency -- an optional one is simply left blank,
+    same as the generated form itself allows."""
+    if field.get("type") != "reference" or not field.get("required"):
+        return None
+    if field.get("widget") not in ("select", "lookup"):
+        return None
+    return (field.get("reference") or {}).get("targetConcept") or None
+
+
+def _plan_concept(concept: dict) -> dict:
+    """`fillable` is REQUIRED fields only -- not a smaller ambition than "numerics fill valid
+    values", but the engine's own pinned schema (`scrapforai-routine.schema.json`) caps a routine
+    at 50 steps, and WmsOffice-class concepts run to 18 fields; filling every optional one blew that
+    cap on 2 of 33 concepts when this was tried (`InventarioArquivoLinha`: 18 fields, 69 steps).
+    A form is valid with every required field filled and no optional ones touched, so this is a
+    real reduction in scope, not a workaround -- and it still exercises an optional field's widget
+    wherever a DIFFERENT concept happens to require that same field shape."""
+    fields = concept.get("fields") or []
+    fillable: list[tuple[dict, str, object]] = []
+    unsupported_required: list[str] = []
+    deps: set[str] = set()
+    for field in fields:
+        if field.get("id"):
+            continue
+        target = _dependency_target(field)
+        if target:
+            deps.add(target)
+        if not field.get("required"):
+            continue
+        kind = _field_kind(field)
+        if kind is None:
+            unsupported_required.append(str(field.get("name")))
+            continue
+        fillable.append((field, kind[0], kind[1]))
+    return {
+        "name": concept.get("conceptName"),
+        "displayName": concept.get("displayName") or concept.get("conceptName"),
+        "fillable": fillable,
+        "unsupportedRequired": unsupported_required,
+        "deps": sorted(deps),
+        "formPresentation": concept.get("formPresentation") or "standard",
+    }
+
+
+def _order_and_skip(plans: dict[str, dict]) -> tuple[list[str], dict[str, str]]:
+    """Dependency-first order (a required reference's target must have a routine that runs earlier
+    in the same `explore suite`, so it has already seeded a row) plus an honest reason for every
+    concept this generator will not emit -- never a silent drop."""
+    names = set(plans)
+    skip_reason: dict[str, str] = {}
+    for name, plan in plans.items():
+        if plan["unsupportedRequired"]:
+            skip_reason[name] = ("required field(s) with no supported auto-fill widget: "
+                                 + ", ".join(plan["unsupportedRequired"]))
+    for name, plan in plans.items():
+        if name in skip_reason:
+            continue
+        missing = [d for d in plan["deps"] if d not in names]
+        if missing:
+            skip_reason[name] = ("requires concept(s) not included in this generation run: "
+                                 + ", ".join(missing))
+
+    order: list[str] = []
+    visited: set[str] = set()
+
+    def visit(name: str, stack: tuple[str, ...]) -> None:
+        if name in visited or name in skip_reason:
+            return
+        if name in stack:
+            skip_reason[name] = "circular required-reference chain: " + " -> ".join(stack + (name,))
+            return
+        for dep in plans[name]["deps"]:
+            if dep in plans:
+                visit(dep, stack + (name,))
+        if name in skip_reason:
+            return
+        visited.add(name)
+        order.append(name)
+
+    for name in sorted(names):
+        visit(name, ())
+
+    # A dep that turned out circular (or was itself dropped) does not automatically stop its
+    # dependent from having already been appended to `order` above -- propagate to a fixed point
+    # rather than special-case the DFS.
+    changed = True
+    while changed:
+        changed = False
+        for name in list(order):
+            if name in skip_reason:
+                continue
+            for dep in plans[name]["deps"]:
+                if dep in skip_reason:
+                    skip_reason[name] = f"depends on skipped concept {dep}: {skip_reason[dep]}"
+                    changed = True
+                    break
+    order = [n for n in order if n not in skip_reason]
+    for name in names:
+        if name not in order and name not in skip_reason:
+            skip_reason[name] = "not reachable (its dependency chain could not be resolved)"
+    return order, skip_reason
+
+
+def _pick_marker(fillable: list[tuple[dict, str, object]]) -> tuple[dict, str, bool] | None:
+    """The (field, text, filterable) this concept's generated row will be found by --
+    `assertTextContains` after create, and `tbody tr:has-text(marker)` to scope the Edit/Delete
+    click to the ONE row this routine itself made, the same `:has-text()` idiom the hand-authored
+    corpus already uses (e.g. `gift-idea-tracker`'s `01-giftidea-crud.json`).
+
+    `filterable` matters past a few dozen existing rows: the grid pages at `list.pageSize` (20 by
+    default) and `:has-text()`/`assertTextContains` only ever see the CURRENTLY RENDERED page, so a
+    routine that never narrows the grid can miss its own freshly-created row on any app that already
+    carries real data. MEASURED 2026-08-19 on a long-lived WmsOffice: `LocalArmazenagem`'s create
+    genuinely succeeded (the modal closed) and the row was on some later page, but the unfiltered
+    `assertTextContains` failed to find it. `business-concept-crud-controller.mustache`'s free-text
+    `filter` param ORs a substring match across `filterable` fields only, so the caller (via
+    `_build_concept_routine`) fills `.filters input[search]` + clicks Search with this marker
+    whenever `filterable` is true, resetting the grid to page 0 with only matching rows -- and skips
+    that step (accepting the page-1 risk on a fresh/lightly-used app) when it is not, since filtering
+    by a value the server will never match narrows to nothing.
+
+    Preference order: a required, FILTERABLE string field (both readable and searchable) > any
+    filterable string field > a required string field with no filterable one available > a
+    filterable ENUM field (its rendered LABEL, not the raw `selectOption` value -- the grid shows
+    `enumOptions[].label` per `renderEnumBadge`) > a plain required numeric field as a last resort,
+    unfilterable by the platform's own default (`isFilterable` on a numeric type), kept because a
+    valid numeric fill still doubles as SOME marker on an app that has not accumulated enough data
+    for pagination to matter yet. A concept with none of these gets no marker; its routine still
+    proves create+list, honestly, and stops there (see `_build_concept_routine`)."""
+    def filterable(field: dict) -> bool:
+        return bool(field.get("filterable"))
+
+    strings = [f for f, kind, _ in fillable if kind == "text"]
+    candidates = ([f for f in strings if f.get("required") and filterable(f)]
+                  or [f for f in strings if filterable(f)]
+                  or [f for f in strings if f.get("required")] or strings)
+    if candidates:
+        field = candidates[0]
+        return field, f"NPDEV-GEN-{field.get('concept')}", filterable(field)
+
+    enums = [f for f, kind, _ in fillable if kind == "enum" and filterable(f)]
+    if enums:
+        field = enums[0]
+        return field, _enum_options(field)[0][1], True
+
+    numbers = [f for f, kind, _ in fillable if kind == "number"]
+    candidates = [f for f in numbers if f.get("required")] or numbers
+    if candidates:
+        return candidates[0], _GENERATE_MARKER_NUMBER, False
+    return None
+
+
+def _pick_edit_target(fillable: list[tuple[dict, str, object]], marker_field: dict | None):
+    """(field, kind, newValue, assertText) for the ONE field the edit step changes -- never the
+    marker field itself, or the routine could no longer find its own row afterward. Enum preferred
+    (a second declared option is a clean, unambiguous change); then numeric; then text."""
+    enums = [f for f, kind, _ in fillable if kind == "enum" and f is not marker_field
+             and len(_enum_options(f)) >= 2]
+    if enums:
+        field = enums[0]
+        options = _enum_options(field)
+        current = options[0][0]
+        alt = next((o for o in options if o[0] != current), options[0])
+        return field, "enum", alt[0], alt[1]
+    numbers = [f for f, kind, _ in fillable if kind == "number" and f is not marker_field]
+    if numbers:
+        return numbers[0], "number", _GENERATE_EDIT_NUMBER, _GENERATE_EDIT_NUMBER
+    texts = [f for f, kind, _ in fillable if kind == "text" and f is not marker_field]
+    if texts:
+        field = texts[0]
+        value = f"npdev-gen-{field['name']}-edited"
+        return field, "text", value, value
+    return None, None, None, None
+
+
+def _generate_slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-") or "concept"
+
+
+def _field_selector(form_scope: str, field_name: str) -> str:
+    return f'{form_scope} [name="{field_name}"]'
+
+
+def _create_field_steps(form_scope: str, field: dict, kind: str, extra: object,
+                        value: str | None) -> list[dict]:
+    selector = _field_selector(form_scope, field["name"])
+    tag = f'{field["name"]}' + (" (required)" if field.get("required") else "")
+    if kind in ("text", "number"):
+        return [{"action": "fill", "selector": selector, "value": value, "label": tag}]
+    if kind == "date":
+        return [{"action": "fill", "selector": selector, "value": "2026-01-15", "label": tag}]
+    if kind == "datetime":
+        return [{"action": "fill", "selector": selector, "value": "2026-01-15T10:00", "label": tag}]
+    if kind == "boolean":
+        return [{"action": "check", "selector": selector, "label": tag}]
+    if kind == "enum":
+        return [{"action": "selectOption", "selector": selector, "value": _enum_options(field)[0][0],
+                "label": f"{tag} enum"}]
+    if kind == "reference":
+        target = (field.get("reference") or {}).get("targetConcept") or "record"
+        if extra == "select":
+            # `assertCount` rather than `waitForSelector` on `option:not([value=""])`: Playwright's
+            # strict mode requires a `waitFor`-style locator to resolve to exactly one element, and
+            # an app with more than one existing referent (any real app after its first few runs)
+            # fails that with "resolved to N elements" even though the field is genuinely ready --
+            # MEASURED 2026-08-19 against a live gift-idea-tracker with 4 seeded Persons. `assertCount`
+            # has no such uniqueness requirement and is what the hand-authored corpus's equivalent
+            # step (`04-create-project-and-note-via-ui.json`) already uses for exactly this wait.
+            return [
+                {"action": "waitForTimeout", "timeoutMs": 600,
+                 "label": f"Let the {target} options fetch settle -- {tag}"},
+                {"action": "assertCount", "selector": f'{selector} option:not([value=""])',
+                 "operator": ">", "count": 0,
+                 "label": f"{target} referent options loaded (seeded earlier in this suite)"},
+                {"action": "click", "selector": selector, "label": "Focus the select"},
+                {"action": "press", "selector": selector, "key": "ArrowDown",
+                 "label": "Pick the first real referent -- any valid option proves the round-trip"},
+            ]
+        # "lookup" (also the reference-field DEFAULT -- see FieldWidgetDefaults.defaultWidget): click
+        # the sibling Browse... button (the field's own [name] input is `type=hidden`, so it is never
+        # itself clickable), wait for the picker dialog's rows, pick the first -- again "any valid
+        # option", never a specific id, matching the corpus's own `06-link-identity-user-role.json`.
+        # `assertCount` for the same strict-mode reason as the "select" branch above: once more than
+        # one referent has ever been seeded, `.picker-records tbody tr.picker-row` resolves to
+        # several rows, and a `waitForSelector`/`locator.waitFor()` on it would refuse to pick one.
+        return [
+            {"action": "click", "selector": f'{selector} ~ .lookup-browse',
+             "label": f"Open the {target} lookup picker -- {tag}"},
+            {"action": "waitForSelector", "selector": ".picker-dialog .picker-search", "state": "visible",
+             "label": "Picker dialog open"},
+            {"action": "waitForTimeout", "timeoutMs": 600, "label": "Let the picker's row fetch settle"},
+            {"action": "assertCount", "selector": ".picker-records tbody tr.picker-row",
+             "operator": ">", "count": 0,
+             "label": f"At least one {target} referent seeded earlier in this suite"},
+            {"action": "click", "selector": ".picker-records tbody tr.picker-row >> nth=0",
+             "label": "Select the first referent -- any valid option proves the round-trip"},
+            {"action": "waitForSelector", "selector": f'{selector} ~ .lookup-display', "state": "visible",
+             "label": "Selection round-tripped into the display"},
+        ]
+    return []
+
+
+def _routine_document(concept_name: str, steps: list[dict], *, target_path: str = DEFAULT_TARGET_PATH,
+                      variables: dict | None = None) -> dict:
+    doc = {
+        "scenarioName": f"npdev-generated-{_generate_slug(concept_name)}-crud",
+        "targetPath": target_path,
+        "options": {"headless": True, "screenshots": "always", "collectDomOnFailure": True},
+        "steps": steps,
+    }
+    if variables:
+        doc["variables"] = variables
+    return doc
+
+
+def _auth_preamble(auth: dict, origin: str | None) -> tuple[list[dict], str, dict]:
+    """(steps, targetPath, variables) for however THIS app authenticates -- read from the manifest's
+    own `auth` block rather than assumed, because a WmsOffice-class app is exactly the shape that is
+    NOT apiKey: MEASURED 2026-08-19, every one of 5 generated routines timed out waiting for
+    `#apiKey` against a live WmsOffice, because `auth.mode === "jwt"` there and the business UI
+    keeps that field in the DOM but permanently `display:none` (`business-ui-app.mustache`:
+    `el.apiKeyField.style.display = (jwt mode) ? "none" : ""`) -- so `waitForSelector(state:
+    visible)` on it can never succeed.
+
+    jwt mode needs a real login first (`/login.html` -- `#username`/`#password`/`#tenant`/
+    `#loginBtn`/`#tokenBox`, the SAME generic page every jwt-mode app serves, per
+    `wmsoffice-trusted-source-demo-routine.json`), THEN a second `goto` to the business UI, which
+    picks the token up from the shared `npdev.shell.token` localStorage key
+    (`business-ui-app.mustache`'s `bootstrap()`). `username`/`password` are real secrets --
+    `valueFromCredential`, never a literal, and simply unfilled (an honest run-time refusal) if the
+    caller does not supply them, exactly like `apiKey` already works. `tenant` is not a secret and
+    most apps do not need one, so it is a `variables` default of "" rather than a required
+    credential -- override with `--var tenant=<value>` for an app that does."""
+    if (auth or {}).get("mode") == "jwt":
+        login_path = auth.get("loginPath") or "/login.html"
+        business_ui_url = f'{(origin or "").rstrip("/")}{DEFAULT_TARGET_PATH}'
+        steps = [
+            {"action": "goto", "url": "$targetUrl", "label": "Open the login page"},
+            {"action": "waitForSelector", "selector": "#username", "state": "visible",
+             "label": "Login form rendered"},
+            {"action": "fill", "selector": "#base", "value": origin or "", "label": "Same-origin base"},
+            {"action": "fill", "selector": "#username", "valueFromCredential": "username",
+             "label": "Username"},
+            {"action": "fill", "selector": "#password", "valueFromCredential": "password",
+             "label": "Password"},
+            {"action": "fill", "selector": "#tenant", "valueFromVariable": "tenant", "label": "Tenant"},
+            {"action": "click", "selector": "#loginBtn", "label": "Submit login"},
+            {"action": "waitForSelector", "selector": "#tokenBox", "state": "visible",
+             "label": "Login succeeded, token stored"},
+            {"action": "goto", "url": business_ui_url, "label": "Open the business UI"},
+        ]
+        return steps, login_path, {"tenant": ""}
+
+    steps = [
+        {"action": "goto", "url": "$targetUrl", "label": "Load the business UI"},
+        {"action": "waitForSelector", "selector": "#apiKey", "state": "visible",
+         "label": "API key field present"},
+        {"action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey",
+         "label": "Authenticate"},
+        {"action": "reload", "label": "Reload authenticated"},
+    ]
+    return steps, DEFAULT_TARGET_PATH, {}
+
+
+def _build_concept_routine(plan: dict, auth: dict | None = None,
+                           origin: str | None = None) -> tuple[dict, str | None]:
+    """Returns (routine, partialReason). `partialReason` is set (routine still emitted, valid, and
+    runnable) when the concept has no field this generator can key a specific row on -- create and
+    list are still proven; edit/delete are honestly left out rather than risk clicking the wrong
+    row."""
+    name = plan["name"]
+    fillable = plan["fillable"]
+    marker = _pick_marker(fillable)
+    marker_field, marker_value, marker_filterable = marker if marker else (None, None, False)
+
+    # `formPresentation: "modal"` (an app-level opt-out from the platform default, e.g. WmsOffice's
+    # `Area`) renders the create/edit form into the SHARED `#modalRoot`, not nested inside the
+    # concept's own panel -- `buildFormElement`'s field/button DOM is identical either way, only
+    # WHERE it is attached differs (`openForm()`/`openModalInto()`). MEASURED 2026-08-19: every
+    # `#concept-Area form`/`#concept-Area [name=...]` selector timed out even though the form was
+    # genuinely open and correctly filled-out on screen, because it lived under `#modalRoot`
+    # instead. `form_scope` is the one thing every field/button/form-visibility selector below is
+    # built from, so a concept never needs a second code path for this -- only a different root.
+    form_scope = "#modalRoot" if plan.get("formPresentation") == "modal" else f"#concept-{name}"
+
+    preamble, target_path, routine_variables = _auth_preamble(auth or {}, origin)
+    steps: list[dict] = list(preamble) + [
+        {"action": "waitForSelector", "selector": f'#sideNav a[href="#concept-{name}"]', "state": "visible",
+         "label": f"{plan['displayName']} nav link present"},
+        {"action": "click", "selector": f'#sideNav a[href="#concept-{name}"]',
+         "label": f"Open the {plan['displayName']} concept"},
+        {"action": "waitForSelector", "selector": f"#concept-{name}", "state": "visible",
+         "label": f"{plan['displayName']} panel visible"},
+        {"action": "click", "selector": f'#concept-{name} .panel-actions button:has-text("New")',
+         "label": "Open the create form"},
+        {"action": "waitForSelector", "selector": f"{form_scope} form", "state": "visible",
+         "label": "Create form visible"},
+    ]
+
+    number_counter = 0
+    for field, kind, extra in fillable:
+        if kind == "text":
+            value = marker_value if field is marker_field else f"npdev-gen-{field['name']}"
+        elif kind == "number":
+            if field is marker_field:
+                value = marker_value
+            else:
+                number_counter += 1
+                value = str(number_counter)
+        else:
+            value = None
+        steps.extend(_create_field_steps(form_scope, field, kind, extra, value))
+
+    slug = _generate_slug(name)
+    steps.append({"action": "screenshot", "name": f"{slug}_form_filled", "label": "Filled create form"})
+    steps.append({"action": "click", "selector": f'{form_scope} button:has-text("Create")',
+                 "label": "Submit the create form"})
+    steps.append({"action": "waitForSelector", "selector": f"{form_scope} form", "state": "detached",
+                 "label": "Modal closes only on a successful create"})
+    steps.append({"action": "waitForTimeout", "timeoutMs": 800, "label": "Let the grid reload"})
+
+    if marker_value is None:
+        steps.append({"action": "screenshot", "name": f"{slug}_created", "label": "Row created"})
+        steps.append({"action": "collect", "what": ["domText", "url"], "label": "Evidence"})
+        return (_routine_document(name, steps, target_path=target_path, variables=routine_variables),
+                "create+list only -- no text/numeric field available to key one row for edit/delete")
+
+    if marker_filterable:
+        # Narrows the grid to page 0 with only matching rows BEFORE asserting/clicking -- otherwise
+        # both the list-verb assertion and the Edit/Delete row lookup only ever see whatever
+        # happens to render on page 1, and on an app that already carries real data the freshly
+        # created row usually is not there (see `_pick_marker`'s own note, MEASURED on WmsOffice).
+        steps.append({"action": "fill", "selector": f'#concept-{name} .filters input[type="search"]',
+                     "value": marker_value, "label": "Isolate this run's row (the table accumulates "
+                     "rows across reruns)"})
+        steps.append({"action": "click", "selector": f'#concept-{name} .filters button:has-text("Search")',
+                     "label": "Apply the filter"})
+        # A `waitForSelector` on the real table replacing `renderPanel`'s `.empty`/"Loading"
+        # placeholder, not a fixed sleep -- MEASURED 2026-08-19 against a heavily-populated
+        # WmsOffice `Rua`/`Entidade` (hundreds of rows from prior sessions): even a 1200ms fixed
+        # wait was not always enough for the filtered fetch to land, so the very next step still
+        # read "Loading". Waiting for `table.records` to attach scales with however long THIS
+        # request actually takes, up to the step's own timeout, instead of guessing a duration.
+        steps.append({"action": "waitForSelector", "selector": f"#concept-{name} table.records",
+                     "state": "attached", "label": "Filtered grid finished loading"})
+
+    steps.append({"action": "assertTextContains", "selector": f"#concept-{name}", "text": marker_value,
+                 "label": "New row visible in the grid (list verb)"})
+    # Bare (for `assertCount`, which has no uniqueness requirement) and `>> nth=0`-scoped (for
+    # `click`, which -- like `waitForSelector` above -- is a strict-mode Playwright locator and
+    # refuses to act on more than one match). The marker is a fixed literal, not a per-run
+    # timestamp (determinism: the same model input must produce the same routine bytes), so a
+    # rerun against an app that already carries an earlier run's row WILL have more than one
+    # match here -- `nth=0` keeps Edit/Delete pointed at exactly one real row regardless.
+    row_selector = f'#concept-{name} tbody tr:has-text("{marker_value}")'
+    row_click_selector = f'{row_selector} >> nth=0'
+    list_only_steps = list(steps) + [
+        {"action": "screenshot", "name": f"{slug}_created", "label": "Row created"},
+        {"action": "collect", "what": ["domText", "url"], "label": "Evidence"},
+    ]
+
+    tail: list[dict] = []
+    edit_field, edit_kind, edit_new_value, edit_assert_text = _pick_edit_target(fillable, marker_field)
+    if edit_field is not None:
+        edit_selector = _field_selector(form_scope, edit_field["name"])
+        tail.append({"action": "click", "selector": f'{row_click_selector} >> button:has-text("Edit")',
+                     "label": "Re-open this row to edit it"})
+        tail.append({"action": "waitForSelector", "selector": f"{form_scope} form", "state": "visible",
+                     "label": "Edit form visible"})
+        tail.append({"action": "waitForTimeout", "timeoutMs": 600, "label": "Let the form populate"})
+        if edit_kind == "enum":
+            tail.append({"action": "selectOption", "selector": edit_selector, "value": edit_new_value,
+                        "label": "Change the enum to a different declared option"})
+        else:
+            tail.append({"action": "fill", "selector": edit_selector, "value": edit_new_value,
+                        "label": "Change the value"})
+        tail.append({"action": "click", "selector": f'{form_scope} button:has-text("Save")',
+                    "label": "Submit the edit"})
+        tail.append({"action": "waitForSelector", "selector": f"{form_scope} form", "state": "detached",
+                    "label": "Modal closes only on a successful save"})
+        tail.append({"action": "waitForTimeout", "timeoutMs": 800, "label": "Let the grid reload"})
+        tail.append({"action": "assertTextContains", "selector": f"#concept-{name}", "text": edit_assert_text,
+                    "label": "Edited value visible in the grid"})
+
+    # MEASURED live against gift-idea-tracker (2026-08-19): `deleteRecord()` guards the DELETE call
+    # behind `window.confirm("Delete this record?")`, and the ScrapForAI engine registers no
+    # `page.on('dialog', ...)` handler anywhere in its runner -- so Playwright's documented default
+    # (auto-DISMISS any unhandled native dialog) cancels every confirm this button raises. A row
+    # created via REST, deleted via this exact click sequence through `npdev explore run`, was still
+    # present afterward. That is a real, pre-existing gap in the browser-automation harness (not in
+    # this generator, not in the generated app), and it lives outside this repo's NPDevCli scope --
+    # so the assertion below states what ACTUALLY happens (the click is honored, the confirm is
+    # cancelled, the row survives) rather than asserting a deletion this tooling cannot complete.
+    tail.append({
+        "action": "click", "selector": f'{row_click_selector} >> button:has-text("Delete")',
+        "label": "Click Delete -- proves the affordance is wired; see the note above this step in "
+                 "generate_routines() about why the confirm is expected to be cancelled",
+    })
+    tail.append({"action": "waitForTimeout", "timeoutMs": 1000, "label": "Let the cancelled confirm settle"})
+    tail.append({"action": "assertCount", "selector": row_selector, "operator": ">=", "count": 1,
+                "label": "Row still present: the auto-dismissed confirm leaves the record intact -- "
+                         "a known ScrapForAI engine limitation (no dialog handling), not an app defect"})
+    tail.append({"action": "screenshot", "name": f"{slug}_created", "label": "Final state"})
+    tail.append({"action": "collect", "what": ["domText", "url"], "label": "Evidence"})
+
+    # The pinned engine schema caps a routine at 50 steps. A concept with several required
+    # reference fields (each needing 4-6 steps to seed-wait-and-pick) plus a jwt-mode login preamble
+    # (10 steps, vs apiKey's 4) can exceed that once edit+delete are added -- MEASURED on WmsOffice's
+    # `CrossDocking` (3 required references): 53 steps with edit+delete, 33 without. Same honest
+    # fallback as "no marker field": create+list only, never a routine the engine would refuse.
+    combined = steps + tail
+    if len(combined) > 50:
+        return (_routine_document(name, list_only_steps, target_path=target_path, variables=routine_variables),
+                f"create+list only -- edit+delete would exceed the engine's 50-step cap "
+                f"({len(combined)} steps)")
+    return _routine_document(name, combined, target_path=target_path, variables=routine_variables), None
+
+
+def generate_routines(app_dir: Path, *, concepts: list[str] | None = None,
+                      out_dir: Path | None = None, write: bool = True) -> dict:
+    """R3.3: emit one create/list/edit/delete routine per concept, built from
+    `generated-ui-manifest.json` -- the same resolved facts (widget, enumOptions, reference target)
+    the running app's own business UI reads. Written into `mirror_dir(app_dir)` by default (the
+    first directory `definition_files()`/`explore suite` already scan), so a plain
+    `npdev explore suite --app-dir <app>` picks the result up with no further wiring."""
+    app_dir = Path(app_dir).expanduser().resolve()
+    app_record = npdev_monitor.probe_app(app_dir)
+    if not app_record.get("isAppRoot"):
+        raise ExploreError(app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    final_app_root = Path(app_record["finalAppRoot"])
+    manifest_path = _manifest_path(final_app_root)
+    if manifest_path is None:
+        raise ExploreError(
+            f"no generated-ui-manifest.json under {final_app_root} -- regenerate the app "
+            "(BusinessUiEmitter writes it under npdev-generated/.../static/npdev-business-ui/)."
+        )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    all_concepts = [c for c in (manifest.get("concepts") or []) if c.get("conceptName")]
+
+    if concepts:
+        wanted = set(concepts)
+        available = {c["conceptName"] for c in all_concepts}
+        missing = wanted - available
+        if missing:
+            raise ExploreError(f"no such concept(s) in {manifest_path}: {', '.join(sorted(missing))}")
+        all_concepts = [c for c in all_concepts if c["conceptName"] in wanted]
+
+    plans = {c["conceptName"]: _plan_concept(c) for c in all_concepts}
+    order, skip_reason = _order_and_skip(plans)
+
+    auth = manifest.get("auth") or {}
+    origin = app_record.get("probeBaseUrl")
+
+    out_dir = Path(out_dir).expanduser().resolve() if out_dir else mirror_dir(app_dir)
+    written: list[dict] = []
+    partial: list[dict] = []
+    for index, name in enumerate(order, start=1):
+        routine, partial_reason = _build_concept_routine(plans[name], auth, origin)
+        file_name = f"{index:02d}-{_generate_slug(name)}-crud.json"
+        target = out_dir / file_name
+        if write:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(routine, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        entry = {"concept": name, "file": str(target), "scenarioName": routine["scenarioName"],
+                 "stepCount": len(routine["steps"])}
+        if partial_reason:
+            entry["partial"] = partial_reason
+            partial.append(entry)
+        written.append(entry)
+
+    return {
+        "schemaVersion": "npdev-exploration-generate.v1",
+        "command": "explore generate",
+        "ok": True,
+        "appDir": str(app_dir),
+        "manifestPath": str(manifest_path),
+        "outDir": str(out_dir),
+        "written": written,
+        "skipped": [{"concept": n, "reason": r} for n, r in sorted(skip_reason.items())],
+        "summary": {
+            "conceptsTotal": len(plans),
+            "written": len(written),
+            "partial": len(partial),
+            "skipped": len(skip_reason),
+        },
+    }
 
 
 # ---------------------------------------------------------------------------------------------
@@ -866,6 +1772,17 @@ def preflight(app_dir: Path, engine_port: int, configured_root: str | None,
             "app": app_record, "engine": engine}
 
 
+def blocking_preflight(pre: dict) -> list[dict]:
+    """The failed preconditions that make running IMPOSSIBLE, as opposed to merely absent.
+
+    `engine-available` is deliberately excluded: `run_exploration` STARTS the engine when it is not
+    already up, so its absence is a step, not a blocker. Shared by `run_exploration` and `run_suite`
+    so the suite's "can anything run here?" question and the single run's are literally the same
+    question -- a suite that refused on a precondition `run` tolerates (or vice versa) would be a
+    second, disagreeing gate."""
+    return [c for c in pre["checks"] if c["status"] == "fail" and c["id"] != "engine-available"]
+
+
 def run_exploration(
     repo_root: Path,
     app_dir: Path,
@@ -896,7 +1813,7 @@ def run_exploration(
     emit({"kind": "phase", "phase": "preflight"})
     pre = preflight(app_dir, engine_port, configured_root, Path(repo_root))
     emit({"kind": "preflight", "checks": pre["checks"], "ok": pre["ok"]})
-    blocking = [c for c in pre["checks"] if c["status"] == "fail" and c["id"] != "engine-available"]
+    blocking = blocking_preflight(pre)
     if blocking:
         raise ExploreError("preflight failed: " + "; ".join(f"{c['name']} -- {c['detail']}" for c in blocking))
 
@@ -959,6 +1876,197 @@ def run_exploration(
     pruned = prune(app_dir)
     record["pruned"] = {"blobsRemoved": pruned["blobsRemoved"], "bytesFreed": pruned["bytesFreed"]}
     return record
+
+
+# ---------------------------------------------------------------------------------------------
+# suite (R3.1) -- every routine an app declares, one after another
+# ---------------------------------------------------------------------------------------------
+
+SUITE_SCHEMA_VERSION = "npdev-exploration-suite.v1"
+
+
+def _suite_blocker(repo_root: Path, app_dir: Path, engine_port: int,
+                   configured_root: str | None) -> str | None:
+    """One sentence when a condition holds that would defeat EVERY remaining routine, else None.
+
+    This is the classifier behind the refusal decision documented on `run_suite`. It asks only
+    APP-WIDE questions -- is the app still there and answering, is someone else holding the lock --
+    using the same `preflight`/`RunLock` rules a single run uses. It deliberately knows nothing
+    about any individual routine, because that is precisely the distinction it exists to draw."""
+    held = RunLock.held_by(app_dir)
+    if held is not None:
+        holder, age = held
+        return (f"another exploration is already running for this app (lock held {age}s by "
+                f"{holder}); every remaining routine would be refused the same way")
+    pre = preflight(app_dir, engine_port, configured_root, Path(repo_root))
+    blocking = blocking_preflight(pre)
+    if blocking:
+        return "preflight failed: " + "; ".join(f"{c['name']} -- {c['detail']}" for c in blocking)
+    return None
+
+
+def run_suite(
+    repo_root: Path,
+    app_dir: Path,
+    *,
+    only: list[str] | None = None,
+    stop_on_red: bool = False,
+    engine_port: int = npdev_monitor.DEFAULT_ENGINE_PORT,
+    configured_root: str | None = None,
+    api_key: str | None = None,
+    driver: str = "cli",
+    variables: dict | None = None,
+    credentials: dict | None = None,
+    ledger_id: str | None = None,
+    keep_engine: bool = False,
+    on_event=None,
+) -> dict:
+    """Run EVERY routine the app declares, in `definition_files` order, and roll the verdicts up.
+
+    A plain sequential loop over `run_exploration`, on purpose. `run_exploration` already takes the
+    per-app `RunLock` around each run, so "serial within an app, parallel across apps" is true here
+    by construction -- a suite-level lock would be a second lock competing with the real one, and
+    concurrency inside a suite is exactly what R7 forbids anyway.
+
+    The verdict is NOT recomputed. Every entry reports the `green` that `evaluate_verdict` already
+    decided inside `build_run_record`, verbatim, and a red entry carries that verdict's own
+    `reasons`. R10 is not "one verdict function per command"; it is one verdict, full stop.
+
+    REFUSAL HANDLING -- the decision, and why
+    -----------------------------------------
+    `run_exploration` raises `ExploreError` for a refusal and returns normally for a routine that
+    ran and failed. Those refusals are not all the same shape, so the suite classifies them instead
+    of picking one blanket policy:
+
+      * APP-WIDE (the app is gone or unhealthy, another process holds the lock) -- ABORT. Every
+        remaining routine would refuse identically, and N copies of one diagnosis buries the
+        diagnosis. The remaining definitions are reported as `skipped` WITH the reason, so the
+        output still says what did not run and why rather than silently shortening.
+      * PER-ROUTINE (an unreadable routine file, a routine the engine's own schema rejects, a
+        routine the engine refuses) -- RECORD IT AND CONTINUE. One bad routine file must not cost
+        you the evidence for the other nine; that is the whole point of running a suite.
+
+    The classifier is `_suite_blocker`, re-asked after each refusal, so the answer reflects the
+    machine's state AT THAT MOMENT -- an app that dies at routine #4 aborts at #4 rather than being
+    presumed healthy because it was healthy at #1.
+
+    A refusal is counted SEPARATELY from a red run and never rendered as one (D4/QUAL-4: a tool
+    problem dressed as a test result teaches people to distrust the tests). Both still make the
+    suite not-green, because either way you did not get the evidence you asked for.
+
+    When NOTHING could run -- no definitions matched, or the app is unhealthy before the first
+    routine -- this raises `ExploreError` like any other refusal. There is no result to report, and
+    a summary of zero runs reads like a pass.
+
+    ENGINE REUSE: `keep_engine` is forwarded verbatim to every run. With the default (False) each
+    run starts and stops its own engine, which is correct but pays the engine's startup once per
+    routine; pass `keep_engine=True` and run #1 leaves the engine up for the rest to detect and
+    reuse -- at the documented R2 cost that it is then yours to stop. No new engine plumbing here.
+    """
+    app_dir = Path(app_dir).expanduser().resolve()
+    emit = on_event or (lambda _event: None)
+
+    selected = definition_files(app_dir)
+    if only:
+        selected = [p for p in selected
+                    if any(fnmatch.fnmatch(p.stem, pattern) or fnmatch.fnmatch(p.name, pattern)
+                           for pattern in only)]
+    if not selected:
+        raise ExploreError(
+            (f"no routine matched {only!r} in " if only else "no routines to run: ")
+            + "; ".join(str(d) for d in definition_dirs(app_dir))
+        )
+
+    # Fail before starting an engine, not after. Same rules the loop uses to abort mid-way.
+    blocker = _suite_blocker(repo_root, app_dir, engine_port, configured_root)
+    if blocker is not None:
+        raise ExploreError(blocker)
+
+    started_at = _utc_now()
+    begin = time.time()
+    entries: list[dict] = []
+    aborted: str | None = None
+    stopped_early: str | None = None
+
+    for index, path in enumerate(selected):
+        emit({"kind": "suite", "phase": "routine", "name": path.stem,
+              "index": index + 1, "of": len(selected)})
+        try:
+            record = run_exploration(
+                repo_root, app_dir, path,
+                engine_port=engine_port, configured_root=configured_root, api_key=api_key,
+                driver=driver, variables=variables, credentials=credentials,
+                ledger_id=ledger_id, keep_engine=keep_engine, on_event=on_event)
+        except ExploreError as exc:
+            entries.append({"name": path.stem, "file": str(path), "outcome": "refused",
+                            "runId": None, "green": False, "status": None,
+                            "durationMs": None, "reasons": [str(exc)]})
+            emit({"kind": "suite", "phase": "refused", "name": path.stem, "detail": str(exc)})
+            aborted = _suite_blocker(repo_root, app_dir, engine_port, configured_root)
+            if aborted is not None:
+                break
+            continue
+
+        verdict = record.get("verdict") or {}
+        green = bool(verdict.get("green"))
+        entries.append({
+            "name": path.stem,
+            "file": str(path),
+            "outcome": "green" if green else "red",
+            "runId": record.get("runId"),
+            "green": green,
+            "status": record.get("status"),
+            "durationMs": record.get("durationMs"),
+            "reasons": list(verdict.get("reasons") or []),
+        })
+        emit({"kind": "suite", "phase": "verdict", "name": path.stem,
+              "runId": record.get("runId"), "green": green})
+        if stop_on_red and not green:
+            stopped_early = f"--stop-on-red: {path.stem} was red"
+            break
+
+    # Whatever the loop did not reach is REPORTED, not dropped. A suite that just gets shorter when
+    # it stops early cannot be told apart from a suite that had fewer routines.
+    skip_reason = aborted or stopped_early
+    for path in selected[len(entries):]:
+        entries.append({"name": path.stem, "file": str(path), "outcome": "skipped",
+                        "runId": None, "green": False, "status": None,
+                        "durationMs": None, "reasons": [skip_reason] if skip_reason else []})
+
+    counts = {
+        "total": len(entries),
+        "green": sum(1 for e in entries if e["outcome"] == "green"),
+        "red": sum(1 for e in entries if e["outcome"] == "red"),
+        "refused": sum(1 for e in entries if e["outcome"] == "refused"),
+        "skipped": sum(1 for e in entries if e["outcome"] == "skipped"),
+    }
+    green = counts["red"] == 0 and counts["refused"] == 0 and counts["skipped"] == 0
+
+    # This summary is deliberately NOT persisted, so it gets no schema file: every run it names is
+    # already durable at `<runId>/run.json` plus its `runs.jsonl` line, and a second stored copy of
+    # facts derived from those is a thing that can disagree with them later. For the same reason the
+    # per-run records keep `suite: None` -- `exploration-run.schema.json`'s `suite` property is
+    # documented as platform-scoped (the editor/e2e suites, stored outside any app), and quietly
+    # widening it to mean "an app-scoped `explore suite` ran this" would make the field mean two
+    # things at once. `schemaVersion` here matches `list`/`preflight`/`prune`, which are versioned
+    # command outputs with no schema file either.
+    return {
+        "schemaVersion": SUITE_SCHEMA_VERSION,
+        "command": "explore suite",
+        # `ok` is what the CLI turns into an exit code. Note this DIFFERS from `explore run`, which
+        # reports ok=True for a red run because the caller is reading that one verdict. R3.1's
+        # definition of done is that a suite exits nonzero when any routine is red -- a suite is used
+        # as a gate, so its exit code has to carry the roll-up.
+        "ok": green,
+        "green": green,
+        "appDir": str(app_dir),
+        "startedAt": started_at,
+        "durationMs": int((time.time() - begin) * 1000),
+        "counts": counts,
+        "aborted": aborted,
+        "stoppedEarly": stopped_early,
+        "runs": entries,
+    }
 
 
 def build_run_record(*, app_dir: Path, repo_root: Path, result: dict, routine: dict,
