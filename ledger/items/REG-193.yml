@@ -15,6 +15,7 @@ source: >-
 surface: generator/schema-realization
 files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/SchemaRealizationEmitterInternalTableCreateTest.java
 detail: |
   `CREATE TABLE IF NOT EXISTS` for internal tables is emitted ONLY into
   `V1__npdev_schema_realization.sql`. Flyway runs a versioned migration exactly once, so on any app
@@ -93,26 +94,84 @@ detail: |
 
   Affects every internal table added after an app's first deployment, not only R2.7's -- currently
   ~15 internal tables exist, and the failure was dormant for all of them until the platform added one.
+
+  LIVE FULL-APP-BOOT PROOF (2026-08-19, AppGen/apps/_scratch/reg193-proof, H2Local, port 8393,
+  outside this repo per the source-of-truth layering), run end to end by this item's own closer, in
+  addition to R7.9/EDIT-10's independent field observation above -- three phases against the SAME
+  database file:
+
+  PHASE 1: generated and booted a throwaway app with ONE internal table temporarily removed from
+  `NpdevInternalTables.all()` (simulating the platform version before R2.7/RUN-15 added
+  `npdev_cron_fire_claim`). V1 migrated for real (Flyway recorded it), and a real business row was
+  created via `POST /api/widgets` (`Phase1-Widget`) to establish genuine pre-existing data in the H2
+  file. App stopped.
+
+  PHASE 2 (RED, self-observed): restored `npdev_cron_fire_claim` to `NpdevInternalTables.all()` (its
+  real, current registration) with the FIX TEMPORARILY REVERTED, then regenerated and rebuilt against
+  the SAME database file and started it. The app crashed during startup with a real
+  `org.springframework.beans.factory.BeanCreationException` wrapping
+  `org.flywaydb.core.internal.exception.FlywayMigrateException: Script
+  R__npdev_schema_additive_columns.sql failed`, caused by
+  `org.h2.jdbc.JdbcSQLSyntaxErrorException: Table "npdev_cron_fire_claim" not found` on an
+  `ALTER TABLE` statement -- logged in full in the app's own `App/logs/app-20260819T101014Z.log`.
+  `Application run failed`; the process exited and the port never bound (`curl` returned connection
+  refused, http_code 000) -- a harder failure than R7.9's HTTP 503, consistent with it being the same
+  defect hit through a different request path (R7.9 evidently hit an already-running instance's
+  later reconciliation attempt rather than the initial boot).
+
+  PHASE 3 (GREEN, self-observed): restored the fix, regenerated and rebuilt against the SAME database
+  file (untouched since PHASE 2's crash) and started it. Flyway applied the repeatable migration with
+  ZERO errors this time (`Successfully applied 1 migration`); the app started
+  (`Started FinalExecApplication in 26.9 seconds`) and `GET /actuator/health` returned 200.
+  `GET /api/widgets` returned the PHASE 1 row (`Phase1-Widget`) untouched, and a new
+  `POST /api/widgets` (`Phase3-Widget`) succeeded -- no data loss, no destructive recreate. The app
+  was then stopped and `npdev_cron_fire_claim` was queried DIRECTLY against the stopped H2 file (via
+  `org.h2.tools.RunScript` against `INFORMATION_SCHEMA.TABLES`/`.COLUMNS`, matching the JDBC URL's
+  real `MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE` params): the table exists with all six declared
+  columns (`flow_name`, `tenant_id`, `scheduled_fire_time`, `created_at`, `claimed_by`,
+  `claimed_until`).
+
+  FRESH-INSTALL REGRESSION CHECK: the same app's database directory was wiped and rebooted against a
+  brand-new, empty database with the CURRENT (fixed) code. Flyway applied both migrations cleanly
+  (`Successfully applied 2 migrations ... now at version v1`, zero errors) -- the redundant guarded
+  `CREATE TABLE IF NOT EXISTS` that R__ now also emits for internal tables is a correct no-op after
+  V1 already created them, exactly as REG-40 already established for business tables. `V1__`'s own
+  text was also checked directly: exactly one `CREATE TABLE` statement per internal table (18 total
+  for this proof's model: 17 internal + 1 business), never a duplicate.
+
+  Full regression: `:NPDevKernel:kernel:test` and `:NPDevGenerator:generator:test` both green on the
+  final restored code (kernel's `NpdevInternalTables.java` diffs clean against HEAD -- the PHASE 1/2
+  temporary edit used to stage the RED was fully reverted). `scripts/hygiene/check-deterministic-generation.ps1`
+  passed byte-identical across two consecutive runs.
 guard:
   kind: test
-  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/SchemaRealizationEmitterInternalTableCreateTest.java
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/SchemaRealizationEmitterInternalTableCreateTest.java#internalTableSelfHealsOnADatabaseThatPredatesItsAddition
   asserts: >-
     a platform-added internal table reaches an already-migrated app's database on regeneration, the
     same way REG-40 made a newly-added business concept reach one. Two tests carry it:
     newInternalTableCreateTextAppearsInTheAdditiveMigration asserts the R__ additive script now
     contains `CREATE TABLE IF NOT EXISTS npdev_cron_fire_claim` AND that it precedes any ALTER TABLE
     for that same table -- the ordering hazard this item's diagnosis named; and
-    internalTableSelfHealsOnADatabaseThatPredatesItsAddition builds a real H2 database that predates
-    the table, asserts the precondition "table must be absent before the R__ run", then proves the
-    repeatable migration self-heals it. That second test is the existing-database proof, done at SQL
-    level so it needs no app boot -- which is what makes it runnable in a gate, unlike the failure
-    that produced it.
+    internalTableSelfHealsOnADatabaseThatPredatesItsAddition (the guard.ref anchor) builds a real H2
+    database that predates the table, asserts the precondition "table must be absent before the R__
+    run", then proves the repeatable migration self-heals it AND that a write against the newly
+    created table round-trips. That second test is the existing-database proof at SQL level, gate-
+    runnable without an app boot -- complementary to, not a substitute for, the live full-app-boot
+    proof narrated in this item's detail above.
   provenRed: true
   provenRedNote: >-
-    The RED was observed IN THE WILD, not staged: while browser-verifying R7.9 (EDIT-10) an unrelated
-    workstream hit this exact failure -- an already-migrated database meeting newly-registered
-    internal tables, the additive script failing to ALTER a table that did not exist, surfacing as a
-    runtime HTTP 503 and blocking three app/config combinations before a scratch database worked
-    around it. Recorded here rather than re-manufactured, because a second staged 503 would add
-    nothing. The unit tests' own precondition assertion (the table must be ABSENT before the R__ run)
-    is what keeps them from being vacuous.
+    Watched live, twice, by two different mechanisms: (1) UNIT LEVEL --
+    internalTableSelfHealsOnADatabaseThatPredatesItsAddition run against the code with the R__ fix
+    temporarily reverted failed with a real
+    `org.h2.jdbc.JdbcSQLSyntaxErrorException: Table "NPDEV_CRON_FIRE_CLAIM" not found` thrown from a
+    real H2 connection executing the real emitted SQL (not a mock) -- captured verbatim in the Gradle
+    test-results XML before the fix was restored and the test re-run green. (2) LIVE APP-BOOT LEVEL --
+    the three-phase proof narrated above: a real Spring Boot application, built and started from a
+    real jar against a real, previously-migrated H2 database file carrying real pre-existing business
+    data, crashed at startup with `FlywayMigrateException` / the identical H2 "table not found" error,
+    and the port never bound (connection refused). Restoring the fix and repeating the exact same
+    regenerate-rebuild-reboot cycle against the SAME database file made it boot clean, self-heal the
+    missing table, and serve both the old and new data. Both REDs are independent of, and in addition
+    to, R7.9/EDIT-10's own field-observed HTTP 503 (recorded earlier in this item's detail) -- that
+    one is cited as prior, independently-discovered evidence of real-world impact; the two above are
+    this item's own closing verification, watched directly rather than inferred.
