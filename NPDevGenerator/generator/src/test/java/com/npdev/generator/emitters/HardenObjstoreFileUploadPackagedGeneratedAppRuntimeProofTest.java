@@ -419,6 +419,7 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
                         ":adapters:runtime-validation:jar",
                         ":adapters:schema-validator-default:jar",
                         ":adapters:tracing-redaction-default:jar",
+                        ":adapters:webhook-http:jar",
                         ":adapters:webhook-inproc:jar",
                         "--no-daemon",
                         "--console=plain"
