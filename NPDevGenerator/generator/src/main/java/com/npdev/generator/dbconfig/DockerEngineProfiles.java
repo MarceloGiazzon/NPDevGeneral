@@ -100,7 +100,8 @@ public final class DockerEngineProfiles {
                 text(node, "dataVolumePath"),
                 text(node, "composeImage"),
                 text(node, "backupCommand"),
-                text(node, "restoreCommand"));
+                text(node, "restoreCommand"),
+                stringMap(node.path("backupClientEnv")));
     }
 
     private static DockerEngineProfile.Probe probe(JsonNode node) {

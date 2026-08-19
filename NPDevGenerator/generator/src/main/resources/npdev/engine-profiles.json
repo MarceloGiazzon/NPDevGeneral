@@ -10,7 +10,16 @@
     "dialect work, and the reason SqlDialect parameterises twelve methods instead of duplicating",
     "eight modules.",
     "",
-    "Every 'quirk' below is a MEASURED failure from this project's own CI, not folklore."
+    "Every 'quirk' below is a MEASURED failure from this project's own CI, not folklore.",
+    "",
+    "R9.9: 'backupClientEnv' is how the backup/backup-verify SIDECAR containers (DockerDeploymentEmitter's",
+    "'backup' compose profile) reach the database OVER THE COMPOSE NETWORK. 'backupCommand'/'restoreCommand'",
+    "have no -h/--host flag because backup.sh/restore.sh run them INSIDE the database container via",
+    "'docker compose exec' (so the target is effectively localhost). A sidecar is a SEPARATE container, so",
+    "it needs the equivalent connection facts supplied as env vars the client tools already read implicitly",
+    "(PGHOST/PGPORT/PGPASSWORD for psql/pg_dump, MYSQL_HOST/MYSQL_TCP_PORT/MYSQL_PWD for mysql/mysqldump) --",
+    "the command strings themselves stay identical between both call sites. Present only where",
+    "backupCommand/restoreCommand are present; DockerEngineProfile#validate() enforces that pairing."
   ],
   "schemaVersion": "npdev-engine-profile.v1",
   "engines": {
@@ -66,7 +75,12 @@
       "dataVolumePath": "/var/lib/postgresql/data",
       "composeImage": "postgres:16-alpine",
       "backupCommand": "pg_dump --clean --if-exists -U \"$DB_USER\" -d \"$DB_NAME\"",
-      "restoreCommand": "psql -U \"$DB_USER\" -d \"$DB_NAME\" -v ON_ERROR_STOP=1"
+      "restoreCommand": "psql -U \"$DB_USER\" -d \"$DB_NAME\" -v ON_ERROR_STOP=1",
+      "backupClientEnv": {
+        "PGHOST": "{host}",
+        "PGPORT": "{port}",
+        "PGPASSWORD": "{password}"
+      }
     },
     "MySQL": {
       "kind": "server",
@@ -129,7 +143,12 @@
       "dataVolumePath": "/var/lib/mysql",
       "composeImage": "mysql:8.4",
       "backupCommand": "mysqldump --add-drop-table -u\"$DB_USER\" -p\"$DB_PASSWORD\" \"$DB_NAME\"",
-      "restoreCommand": "mysql -u\"$DB_USER\" -p\"$DB_PASSWORD\" \"$DB_NAME\""
+      "restoreCommand": "mysql -u\"$DB_USER\" -p\"$DB_PASSWORD\" \"$DB_NAME\"",
+      "backupClientEnv": {
+        "MYSQL_HOST": "{host}",
+        "MYSQL_TCP_PORT": "{port}",
+        "MYSQL_PWD": "{password}"
+      }
     },
     "SqlServer": {
       "kind": "server",
