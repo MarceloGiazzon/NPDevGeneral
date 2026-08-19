@@ -111,7 +111,12 @@ class AiModelToDslMappingTest {
             }
         }
 
-        assertEquals(24, aiModelScenarioCount, "golden AI-model scenario count changed; update the mapping evidence deliberately");
+        // 22 ACTIVE scenarios. This was pinned at 24 while `deferred/` was walked too; those two
+        // deferred entries are deliberately-inactive and one is structurally incomplete, which is
+        // why every PowerShell gate skips that directory by name. Excluding it here (see
+        // scenarioDirs) makes this test agree with the rest of the harness rather than being the
+        // only place deferred scenarios count as active.
+        assertEquals(22, aiModelScenarioCount, "golden AI-model scenario count changed; update the mapping evidence deliberately");
         assertTrue(unclassified.isEmpty(), "unclassified golden scenario AI model fields: " + unclassified);
     }
 
@@ -375,6 +380,13 @@ class AiModelToDslMappingTest {
         try (Stream<Path> stream = Files.walk(SCENARIO_ROOT)) {
             return stream
                     .filter(Files::isDirectory)
+                    // `deferred/` holds scenarios that are deliberately not active yet -- several are
+                    // incomplete on purpose (a manifest with no matching model/expectation files).
+                    // Every PowerShell gate that walks this tree already skips it by name
+                    // (run-ai-beta-gate, run-ai-schema-validation, run-ai-contract-normalizer-tests);
+                    // this test did not, and only passed while the directory happened to be absent
+                    // from the working tree.
+                    .filter(path -> !SCENARIO_ROOT.relativize(path).startsWith("deferred"))
                     .filter(path -> Files.isRegularFile(path.resolve("scenario.manifest.json")))
                     .sorted(Comparator.comparing(path -> path.getFileName().toString()))
                     .collect(Collectors.toList());

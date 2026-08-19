@@ -326,6 +326,26 @@ def _has_groupby_multi_hop_join(model: dict) -> bool:
     return False
 
 
+def _has_query_where_v2(model: dict) -> bool:
+    """R4.3 lockstep fix (Roadmap Wave 1 gap closure): a query.where using the v2 predicate grammar
+    (QueryPredicateGrammar#parseGroups) -- an OR-group (||), `in (...)`, `contains`/`startsWith`, or
+    `is null`/`is not null` -- distinct from the plain v1 AND-only "queries" feature already tracked
+    above. PackValidation#validateQueryWhereCompiles only started accepting this grammar once
+    DefaultProcedureExecutor#runQuery was rewired onto ConceptQueryPredicateCompiler
+    #compileToConceptQueryFilters in the same change; a where using v2 syntax with zero corpus
+    coverage would have let that lockstep silently regress back to v1-only with no gate noticing."""
+    for q in (model.get("queries", None) or []):
+        where = q.get("where")
+        if not isinstance(where, str) or not where.strip():
+            continue
+        if "||" in where:
+            return True
+        for keyword in (" in (", " contains ", " startsWith ", " is null", " is not null"):
+            if keyword in where:
+                return True
+    return False
+
+
 def _has_aggregate_on_validate(model: dict) -> bool:
     return any(
         isinstance(a, dict) and a.get("onValidate")
