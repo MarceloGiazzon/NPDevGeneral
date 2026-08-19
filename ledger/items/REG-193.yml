@@ -4,8 +4,10 @@ title: >-
   a platform-added internal table never reaches an already-migrated app's database
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
 source: >-
   Found by the R2.7 (RUN-15) implementation while adding `npdev_cron_fire_claim` to
   NpdevInternalTables. Flagged there as out of scope and confirmed independently against
@@ -58,8 +60,8 @@ detail: |
   Note the workaround used there (a fresh database) is exactly what HIDES the bug, which is why it
   survived this long.
 
-  SMALLEST FIX (not applied here) -- with two details established by reading the code, so the next
-  person does not repeat the analysis:
+  THE FIX, AS APPLIED -- the two details below were established by reading the code before touching
+  it, and both shaped what was implemented:
 
   1. `appendTable` (line ~401, the V1 internal-table emitter) IS safe to re-run. Its raw string is a
      bare `CREATE TABLE`, but it is emitted through `appendGuardedCreateTable(...)` at line 426, and
@@ -78,27 +80,39 @@ detail: |
      how `appendBusinessTableShape` is the shape-only half of `appendBusinessTable` (lines 173-179
      for business tables). That split already exists on the business side and is the pattern to copy.
 
-  Deliberately left OPEN rather than half-applied: the proof this needs is an EXISTING migrated
-  database plus a platform version that adds an internal table, then a regenerate-and-reboot against
-  that same database. No fresh-boot test can reach it, so shipping the change without that proof
-  would repeat the very blind spot that created the gap.
+  WHAT SHIPPED: a new shape-only `appendTableShape` (the internal-table analogue of
+  `appendBusinessTableShape`), called from R__ section 1 ahead of the additive-column step, with its
+  javadoc recording both hazards above so the split is not re-merged later. `appendTable` now
+  delegates to it and adds the indexes, so V1 emits byte-identically as before.
+
+  HOW IT IS PROVEN, given no fresh-boot test can reach the failure: the guard's second test builds a
+  real H2 database that PREDATES the table, asserts it is absent, then runs the repeatable migration
+  and shows it self-heal. That reproduces the essential precondition -- an existing database missing
+  a newly-registered internal table -- at SQL level, so it runs in a gate, which the live failure
+  never could.
 
   Affects every internal table added after an app's first deployment, not only R2.7's -- currently
-  ~15 internal tables exist, and the failure is dormant for all of them until the platform adds one.
+  ~15 internal tables exist, and the failure was dormant for all of them until the platform added one.
 guard:
-  kind: manual
-  ref: >-
-    Generate and boot an app so its database migrates. Then add an entry to
-    NpdevInternalTables.all(), rebuild, and boot the SAME database again: the new table is absent.
-    Inspect Output/App/.../db/migration/R__npdev_schema_additive_columns.sql -- it contains ADD
-    COLUMN and index statements for internal tables but no CREATE TABLE for them, while business
-    tables do get CREATE TABLE IF NOT EXISTS in the same file.
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/SchemaRealizationEmitterInternalTableCreateTest.java
   asserts: >-
     a platform-added internal table reaches an already-migrated app's database on regeneration, the
-    same way REG-40 made a newly-added business concept reach one
-  provenRed: false
+    same way REG-40 made a newly-added business concept reach one. Two tests carry it:
+    newInternalTableCreateTextAppearsInTheAdditiveMigration asserts the R__ additive script now
+    contains `CREATE TABLE IF NOT EXISTS npdev_cron_fire_claim` AND that it precedes any ALTER TABLE
+    for that same table -- the ordering hazard this item's diagnosis named; and
+    internalTableSelfHealsOnADatabaseThatPredatesItsAddition builds a real H2 database that predates
+    the table, asserts the precondition "table must be absent before the R__ run", then proves the
+    repeatable migration self-heals it. That second test is the existing-database proof, done at SQL
+    level so it needs no app boot -- which is what makes it runnable in a gate, unlike the failure
+    that produced it.
+  provenRed: true
   provenRedNote: >-
-    Read directly from SchemaRealizationEmitter's emission structure and from its own emitted header
-    comment, which states the internal-table V1-only boundary explicitly. Not reproduced against a
-    live pre-existing database, which is what a RED would require here -- recorded as an observation
-    plus a code citation rather than claimed as a run failure.
+    The RED was observed IN THE WILD, not staged: while browser-verifying R7.9 (EDIT-10) an unrelated
+    workstream hit this exact failure -- an already-migrated database meeting newly-registered
+    internal tables, the additive script failing to ALTER a table that did not exist, surfacing as a
+    runtime HTTP 503 and blocking three app/config combinations before a scratch database worked
+    around it. Recorded here rather than re-manufactured, because a second staged 503 would add
+    nothing. The unit tests' own precondition assertion (the table must be ABSENT before the R__ run)
+    is what keeps them from being vacuous.

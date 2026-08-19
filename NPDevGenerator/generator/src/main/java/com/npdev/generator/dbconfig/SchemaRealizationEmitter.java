@@ -159,18 +159,28 @@ public final class SchemaRealizationEmitter {
             // problems that cannot happen.
             additive.append("-- Engine: ").append(plan.engine().externalName()).append("\n");
             additive.append("-- Adds new non-bond columns to already-existing tables (internal + business) without\n");
-            additive.append("-- destructive recreation, and self-heals a business table (or bond junction table)\n");
-            additive.append("-- that doesn't exist yet on this database -- CREATE TABLE IF NOT EXISTS is a no-op\n");
-            additive.append("-- the instant it does (REG-40 tactical hotfix). Scope boundary: internal tables stay\n");
-            additive.append("-- V1-only (platform-fixed, not model-driven); column/table removal and type changes\n");
-            additive.append("-- remain structural changes handled by the schema-fingerprint destructive-recreate path.\n\n");
+            additive.append("-- destructive recreation, and self-heals a business OR internal table (or bond\n");
+            additive.append("-- junction table) that doesn't exist yet on this database -- CREATE TABLE IF NOT\n");
+            additive.append("-- EXISTS is a no-op the instant it does (REG-40 tactical hotfix, extended to internal\n");
+            additive.append("-- tables by REG-193 once the platform itself started growing that set post-deploy).\n");
+            additive.append("-- Column/table removal and type changes remain structural changes handled by the\n");
+            additive.append("-- schema-fingerprint destructive-recreate path.\n\n");
 
             // Ordering rule (REG-40 tactical hotfix): all CREATE TABLE blocks -> all ADD COLUMN
             // blocks -> all constraint blocks. A brand-new table must exist before its additive
             // columns run against it, and a bond FK must come after both endpoint tables exist --
             // which this ordering guarantees regardless of which tables/columns are actually new.
 
-            // 1. CREATE TABLE IF NOT EXISTS blocks (business tables, then their bond junction tables).
+            // 1. CREATE TABLE IF NOT EXISTS blocks (internal tables, then business tables, then their
+            // bond junction tables). REG-193: internal tables' shape-only half moved here so a
+            // platform-added internal table self-heals onto an already-migrated database exactly like
+            // a platform-added business table already did -- see appendTableShape's javadoc for why
+            // this must stay shape-only (no indexes) and run before section 2/3 below.
+            if (plan.createInternalTables()) {
+                for (InternalTableDefinition table : NpdevInternalTables.all()) {
+                    appendTableShape(additive, table, plan.engine());
+                }
+            }
             if (plan.createBusinessTables()) {
                 Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
                 for (CompiledConcept concept : model.getConcepts()) {
@@ -411,6 +421,38 @@ public final class SchemaRealizationEmitter {
     }
 
     private static void appendTable(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
+        appendTableShape(sql, table, engine);
+        for (InternalIndexDefinition index : table.indexes()) {
+            StringBuilder createIndex = new StringBuilder("CREATE ")
+                    .append(index.unique() ? "UNIQUE " : "")
+                    .append("INDEX ")
+                    .append(index.name())
+                    .append(" ON ")
+                    .append(table.name())
+                    .append(" (")
+                    .append(String.join(", ", index.columns()))
+                    .append(");");
+            appendGuardedCreateIndex(sql, engine, index.name(), table.name(), createIndex.toString());
+        }
+        sql.append("\n");
+    }
+
+    /**
+     * REG-193: the CREATE-TABLE-only half of {@link #appendTable}, split out so the R__ repeatable
+     * migration can self-heal a platform-added internal table that does not exist yet on an
+     * already-migrated database -- mirroring exactly how {@link #appendBusinessTableShape} is the
+     * shape-only half of {@link #appendBusinessTable} for business tables (REG-40 tactical hotfix).
+     * {@link #appendTable} (V1, fresh-database-only) still calls this immediately followed by index
+     * emission, in the same order as before this split -- V1's output is unchanged.
+     *
+     * <p>Indexes are deliberately NOT emitted here: {@link #appendInternalTableAdditiveIndexes}
+     * already emits every internal table's indexes in R__ section 3 (after the additive-column
+     * section), so calling {@link #appendTable}'s combined shape+index form from R__ section 1 would
+     * (a) duplicate index emission and (b) run an index over a newly added internal column before
+     * the additive-column section that adds it has run -- the exact ordering hazard REG-193's own
+     * diagnosis named.
+     */
+    private static void appendTableShape(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
         // Platform tables carry platform-chosen names, so nothing here is reserved today and this
         // emits byte-identically. It goes through sqlId anyway so the rule is uniform -- EVERY
         // identifier that reaches emitted SQL asks the dialect -- rather than a rule with an
@@ -436,19 +478,6 @@ public final class SchemaRealizationEmitter {
         lines.add("  PRIMARY KEY (" + String.join(", ", table.primaryKey().columns()) + ")");
         create.append(String.join(",\n", lines)).append("\n);");
         appendGuardedCreateTable(sql, engine, table.name(), create.toString());
-        for (InternalIndexDefinition index : table.indexes()) {
-            StringBuilder createIndex = new StringBuilder("CREATE ")
-                    .append(index.unique() ? "UNIQUE " : "")
-                    .append("INDEX ")
-                    .append(index.name())
-                    .append(" ON ")
-                    .append(table.name())
-                    .append(" (")
-                    .append(String.join(", ", index.columns()))
-                    .append(");");
-            appendGuardedCreateIndex(sql, engine, index.name(), table.name(), createIndex.toString());
-        }
-        sql.append("\n");
     }
 
     // "version" and "tenant_id" are platform-reserved business-table columns: every generated
