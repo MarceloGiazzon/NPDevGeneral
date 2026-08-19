@@ -162,12 +162,13 @@ public final class FinalAppAssembler {
      * here already requires) -- fails loud rather than silently mounting nothing.
      */
     // REG-167: reserved relative paths under static/ that the platform's own generated bundle
-    // writes unconditionally (BusinessUiEmitter, InfoPageEmitter) into the SAME static/ tree
-    // mountWebAssets copies into -- see those classes' own literal path strings. Two of the four
-    // reserved names are whole DIRECTORIES (npdev-business-ui/, npdev-workbench/) rather than a
-    // fixed file list, because npdev-workbench/<panel>.html is emitted once per model panel and so
-    // cannot be enumerated statically here.
-    private static final Set<String> RESERVED_WEB_ASSET_FILES = Set.of("shell.js", "shell.css", "info.html", "info.json");
+    // writes unconditionally (BusinessUiEmitter, InfoPageEmitter, ModelSurfaceEmitter) into the SAME
+    // static/ tree mountWebAssets copies into -- see those classes' own literal path strings. Two of
+    // the four reserved names are whole DIRECTORIES (npdev-business-ui/, npdev-workbench/) rather
+    // than a fixed file list, because npdev-workbench/<panel>.html is emitted once per model panel
+    // and so cannot be enumerated statically here.
+    private static final Set<String> RESERVED_WEB_ASSET_FILES =
+            Set.of("shell.js", "shell.css", "info.html", "info.json", "model-surface.html");
     private static final Set<String> RESERVED_WEB_ASSET_DIRECTORIES = Set.of("npdev-business-ui", "npdev-workbench");
 
     private static int mountWebAssets(Options options) throws IOException {
