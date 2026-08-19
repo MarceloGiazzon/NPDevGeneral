@@ -1,0 +1,92 @@
+id: REG-193
+title: >-
+  REG-40's CREATE-TABLE self-heal was given to business tables only; internal tables stay V1-only, so
+  a platform-added internal table never reaches an already-migrated app's database
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-19
+source: >-
+  Found by the R2.7 (RUN-15) implementation while adding `npdev_cron_fire_claim` to
+  NpdevInternalTables. Flagged there as out of scope and confirmed independently against
+  SchemaRealizationEmitter by the orchestrator.
+surface: generator/schema-realization
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
+detail: |
+  `CREATE TABLE IF NOT EXISTS` for internal tables is emitted ONLY into
+  `V1__npdev_schema_realization.sql`. Flyway runs a versioned migration exactly once, so on any app
+  whose database has already migrated, V1 never runs again. The repeatable
+  `R__npdev_schema_additive_columns.sql` does run every boot, and it does touch internal tables --
+  but only via `appendInternalTableAdditiveColumns` (line ~189) and
+  `appendInternalTableAdditiveIndexes` (line ~203). Neither emits CREATE TABLE. So a NEW internal
+  table added to `NpdevInternalTables.all()` is created on fresh databases and silently absent on
+  existing ones.
+
+  **This is not an oversight -- it is a stated scope boundary whose premise has now expired.** The
+  emitted SQL header says so in its own words (SchemaRealizationEmitter.java:163-165):
+
+      -- ... (REG-40 tactical hotfix). Scope boundary: internal tables stay
+      -- V1-only (platform-fixed, not model-driven); column/table removal and type changes
+      -- remain structural changes handled by the schema-fingerprint destructive-recreate path.
+
+  REG-40 (DONE 2026-07-24, "Additive migration never emitted CREATE TABLE -- a new concept on an
+  existing DB failed to boot") fixed exactly this defect for BUSINESS tables, and deliberately left
+  internal tables out on the reasoning that the internal set is platform-fixed and therefore never
+  grows after deployment. **R2.7 (RUN-15) is the counterexample**: the platform itself added
+  `npdev_cron_fire_claim`. Any app generated before that change, upgraded to a jar built after it,
+  boots against a database with no claim table -- and `CronFireClaimStore` runs on every cron tick,
+  so scheduled flows are the blast radius, not a cosmetic surface.
+
+  Note the interaction with the column path: internal tables DID gain a column-evolution path (the
+  comment at line 182 records that they previously had none). So the half-fix is specifically
+  CREATE TABLE, not column drift.
+
+  **Why no existing gate catches this**: every gate builds a FRESH database, where V1 runs and the
+  table exists. Reproducing it requires an EXISTING migrated database plus a platform version that
+  adds an internal table -- the precise combination no fresh-boot test can reach.
+
+  SMALLEST FIX (not applied here) -- with two details established by reading the code, so the next
+  person does not repeat the analysis:
+
+  1. `appendTable` (line ~401, the V1 internal-table emitter) IS safe to re-run. Its raw string is a
+     bare `CREATE TABLE`, but it is emitted through `appendGuardedCreateTable(...)` at line 426, and
+     its indexes through `appendGuardedCreateIndex(...)` at 437 -- both produce engine-appropriate
+     existence guards. So idempotency is not the obstacle, and the header comment at line 182 that
+     calls it "CREATE TABLE IF NOT EXISTS" is accurate in effect even though the literal string is
+     not.
+
+  2. **Do NOT simply call `appendTable` from the R__ block.** It emits CREATE TABLE *and* indexes
+     together, which would (a) duplicate the index emission that
+     `appendInternalTableAdditiveIndexes` already performs in R__ section 3, and (b) break the
+     ordering rule the file documents at line 167-170 (all CREATE TABLE -> all ADD COLUMN -> all
+     constraints) by placing internal indexes before the additive-column step -- so an index over a
+     newly added internal column would run before that column exists.
+     The correct shape is a create-table-only variant called from R__ section 1, mirroring exactly
+     how `appendBusinessTableShape` is the shape-only half of `appendBusinessTable` (lines 173-179
+     for business tables). That split already exists on the business side and is the pattern to copy.
+
+  Deliberately left OPEN rather than half-applied: the proof this needs is an EXISTING migrated
+  database plus a platform version that adds an internal table, then a regenerate-and-reboot against
+  that same database. No fresh-boot test can reach it, so shipping the change without that proof
+  would repeat the very blind spot that created the gap.
+
+  Affects every internal table added after an app's first deployment, not only R2.7's -- currently
+  ~15 internal tables exist, and the failure is dormant for all of them until the platform adds one.
+guard:
+  kind: manual
+  ref: >-
+    Generate and boot an app so its database migrates. Then add an entry to
+    NpdevInternalTables.all(), rebuild, and boot the SAME database again: the new table is absent.
+    Inspect Output/App/.../db/migration/R__npdev_schema_additive_columns.sql -- it contains ADD
+    COLUMN and index statements for internal tables but no CREATE TABLE for them, while business
+    tables do get CREATE TABLE IF NOT EXISTS in the same file.
+  asserts: >-
+    a platform-added internal table reaches an already-migrated app's database on regeneration, the
+    same way REG-40 made a newly-added business concept reach one
+  provenRed: false
+  provenRedNote: >-
+    Read directly from SchemaRealizationEmitter's emission structure and from its own emitted header
+    comment, which states the internal-table V1-only boundary explicitly. Not reproduced against a
+    live pre-existing database, which is what a RED would require here -- recorded as an observation
+    plus a code citation rather than claimed as a run failure.
