@@ -474,6 +474,31 @@ textarea {
   cursor: pointer;
 }
 
+/* R7.8: the leading bulk-select checkbox column (renderTable) -- narrow and centered so it never
+   competes with .records' own table-layout:fixed column-width split across the real data fields. */
+.records .bulk-select-col {
+  width: 36px;
+  text-align: center;
+}
+
+/* R7.8: the bulk actions bar (buildBulkActionsBar), rendered directly above the grid only once at
+   least one row is checked. Mirrors .filters' flex-row rhythm and .views-bar's border/padding. */
+.bulk-actions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--np-grid-head-bg, #f9fafc);
+  border-bottom: 1px solid #e7ebf0;
+}
+
+.bulk-actions-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4c5a69;
+}
+
 /* R7.3: the per-column filter row rendered directly under the header row -- kept visually
    distinct (its own background, no border-bottom to double up with the header's) so it reads as
    "controls for this column" rather than a second header line. */
