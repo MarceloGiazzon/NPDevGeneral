@@ -647,6 +647,7 @@ public final class CompiledModelCanonicalJson {
                 fieldNode.set("ui", toPresentationMetadata(field.getUi()));
                 fieldNode.set("file", toFileMetadata(field.getFile()));
                 fieldNode.set("picker", toFieldPicker(field.getPicker()));
+                fieldNode.set("access", toFieldAccess(field.getAccess()));
                 fieldsNode.add(fieldNode);
             }
             node.set("fields", fieldsNode);
@@ -1766,6 +1767,18 @@ public final class CompiledModelCanonicalJson {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.put("filter", safe(picker.filter()));
         node.put("multiSelect", picker.multiSelect());
+        return node;
+    }
+
+    /** R5.5: field-level authorization rule (access: {read, write}) -- same shape as
+     *  {@link #toConceptAccess}, one rung down the ladder. */
+    private static JsonNode toFieldAccess(CompiledFieldAccess access) {
+        if (access == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("read", safe(access.getRead()));
+        node.put("write", safe(access.getWrite()));
         return node;
     }
 

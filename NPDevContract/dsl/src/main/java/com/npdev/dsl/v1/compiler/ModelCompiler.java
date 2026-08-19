@@ -7,6 +7,7 @@ import com.npdev.dsl.v1.ast.ConversionLookupMatchAst;
 import com.npdev.dsl.v1.ast.ConversionSplitTargetAst;
 import com.npdev.dsl.v1.ast.DocumentAst;
 import com.npdev.dsl.v1.ast.ExternalAiAst;
+import com.npdev.dsl.v1.ast.FieldAccessAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FieldPickerAst;
 import com.npdev.dsl.v1.ast.FileMetadataAst;
@@ -86,6 +87,7 @@ import com.npdev.dsl.v1.compiled.CompiledEnumOption;
 import com.npdev.dsl.v1.compiled.CompiledEvent;
 import com.npdev.dsl.v1.compiled.CompiledEventField;
 import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledFieldAccess;
 import com.npdev.dsl.v1.compiled.CompiledFieldPicker;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowSchedule;
@@ -283,7 +285,8 @@ public final class ModelCompiler {
                         f.getRenamedFrom(),
                         toCompiledFileMetadata(f.getFile()),
                         f.isSensitive(),
-                        toCompiledFieldPicker(f.getPicker())
+                        toCompiledFieldPicker(f.getPicker()),
+                        toCompiledFieldAccess(f.getAccess())
                 ));
 
                 if (f.isRequired()) {
@@ -1972,6 +1975,14 @@ public final class ModelCompiler {
             return null;
         }
         return new CompiledFieldPicker(picker.filter(), picker.multiSelect());
+    }
+
+    /** R5.5: compiles a field's declared {read, write} authorization rule. */
+    private static CompiledFieldAccess toCompiledFieldAccess(FieldAccessAst access) {
+        if (access == null) {
+            return null;
+        }
+        return new CompiledFieldAccess(access.getRead(), access.getWrite());
     }
 
     private static CompiledPresentationMetadata toCompiledPresentationMetadata(PresentationMetadataAst metadata) {

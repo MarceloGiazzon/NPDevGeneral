@@ -11,6 +11,7 @@ import com.npdev.dsl.v1.ast.EventAst;
 import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.ExternalAiAst;
 import com.npdev.dsl.v1.ast.EnumOptionAst;
+import com.npdev.dsl.v1.ast.FieldAccessAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.FlowScheduleAst;
@@ -284,6 +285,7 @@ final class ConceptValidation {
 
                 validateFieldWidgetCompatibility(e, f, normalizedType, errors);
                 validateFieldValueBehavior(e.getName(), f, fieldNames, errors);
+                validateFieldAccessRules(e.getName(), f, fieldNames, errors);
             }
             validateFieldValueBehaviorGraph(e.getName(), effective.fields(), fieldNames, errors);
             Set<String> invariantNames = new HashSet<>();
@@ -862,6 +864,28 @@ final class ConceptValidation {
         }
         validateAccessExpression(entityName, "read", access.getRead(), fieldNames, errors);
         validateAccessExpression(entityName, "write", access.getWrite(), fieldNames, errors);
+    }
+
+    /**
+     * R5.5: compile-time checks for a FIELD's own declarative access rule (field.access:
+     * { read, write }) -- the same shape and grammar as {@link #validateAccessRules}, one rung
+     * down the ladder (role ceiling -> row scope (concept.access) -> field scope (this)). Reuses
+     * {@link #validateAccessExpression} verbatim so both rungs share one syntax/boolean-shape/
+     * referenced-field/{@code $prop.*}-ban check, not two.
+     */
+    private static void validateFieldAccessRules(
+            String entityName,
+            FieldAst field,
+            Set<String> fieldNames,
+            List<String> errors
+    ) {
+        FieldAccessAst access = field.getAccess();
+        if (access == null) {
+            return;
+        }
+        String fieldEntityLabel = entityName + " field '" + field.getName() + "'";
+        validateAccessExpression(fieldEntityLabel, "read", access.getRead(), fieldNames, errors);
+        validateAccessExpression(fieldEntityLabel, "write", access.getWrite(), fieldNames, errors);
     }
 
     private static void validateAccessExpression(

@@ -109,6 +109,21 @@ def _has_concept_access(model: dict) -> bool:
     return False
 
 
+def _has_field_access(model: dict) -> bool:
+    # R5.5: field-level authorization (field.access.read/write) -- the next rung on the ladder
+    # below concept.access (row scope): role ceiling -> row scope -> field scope.
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for field in (concept.get("fields", None) or []):
+            if not isinstance(field, dict):
+                continue
+            access = field.get("access")
+            if isinstance(access, dict) and (access.get("read") or access.get("write")):
+                return True
+    return False
+
+
 def _has_concept_soft_delete(model: dict) -> bool:
     """R5.4 (Roadmap Collection 2026-08-18): a concept declaring softDelete: true -- deletedAt-flip
     delete, deleted-row-excluding reads, and unique-among-live-rows semantics instead of a physical
