@@ -2,6 +2,8 @@ package com.npdev.adapters.bulkhead.postgres;
 
 import com.npdev.kernel.capability.CapabilityOpKey;
 import com.npdev.kernel.ports.BulkheadStore;
+import com.npdev.kernel.storage.sql.SqlDialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -26,12 +28,12 @@ public final class PostgresAdvisoryBulkheadStore implements BulkheadStore {
         Objects.requireNonNull(key, "key");
         int safeMax = maxConcurrent <= 0 ? 1 : maxConcurrent;
         for (int slot = 0; slot < safeMax; slot++) {
-            long lockId = lockId(key, slot);
-            Connection connection = tryAcquireLock(lockId);
+            String lockName = lockName(key, slot);
+            Connection connection = tryAcquireLock(lockName);
             if (connection != null) {
                 heldLocks.get()
                         .computeIfAbsent(key, ignored -> new ArrayDeque<>())
-                        .push(new HeldLock(lockId, connection));
+                        .push(new HeldLock(lockName, connection));
                 return true;
             }
         }
@@ -58,16 +60,18 @@ public final class PostgresAdvisoryBulkheadStore implements BulkheadStore {
         unlock(heldLock);
     }
 
-    private Connection tryAcquireLock(long lockId) {
-        String sql = "SELECT pg_try_advisory_lock(?)";
+    private Connection tryAcquireLock(String lockName) {
+        SqlDialect dialect = SqlDialects.active();
         Connection connection = null;
         try {
             connection = dataSource.getConnection();
-            PreparedStatement statement = connection.prepareStatement(sql);
+            PreparedStatement statement = connection.prepareStatement(dialect.tryAdvisoryLockSql());
             try (statement) {
-                statement.setLong(1, lockId);
+                statement.setObject(1, dialect.advisoryLockKey(lockName));
                 try (ResultSet resultSet = statement.executeQuery()) {
-                    if (resultSet.next() && resultSet.getBoolean(1)) {
+                    // The dialect normalises every engine's answer to 1/0 -- Postgres returns a
+                    // boolean, MySQL 1/0/NULL, SQL Server a procedure code that is >= 0 on success.
+                    if (resultSet.next() && resultSet.getInt(1) == 1) {
                         return connection;
                     }
                     connection.close();
@@ -81,28 +85,25 @@ public final class PostgresAdvisoryBulkheadStore implements BulkheadStore {
     }
 
     private void unlock(HeldLock heldLock) {
-        String sql = "SELECT pg_advisory_unlock(?)";
+        SqlDialect dialect = SqlDialects.active();
         try (Connection connection = heldLock.connection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, heldLock.lockId());
+             PreparedStatement statement = connection.prepareStatement(dialect.releaseAdvisoryLockSql())) {
+            statement.setObject(1, dialect.advisoryLockKey(heldLock.lockName()));
             statement.executeQuery();
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed to release advisory bulkhead lock", exception);
         }
     }
 
-    private static long lockId(CapabilityOpKey key, int slot) {
-        return stableHash64(key.tenantId() + "|" + key.capabilityName() + "|" + key.operationName() + "|" + slot);
-    }
-
-    // FNV-1a 64-bit hash provides stable key derivation across process restarts.
-    private static long stableHash64(String input) {
-        long hash = 0xcbf29ce484222325L;
-        for (int index = 0; index < input.length(); index++) {
-            hash ^= input.charAt(index);
-            hash *= 0x100000001b3L;
-        }
-        return hash;
+    /**
+     * The logical lock name. Hashing it to whatever the engine keys locks by is the DIALECT's job
+     * now (R9.3): Postgres needs a bigint, MySQL and SQL Server take the name as-is, and this class
+     * spelled `pg_try_advisory_lock` inline for all of them. The FNV-1a 64-bit derivation this class
+     * used to do here moved to PostgresDialect.advisoryLockKey UNCHANGED, so every lock id stays
+     * byte-identical to what a running system already holds.
+     */
+    private static String lockName(CapabilityOpKey key, int slot) {
+        return key.tenantId() + "|" + key.capabilityName() + "|" + key.operationName() + "|" + slot;
     }
 
     private static void closeQuietly(Connection connection) {
@@ -116,6 +117,6 @@ public final class PostgresAdvisoryBulkheadStore implements BulkheadStore {
         }
     }
 
-    private record HeldLock(long lockId, Connection connection) {
+    private record HeldLock(String lockName, Connection connection) {
     }
 }

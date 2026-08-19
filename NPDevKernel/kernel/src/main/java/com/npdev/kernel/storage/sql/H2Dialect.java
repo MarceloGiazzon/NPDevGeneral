@@ -307,6 +307,11 @@ public final class H2Dialect implements SqlDialect {
     }
 
     @Override
+    public String guardedCreateSchema(String schemaName) {
+        return "CREATE SCHEMA IF NOT EXISTS " + schemaName;
+    }
+
+    @Override
     public String guardedConstraintDdl(String constraintName, String tableName, String ddlStatement) {
         // REG-38: this lands in R__npdev_schema_additive_columns.sql, a Flyway *repeatable* migration
         // that re-runs whenever its checksum changes (any model edit regenerates it). A bare

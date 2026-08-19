@@ -16,6 +16,7 @@ import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.CapabilityResult;
@@ -66,16 +67,20 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.sql.DataSource;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -388,6 +393,12 @@ public final class GeneratedCrudRuntimeSupport {
         this.idempotencyStore = idempotencyStore == null ? IdempotencyStore.noop() : idempotencyStore;
         this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
         initializeOrchestrationSubscribers();
+        // R2.4: the kernel's scheduleEvent flow step needs the durable table this class owns, and
+        // :kernel cannot depend on this adapter. Registered here rather than in a Spring @Bean for
+        // the same reason initializeOrchestrationSubscribers() is: this constructor is already the
+        // one place that holds both the KernelRunner and the DataSource, and every generated app
+        // builds this object exactly once.
+        kernelRunner.withDeferredEventScheduler(this::scheduleDeferredFlowEvent);
     }
 
     private static RuntimeInvariantEngineFactory missingRuntimeInvariantEngineFactory() {
@@ -1826,6 +1837,16 @@ public final class GeneratedCrudRuntimeSupport {
         return false;
     }
 
+    /**
+     * R4.2 (roadmap): the orchestration twin of {@code KernelRunner.evaluateCondition} -- used to be
+     * a hand-rolled {@code ==}/{@code !=}-only matcher, same shape and same limitation. Now tries the
+     * full {@link ComputedExpression} grammar ({@code &&}, {@code ||}, {@code >}, arithmetic) FIRST,
+     * falling through to the legacy matcher below on {@link ComputedExpression.ExpressionException}
+     * -- the same first-then-fallback ordering {@code CelInvariantEngine.evaluateExpression} already
+     * established for invariant expressions. The bridging scope simply reuses {@link
+     * ConditionValueSupport#resolveConditionValue}, so a token that parses under both engines
+     * resolves against the SAME {@code $event.}/quoted-literal/bare-payload-field rules either way.
+     */
     private boolean evaluateOrchestrationCondition(String rawCondition, Map<String, Object> eventPayload) {
         if (rawCondition == null || rawCondition.isBlank()) {
             return true;
@@ -1836,6 +1857,12 @@ public final class GeneratedCrudRuntimeSupport {
         }
         if ("false".equalsIgnoreCase(condition)) {
             return false;
+        }
+
+        try {
+            return ComputedExpression.evaluateBoolean(condition, new OrchestrationConditionScope(eventPayload));
+        } catch (ComputedExpression.ExpressionException notComputedExpression) {
+            // fall through to the legacy matcher below.
         }
 
         int equalsIndex = condition.indexOf("==");
@@ -1853,6 +1880,34 @@ public final class GeneratedCrudRuntimeSupport {
         }
 
         return asBoolean(resolveConditionValue(condition, eventPayload));
+    }
+
+    /** R4.2: bridges a {@link ComputedExpression} variable lookup to {@link
+     * ConditionValueSupport#resolveConditionValue} -- {@code containsKey} always answers {@code
+     * true} (mirroring {@code CelInvariantEngine.FieldPathScope}) so {@link
+     * ComputedExpression.Node#eval} always takes the {@code get} branch rather than trying its own
+     * dotted-map walk over this synthetic view. */
+    private static final class OrchestrationConditionScope extends AbstractMap<String, Object> {
+        private final Map<String, Object> eventPayload;
+
+        OrchestrationConditionScope(Map<String, Object> eventPayload) {
+            this.eventPayload = eventPayload;
+        }
+
+        @Override
+        public Object get(Object key) {
+            return key instanceof String token ? resolveConditionValue(token, eventPayload) : null;
+        }
+
+        @Override
+        public boolean containsKey(Object key) {
+            return true;
+        }
+
+        @Override
+        public Set<Entry<String, Object>> entrySet() {
+            return Set.of();
+        }
     }
 
     private Map<String, Object> resolveMappedValues(
@@ -2339,6 +2394,82 @@ public final class GeneratedCrudRuntimeSupport {
         } catch (Exception exception) {
             LOG.log(Level.WARNING, "Failed to mark scheduled event failed " + scheduleId, exception);
         }
+    }
+
+    /**
+     * R2.4: {@link com.npdev.kernel.ports.DeferredEventScheduler} bound to the SAME table and the
+     * SAME insert the orchestration-level {@code scheduleEvent} action has always used, so the R2.3
+     * drain consumes a flow step's row without knowing it came from one. No second row format, no
+     * second SQL statement -- {@link #insertScheduledEvent} is called unchanged.
+     *
+     * <p><b>Column mapping.</b> The table was designed around the orchestration action, whose rows
+     * are caused by an inbound event; a flow step's cause is an execution, so:
+     * {@code orchestration_name} carries the flow name, {@code action_index} the step index,
+     * {@code source_event_name} the flow name prefixed {@code flow:} (the column is NOT NULL and
+     * there is no source event -- the prefix is what stops the drain's echo of it into
+     * {@code payload.sourceEventName} reading like an event that exists), and
+     * {@code source_event_id} the flow execution id, which is what actually caused this row.
+     *
+     * <p><b>Why the key is a name-UUID and not the composite itself.</b> {@code schedule_key} is
+     * {@code VARCHAR(191)} with a unique index. The composite that makes a schedule unique --
+     * flow, step index, execution id, correlation id, event -- runs to ~160 characters with two
+     * uuid-shaped ids in it and blows the bound outright on a long flow or event name, which is a
+     * data-too-long insert failure on MySQL and SQL Server rather than anything visible in a test.
+     * Hashing it to a type-3 UUID is a fixed 41 characters, and costs nothing in legibility because
+     * every component of the composite is also a column of its own on the same row.
+     *
+     * <p>A duplicate key means this exact (execution, step, correlation, event) was already
+     * scheduled -- a re-executed step, not a second reminder -- so it reports success without
+     * inserting, mirroring {@code executeScheduleOrchestrationAction}'s {@code schedule_exists}.
+     */
+    public boolean scheduleDeferredFlowEvent(EventEnvelope envelope, long dueAtEpochMs) {
+        if (envelope == null) {
+            return false;
+        }
+        if (dataSource == null) {
+            LOG.log(Level.WARNING, "Cannot defer scheduled event " + envelope.eventName()
+                    + ": no DataSource is configured, so npdev_scheduled_event cannot be written");
+            return false;
+        }
+        String payloadJson;
+        try {
+            payloadJson = OBJECT_MAPPER.writeValueAsString(envelope.payload());
+        } catch (Exception exception) {
+            LOG.log(Level.WARNING, "Failed to serialize deferred event payload " + envelope.eventName(), exception);
+            return false;
+        }
+        String scheduleKey = buildFlowScheduleKey(envelope);
+        OffsetDateTime dueAt = Instant.ofEpochMilli(dueAtEpochMs).atOffset(ZoneOffset.UTC);
+        try {
+            insertScheduledEvent(
+                    UUID.randomUUID(),
+                    scheduleKey,
+                    envelope.flowName(),
+                    envelope.stepIndex(),
+                    "flow:" + envelope.flowName(),
+                    envelope.causationId(),
+                    envelope.correlationId(),
+                    envelope.eventName(),
+                    dueAt,
+                    payloadJson
+            );
+            return true;
+        } catch (Exception exception) {
+            if (isUniqueViolation(exception)) {
+                return true;
+            }
+            LOG.log(Level.WARNING, "Failed to schedule deferred event " + envelope.eventName(), exception);
+            return false;
+        }
+    }
+
+    private static String buildFlowScheduleKey(EventEnvelope envelope) {
+        String composite = nullToEmpty(envelope.flowName())
+                + "|" + envelope.stepIndex()
+                + "|" + nullToEmpty(envelope.causationId())
+                + "|" + nullToEmpty(envelope.correlationId())
+                + "|" + nullToEmpty(envelope.eventName());
+        return "flow:" + UUID.nameUUIDFromBytes(composite.getBytes(StandardCharsets.UTF_8));
     }
 
     private void insertScheduledEvent(
