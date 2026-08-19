@@ -113,5 +113,37 @@ public enum StorageCapability {
      * Ask with {@link SqlDialect#supports(StorageCapability)} and branch on the ANSWER, never on
      * the engine name: that is what keeps the fallback one code path instead of three.
      */
-    SESSION_ADVISORY_LOCK
+    SESSION_ADVISORY_LOCK,
+
+    /**
+     * A {@code UNIQUE} index can carry a {@code WHERE} predicate, so the constraint applies only to
+     * the rows matching it (e.g. {@code WHERE deleted_at IS NULL}) instead of the whole table.
+     *
+     * <p><b>R5.4: what makes "unique among live rows only" a real, engine-enforced constraint</b>
+     * instead of a JVM-side precheck alone (see {@code ConceptStore#existsUnique}, R5.2/RUN-16) --
+     * without it, a soft-deleted row's still-physically-present unique value keeps blocking reuse at
+     * the database even after the application-level check has been taught to ignore it.
+     * <pre>
+     *   Postgres    CREATE UNIQUE INDEX ix ON t (col) WHERE deleted_at IS NULL -- partial index,
+     *               documented since 8.0
+     *   SQL Server  CREATE UNIQUE INDEX ix ON t (col) WHERE deleted_at IS NULL -- filtered index,
+     *               documented since SQL Server 2008; identical syntax to Postgres's
+     *   H2          NONE. Empirically confirmed (2026-08-19): H2 2.2.224 raises
+     *               "Syntax error in SQL statement" on a WHERE clause attached to CREATE (UNIQUE)
+     *               INDEX -- H2 has no partial-index feature at all, at any version this platform
+     *               has pinned.
+     *   MySQL       NONE. MySQL 8.x has no partial/filtered index syntax; the documented workaround
+     *               (a generated column that is NULL for a deleted row, uniquely indexed) is real
+     *               engine-specific DDL this platform does not emit today.
+     * </pre>
+     * Splits the matrix two-to-two, unlike {@link #SKIP_LOCKED_READS}. A concept declaring {@code
+     * softDelete: true} still generates correctly on every engine -- {@code SchemaRealizationEmitter}
+     * asks {@link SqlDialect#supports(StorageCapability)} and falls back to the same tenant-scoped
+     * (non-filtered) unique index a non-soft-delete concept gets on H2/MySQL, documented plainly
+     * rather than silently degraded (the X0 rule): on those two engines the DB itself still refuses
+     * to reuse a deleted row's unique value, and only the JVM-side {@code existsUnique} precheck
+     * (which does exclude deleted rows) can no longer be the whole story for the caller who bypasses
+     * it and writes raw SQL.
+     */
+    PARTIAL_UNIQUE_INDEX
 }

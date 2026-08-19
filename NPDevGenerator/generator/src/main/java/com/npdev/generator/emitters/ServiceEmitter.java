@@ -154,6 +154,11 @@ public final class ServiceEmitter extends AbstractEmitter {
             ctx.put("persistenceRepository", "repository".equalsIgnoreCase(persistenceAdapter));
             ctx.put("eventBusInproc", "inproc".equalsIgnoreCase(eventBusAdapter));
             ctx.put("kernelControlled", kernelControlled);
+            // R5.4: gates the generated restore() method -- delete() itself needs NO gating here,
+            // since JdbcBusinessConceptStore#deleteById already branches on the concept's OWN
+            // softDelete flag (schema-aware, via the CompiledModel it was built with); only restore
+            // is a genuinely NEW method with nothing to fall back to for a non-soft-delete concept.
+            ctx.put("softDelete", entity.isSoftDelete());
 
             // Adapters personalization cascade: resolved once at generation time (mirrors
             // kernelControlled/field.widget). Empty (default) leaves the binding-declared adapter

@@ -229,7 +229,8 @@ public final class ModelResolver {
                 concept.getAccess(),
                 concept.getRenamedFrom(),
                 concept.getSatelliteOf(),
-                concept.getOrigin()
+                concept.getOrigin(),
+                concept.isSoftDelete()
         );
     }
 
@@ -296,6 +297,13 @@ public final class ModelResolver {
                 ? specialization.getOrigin()
                 : base.getOrigin();
 
+        // R5.4: sticky-true, not "specialization wins" -- a base concept declaring softDelete is a
+        // durability guarantee about the real-world entity's rows (never physically removed); a
+        // specialization silently reverting to hard delete would be a footgun a naive "specialization
+        // replaces base" merge (like access/origin above) would allow by omission. A specialization is
+        // still free to opt IN on its own even when the base does not.
+        boolean mergedSoftDelete = specialization.isSoftDelete() || base.isSoftDelete();
+
         return new ConceptAst(
                 specialization.getName(),
                 null,
@@ -311,7 +319,8 @@ public final class ModelResolver {
                 mergedAccess,
                 specialization.getRenamedFrom(),
                 specialization.getSatelliteOf(),
-                mergedOrigin
+                mergedOrigin,
+                mergedSoftDelete
         );
     }
 

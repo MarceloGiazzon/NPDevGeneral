@@ -404,7 +404,8 @@ public final class JsonModelParser {
             String module = readText(ent, "module");
             String conceptRenamedFrom = readText(ent, "renamedFrom");
             String conceptSatelliteOf = readText(ent, "satelliteOf");
-            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf, originFor(originByQualifiedMemberName, "concepts", name));
+            boolean conceptSoftDelete = ent.has("softDelete") && ent.get("softDelete").asBoolean(false);
+            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf, originFor(originByQualifiedMemberName, "concepts", name), conceptSoftDelete);
             concepts.add(concept);
             conceptsByLowerName.put(name.toLowerCase(Locale.ROOT), concept);
         }

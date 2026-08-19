@@ -37,6 +37,9 @@ public final class ControllerEmitter extends AbstractEmitter {
             // SQL table name -- a pack's version bump (which changes SqlIdentifierSupport.tableName)
             // must never silently rename a client's already-bookmarked REST URL.
             ctx.put("route", SqlIdentifierSupport.aliasPreservingTableName(entity, model.getContexts()));
+            // R5.4: gates the generated restore REST endpoint -- see ServiceEmitter's own note on
+            // this same flag for why delete's endpoint needs no equivalent gating.
+            ctx.put("softDelete", entity.isSoftDelete());
 
             // Base logic (no annotations)
             writer.writeRelative(

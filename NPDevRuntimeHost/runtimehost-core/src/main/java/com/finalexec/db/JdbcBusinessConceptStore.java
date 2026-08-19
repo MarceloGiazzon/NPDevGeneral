@@ -113,7 +113,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public Optional<ConceptRecord> findById(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
-        String sql = "SELECT * FROM " + sqlId(shape.tableName()) + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?";
+        String sql = "SELECT * FROM " + sqlId(shape.tableName()) + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?"
+                + deletedAtFilter(shape);
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, bindable(statement, coerceId(id)));
@@ -145,7 +146,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     public Optional<ConceptRecord> findByIdForUpdate(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
         String sql = com.npdev.kernel.storage.sql.SqlDialects.active().selectForUpdate(
-                "*", sqlId(shape.tableName()), sqlId(shape.idColumn()) + " = ? AND tenant_id = ?");
+                "*", sqlId(shape.tableName()), sqlId(shape.idColumn()) + " = ? AND tenant_id = ?" + deletedAtFilter(shape));
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, bindable(statement, coerceId(id)));
@@ -166,7 +167,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public List<ConceptRecord> findAll(String tenantId, String conceptName) {
         ConceptShape shape = shape(conceptName);
-        String sql = "SELECT * FROM " + sqlId(shape.tableName()) + " WHERE tenant_id = ? ORDER BY " + sqlId(shape.idColumn());
+        String sql = "SELECT * FROM " + sqlId(shape.tableName()) + " WHERE tenant_id = ?" + deletedAtFilter(shape)
+                + " ORDER BY " + sqlId(shape.idColumn());
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, bindable(statement, tenantId));
@@ -196,7 +198,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     public ConceptListSlice<ConceptRecord> findAllCapped(String tenantId, String conceptName, int maxRows) {
         ConceptShape shape = shape(conceptName);
         String sql = dialect.paginated("SELECT * FROM " + sqlId(shape.tableName())
-                + " WHERE tenant_id = ? ORDER BY " + sqlId(shape.idColumn()) + " ").stripTrailing();
+                + " WHERE tenant_id = ?" + deletedAtFilter(shape) + " ORDER BY " + sqlId(shape.idColumn()) + " ").stripTrailing();
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             int nextIndex = 1;
@@ -284,6 +286,13 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         List<Object> params = new ArrayList<>();
         whereClauses.add("tenant_id = ?");
         params.add(tenantId);
+        // R5.4: "unique among live rows only" -- a soft-deleted row's value never blocks reuse, at
+        // this JVM-side precheck layer. See StorageCapability#PARTIAL_UNIQUE_INDEX for the matching
+        // DB-level enforcement (filtered index on Postgres/SQL Server; this precheck is the ONLY
+        // enforcement on H2/MySQL, which have no partial-index feature).
+        if (shape.softDelete()) {
+            whereClauses.add("deleted_at IS NULL");
+        }
         for (int i = 0; i < columns.size(); i++) {
             String column = columns.get(i);
             Object value = values.get(i);
@@ -378,6 +387,10 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         List<Object> params = new ArrayList<>();
         whereClauses.add("tenant_id = ?");
         params.add(tenantId);
+        // R5.4: grids/pickers built on this method never see a soft-deleted row.
+        if (shape.softDelete()) {
+            whereClauses.add("deleted_at IS NULL");
+        }
         for (ConceptQuery.Filter filter : effective.filters()) {
             String column = requireColumn(shape, filter.field());
             if (filter.operator() == ConceptQuery.Operator.CONTAINS) {
@@ -489,6 +502,12 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         List<Object> whereParams = new ArrayList<>();
         whereClauses.add(baseAlias + ".tenant_id = ?");
         whereParams.add(tenantId);
+        // R5.4: same base-concept exclusion as query() above -- a soft-deleted base row never
+        // contributes to an aggregate. (A joined TARGET row's own soft-delete state is not filtered
+        // here -- out of this round's scope, see the ledger's "deliberately not done" section.)
+        if (shape.softDelete()) {
+            whereClauses.add(baseAlias + ".deleted_at IS NULL");
+        }
         for (ConceptQuery.Filter filter : query.filters()) {
             String rawColumn = requireColumn(shape, filter.field());
             String column = baseAlias + "." + rawColumn;
@@ -850,9 +869,33 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         }
     }
 
+    /**
+     * R5.4: for a {@code softDelete: true} concept, "delete" flips {@code deleted_at} to now instead
+     * of removing the row -- every other override in this class (findById/findAllCapped/query/
+     * aggregate/existsUnique) already excludes a row once this timestamp is set, so nothing downstream
+     * needs to know delete stopped being physical. The {@code deleted_at IS NULL} guard makes a
+     * double-delete a harmless no-op (0 rows affected) rather than re-stamping an already-deleted row's
+     * timestamp.
+     */
     @Override
     public void deleteById(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
+        if (shape.softDelete()) {
+            String sql = "UPDATE " + sqlId(shape.tableName()) + " SET deleted_at = ? WHERE "
+                    + sqlId(shape.idColumn()) + " = ? AND tenant_id = ? AND deleted_at IS NULL";
+            Connection connection = openConnection();
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setObject(1, bindable(statement, java.sql.Timestamp.from(java.time.Instant.now())));
+                statement.setObject(2, bindable(statement, coerceId(id)));
+                statement.setObject(3, bindable(statement, tenantId));
+                statement.executeUpdate();
+            } catch (SQLException exception) {
+                throw new IllegalStateException("Failed soft-deleting concept " + conceptName + " from JDBC store", exception);
+            } finally {
+                releaseConnection(connection);
+            }
+            return;
+        }
         String sql = "DELETE FROM " + sqlId(shape.tableName()) + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?";
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -864,6 +907,45 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         } finally {
             releaseConnection(connection);
         }
+    }
+
+    /**
+     * R5.4: the restore half of soft delete -- clears {@code deleted_at}, making the row visible to
+     * every read method again. A direct {@code UPDATE}, not a {@code findById}-then-{@code save} round
+     * trip, because {@code findById} deliberately EXCLUDES a deleted row (consistent "invisible by
+     * default" scoping) -- going through it here would make restoring a deleted row impossible to ever
+     * find. {@code deleted_at IS NOT NULL} makes restoring an already-live row a harmless no-op
+     * (0 rows affected, {@code false}) rather than an error.
+     *
+     * @return true if a soft-deleted row was found and restored; false if the concept is not
+     *         soft-delete, the row does not exist, or the row was already live
+     */
+    @Override
+    public boolean restore(String tenantId, String conceptName, String id) {
+        ConceptShape shape = shape(conceptName);
+        if (!shape.softDelete()) {
+            return false;
+        }
+        String sql = "UPDATE " + sqlId(shape.tableName()) + " SET deleted_at = NULL WHERE "
+                + sqlId(shape.idColumn()) + " = ? AND tenant_id = ? AND deleted_at IS NOT NULL";
+        Connection connection = openConnection();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, bindable(statement, coerceId(id)));
+            statement.setObject(2, bindable(statement, tenantId));
+            return statement.executeUpdate() > 0;
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed restoring concept " + conceptName + " in JDBC store", exception);
+        } finally {
+            releaseConnection(connection);
+        }
+    }
+
+    /** R5.4: "" for a non-soft-delete concept (identical SQL to before this feature existed) --
+     *  appended, unparameterized, to every read method's {@code WHERE} clause. No bind parameter
+     *  needed (a literal predicate, not a value), so string concatenation here carries no injection
+     *  risk the rest of this class's parameterized queries don't already avoid elsewhere. */
+    private static String deletedAtFilter(ConceptShape shape) {
+        return shape.softDelete() ? " AND deleted_at IS NULL" : "";
     }
 
     private ConceptRecord toRecord(ConceptShape shape, String tenantId, ResultSet resultSet) throws SQLException {
@@ -891,6 +973,16 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             // not also land in data(), or it leaks into REST responses/generated entities and (found
             // live via R1 Stage 1 reviving ConceptQueryControllerExportCsvVolumeTest) CSV exports.
             if ("tenant_id".equalsIgnoreCase(column)) {
+                continue;
+            }
+            // R5.4: deleted_at is a platform-managed column too (like row_version/tenant_id above),
+            // not a DSL field -- and UNLIKE version (which falls through the generic fallback below
+            // because the generated JPA entity really does declare a `version` field), the entity has
+            // NO deletedAt field at all. Landing it in data() would make entityFromRecord's strict
+            // Jackson convertValue throw UnrecognizedPropertyException on every read of a soft-delete
+            // concept's row. Every caller that needs this state asks the WHERE clause (deletedAtFilter)
+            // or the dedicated restore()/deleteById() methods, never data().
+            if ("deleted_at".equalsIgnoreCase(column)) {
                 continue;
             }
             if (isJsonColumnType(metaData, index) || isJsonDslField(shape, column)) {
@@ -1024,7 +1116,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                 }
             }
             out.put(normalize(concept.getName()), new ConceptShape(
-                    concept.getName(), table, idColumn, columnByField, fieldByColumn, dslTypeByColumn, referenceTargetByField));
+                    concept.getName(), table, idColumn, columnByField, fieldByColumn, dslTypeByColumn,
+                    referenceTargetByField, concept.isSoftDelete()));
         }
         return Map.copyOf(out);
     }
@@ -1218,7 +1311,11 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             Map<String, String> dslTypeByColumn,
             /** S4: field name (lowercased) -> declared {@code reference.target} concept name, for
              *  fields that ARE a reference. Absent for any non-reference field. */
-            Map<String, String> referenceTargetByField
+            Map<String, String> referenceTargetByField,
+            /** R5.4: whether this concept declares {@code softDelete: true} -- gates every read method
+             *  below to exclude a row whose {@code deleted_at} column is set, and {@link #deleteById}
+             *  to flip that timestamp instead of physically removing the row. */
+            boolean softDelete
     ) {
     }
 

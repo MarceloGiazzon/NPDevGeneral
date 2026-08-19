@@ -80,6 +80,19 @@ public final class AuditingConceptStoreDecorator implements ConceptStore {
     }
 
     /**
+     * R5.4: forwards to the delegate's own override (on {@link JdbcBusinessConceptStore}, a real
+     * {@code deleted_at}-clearing {@code UPDATE}) rather than falling through to
+     * {@link ConceptStore}'s default ({@code false}, "not supported") -- the same
+     * "without this override, wrapping a concept in this decorator silently downgrades a capability"
+     * trap {@link #query}/{@link #aggregate}/{@link #existsUnique} above already document.
+     */
+    @Override
+    public boolean restore(String tenantId, String conceptName, String id) {
+        log("restore", id);
+        return delegate.restore(tenantId, conceptName, id);
+    }
+
+    /**
      * LNCH-5: forwards to the delegate's own {@code query} override (the JDBC adapter's SQL
      * push-down) rather than falling through to {@link ConceptStore}'s default (fetch-all + in-memory
      * filter) -- without this override, wrapping a concept in this decorator would silently downgrade

@@ -18,6 +18,7 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
     _all_steps, _flows, _has_aggregate_on_commit, _has_aggregate_on_validate,
     _has_arithmetic_derived_expression,
     _has_capability_policy, _has_composite_index, _has_concept_access, _has_concept_extends,
+    _has_concept_soft_delete,
     _has_conversion_op, _has_date_field, _has_decimal_field, _has_file_field, _has_flow_io_schema,
     _has_flow_start_endpoint, _has_groupby_cross_context_join, _has_groupby_join,
     _has_groupby_multi_hop_join, _has_await_timeout, _has_on_failure, _has_parallel_await_foreach,
@@ -151,6 +152,10 @@ FEATURE_DETECTORS = {
     # isRowReadable/isRowWritable, fail-closed on a malformed expression), just never declared by
     # any real/fixture model before this.
     "concept.access": _has_concept_access,
+    # R5.4 (Roadmap Collection 2026-08-18): concept.softDelete -- deletedAt-flip delete, deleted-row-
+    # excluding reads (list/page/aggregate/existsUnique/reference finders), a restore action, and
+    # unique-among-live-rows semantics instead of a physical DELETE.
+    "concept.softDelete": _has_concept_soft_delete,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): an explicit "post" checkpoint on an
     # invariantCheck step -- step.invariantCheck itself has broad corpus coverage already, but every
     # existing declaration relies on JsonModelParser's implicit "pre" default (scope declared, no

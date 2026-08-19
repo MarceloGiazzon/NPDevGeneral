@@ -109,6 +109,16 @@ def _has_concept_access(model: dict) -> bool:
     return False
 
 
+def _has_concept_soft_delete(model: dict) -> bool:
+    """R5.4 (Roadmap Collection 2026-08-18): a concept declaring softDelete: true -- deletedAt-flip
+    delete, deleted-row-excluding reads, and unique-among-live-rows semantics instead of a physical
+    DELETE."""
+    return any(
+        isinstance(c, dict) and c.get("softDelete") is True
+        for c in (model.get("concepts", None) or [])
+    )
+
+
 def _has_composite_index(model: dict) -> bool:
     for concept in (model.get("concepts", None) or []):
         if not isinstance(concept, dict):

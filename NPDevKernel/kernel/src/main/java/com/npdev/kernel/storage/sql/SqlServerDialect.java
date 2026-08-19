@@ -80,7 +80,9 @@ public final class SqlServerDialect implements SqlDialect {
             // blocking on them, which is the semantic this capability names.
             StorageCapability.SKIP_LOCKED_READS,
             // R9.3: sp_getapplock with @LockOwner='Session', needing no table.
-            StorageCapability.SESSION_ADVISORY_LOCK);
+            StorageCapability.SESSION_ADVISORY_LOCK,
+            // R5.4: filtered index (CREATE UNIQUE INDEX ... WHERE ...) -- documented since SQL Server 2008.
+            StorageCapability.PARTIAL_UNIQUE_INDEX);
 
     private final UpsertStrategy upsert = new SqlServerUpsertStrategy();
     private final ReturningStrategy returning = new SqlServerReturningStrategy();
@@ -540,6 +542,15 @@ public final class SqlServerDialect implements SqlDialect {
                 + "               AND object_id = OBJECT_ID(N'" + escapeLiteral(tableName) + "'))\nBEGIN\n"
                 + indent(SqlDdlGuards.stripIfNotExists(createStatement))
                 + "\nEND;\n";
+    }
+
+    @Override
+    public String guardedDropIndexIfExists(String indexName, String tableName) {
+        // Native since SQL Server 2016 -- this class already targets 2016+ (see trimmedText's own
+        // javadoc for the sibling fact about single-argument TRIM), so no sys.indexes IF-wrapper is
+        // needed here the way guardedCreateIndex above needs one (SQL Server has no
+        // "CREATE INDEX IF NOT EXISTS", but it does have "DROP INDEX IF EXISTS").
+        return "DROP INDEX IF EXISTS " + indexName + " ON " + tableName + ";";
     }
 
     @Override

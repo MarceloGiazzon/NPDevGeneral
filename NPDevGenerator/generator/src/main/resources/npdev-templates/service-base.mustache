@@ -23,6 +23,7 @@ import {{dtoPackage}}.{{entityName}}UpdateRequest;
 
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -224,6 +225,9 @@ public class {{entityName}}ServiceBase {
         runtimeSupport.enforceBondTargetTenant("{{conceptName}}", createPayload, crudCtx);
         UUID generatedId = runtimeSupport.ensureGeneratedId("{{conceptName}}", createPayload);
         enforceWithKernel("{{conceptName}}", createPayload);
+{{#softDelete}}
+        enforceSoftDeleteUniqueFields(createPayload, null);
+{{/softDelete}}
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeCreate("{{conceptName}}", createPayload, crudCtx));
 {{/codaAllowed}}
@@ -326,6 +330,9 @@ public class {{entityName}}ServiceBase {
         Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{conceptName}}", id, existing, source);
         runtimeSupport.enforceBondTargetTenant("{{conceptName}}", updatePayload, crudCtx);
         enforceWithKernel("{{conceptName}}", updatePayload);
+{{#softDelete}}
+        enforceSoftDeleteUniqueFields(updatePayload, id);
+{{/softDelete}}
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeUpdate("{{conceptName}}", id, updatePayload, crudCtx));
 {{/codaAllowed}}
@@ -428,6 +435,32 @@ public class {{entityName}}ServiceBase {
         return true;
     }
 
+{{#softDelete}}
+    /**
+     * R5.4: clears the {@code deletedAt} timestamp {@link #delete} set, making the row visible to
+     * every read again (list/page/aggregate/existsUnique/reference finders) and freeing any unique
+     * value it held for reuse. Delegates directly to {@link ConceptStore#restore} -- unlike delete
+     * (which also runs through {@code conceptGateway} for row-level access.write + semantic-rule
+     * enforcement before the store ever sees it), restore is deliberately a narrower, direct
+     * capability-store call: no declared {@code access.write}/invariant rule profile applies to it in
+     * this round, gated only by the same coarse-grained DELETE CRUD permission the delete path checks.
+     */
+    @Transactional
+    public boolean restore(UUID id) {
+        ExecutionContext crudCtx = generatedCrudExecutionContext();
+{{#kernelControlled}}
+        runtimeSupport.checkCrudPermission("{{conceptName}}", "DELETE", crudCtx);
+{{/kernelControlled}}
+        boolean restored = conceptStore.restore(currentTenantId(), CONCEPT_NAME, String.valueOf(id));
+{{#kernelControlled}}
+        if (restored) {
+            runtimeSupport.auditCrudMutation("{{conceptName}}", "RESTORE", String.valueOf(id), "ALLOW", crudCtx);
+        }
+{{/kernelControlled}}
+        return restored;
+    }
+
+{{/softDelete}}
 {{#manyToManyBonds}}
     public List<Object> list{{capName}}Members(UUID id) {
 {{#kernelControlled}}
@@ -653,6 +686,40 @@ public class {{entityName}}ServiceBase {
         }
     }
 
+{{#softDelete}}
+    /**
+     * R5.4: {@link #enforceWithKernel} above ONLY calls {@link #existsUniqueInConceptStore} when an
+     * author-declared invariant expression actually invokes {@code unique(field)} -- a bare {@code
+     * unique: true} field with no such invariant is (today, for every OTHER concept) enforced solely
+     * by the DATABASE's own unique constraint, never by a JVM precheck. For a {@code softDelete}
+     * concept that constraint is deliberately NOT a plain unfiltered unique index on an engine with no
+     * {@code PARTIAL_UNIQUE_INDEX} capability (see {@code StorageCapability}'s javadoc) -- exactly so
+     * a soft-deleted row's value can be reused -- which means NOTHING enforces uniqueness among live
+     * rows for such a field unless this method exists. Measured live (soft-delete-r54-proof,
+     * 2026-08-19): without it, a second row with an already-live unique value saved successfully (201,
+     * not 409) the moment the DB-level index was downgraded. Runs unconditionally for every {@code
+     * softDelete} concept's unique field, independent of whether the model ALSO declares an explicit
+     * unique invariant (harmless if it does -- existsUnique is read-only) and independent of engine
+     * (a cheap, uniform safety net even where the DB-level filtered index also enforces it).
+     */
+    private void enforceSoftDeleteUniqueFields(Map<String, Object> payload, UUID excludeId) {
+        List<GeneratedCrudRuntimeSupport.InvariantViolationDetail> violations = new ArrayList<>();
+{{#uniqueFields}}
+        {
+            Object value = payload.get("{{name}}");
+            if (value != null && existsUniqueInConceptStore("{{name}}", value, excludeId)) {
+                violations.add(new GeneratedCrudRuntimeSupport.InvariantViolationDetail(
+                        "unique_integrity_failed", "{{conceptName}}", "soft_delete_unique_field",
+                        "{{name}}", "A unique value already exists for {{conceptName}}.{{name}}", true));
+            }
+        }
+{{/uniqueFields}}
+        if (!violations.isEmpty()) {
+            throw new GeneratedCrudRuntimeSupport.InvariantViolationException(violations);
+        }
+    }
+
+{{/softDelete}}
     private {{entityName}} saveWithIntegrityMapping({{entityName}} entity) {
         try {
             return persistence.save(entity);

@@ -672,6 +672,28 @@ public interface SqlDialect {
     String guardedCreateIndex(String indexName, String tableName, String createStatement);
 
     /**
+     * {@code DROP INDEX indexName}, made idempotent (a no-op when it does not exist) and reduced to a
+     * single statement the caller need not branch on.
+     *
+     * <p><b>R5.4: why this exists, distinct from {@link #guardedCreateIndex}.</b> A guarded CREATE
+     * only ever no-ops on an ALREADY-EXISTING same-named object -- it never adjusts that object's
+     * definition. A concept that already had {@code unique: true} before it also turned on {@code
+     * softDelete: true} left behind a real, unfiltered {@code ux_...} unique index/constraint from
+     * before that change; a guarded {@code CREATE UNIQUE INDEX ux_... WHERE deleted_at IS NULL} (or
+     * the plain-index fallback on an engine with no {@link StorageCapability#PARTIAL_UNIQUE_INDEX})
+     * would see that name already taken and silently leave the STALE, wrong-shaped index in place --
+     * still blocking reuse of a soft-deleted row's value, the exact defect this feature exists to fix.
+     * Measured live (2026-08-19): regenerating {@code soft-delete-r54-proof} after adding {@code
+     * softDelete: true} to an already-unique field left {@code ux_suppliers_code} in place on H2,
+     * and reusing a deleted row's code failed with a raw {@code JdbcSQLIntegrityConstraintViolationException}
+     * instead of the 2xx the DoD requires. {@code SchemaRealizationEmitter} calls this to drop the
+     * stale name immediately before (re)creating the correctly-shaped one, every time a soft-delete
+     * concept's unique-field DDL is emitted -- a no-op on every boot after the one where the shape
+     * actually changed, since Flyway only re-runs a repeatable migration whose checksum changed.
+     */
+    String guardedDropIndexIfExists(String indexName, String tableName);
+
+    /**
      * {@code alterStatement} ({@code ALTER TABLE t ADD COLUMN c TYPE}) made idempotent.
      *
      * <p><b>Also normalises the keyword.</b> T-SQL has no {@code COLUMN} in {@code ALTER TABLE t ADD
