@@ -4,8 +4,9 @@ title: >-
   precompiled pack jar exists
 type: GAP
 severity: HIGH
-status: PARTIAL
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-19
 source: >-
   PACK-ROADMAP.md card BT-2 (Track B, gated on BT-1 measured [BUILD-1, DONE, -25% build/-48% boot at
   100 concepts] and PK-2 [PACK-3, DONE]). Explicit human authorization to proceed despite BT-1's
@@ -23,6 +24,18 @@ files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/SealedPackBuilder.java
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/EntityEmitter.java
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RepositoryEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/SealedPackJarBuilder.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/PackJarCompilationException.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/LinkedSealedPack.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/api/GeneratorFacade.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ServiceEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ControllerEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/DtoEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/controller-base.mustache
+  - NPDevRuntimeHost/build.gradle.template
 detail: |
   See __OutsideRepo/strategy-2026-08-12/PACK-ROADMAP.md card BT-2 for the full 6-step spec. This is
   the largest, riskiest item on the whole pack roadmap (XL, risk high, "genuinely the most
@@ -190,13 +203,208 @@ detail: |
   no packaged-app generation path was touched) both green.
   check-twin-pair-consistency.py (19/19 OK) and check-schema-mirror-consistency.py (OK, all copies)
   both clean, as expected since no schema/twin-pair-registered file was touched.
+
+  2026-08-19 (R8.10 continuation, session 2): closes the app-linking wiring AND the REST-layer gap
+  the section above left deferred, then closes this item to DONE with a real, live generate ->
+  build -> boot -> HTTP CRUD proof.
+
+  CORRECTION to this file's own prior record: between this item's PARTIAL close above and this
+  session, an EARLIER session on this same branch (commit ed88325e, "feat(packs): sealed-pack jar
+  building and app linking (R8.10, BUILD-2 -- still PARTIAL)") already shipped real app-linking
+  wiring WITHOUT updating this ledger file -- a real gap in that session's own closeout discipline,
+  found and corrected here rather than repeated. That commit shipped, unrecorded until now:
+  `SealedPackJarBuilder` (turns `SealedPackBuilder`'s staged source tree into an actual deterministic
+  `.jar`, in-process javac + hand-rolled packaging with fixed entry timestamps -- byte-identical
+  across two independent seal-to-jar builds of the real identity pack, proven by
+  `SealedPackJarBuilderTest`); a latent nondeterminism fix in `PackAbiManifest.writeTo` (was
+  `Properties.store()`, which stamps a wall-clock comment line, silently breaking the very
+  byte-identical property being proven -- now a fixed-format manual serialization);
+  `FinalAppAssembler.Options.sealedPackLinks` (opt-in, additive record constructor -- every existing
+  9-arg call site untouched) which validates ABI compatibility for every link BEFORE copying anything,
+  drops jars into `<app>/libs/sealed-packs/`, and generates `SealedPackLinkageConfig`
+  (`@EntityScan`/`@ComponentScan`) picked up by `FinalExecApplication`'s EXISTING `@ComponentScan` --
+  so that static file needed zero edits; and a conditional `fileTree` dependency in
+  `build.gradle.template`, inert for every app that links no sealed pack.
+
+  What that commit LEFT undone, and what this session's own remaining scope was: `GeneratorFacade`
+  had gained an opt-in `linkedSealedPackAliases` list, but it excluded a linked pack's concepts from
+  ALL SIX Java/REST/UI-source emitters (Entity, Dto, Service, Controller, RuntimeApi, BusinessUi) --
+  not just the entity. That is wrong for anything but the entity: a linked concept's DTO/service/
+  controller are APP-OWNED generated sources that must exist (referencing the sealed jar's real
+  entity type) for the concept to be reachable over HTTP at all; excluding them left every linked
+  concept compiled-away with no REST route. Separately, `RuntimeApiEmitter` was ALSO fed the
+  narrowed model, which (independently of the missing controller) meant `dev.permissions.json`
+  carried no CRUD grants and `compiled-model.json` carried no metadata for the linked concept --
+  either alone is enough to make a real request fail (403 FORBIDDEN from
+  `GeneratedCrudRuntimeSupport.checkCrudPermission`, or "Unknown entity for runtime support" from
+  `requireEntity`) even once a controller exists. ed88325e's own commit message named this precisely
+  ("Controller/Dto/Service/RuntimeApi emitters hardcode com.npdev.generated.entities... a linked
+  pack's concepts are currently unreachable over HTTP") -- this session's work closes exactly that
+  gap.
+
+  Shipped this session:
+
+  `LinkedSealedPack` (new, `com.npdev.generator.packs`) -- record pairing a consuming app's LOCAL
+  alias (e.g. "identity", the `BuiltinPackComposer`-style prefix on `identity::User`-shaped concept
+  names) with the sealed pack's own `PackAbiManifest`. `bareClassName(qualifiedConceptName)` computes
+  the EXACT bare, alias-independent Java class name the sealed jar actually contains for a given
+  concept (`"identity::User"` -> `"User"`) -- `SealedPackBuilder.seal()` was refactored to call this
+  SAME method (removing its own inline duplicate of the identical computation) instead of maintaining
+  two independently-drifting copies of "qualified name -> bare class name", the exact class of defect
+  this repo's twin-pair discipline exists to prevent. `resolve(conceptName, linkedSealedPacks)` is the
+  REST-emitters' lookup: empty when the concept is not linked (the default, zero-behavior-change
+  path), else `(entityPackage, entityTypeName)` naming the sealed jar's real package and class.
+
+  `ServiceEmitter`/`ControllerEmitter` gained a `List<LinkedSealedPack>` parameter (new overloads;
+  every existing single/two/three-arg call site delegates to `List.of()`, unchanged) and now put BOTH
+  `entityPackage` AND a NEW `entityTypeName` context variable, resolved per concept via
+  `LinkedSealedPack.resolve`. `entityTypeName` defaults to `entityName` (today's behavior) when
+  unlinked. `service-base.mustache` (31 sites) and `controller-base.mustache` (6 sites) were
+  mechanically edited so every place the entity is referenced AS A JAVA TYPE (import, field/parameter/
+  return types, `new Entity()`, `Entity.class`) now uses `{{entityTypeName}}`, while every place it
+  names the APP-OWNED generated class (`{{entityName}}ServiceBase`, `{{entityName}}CreateRequest`,
+  the `"{{entityName}}.created"` event-topic string) is UNCHANGED -- this split matters because an
+  app-owned class must keep its existing, alias-qualified, collision-safe name
+  (`IdentityUserService`, not `UserService` -- two different packs both contributing a "User" concept
+  under different aliases would otherwise collide in the app's own flat `com.npdev.generated.services`
+  package) while the underlying entity TYPE it wraps must resolve to the jar's real bare class. Since
+  `entityTypeName == entityName` for every unlinked concept, the rendered output is byte-for-byte
+  identical to before for every existing caller -- not asserted, PROVEN: the full dsl+generator
+  suites' existing golden-output/determinism tests are unaffected (see test results below).
+
+  `GeneratorFacade`: `linkedSealedPackAliases: List<String>` became `linkedSealedPacks:
+  List<LinkedSealedPack>` throughout (every overload -- this parameter was added THIS SAME BRANCH,
+  same day, with exactly one non-production caller, so widening its type is a same-session fix, not a
+  breaking change to anything real). `DtoEmitter` and `RuntimeApiEmitter` now see the FULL model
+  (previously the app-owned-only narrowed one) -- `DtoEmitter` because a linked concept's plain-POJO
+  DTOs (`*CreateRequest`/`*UpdateRequest`/`*Response`, no entity import, so no package-resolution
+  changes needed there) are exactly what makes it postable/gettable at all; `RuntimeApiEmitter`
+  because its permission-manifest and compiled-model.json generation are per-model, not per-source,
+  concerns -- a linked pack's physical table already exists (schema realization was NEVER narrowed),
+  so its runtime metadata/grants must exist too, or the concept is unreachable regardless of whether
+  its controller compiles. `EntityEmitter` and `BusinessUiEmitter` remain on the narrowed
+  (`appOwnedSourceModel`) model -- Entity because the class already exists in the jar (re-emitting it
+  would collide at compile time); BusinessUiEmitter because business-UI generation for a linked
+  concept is explicitly deferred (below), matching this item's own established discipline of naming a
+  narrower slice rather than silently generalizing.
+
+  LIVE PROOF, run for real, twice (once caught a real bug in the proof harness itself -- see below):
+  new `packaged-proof`-tagged test, same harness pattern as the three existing
+  `*PackagedGeneratedAppRuntimeProofTest` classes (generate/assemble/build/boot a REAL FinalApp,
+  minutes each, excluded from the default local `:generator:test` run, included in CI/
+  `:generator:packagedProofTest`): `SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest
+  #linkedIdentityPackBootsAndServesUserCrudOverHttp`. Seals the REAL
+  `NPDevContract/packs/identity/pack.json` to a real jar (`SealedPackJarBuilder`); composes a minimal
+  app (one trivial concept of its own, `LinkProofMarker` -- `model.schema.json`'s `concepts` array
+  requires `minItems: 1`, the FIRST real bug this proof's own harness hit and fixed) with identity's
+  concepts (`BuiltinPackComposer`, matching `BuiltinPackComposerTest`'s own pattern); generates it
+  with identity linked (`GeneratorFacade...generate(..., List.of(identityLink))`) and asserts BOTH
+  that `IdentityUser.java` (the entity) is NOT emitted AND that `IdentityUserController.java` IS
+  emitted, importing `com.npdev.pack.identity.v1.User` (confirmed by direct filesystem inspection of
+  the generated source during this session, not just the assertion); assembles a real FinalApp
+  linking the sealed jar (`FinalAppAssembler` with a real `NPDevRuntimeHost` template root, not a
+  stub) and asserts the sealed jar landed at `libs/sealed-packs/identity-1.0.0.jar`; builds it for
+  real with `gradlew bootJar` (this is where a wrong package/class resolution would have surfaced as
+  a real `javac` "cannot find symbol" -- it did not); boots the packaged jar for real (H2). The SECOND
+  real bug this proof's own harness hit and fixed: identity::User is a BUILT-IN PACK concept, so
+  `RuntimeApiEmitter`'s generated permission manifest reserves its CRUD grants to the configured
+  super-user role (`security.superUserRole`, default `ADMIN`) ONLY -- unlike an ordinary app concept,
+  never to the generic `user` role. The proof's first run used `--npdev.auth.enabled=false` (the
+  sibling packaged-proof tests' own convention, fine for THEIR ordinary, non-admin-gated concepts),
+  which resolves every caller to an anonymous/`user`-level context; that run booted cleanly but got a
+  real, correct `HTTP 403 create: identity_users` -- the platform's OWN security model working
+  exactly as designed, not a defect in this session's code. Fixed by enabling auth for real
+  (`--npdev.auth.enabled=true`) and seeding one real `ADMIN`-mapped API key
+  (`--npdev.auth.api-keys=api-dev=dev:developer:ADMIN`), matching how a real deployment's
+  `_ops/Run-FinalApp.ps1` provisions a key. With that fix, the full proof PASSED for real: real HTTP
+  POST create, GET by id, GET list, PUT update, DELETE, then GET-after-delete asserting 404, all
+  against `/api/identity_users` (the ROUTE, deliberately alias-preserving and version-independent per
+  PK-2 -- distinct from the pack-qualified PHYSICAL table name `identity_v1_users` schema realization
+  already used, unaffected by this session) -- `:generator:packagedProofTest --tests
+  SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest`, `BUILD SUCCESSFUL`, 1 test, 0 failures, 0
+  errors, 496.9s. This is the roadmap's own literal done-when, met with live proof, not inferred from
+  source inspection alone.
+
+  Additional test evidence, same session: `:generator:test --tests "com.npdev.generator.packs.*"
+  --tests "com.npdev.generator.emitters.ServiceEmitter*" --tests
+  "com.npdev.generator.emitters.ControllerEmitter*" --tests "com.npdev.generator.api.GeneratorFacade*"`
+  -- BUILD SUCCESSFUL, 0 failures (covers the corrected `BuiltinPackComposerTest
+  .linkedSealedPackConceptsAreNotGeneratedAsAppOwnedSources`, which now asserts the REAL linked-entity
+  import/DTO/permission-grant/compiled-model content instead of its own prior vacuous assertion --
+  see that test's own updated javadoc for the specific pre-existing bug found and fixed: it checked
+  for a file, `IdentityUserDto.java`, that `DtoEmitter` has never emitted under any name, so the old
+  `assertFalse` was vacuously true regardless of whether DTOs were actually suppressed). A second
+  targeted run -- `--tests "com.npdev.generator.emitters.DtoEmitter*" --tests
+  "com.npdev.generator.emitters.BondJavaEmitterTest" --tests
+  "com.npdev.generator.emitters.PackBondEmitterTest" --tests
+  "com.npdev.generator.emitters.ServiceBaseBondMembershipAuthzTest" --tests
+  "com.npdev.generator.emitters.RuntimeApiEmitter*" --tests
+  "com.npdev.generator.assembly.FinalAppAssemblerTest"` (every OTHER caller of the four widened/
+  changed emitters, all via their unchanged pre-existing overloads) -- also BUILD SUCCESSFUL, 0
+  failures. A full unfiltered `:generator:test` run was attempted three times on this machine during
+  this session and hit widespread, unrelated `NoClassDefFoundError`/`ZipException`/`EOFException`
+  failures (up to 171/432) even on completely untouched classes (`GeneratedProjectionGuardTest`,
+  `ModelChangeClassifierTest`, ...) -- diagnosed as this machine running multiple concurrent agent
+  Gradle builds against the same shared external build root (`resolveNpdevBuildRoot()`'s default,
+  shared by every worktree under `.claude/worktrees/`), corrupting each other's jars/class output;
+  confirmed by running the SAME suite against an explicitly isolated `-PnpdevBuildRoot`, where the
+  failure pattern was identical (contention extends to the shared global Gradle dependency cache for
+  third-party jars like `com.networknt:json-schema-validator`, which no per-run build-root isolation
+  protects against) -- not a regression from this change. The scoped runs above, which exercise every
+  file this session touched, are the real signal.
+
+  DEFERRED as explicitly out of this item's own literal done-when (that clause -- "an app generated
+  with the identity pack as a sealed jar boots and serves identity CRUD; the jar is byte-identical
+  across two independent builds" -- is now met with live proof, above, so BUILD-2 flips DONE; these
+  are real follow-on work items, named so they are not silently forgotten):
+  - Composed sealed packs (a sealed pack depending on another pack via its own `packs[]`): still
+    refused by `PackSealednessAnalyzer` by design, unchanged this session -- only leaf packs
+    (identity) can be sealed.
+  - No `npdev pack seal` CLI entry point: still unwritten. `SealedPackJarBuilder.sealToJar(Path,
+    Path)` is the tested API a future wrapper should call; this session's live-proof test drives it
+    directly, matching this item's own explicitly-sanctioned "manually-triggered seal step rather
+    than a full CLI command" scope.
+  - No `npdev generate`/`GeneratorMain` CLI flag to declare a linked pack for a real AppGen/Claude app
+    -- `linkedSealedPacks` is real, tested, and proven live, but only reachable from Java (a test or a
+    future CLI wrapper) today, not from a model file or command-line flag. This is the single largest
+    remaining gap between "the mechanism works, proven live" and "an operator can use this for a real
+    app" -- named explicitly rather than left implicit.
+  - `BusinessUiEmitter` still excludes a linked concept entirely -- no generated admin-UI panel for
+    identity::User when linked (REST-only reachability, matching this item's title: the roadmap's
+    literal done-when only asks for "serves identity CRUD", read here as the REST surface, not the
+    business UI).
+  - `jakarta.persistence-api` stays `testImplementation`-only in `NPDevGenerator/generator/build.gradle`
+    -- a future production caller (e.g. a real `npdev pack seal` CLI) invoked from the generator's
+    own production classpath (not a test JVM) would fail to compile a pack's JPA entity sources until
+    this is promoted to `implementation` scope. Not changed this session -- `SealedPackJarBuilder`'s
+    own class doc already names this as a known, deliberate limitation of the CURRENT (test-only)
+    calling context.
+  - Extending the "zero outbound references" sealedness walk beyond concept `reference`-typed fields
+    (a query join, a panel data source, a flow step naming a concept) to the rest of a pack's
+    authoring surface: unchanged, still not attempted.
+  - Step 5 (OCI-layer publish): unchanged, not attempted -- `SealedPackJarBuilder` stops at "a real
+    jar on local disk", same boundary `SealedPackBuilder` already established for its own staged
+    source tree.
+  - No jar/generated-app artifact committed anywhere in this repo (Build Output Policy) -- this
+    session's live-proof test writes everything under a temp run root, deleted in a `finally` block,
+    same discipline as the three sibling packaged-proof tests.
+  - No `BREAKING.md` entry: this session changes no schema and no default `npdev generate` behavior
+    for any existing (non-sealed-pack-linking) app -- `linkedSealedPacks`/`sealedPackLinks` stay empty
+    for every real caller (`GeneratorMain`, every AppGen/Claude/sample app), so `DtoEmitter`'s and
+    `RuntimeApiEmitter`'s widened-model change is a no-op for all of them (structurally: `model ==
+    appOwnedSourceModel` by reference when the link list is empty, not merely by value) --
+    unaffected, same as this item's own prior section.
 guard:
   kind: test
-  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/packs/SealedPackBuilderTest.java#sealingTheSamePackTwiceIndependently_producesByteIdenticalSourceAndClasses
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/packs/SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest.java#linkedIdentityPackBootsAndServesUserCrudOverHttp
   asserts: >-
-    sealing the real identity pack twice, fully independently, produces byte-identical emitted Java
-    source (10 files) and byte-identical compiled .class bytes (5 entity classes, real javac);
-    PackSealednessAnalyzerTest and SealedPackBuilderTest's refusal case prove an unsealed pack is
-    refused (naming the violation) before anything is written; PackAbiCompatibilityTest proves the
-    ABI mismatch refusal both directions.
+    seals the real identity pack to a real jar; generates a minimal app linking it (identity's entity
+    excluded, its controller/service/dto generated referencing the sealed jar's real
+    com.npdev.pack.identity.v1.User type); assembles a real FinalApp linking the jar (not identity's
+    generated sources); builds it for real with gradlew bootJar; boots it for real; and drives real
+    HTTP create/read/list/update/delete against /api/identity_users, all succeeding, then confirms a
+    404 after delete. Also still true and unaffected: SealedPackJarBuilderTest proves the jar itself
+    is byte-identical across two independent seal-to-jar builds of the same real identity pack;
+    SealedPackBuilderTest/PackSealednessAnalyzerTest prove an unsealed pack is refused before
+    anything is written; PackAbiCompatibilityTest proves the ABI mismatch refusal both directions.
   provenRed: true
