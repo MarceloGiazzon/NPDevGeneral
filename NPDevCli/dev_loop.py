@@ -58,6 +58,7 @@ class DevOptions:
     profile: str = "dev"
     timeout: int = 420
     json_events: bool = False
+    force_clean: bool = False
 
     @property
     def state_dir(self) -> Path:
@@ -264,6 +265,7 @@ class CycleResult:
     phase: str
     fast: bool = False
     elapsed: float = 0.0
+    build_seconds: float = 0.0
 
 
 def run_cycle(options: DevOptions, current: AppProcess | None, out: "Output", cli) -> tuple[CycleResult, AppProcess | None]:
@@ -329,17 +331,27 @@ def run_cycle(options: DevOptions, current: AppProcess | None, out: "Output", cl
     out.result("ok")
 
     out.phase("build")
+    build_started = time.monotonic()
     try:
-        build_ok, build_output, jar = cli._build_phase(options.output, deadline)
+        # R1.2: incremental (`build -x test` on a warm daemon) by default, falling back to `clean`
+        # automatically on failure -- `_build_phase` owns that fallback so this loop never has to.
+        # `--clean-build` forces every cycle to skip straight to a clean build.
+        build_ok, build_output, jar, fell_back = cli._build_phase(
+            options.output, deadline, clean=options.force_clean)
     except Exception as exc:  # noqa: BLE001
-        build_ok, build_output, jar = False, str(exc), None
+        build_ok, build_output, jar, fell_back = False, str(exc), None, False
+    build_seconds = time.monotonic() - build_started
     if not build_ok or jar is None:
         out.result("FAILED")
+        if fell_back:
+            out.note("an incremental build failed and the automatic `clean build` retry failed too")
         classified = cli._classify_build_failure(build_output) if build_output else None
         out.detail((classified or {}).get("message") or (build_output or "")[-800:])
         out.note("app left running on the previous build.")
-        return CycleResult(False, "BUILD", fast, time.monotonic() - started), current
+        return CycleResult(False, "BUILD", fast, time.monotonic() - started, build_seconds), current
     out.result("ok")
+    if fell_back:
+        out.note("incremental build failed -- automatically retried with `clean build` (fell back)")
 
     # --- the swap: only now does the old app die -------------------------------------
     out.phase("restart")
@@ -353,12 +365,12 @@ def run_cycle(options: DevOptions, current: AppProcess | None, out: "Output", cl
         if previous_jar and Path(previous_jar).exists():
             out.note("restoring the previous build")
             app = boot(options, Path(previous_jar), cli)
-        return CycleResult(False, "BOOT", fast, time.monotonic() - started), app
+        return CycleResult(False, "BOOT", fast, time.monotonic() - started, build_seconds), app
     out.result("ok")
 
     options.state_dir.mkdir(parents=True, exist_ok=True)
     options.baseline.write_bytes(options.model.read_bytes())
-    return CycleResult(True, "READY", fast, time.monotonic() - started), app
+    return CycleResult(True, "READY", fast, time.monotonic() - started, build_seconds), app
 
 
 # =====================================================================================
@@ -441,6 +453,18 @@ class Output:
     def ready(self, r: CycleResult, port: int) -> None:
         self.note(f"ready in {r.elapsed:.1f}s   http://localhost:{port}")
         self.event(kind="ready", seconds=round(r.elapsed, 1), metadataOnly=r.fast)
+
+    def build_timing(self, seconds: float, previous: float | None) -> None:
+        """R1.2's own done-when: a before/after pair, so the incremental speedup is observable
+        rather than asserted. `previous is None` on the very first cycle -- there is no "before" yet,
+        so it says so instead of printing a lone number that looks like the whole feature."""
+        if previous is None:
+            self.note(f"build: {seconds:.1f}s (first build this session -- later saves reuse a warm daemon)")
+        else:
+            speedup = f", {previous / seconds:.1f}x faster" if seconds > 0 else ""
+            self.note(f"build: {seconds:.1f}s   (previous: {previous:.1f}s{speedup})")
+        self.event(kind="buildTiming", seconds=round(seconds, 1),
+                   previousSeconds=round(previous, 1) if previous is not None else None)
 
 
 # =====================================================================================
@@ -532,6 +556,7 @@ def dev(args: argparse.Namespace, cli) -> int:
         output=Path(args.output).expanduser().resolve(),
         port=args.port, profile=args.profile, timeout=args.timeout,
         json_events=getattr(args, "json", False),
+        force_clean=getattr(args, "clean_build", False),
     )
     if not options.model.exists():
         print(f"npdev dev: model not found: {options.model}", file=sys.stderr)
@@ -556,11 +581,17 @@ def dev(args: argparse.Namespace, cli) -> int:
     holder: dict[str, AppProcess | None] = {"app": None}
     stop.bind(lambda: holder["app"].stop() if holder["app"] else None)
     stop.install()
+    # R1.2's own done-when: `npdev dev` prints a before/after timing pair, so the incremental
+    # speedup is observable rather than just asserted. `None` on cycle 1 -- there is no "before" yet.
+    previous_build_seconds: float | None = None
     try:
         out.banner(options, _is_persistent(options.config))
         _reclaim_orphan(options, out)
         result, app = run_cycle(options, None, out, cli)
         holder["app"] = app
+        if result.build_seconds > 0:
+            out.build_timing(result.build_seconds, previous_build_seconds)
+            previous_build_seconds = result.build_seconds
         if result.ok:
             out.ready(result, options.port)
             # Printed once, on the first successful boot only -- every later cycle in this same
@@ -581,6 +612,9 @@ def dev(args: argparse.Namespace, cli) -> int:
             out.changed(changed)
             result, app = run_cycle(options, app, out, cli)
             holder["app"] = app
+            if result.build_seconds > 0:
+                out.build_timing(result.build_seconds, previous_build_seconds)
+                previous_build_seconds = result.build_seconds
             if result.ok:
                 out.ready(result, options.port)
         return 0
@@ -603,5 +637,12 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--profile", default="dev", help="Spring profile (default 'dev').")
     parser.add_argument("--timeout", type=int, default=420,
                         help="Wall-clock budget per GENERATE+BUILD cycle, in seconds.")
+    parser.add_argument(
+        "--clean-build", action="store_true",
+        help="R1.2: force a full `clean build` every cycle instead of the default incremental "
+             "`build` on a warm daemon. The default already falls back to `clean` automatically "
+             "when an incremental build fails -- this flag is for when you want every cycle clean, "
+             "not for recovering from a failure.",
+    )
     parser.add_argument("--json", action="store_true",
                         help="Emit one JSON event per phase transition on stdout.")
