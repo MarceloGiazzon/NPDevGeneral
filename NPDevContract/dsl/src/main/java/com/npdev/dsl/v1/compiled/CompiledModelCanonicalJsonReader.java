@@ -317,8 +317,38 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "title"),
                 optionalText(node, "pageSize"),
                 optionalDoubleObject(node.get("marginMm")),
-                toObjectMap(node.get("metadata"))
+                toObjectMap(node.get("metadata")),
+                optionalText(node, "aggregate"),
+                toDocumentBands(node.get("bands")),
+                toDocumentLogo(node.get("logo"))
         );
+    }
+
+    /** R5.7: reads a document band's {@code fields} through the same {@link #toPanelFieldBindings}
+     *  a panel's {@code fieldBindings} already uses. */
+    private static List<CompiledDocumentBand> toDocumentBands(JsonNode node) {
+        List<CompiledDocumentBand> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode bandNode : node) {
+            out.add(new CompiledDocumentBand(
+                    text(bandNode, "name"),
+                    text(bandNode, "kind"),
+                    optionalText(bandNode, "collection"),
+                    readLabelText(bandNode, "label"),
+                    readLabelLocales(bandNode, "label"),
+                    toPanelFieldBindings(bandNode.get("fields"))
+            ));
+        }
+        return out;
+    }
+
+    private static CompiledDocumentLogo toDocumentLogo(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return new CompiledDocumentLogo(optionalText(node, "field"));
     }
 
     private static CompiledAutoPanel toAutoPanel(JsonNode node) {

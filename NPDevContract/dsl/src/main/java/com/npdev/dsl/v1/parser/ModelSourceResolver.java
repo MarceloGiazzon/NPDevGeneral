@@ -336,7 +336,8 @@ public final class ModelSourceResolver {
             if (!packs.isArray()) {
                 throw error(sourceFile, "/packs", "packs must be an array of pack import objects");
             }
-            List<PackRequirementEntry> requirements = resolvePacks((ArrayNode) packs, resolved, sourceFile, state);
+            List<PackRequirementEntry> requirements =
+                    resolvePacks((ArrayNode) packs, resolved, sourceFile, state, root.get("provides"));
             checkPackRequirements(requirements, root.get("provides"), sourceFile);
         }
 
@@ -638,9 +639,10 @@ public final class ModelSourceResolver {
             ArrayNode packsNode,
             ObjectNode resolved,
             Path modelFile,
-            ResolutionState state
+            ResolutionState state,
+            JsonNode provides
     ) throws IOException {
-        return PackDependencyGraphWalker.resolve(this, packsNode, resolved, modelFile, state);
+        return PackDependencyGraphWalker.resolve(this, packsNode, resolved, modelFile, state, provides);
     }
 
     /** PK-3: one pack's own {@code requires} declaration, plus the path that reached it -- for

@@ -409,6 +409,12 @@
         "network": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "roleBindings": {
+          "type": "object",
+          "description": "PACK-9: logical role name (as referenced by a pack's own role('logicalName') tokens) -> this app's own concrete role name. A pack composed with a role('x') token whose 'x' has no entry here refuses composition, naming the pack and 'x'.",
+          "additionalProperties": { "type": "string", "minLength": 1 },
+          "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_]*$" }
         }
       },
       "additionalProperties": false
@@ -4332,9 +4338,77 @@
         },
         "metadata": {
           "type": "object"
+        },
+        "aggregate": {
+          "type": "string",
+          "minLength": 1,
+          "description": "R5.7: optional aggregate binding. When set, must equal the aggregate's root concept (enforced by DocumentValidation, not schema) -- 'bands' may then bind the aggregate's header and top-level collections."
+        },
+        "bands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/documentBand"
+          },
+          "description": "R5.7: header/line-item bands read off the bound aggregate's tree (root fields plus named top-level collections, the same shape AggregateRuntime.load() produces). Requires 'aggregate' to be set."
+        },
+        "logo": {
+          "$ref": "#/$defs/documentLogo"
         }
       },
       "additionalProperties": false
+    },
+    "documentBand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "fields"
+      ],
+      "description": "R5.7: one printable band of an aggregate-bound document -- 'header' reads fields off the aggregate root, 'lineItems' reads rows off one of the aggregate's TOP-LEVEL collections (named by 'collection'; nested/dotted collection paths are not supported). 'fields' deliberately reuses the panelFieldBinding shape a panel's fieldBindings already parses -- an author who knows how to bind a panel field binds a document band field the identical way.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "header",
+            "lineItems"
+          ]
+        },
+        "collection": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required when kind is 'lineItems': the name of a top-level collection on the bound aggregate. Not allowed on a 'header' band."
+        },
+        "label": {
+          "$ref": "#/$defs/localizableLabel"
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/panelFieldBinding"
+          },
+          "description": "Must declare at least one field. An empty band would render a blank header block or a line-item table with no columns -- indistinguishable from 'this record has no data' -- so both this schema-level minItems and DocumentValidation reject it as an authoring error instead."
+        }
+      }
+    },
+    "documentLogo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field"
+      ],
+      "description": "R5.7: a document's logo, bound to a property on the document's root concept -- never a URL. The renderer resolves that property's stored bytes and hands the PDF adapter an already-inline data: URI; DocumentRenderInProcAdapter refuses to fetch anything else while rendering (R6-F3's DENY_EXTERNAL_URIS), so a URL-shaped logo binding is not merely discouraged, it has no legal spelling in this model.",
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     },
     "guidePage": {
       "type": "object",

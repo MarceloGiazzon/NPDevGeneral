@@ -54,6 +54,14 @@ class CompiledMetadataCanonicalJsonTest {
         assertTrue(findBy(concepts, "name", "Appointment") != null, "Expected Appointment concept metadata.");
         assertTrue(findConceptPresentation(concepts, "Appointment", "Appointment", "Appt", "Scheduling"),
                 "Expected concept presentation metadata for Appointment.");
+        // EDIT-13: canonical-demo declares no per-locale labels anywhere -- every labelLocales/
+        // shortLabelLocales key must still be present (the widening contract: a new sibling key,
+        // never a shape change to "label"/"shortLabel" itself) but empty.
+        JsonNode appointmentConcept = findBy(concepts, "name", "Appointment");
+        assertTrue(appointmentConcept.path("labelLocales").isObject() && appointmentConcept.path("labelLocales").isEmpty(),
+                "Expected an empty labelLocales object for a plain-string-labeled concept.");
+        assertTrue(appointmentConcept.path("shortLabelLocales").isObject() && appointmentConcept.path("shortLabelLocales").isEmpty(),
+                "Expected an empty shortLabelLocales object for a plain-string-labeled concept.");
         assertTrue(findConceptLayout(concepts, "Appointment", "standard", 2, "-scheduledAt", "status"),
                 "Expected concept-level layout metadata for Appointment.");
         assertTrue(findBy(fields, "fieldPath", "emergencyContact.name") != null,
@@ -186,6 +194,44 @@ class CompiledMetadataCanonicalJsonTest {
         List<String> sortedIds = new java.util.ArrayList<>(ids);
         sortedIds.sort(String::compareTo);
         assertEquals(sortedIds, ids, "Invocation entries must be sorted by id.");
+    }
+
+    /**
+     * EDIT-13: closes the gap the task brief measured directly -- {@code CompiledMetadataCanonicalJson}
+     * (the writer that produces a generated app's {@code compiled-metadata.json}) called
+     * {@code getLabel()} at every label site and never {@code getLabelLocales()}, so an author's
+     * per-locale label map (R5.6, threaded correctly through parse/compile/the canonical MODEL
+     * round-trip by {@code CompiledModelCanonicalJson}/{@code LabelLocaleMapTest}) never reached the
+     * metadata catalog an app's UI actually reads. Proven here against the exact corpus fixture the
+     * task brief itself cites: {@code dsl-conformance-max}'s {@code WidgetOrder} concept, whose
+     * {@code ui.label} is {@code {"default":"Widget order","pt-BR":"Pedido de widget"}}.
+     */
+    @Test
+    void widgetOrderConceptCarriesLabelLocalesIntoTheMetadataConceptCatalog() throws Exception {
+        Path modelPath = resolvePath(List.of(
+                Path.of("..", "..", "NPDevSamples", "dsl-conformance-max", "Input", "model.json"),
+                Path.of("..", "..", "..", "NPDevSamples", "dsl-conformance-max", "Input", "model.json")
+        ));
+
+        ModelAst ast = new JsonModelParser().parse(modelPath);
+        CompiledModel compiledModel = new ModelCompiler().compile(ast);
+        String json = CompiledMetadataCanonicalJson.toJson(modelPath, compiledModel);
+        JsonNode root = MAPPER.readTree(json);
+
+        JsonNode concepts = root.path("catalogs").path("concepts");
+        JsonNode widgetOrder = findBy(concepts, "name", "WidgetOrder");
+        assertTrue(widgetOrder != null, "Expected a WidgetOrder concept entry in the metadata concept catalog.");
+        assertEquals("Widget order", widgetOrder.path("label").asText(),
+                "The plain 'label' key must keep carrying the resolved default text unchanged.");
+        assertTrue(widgetOrder.path("labelLocales").isObject(), "Expected labelLocales to be a JSON object.");
+        assertEquals("Pedido de widget", widgetOrder.path("labelLocales").path("pt-BR").asText(),
+                "Expected the pt-BR override to reach the metadata catalog alongside the default label.");
+        assertEquals(1, widgetOrder.path("labelLocales").size(),
+                "Expected exactly the one declared locale override, nothing synthesized.");
+
+        // Determinism, same contract every other catalog here already proves.
+        String second = CompiledMetadataCanonicalJson.toJson(modelPath, compiledModel);
+        assertEquals(json, second, "labelLocales emission must not break determinism.");
     }
 
     private static JsonNode findBy(JsonNode arrayNode, String fieldName, String value) {

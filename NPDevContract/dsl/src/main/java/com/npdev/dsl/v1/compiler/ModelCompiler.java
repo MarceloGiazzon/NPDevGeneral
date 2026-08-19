@@ -6,6 +6,8 @@ import com.npdev.dsl.v1.ast.ConversionAst;
 import com.npdev.dsl.v1.ast.ConversionLookupMatchAst;
 import com.npdev.dsl.v1.ast.ConversionSplitTargetAst;
 import com.npdev.dsl.v1.ast.DocumentAst;
+import com.npdev.dsl.v1.ast.DocumentBandAst;
+import com.npdev.dsl.v1.ast.DocumentLogoAst;
 import com.npdev.dsl.v1.ast.ExternalAiAst;
 import com.npdev.dsl.v1.ast.FieldAccessAst;
 import com.npdev.dsl.v1.ast.FieldAst;
@@ -113,6 +115,8 @@ import com.npdev.dsl.v1.compiled.CompiledAutoPanelComputed;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
 import com.npdev.dsl.v1.compiled.CompiledDocument;
+import com.npdev.dsl.v1.compiled.CompiledDocumentBand;
+import com.npdev.dsl.v1.compiled.CompiledDocumentLogo;
 import com.npdev.dsl.v1.compiled.CompiledExternalAi;
 import com.npdev.dsl.v1.compiled.CompiledSettings;
 import com.npdev.dsl.v1.compiled.CompiledTransactionHooks;
@@ -874,8 +878,41 @@ public final class ModelCompiler {
                 documentAst.title(),
                 documentAst.pageSize(),
                 documentAst.marginMm(),
-                sortObjectMap(documentAst.metadata())
+                sortObjectMap(documentAst.metadata()),
+                documentAst.aggregate(),
+                compileDocumentBands(documentAst.bands()),
+                compileDocumentLogo(documentAst.logo())
         );
+    }
+
+    /**
+     * R5.7: a document band's {@code fields} compiles through the SAME {@link
+     * #compilePanelFieldBindings} a panel's {@code fieldBindings} already uses -- one compiled
+     * shape for the reused binding vocabulary, not a parallel one.
+     */
+    private static List<CompiledDocumentBand> compileDocumentBands(List<DocumentBandAst> bands) {
+        List<CompiledDocumentBand> out = new ArrayList<>();
+        if (bands == null) {
+            return out;
+        }
+        for (DocumentBandAst band : bands) {
+            out.add(new CompiledDocumentBand(
+                    band.name(),
+                    band.kind(),
+                    band.collection(),
+                    band.label(),
+                    band.labelLocales(),
+                    compilePanelFieldBindings(band.fields())
+            ));
+        }
+        return out;
+    }
+
+    private static CompiledDocumentLogo compileDocumentLogo(DocumentLogoAst logo) {
+        if (logo == null) {
+            return null;
+        }
+        return new CompiledDocumentLogo(logo.field());
     }
 
     private static String autoPanelKey(AutoPanelAst autoPanel) {

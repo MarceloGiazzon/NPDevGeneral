@@ -39,7 +39,37 @@
             "label": "Color"
           }
         }
-      ]
+      ],
+      "access": {
+        "write": "$user.roles.contains(role('curator'))"
+      }
+    }
+  ],
+
+  "panels": [
+    {
+      "name": "LabelCuratorPanel",
+      "route": "/labeling/curator",
+      "title": "Label curator tools",
+      "visibility": "role:role('curator')",
+      "dataSources": [
+        { "name": "labels", "concept": "Label" }
+      ],
+      "actions": [
+        {
+          "name": "approve",
+          "label": "Approve label",
+          "binding": "conceptQuery",
+          "concept": "Label",
+          "permissionRequirements": [ "role('curator')" ],
+          "metadata": {
+            "permissionHint": "role('curator')"
+          }
+        }
+      ],
+      "metadata": {
+        "purpose": "PACK-9 coverage: role('logicalName') is a compile-time token (PackRoleBindingRewriter) rewritten at composition into whichever concrete role name the composing app binds via root provides.roleBindings -- exercises all three known internal-role-check shapes at once: an expression-embedded concept access.write predicate above, this panel's structured 'role:' visibility convention, and a panelAction's permissionRequirements array + actionMetadata.permissionHint."
+      }
     }
   ],
   "autoPanels": [
