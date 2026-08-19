@@ -79,7 +79,7 @@
       "name": "WidgetOrder",
       "truthLevel": "T2",
       "ui": {
-        "label": "Widget order"
+        "label": { "default": "Widget order", "pt-BR": "Pedido de widget" }
       },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },

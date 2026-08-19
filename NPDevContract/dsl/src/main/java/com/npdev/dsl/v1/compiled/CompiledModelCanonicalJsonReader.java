@@ -282,8 +282,9 @@ public final class CompiledModelCanonicalJsonReader {
                 text(node, "type"),
                 toDefaultValue(node.get("default")),
                 toStringList(node.get("settableAt")),
-                optionalText(node, "label"),
-                node.has("securityRelevant") && node.get("securityRelevant").asBoolean(false)
+                readLabelText(node, "label"),
+                node.has("securityRelevant") && node.get("securityRelevant").asBoolean(false),
+                readLabelLocales(node, "label")
         );
     }
 
@@ -376,9 +377,10 @@ public final class CompiledModelCanonicalJsonReader {
             JsonNode controlNode = node.get(name);
             out.put(name, new CompiledUiStateControl(
                     optionalText(controlNode, "name"),
-                    optionalText(controlNode, "label"),
+                    readLabelText(controlNode, "label"),
                     toStringList(controlNode.get("values")),
-                    optionalText(controlNode, "default")
+                    optionalText(controlNode, "default"),
+                    readLabelLocales(controlNode, "label")
             ));
         }
         return out;
@@ -401,11 +403,12 @@ public final class CompiledModelCanonicalJsonReader {
         for (JsonNode actionNode : node) {
             out.add(new CompiledWorkbenchAction(
                     optionalText(actionNode, "procedure"),
-                    optionalText(actionNode, "label"),
+                    readLabelText(actionNode, "label"),
                     toStringList(actionNode.get("inputFields")),
                     toWorkbenchActionApplyTo(actionNode.get("applyTo")),
                     optionalText(actionNode, "afterAction"),
-                    optionalText(actionNode, "visibleWhen")));
+                    optionalText(actionNode, "visibleWhen"),
+                    readLabelLocales(actionNode, "label")));
         }
         return out;
     }
@@ -430,10 +433,11 @@ public final class CompiledModelCanonicalJsonReader {
             JsonNode pickerNode = entry.getValue();
             out.put(entry.getKey(), new CompiledWorkbenchBandPicker(
                     optionalText(pickerNode, "panel"),
-                    optionalText(pickerNode, "label"),
+                    readLabelText(pickerNode, "label"),
                     toStringList(pickerNode.get("columns")),
                     optionalText(pickerNode, "filter"),
-                    booleanValue(pickerNode, "multiSelect")));
+                    booleanValue(pickerNode, "multiSelect"),
+                    readLabelLocales(pickerNode, "label")));
         });
         return out;
     }
@@ -476,10 +480,11 @@ public final class CompiledModelCanonicalJsonReader {
             JsonNode fieldNode = entry.getValue();
             out.add(new CompiledDerivedField(
                     entry.getKey(),
-                    optionalText(fieldNode, "label"),
+                    readLabelText(fieldNode, "label"),
                     defaulted(optionalText(fieldNode, "tier"), "client"),
                     optionalText(fieldNode, "expression"),
-                    optionalText(fieldNode, "procedure")));
+                    optionalText(fieldNode, "procedure"),
+                    readLabelLocales(fieldNode, "label")));
         });
         return out;
     }
@@ -713,8 +718,8 @@ public final class CompiledModelCanonicalJsonReader {
             return null;
         }
         return new CompiledPresentationMetadata(
-                optionalText(node, "label"),
-                optionalText(node, "shortLabel"),
+                readLabelText(node, "label"),
+                readLabelText(node, "shortLabel"),
                 optionalText(node, "description"),
                 optionalText(node, "helpText"),
                 optionalText(node, "placeholder"),
@@ -747,7 +752,9 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "defaultSort"),
                 optionalText(node, "defaultGroup"),
                 optionalText(node, "imageField"),
-                optionalText(node, "customWidgetRef")
+                optionalText(node, "customWidgetRef"),
+                readLabelLocales(node, "label"),
+                readLabelLocales(node, "shortLabel")
         );
     }
 
@@ -762,14 +769,15 @@ public final class CompiledModelCanonicalJsonReader {
             }
             out.add(new CompiledEnumOption(
                     optionalText(item, "value"),
-                    optionalText(item, "label"),
+                    readLabelText(item, "label"),
                     optionalIntegerObject(item.get("order")),
                     optionalText(item, "group"),
                     booleanValue(item, "default"),
                     booleanValue(item, "deprecated"),
                     optionalText(item, "iconHint"),
                     optionalText(item, "badgeHint"),
-                    optionalText(item, "description")
+                    optionalText(item, "description"),
+                    readLabelLocales(item, "label")
             ));
         }
         return out;
@@ -800,10 +808,11 @@ public final class CompiledModelCanonicalJsonReader {
             return null;
         }
         return new CompiledDomainTypeUi(
-                optionalText(node, "label"),
+                readLabelText(node, "label"),
                 optionalText(node, "placeholder"),
                 optionalText(node, "helpText"),
-                optionalText(node, "widget")
+                optionalText(node, "widget"),
+                readLabelLocales(node, "label")
         );
     }
 
@@ -815,10 +824,11 @@ public final class CompiledModelCanonicalJsonReader {
         for (JsonNode stateNode : array(node, "states")) {
             states.add(new CompiledStateMachineState(
                     optionalText(stateNode, "value"),
-                    optionalText(stateNode, "label"),
+                    readLabelText(stateNode, "label"),
                     optionalBoolean(stateNode.get("initial")) != null && optionalBoolean(stateNode.get("initial")),
                     optionalBoolean(stateNode.get("terminal")) != null && optionalBoolean(stateNode.get("terminal")),
-                    toStringMap(stateNode.get("metadata"))
+                    toStringMap(stateNode.get("metadata")),
+                    readLabelLocales(stateNode, "label")
             ));
         }
         List<CompiledStateTransition> transitions = new ArrayList<>();
@@ -833,9 +843,10 @@ public final class CompiledModelCanonicalJsonReader {
                     requiredPayload,
                     optionalText(transitionNode, "event"),
                     optionalText(transitionNode, "guard"),
-                    optionalText(transitionNode, "actionLabel"),
+                    readLabelText(transitionNode, "actionLabel"),
                     toStringMap(transitionNode.get("metadata")),
-                    toActionMetadata(transitionNode.get("action"))
+                    toActionMetadata(transitionNode.get("action")),
+                    readLabelLocales(transitionNode, "actionLabel")
             ));
         }
         return new CompiledLifecycle(optionalText(node, "statusField"), states, transitions);
@@ -1352,7 +1363,7 @@ public final class CompiledModelCanonicalJsonReader {
         for (JsonNode actionNode : node) {
             out.add(new CompiledPanelAction(
                     text(actionNode, "name"),
-                    optionalText(actionNode, "label"),
+                    readLabelText(actionNode, "label"),
                     text(actionNode, "binding"),
                     optionalText(actionNode, "concept"),
                     optionalText(actionNode, "operation"),
@@ -1368,7 +1379,8 @@ public final class CompiledModelCanonicalJsonReader {
                     toStringList(actionNode.get("inputFields")),
                     optionalText(actionNode, "resultAs"),
                     optionalText(actionNode, "filename"),
-                    optionalText(actionNode, "contentType")
+                    optionalText(actionNode, "contentType"),
+                    readLabelLocales(actionNode, "label")
             ));
         }
         return out;
@@ -1382,14 +1394,15 @@ public final class CompiledModelCanonicalJsonReader {
             return null;
         }
         return new CompiledActionMetadata(
-                optionalText(node, "label"),
+                readLabelText(node, "label"),
                 optionalText(node, "confirmationText"),
                 optionalText(node, "successMessage"),
                 optionalText(node, "failureHint"),
                 optionalText(node, "dangerLevel"),
                 optionalText(node, "visibleWhen"),
                 optionalText(node, "permissionHint"),
-                optionalText(node, "inputFormHint")
+                optionalText(node, "inputFormHint"),
+                readLabelLocales(node, "label")
         );
     }
 
@@ -1524,6 +1537,45 @@ public final class CompiledModelCanonicalJsonReader {
 
     private static String defaulted(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    /**
+     * R5.6: reads a label site's resolved default text. The canonical writer emits a plain string
+     * when a label carries no locale overrides (the common case, and every pre-R5.6 canonical
+     * file), or an object {@code {"default": "...", "<locale>": "...", ...}} when it does. Always
+     * pair with {@link #readLabelLocales} at the same call site.
+     */
+    private static String readLabelText(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        if (value.isObject()) {
+            return optionalText(value, "default");
+        }
+        String text = value.asText();
+        return text == null || text.isBlank() ? null : text;
+    }
+
+    /** R5.6: reads a label site's per-locale overrides (empty for the plain-string / pre-R5.6 shape). */
+    private static Map<String, String> readLabelLocales(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull() || !value.isObject()) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        Iterator<String> names = value.fieldNames();
+        while (names.hasNext()) {
+            String locale = names.next();
+            if ("default".equals(locale)) {
+                continue;
+            }
+            String v = optionalText(value, locale);
+            if (v != null) {
+                out.put(locale, v);
+            }
+        }
+        return out;
     }
 
     private static boolean booleanValue(JsonNode node, String field) {

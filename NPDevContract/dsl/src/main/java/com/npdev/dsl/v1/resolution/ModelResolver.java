@@ -161,7 +161,8 @@ public final class ModelResolver {
                     domainType.getUi().getLabel(),
                     domainType.getUi().getPlaceholder(),
                     domainType.getUi().getHelpText(),
-                    domainType.getUi().getWidget()
+                    domainType.getUi().getWidget(),
+                    domainType.getUi().getLabelLocales()
             );
             resolved.add(new DomainTypeAst(
                     domainType.getName(),
@@ -330,6 +331,27 @@ public final class ModelResolver {
         );
     }
 
+    /**
+     * R5.6: a label site now carries TWO values -- resolved default text and a per-locale
+     * overrides map -- that must move together during specialize/extend merge. The pre-existing
+     * {@code firstNonBlank(text, text)} merge rule ("override wins if it says anything, else
+     * base") still applies, but it has to be evaluated once per (text, locales) PAIR, not per
+     * scalar, or a specialization that only redeclares locale overrides (no plain-string default)
+     * would wrongly lose to a base that happens to have non-blank text.
+     */
+    private static boolean hasLabelContent(String text, Map<String, String> locales) {
+        return (text != null && !text.isBlank()) || (locales != null && !locales.isEmpty());
+    }
+
+    private static String mergeLabelText(String overrideText, Map<String, String> overrideLocales, String baseText) {
+        return hasLabelContent(overrideText, overrideLocales) ? overrideText : baseText;
+    }
+
+    private static Map<String, String> mergeLabelLocales(
+            String overrideText, Map<String, String> overrideLocales, Map<String, String> baseLocales) {
+        return hasLabelContent(overrideText, overrideLocales) ? overrideLocales : baseLocales;
+    }
+
     private static PresentationMetadataAst mergePresentationMetadata(
             PresentationMetadataAst base,
             PresentationMetadataAst override
@@ -344,8 +366,8 @@ public final class ModelResolver {
             return copyPresentationMetadata(base);
         }
         return new PresentationMetadataAst(
-                firstNonBlank(override.getLabel(), base.getLabel()),
-                firstNonBlank(override.getShortLabel(), base.getShortLabel()),
+                mergeLabelText(override.getLabel(), override.getLabelLocales(), base.getLabel()),
+                mergeLabelText(override.getShortLabel(), override.getShortLabelLocales(), base.getShortLabel()),
                 firstNonBlank(override.getDescription(), base.getDescription()),
                 firstNonBlank(override.getHelpText(), base.getHelpText()),
                 firstNonBlank(override.getPlaceholder(), base.getPlaceholder()),
@@ -378,7 +400,9 @@ public final class ModelResolver {
                 firstNonBlank(override.getDefaultSort(), base.getDefaultSort()),
                 firstNonBlank(override.getDefaultGroup(), base.getDefaultGroup()),
                 firstNonBlank(override.getImageField(), base.getImageField()),
-                firstNonBlank(override.getCustomWidgetRef(), base.getCustomWidgetRef())
+                firstNonBlank(override.getCustomWidgetRef(), base.getCustomWidgetRef()),
+                mergeLabelLocales(override.getLabel(), override.getLabelLocales(), base.getLabelLocales()),
+                mergeLabelLocales(override.getShortLabel(), override.getShortLabelLocales(), base.getShortLabelLocales())
         );
     }
 
@@ -421,7 +445,9 @@ public final class ModelResolver {
                 metadata.getDefaultSort(),
                 metadata.getDefaultGroup(),
                 metadata.getImageField(),
-                metadata.getCustomWidgetRef()
+                metadata.getCustomWidgetRef(),
+                metadata.getLabelLocales(),
+                metadata.getShortLabelLocales()
         );
     }
 
@@ -1082,7 +1108,8 @@ public final class ModelResolver {
                 action.getDangerLevel(),
                 action.getVisibleWhen(),
                 action.getPermissionHint(),
-                action.getInputFormHint()
+                action.getInputFormHint(),
+                action.getLabelLocales()
         );
     }
 
@@ -1162,7 +1189,8 @@ public final class ModelResolver {
                     state.isInitial(),
                     state.isTerminal(),
                     state.getAllowedActions(),
-                    state.getMetadata()
+                    state.getMetadata(),
+                    state.getLabelLocales()
             ));
         }
         List<StateTransitionAst> transitions = new ArrayList<>();
@@ -1178,7 +1206,8 @@ public final class ModelResolver {
                     transition.getGuard(),
                     transition.getActionLabel(),
                     transition.getMetadata(),
-                    cloneActionMetadata(transition.getAction())
+                    cloneActionMetadata(transition.getAction()),
+                    transition.getActionLabelLocales()
             ));
         }
         transitions.sort(Comparator
