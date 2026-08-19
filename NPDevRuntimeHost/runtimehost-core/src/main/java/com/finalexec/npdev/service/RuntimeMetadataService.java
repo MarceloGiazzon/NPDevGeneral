@@ -447,6 +447,15 @@ public class RuntimeMetadataService {
     private Map<String, Object> parseJsonFile(Path path) throws IOException {
         try (InputStream inputStream = Files.newInputStream(path)) {
             return objectMapper.readValue(inputStream, new TypeReference<LinkedHashMap<String, Object>>() {});
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            // MUST be caught before the plain IOException branch below: Jackson's
+            // JsonProcessingException (JsonParseException/MismatchedInputException/...) IS-A
+            // IOException, so with the branches in the other order this clause is unreachable and
+            // every malformed-JSON source file was rethrown as a raw IOException instead of the
+            // IllegalArgumentException applyMetadataOnlyReload's own javadoc documents -- found live
+            // by RuntimeMetadataServiceHotSwapTest#refusesOnAMalformedSourceDirectoryWithoutTouchingAnyDestinationFile
+            // the first time these tests actually ran.
+            throw new IllegalArgumentException("Failed to parse JSON metadata source file: " + path + " (" + e.getMessage() + ")", e);
         } catch (IOException e) {
             throw e;
         } catch (Exception e) {
