@@ -571,9 +571,24 @@ public final class CompiledModelCanonicalJson {
             // not a flag on it -- different timing (before the root upsert vs. after), different
             // contract (a non-ok result aborts with no writes vs. rolling back writes already made).
             node.put("onValidate", safe(aggregate.onValidate()));
+            // npdev-aggregate-invariant-four-place (R4.4): parser -> compiler -> HERE -> reader.
+            node.set("invariants", toAggregateInvariants(aggregate.invariants()));
             aggregates.add(node);
         }
         return aggregates;
+    }
+
+    /** R4.4: writes aggregates[].invariants[] -- {name, expression, message?}. */
+    private static ArrayNode toAggregateInvariants(List<CompiledAggregateInvariant> invariants) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        for (CompiledAggregateInvariant invariant : invariants) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(invariant.name()));
+            node.put("expression", safe(invariant.expression()));
+            node.put("message", safe(invariant.message()));
+            array.add(node);
+        }
+        return array;
     }
 
     private static ArrayNode toAggregateCollections(List<CompiledAggregateCollection> collections) {

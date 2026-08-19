@@ -1249,7 +1249,32 @@ public final class JsonModelParser {
                             "aggregates[" + name + "].collections"),
                     readText(aggregateNode, "onCommit"),
                     parseObjectMap(aggregateNode.get("metadata")),
-                    readText(aggregateNode, "onValidate")
+                    readText(aggregateNode, "onValidate"),
+                    // R4.4/npdev-aggregate-invariant-four-place: parser -> compiler -> canonical
+                    // writer+reader, mirroring ast-compiled-four-place's chain for a per-member field.
+                    parseAggregateInvariants(aggregateNode.get("invariants"),
+                            "aggregates[" + name + "].invariants")
+            ));
+        }
+        return out;
+    }
+
+    /** R4.4: aggregates[].invariants[] -- {name, expression, message?}, evaluated against the
+     *  whole aggregate draft tree pre-commit. See AggregateInvariantAst's javadoc. */
+    private static List<AggregateInvariantAst> parseAggregateInvariants(JsonNode node, String path)
+            throws IOException {
+        List<AggregateInvariantAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException(path + " must be an array");
+        }
+        for (JsonNode invariantNode : node) {
+            out.add(new AggregateInvariantAst(
+                    requiredText(invariantNode, "name"),
+                    requiredText(invariantNode, "expression"),
+                    readText(invariantNode, "message")
             ));
         }
         return out;

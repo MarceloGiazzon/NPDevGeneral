@@ -2,6 +2,7 @@ package com.finalexec.npdev.service;
 
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
+import com.npdev.dsl.v1.compiled.CompiledAggregateInvariant;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
@@ -9,6 +10,7 @@ import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
+import com.npdev.kernel.ports.InvariantEngine;
 import com.npdev.kernel.procedures.ProcedureExecutionResult;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +19,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -24,6 +27,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.UUID;
 
 /**
@@ -38,19 +42,29 @@ public class AggregateRuntime {
     private final ConceptGateway conceptGateway;
     private final ProcedureRunner procedureRunner;
     private final TransactionTemplate transactionTemplate;
+    // R4.4: optional, and resolved LAZILY rather than in the constructor like the four
+    // collaborators above. The InvariantEngine bean is built from CompiledModel, so calling
+    // getIfAvailable() during construction forces that whole chain to be instantiated at context
+    // startup for every app -- including surface profiles that never commit an aggregate. Resolving
+    // on first use instead keeps this class's startup cost exactly what it was before R4.4, and
+    // absent an engine entirely (no bean, or a direct constructor call that predates this field)
+    // declared invariants are simply not evaluated -- today's behaviour for every existing caller.
+    private final Supplier<InvariantEngine> invariantEngine;
 
     @Autowired
     public AggregateRuntime(
             ObjectProvider<CompiledModel> compiledModel,
             ObjectProvider<ConceptGateway> conceptGateway,
             ObjectProvider<ProcedureRunner> procedureRunner,
-            ObjectProvider<PlatformTransactionManager> transactionManager
+            ObjectProvider<PlatformTransactionManager> transactionManager,
+            ObjectProvider<InvariantEngine> invariantEngine
     ) {
         this(
                 compiledModel == null ? null : compiledModel.getIfAvailable(),
                 conceptGateway == null ? null : conceptGateway.getIfAvailable(),
                 procedureRunner == null ? null : procedureRunner.getIfAvailable(),
-                transactionManager == null ? null : transactionManager.getIfAvailable()
+                transactionManager == null ? null : transactionManager.getIfAvailable(),
+                invariantEngine == null ? () -> null : invariantEngine::getIfAvailable
         );
     }
 
@@ -76,10 +90,40 @@ public class AggregateRuntime {
             ProcedureRunner procedureRunner,
             PlatformTransactionManager transactionManager
     ) {
+        // Cast required: the two five-argument constructors below differ only in their last
+        // parameter (InvariantEngine vs the private Supplier form), and a bare null matches both.
+        this(compiledModel, conceptGateway, procedureRunner, transactionManager, (InvariantEngine) null);
+    }
+
+    /**
+     * R4.4: adds the {@link InvariantEngine} that evaluates a declared aggregate's
+     * {@code invariants[]} in {@link #commit}'s pre-commit slot. Kept as a widened constructor with
+     * the four-argument form above delegating to it, so every existing direct caller -- the tests
+     * in this package and any non-Spring caller -- compiles and behaves unchanged.
+     */
+    public AggregateRuntime(
+            CompiledModel compiledModel,
+            ConceptGateway conceptGateway,
+            ProcedureRunner procedureRunner,
+            PlatformTransactionManager transactionManager,
+            InvariantEngine invariantEngine
+    ) {
+        this(compiledModel, conceptGateway, procedureRunner, transactionManager,
+                () -> invariantEngine);
+    }
+
+    private AggregateRuntime(
+            CompiledModel compiledModel,
+            ConceptGateway conceptGateway,
+            ProcedureRunner procedureRunner,
+            PlatformTransactionManager transactionManager,
+            Supplier<InvariantEngine> invariantEngine
+    ) {
         this.compiledModel = compiledModel;
         this.conceptGateway = conceptGateway;
         this.procedureRunner = procedureRunner;
         this.transactionTemplate = transactionManager == null ? null : new TransactionTemplate(transactionManager);
+        this.invariantEngine = invariantEngine;
     }
 
     /**
@@ -156,6 +200,16 @@ public class AggregateRuntime {
                                 + " failed: " + onValidateResult.failureCode() + " " + onValidateResult.failureMessage());
             }
         }
+
+        // R4.4: declared invariants[] evaluate in this SAME pre-commit slot, right after onValidate
+        // and still before the root upsert -- so a veto happens while there is nothing written to
+        // roll back, and inside commit()'s transaction when one exists either way. Throwing
+        // IllegalStateException (rather than returning a failure) is deliberate and matches the
+        // onValidate branch directly above: AggregateApiController already catches that exact type
+        // and surfaces its message, so the failing rule's NAME reaches the commit API error without
+        // any controller change. Every failing rule is named, not just the first -- an author
+        // fixing a draft should see all of them in one round trip.
+        assertAggregateInvariants(aggregate, rootDraft);
 
         String rootId = idOrNew(rootDraft.get("id"));
         Set<String> rootCollectionKeys = collectionNames(aggregate.collections());
@@ -320,6 +374,38 @@ public class AggregateRuntime {
     private static void putRecord(Map<String, Object> target, ConceptRecord record) {
         target.put("id", record.id());
         target.putAll(record.data());
+    }
+
+    private void assertAggregateInvariants(CompiledAggregate aggregate, Map<String, Object> rootDraft) {
+        if (aggregate.invariants().isEmpty()) {
+            return;
+        }
+        InvariantEngine engine = invariantEngine == null ? null : invariantEngine.get();
+        if (engine == null) {
+            return;
+        }
+        List<InvariantEngine.AggregateInvariantSpec> specs = new ArrayList<>();
+        for (CompiledAggregateInvariant invariant : aggregate.invariants()) {
+            specs.add(new InvariantEngine.AggregateInvariantSpec(
+                    invariant.name(), invariant.expression(), invariant.message()));
+        }
+        List<InvariantEngine.Violation> violations =
+                engine.evaluateAggregateInvariants(aggregate.name(), aggregate.root(), specs, rootDraft);
+        if (violations == null || violations.isEmpty()) {
+            return;
+        }
+        StringBuilder names = new StringBuilder();
+        StringBuilder details = new StringBuilder();
+        for (InvariantEngine.Violation violation : violations) {
+            if (names.length() > 0) {
+                names.append(", ");
+                details.append("; ");
+            }
+            names.append(violation.invariantRef());
+            details.append(violation.message());
+        }
+        throw new IllegalStateException(
+                "Aggregate " + aggregate.name() + " invariant(s) violated: " + names + " -- " + details);
     }
 
     private CompiledAggregate findAggregate(String aggregateName) {

@@ -792,6 +792,38 @@
           "type": "string",
           "minLength": 1,
           "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): names a procedure run BEFORE the root upsert, inside the same transaction as commit() -- a non-ok result aborts the whole commit with NO writes at all. A sibling of onCommit (which runs AFTER the tree is written, rolling back on failure), not a flag on it: different timing, different contract."
+        },
+        "invariants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/aggregateInvariant"
+          },
+          "description": "R4.4 (Roadmap Wave 1 2026-08-19): declarative cross-collection invariants evaluated against the whole aggregate draft tree (root fields plus every named collection) in the SAME pre-commit transaction slot onValidate uses -- a veto names the failing rule in the commit API error."
+        }
+      },
+      "additionalProperties": false
+    },
+    "aggregateInvariant": {
+      "type": "object",
+      "required": [
+        "name",
+        "expression"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "R4.4: the rule identifier a commit-time API error names when this invariant vetoes a commit. Required and must be unique within its aggregate."
+        },
+        "expression": {
+          "type": "string",
+          "minLength": 1,
+          "description": "R4.4: a boolean-shaped expression evaluated against the aggregate draft tree -- root fields directly by name, each declared collection by name as a list (e.g. lines.all(l => l.qty > 0) && lines.sum(qty) <= totalQty)."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "description": "R4.4: optional override for the veto message; defaults to a message composed from name plus the evaluator's own failure detail."
         }
       },
       "additionalProperties": false

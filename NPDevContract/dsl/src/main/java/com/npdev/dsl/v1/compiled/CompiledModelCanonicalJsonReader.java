@@ -491,8 +491,26 @@ public final class CompiledModelCanonicalJsonReader {
                 toAggregateCollections(node.get("collections")),
                 optionalText(node, "onCommit"),
                 toObjectMap(node.get("metadata")),
-                optionalText(node, "onValidate")
+                optionalText(node, "onValidate"),
+                // npdev-aggregate-invariant-four-place (R4.4): parser -> compiler -> writer -> HERE.
+                toAggregateInvariants(node.get("invariants"))
         );
+    }
+
+    /** R4.4: reads aggregates[].invariants[] -- {name, expression, message?}. */
+    private static List<CompiledAggregateInvariant> toAggregateInvariants(JsonNode node) {
+        List<CompiledAggregateInvariant> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode invariantNode : node) {
+            out.add(new CompiledAggregateInvariant(
+                    text(invariantNode, "name"),
+                    text(invariantNode, "expression"),
+                    optionalText(invariantNode, "message")
+            ));
+        }
+        return out;
     }
 
     private static List<CompiledAggregateCollection> toAggregateCollections(JsonNode node) {
