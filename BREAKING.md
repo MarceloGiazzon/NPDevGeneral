@@ -5,6 +5,33 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-19 — remote packs must be signed, or accepted with an explicit flag (R8.7)
+
+**What changes.** `npdev pack add` and `npdev pack update` now refuse a remote pack (any entry with
+a non-empty `from` git coordinate) whose detached Ed25519 signature is missing, signed by an
+untrusted key, or invalid — three distinct named refusals (`UNSIGNED`, `UNKNOWN_SIGNER`,
+`BAD_SIGNATURE`). Every pack published before this change is unsigned, so **the next `pack add` or
+`pack update` on any existing app with a remote pack coordinate will fail** until it is either
+re-published signed or accepted once with `--allow-unsigned`, which records the decision permanently
+in `npdev.lock` so a teammate can see the pack was taken on trust. Local (`$ref`) packs are entirely
+unaffected — the gate only ever inspects entries with a `from`.
+
+The default trust mode is `warn`, not `enforce`, precisely so this is a one-flag migration rather
+than a hard wall; `enforce` (set in `npdev-trust.json` beside `npdev.lock`) additionally makes
+`--allow-unsigned` inert. `UNKNOWN_SIGNER` and `BAD_SIGNATURE` are never bypassable in either mode.
+
+**Blast radius, measured not estimated.** Running the full CLI suite after the gate landed broke
+exactly four pre-existing tests, all of which call `pack add`/`pack update` against unsigned fixture
+packs: `test_pack_catalog.PackAddFromCatalogRoundTripTest`, two in `test_pack_lock_tamper_guard.py`,
+and `test_pack_publish_push.PackPublishPushRoundTripTest`. Each needed one line
+(`allow_unsigned=True`) — which is exactly the migration a real consumer performs.
+
+**Codemod.** None, and deliberately so: this is not a model rewrite. The migration is a human
+decision about whether to trust an unsigned publisher, which is the whole point of the feature — a
+codemod that silently added `--allow-unsigned` everywhere would remove the decision it exists to
+force. Publishers close the loop with `npdev pack sign-keygen` then
+`npdev pack publish --push --sign-with <keyfile>`.
+
 ## 2026-08-19 — `queries[].auditPolicy` / `procedures[].auditPolicy` removed from the schema (R5.1)
 
 **What changes.** The `auditPolicy` field (`none`/`read`/`write`) on a `query` or `procedure`

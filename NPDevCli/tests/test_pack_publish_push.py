@@ -227,7 +227,8 @@ class PackPublishPushRoundTripTest(unittest.TestCase):
                    "NPDEV_PACK_CACHE_ROOT": str(self.tmp_dir / "consumer-pack-cache")}
             with mock.patch.dict(os.environ, env):
                 add_args = argparse.Namespace(model=str(model_path), from_catalog="widgets",
-                                               catalog_url=catalog_url, offline=False)
+                                               catalog_url=catalog_url, offline=False,
+                                               allow_unsigned=True)  # R8.7: this pack was published unsigned
                 with redirect_stdout(io.StringIO()) as add_out:
                     add_code = npdev_cli.run_pack_add(add_args)
                 self.assertEqual(0, add_code, add_out.getvalue())

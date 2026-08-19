@@ -208,7 +208,9 @@ class PackTreeDigestMatchesJavaTest(unittest.TestCase):
 
             env = {"NPDEV_PACK_CACHE_ROOT": str(tmp_dir / "pack-cache")}
             with mock.patch.dict(os.environ, env):
-                add_args = argparse.Namespace(model=str(model_path), from_catalog=None)
+                # R8.7: this fixture pack is unsigned -- --allow-unsigned is orthogonal to the
+                # digest-match this test actually proves.
+                add_args = argparse.Namespace(model=str(model_path), from_catalog=None, allow_unsigned=True)
                 with redirect_stdout(io.StringIO()):
                     code = npdev_cli.run_pack_add(add_args)
                 self.assertEqual(0, code)
@@ -246,7 +248,9 @@ class MutatedTagRefusedOnPackUpdateRoundTripTest(unittest.TestCase):
 
             env = {"NPDEV_PACK_CACHE_ROOT": str(tmp_dir / "pack-cache")}
             with mock.patch.dict(os.environ, env):
-                add_args = argparse.Namespace(model=str(model_path), from_catalog=None)
+                # R8.7: this fixture pack is unsigned -- --allow-unsigned is orthogonal to the
+                # tamper-guard behavior this test actually proves.
+                add_args = argparse.Namespace(model=str(model_path), from_catalog=None, allow_unsigned=True)
                 with redirect_stdout(io.StringIO()):
                     add_code = npdev_cli.run_pack_add(add_args)
                 self.assertEqual(0, add_code)
@@ -264,7 +268,9 @@ class MutatedTagRefusedOnPackUpdateRoundTripTest(unittest.TestCase):
                 _git_commit(src_repo, "mutated (same version)")
                 _run(src_repo, "git", "tag", "-f", "v2.0.0")
 
-                update_args = argparse.Namespace(model=str(model_path))
+                # allow_unsigned=True so this proves ONLY the R8.6 tamper guard (moved-tag digest
+                # mismatch), which must refuse BEFORE R8.7's own signature check ever runs.
+                update_args = argparse.Namespace(model=str(model_path), allow_unsigned=True)
                 with self.assertRaises(npdev_cli.CliError) as ctx:
                     with redirect_stdout(io.StringIO()):
                         npdev_cli.run_pack_update(update_args)
