@@ -22,6 +22,10 @@ import java.util.Map;
  * operation {@code render}) so it stays a genuine substitutable binding for the capability the same
  * way it already is for {@link DocumentRenderContract} -- {@code invoke} fails exactly the same way
  * {@link #render} always has, never a silent/empty PDF.
+ *
+ * <p>R5.7 (Roadmap Wave 1 2026-08-19): {@code renderAggregate} (the aggregate/bands/logo document
+ * shape {@code document-render-inproc} now renders) fails the identical way -- an app that opts out
+ * of PDF rendering opts out of ALL of it, not just the pre-R5.7 flat-grid shape.
  */
 public final class DocumentRenderStubAdapter implements CapabilityAdapter, DocumentRenderContract {
 
@@ -42,7 +46,7 @@ public final class DocumentRenderStubAdapter implements CapabilityAdapter, Docum
 
     @Override
     public CapabilityResult invoke(CapabilityCall call, Map<String, Object> contextState) {
-        if (!"render".equals(call.operation())) {
+        if (!"render".equals(call.operation()) && !"renderAggregate".equals(call.operation())) {
             return CapabilityResult.failure(
                     "DOCUMENT_RENDER_OPERATION_UNSUPPORTED",
                     "Unsupported documentRender operation: " + call.operation(),

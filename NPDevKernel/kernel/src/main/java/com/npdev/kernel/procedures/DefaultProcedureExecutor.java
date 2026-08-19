@@ -367,10 +367,23 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         // LC-P0 scale half (MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 0): push the compiled predicate,
         // sort, and limit down to ConceptGateway.query -- the store narrows (WHERE/LIMIT on SQL for
         // the JDBC adapters) instead of fetching every row and filtering in the JVM.
+        //
+        // R4.3 (Roadmap Wave 1) lockstep fix: this used to call ConceptQueryPredicateCompiler#compile
+        // (the v1-only AND-only grammar), which is exactly why PackValidation#validateQueryWhereCompiles
+        // stayed v1-only too -- widening authoring-time validation to the v2 grammar (OR-groups, in,
+        // contains/startsWith, is-null, reference-path joins) without rewiring THIS call site first
+        // would have let a model validate clean and then throw the first time a runQuery step tried to
+        // execute it (REG-101's trap, one layer up). Now calls #compileToConceptQueryFilters, the v2
+        // sibling that already turns an OR-of-AND predicate into a single ConceptQuery.Operator#OR_GROUPS
+        // marker filter (or a flat AND-list when there is only one group) -- the exact shape
+        // JdbcBusinessConceptStore's query()/aggregate() already render as real SQL (proven against H2
+        // by JdbcBusinessConceptStorePredicateV2Test), so a runQuery step now reaches the same,
+        // already-proven SQL pushdown path a declared v2 predicate always could reach through a
+        // hand-built ConceptQuery.
         List<ConceptRecord> records;
         try {
             List<ConceptQuery.Filter> filters = query == null
-                    ? List.of() : ConceptQueryPredicateCompiler.compile(query.where());
+                    ? List.of() : ConceptQueryPredicateCompiler.compileToConceptQueryFilters(query.where());
             List<ConceptQuery.Sort> sorts = query == null
                     ? List.of() : ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy());
             Integer declaredLimit = query == null ? null : query.limit();
