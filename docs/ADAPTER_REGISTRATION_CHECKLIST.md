@@ -42,6 +42,12 @@ verified list-free (jar discovery). If you consciously exclude a new adapter, ad
 
 - `audit-*`, `events-inproc`, `eventstore-postgres`, `flowinstance-*`, `idempotency-*`,
   `tracestore-postgres`, `tracing-inproc`: not imported unconditionally by the RuntimeHost template.
+- `messaging-inproc`, `messaging-http` (R6.4, 2026-08-19): the cross-app event bridge has no
+  runtime binding yet. `MessagingCapability` had a contract and zero implementations; these two
+  supply the implementations, but nothing in `NpdevCapabilityBindingConfig` constructs them and
+  no `com.finalexec.api` controller exposes the inbound delivery endpoint, so a generated app
+  cannot reach either adapter. Packaging them today would ship jars no app can invoke. **Move
+  both to the proof-test lists in the same change that wires the runtime binding.**
 - `postgres-test-support`: test-support module, never packaged.
 
 ## For a capable agent (future work, not part of this checklist)

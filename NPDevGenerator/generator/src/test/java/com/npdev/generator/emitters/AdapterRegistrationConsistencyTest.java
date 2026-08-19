@@ -41,6 +41,8 @@ class AdapterRegistrationConsistencyTest {
             "flowinstance-postgres",
             "idempotency-inproc",
             "idempotency-postgres",
+            "messaging-http",
+            "messaging-inproc",
             "postgres-test-support",
             "tracestore-postgres",
             "tracing-inproc");

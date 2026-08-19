@@ -1,0 +1,83 @@
+id: EDIT-12
+title: >-
+  R10.3 is blocked: AuthoringApp's scaffolding/import-export studio has no replacement
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-19
+source: >-
+  R10.3 (Roadmap Collection 2026-08-18) attempted 2026-08-19. The frozen bundle was deleted, then
+  restored after a proper per-chunk audit found a capability nothing else serves.
+surface: editor/frozen-bundle
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/static-react/assets/AuthoringApp.js
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
+detail: |
+  **R10.3 (delete `static-react/`) cannot proceed yet.** The deletion was performed and then fully
+  reverted from git on the same day, once the three JS chunks were audited by grepping their actual
+  minified content rather than inferring coverage from filenames, the manifest and CLAUDE.md prose.
+
+  Per-chunk findings:
+
+  - **`app.js` (144 KB)** -- React runtime plus a router shell with two hash routes
+    (`#/authoring/home`, `#/workbench`) that lazy-load the other two chunks. No substantive API
+    surface of its own.
+  - **`ReactWorkbenchApp.js` (44 KB)** -- ALREADY mostly dead. Its Model/Rule editor tabs call
+    `/api/admin/model/editor/draft` and `/api/admin/model/rules/draft`, which **404 since R10.1**
+    (EDIT-4) removed the draft write-back endpoints. Its remaining live surface (correlation
+    timeline, audit timeline, operator console, capability calls, events) duplicates the vanilla
+    Operator UI at `/npdev-ui/`, which is unconditionally emitted and untouched.
+  - **`AuthoringApp.js` (240 KB) -- the blocker.** A full client-side model-authoring studio, NOT a
+    viewer: starter templates (`Business Record Starter`, `Approval Workflow Starter`), scaffolding
+    (`Add concept`/`Add field`/`Add flow`/`Add panel`/`Add invariant`/`Add state`/`Add transition`),
+    and an Import/Export screen (`#/authoring/exchange`) that reads and writes a LOCAL folder through
+    `window.showDirectoryPicker` (File System Access API, two call sites). ~594 distinct capitalised
+    UI labels of that shape.
+
+  **Crucially, AuthoringApp is unaffected by R10.1.** Its API calls are
+  `/api/admin/model/sync-status`, `/api/runtime/metadata/validate`, `/api/admin/ui-model`,
+  `/api/admin/runtime/metadata/{validation-support,index}` and
+  `/api/runtime/metadata/ui/preview/*` -- none of them the draft endpoints R10.1 deleted. So it was
+  still functional right up to the moment it was deleted.
+
+  **R10.2's `model-surface.html` does not replace it, and is not a subset of it.** The emitted
+  surface is a read-only dump of THIS app's own compiled model, embedded at generation time.
+  AuthoringApp builds and edits an ARBITRARY model from starter templates and hands it to a local
+  folder. Different capability, different direction of data flow.
+
+  R10.0 (EDIT-3) did anticipate this loss, naming CLI/MCP authoring as the intended replacement
+  ("reviving hand-maintained editor source ... is the costlier path ... once CLI/MCP authoring (R1)
+  exists as the real write path"). Whether CLI/MCP maturity makes the trade acceptable is the owner
+  call R10.0 itself flagged as "not engineering" -- it is NOT something a code audit can certify,
+  which is why this item is OPEN rather than WONTFIX.
+
+  **A second, separate loss is already unrecoverable and should not be mistaken for R10.3 fallout.**
+  The three routines
+  `NPDevSamples/scripts/browser/browser-routines/editor-open-{model-folder,model-only,wmsoffice-model}-verify-routine.json`
+  all target `http://localhost:5173/npdev-ui-react/#/authoring/exchange` -- **NPDevEditor's own Vite
+  dev server**, not a generated app's port. That dev server has had no in-repo producer since
+  2026-08-17 (BREAKING.md), so those routines were already unrunnable before R10.3 was attempted.
+  They were the only automated proof this capability ever worked end to end.
+
+  **What must be true before R10.3 can proceed** (any one of):
+  1. An owner decision that CLI/MCP authoring is an acceptable replacement for the browser
+     scaffolding + local-folder handoff flow, recorded as a ledger decision; or
+  2. The scaffolding/import-export capability re-emitted from the generator (R10.2's surface
+     extended from read-only to model-authoring, which is a substantially larger item); or
+  3. Evidence that no one uses it -- which cannot come from this repo, since the only automated
+     coverage was the three already-dead routines.
+
+  `ReactWorkbenchApp.js` alone could arguably be dropped today (its editor half is 404 and its
+  remainder is duplicated by `/npdev-ui/`), but the manifest ships the three chunks together and
+  `app.js` lazy-loads both by name, so a partial deletion needs the router shell edited too -- and
+  that file has no producer.
+guard:
+  kind: manual
+  ref: NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json
+  asserts: >-
+    The manifest still lists all five bundle assets, and `static-react/assets/AuthoringApp.js` still
+    exists. When R10.3 is finally executed, this item must close in the same change -- and if the
+    manifest is emptied while AuthoringApp's scaffolding/import-export capability still has no
+    replacement, that is the regression this item exists to prevent.
+  provenRed: false
