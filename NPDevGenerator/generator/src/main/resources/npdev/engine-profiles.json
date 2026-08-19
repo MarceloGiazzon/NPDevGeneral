@@ -65,7 +65,8 @@
       "quirks": [],
       "dataVolumePath": "/var/lib/postgresql/data",
       "composeImage": "postgres:16-alpine",
-      "backupCommand": "pg_dump -U \"$DB_USER\" \"$DB_NAME\""
+      "backupCommand": "pg_dump --clean --if-exists -U \"$DB_USER\" -d \"$DB_NAME\"",
+      "restoreCommand": "psql -U \"$DB_USER\" -d \"$DB_NAME\" -v ON_ERROR_STOP=1"
     },
     "MySQL": {
       "kind": "server",
@@ -127,7 +128,8 @@
       ],
       "dataVolumePath": "/var/lib/mysql",
       "composeImage": "mysql:8.4",
-      "backupCommand": "mysqldump -u\"$DB_USER\" -p\"$DB_PASSWORD\" \"$DB_NAME\""
+      "backupCommand": "mysqldump --add-drop-table -u\"$DB_USER\" -p\"$DB_PASSWORD\" \"$DB_NAME\"",
+      "restoreCommand": "mysql -u\"$DB_USER\" -p\"$DB_PASSWORD\" \"$DB_NAME\""
     },
     "SqlServer": {
       "kind": "server",
@@ -203,7 +205,8 @@
       ],
       "dataVolumePath": "/var/opt/mssql",
       "composeImage": "mcr.microsoft.com/mssql/server:2022-latest",
-      "backupCommand": ""
+      "backupCommand": "",
+      "restoreCommand": ""
     },
     "H2Local": {
       "guiLabel": "H2 (file)",
