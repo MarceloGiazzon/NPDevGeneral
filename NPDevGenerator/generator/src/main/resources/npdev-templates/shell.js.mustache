@@ -1228,6 +1228,11 @@
     renderSidebar();
     applyGuidePage(manifest, currentGuidePageName());
     recordRecentItem(document.title, window.location.pathname);
+    // R3.9: the routine recorder never even builds its UI for a visitor who is not both the app's
+    // superUserRole AND explicitly opted in -- see the routine-recorder section below.
+    if (state.isSuperUser && recorderOptedIn()) {
+      maybeInitRecorderUi();
+    }
   }
 
   function init() {
@@ -1260,6 +1265,504 @@
   window.addEventListener("hashchange", function () {
     if (state.hostMode) refreshActiveLinks();
   });
+
+  // ------------------------------------------------------ routine recorder ----
+  //
+  // R3.9: a tester drives the app by hand and gets a runnable ScrapForAI routine out, instead of
+  // hand-writing one. Emits EXACTLY the file shape every hand-authored routine under a
+  // browser-routines/ directory already uses (`targetPath` + `steps[]` of {action, selector, ...}),
+  // the same shape `schemas/ai/scrapforai-routine.schema.json` pins and
+  // `check-routine-corpus-conformance.py` enforces -- so a downloaded recording needs no hand-editing
+  // to run through `npdev explore`.
+  //
+  // OPT-IN, not a default surface: nothing below this comment builds any UI or attaches any listener
+  // unless BOTH (1) the visitor resolves as the app's own superUserRole (state.isSuperUser, computed
+  // in applyData from the manifest -- the same authority bar the ControlPanel uses) AND (2) the
+  // visitor explicitly opted in, either by loading a URL with a `npdevRecord` query parameter once, or
+  // by having done so earlier in this browser (persisted to localStorage so the toggle survives normal
+  // navigation for the rest of a recording session). An ordinary user never sees a recorder: nobody
+  // types `?npdevRecord=1` by accident, and the gate is re-checked from applyData() -- which only runs
+  // after identity resolves -- so a pre-auth or non-superuser visit never builds recorder UI or
+  // attaches recorder listeners at all.
+  var RECORDER_ENABLED_KEY = "npdev.shell.recorderEnabled";
+  var RECORDER_SESSION_KEY = "npdev.shell.recorderSession";
+  var RECORDER_MAX_STEPS = 50; // matches schemas/ai/scrapforai-routine.schema.json's steps maxItems
+  var recorder; // { active, steps, assertArmed, targetPath, lastPath, scenarioName } -- see recorderDefaultState()
+  var recorderUiBuilt = false;
+  var recorderLastClickWasSubmit = false;
+
+  function recorderQueryFlagPresent() {
+    return /(?:^|[?&])npdevRecord(?:=|&|$)/.test(window.location.search);
+  }
+
+  function recorderOptedIn() {
+    if (recorderQueryFlagPresent()) {
+      writeJsonStorage(localStorage, RECORDER_ENABLED_KEY, true);
+      return true;
+    }
+    return Boolean(readJsonStorage(localStorage, RECORDER_ENABLED_KEY, false));
+  }
+
+  function recorderDefaultState() {
+    return { active: false, steps: [], assertArmed: false, targetPath: null, lastPath: null, scenarioName: "" };
+  }
+
+  function recorderLoadState() {
+    return readJsonStorage(sessionStorage, RECORDER_SESSION_KEY, null) || recorderDefaultState();
+  }
+
+  function recorderSaveState() {
+    if (recorder) writeJsonStorage(sessionStorage, RECORDER_SESSION_KEY, recorder);
+  }
+
+  // A real page navigation happened (as opposed to the SPA's own hash routing, which never touches
+  // pathname/search) since the last step was recorded -- e.g. the apiKey auth preamble's own
+  // `reload`, or a jwt-mode login redirect. Runs unconditionally at script load (cheap: one
+  // sessionStorage read, no-op unless a recording was already active), so a full navigation mid
+  // recording is captured as a `goto` step exactly like a hand-authored login routine's own preamble
+  // (see NPDevCli/npdev_explore.py's `_auth_preamble`), rather than silently losing the step.
+  function recorderPrimeNavigation() {
+    var rec = readJsonStorage(sessionStorage, RECORDER_SESSION_KEY, null);
+    if (!rec || !rec.active) return;
+    var path = window.location.pathname + window.location.search;
+    if (rec.lastPath !== path && rec.steps.length < RECORDER_MAX_STEPS) {
+      rec.steps.push(rec.lastPath
+        ? { action: "goto", url: window.location.origin + path, label: "Navigate to " + path }
+        : { action: "goto", url: "$targetUrl", label: "Open the app" });
+      if (!rec.targetPath) rec.targetPath = window.location.pathname;
+    }
+    rec.lastPath = path;
+    recorder = rec;
+    writeJsonStorage(sessionStorage, RECORDER_SESSION_KEY, rec);
+  }
+
+  function recorderCssEscape(value) {
+    return String(value).replace(/["\\]/g, "\\$&");
+  }
+
+  function recorderShortText(el) {
+    var text = (el && el.textContent || "").replace(/\s+/g, " ").trim();
+    if (!text || text.length > 60) return null;
+    return text;
+  }
+
+  function recorderNearestStableAncestor(el) {
+    var node = el ? el.parentElement : null;
+    while (node && node !== document.body) {
+      if (node.id) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function recorderStructuralPath(el, stopAt) {
+    var parts = [];
+    var node = el;
+    while (node && node !== document.body && node !== stopAt && node.parentElement) {
+      var siblings = Array.prototype.filter.call(node.parentElement.children, function (sib) {
+        return sib.tagName === node.tagName;
+      });
+      parts.unshift(node.tagName.toLowerCase() + ":nth-of-type(" + (siblings.indexOf(node) + 1) + ")");
+      node = node.parentElement;
+    }
+    return parts.join(" > ");
+  }
+
+  // Prefers the stable hooks the generated templates already emit and every hand-authored routine
+  // already relies on (see NPDevSamples/**/browser-routines/*.json): a stable `id` (panel containers
+  // are `#concept-<Name>`, the shell's own `#sideNav`/`#apiKey`), a form control's `name` attribute
+  // (business-ui-app.mustache always sets `input.name = field.name`), or a column filter's
+  // `data-field`/`data-prop` attribute (buildColumnFilterControl/renderTable). Falls back to
+  // `tag:has-text("...")` for buttons/links/labels -- the same fallback convention the hand-authored
+  // corpus already uses throughout (e.g. `button:has-text("Save")`) -- and only as a last resort to a
+  // positional nth-of-type chain, which is flagged `unstable` so the recorded step's own label warns a
+  // tester to double check it survives the next regeneration rather than silently trusting it.
+  function recorderBuildSelector(el) {
+    if (!el || !el.tagName) return { selector: "body", unstable: true };
+    if (el.id) return { selector: "#" + el.id, unstable: false };
+
+    var ancestor = recorderNearestStableAncestor(el);
+    var prefix = ancestor ? "#" + ancestor.id + " " : "";
+
+    if (el.getAttribute) {
+      var name = el.getAttribute("name");
+      if (name) return { selector: prefix + "[name=\"" + recorderCssEscape(name) + "\"]", unstable: false };
+      var dataField = el.getAttribute("data-field");
+      if (dataField) return { selector: prefix + "[data-field=\"" + recorderCssEscape(dataField) + "\"]", unstable: false };
+      var dataProp = el.getAttribute("data-prop");
+      if (dataProp) return { selector: prefix + "[data-prop=\"" + recorderCssEscape(dataProp) + "\"]", unstable: false };
+    }
+
+    var tag = el.tagName.toLowerCase();
+    var text = recorderShortText(el);
+    if (text && (tag === "button" || tag === "a" || tag === "label" || el.getAttribute("role") === "button")) {
+      return { selector: prefix + tag + ":has-text(\"" + recorderCssEscape(text) + "\")", unstable: false };
+    }
+
+    return { selector: prefix + recorderStructuralPath(el, ancestor), unstable: true };
+  }
+
+  function recorderStepLabel(prefix, info) {
+    return prefix + (info && info.unstable ? " (selector may be unstable across regeneration -- verify by hand)" : "");
+  }
+
+  function recorderElementIsRecorderUi(el) {
+    while (el) {
+      if (el.getAttribute && el.getAttribute("data-npdev-recorder-ui") === "true") return true;
+      el = el.parentElement;
+    }
+    return false;
+  }
+
+  function recorderCommit(step) {
+    if (!recorder || !recorder.active) return;
+    if (recorder.steps.length >= RECORDER_MAX_STEPS) {
+      recorderSetStatus("Step limit reached (" + RECORDER_MAX_STEPS + " -- the engine's own per-routine max). Download this routine and start a new one to continue.");
+      return;
+    }
+    recorder.steps.push(step);
+    recorderSaveState();
+    recorderRefreshUi();
+  }
+
+  // Captures user-visible intent, not raw event noise: a click on a text/textarea/select is skipped
+  // here (the `change` handler below records the resulting `fill`/`selectOption` once, on blur/commit,
+  // not on every keystroke), and a click that lands inside a button/link/label/table row walks up to
+  // that element so an icon-inside-a-button records the button.
+  function recorderOnClick(event) {
+    if (!recorder || !recorder.active) return;
+    var el = event.target;
+    if (recorderElementIsRecorderUi(el)) return;
+    var rawTag = el.tagName ? el.tagName.toLowerCase() : "";
+    if (rawTag === "input" || rawTag === "textarea" || rawTag === "select") return;
+    var target = el.closest ? el.closest("button, a, [role=\"button\"], label, tr, td, th") : el;
+    if (!target) target = el;
+    if (recorderElementIsRecorderUi(target)) return;
+
+    recorderLastClickWasSubmit = false;
+    var tag = target.tagName ? target.tagName.toLowerCase() : "";
+    if (tag === "button" && (target.getAttribute("type") || "").toLowerCase() === "submit") {
+      recorderLastClickWasSubmit = true;
+    }
+
+    if (recorder.assertArmed) {
+      recorder.assertArmed = false;
+      var assertInfo = recorderBuildSelector(target);
+      var assertText = recorderShortText(target);
+      recorderCommit(assertText
+        ? { action: "assertTextContains", selector: assertInfo.selector, text: assertText, label: recorderStepLabel("Assert text", assertInfo) }
+        : { action: "assertVisible", selector: assertInfo.selector, label: recorderStepLabel("Assert visible", assertInfo) });
+      return;
+    }
+
+    var info = recorderBuildSelector(target);
+    var clickText = recorderShortText(target);
+    recorderCommit({ action: "click", selector: info.selector, label: recorderStepLabel(clickText ? "Click \"" + clickText + "\"" : "Click", info) });
+  }
+
+  // `change` (not `input`) so a `fill` step captures the FINAL value once a field is committed,
+  // never one step per keystroke.
+  function recorderOnChange(event) {
+    if (!recorder || !recorder.active) return;
+    var el = event.target;
+    if (recorderElementIsRecorderUi(el)) return;
+    var tag = el.tagName ? el.tagName.toLowerCase() : "";
+    var type = (el.type || "").toLowerCase();
+    var info = recorderBuildSelector(el);
+
+    if (tag === "select") {
+      recorderCommit({ action: "selectOption", selector: info.selector, value: el.value, label: recorderStepLabel("Select", info) });
+      return;
+    }
+    if (type === "checkbox") {
+      recorderCommit({ action: el.checked ? "check" : "uncheck", selector: info.selector, label: recorderStepLabel(el.checked ? "Check" : "Uncheck", info) });
+      return;
+    }
+    if (type === "radio") {
+      recorderCommit({ action: "check", selector: info.selector, label: recorderStepLabel("Select", info) });
+      return;
+    }
+    if (tag === "input" || tag === "textarea") {
+      if (type === "password") {
+        // The typed secret is never written into the downloaded routine literally -- `valueFromCredential`
+        // matches every hand-authored login routine (NPDevCli/npdev_explore.py's `_auth_preamble`), and an
+        // operator supplies the real value at `npdev explore run --cred` time.
+        recorderCommit({ action: "fill", selector: info.selector, valueFromCredential: el.name || "password", label: recorderStepLabel("Fill (from credential -- not recorded literally)", info) });
+        return;
+      }
+      recorderCommit({ action: "fill", selector: info.selector, value: el.value, label: recorderStepLabel("Fill", info) });
+    }
+  }
+
+  // A submit-type button's own click already recorded a `click` step (recorderOnClick, which also set
+  // recorderLastClickWasSubmit); this only fires for the case that click handler cannot see -- pressing
+  // Enter inside a form field, which the browser turns straight into a `submit` event with no `click` at all.
+  function recorderOnSubmit(event) {
+    if (!recorder || !recorder.active) return;
+    if (recorderLastClickWasSubmit) { recorderLastClickWasSubmit = false; return; }
+    var form = event.target;
+    if (recorderElementIsRecorderUi(form)) return;
+    var submitBtn = form.querySelector ? form.querySelector("button[type=\"submit\"]") : null;
+    if (!submitBtn) return;
+    var info = recorderBuildSelector(submitBtn);
+    var text = recorderShortText(submitBtn);
+    recorderCommit({ action: "click", selector: info.selector, label: recorderStepLabel(text ? "Submit \"" + text + "\" (Enter key)" : "Submit form (Enter key)", info) });
+  }
+
+  function recorderStart() {
+    recorder = recorderDefaultState();
+    recorder.active = true;
+    recorder.targetPath = window.location.pathname;
+    recorder.lastPath = window.location.pathname + window.location.search;
+    recorder.steps.push({ action: "goto", url: "$targetUrl", label: "Open the app" });
+    recorderSaveState();
+    recorderRefreshUi();
+  }
+
+  function recorderStop() {
+    if (recorder) { recorder.active = false; recorderSaveState(); }
+    recorderRefreshUi();
+  }
+
+  function recorderClear() {
+    recorder = recorderDefaultState();
+    recorderSaveState();
+    recorderRefreshUi();
+  }
+
+  function recorderUndo() {
+    if (recorder && recorder.steps.length) {
+      recorder.steps.pop();
+      recorderSaveState();
+      recorderRefreshUi();
+    }
+  }
+
+  function recorderToggleAssertArm() {
+    if (!recorder || !recorder.active) return;
+    recorder.assertArmed = !recorder.assertArmed;
+    recorderSaveState();
+    recorderRefreshUi();
+  }
+
+  function recorderAddScreenshot() {
+    if (!recorder || !recorder.active) return;
+    recorderCommit({ action: "screenshot", name: "shot_" + (recorder.steps.length + 1), label: "Screenshot" });
+  }
+
+  // Composes exactly the file shape every browser-routines/ corpus entry uses -- `targetPath` (not
+  // `targetUrl`; `npdev_explore.compose_engine_request` derives targetUrl from it at run time, R10) plus
+  // `steps[]`. Never embeds a wall-clock timestamp into the document itself, so two recordings of the
+  // identical click-path produce byte-identical JSON.
+  function recorderComposeDocument() {
+    return {
+      scenarioName: (recorder.scenarioName || "").trim() || "recorded-routine",
+      targetPath: recorder.targetPath || window.location.pathname,
+      options: { headless: true, screenshots: "onFailure", collectDomOnFailure: true },
+      steps: recorder.steps
+    };
+  }
+
+  function recorderDownload() {
+    if (!recorder || !recorder.steps.length) return;
+    var doc = recorderComposeDocument();
+    var blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = doc.scenarioName.replace(/[^a-zA-Z0-9_-]+/g, "-") + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function recorderCopy() {
+    if (!recorder || !recorder.steps.length || !navigator.clipboard) return;
+    navigator.clipboard.writeText(JSON.stringify(recorderComposeDocument(), null, 2)).then(function () {
+      recorderSetStatus("Copied " + recorder.steps.length + " step(s) to the clipboard.");
+    }, function () {
+      recorderSetStatus("Copy failed -- clipboard access was denied by the browser.");
+    });
+  }
+
+  var recorderStatusOverride = null;
+  function recorderSetStatus(text) {
+    recorderStatusOverride = text;
+    recorderRefreshUi();
+  }
+
+  function recorderInjectStyle() {
+    if (document.querySelector("style[data-npdev-recorder-style]")) return;
+    var style = document.createElement("style");
+    style.setAttribute("data-npdev-recorder-style", "true");
+    style.textContent =
+      "#npdevRecorderPanel{position:fixed;right:14px;bottom:14px;z-index:80;width:min(320px,calc(100vw - 28px));" +
+      "background:var(--np-surface,#fff);border:1px solid var(--np-border,#d8dee7);border-radius:10px;" +
+      "box-shadow:0 12px 32px rgba(24,32,42,.25);font-size:12px;color:var(--np-text,#1c2333);}" +
+      "#npdevRecorderPanel .npdev-rec-head{display:flex;align-items:center;justify-content:space-between;" +
+      "padding:8px 10px;font-weight:600;border-bottom:1px solid var(--np-border,#eef1f5);cursor:pointer;}" +
+      "#npdevRecorderPanel .npdev-rec-dot{display:inline-block;width:8px;height:8px;border-radius:50%;" +
+      "background:#9aa4b2;margin-right:6px;}" +
+      "#npdevRecorderPanel.npdev-rec-active .npdev-rec-dot{background:#c0392b;}" +
+      "#npdevRecorderPanel .npdev-rec-body{padding:8px 10px;display:flex;flex-direction:column;gap:6px;}" +
+      "#npdevRecorderPanel.npdev-rec-collapsed .npdev-rec-body{display:none;}" +
+      "#npdevRecorderPanel .npdev-rec-row{display:flex;gap:6px;flex-wrap:wrap;}" +
+      "#npdevRecorderPanel button{padding:4px 8px;border:1px solid var(--np-border,#d8dee7);border-radius:6px;" +
+      "background:var(--np-surface-alt,#f4f6f9);color:var(--np-text,#1c2333);cursor:pointer;font-size:12px;}" +
+      "#npdevRecorderPanel button:disabled{opacity:.5;cursor:default;}" +
+      "#npdevRecorderPanel button.npdev-rec-primary{background:#c0392b;color:#fff;border-color:#c0392b;}" +
+      "#npdevRecorderPanel button.npdev-rec-armed{background:#8a5c00;color:#fff;border-color:#8a5c00;}" +
+      "#npdevRecorderPanel input[type=text]{width:100%;box-sizing:border-box;padding:4px 6px;" +
+      "border:1px solid var(--np-border,#d8dee7);border-radius:6px;background:var(--np-surface,#fff);" +
+      "color:var(--np-text,#1c2333);}" +
+      "#npdevRecorderPanel .npdev-rec-steps{max-height:120px;overflow-y:auto;border:1px solid var(--np-border,#eef1f5);" +
+      "border-radius:6px;padding:4px 6px;}" +
+      "#npdevRecorderPanel .npdev-rec-steps div{padding:2px 0;overflow-wrap:anywhere;}" +
+      "#npdevRecorderPanel .npdev-rec-status{color:var(--np-text-muted,#5b6472);}";
+    document.head.appendChild(style);
+  }
+
+  function recorderBuildUi() {
+    recorderInjectStyle();
+    var panel = document.createElement("div");
+    panel.id = "npdevRecorderPanel";
+    panel.setAttribute("data-npdev-recorder-ui", "true");
+
+    var head = document.createElement("div");
+    head.className = "npdev-rec-head";
+    var dot = document.createElement("span");
+    dot.className = "npdev-rec-dot";
+    head.appendChild(dot);
+    var title = document.createElement("span");
+    title.textContent = "Routine recorder";
+    title.style.flex = "1";
+    title.style.marginLeft = "4px";
+    head.appendChild(title);
+    var collapseHint = document.createElement("span");
+    collapseHint.textContent = "▾";
+    head.appendChild(collapseHint);
+    head.addEventListener("click", function () {
+      panel.classList.toggle("npdev-rec-collapsed");
+    });
+    panel.appendChild(head);
+
+    var body = document.createElement("div");
+    body.className = "npdev-rec-body";
+
+    var nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.placeholder = "scenario name (optional)";
+    nameInput.addEventListener("input", function () {
+      if (recorder) { recorder.scenarioName = nameInput.value; recorderSaveState(); }
+    });
+    body.appendChild(nameInput);
+
+    var row1 = document.createElement("div");
+    row1.className = "npdev-rec-row";
+    var startStopBtn = document.createElement("button");
+    startStopBtn.type = "button";
+    startStopBtn.addEventListener("click", function () {
+      if (recorder && recorder.active) { recorderStop(); } else { recorderStart(); }
+    });
+    row1.appendChild(startStopBtn);
+    var assertBtn = document.createElement("button");
+    assertBtn.type = "button";
+    assertBtn.textContent = "Mark assertion";
+    assertBtn.title = "Arm: the next click records an assertion step instead of a click step.";
+    assertBtn.addEventListener("click", recorderToggleAssertArm);
+    row1.appendChild(assertBtn);
+    var shotBtn = document.createElement("button");
+    shotBtn.type = "button";
+    shotBtn.textContent = "Screenshot";
+    shotBtn.addEventListener("click", recorderAddScreenshot);
+    row1.appendChild(shotBtn);
+    body.appendChild(row1);
+
+    var row2 = document.createElement("div");
+    row2.className = "npdev-rec-row";
+    var undoBtn = document.createElement("button");
+    undoBtn.type = "button";
+    undoBtn.textContent = "Undo last";
+    undoBtn.addEventListener("click", recorderUndo);
+    row2.appendChild(undoBtn);
+    var clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.textContent = "Clear";
+    clearBtn.addEventListener("click", function () {
+      if (window.confirm("Discard all " + (recorder ? recorder.steps.length : 0) + " recorded step(s)?")) recorderClear();
+    });
+    row2.appendChild(clearBtn);
+    var copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.textContent = "Copy JSON";
+    copyBtn.addEventListener("click", recorderCopy);
+    row2.appendChild(copyBtn);
+    var downloadBtn = document.createElement("button");
+    downloadBtn.type = "button";
+    downloadBtn.textContent = "Download";
+    downloadBtn.addEventListener("click", recorderDownload);
+    row2.appendChild(downloadBtn);
+    body.appendChild(row2);
+
+    var steps = document.createElement("div");
+    steps.className = "npdev-rec-steps";
+    body.appendChild(steps);
+
+    var status = document.createElement("div");
+    status.className = "npdev-rec-status";
+    body.appendChild(status);
+
+    panel.appendChild(body);
+    document.body.appendChild(panel);
+
+    el.recorderPanel = panel;
+    el.recorderNameInput = nameInput;
+    el.recorderStartStopBtn = startStopBtn;
+    el.recorderAssertBtn = assertBtn;
+    el.recorderUndoBtn = undoBtn;
+    el.recorderDownloadBtn = downloadBtn;
+    el.recorderCopyBtn = copyBtn;
+    el.recorderSteps = steps;
+    el.recorderStatus = status;
+  }
+
+  function recorderRefreshUi() {
+    if (!recorderUiBuilt || !recorder) return;
+    el.recorderPanel.classList.toggle("npdev-rec-active", Boolean(recorder.active));
+    el.recorderStartStopBtn.textContent = recorder.active ? "Stop" : "Start";
+    el.recorderStartStopBtn.className = recorder.active ? "npdev-rec-primary" : "";
+    el.recorderAssertBtn.className = recorder.assertArmed ? "npdev-rec-armed" : "";
+    el.recorderAssertBtn.textContent = recorder.assertArmed ? "Assertion armed..." : "Mark assertion";
+    el.recorderUndoBtn.disabled = !recorder.steps.length;
+    el.recorderDownloadBtn.disabled = !recorder.steps.length;
+    el.recorderCopyBtn.disabled = !recorder.steps.length;
+    if (recorder.scenarioName && el.recorderNameInput.value !== recorder.scenarioName) {
+      el.recorderNameInput.value = recorder.scenarioName;
+    }
+    el.recorderSteps.innerHTML = "";
+    recorder.steps.forEach(function (step, index) {
+      var row = document.createElement("div");
+      row.textContent = (index + 1) + ". " + (step.label || step.action);
+      el.recorderSteps.appendChild(row);
+    });
+    el.recorderStatus.textContent = recorderStatusOverride ||
+      (recorder.steps.length + "/" + RECORDER_MAX_STEPS + " step(s) recorded" + (recorder.active ? "" : " (stopped)"));
+    recorderStatusOverride = null;
+  }
+
+  function maybeInitRecorderUi() {
+    recorder = recorder || recorderLoadState();
+    if (recorderUiBuilt) { recorderRefreshUi(); return; }
+    recorderUiBuilt = true;
+    recorderBuildUi();
+    document.addEventListener("click", recorderOnClick, true);
+    document.addEventListener("change", recorderOnChange, true);
+    document.addEventListener("submit", recorderOnSubmit, true);
+    recorderRefreshUi();
+  }
+
+  recorderPrimeNavigation();
 
   // Public API surface. `mount` puts the shell in SPA host mode: the generic business UI supplies
   // a `deriveNativeGroups` callback (business concepts + declared Panels, which have no natural
