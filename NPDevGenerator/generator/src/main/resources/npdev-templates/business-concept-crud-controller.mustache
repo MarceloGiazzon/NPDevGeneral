@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,6 +30,10 @@ import java.util.function.Supplier;
 public class GeneratedConceptCrudController {
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
+    // R7.8: a UI-driven bulk action (select-all-on-page, default page size 20/max 100) never needs
+    // anywhere near this many ids in one request; it exists purely as a safety ceiling against an
+    // oversized request body, the same role MAX_PAGE_SIZE plays for reads.
+    private static final int MAX_BATCH_SIZE = 500;
 
     private final Map<String, ConceptBinding<?>> concepts;
 
@@ -297,6 +302,150 @@ public class GeneratedConceptCrudController {
         } catch (DataIntegrityViolationException exception) {
             return ResponseEntity.status(409).body(error("constraint_violation", readableConstraintMessage(exception)));
         }
+    }
+
+    /**
+     * R7.8: the batched counterpart of {@link #update(String, String, Map)} /
+     * {@link #delete(String, String)} for the grid's bulk-selection actions bar -- one HTTP request
+     * carrying an operation ({@code "delete"} or {@code "setField"}) and a list of ids, instead of
+     * the UI making N separate single-record requests. This method does no persistence of its own:
+     * every row is applied by calling the SAME {@code ConceptBinding.update()}/{@code delete()}
+     * method references {@link #update}/{@link #delete} above already call -- i.e. the same
+     * generated {@code {ConceptName}Service} methods, which already run checkCrudPermission, go
+     * through ConceptGateway (row-level access.write + invariants), and audit the mutation. A row
+     * this caller may not touch fails with {@code "forbidden"} exactly as a single PUT/DELETE for
+     * that row would (checkCrudPermission's own {@link ResponseStatusException}), just captured as
+     * one failed outcome here instead of aborting the whole HTTP response -- so a mixed-permission
+     * selection still applies to every row it can and reports the rest, never a single boolean.
+     */
+    @PostMapping("/{conceptName}/batch")
+    public ResponseEntity<?> batch(
+            @PathVariable String conceptName,
+            @RequestBody(required = false) Map<String, Object> body
+    ) {
+        ConceptBinding<?> binding = concepts.get(conceptName);
+        if (binding == null) {
+            return badRequest("unknown_concept", "Unknown concept: " + conceptName);
+        }
+        if (body == null) {
+            return badRequest("invalid_request", "Request body is required");
+        }
+        String operation = String.valueOf(body.getOrDefault("operation", "")).trim();
+        Object rawIds = body.get("ids");
+        if (!(rawIds instanceof List<?> idList) || idList.isEmpty()) {
+            return badRequest("invalid_request", "\"ids\" must be a non-empty array");
+        }
+        if (idList.size() > MAX_BATCH_SIZE) {
+            return badRequest("invalid_request",
+                    "Batch is limited to " + MAX_BATCH_SIZE + " ids per request; got " + idList.size());
+        }
+        // Dedupe while preserving request order -- applying the same id twice would double-count it
+        // in the response without changing what actually happened to the row.
+        Set<String> uniqueIds = new LinkedHashSet<>();
+        for (Object rawId : idList) {
+            if (rawId != null) {
+                uniqueIds.add(String.valueOf(rawId));
+            }
+        }
+
+        List<Map<String, Object>> results = new ArrayList<>();
+        if ("delete".equals(operation)) {
+            for (String rawId : uniqueIds) {
+                results.add(applyBatchDelete(binding, rawId));
+            }
+        } else if ("setField".equals(operation)) {
+            String field = String.valueOf(body.getOrDefault("field", "")).trim();
+            if (field.isEmpty()) {
+                return badRequest("invalid_request", "\"field\" is required for operation \"setField\"");
+            }
+            FieldMetadata fieldMeta = binding.metadata().field(field);
+            if (fieldMeta == null) {
+                return badRequest("invalid_request", "Unknown field for " + conceptName + ": " + field);
+            }
+            if (fieldMeta.id()) {
+                return badRequest("invalid_request", "Field is not eligible for bulk update: " + field);
+            }
+            Object value = body.get("value");
+            for (String rawId : uniqueIds) {
+                results.add(applyBatchSetField(binding, rawId, field, value));
+            }
+        } else {
+            return badRequest("invalid_request",
+                    "Unsupported operation: " + operation + " (expected \"delete\" or \"setField\")");
+        }
+
+        long succeeded = results.stream().filter(row -> Boolean.TRUE.equals(row.get("ok"))).count();
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("operation", operation);
+        response.put("requested", uniqueIds.size());
+        response.put("succeeded", succeeded);
+        response.put("failed", uniqueIds.size() - succeeded);
+        response.put("results", results);
+        return ResponseEntity.ok(response);
+    }
+
+    private static Map<String, Object> applyBatchDelete(ConceptBinding<?> binding, String rawId) {
+        UUID parsedId = parseUuid(rawId);
+        if (parsedId == null) {
+            return batchFailure(rawId, "invalid_id", "Invalid id: " + rawId);
+        }
+        try {
+            boolean deleted = binding.delete().test(parsedId);
+            return deleted ? batchSuccess(rawId) : batchFailure(rawId, "not_found", "Record not found: " + rawId);
+        } catch (ResponseStatusException exception) {
+            return batchFailureFromResponseStatus(rawId, exception);
+        } catch (IllegalArgumentException exception) {
+            return batchFailure(rawId, "invalid_request", exception.getMessage());
+        } catch (com.npdev.runtime.support.GeneratedCrudRuntimeSupport.InvariantViolationException exception) {
+            return batchFailure(rawId, "invariant_violation", exception.getMessage());
+        } catch (DataIntegrityViolationException exception) {
+            return batchFailure(rawId, "constraint_violation", readableConstraintMessage(exception));
+        }
+    }
+
+    private static Map<String, Object> applyBatchSetField(
+            ConceptBinding<?> binding, String rawId, String field, Object value
+    ) {
+        UUID parsedId = parseUuid(rawId);
+        if (parsedId == null) {
+            return batchFailure(rawId, "invalid_id", "Invalid id: " + rawId);
+        }
+        try {
+            // Collections.singletonMap (not Map.of): the new value is caller-supplied and a bulk
+            // "clear this field" via a null value must not NPE here the way Map.of(k, null) would.
+            Optional<?> updated = binding.update().apply(parsedId, Collections.singletonMap(field, value));
+            return updated.isPresent() ? batchSuccess(rawId) : batchFailure(rawId, "not_found", "Record not found: " + rawId);
+        } catch (ResponseStatusException exception) {
+            return batchFailureFromResponseStatus(rawId, exception);
+        } catch (IllegalArgumentException exception) {
+            return batchFailure(rawId, "invalid_request", exception.getMessage());
+        } catch (com.npdev.runtime.support.GeneratedCrudRuntimeSupport.InvariantViolationException exception) {
+            return batchFailure(rawId, "invariant_violation", exception.getMessage());
+        } catch (DataIntegrityViolationException exception) {
+            return batchFailure(rawId, "constraint_violation", readableConstraintMessage(exception));
+        }
+    }
+
+    private static Map<String, Object> batchSuccess(String id) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", id);
+        row.put("ok", true);
+        return row;
+    }
+
+    private static Map<String, Object> batchFailure(String id, String code, String message) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", id);
+        row.put("ok", false);
+        row.put("code", code);
+        row.put("message", message == null || message.isBlank() ? code : message);
+        return row;
+    }
+
+    private static Map<String, Object> batchFailureFromResponseStatus(String id, ResponseStatusException exception) {
+        String code = exception.getStatusCode().value() == 403 ? "forbidden" : "error";
+        String message = exception.getReason() != null ? exception.getReason() : exception.getMessage();
+        return batchFailure(id, code, message);
     }
 
     private static int sanitizePage(Integer page) {
