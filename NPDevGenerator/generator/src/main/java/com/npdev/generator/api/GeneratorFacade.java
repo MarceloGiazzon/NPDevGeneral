@@ -14,6 +14,7 @@ import com.npdev.generator.emitters.EntityEmitter;
 import com.npdev.generator.emitters.GeneratedFolderSignatureEmitter;
 import com.npdev.generator.emitters.InfoPageEmitter;
 import com.npdev.generator.emitters.MetadataManifestAssetEmitter;
+import com.npdev.generator.emitters.ModelAuthoringEmitter;
 import com.npdev.generator.emitters.ModelSurfaceEmitter;
 import com.npdev.generator.emitters.PluginRequirementAssetEmitter;
 import com.npdev.generator.emitters.RuntimeApiEmitter;
@@ -318,6 +319,10 @@ public final class GeneratorFacade {
         // gated on UI_GENERATE_BUSINESS_UI -- it walks the canonical model JSON itself, not the
         // business UI's panels, so it has no dependency on that flag being on.
         new ModelSurfaceEmitter(templates, writer).emit(model);
+        // EDIT-12: minimal client-side model-authoring replacement for AuthoringApp.js's
+        // scaffolding/import-export capability -- also unconditional, also independent of
+        // UI_GENERATE_BUSINESS_UI, for the same reason as ModelSurfaceEmitter above.
+        new ModelAuthoringEmitter(templates, writer).emit(model);
         if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
             new BusinessUiEmitter(templates, writer).emit(
                     appOwnedSourceModel, superUserRole, settingResolver, extensionFieldOrigins);
