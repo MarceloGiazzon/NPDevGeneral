@@ -1,0 +1,98 @@
+id: RUN-24
+title: >-
+  R1.7's own `npdev dev` watch loop never engages the hot-swap path (always restarts, new PID every
+  cycle) and even a direct hot swap does not reach the served business-ui UI without also patching
+  generated-ui-manifest.json (REG-109's artifact) by hand
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Found while closing RUN-22's own named gap -- a browser-routine proof of R1.7's roadmap done-when:
+  "editing a panel label with `npdev dev` running updates the served UI with the same app PID,
+  proven by a browser routine." The browser routine DID succeed at proving the underlying mechanism
+  achievable (RUN-22, 2026-08-19 session 2), but only by manually combining two separate primitives
+  -- `npdev monitor hotswap` (MetadataHotSwapController) and REG-109's static-file override for
+  generated-ui-manifest.json -- neither of which the actual `npdev dev` command or
+  Update-AppMetadata.ps1's own fast path currently chains together automatically.
+surface: cli/dev-loop, runtimehost/metadata-hotswap
+files:
+  - NPDevCli/dev_loop.py
+  - scripts/appgen/Update-AppMetadata.ps1
+  - NPDevRuntimeHost/src/main/java/com/finalexec/api/MetadataHotSwapController.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+detail: |
+  Two distinct, confirmed-by-reading-the-actual-code gaps, both blocking R1.7's literal done-when
+  ("editing a panel label with `npdev dev` running updates the served UI with the same app PID").
+
+  **1. `npdev dev`'s watch loop never attempts a hot swap at all.** `dev_loop.py::run_cycle` DOES
+  classify every change (`cli._classify_model_change(...) == "METADATA_ONLY"`, stored as `fast`) and
+  prints "change is METADATA_ONLY -- taking the fast path" -- but that flag is purely informational
+  (feeds `out.classification(fast)` and `CycleResult.fast` only). The actual apply step, a few lines
+  later, runs unconditionally:
+  ```
+  # --- the swap: only now does the old app die -------------------------------------
+  out.phase("restart")
+  ...
+  if current:
+      current.stop()
+  app = boot(options, Path(jar), cli)
+  ```
+  This stops the CURRENT process and boots a NEW one on every single cycle, regardless of `fast`.
+  `MetadataHotSwapController`/`npdev monitor hotswap` is never called from this path. A developer
+  running `npdev dev` (the literal command the roadmap names) and editing a label gets a NEW PID
+  every time -- the opposite of the done-when's own text. `Update-AppMetadata.ps1` (the separate
+  PowerShell script) DOES correctly try hot-swap-first with a restart fallback -- but `npdev dev`'s
+  own Python watch loop is a different implementation that was never wired to it.
+
+  **2. Even when the hot swap IS invoked directly (bypassing `npdev dev` entirely, as RUN-22's proof
+  did), it does not reach the served business-ui frontend on its own.** `MetadataHotSwapController`
+  writes only the runtime-metadata catalogs (`compiled-metadata.json`/`metadata/*.manifest.json`,
+  served over `/api/runtime/metadata/ui/bundle` and friends). The actual rendered grid a user sees
+  at `/npdev-business-ui/` is built client-side from a SEPARATE static artifact,
+  `generated-ui-manifest.json` (`business-ui-app.mustache`:
+  `state.manifest = await fetchJson("./generated-ui-manifest.json")`), which REG-109 (closed
+  2026-08-02) already made externally-overridable with no restart -- but REG-109's own closure note
+  says plainly: "`Update-AppMetadata.ps1`'s fast path does not yet WRITE to this external directory
+  automatically... not attempted here, since the static bundle only changes on a UI-shaped model
+  edit." A pure label-text edit is exactly the case REG-109's authors reasoned would not need it --
+  but a label IS present in `generated-ui-manifest.json`'s `concepts[].fields[].label`, so that
+  reasoning was incomplete: a label-only METADATA_ONLY change DOES need the static manifest patched
+  too, or the served UI silently keeps showing the stale label while the REST API reports the new
+  one -- a real user-visible inconsistency, live between apply and the next full regenerate.
+
+  **Live confirmation (RUN-22's own browser-routine proof exposed this):** applying only
+  `npdev monitor hotswap` against a running app left the served `/npdev-business-ui/` grid showing
+  the pre-hotswap label ("Warehouse"); only after ALSO hand-patching `generated-ui-manifest.json`
+  (same file, same external-path mechanism REG-109 verified) did the browser-rendered grid show the
+  new label ("Warehouse (RUN-22 browser proof)"). See RUN-22.yml's 2026-08-19 (session 2) section
+  for the full before/after screenshots and DOM evidence.
+
+  **Fix shape (not sized here, filed per this ledger's own "GAP filed, not fixed" convention when a
+  fix needs its own pass):**
+  - `MetadataHotSwapController#apply` (or `Update-AppMetadata.ps1`'s fast path) should also patch
+    the matching `concepts[].fields[].label` (and any other UI-manifest-visible fields) in
+    `generated-ui-manifest.json` when the classification is METADATA_ONLY and the diff touches a
+    label, using REG-109's already-proven external-path mechanism -- no restart needed for that half
+    either.
+  - `dev_loop.py::run_cycle` should call the hot-swap path (mirroring `Update-AppMetadata.ps1`'s own
+    hot-swap-first, restart-fallback contract) instead of unconditionally restarting, when `fast` is
+    true and an app is already running.
+guard:
+  kind: manual
+  ref: NPDevCli/dev_loop.py#run_cycle
+  asserts: >-
+    run_cycle's swap step (`if current: current.stop()` followed by `boot(...)`) executes
+    unconditionally, not gated on `fast` -- confirmed by reading the function, not inferred. A fix
+    closing this item must show `npdev dev` keeping the SAME PID across a METADATA_ONLY label edit
+    AND the served `/npdev-business-ui/` grid reflecting the new label, verified live, the same
+    standard RUN-22 itself was held to.
+  provenRed: true
+  provenRedNote: >-
+    Not a unit test failure -- a live browser-routine proof (RUN-22, 2026-08-19 session 2) found
+    that a direct `npdev monitor hotswap` call alone left the served business-ui grid showing the
+    stale label, and reading dev_loop.py confirmed why `npdev dev` itself never even attempts the
+    hot-swap path. Both findings are reproducible: rerun the browser routine against a freshly
+    hot-swapped app without patching generated-ui-manifest.json, and run `npdev dev` twice against a
+    METADATA_ONLY-only edit while watching the app's PID (`_ops/app.pid` before/after).
