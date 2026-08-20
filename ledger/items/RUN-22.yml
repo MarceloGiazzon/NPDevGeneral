@@ -1,12 +1,15 @@
 id: RUN-22
 title: >-
   R1.7 hot metadata swap: the two shipped tests had never run and hid a real
-  IOException/IllegalArgumentException catch-order bug plus two test-only races; a live
-  same-PID label swap is now proven, but not yet by a browser routine
+  IOException/IllegalArgumentException catch-order bug plus two test-only races; a live same-PID
+  label swap is now proven by a real browser routine too -- though reaching the SERVED UI needed
+  combining the hot swap with REG-109's separate static-manifest override, a gap now filed as
+  RUN-24 since neither `npdev dev` nor the hot-swap endpoint alone does this automatically
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-19
+closed: 2026-08-19
 verification: VERIFIED_LIVE
 source: >-
   Roadmap Collection (npdev-roadmap-collection.md), R1.7 -- "A signature-verified, SUPERUSER-gated
@@ -119,12 +122,91 @@ detail: |
   `tasklist //FI "PID eq 14588"` showed the same `java.exe` process throughout; `/actuator/health`
   stayed `UP` with the same in-process H2 (`"mode":"inproc"`) the whole time -- no restart occurred.
 
-  **NOT done, named honestly:** no browser (Playwright/ScrapForAI) routine ran -- this is an
-  HTTP-level proof only, the fallback the roadmap item's own follow-up instructions explicitly
-  allow when a browser routine is impractical in the time budget. The full
+  **NOT done, named honestly (as of this section):** no browser (Playwright/ScrapForAI) routine ran
+  -- this is an HTTP-level proof only, the fallback the roadmap item's own follow-up instructions
+  explicitly allow when a browser routine is impractical in the time budget. The full
   `Update-AppMetadata.ps1` shell-out chain (classify -> emit -> hotswap) was not proven end-to-end
   because of the unrelated Gradle build-root lock above; the mechanism it drives
   (`npdev monitor hotswap` against `MetadataHotSwapController`) WAS proven end-to-end, directly.
+  **Closed by the 2026-08-19 (session 2) section below, which supplies the missing browser-routine
+  proof and also found a genuine new boundary of the mechanism -- see RUN-24.**
+
+  ---
+
+  **2026-08-19 (session 2): the real browser-routine proof, using a real Playwright browser via the
+  ScrapForAI harness -- and a genuine new finding about what the hot swap does and does not reach.**
+
+  Same app the prior session used, still running (`aggregate-query-verify-h2local`, PID 14588 --
+  the exact PID from the section above, never restarted across this entire session): rather than
+  regenerating a fresh copy (an isolated full-rebuild attempt was in flight but hit the app's own
+  port/PID already in use, since the prior session's process had simply kept running), this session
+  reused that live process directly, which is itself part of the evidence -- the same PID persisted
+  across TWO separate sessions and TWO separate hot-swap generations.
+
+  **Step 1 -- confirmed the pre-change state, both ways.** `GET /api/runtime/metadata/ui/bundle`
+  reported the label as `"Warehouse (R1.7 hot swap proof)"` (the prior session's own hot-swapped
+  value). But the actual SERVED business-ui grid at `/npdev-business-ui/` showed plain `"Warehouse"`
+  -- the ORIGINAL generation-time label, never touched by either of the prior session's two hot
+  swaps. This is the first half of this session's real finding: `MetadataHotSwapController` writes
+  the runtime-metadata catalogs (what the REST API reports) but the rendered business-ui grid reads
+  a SEPARATE static file, `generated-ui-manifest.json`
+  (`business-ui-app.mustache`: `state.manifest = await fetchJson("./generated-ui-manifest.json")`),
+  which the hot swap never touches. See RUN-24 for the full analysis.
+
+  **Step 2 -- edited the label in the app's metadata source and applied the change two ways.**
+  Edited `AppGen/apps/aggregate-query-verify-h2local/definition/model.json`'s `warehouseId` field
+  label from `"Warehouse (R1.7 hot swap proof)"` to `"Warehouse (RUN-22 browser proof)"` (the
+  authoritative app definition, layer 2 per this repo's own source-of-truth rule). Applied via:
+  (a) `npdev monitor hotswap --app-dir ... --classification METADATA_ONLY --metadata-source-root
+  <scratch>` -- same CLI the prior session used, hand-preparing the scratch catalogs the same way
+  (compiled-metadata.json + every metadata/*.manifest.json, patching `warehouseId`'s `label` in
+  each) -- result `{"ok":true,"code":"APPLIED","metadataGeneration":3}` (generation 2 -> 3, the
+  prior session left it at 2); (b) directly overwriting
+  `npdev-generated/src/main/resources/static/npdev-business-ui/generated-ui-manifest.json`'s
+  matching `concepts[].fields[].label` on disk (a backup of the original was kept alongside it) --
+  REG-109's own already-verified external-path mechanism (file: resource locations resolved
+  per-request, confirmed live back on 2026-08-02), invoked directly here since neither
+  `MetadataHotSwapController` nor `Update-AppMetadata.ps1`'s fast path chains into it automatically
+  (RUN-24). Both writes happened while the app kept running, PID unchanged.
+
+  **Step 3 -- the real browser-routine proof.** ScrapForAI (Playwright, headless Chromium) via
+  `NPDevSamples/scripts/browser/scrapforai-harness.ps1`, on its own port (3011, to avoid the
+  ScrapForAI instance another concurrent session already had bound to the default 3010) against the
+  live app's real origin `http://127.0.0.1:8097`. Two separate routine runs (before/after), each:
+  `goto` the business UI, fill `#apiKey` with the app's real live key (from `npdev monitor probe`),
+  `reload`, click the `WidgetShipmentEvent` concept's sidebar link, wait for `#concept-
+  WidgetShipmentEvent` to render, `assertTextContains` on that panel's grid header text.
+    - BEFORE routine (run before either apply step above): asserted the grid header contains
+      `"Warehouse"` -- PASSED. Screenshot + full DOM-text snapshot captured; header row reads
+      literally `Id ^  Shipped at  Units shipped  Warehouse`.
+    - AFTER routine (run after both apply steps): asserted the grid header contains
+      `"Warehouse (RUN-22 browser proof)"` -- PASSED. Screenshot + DOM-text snapshot captured;
+      header row now reads `Id ^  Shipped at  Units shipped  Warehouse (RUN-22 browser proof)`.
+  Both routines: 0 page errors, 0 unexpected external requests; the only console/network entries
+  were the two benign categories the verify-in-browser skill documents (`theme.css` 404, pre-auth
+  401s before the explicit `#apiKey` fill+reload takes effect) -- a genuinely clean pass, not a
+  suppressed one.
+
+  **PID identity, checked three ways, across the ENTIRE session 2 sequence (before the first apply,
+  after both applies, after the browser proof):** `_ops/app.pid` read `14588` at every check;
+  `tasklist //FI "PID eq 14588"` showed the same live `java.exe` process at the end; `GET
+  /actuator/health` stayed `UP` throughout. No restart occurred at any point in this session, on top
+  of never having restarted since the prior session either.
+
+  **The genuine new finding, stated plainly:** the roadmap's done-when says "editing a panel label
+  with `npdev dev` running updates the served UI with the same app PID." This session proves that
+  outcome IS achievable with no restart and the same PID -- but NOT via `npdev dev` itself, and NOT
+  via the hot-swap endpoint alone. `npdev dev`'s own watch loop (`NPDevCli/dev_loop.py::run_cycle`)
+  unconditionally stops and reboots the app on every cycle regardless of METADATA_ONLY
+  classification -- it never calls the hot-swap path at all. And the hot-swap endpoint alone, even
+  when called directly, does not update the static `generated-ui-manifest.json` the served
+  business-ui grid actually reads. This session's proof combined `npdev monitor hotswap` (metadata
+  REST API) with a direct application of REG-109's own already-shipped external-file override
+  (served UI) by hand. Filed as **RUN-24** (OPEN) rather than silently treated as fully closing R1.7
+  -- see that item for the full analysis and fix shape. R1.7 the roadmap item is therefore **NOT**
+  fully done: the underlying mechanism works end to end, proven live and now by a real browser, but
+  the two automatic entry points named by the roadmap's own wording (`npdev dev`, and the hot-swap
+  endpoint reaching the served UI on its own) do not yet deliver it without a manual assist.
 guard:
   kind: test
   ref: >-
@@ -154,3 +236,11 @@ guard:
     booted AppGen app (aggregate-query-verify-h2local, PID 14588, H2Local) 2026-08-19: two
     applyMetadataOnlyReload calls via npdev monitor hotswap, both ok:true, served UI-facing bundle
     endpoint reflects the new label, PID and /actuator/health unchanged throughout.
+    **2026-08-19 session 2:** a real Playwright browser routine (ScrapForAI harness) against the
+    SAME still-running PID 14588 confirms the served `/npdev-business-ui/` grid itself (not just
+    the REST bundle endpoint) shows the new label after a third applyMetadataOnlyReload
+    (generation 3) COMBINED with a direct write to generated-ui-manifest.json (REG-109's external
+    override) -- before: grid header "Warehouse", after: "Warehouse (RUN-22 browser proof)", both
+    asserted by the routine and confirmed via screenshot + DOM-text snapshot. PID and
+    /actuator/health unchanged across the entire sequence. See RUN-24 for the boundary this exposed
+    (hot swap alone does not reach the served UI; npdev dev never calls hot swap at all).
