@@ -16,10 +16,27 @@ import java.util.Map;
  *
  * <p><b>What this ships, on purpose narrower than the frozen bundle:</b> import an arbitrary
  * {@code model.json} from a local folder via {@code window.showDirectoryPicker}, render its
- * top-level shape, one scaffolding action ("Add concept", a name plus a couple of typed fields),
- * and export back to {@code model.json} in the SAME folder. No starter templates, no other
- * scaffolding action (field/flow/panel/invariant/state/transition), no richer editing UI -- see the
- * ledger item for the full deferred list.
+ * top-level shape, scaffold into it, and export back to {@code model.json} in the SAME folder.
+ * As of the second slice that is BOTH starter templates the frozen bundle offered (Business Record,
+ * Approval Workflow) and all seven of its scaffolding actions -- add concept, field, flow, panel,
+ * invariant, state and transition.
+ *
+ * <p><b>Scaffolding emits shapes that compile, not empty shells.</b> Each action is checked against
+ * what the DSL actually requires, so the page cannot hand back a model the generator would reject:
+ * a new concept always gets its {@code id:uuid} field; "add state" creates the concept's
+ * {@code lifecycle} AND the {@code status} field its {@code statusField} names, because a
+ * lifecycle pointing at a field the concept does not declare will not compile; "add transition"
+ * offers only states that concept really declares, and refuses a self-transition or a duplicate;
+ * "add flow" emits an {@code input} bound to the chosen concept plus a {@code return} step rather
+ * than a step-less shell; "add panel" derives a route from the name when none is given and refuses
+ * a route another panel already holds. Duplicate names are refused everywhere rather than
+ * overwritten, and a starter template MERGES -- skipping anything already present -- so applying
+ * one to a populated model cannot destroy it. The templates are built from the very same helpers
+ * the manual actions use, so a template cannot produce a shape the actions could not.
+ *
+ * <p>Still deferred: editing or deleting what already exists (rename a concept, change a field's
+ * type, remove a state), reference-typed and enum fields in the add-field forms, and multi-step
+ * flow authoring -- see the ledger item for the standing list.
  *
  * <p><b>Same shape as {@link ModelSurfaceEmitter}, on purpose.</b> The structural view reuses that
  * emitter's generic walk (array of objects -> collapsible entries, object -> key/value table,
