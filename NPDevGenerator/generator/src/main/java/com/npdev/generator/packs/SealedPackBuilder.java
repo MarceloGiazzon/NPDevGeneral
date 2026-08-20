@@ -3,7 +3,6 @@ package com.npdev.generator.packs;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
-import com.npdev.dsl.v1.compiled.JavaIdentifierSupport;
 import com.npdev.dsl.v1.pack.PackSealednessAnalyzer;
 import com.npdev.dsl.v1.pack.PackVersion;
 import com.npdev.generator.emitters.EntityEmitter;
@@ -81,17 +80,18 @@ public final class SealedPackBuilder {
         EntityEmitter entityEmitter = new EntityEmitter(templates, writer);
         RepositoryEmitter repositoryEmitter = new RepositoryEmitter(templates, writer);
 
-        String qualifierPrefix = packId + "::";
+        // BUILD-2 (REST-layer follow-on): the SAME "qualified concept name -> bare, alias-
+        // independent class name" computation a consuming app's REST-layer emitters (Service/
+        // Controller) must reproduce to import the literal class this seal actually emits --
+        // routed through LinkedSealedPack.bareClassName so the two can never independently drift.
+        LinkedSealedPack selfLink = new LinkedSealedPack(packId, manifest);
         Map<String, CompiledConcept> conceptsByName = new LinkedHashMap<>();
         for (CompiledConcept concept : concepts) {
             conceptsByName.put(normalize(concept.getName()), concept);
         }
 
         for (CompiledConcept concept : concepts) {
-            String bareName = concept.getName().startsWith(qualifierPrefix)
-                    ? concept.getName().substring(qualifierPrefix.length())
-                    : concept.getName();
-            String className = JavaIdentifierSupport.className(bareName);
+            String className = selfLink.bareClassName(concept.getName());
             entityEmitter.emitOne(concept, className, packageName, conceptsByName);
             repositoryEmitter.emitOne(concept, className, packageName, packageName);
         }

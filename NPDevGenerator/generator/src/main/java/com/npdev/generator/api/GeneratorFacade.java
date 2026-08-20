@@ -22,6 +22,7 @@ import com.npdev.generator.emitters.RuntimeLogPropertiesEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
 import com.npdev.generator.emitters.TrustedSourceEmitter;
 import com.npdev.generator.emitters.XrefEmitter;
+import com.npdev.generator.packs.LinkedSealedPack;
 import com.npdev.generator.dbconfig.ConversionHookEmitter;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.SchemaRealizationEmitter;
@@ -81,20 +82,20 @@ public final class GeneratorFacade {
 
     /**
      * BUILD-2: convenience twin of the 4-arg {@link #generate(CompiledModel, Path, Path, Path)}
-     * above, for callers/tests that want {@code linkedSealedPackAliases} without also having to
+     * above, for callers/tests that want {@code linkedSealedPacks} without also having to
      * construct a real {@link ResolvedModelSource}/{@link GeneratedDatabasePlan} -- see the widest
-     * overload's own doc for what the alias list does.
+     * overload's own doc for what the link list does.
      */
     public void generate(
             CompiledModel model,
             Path outRoot,
             Path schemaRealizationDir,
             Path modelSourcePath,
-            List<String> linkedSealedPackAliases
+            List<LinkedSealedPack> linkedSealedPacks
     ) throws Exception {
         generate(model, outRoot, schemaRealizationDir, null, modelSourcePath,
                 legacyInMemoryPlan(model, outRoot, schemaRealizationDir, modelSourcePath),
-                List.of(), null, linkedSealedPackAliases, Map.of());
+                List.of(), null, linkedSealedPacks, Map.of());
     }
 
     /**
@@ -107,12 +108,12 @@ public final class GeneratorFacade {
             Path outRoot,
             Path schemaRealizationDir,
             Path modelSourcePath,
-            List<String> linkedSealedPackAliases,
+            List<LinkedSealedPack> linkedSealedPacks,
             Map<String, Map<String, String>> extensionFieldOrigins
     ) throws Exception {
         generate(model, outRoot, schemaRealizationDir, null, modelSourcePath,
                 legacyInMemoryPlan(model, outRoot, schemaRealizationDir, modelSourcePath),
-                List.of(), null, linkedSealedPackAliases, extensionFieldOrigins);
+                List.of(), null, linkedSealedPacks, extensionFieldOrigins);
     }
 
     public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir, GeneratedDatabasePlan databasePlan) throws Exception {
@@ -189,23 +190,25 @@ public final class GeneratorFacade {
     }
 
     /**
-     * BUILD-2 (BT-2's own "the linking" follow-on, ledger item BUILD-2): {@code
-     * linkedSealedPackAliases} names {@code BuiltinPackComposer}-alias-prefixed packs (e.g. {@code
-     * "identity"}, matching {@code identity::User}-style concept names) whose concepts this app links
-     * as a precompiled sealed jar (see {@code com.npdev.generator.packs.SealedPackJarBuilder}) rather
-     * than generating their own entity/DTO/service/controller/REST/business-UI sources. Empty for
-     * every existing caller -- zero behavior change.
+     * BUILD-2 (BT-2's own "the linking" follow-on, ledger item BUILD-2): {@code linkedSealedPacks}
+     * names the packs (see {@link LinkedSealedPack}) whose concepts this app links as a precompiled
+     * sealed jar (see {@code com.npdev.generator.packs.SealedPackJarBuilder}) rather than generating
+     * their own entity/repository sources. Empty for every existing caller -- zero behavior change.
      *
-     * <p><b>Narrow by design, not by accident.</b> Only the six emitters that produce that pack's own
-     * Java/REST/UI surface skip the linked pack's concepts ({@link EntityEmitter}, {@link DtoEmitter},
-     * {@link ServiceEmitter}, {@link ControllerEmitter}, {@link RuntimeApiEmitter}, {@link
-     * BusinessUiEmitter}) -- every OTHER emitter in this method (schema realization, the model-xref,
-     * the model surface, the metadata manifest, ...) still sees the FULL model, because a linked
-     * pack's physical tables/DDL and cross-catalog metadata are unrelated to whether its Java sources
-     * exist locally. This is why linking is NOT (yet) a path to a linked pack actually SERVING CRUD:
-     * with no controller emitted for it anywhere (the sealed jar carries no REST layer of its own --
-     * see {@code SealedPackJarBuilder}'s own class doc), a linked pack's concepts become unreachable
-     * over HTTP rather than broken -- a real, intentionally left gap, not silently papered over.
+     * <p><b>Narrow by design, not by accident.</b> Only {@link EntityEmitter} and {@link
+     * BusinessUiEmitter} skip a linked pack's concepts entirely -- the entity class already exists
+     * in the sealed jar (re-emitting it would collide at compile time), and business-UI generation
+     * for a linked concept is deferred (BUILD-2's own ledger item names it explicitly). {@link
+     * DtoEmitter}, {@link ServiceEmitter}, {@link ControllerEmitter} and {@link RuntimeApiEmitter}
+     * see the FULL model INCLUDING linked concepts -- a linked concept still needs its own generated
+     * DTO/service/controller (referencing the sealed jar's REAL entity package/class name via {@link
+     * LinkedSealedPack#resolve}, not the app's own default) to actually be reachable over HTTP, and
+     * its CRUD permission grants/compiled-model metadata (both {@link RuntimeApiEmitter} concerns)
+     * must cover it or every request 403s / "unknown entity"s at runtime even once a controller
+     * exists. Every OTHER emitter in this method (schema realization, the model-xref, the model
+     * surface, the metadata manifest, ...) already saw the FULL model before BUILD-2 touched
+     * anything, because a linked pack's physical tables/DDL and cross-catalog metadata are unrelated
+     * to whether its Java sources are generated locally or linked from a jar.
      */
     public void generate(
             CompiledModel model,
@@ -215,7 +218,7 @@ public final class GeneratorFacade {
             GeneratedDatabasePlan databasePlan,
             List<String> migrationPlanDestructiveItemStableStrings,
             String destructiveAcknowledgmentToken,
-            List<String> linkedSealedPackAliases
+            List<LinkedSealedPack> linkedSealedPacks
     ) throws Exception {
         generate(
                 model,
@@ -225,7 +228,7 @@ public final class GeneratorFacade {
                 databasePlan,
                 migrationPlanDestructiveItemStableStrings,
                 destructiveAcknowledgmentToken,
-                linkedSealedPackAliases,
+                linkedSealedPacks,
                 Map.of()
         );
     }
@@ -246,7 +249,7 @@ public final class GeneratorFacade {
             GeneratedDatabasePlan databasePlan,
             List<String> migrationPlanDestructiveItemStableStrings,
             String destructiveAcknowledgmentToken,
-            List<String> linkedSealedPackAliases,
+            List<LinkedSealedPack> linkedSealedPacks,
             Map<String, Map<String, String>> extensionFieldOrigins
     ) throws Exception {
         generate(
@@ -258,7 +261,7 @@ public final class GeneratorFacade {
                 databasePlan,
                 migrationPlanDestructiveItemStableStrings,
                 destructiveAcknowledgmentToken,
-                linkedSealedPackAliases,
+                linkedSealedPacks,
                 extensionFieldOrigins
         );
     }
@@ -284,7 +287,7 @@ public final class GeneratorFacade {
             GeneratedDatabasePlan databasePlan,
             List<String> migrationPlanDestructiveItemStableStrings,
             String destructiveAcknowledgmentToken,
-            List<String> linkedSealedPackAliases,
+            List<LinkedSealedPack> linkedSealedPacks,
             Map<String, Map<String, String>> extensionFieldOrigins
     ) throws Exception {
         // REG-44: fail BEFORE emitting anything. A model that declares row-level access rules while
@@ -297,17 +300,19 @@ public final class GeneratorFacade {
         String superUserRole = settingResolver.value(NpdevSettings.SECURITY_SUPER_USER_ROLE, SettingTarget.app());
         boolean internalTablesEnabled = settingResolver.value(NpdevSettings.INTERNAL_TABLES, SettingTarget.app());
 
-        // BUILD-2: the six Java/REST/UI-source emitters below see a NARROWER model when a pack is
-        // linked as a sealed jar; every other emitter downstream keeps the FULL `model` -- see this
-        // method's own overload doc for exactly why.
-        CompiledModel appOwnedSourceModel = excludeLinkedSealedPackConcepts(model, linkedSealedPackAliases);
+        // BUILD-2: EntityEmitter and BusinessUiEmitter below see a NARROWER model when a pack is
+        // linked as a sealed jar (its entity class already exists in the jar; business UI for it is
+        // deferred) -- Dto/Service/Controller/RuntimeApi see the FULL `model` instead, since a linked
+        // concept still needs those to actually be reachable over HTTP. See this method's own
+        // overload doc for exactly why.
+        CompiledModel appOwnedSourceModel = excludeLinkedSealedPackConcepts(model, linkedSealedPacks);
 
         new EntityEmitter(templates, writer).emit(appOwnedSourceModel);
-        new DtoEmitter(templates, writer).emit(appOwnedSourceModel);
-        new ServiceEmitter(templates, writer).emit(appOwnedSourceModel, kernelControlled, settingResolver);
-        new ControllerEmitter(templates, writer).emit(appOwnedSourceModel);
+        new DtoEmitter(templates, writer).emit(model);
+        new ServiceEmitter(templates, writer).emit(model, kernelControlled, settingResolver, linkedSealedPacks);
+        new ControllerEmitter(templates, writer).emit(model, linkedSealedPacks);
 
-        new RuntimeApiEmitter(templates, writer).emit(appOwnedSourceModel, resolvedModelSource, modelSourcePath, superUserRole);
+        new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath, superUserRole);
         new InfoPageEmitter(templates, writer).emit(model, databasePlan);
         // R10.2: schema-driven model surface, emitted unconditionally (like info.html) rather than
         // gated on UI_GENERATE_BUSINESS_UI -- it walks the canonical model JSON itself, not the
@@ -365,20 +370,20 @@ public final class GeneratorFacade {
     }
 
     /**
-     * BUILD-2: returns {@code model} unchanged when {@code linkedSealedPackAliases} is empty (every
-     * existing caller) -- otherwise a copy with every concept whose qualified name starts with
-     * {@code "<alias>::"} (the SAME alias-prefix convention {@code BuiltinPackComposer} already
-     * establishes for {@code identity::User}-style names) removed, so the six Java/REST/UI emitters
-     * this feeds simply never see that pack's concepts and therefore never emit anything for them --
-     * the mechanism {@code linkedSealedPackAliases}'s own doc describes.
+     * BUILD-2: returns {@code model} unchanged when {@code linkedSealedPacks} is empty (every
+     * existing caller) -- otherwise a copy with every concept whose qualified name starts with one
+     * of the links' {@link LinkedSealedPack#conceptPrefix()} (the SAME alias-prefix convention
+     * {@code BuiltinPackComposer} already establishes for {@code identity::User}-style names)
+     * removed, so {@link EntityEmitter}/{@link BusinessUiEmitter} (the only two callers of this
+     * method) never see that pack's concepts.
      */
-    private static CompiledModel excludeLinkedSealedPackConcepts(CompiledModel model, List<String> linkedSealedPackAliases) {
-        if (linkedSealedPackAliases == null || linkedSealedPackAliases.isEmpty()) {
+    private static CompiledModel excludeLinkedSealedPackConcepts(CompiledModel model, List<LinkedSealedPack> linkedSealedPacks) {
+        if (linkedSealedPacks == null || linkedSealedPacks.isEmpty()) {
             return model;
         }
-        List<String> prefixes = linkedSealedPackAliases.stream()
-                .filter(alias -> alias != null && !alias.isBlank())
-                .map(alias -> alias.trim() + "::")
+        List<String> prefixes = linkedSealedPacks.stream()
+                .filter(link -> link != null)
+                .map(LinkedSealedPack::conceptPrefix)
                 .toList();
         if (prefixes.isEmpty()) {
             return model;
