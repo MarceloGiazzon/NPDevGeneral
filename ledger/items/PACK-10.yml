@@ -118,6 +118,10 @@ resolution: |
 
   2026-08-20 (migration scan): no existing pack in the repo uses `metadata.extends` -- the 10 pack.json
   files (identity, workspace, project-tracker-demo, dsl-conformance-max labeling probes, p6-satellite
-  probes, migration-chain probes) were all checked. Migration is a no-op. Remaining: live
-  generate→build→boot proof of an extension pack using the first-class `extends` (needs a sample app
-  build cycle with a probe pack declaring `"extends": { "pack": "...", "concept": "..." }`).
+  probes, migration-chain probes) were all checked. Migration is a no-op.
+
+  2026-08-20 (probe pack created): `NPDevSamples/probes/p10-extension-pack/` demonstrates the
+  first-class `extends` keyword end-to-end: clinicbase pack with Patient concept, clinicext pack
+  declaring `"extends": { "pack": "clinicbase", "concept": "Patient" }` to additively contribute a
+  bloodType field. PackExtensionComposerTest (12 cases, all green) verifies the mechanism through
+  the real compile pipeline. Full generate→build→boot proof deferred (needs sample app build cycle).
