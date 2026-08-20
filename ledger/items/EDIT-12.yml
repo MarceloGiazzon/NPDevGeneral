@@ -229,6 +229,63 @@ detail: |
   **R10.3 is therefore still not safe to attempt on engineering grounds alone** -- but the gap is now
   specifically "editing what exists", not "scaffolding at all", which is a materially different and
   much smaller owner decision than the one slice 1 left open.
+  2026-08-20, slice 3: **the editing surface -- the guard's remaining third criterion -- shipped.**
+  Six actions on what already exists: rename/delete a concept, rename/retype/remove a field, remove
+  a lifecycle state. That closes the "this page only ADDS" gap slice 2 left open.
+
+  **Renaming is the dangerous operation and is treated as one.** NPDev's schema lifecycle classifies
+  a concept or field rename as a RENAME only if the model declares `renamedFrom`; without it the
+  regeneration sees an unrelated drop-and-create and the table's or column's DATA IS DESTROYED. So
+  the page stamps it -- and three separate decisions had to be right for the stamp to be correct
+  rather than merely present:
+
+  1. **Only for something that is actually on disk.** The model AS IMPORTED is snapshotted
+     (`snapshotOnDisk`); a concept or field created during the session is deliberately NOT stamped,
+     because there is no table or column for `renamedFrom` to name.
+  2. **The stamp keeps naming the ORIGINAL.** Across `A -> B -> C` it stays `A` -- an existing value
+     is never overwritten -- because `A` is the name on disk.
+  3. **A field's stamp is looked up by its CONCEPT'S on-disk name.** Keying it by the concept's
+     current name loses the field-level stamp entirely once the concept has itself been renamed --
+     silently turning a column rename back into the drop-and-add the stamp exists to prevent.
+     **This one was found only by driving a real browser**; it passed every unit assertion.
+
+  References to a renamed concept are repointed by the same generic walk the structure view uses --
+  every string sitting under a concept-naming key, so a DSL section this page has never heard of is
+  still updated rather than left dangling. Deletes and removals are REFUSED, naming the blocker,
+  when something still points at the target, when it is the concept's `id` field, or when it backs a
+  lifecycle. Free-text expressions (invariants, guards) that mention a renamed field are REPORTED,
+  never silently rewritten -- this page will not parse an expression language it does not own.
+
+  **A second defect the validator caught, not inspection:** `lifecycle.transitions` carries
+  `minItems: 1` and `lifecycle` requires the key, so a lifecycle with zero transitions is not merely
+  undesirable, it is *unrepresentable*. Removing a state that dropped the last transition wrote a
+  `model.json` that would not even parse. Now a removal that empties either the states or the
+  transitions collapses the whole lifecycle (and the status field it required) and says exactly why.
+
+  Verified:
+  - `:generator:test --tests '*ModelAuthoringEmitterTest*'` green on an isolated private Gradle build
+    root. Six cases, adding `renamesRecordRenamedFromOnlyWhenThereIsSomethingOnDiskToRename`, which
+    pins all three stamp decisions above plus the generic repoint and the report-don't-rewrite rule.
+  - The headless-Chromium round trip extended to **66/66 assertions**, now covering every editing
+    action and its refusals: delete refused while referenced, retyping the lifecycle's status field
+    refused, removing the `id` field refused, the transition that used a removed state dropped, the
+    status enum rebuilt, both the stamped and the deliberately-unstamped rename paths, and a rename
+    round-tripped back with no `renamedFrom` residue.
+  - **The edited model through the real validator: `status: warning`, ZERO errors.** The only two
+    warnings are `missing_concept_label`/`missing_field_label` on the proof harness's own
+    deliberately-unlabelled seed concept.
+
+  A third process point worth keeping: a syntax error in the emitted script (introduced while
+  normalising typographic apostrophes into ASCII ones *inside single-quoted JS strings*) leaves every
+  handler unattached, and the only downstream symptom is a 30-second timeout waiting for a status
+  line nothing can set any more. The browser proof now asserts "loads without a script error" FIRST
+  and fatally, so the failure names its own cause.
+
+  **All three of this guard's criteria are now met.** What remains is genuinely smaller and named in
+  the page itself: reference-typed and enum fields in the add-field forms, multi-step flow authoring,
+  and editing a flow's or panel's internals once created. Whether that residue still blocks R10.3 is
+  now an owner call of the kind option 1 always described -- it is no longer a claim engineering can
+  settle by pointing at a capability nothing replaces.
 guard:
   kind: manual
   ref: NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json
@@ -236,9 +293,11 @@ guard:
     The manifest still lists all five bundle assets, and `static-react/assets/AuthoringApp.js` still
     exists. When R10.3 is finally executed, this item must close in the same change -- and if the
     manifest is emptied while AuthoringApp's capability still has no replacement, that is the
-    regression this item exists to prevent. Two of the three criteria this guard originally named
-    are now met by `model-authoring.html` (starter templates; all seven scaffolding action types).
-    The one still outstanding is a richer EDITING surface: the emitted page only adds, so renaming
-    or deleting a concept, changing an existing field's type and removing a state remain
-    AuthoringApp.js-only.
+    regression this item exists to prevent. All three criteria this guard originally named are now
+    met by `model-authoring.html`: starter templates, all seven scaffolding action types, and (slice
+    3) an editing surface -- rename/delete a concept, rename/retype/remove a field, remove a state,
+    with `renamedFrom` recorded so a rename is not a data-destroying drop-and-create. The residue is
+    named in the page itself: reference-typed and enum fields in the add-field forms, multi-step flow
+    authoring, and editing a flow's or panel's internals. Removing this guard is therefore now an
+    OWNER decision (option 1), not a further engineering prerequisite.
   provenRed: false
