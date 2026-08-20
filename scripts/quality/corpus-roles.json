@@ -27,14 +27,18 @@
     "                    a kilobyte."
   ],
   "roles": {
+    "AppGen/apps/_experiments/WmsOfficePackTest": "repro-case",
     "AppGen/apps/_official/AuxScreen": "showcase",
     "AppGen/apps/_official/Claude": "showcase",
     "AppGen/apps/_official/Pigmentampa": "showcase",
     "AppGen/apps/_official/WmsOffice": "showcase",
     "AppGen/apps/_official/WordLab": "showcase",
-    "AppGen/apps/_experiments/WmsOfficePackTest": "repro-case",
+    "AppGen/apps/_scratch/bench-r37-proof": "repro-case",
+    "AppGen/apps/_scratch/reg193-proof": "repro-case",
+    "AppGen/apps/_scratch/seed-r32-bench": "repro-case",
     "AppGen/apps/aggregate-query-verify-h2local": "repro-case",
     "AppGen/apps/await-resume-rehearsal": "repro-case",
+    "AppGen/apps/docwire-r57-proof": "repro-case",
     "AppGen/apps/invoice-bonds-demo": "showcase",
     "AppGen/apps/ledger1-red-repro": "repro-case",
     "AppGen/apps/lnch1-rehearsal": "repro-case",
@@ -48,10 +52,11 @@
     "AppGen/apps/simple-log-mysql": "engine-variant",
     "AppGen/apps/simple-log-sqlserver": "engine-variant",
     "AppGen/apps/simple-product-h2local": "dsl-fixture",
-    "AppGen/apps/simple-user-registry-h2local": "engine-variant",
+    "AppGen/apps/simple-user-registry-h2local": "repro-case",
     "AppGen/apps/simple-user-registry-h2local-freshdb": "engine-variant",
     "AppGen/apps/simple-user-registry-inmemory": "engine-variant",
     "AppGen/apps/simple-user-registry-postgres": "repro-case",
+    "AppGen/apps/soft-delete-r54-proof": "repro-case",
     "NPDevSamples/12works/gift-idea-tracker": "dsl-fixture",
     "NPDevSamples/canonical-demo": "dsl-fixture",
     "NPDevSamples/dsl-conformance-max": "dsl-fixture",
@@ -88,11 +93,11 @@
     "simple-user-registry-postgres is NOT in the simple-user-registry family: measured as carrying an",
     "intentional field rename (name -> fullName, with renamedFrom) plus two new fields (notes,",
     "department) -- a schema-evolution repro case using Postgres as the engine, not a plain engine",
-    "variant, hence its corpusRole is repro-case above, not engine-variant."
+    "variant, hence its corpusRole is repro-case above, not engine-variant.",
+    "simple-user-registry-h2local left the family on 2026-08-20 for the same reason simple-user-registry-postgres did: EDIT-8 (R7.5, closed 2026-08-19) deliberately gave it a `department` field, a `UsersByDepartment` groupBy query and a `UserDashboard` GuidePage as that item's live dashboard-drill-down proof, so it is no longer the same DSL body as its siblings. Its corpusRole is repro-case above, not engine-variant. The divergence was real and intended -- it just was not recorded here when it landed, so the family check reported it (correctly) as a change that reached only one member. The remaining three members are byte-identical."
   ],
   "engineVariantFamilies": {
     "simple-user-registry": [
-      "AppGen/apps/simple-user-registry-h2local",
       "AppGen/apps/simple-user-registry-h2local-freshdb",
       "AppGen/apps/simple-user-registry-inmemory",
       "NPDevSamples/simple-user-registry"

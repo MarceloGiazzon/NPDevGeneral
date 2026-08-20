@@ -1,0 +1,70 @@
+id: QUAL-26
+title: >-
+  Two ai-knowledge gate failures sat unread behind the two that were being reported
+type: PROCESS
+severity: MEDIUM
+status: DONE
+opened: 2026-08-20
+closed: 2026-08-20
+verification: VERIFIED_LIVE
+source: >-
+  Found 2026-08-20 by re-running `run-all-gates.ps1` after QUAL-24 and QUAL-25 closed the two
+  failures the 2026-08-19 session-4 handoff had named. The gate did not go green -- two further
+  failures were revealed that had been failing in that same run all along.
+surface: quality/corpus-policy
+files:
+  - scripts/quality/corpus-roles.json
+detail: |
+  Session 4's handoff named exactly two blockers for the ai-knowledge gate: 42 untriaged
+  security-pattern hits and 12 corpus models failing on `auditPolicy`. Both were closed (QUAL-24,
+  QUAL-25). **The gate still failed, on two more checks that had been red in the same run and were
+  never listed.**
+
+  1. **Five corpus models had no `corpusRole` at all** -- `AppGen/apps/_scratch/bench-r37-proof`,
+     `_scratch/reg193-proof`, `_scratch/seed-r32-bench`, `docwire-r57-proof`,
+     `soft-delete-r54-proof`. `corpus-roles.json`'s F5 rule is explicit that there is no silent
+     default, so this is a hard fail. All five are single-purpose apps built to prove exactly one
+     ledger item (REG-193, RUN-19/20/21, MON-20, QUAL-18) and nothing else, which is the role
+     definition's own "encodes a specific past bug or rehearses a specific runtime behavior" --
+     classified `repro-case`, checked one at a time against each model's actual content rather than
+     inferred from the folder name.
+
+  2. **The `simple-user-registry` engine-variant family had diverged**:
+     `AppGen/apps/simple-user-registry-h2local` was no longer byte-identical to its three siblings.
+     **This was a real, intended divergence that was simply never recorded.** `EDIT-8` (R7.5,
+     closed 2026-08-19) deliberately gave that app a `department` field, a `UsersByDepartment`
+     groupBy query and a `UserDashboard` GuidePage as the live drill-down proof for dashboard
+     click-through. Dated evidence: the model's mtime is 2026-08-18 23:19 while the other three are
+     untouched since 2026-07-28, and `EDIT-8.yml` names the app and all three additions.
+
+     **The resolution was already documented in the very file that was failing.**
+     `engineVariantFamiliesComment` records that `simple-user-registry-postgres` was removed from
+     this same family, for this same reason, when it acquired an intentional field rename plus two
+     new fields (one of them also `department`). Followed that precedent exactly: `h2local` leaves
+     the family, its role moves `engine-variant` -> `repro-case`, and the comment records why. The
+     alternative -- propagating a dashboard into the other three -- would have changed
+     `NPDevSamples/simple-user-registry`, which `sample-matrix-policy.json`,
+     `final-regression-coverage-manifest.json` and `build_core_context.py` all read.
+
+  **The durable point is not either fix; it is that both were visible in session 4's own gate output
+  and neither was read.** This is the same failure mode as the nightly scale ladder that was red for
+  four consecutive nights while being treated as headroom (SCALE-2): the run reports what is wrong,
+  and the first one or two lines get transcribed as if they were the whole list. `run-all-gates.ps1`
+  deliberately keeps going past a failure so that every red appears in one run -- which only helps if
+  the whole output is read. When closing a gate failure, re-run the gate rather than assuming the
+  named blockers were the only ones.
+
+  Measured after the fix: `check-engine-variant-families.py` -> "OK: every declared engine-variant
+  family is internally byte-identical" (3 families). `validate-corpus.py` -> exit 0, "57/57 parse ...
+  and every model declares a corpusRole" (57 models, 52 distinct bodies, roles now 17 repro-case /
+  12 probe / 11 showcase / 10 dsl-fixture / 6 engine-variant / 1 canary).
+guard:
+  kind: script
+  ref: scripts/quality/validate-corpus.py
+  asserts: >-
+    Every corpus model parses AND declares a corpusRole (no silent default, F5), and every declared
+    engine-variant family stays byte-identical (check-engine-variant-families.py, F6). Measured RED
+    on 2026-08-20 (5 models with no role; the simple-user-registry family diverged on one member),
+    GREEN after classifying the five and splitting the intentionally-diverged member out of the
+    family with a recorded reason.
+  provenRed: true
