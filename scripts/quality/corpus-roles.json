@@ -77,6 +77,7 @@
     "NPDevSamples/simple-contact-intake": "showcase",
     "NPDevSamples/simple-user-registry": "engine-variant",
     "NPDevSamples/superuser-admin-console": "showcase",
+    "NPDevSamples/temporal-pricing-r58": "repro-case",
     "NPDevSamples/user-minimal": "dsl-fixture"
   },
   "engineVariantFamiliesComment": [

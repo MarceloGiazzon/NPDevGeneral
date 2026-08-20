@@ -237,7 +237,8 @@ public final class ModelResolver {
                 concept.getRenamedFrom(),
                 concept.getSatelliteOf(),
                 concept.getOrigin(),
-                concept.isSoftDelete()
+                concept.isSoftDelete(),
+                concept.isTemporal()
         );
     }
 
@@ -311,6 +312,11 @@ public final class ModelResolver {
         // still free to opt IN on its own even when the base does not.
         boolean mergedSoftDelete = specialization.isSoftDelete() || base.isSoftDelete();
 
+        // R5.8: same sticky-true reasoning as softDelete just above -- a base concept's temporal
+        // durability contract (rows are effective-dated, never treated as a single current value)
+        // cannot be silently undone by a specialization; a specialization may still opt IN on its own.
+        boolean mergedTemporal = specialization.isTemporal() || base.isTemporal();
+
         return new ConceptAst(
                 specialization.getName(),
                 null,
@@ -327,7 +333,8 @@ public final class ModelResolver {
                 specialization.getRenamedFrom(),
                 specialization.getSatelliteOf(),
                 mergedOrigin,
-                mergedSoftDelete
+                mergedSoftDelete,
+                mergedTemporal
         );
     }
 

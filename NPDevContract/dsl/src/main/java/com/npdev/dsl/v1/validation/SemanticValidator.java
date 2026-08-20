@@ -119,6 +119,7 @@ public final class SemanticValidator {
         ConceptValidation.validateTableNameCollisions(effectiveModel, errors);
         ConceptValidation.validateConceptRenamedFrom(effectiveModel, entitiesByLower, errors, semanticWarnings);
         ConceptValidation.validateConceptSatelliteOf(effectiveModel, entitiesByLower, errors, semanticWarnings);
+        ConceptValidation.validateConceptTemporal(effectiveModel, errors);
 
         ConceptValidation.validateCapabilities(effectiveModel, errors);
         ConceptValidation.validateBindings(effectiveModel, errors);

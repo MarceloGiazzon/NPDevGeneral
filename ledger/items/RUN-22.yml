@@ -1,0 +1,240 @@
+id: RUN-22
+title: >-
+  Effective-dated values -- concept.temporal + an asOf query param resolve which row of a
+  multi-row concept (price lists, tax rates, assignments) is effective on a given date
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18, R5.8 -- "Price lists, tax rates, assignments -- the survey's one
+  true differentiator versus CRUD generators, and precisely the schema-shape change that becomes a
+  production-data migration after 1.0. Decide the model shape (validFrom/validTo + as-of resolution)
+  and prove it thin: one flagged concept, as-of read parameter, on one sample. Full UI/editing depth
+  can trail; the shape cannot." Explicitly a DESIGN TRACK (CLAUDE.md): a bounded design phase
+  producing a concrete decision record, not a speculative essay, followed by the thin implementation
+  slice in the same session. Blocked-by: none.
+surface: dsl/schema, dsl/compiled-model, dsl/validation, generator/emitters, generator/templates,
+  samples/dsl-conformance-max, samples/temporal-pricing-r58, scripts/quality/dsl_coverage
+files:
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ConceptAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledConcept.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/SemanticValidator.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ConceptTemporalValidationTest.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-concept-crud-controller.mustache
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - NPDevSamples/dsl-conformance-max/Input/manifest.json
+  - NPDevSamples/temporal-pricing-r58/Input/model.json
+  - NPDevSamples/temporal-pricing-r58/Input/config.json
+  - NPDevSamples/temporal-pricing-r58/Input/db.definition.json
+  - NPDevSamples/temporal-pricing-r58/Input/manifest.json
+  - NPDevSamples/sample-catalog.json
+  - scripts/quality/corpus-roles.json
+  - scripts/quality/dsl_coverage/detectors_model.py
+  - scripts/quality/dsl_coverage/features.py
+detail: |
+  DESIGN PHASE (bounded, per CLAUDE.md's design-track convention -- a decision record, not an essay):
+
+  Q1 -- HOW DOES A CONCEPT OPT IN: a new concept-level boolean flag, `temporal: true`, threaded
+  through the exact same telescoping-constructor/four-place chain R5.4's `softDelete` established
+  (ConceptAst/CompiledConcept widest-constructor overload -> JsonModelParser -> ModelCompiler ->
+  ModelResolver's sanitizeConcept/mergeConcept -> CompiledModelCanonicalJson writer/reader), NOT a
+  new top-level model array field (REG-108's four-place pack-composition chain does not apply --
+  concepts[] already flows whole objects through pack composition regardless of which properties
+  they carry, exactly as RUN-20 verified for softDelete). The concept ALSO declares its own
+  `validFrom`/`validTo` fields explicitly, like any other business field (type: date, required:
+  true) -- reusing the EXISTING field pipeline with zero new DSL plumbing, since `date`-typed fields,
+  SQL columns, and JDBC coercion (JdbcBusinessConceptStore#coerceValue: an ISO-8601 String filter
+  value against a `date` column already binds as java.sql.Date) all already exist. The flag is real
+  new schema surface (design Q1 says "unless the roadmap genuinely needs the flag") because the READ
+  path needs a positive signal to know when to apply asOf filtering -- a magic-name convention
+  (any concept happening to have fields literally named validFrom/validTo silently gains as-of
+  filtering) would violate this codebase's own "no silent behavior change" ethos (REG-108, the
+  twin-pair registry) far more than one boolean does.
+
+  Compile-time enforcement (NEW, `ConceptValidation.validateConceptTemporal`, wired into
+  SemanticValidator right after satelliteOf's own check): a `temporal: true` concept missing
+  `validFrom`/`validTo`, or declaring either with the wrong type or `required: false`, fails
+  compilation with a named per-field error -- proven both ways by
+  ConceptTemporalValidationTest (5 cases: missing both fields, wrong type, non-required, valid,
+  and a non-temporal concept is never checked). Without this, a temporal concept authored without
+  the window fields would silently 400 or silently return every row unfiltered at READ time instead
+  of failing loudly at AUTHOR time -- the same class of footgun REG-108/REG-104 exist to prevent.
+
+  Q2 -- RESOLUTION SEMANTICS / "SAME LOGICAL ENTITY" SCOPING: deliberately left to the CALLER's own
+  ordinary `where=` filter, not a new schema-level identity key. This is the one design question
+  CLAUDE.md's own brief flagged as needing real thought before deferring ("a temporal shape that
+  silently can't express 'the same product's price changed over time' would undercut the whole
+  point"). The answer is that it does NOT need deferring at all, because it is already free:
+  ConceptQuery.Operator already has LTE/GTE (added by an earlier roadmap item, R4.3, for an
+  unrelated reason -- range comparisons on any field), the generic concept-CRUD controller's `list()`
+  already supports arbitrary `where=field:op:value` clauses pushed down as ConceptQuery.Filter
+  entries, and ConceptQuery.filters() is an AND-combined list -- so `asOf` becomes exactly two MORE
+  filters (`validFrom LTE asOf`, `validTo GTE asOf`) appended to whatever the caller already
+  supplied. `GET /api/concepts/widgetPrice?where=productCode:eq:WIDGET-1&asOf=2026-03-15` composes
+  "the same product" and "as of this date" with ZERO new mechanism -- proven live (see below).
+  The boundary that IS real and IS stated: this round requires `validTo` to be NON-NULL (`required:
+  true`, no open-ended/null-validTo row) -- an "still in effect" row uses a far-future sentinel date
+  (e.g. 2099-12-31) rather than null, because `validFrom<=asOf<=validTo` as pure AND-combined filters
+  cannot express "OR validTo IS NULL" without ConceptQuery's OR_GROUPS marker, which today is
+  all-or-nothing (cannot mix with the caller's OTHER filters, e.g. the productCode match) -- see
+  ConceptQuery.Operator.OR_GROUPS's own javadoc. Widening OR_GROUPS to compose with plain AND filters
+  is real follow-up work, not done this round.
+
+  Q3 -- WHERE RESOLUTION LIVES: read as PropertyResolver/DefaultConceptGateway's `access.read`
+  row-scoping precedent before deciding. `access.read` is a POST-fetch in-JVM filter applied inside
+  DefaultConceptGateway (a deliberate v1 boundary, not pushed to SQL, per LNCH-13/ROW_LEVEL_
+  AUTHORIZATION.md), while `softDelete`'s deletedAt exclusion is a STORE-layer SQL predicate (JdbcBusinessConceptStore
+  appends "AND deleted_at IS NULL" unconditionally, keyed off CompiledModel-derived concept shape).
+  Neither pattern fits directly: softDelete's store-layer filter is a CONSTANT per-concept behavior
+  with no per-request parameter, while asOf is inherently a PER-REQUEST value that would need
+  threading through ConceptReadRequest/ConceptListRequest/ConceptQueryRequest/ConceptGateway/
+  ConceptStore signatures to reach the store layer -- a wide, non-thin blast radius genuinely
+  unwarranted for a bounded slice. The actual answer is a THIRD, narrower pattern this repo already
+  has ready-made: the generic concept-CRUD REST controller (business-concept-crud-controller.mustache)
+  ALREADY translates its structured `where=` query param into ConceptQuery.Filter entries at the
+  HTTP boundary, before ever calling into ConceptGateway.query(). asOf is implemented at that EXACT
+  same boundary -- two more Filter entries appended to the SAME list -- so ConceptGateway,
+  DefaultConceptGateway, ConceptStore, and JdbcBusinessConceptStore are UNTOUCHED. This is not a
+  third parallel filtering mechanism; it is the SAME mechanism (`where=`'s existing field-filter
+  pushdown) fed two more entries. No new resolver class, no "TemporalResolutionEngine" (CLAUDE.md
+  rule 3/7: no speculative abstraction, don't duplicate).
+
+  Q4 -- API SHAPE: confirmed as designed -- `asOf=<date>` (ISO-8601, `yyyy-MM-dd`) on
+  `GET /api/concepts/{conceptName}`, composing with `where=`/`page`/`size`/`sort`/`direction`.
+  Two revisions to the "obvious minimal shape" made during implementation, both to avoid a silent
+  mismatch between what the response CLAIMS and what actually happened:
+    (a) `asOf` absent on a `temporal:true` concept still resolves "as of today" by default (mirrors
+        `softDelete`'s own "excludes what isn't currently live by default" convention) -- but ONLY
+        when the request will actually take the structured-filter pushdown branch; the free-text
+        `filter=` fallback branch applies no asOf filtering at all (a substring search across a
+        pre-fetched row set has no field-typed WHERE to extend), so defaulting asOf there too would
+        make the response's echoed `asOf` value a lie. Both branches are gated on this explicitly.
+    (b) `asOf` combined with `filter=` (the free-text path) is a named 400 `invalid_request`, not a
+        silent no-op -- the same "loud, not silent" instinct as the compile-time validator above.
+    `asOf` on a NON-temporal concept is also a named 400, not a silently-ignored parameter (an
+    author who typos `asOf` against the wrong route learns immediately, not from a query that quietly
+    returned everything).
+
+  DELIBERATELY NOT DONE THIS ROUND (explicit boundaries, not silent gaps):
+    - No `validTo IS NULL` / open-ended-row support (Q2 above) -- sentinel-date convention instead.
+    - No identity-key / uniqueness-among-overlapping-windows schema concept (Q2) -- an author can
+      author two OVERLAPPING validity windows for the "same" productCode today with nothing to catch
+      it; resolution then returns whichever row the store's default ORDER BY (primary key) surfaces
+      first for an unbounded `where=`+`asOf` match. Not requested by the DoD, which only requires an
+      as-of read to differ correctly across NON-overlapping windows.
+    - The single-record `GET /api/concepts/{name}/{id}` and the unstructured `listBase()` typed-
+      controller endpoint do not accept `asOf` -- only the generic controller's structured list/query
+      path does (the one path with a field-typed WHERE to extend). A caller who already has the id of
+      a specific historical row does not need as-of resolution to fetch it.
+    - No temporal-aware admin UI / editing workflow for historical rows -- the roadmap's own words
+      ("Full UI/editing depth can trail") explicitly scope this out; seeding is a direct POST.
+    - `aggregate()`/`query.groupBy` joins into a temporal concept are not asOf-aware -- a joined
+      reference into a temporal concept's row set is unfiltered by validFrom/validTo. Not exercised
+      by the DoD; the same class of boundary softDelete's own RUN-20 card left for JOIN targets.
+
+  IMPLEMENTATION: new sample `NPDevSamples/temporal-pricing-r58` (corpusRole: repro-case), one
+  concept (`WidgetPrice`: id, productCode, amount, validFrom, validTo, `temporal: true`), no
+  flows/panels/UI -- pipeline-minimal per the roadmap's own scope. `NPDevSamples/dsl-conformance-max`
+  gained a 13th concept (`WidgetPriceListEntry`, temporal:true) for DSL parse-coverage, following the
+  exact precedent RUN-20 set for WidgetSupplier (a NEW concept, not perturbing any of the 12
+  existing ones). New detector `_has_concept_temporal` / feature key `concept.temporal` wired into
+  check-dsl-coverage.py exactly like `_has_concept_soft_delete` / `concept.softDelete`.
+
+  LIVE PROOF (temporal-pricing-r58, NPDevSamples, H2Local, port 8412 -- generated, assembled, and
+  booted from THIS repo, not AppGen/apps, per this item's own scope). An ENVIRONMENT DEFECT was hit
+  and worked around before the proof itself: this worktree is nested under
+  `.claude\worktrees\<agent-id>` inside the main checkout, and for that specific topology the
+  PowerShell-side default build-root walk (`Get-NPDevBuildRoot` in scripts/npdev-common.ps1) and the
+  JAVA-side default (baked into a freshly-assembled app's gradle.properties by
+  `FinalAppAssembler#appendRuntimeHostLibsDirDefault`, matching Gradle's own `resolveNpdevBuildRoot`)
+  resolve to TWO DIFFERENT directories -- PowerShell's walk keeps overwriting its match while
+  continuing upward past this worktree's own root into the OUTER checkout (which also independently
+  satisfies the NPDevContract+NPDevGenerator+NPDevKernel content predicate), landing on
+  `D:\WorkSpace\NPDev\Build`, while the generated app's own gradle.properties pins
+  `D:\WorkSpace\NPDev\NPDev_General\.claude\worktrees\Build\runtimehost-libs`. Running
+  `sync-runtimehost-libs.ps1 -BuildLocalJars` with no explicit `-RuntimeHostLibsDir` therefore staged
+  jars nobody read; `verifyNpdevRuntimeHostLibs` failed "Missing manifest" on first boot attempt.
+  Fixed for this run by passing `-RuntimeHostLibsDir` explicitly (CLAUDE.md's own documented escape
+  hatch). NOT fixed at the source (out of scope for R5.8 -- a pre-existing, narrow divergence in
+  build-root resolution for a nested-worktree topology, unrelated to this item's feature; noted here
+  for whoever next hits it). A second, unrelated environment fact: `application-dev.yml` no longer
+  seeds a dev API key (T1/C2 hardening) -- `bootRun` must be started with
+  `NPDEV_AUTH_API_KEYS=dev-key=dev:developer:admin` in the environment (normally provisioned by
+  `_ops/Run-FinalApp.ps1`'s `Ensure-NpdevApiKey`, bypassed here since this proof called `gradlew
+  bootRun` directly).
+
+  With both worked around, the app booted clean (Flyway schema realization, Started
+  FinalExecApplication in 27.64s). Seeded two WidgetPrice rows for the SAME productCode via real
+  `POST /api/concepts/widget_prices` calls (X-Api-Key: dev-key): row A {productCode: "WIDGET-1",
+  amount: 10.00, validFrom: "2026-01-01", validTo: "2026-06-30"}; row B {productCode: "WIDGET-1",
+  amount: 15.00, validFrom: "2026-07-01", validTo: "2099-12-31"} (open-ended-in-practice, sentinel
+  date, per this item's own Q2 boundary). Then, against the SAME product, three real reads:
+    - `GET /api/concepts/widget_prices?where=productCode:eq:WIDGET-1&asOf=2026-03-15` -> 200,
+      content=[{amount: 10.0, validFrom: "2026-01-01", validTo: "2026-06-30"}], response echoes
+      `"asOf":"2026-03-15"` -- the row A window.
+    - `GET /api/concepts/widget_prices?where=productCode:eq:WIDGET-1&asOf=2026-08-01` -> 200,
+      content=[{amount: 15.0, validFrom: "2026-07-01", validTo: "2099-12-31"}], echoes
+      `"asOf":"2026-08-01"` -- the SAME query, only the date changed, and the resolved row (and its
+      amount) genuinely differs: 10.0 -> 15.0. This is the done-when's literal text, proven live.
+    - `GET /api/concepts/widget_prices` (no where, no asOf) -> 200, content=[{amount: 15.0, ...}],
+      echoes `"asOf":"2026-08-19"` (today, the run date) -- confirms the documented default-to-today
+      behavior: a temporal concept's plain read resolves "what's true right now" with no query
+      parameter needed, exactly as decided in Q4/the schema description.
+  Two named-error paths also proven live (not just unit-tested): `GET .../widget_prices?asOf=not-a-date`
+  -> 400 `{"code":"invalid_asOf","message":"asOf must be an ISO-8601 date (yyyy-MM-dd): not-a-date"}`;
+  `GET .../widget_prices?asOf=2026-03-15&filter=WIDGET` -> 400
+  `{"code":"invalid_request","message":"asOf is not supported together with the free-text filter
+  param -- use where= instead"}`. App stopped cleanly after the run (port 8412 freed, verified via
+  netstat).
+
+  TESTS: NPDevContract:dsl full suite green (includes the reflective
+  CanonicalJsonRoundTripCompletenessTest ratchet, which would have failed had `temporal` not been
+  threaded through the canonical JSON writer/reader pair -- it passed with no changes needed to that
+  test file itself, confirming the four-place chain is complete). NPDevGenerator:generator full suite:
+  432 tests, 2 pre-existing failures (`ModelChangeClassifierTest`'s two "AnyCorpusModel" tests),
+  BOTH traced to `NPDevSamples/pack9-role-binding-a`'s `model.json` having no top-level `concepts` key
+  (it relies entirely on `packs[]` composition) -- that test reads corpus `model.json` files RAW via
+  `ObjectMapper.readTree` with no pack-composition step, a pre-existing gap from the PACK-9 work
+  (commit 340ed423, before this item), confirmed unrelated to R5.8 by inspecting the file directly
+  (zero `"concepts"` occurrences) and by `scripts/quality/validate-corpus.py` (which DOES pack-compose
+  first) parsing the same two samples cleanly. NPDevKernel:kernel compiles clean against the widened
+  CompiledConcept API (kernel was not otherwise touched -- Q3's decision keeps ConceptGateway/
+  DefaultConceptGateway/ConceptStore/JdbcBusinessConceptStore untouched by this item).
+guard:
+  kind: manual
+  ref: NPDevSamples/temporal-pricing-r58
+  asserts: >-
+    Generate+build+boot temporal-pricing-r58 (H2Local, port 8412; NPDEV_AUTH_API_KEYS=dev-key=dev:developer:admin
+    in the environment). POST two WidgetPrice rows for productCode=WIDGET-1 with non-overlapping
+    validFrom/validTo windows (Jan-Jun amount 10.00, Jul-2099 amount 15.00). GET
+    /api/concepts/widget_prices?where=productCode:eq:WIDGET-1&asOf=<date> with two dates spanning the
+    boundary (2026-03-15 and 2026-08-01) must return DIFFERENT amounts (10.0 then 15.0) for the
+    otherwise-identical query; asOf absent must resolve as of today (echoed in the response). See this
+    item's detail for the full transcript (exact requests/responses) and the compile-time half
+    (ConceptTemporalValidationTest, 5 cases, all green).
+  provenRed: true
+  provenRedNote: >-
+    Two real REDs were hit and fixed before the proof, both recorded in detail: (1) the app's own
+    bootRun failed "Missing NPDev RuntimeHost libs manifest" because sync-runtimehost-libs.ps1's
+    PowerShell-side default build-root resolution disagrees with the Java-side default for this
+    worktree's nested topology -- fixed by passing -RuntimeHostLibsDir explicitly, not fixed at the
+    source (out of scope). (2) The app then failed to boot at all ("npdev.auth.api-keys must define
+    at least one mapping when auth is enabled") because application-dev.yml no longer seeds a dev key
+    -- fixed by supplying NPDEV_AUTH_API_KEYS in the environment. Neither RED is specific to
+    concept.temporal -- both are pre-existing environment/harness facts that would block ANY sample's
+    live proof from this worktree, recorded here because they were real observed failures during this
+    item's own work, not because they are this item's defect.
