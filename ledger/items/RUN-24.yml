@@ -2,11 +2,14 @@ id: RUN-24
 title: >-
   R1.7's own `npdev dev` watch loop never engages the hot-swap path (always restarts, new PID every
   cycle) and even a direct hot swap does not reach the served business-ui UI without also patching
-  generated-ui-manifest.json (REG-109's artifact) by hand
+  generated-ui-manifest.json (REG-109's artifact) by hand -- both gaps closed, `npdev dev` itself now
+  hot-swaps a METADATA_ONLY label edit with no restart and the served grid updates too, proven by a
+  real browser routine against the actual `npdev dev` command
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-19
+closed: 2026-08-19
 verification: VERIFIED_LIVE
 source: >-
   Found while closing RUN-22's own named gap -- a browser-routine proof of R1.7's roadmap done-when:
@@ -19,6 +22,9 @@ source: >-
 surface: cli/dev-loop, runtimehost/metadata-hotswap
 files:
   - NPDevCli/dev_loop.py
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_dev_loop.py
+  - NPDevCli/tests/test_monitor_hotswap.py
   - scripts/appgen/Update-AppMetadata.ps1
   - NPDevRuntimeHost/src/main/java/com/finalexec/api/MetadataHotSwapController.java
   - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
@@ -79,20 +85,154 @@ detail: |
   - `dev_loop.py::run_cycle` should call the hot-swap path (mirroring `Update-AppMetadata.ps1`'s own
     hot-swap-first, restart-fallback contract) instead of unconditionally restarting, when `fast` is
     true and an app is already running.
+
+  ---
+
+  **Closure (2026-08-19, same day): both gaps fixed, no Java/generator change needed for either.**
+
+  **Fix 1 (`NPDevCli/dev_loop.py`).** `run_cycle` now attempts a hot swap BEFORE the
+  generate/build/restart block, gated on `fast and current is not None and current.alive()`:
+  classify+emit (`cli._emit_metadata_only_catalogs`, a new function mirroring
+  `_metadata_only_fast_path`'s own `--emitMetadataTo` classifier call, sibling to the existing
+  `--emitCompiledModelTo` one) writes `compiled-metadata.json`/`metadata/*.manifest.json` to a scratch
+  dir, then `cli._metadata_hotswap_apply` POSTs it to the running app's own
+  `MetadataHotSwapController#apply` (found via a new `_super_user_key` helper reading
+  `SUPER_USER_KEY.txt` from the booted process's own CWD -- `npdev dev`'s `boot()` never routes
+  through `Start-App.ps1`, the only thing that relocates that file into `_ops/`). On success the cycle
+  returns the SAME `AppProcess` with `CycleResult(True, "READY", fast=True, ...)` -- GENERATE and
+  BUILD never run at all for a metadata-only cycle, not just a faster restart. On ANY refusal (no key
+  -- the ordinary case for the default in-memory dev DB, since `SuperUserBootstrapper` skips issuing
+  one without a physical database; classifier not reporting METADATA_ONLY; endpoint missing;
+  HTTP failure) the function returns `(False, reason)`, never raises, and `run_cycle` falls straight
+  through to the UNCHANGED generate+build+restart path with the reason printed via `out.note(...)` --
+  same safe-fallback-never-silent contract `npdev monitor hotswap`/`Update-AppMetadata.ps1` already
+  follow.
+
+  **Fix 2 (`NPDevCli/npdev_cli.py`).** Read-how-it's-produced-and-consumed first, per this item's own
+  fix-shape note: `generated-ui-manifest.json` turned out to be plain data, fully derivable from the
+  SAME `fields.manifest.json` catalog `--emitMetadataTo` already emits for fix 1 -- no generator/Java
+  change needed, and specifically no full `BusinessUiEmitter.emit()` re-run (which would need
+  settings -- `superUserRole`, auth mode, per-field widget-cascade overrides -- this metadata-only
+  path has no access to, and would silently revert them to platform defaults). New function
+  `_patch_generated_ui_manifest(app_root, metadata_source_root)` reads the app's OWN already-on-disk
+  `generated-ui-manifest.json`, reads the freshly-emitted `fields.manifest.json`'s
+  `{concept, fieldPath, label}` entries (skipping any dotted/nested `fieldPath`, which
+  `BusinessUiEmitter.manifestFields()` never populates), and patches ONLY the matching
+  `concepts[].fields[].label` values that actually changed -- read-modify-write, atomic
+  (temp file + `os.replace`), a documented no-op when either input file is missing. Wired into a new
+  shared function `_metadata_hotswap_apply` (the HTTP-POST core factored out of `_run_monitor_hotswap`
+  so BOTH `npdev monitor hotswap` -- used by `Update-AppMetadata.ps1` -- and `npdev dev`'s new fast
+  path get the fix from ONE call site) immediately after a successful REST apply. The served file
+  lives at `npdev-generated/src/main/resources/static/npdev-business-ui/generated-ui-manifest.json`,
+  which `StaticUiResourceConfig`'s `file:` override (REG-109) resolves PER REQUEST with no caching --
+  so patching it on disk is visible to the very next page load, no restart, same as the REST catalogs.
+
+  **Live proof, both gaps, through the ACTUAL named mechanism (`npdev dev`, not a manual assist).**
+  `npdev init` scaffolded a fresh H2Local (physical-DB, so `SuperUserBootstrapper` actually issues a
+  key) sample app (`Patient`/`Appointment` concepts) into a scratch directory, then `npdev dev` was
+  run for real (not simulated) with an isolated `NPDEV_BUILD_ROOT`/`NPDEV_RUNTIMEHOST_LIBS_DIR` (the
+  latter pointed at the real shared `runtimehost-libs`, since this fix touched no kernel/adapter Java
+  and needed no fresh jar). Cycle 1 (no baseline yet) ran the full generate+build+boot path as before
+  -- PID 26812, ready in 233.1s. `AppGen/`-style edit: `Patient.mrn`'s label changed from
+  `"Medical record number"` to `"Medical record number (RUN-24 live proof)"` in the model, saved while
+  `npdev dev` kept watching.
+
+  Cycle 2's real log output (`npdev dev`'s own narration, unedited):
+  ```
+  23:06:28  changed: model.json
+  23:06:28  validate ............................... ok
+  23:07:13  change is METADATA_ONLY -- taking the fast path
+  23:07:13  hotswap ................................ ok
+  23:07:45  served UI manifest patched: Patient.mrn
+  23:07:45  ready in 77.9s   http://localhost:64277
+  ```
+  No `generate`/`build`/`restart` phase appears anywhere in cycle 2 -- the hot-swap branch is what
+  ran, not a faster restart. `.npdev-dev/app.pid` read `26812` before AND after (confirmed three ways:
+  the pid file, `Get-Process -Id 26812` showing the SAME `StartTime` before/after, and
+  `/actuator/health` staying `UP` throughout) -- literally the SAME OS process the whole time.
+
+  HTTP-level, before/after: `GET /npdev-business-ui/generated-ui-manifest.json` (the served static
+  file) read `"Medical record number"` before the edit and `"Medical record number (RUN-24 live
+  proof)"` after, with no restart in between. `GET /api/runtime/metadata/ui/bundle?concept=Patient`
+  (the REST catalog `MetadataHotSwapController` writes) matched.
+
+  **Real browser proof (ScrapForAI/Playwright, headless Chromium), matching RUN-22's own standard.**
+  A routine (goto `/npdev-business-ui/`, fill `#apiKey` with the app's real live key, reload, click
+  the Patient concept's nav link, wait for its grid, `assertTextContains` on the grid's `<thead>`)
+  asserted the header contains `"Medical record number (RUN-24 live proof)"` against the SAME
+  still-running PID 26812 -- PASSED, all 10 steps green, 0 page/console/external errors (the only
+  console entries were the two benign categories `verify-in-browser` documents: `theme.css` 404 --
+  this scaffold has no custom theme -- and `/api/workspace_menus` 404 -- no `workspace::Menu` concept
+  in this minimal model, `BusinessUiEmitter`'s own documented harmless fallback). Screenshot captured.
+  This is the literal fulfillment of R1.7's own roadmap done-when -- "editing a panel label with
+  `npdev dev` running updates the served UI with the same app PID, proven by a browser routine" --
+  through `npdev dev` itself, not a hand-combined workaround the way RUN-22's proof needed.
+
+  **Test coverage added** (`NPDevCli`'s test suite had zero pre-existing coverage of `dev_loop.py` --
+  new file `tests/test_dev_loop.py`): `HotSwapFastPath` (5 tests) proves `run_cycle` takes the
+  hot-swap branch for a METADATA_ONLY change against a running app with NO restart (same `AppProcess`
+  identity, `_generate_phase_captured`/`_build_phase` never called) and falls back to the unchanged
+  restart path on every refusal case (classifier refusal, no key, non-METADATA_ONLY classification,
+  first cycle with no running app); `SuperUserKeyDiscovery` (3 tests) proves the raw-CWD-then-`_ops`
+  key lookup. `tests/test_monitor_hotswap.py` gained `PatchGeneratedUiManifest` (5 tests: patches a
+  changed top-level label, leaves every other field untouched, skips nested/dotted `fieldPath`
+  entries, no-ops cleanly when either input file is missing) and
+  `HotswapUiManifestPatchIntegration` (1 test: a successful `npdev monitor hotswap` call also patches
+  the served manifest end to end). Full `NPDevCli` suite (596 tests, `python -m unittest discover`):
+  all green, no regressions from the `_run_monitor_hotswap` refactor (10 pre-existing hotswap tests
+  unchanged in behavior, verified individually first).
+
+  **R1.7 (the parent roadmap item) is therefore now genuinely fully done per its own literal
+  done-when**, stated here rather than in a dedicated ledger item -- this repo's own convention
+  (matching RUN-22.yml) tracks R1.7's status in prose inside its RUN-* closing items rather than as a
+  separate `ledger/items/R1.7.yml`; no such file exists and none is being added here for
+  consistency with that established pattern (no other roadmap id of the bare `R<n>.<n>` shape is
+  tracked as its own ledger file in this repo).
+
+  **Not attempted, honestly named:** the harder execution-path `CompiledModel` hot-swap remains
+  explicitly out of scope (unchanged from this item's original filing) -- a metadata-only change is
+  still the only kind `npdev dev` can hot-swap; anything schema-shaped still restarts, correctly.
+  `Update-AppMetadata.ps1`'s own PowerShell fast path was NOT changed to call the new
+  `_patch_generated_ui_manifest` logic directly -- it does not need to, since it already shells out to
+  `npdev monitor hotswap` (`_run_monitor_hotswap`), which now carries the fix internally; verified by
+  reading the refactored call chain, not separately re-run live against `Update-AppMetadata.ps1`
+  itself (RUN-22's own session already hit an unrelated concurrent-worktree Gradle lock trying to
+  drive that exact script end-to-end, noted there as out of scope for a metadata-swap item).
 guard:
-  kind: manual
-  ref: NPDevCli/dev_loop.py#run_cycle
+  kind: test
+  ref: >-
+    NPDevCli/tests/test_dev_loop.py#test_metadata_only_change_against_a_running_app_hot_swaps_with_no_restart
+    (gap 1's core proof; sibling methods in the same HotSwapFastPath class cover every fallback edge --
+    refusal, no key, non-METADATA_ONLY, first-cycle-no-app; NPDevCli/tests/test_monitor_hotswap.py's
+    PatchGeneratedUiManifest and HotswapUiManifestPatchIntegration classes cover gap 2's manifest-patch
+    fix directly)
   asserts: >-
-    run_cycle's swap step (`if current: current.stop()` followed by `boot(...)`) executes
-    unconditionally, not gated on `fast` -- confirmed by reading the function, not inferred. A fix
-    closing this item must show `npdev dev` keeping the SAME PID across a METADATA_ONLY label edit
-    AND the served `/npdev-business-ui/` grid reflecting the new label, verified live, the same
-    standard RUN-22 itself was held to.
+    run_cycle's swap step now takes the METADATA_ONLY hot-swap branch (cli._emit_metadata_only_catalogs
+    + cli._metadata_hotswap_apply) BEFORE the unconditional generate+build+restart path whenever `fast`
+    is true and an app is already running, returning the SAME AppProcess object with
+    _generate_phase_captured/_build_phase never called -- and _metadata_hotswap_apply additionally
+    patches generated-ui-manifest.json's matching concepts[].fields[].label from the freshly-emitted
+    fields.manifest.json, so the served business-ui grid (not just the REST metadata catalogs)
+    reflects a METADATA_ONLY edit with no restart either.
   provenRed: true
   provenRedNote: >-
     Not a unit test failure -- a live browser-routine proof (RUN-22, 2026-08-19 session 2) found
     that a direct `npdev monitor hotswap` call alone left the served business-ui grid showing the
     stale label, and reading dev_loop.py confirmed why `npdev dev` itself never even attempts the
-    hot-swap path. Both findings are reproducible: rerun the browser routine against a freshly
-    hot-swapped app without patching generated-ui-manifest.json, and run `npdev dev` twice against a
-    METADATA_ONLY-only edit while watching the app's PID (`_ops/app.pid` before/after).
+    hot-swap path. Both findings were reproducible before this fix: rerunning the browser routine
+    against a freshly hot-swapped app without patching generated-ui-manifest.json showed the stale
+    label, and running `npdev dev` twice against a METADATA_ONLY-only edit showed a NEW PID both
+    times (`_ops/app.pid` before/after).
+  provenGreenNote: >-
+    NPDevCli full suite (596 tests, python -m unittest discover): all green, including 8 new
+    tests/test_dev_loop.py tests and 6 new tests/test_monitor_hotswap.py tests (10 pre-existing
+    hotswap tests unchanged in behavior after the _run_monitor_hotswap refactor). Live proof
+    2026-08-19: a real `npdev dev` session (H2Local scaffold app, PID 26812) took the hot-swap branch
+    on a METADATA_ONLY label edit -- log shows "hotswap" phase directly followed by "served UI
+    manifest patched: Patient.mrn" and "ready in 77.9s", with NO generate/build/restart phase in that
+    cycle. PID 26812 unchanged before/after (pid file + Get-Process StartTime + /actuator/health, all
+    three agreeing). HTTP before/after: both the served generated-ui-manifest.json and the REST UI
+    bundle showed the new label after the swap. A real Playwright browser routine (ScrapForAI
+    harness) against the same live PID asserted the Patient grid's rendered header contains the new
+    label -- PASSED, 10/10 steps, 0 page/console/external errors (only the two documented-benign
+    console entries: theme.css 404, workspace_menus 404 for a model with no Menu concept).

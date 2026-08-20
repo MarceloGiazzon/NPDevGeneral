@@ -30,9 +30,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -256,6 +258,75 @@ def boot(options: DevOptions, jar: Path, cli) -> AppProcess | None:
 
 
 # =====================================================================================
+# RUN-24 gap 1: METADATA_ONLY -> hot swap the ALREADY-RUNNING app instead of restarting it
+# =====================================================================================
+
+def _super_user_key(app_root: Path) -> str | None:
+    """`SuperUserBootstrapper` writes `SUPER_USER_KEY.txt` straight into the booted process's OWN
+    working directory (`Path.of("SUPER_USER_KEY.txt")`, resolved against whatever the process's CWD
+    is) -- `boot()` above launches `java -jar` with `cwd=str(options.output)` directly, never through
+    `Start-App.ps1`, which is the ONLY thing that relocates the file into `_ops/`. So a dev-loop app's
+    key lives at `<options.output>/SUPER_USER_KEY.txt`, checked first; the `_ops/`-relocated location
+    is checked second so this also works if `--output` happens to point at an app someone already
+    started with the AppGen tooling.
+
+    Returns `None` (never raises) when no key file exists -- the ordinary case for the default
+    in-memory dev database: `SuperUserBootstrapper` itself skips issuing any SUPERUSER credential
+    when `npdev.superuser`'s `CredentialRegistryService.issue` has no physical database to persist it
+    in ("no physical database configured"), so an in-memory `npdev dev` session never gets a key at
+    all. That is an existing, documented precondition of R1.7's whole mechanism, not a bug this item
+    introduces -- `_try_hot_swap` below reports it as an ordinary, named fallback reason."""
+    for candidate in (app_root / "SUPER_USER_KEY.txt", app_root / "_ops" / "SUPER_USER_KEY.txt"):
+        try:
+            key = candidate.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if key:
+            return key
+    return None
+
+
+def _try_hot_swap(options: DevOptions, current: AppProcess, out: "Output", cli, deadline: float) -> tuple[bool, str]:
+    """RUN-24 gap 1: METADATA_ONLY's own fast path -- push the change straight into the
+    ALREADY-RUNNING app via `MetadataHotSwapController#apply` (through `cli._metadata_hotswap_apply`,
+    the same core `npdev monitor hotswap` uses) instead of the unconditional stop/generate/build/boot
+    cycle `run_cycle` falls back to below. RUN-24 gap 2 rides along for free: `_metadata_hotswap_apply`
+    also patches `generated-ui-manifest.json` so the SERVED business-ui grid picks up the change, not
+    just the REST metadata catalogs.
+
+    Same safe-fallback-never-silent contract `npdev monitor hotswap`/`Update-AppMetadata.ps1` already
+    follow: ANY refusal -- no key issued (e.g. the default in-memory dev DB never issues one), the
+    classifier not reporting METADATA_ONLY (it is asked fresh here rather than trusting the earlier
+    `fast` flag, which could theoretically go stale if the model changed again mid-cycle), the
+    endpoint missing (an app generated before R1.7), a 409 from the endpoint itself, or any I/O
+    failure -- returns `(False, reason)` and NEVER raises, so the caller can fall back to a full
+    restart exactly as before this item existed."""
+    key = _super_user_key(options.output)
+    if key is None:
+        return False, ("no SUPER_USER_KEY.txt found -- an in-memory dev database never issues one; "
+                        "set database.engine to H2Local in db.definition.json to enable hot swap")
+    root = cli.repo_root()
+    scratch = Path(tempfile.mkdtemp(prefix="npdev-dev-hotswap-"))
+    try:
+        classification, emitted, detail = cli._emit_metadata_only_catalogs(
+            root, options.baseline, options.model, deadline, scratch)
+        if not emitted:
+            return False, detail or f"classifier did not report METADATA_ONLY (got {classification!r})"
+        base_url = f"http://127.0.0.1:{options.port}"
+        remaining = max(1.0, min(15.0, deadline - time.monotonic()))
+        result = cli._metadata_hotswap_apply(
+            base_url, key, "METADATA_ONLY", [], scratch, options.output, remaining)
+        if not result.get("ok"):
+            return False, f"{result.get('code')}: {result.get('message')}"
+        patch = result.get("uiManifestPatch") or {}
+        if patch.get("patched"):
+            out.note(f"served UI manifest patched: {', '.join(patch.get('fieldsChanged') or [])}")
+        return True, "applied"
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+# =====================================================================================
 # One cycle
 # =====================================================================================
 
@@ -297,6 +368,25 @@ def run_cycle(options: DevOptions, current: AppProcess | None, out: "Output", cl
         except Exception:  # noqa: BLE001
             fast = False
     out.classification(fast)
+
+    # --- RUN-24 gap 1: METADATA_ONLY + an app already running -> hot swap, no restart -
+    # Previously `fast` fed only `out.classification()`/`CycleResult.fast` -- the swap below ran
+    # unconditionally regardless of it, so `npdev dev` restarted (new PID) on EVERY save, the exact
+    # opposite of R1.7's own done-when ("... updates the served UI with the same app PID"). Tried
+    # FIRST, before GENERATE/BUILD (which this path skips entirely -- a metadata-only change needs
+    # neither), and before the Windows stop-first special case just below (irrelevant here: a hot
+    # swap never touches the built jar). Any refusal falls through to the unchanged
+    # generate+build+restart path beneath it, with the reason printed, never silent.
+    if fast and current is not None and current.alive():
+        out.phase("hotswap")
+        swapped, swap_detail = _try_hot_swap(options, current, out, cli, deadline)
+        if swapped:
+            out.result("ok")
+            options.state_dir.mkdir(parents=True, exist_ok=True)
+            options.baseline.write_bytes(options.model.read_bytes())
+            return CycleResult(True, "READY", True, time.monotonic() - started), current
+        out.result("skipped")
+        out.note(f"hot swap not applied -- falling back to restart: {swap_detail}")
 
     # --- generate + build ------------------------------------------------------------
     # On POSIX the old app keeps serving through GENERATE and BUILD, and only dies at the
