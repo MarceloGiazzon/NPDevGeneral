@@ -7,12 +7,14 @@ import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.generator.bonds.BondModelSupport;
 import com.npdev.generator.bonds.BondModelSupport.Cardinality;
 import com.npdev.generator.output.GeneratedSourceWriter;
+import com.npdev.generator.packs.LinkedSealedPack;
 import com.npdev.generator.templates.TemplateEngine;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public final class ControllerEmitter extends AbstractEmitter {
 
@@ -21,14 +23,30 @@ public final class ControllerEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model) {
+        emit(model, List.of());
+    }
+
+    /**
+     * BUILD-2 (REST-layer follow-on, ledger item BUILD-2): see {@code ServiceEmitter}'s own overload
+     * doc for what {@code linkedSealedPacks} does -- the controller needs the same resolved
+     * entity package/type name as the service it calls, since both reference the identical entity
+     * type in method signatures (e.g. {@code service.getById(id)}'s return type).
+     */
+    public void emit(CompiledModel model, List<LinkedSealedPack> linkedSealedPacks) {
         Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept entity : model.getConcepts()) {
+
+            Optional<LinkedSealedPack.ConceptLinkage> linkage =
+                    LinkedSealedPack.resolve(entity.getName(), linkedSealedPacks);
 
             Map<String, Object> ctx = new HashMap<>();
             ctx.put("packageName", "com.npdev.generated.controllers");
             ctx.put("entityName", entity.getClassName());
             ctx.put("servicePackage", "com.npdev.generated.services");
-            ctx.put("entityPackage", "com.npdev.generated.entities");
+            ctx.put("entityPackage", linkage.map(LinkedSealedPack.ConceptLinkage::entityPackage)
+                    .orElse("com.npdev.generated.entities"));
+            ctx.put("entityTypeName", linkage.map(LinkedSealedPack.ConceptLinkage::entityTypeName)
+                    .orElse(entity.getClassName()));
             ctx.put("dtoPackage", "com.npdev.generated.dtos");
             ctx.put("referenceFinders", referenceFinders(entity, conceptsByName));
             ctx.put("manyToManyBonds", manyToManyBonds(entity, conceptsByName));
