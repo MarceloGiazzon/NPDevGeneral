@@ -174,7 +174,7 @@ public final class FinalAppAssembler {
     // than a fixed file list, because npdev-workbench/<panel>.html is emitted once per model panel
     // and so cannot be enumerated statically here.
     private static final Set<String> RESERVED_WEB_ASSET_FILES =
-            Set.of("shell.js", "shell.css", "info.html", "info.json", "model-surface.html");
+            Set.of("shell.js", "shell.css", "info.html", "info.json", "model-surface.html", "model-authoring.html");
     private static final Set<String> RESERVED_WEB_ASSET_DIRECTORIES = Set.of("npdev-business-ui", "npdev-workbench");
 
     private static int mountWebAssets(Options options) throws IOException {

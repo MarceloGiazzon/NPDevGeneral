@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{namespace}} -- Local Model Authoring</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; line-height: 1.4; max-width: 1100px; }
+    h1 { margin: 0 0 4px; font-size: 1.4rem; }
+    h2 { font-size: 1.05rem; margin: 28px 0 8px; padding-top: 12px; border-top: 1px solid #8883; }
+    .subtitle { color: #666; margin: 0 0 16px; max-width: 72ch; }
+    .np-warn { border: 1px solid #b58900; background: #b5890022; padding: 8px 12px; border-radius: 6px; max-width: 72ch; }
+    .np-status { margin: 8px 0; min-height: 1.2em; font-size: 0.9rem; }
+    .np-status.np-ok { color: #2a8a3e; }
+    .np-status.np-err { color: #c0392b; }
+    button { font: inherit; padding: 6px 12px; cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: 0.5; }
+    input, select { font: inherit; padding: 4px 8px; }
+    .np-row { display: flex; gap: 8px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
+    .np-field-row input[type="text"] { width: 200px; }
+    #np-field-rows { margin: 8px 0; }
+    label.np-lbl { font-size: 0.85rem; color: #666; margin-right: 4px; }
+    table.np-kv { border-collapse: collapse; margin: 4px 0 4px 14px; }
+    table.np-kv td { padding: 2px 8px; vertical-align: top; border-bottom: 1px solid #8881; }
+    td.np-key { white-space: nowrap; color: #666; width: 1%; font-family: ui-monospace, monospace; }
+    td.np-val { font-family: ui-monospace, monospace; word-break: break-word; }
+    details.np-item { margin: 2px 0 2px 14px; }
+    details.np-item > summary { cursor: pointer; padding: 2px 0; }
+    .np-empty, .np-null { color: #888; font-style: italic; }
+    .np-deferred { color: #666; font-size: 0.85rem; max-width: 72ch; }
+    .np-hidden { display: none !important; }
+    code { font-family: ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+<h1>{{namespace}}</h1>
+<p class="subtitle">
+  A minimal, entirely client-side model-authoring workspace. It reads and writes a
+  <code>model.json</code> in a LOCAL folder you choose via the browser's own file picker -- this
+  app's server is never called, never sees the folder you pick, and never stores or serves back an
+  edited model. It has nothing to do with this app's own running model, shown separately on
+  <a href="model-surface.html">the read-only model surface</a>.
+</p>
+
+<div id="np-unsupported" class="np-warn np-hidden" role="alert">
+  This browser does not support the File System Access API
+  (<code>window.showDirectoryPicker</code>), so local-folder import/export cannot work here. Try a
+  current Chromium-based browser (Chrome, Edge).
+</div>
+
+<h2>1. Import</h2>
+<div class="np-row">
+  <button id="np-import-btn" type="button">Choose folder &amp; import model.json</button>
+</div>
+<p id="np-import-status" class="np-status"></p>
+
+<h2>2. Structure</h2>
+<p id="np-structure-empty" class="np-empty">Nothing imported yet.</p>
+<div id="np-structure"></div>
+
+<h2>3. Add concept</h2>
+<div class="np-row">
+  <label class="np-lbl" for="np-concept-name">Concept name</label>
+  <input id="np-concept-name" type="text" placeholder="e.g. Invoice" autocomplete="off">
+</div>
+<div id="np-field-rows"></div>
+<div class="np-row">
+  <button id="np-add-field-row-btn" type="button">+ Add field</button>
+  <button id="np-add-concept-btn" type="button">Add concept</button>
+</div>
+<p id="np-concept-status" class="np-status"></p>
+<p class="np-deferred">
+  Deferred, not in this slice: starter templates, and every other scaffolding action (add
+  field/flow/panel/invariant/state/transition) -- see <code>ledger/items/EDIT-12.yml</code>. Every
+  new concept gets a standard <code>id</code> field (uuid, required) automatically; add your own
+  fields above it.
+</p>
+
+<h2>4. Export</h2>
+<div class="np-row">
+  <button id="np-export-btn" type="button" disabled>Export to same folder (model.json)</button>
+</div>
+<p id="np-export-status" class="np-status"></p>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---- generic walk, deliberately the SAME shape model-surface.mustache uses for the compiled
+  // model it embeds: one function applied to every value regardless of what part of the model it
+  // came from, so a DSL section this page has never heard of still renders once imported. ----
+  var LABEL_KEYS = ['name', 'title', 'label', 'concept', 'route', 'source', 'ref'];
+
+  function isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function entryLabel(entry, index) {
+    if (isPlainObject(entry)) {
+      for (var i = 0; i < LABEL_KEYS.length; i++) {
+        var candidate = entry[LABEL_KEYS[i]];
+        if (typeof candidate === 'string' && candidate.length > 0) { return candidate; }
+      }
+    }
+    return '#' + (index + 1);
+  }
+
+  function humanize(key) {
+    return String(key)
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/^./, function (c) { return c.toUpperCase(); });
+  }
+
+  function renderAny(value) {
+    if (value === null || value === undefined) {
+      var none = document.createElement('span');
+      none.className = 'np-null';
+      none.textContent = String.fromCharCode(8212);
+      return none;
+    }
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        var emptyList = document.createElement('span');
+        emptyList.className = 'np-empty';
+        emptyList.textContent = '(none declared)';
+        return emptyList;
+      }
+      var list = document.createDocumentFragment();
+      value.forEach(function (entry, index) {
+        var item = document.createElement('details');
+        item.className = 'np-item';
+        item.open = value.length <= 3;
+        var summary = document.createElement('summary');
+        summary.textContent = entryLabel(entry, index);
+        item.appendChild(summary);
+        item.appendChild(renderAny(entry));
+        list.appendChild(item);
+      });
+      return list;
+    }
+    if (isPlainObject(value)) {
+      var keys = Object.keys(value);
+      if (keys.length === 0) {
+        var emptyObj = document.createElement('span');
+        emptyObj.className = 'np-empty';
+        emptyObj.textContent = '(empty)';
+        return emptyObj;
+      }
+      var table = document.createElement('table');
+      table.className = 'np-kv';
+      keys.forEach(function (key) {
+        var row = table.insertRow();
+        var keyCell = row.insertCell();
+        keyCell.className = 'np-key';
+        keyCell.textContent = key;
+        var valCell = row.insertCell();
+        valCell.className = 'np-val';
+        valCell.appendChild(renderAny(value[key]));
+      });
+      return table;
+    }
+    var scalar = document.createElement('span');
+    scalar.textContent = String(value);
+    return scalar;
+  }
+
+  // ---- authoring state: nothing here is sent anywhere. `dirHandle` and `model` live only in this
+  // tab's memory; the only I/O is the File System Access API against the user's own chosen folder. ----
+  var state = { dirHandle: null, model: null };
+  var FIELD_TYPES = ['string', 'int', 'decimal', 'boolean', 'datetime', 'uuid'];
+
+  var importBtn = document.getElementById('np-import-btn');
+  var importStatus = document.getElementById('np-import-status');
+  var structureRoot = document.getElementById('np-structure');
+  var structureEmpty = document.getElementById('np-structure-empty');
+  var conceptNameInput = document.getElementById('np-concept-name');
+  var fieldRowsRoot = document.getElementById('np-field-rows');
+  var addFieldRowBtn = document.getElementById('np-add-field-row-btn');
+  var addConceptBtn = document.getElementById('np-add-concept-btn');
+  var conceptStatus = document.getElementById('np-concept-status');
+  var exportBtn = document.getElementById('np-export-btn');
+  var exportStatus = document.getElementById('np-export-status');
+
+  function setStatus(el, message, isError) {
+    el.textContent = message;
+    el.className = 'np-status ' + (isError ? 'np-err' : (message ? 'np-ok' : ''));
+  }
+
+  function defaultModel() {
+    return { namespace: '', dslVersion: '1.0.0', version: '0.1.0', concepts: [] };
+  }
+
+  function renderStructure() {
+    structureRoot.innerHTML = '';
+    if (!state.model) {
+      structureEmpty.classList.remove('np-hidden');
+      return;
+    }
+    structureEmpty.classList.add('np-hidden');
+    structureRoot.appendChild(renderAny(state.model));
+  }
+
+  function addFieldRow(name, type) {
+    var row = document.createElement('div');
+    row.className = 'np-row np-field-row';
+
+    var nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'field name';
+    nameInput.className = 'np-field-name';
+    nameInput.autocomplete = 'off';
+    if (name) { nameInput.value = name; }
+
+    var typeSelect = document.createElement('select');
+    typeSelect.className = 'np-field-type';
+    FIELD_TYPES.forEach(function (t) {
+      var opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      typeSelect.appendChild(opt);
+    });
+    if (type) { typeSelect.value = type; }
+
+    var removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', function () {
+      row.remove();
+    });
+
+    row.appendChild(nameInput);
+    row.appendChild(typeSelect);
+    row.appendChild(removeBtn);
+    fieldRowsRoot.appendChild(row);
+  }
+
+  function readFieldRows() {
+    var fields = [];
+    Array.prototype.forEach.call(fieldRowsRoot.querySelectorAll('.np-field-row'), function (row) {
+      var name = row.querySelector('.np-field-name').value.trim();
+      var type = row.querySelector('.np-field-type').value;
+      if (name.length > 0) {
+        fields.push({ name: name, type: type });
+      }
+    });
+    return fields;
+  }
+
+  function onAddConcept() {
+    if (!state.model) {
+      setStatus(conceptStatus, 'Import a folder first.', true);
+      return;
+    }
+    var name = conceptNameInput.value.trim();
+    if (name.length === 0) {
+      setStatus(conceptStatus, 'Concept name is required.', true);
+      return;
+    }
+    if (!Array.isArray(state.model.concepts)) {
+      state.model.concepts = [];
+    }
+    var exists = state.model.concepts.some(function (c) {
+      return isPlainObject(c) && typeof c.name === 'string' && c.name.toLowerCase() === name.toLowerCase();
+    });
+    if (exists) {
+      setStatus(conceptStatus, 'A concept named "' + name + '" already exists.', true);
+      return;
+    }
+    var fields = [{ name: 'id', type: 'uuid', id: true, required: true }];
+    readFieldRows().forEach(function (f) {
+      fields.push({ name: f.name, type: f.type });
+    });
+    state.model.concepts.push({ name: name, fields: fields });
+
+    conceptNameInput.value = '';
+    fieldRowsRoot.innerHTML = '';
+    addFieldRow();
+    addFieldRow();
+    setStatus(conceptStatus, 'Added concept "' + name + '" with ' + fields.length + ' field(s). Not saved yet -- use Export below.', false);
+    renderStructure();
+  }
+
+  async function readModelJsonFromDirectory(dirHandle) {
+    try {
+      var fileHandle = await dirHandle.getFileHandle('model.json', { create: false });
+      var file = await fileHandle.getFile();
+      var text = await file.text();
+      var parsed = JSON.parse(text);
+      if (!isPlainObject(parsed)) {
+        throw new Error('model.json did not contain a JSON object at its top level.');
+      }
+      return { model: parsed, existed: true };
+    } catch (err) {
+      if (err && err.name === 'NotFoundError') {
+        return { model: defaultModel(), existed: false };
+      }
+      throw err;
+    }
+  }
+
+  async function doImport() {
+    if (typeof window.showDirectoryPicker !== 'function') {
+      return;
+    }
+    try {
+      var dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      var result = await readModelJsonFromDirectory(dirHandle);
+      state.dirHandle = dirHandle;
+      state.model = result.model;
+      renderStructure();
+      exportBtn.disabled = false;
+      if (result.existed) {
+        var count = Array.isArray(state.model.concepts) ? state.model.concepts.length : 0;
+        setStatus(importStatus, 'Imported model.json from "' + dirHandle.name + '" (' + count + ' concept(s)).', false);
+      } else {
+        setStatus(importStatus, 'No model.json found in "' + dirHandle.name + '" -- starting a new, empty model. Export will create it.', false);
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        return; // user cancelled the picker -- not an error
+      }
+      setStatus(importStatus, 'Import failed: ' + (err && err.message ? err.message : String(err)), true);
+    }
+  }
+
+  async function doExport() {
+    if (!state.dirHandle || !state.model) {
+      setStatus(exportStatus, 'Import a folder first.', true);
+      return;
+    }
+    try {
+      var fileHandle = await state.dirHandle.getFileHandle('model.json', { create: true });
+      var writable = await fileHandle.createWritable();
+      await writable.write(JSON.stringify(state.model, null, 2));
+      await writable.close();
+      setStatus(exportStatus, 'Exported to "' + state.dirHandle.name + '/model.json" at ' + new Date().toLocaleTimeString() + '.', false);
+    } catch (err) {
+      setStatus(exportStatus, 'Export failed: ' + (err && err.message ? err.message : String(err)), true);
+    }
+  }
+
+  importBtn.addEventListener('click', doImport);
+  addFieldRowBtn.addEventListener('click', function () { addFieldRow(); });
+  addConceptBtn.addEventListener('click', onAddConcept);
+  exportBtn.addEventListener('click', doExport);
+
+  if (typeof window.showDirectoryPicker !== 'function') {
+    document.getElementById('np-unsupported').classList.remove('np-hidden');
+    importBtn.disabled = true;
+  }
+
+  addFieldRow();
+  addFieldRow();
+  renderStructure();
+})();
+</script>
+</body>
+</html>
