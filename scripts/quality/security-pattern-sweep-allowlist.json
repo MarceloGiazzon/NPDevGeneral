@@ -3,8 +3,12 @@
     "Triage verdicts for scripts/quality/security-pattern-sweep.py. Each entry means: a human looked at this",
     "exact code and decided it is safe, and here is the reason. The key is a fingerprint of the matched TEXT,",
     "so EDITING that code invalidates the verdict and the hit resurfaces -- which is the point.",
-    "Rationale for each rule id lives in docs/SECURITY_PATTERN_SWEEP_2026-07.md.",
-    "Never clear a hit here without recording why in that document."
+    "Record the WHY in the entry itself. The original per-rule-id rationale doc is now",
+    "docs/archive/SECURITY_PATTERN_SWEEP_2026-07.md, classified historical -- read it for the A*/B*/F*/I*",
+    "rule-id narrative behind older entries, never for current status, and do not add to it: process",
+    "documents are banned from this repo (CLAUDE.md), so a verdict that lives only in prose is a verdict",
+    "that goes stale unnoticed. Newer entries therefore set \"rule\" to the sweep pattern name and carry",
+    "their full reasoning inline in \"why\"."
   ],
   "cleared": {
     "005d6a4b2834": {
@@ -2311,6 +2315,196 @@
       "rule": "sql-string-building",
       "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/xref/ReferenceIndex.java:911",
       "why": "False positive on the literal string \"select.\", which is a JSON PATH SEGMENT, not SQL. XREF-1's ReferenceIndex builds an edge path naming the procedure step key a `$var.field` read came from, and a `select` step's entries are addressed as `steps[n].select.<key>` -- that path is what `npdev migrate rename --cascade` edits, so it has to spell the real model key. There is no database access anywhere in this class: it walks an in-memory ModelAst and emits a JSON report. Renaming the segment to dodge the pattern would make the emitted path wrong, which is why this is triaged rather than reworded. Triaged 2026-08-18, XREF-1."
+    },
+    "c529595ddbd8": {
+      "rule": "false-positive",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FieldValueValidation.java:156",
+      "why": "Not SQL. This is a validator DIAGNOSTIC MESSAGE whose English text contains the word 'drop' (\"or drop 'requiredField' from that schema's required[]\"). FieldValueValidation is a compile-time AST check with no JDBC, no DataSource and no SQL anywhere in the class. Rewording the message to dodge the regex would make the guidance worse, so this is triaged rather than reworded. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "07f5821b1f1a": {
+      "rule": "false-positive",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java:331",
+      "why": "Not SQL. Same shape as FieldValueValidation:156 -- a compile-time validator's suggestedFix prose (\"drop the join into <concept> from this query's where\") containing the English word 'drop'. PackValidation walks an in-memory ModelAst; it has no database access of any kind. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "16c01ca0297b": {
+      "rule": "false-positive",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java:538",
+      "why": "Not SQL. Same shape as FieldValueValidation:156 -- a compile-time validator's suggestedFix prose (\"drop the join into <concept> from this query's groupBy\") containing the English word 'drop'. PackValidation walks an in-memory ModelAst; it has no database access of any kind. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "2836a0ac2799": {
+      "rule": "false-positive",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:1120",
+      "why": "Not SQL and not a read. These are the emitted PowerShell bodies for the _ops toolbox (Start-App / Run-FinalApp / Stop-App / the scheduled-task registrar). The sweep's case-insensitive SQL_VERB regex matches the 'Select' in PowerShell's Select-Object / Where-Object cmdlets. There is no query, no connection and no tenant concept in emitted shell text. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "31722e4494aa": {
+      "rule": "false-positive",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:1240",
+      "why": "Not SQL and not a read. These are the emitted PowerShell bodies for the _ops toolbox (Start-App / Run-FinalApp / Stop-App / the scheduled-task registrar). The sweep's case-insensitive SQL_VERB regex matches the 'Select' in PowerShell's Select-Object / Where-Object cmdlets. There is no query, no connection and no tenant concept in emitted shell text. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "2ef856160e29": {
+      "rule": "false-positive",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:1287",
+      "why": "Not SQL and not a read. These are the emitted PowerShell bodies for the _ops toolbox (Start-App / Run-FinalApp / Stop-App / the scheduled-task registrar). The sweep's case-insensitive SQL_VERB regex matches the 'Select' in PowerShell's Select-Object / Where-Object cmdlets. There is no query, no connection and no tenant concept in emitted shell text. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "91f949450996": {
+      "rule": "false-positive",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:1538",
+      "why": "Not SQL and not a read. These are the emitted PowerShell bodies for the _ops toolbox (Start-App / Run-FinalApp / Stop-App / the scheduled-task registrar). The sweep's case-insensitive SQL_VERB regex matches the 'Select' in PowerShell's Select-Object / Where-Object cmdlets. There is no query, no connection and no tenant concept in emitted shell text. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "a8b9caa45f4c": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:475",
+      "why": "Tenant-independent BY CONSTRUCTION: this SELECT reads no table. It is the engine's session-scoped ADVISORY LOCK primitive (GET_LOCK) wrapped in a SELECT purely because that is how each engine exposes the call's return value. There is no row set, so there is nothing a tenant predicate could scope. It backs the cross-instance migration/boot mutex, which is per-DATABASE and must span all tenants -- scoping it per tenant would defeat the exclusion it exists to provide. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "6d47054d6a70": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:480",
+      "why": "Tenant-independent BY CONSTRUCTION: this SELECT reads no table. It is the engine's session-scoped ADVISORY LOCK primitive (RELEASE_LOCK) wrapped in a SELECT purely because that is how each engine exposes the call's return value. There is no row set, so there is nothing a tenant predicate could scope. It backs the cross-instance migration/boot mutex, which is per-DATABASE and must span all tenants -- scoping it per tenant would defeat the exclusion it exists to provide. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "59b891dd85e2": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java:347",
+      "why": "Tenant-independent BY CONSTRUCTION: this SELECT reads no table. It is the engine's session-scoped ADVISORY LOCK primitive (pg_try_advisory_lock) wrapped in a SELECT purely because that is how each engine exposes the call's return value. There is no row set, so there is nothing a tenant predicate could scope. It backs the cross-instance migration/boot mutex, which is per-DATABASE and must span all tenants -- scoping it per tenant would defeat the exclusion it exists to provide. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "7bb58098a75b": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java:352",
+      "why": "Tenant-independent BY CONSTRUCTION: this SELECT reads no table. It is the engine's session-scoped ADVISORY LOCK primitive (pg_advisory_unlock) wrapped in a SELECT purely because that is how each engine exposes the call's return value. There is no row set, so there is nothing a tenant predicate could scope. It backs the cross-instance migration/boot mutex, which is per-DATABASE and must span all tenants -- scoping it per tenant would defeat the exclusion it exists to provide. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "9e4b747a216e": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:619",
+      "why": "Tenant-independent BY CONSTRUCTION: this SELECT reads no table. It is the engine's session-scoped ADVISORY LOCK primitive (sp_getapplock) wrapped in a SELECT purely because that is how each engine exposes the call's return value. There is no row set, so there is nothing a tenant predicate could scope. It backs the cross-instance migration/boot mutex, which is per-DATABASE and must span all tenants -- scoping it per tenant would defeat the exclusion it exists to provide. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "6c65fc92ca9d": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:626",
+      "why": "Tenant-independent BY CONSTRUCTION: this SELECT reads no table. It is the engine's session-scoped ADVISORY LOCK primitive (sp_releaseapplock) wrapped in a SELECT purely because that is how each engine exposes the call's return value. There is no row set, so there is nothing a tenant predicate could scope. It backs the cross-instance migration/boot mutex, which is per-DATABASE and must span all tenants -- scoping it per tenant would defeat the exclusion it exists to provide. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "5c3dd99975cf": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:309; NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java:293",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "b6003aed3caa": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:319; NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:456; NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java:303",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "0242d861e0f8": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:428",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "47321fbcd807": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:431",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "da8a3123f677": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:431",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "37109ec97021": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:564",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "f480a43ce887": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:593",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "8190055dc038": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:343",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "1281f2a67c06": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:614",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "0ccc4400a893": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:631",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "cda17ae4b3d5": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:665",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "32fa9cc38f5e": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:675",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "04de065b10dc": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:754",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "e5938c29200b": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:759",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "b5dbedcef317": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1922",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "46d2a7718810": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/adapters/webhook-http/src/main/java/com/npdev/adapters/webhook/http/WebhookDeliveryRecordStore.java:54",
+      "why": "Safe: a fixed CREATE TABLE for the adapter's own private delivery-record table. Every interpolated value is a COLUMN TYPE returned by the SqlDialect (keyableTextColumnType / portableColumnType / jsonColumnType) -- dialect-chosen constants, not data, and not bindable as JDBC parameters in DDL. The table name is a compile-time constant in this class. No caller input reaches this statement. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "efe76f33facf": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:317",
+      "why": "Safe: the tenant predicate IS present -- the regex just cannot see it, because it is appended to a dynamically built whereClauses list several lines above rather than sitting in the concatenated literal. existsUnique() adds \"tenant_id = ?\" at line 287 and query() adds baseAlias + \".tenant_id = ?\" at line 402, both with tenantId bound as a real JDBC parameter. All identifiers are quoted through sqlId(); every VALUE in the predicate is bound via bindParams(), never interpolated. Reported as new only because this class MOVED into runtimehost-core in this branch's split. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "2f73a3c8e89d": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:427",
+      "why": "Safe: the tenant predicate IS present -- the regex just cannot see it, because it is appended to a dynamically built whereClauses list several lines above rather than sitting in the concatenated literal. existsUnique() adds \"tenant_id = ?\" at line 287 and query() adds baseAlias + \".tenant_id = ?\" at line 402, both with tenantId bound as a real JDBC parameter. All identifiers are quoted through sqlId(); every VALUE in the predicate is bound via bindParams(), never interpolated. Reported as new only because this class MOVED into runtimehost-core in this branch's split. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "fa14d9c47683": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:436",
+      "why": "Safe: the tenant predicate IS present -- the regex just cannot see it, because it is appended to a dynamically built whereClauses list several lines above rather than sitting in the concatenated literal. existsUnique() adds \"tenant_id = ?\" at line 287 and query() adds baseAlias + \".tenant_id = ?\" at line 402, both with tenantId bound as a real JDBC parameter. All identifiers are quoted through sqlId(); every VALUE in the predicate is bound via bindParams(), never interpolated. Reported as new only because this class MOVED into runtimehost-core in this branch's split. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "93f3b48a6032": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:436",
+      "why": "Safe: the tenant predicate IS present -- the regex just cannot see it, because it is appended to a dynamically built whereClauses list several lines above rather than sitting in the concatenated literal. existsUnique() adds \"tenant_id = ?\" at line 287 and query() adds baseAlias + \".tenant_id = ?\" at line 402, both with tenantId bound as a real JDBC parameter. All identifiers are quoted through sqlId(); every VALUE in the predicate is bound via bindParams(), never interpolated. Reported as new only because this class MOVED into runtimehost-core in this branch's split. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "68882326294f": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/MigrationClaimStore.java:222",
+      "why": "Tenant-independent BY DESIGN, and tenant-scoping it would be the bug. The migration claim table is the per-DATABASE boot mutex holding exactly ONE canonical row (WHERE claim_key = ?, a compile-time constant): it records which instance is running schema migrations for the whole database. Schema migration is not a per-tenant operation -- adding a tenant predicate would let two instances migrate the same schema concurrently, which is precisely what REG-91 was. Same reasoning already cleared for CronFireClaimStore. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "a8a3075d001f": {
+      "rule": "swallowed-security-exception",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/api/WebhookInboundController.java:267; NPDevKernel/adapters/messaging-http/src/main/java/com/npdev/adapters/messaging/http/HttpMessagingCapabilityAdapter.java:622",
+      "why": "Safe -- this is fail-CLOSED, the opposite of REG-39's shape. The catch is on HexFormat.of().parseHex(presented) inside verifySignature(): the ONLY way it throws is that the attacker-supplied signature header is not valid hex. A signature that cannot even be parsed IS an invalid signature, so returning false is the correct verdict, not an infrastructure fault misreported as one. Logging it would be an unauthenticated-caller-controlled log write. Both sites are the same idiom and share this fingerprint by design; both were read. Note the deliberate MessageDigest.isEqual constant-time compare immediately after, which is the real security-relevant decision in these methods. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "f515d5658fbc": {
+      "rule": "swallowed-security-exception",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/api/DocumentRenderController.java:277",
+      "why": "Safe: not a security verdict. resolveLogoDataUri() returns the document's LOGO as a data URI; the catch is on fileStore.head() for a handle that no longer resolves, and returning null means 'render this document without a logo' -- the method's javadoc states that degrade-rather-than-fail intent explicitly. The null is consumed as an optional presentation asset, never as an authorization answer, and the caller has already passed every access check before the render begins. No permission decision derives from it. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "78f0d6cee88f": {
+      "rule": "unbounded-caller-input",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/scheduler/CronFireClaimStore.java:131",
+      "why": "Safe: no asymmetry, and not caller-reachable. The checker's own guidance is to look for a value bound WITHOUT a bound while its pair HAS one -- here flowName (param 1) and tenantId (param 2) are treated identically, so the asymmetry that made REG-36 a bug is absent. Both are bound as real JDBC parameters on a PreparedStatement, so length is enforced by the column definition, not by string handling. Neither value comes from a request: ensureRowExists() is called only by the in-process cron scheduler, with the flow name from the compiled model and the tenant id from the schedule's own registration. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "f7010af151a9": {
+      "rule": "conditional-guard-no-else",
+      "where": "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache:459",
+      "why": "Safe: there is no unguarded arm because there is no other arm. The checkCrudPermission call sits inside restore(), and the ENTIRE restore() method -- javadoc, signature, body and all -- is wrapped in the same {{#softDelete}} section. When softDelete is falsey the method is not emitted at all, so no generated code path reaches a restore without the check. This is the inverse of LNCH13-F1, where a guard was emitted in one arm of a conditional whose OTHER arm still emitted the operation. Both delete arms ({{#softDelete}} SOFT_DELETE and {{^softDelete}} DELETE) are likewise fully symmetric a few lines above. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
     }
   }
 }
