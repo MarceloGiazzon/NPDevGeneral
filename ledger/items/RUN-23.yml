@@ -1,4 +1,4 @@
-id: RUN-22
+id: RUN-23
 title: >-
   Effective-dated values -- concept.temporal + an asOf query param resolve which row of a
   multi-row concept (price lists, tax rates, assignments) is effective on a given date
