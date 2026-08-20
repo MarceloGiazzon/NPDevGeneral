@@ -1,0 +1,4 @@
+{
+  "database": { "engine": "H2Local", "databaseName": "npdev_temporal_pricing_r58", "username": "sa", "password": "", "createInternalTables": true, "createBusinessTables": true },
+  "schemaLifecycle": { "strategy": "KeepExistingIfCompatible", "allowDestructiveRecreate": false, "destructiveRecreateConfirmation": "", "scope": "NpdevOwnedTablesOnly" }
+}

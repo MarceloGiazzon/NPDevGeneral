@@ -226,6 +226,16 @@ def _has_concept_soft_delete(model: dict) -> bool:
     )
 
 
+def _has_concept_temporal(model: dict) -> bool:
+    """R5.8 (Roadmap Collection 2026-08-18): a concept declaring temporal: true -- effective-dated
+    rows resolved by an as-of date against validFrom/validTo, instead of one current value per
+    logical entity."""
+    return any(
+        isinstance(c, dict) and c.get("temporal") is True
+        for c in (model.get("concepts", None) or [])
+    )
+
+
 def _has_composite_index(model: dict) -> bool:
     for concept in (model.get("concepts", None) or []):
         if not isinstance(concept, dict):
