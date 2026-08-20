@@ -3,8 +3,13 @@ title: >-
   No ledger status can express not-doing; no DONE claim is falsifiable
 type: PROCESS
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-20
+decision: >-
+  Remaining R11 scope (gate-manifest.json, gaps.yml v2) deferred to post-roadmap-backlog -- the
+  legacy gaps.yml format has all entries DONE/CLOSED, and a gate manifest needs a design pass on
+  what gates to track before any implementation.
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F6, ROADMAP.md card R11). A DONE claim in the
   ledger is a sentence, not a proof -- nothing forces it to name the test or script that verifies it.
@@ -38,6 +43,9 @@ resolution: |
   not just WONTFIX/OBSOLETE. generate_open_items.py validates its type (must be a string) and renders
   it in the output. The ledger README documents it as optional for non-WONTFIX/OBSOLETE statuses to
   record deliberate deferral or scope decisions. Still required for WONTFIX/OBSOLETE (unchanged).
-  Remaining R11 scope: (a) derived gate numbers from a gate-manifest.json (the manifest itself does
-  not exist yet -- needs a design pass on what gates to track), (b) gaps.yml v2 (the legacy
-  priorityIndex/fixedEngineBugs format has all entries DONE/CLOSED, so a v2 redesign is low-urgency).
+
+  2026-08-20 (closed): the item's core title ("no ledger status can express not-doing") is now fully
+  addressed -- the `decision:` field lets any item record deliberate deferral, and the guard schema
+  enforces falsifiable DONE claims. Remaining R11 scope (gate-manifest.json for derived gate numbers,
+  gaps.yml v2 redesign) is post-roadmap-backlog: the legacy gaps.yml has all entries DONE/CLOSED,
+  and a gate manifest needs a design pass on what gates to track before any implementation.
