@@ -64,6 +64,51 @@ class ModelAuthoringEmitterTest {
         // Both starter templates it offered, by their own names.
         assertTrue(html.contains("Business Record Starter"), "Expected the Business Record starter:\n" + html);
         assertTrue(html.contains("Approval Workflow Starter"), "Expected the Approval Workflow starter:\n" + html);
+
+        // Editing what exists, not only adding -- the third criterion EDIT-12's guard names.
+        for (String action : List.of("Rename concept", "Rename field", "Change field type",
+                "Remove field", "Remove state", "Delete concept")) {
+            assertTrue(html.contains(action), "Expected editing action \"" + action + "\":\n" + html);
+        }
+    }
+
+    /**
+     * A rename that does not record {@code renamedFrom} is not a rename -- a regeneration classifies
+     * it as an unrelated drop-and-create and the table's (or column's) data is destroyed. These pin
+     * the three decisions that make the stamp correct rather than merely present.
+     */
+    @Test
+    void renamesRecordRenamedFromOnlyWhenThereIsSomethingOnDiskToRename() throws Exception {
+        Path generated = temp.resolve("generated5");
+        new ModelAuthoringEmitter(new TemplateEngine("npdev-templates/"),
+                new GeneratedSourceWriter(generated, new RegenerationPolicy())).emit(compile(writeSimpleModel()));
+        String html = Files.readString(generated.resolve("src/main/resources/static/model-authoring.html"));
+
+        // (1) The stamp is gated on the model AS IMPORTED: something created in this session has no
+        // table or column on disk, so stamping it would name something that never existed.
+        assertTrue(html.contains("function snapshotOnDisk"),
+                "Expected the imported model to be snapshotted so renames can tell what is on disk:\n" + html);
+        assertTrue(html.contains("function stampRenamedFrom"),
+                "Expected one helper to own the renamedFrom decision:\n" + html);
+        assertTrue(html.contains("if (!existedOnDisk) { return false; }"),
+                "A concept/field created in this session must NOT be stamped:\n" + html);
+
+        // (2) Across A -> B -> C the stamp must keep naming A, the name that is actually on disk.
+        assertTrue(html.contains("if (!entry.renamedFrom) { entry.renamedFrom = previousName; }"),
+                "A repeated rename must not overwrite the original on-disk name:\n" + html);
+
+        // (3) A field's snapshot is keyed by its concept's ON-DISK name, so renaming the concept
+        // first does not silently lose the field-level stamp (found by driving a real browser).
+        assertTrue(html.contains("(concept.renamedFrom || concept.name).toLowerCase()"),
+                "A field's on-disk lookup must use its concept's on-disk name:\n" + html);
+
+        // References are repointed by a generic walk, not a hand-listed set of places.
+        assertTrue(html.contains("function repointConceptReferences") && html.contains("CONCEPT_REFERENCE_KEYS"),
+                "Expected a generic reference repoint rather than named sections:\n" + html);
+
+        // Free-text expressions are reported, never rewritten.
+        assertTrue(html.contains("function expressionsMentioning"),
+                "Expected affected expressions to be reported rather than silently rewritten:\n" + html);
     }
 
     /**

@@ -34,9 +34,22 @@ import java.util.Map;
  * one to a populated model cannot destroy it. The templates are built from the very same helpers
  * the manual actions use, so a template cannot produce a shape the actions could not.
  *
- * <p>Still deferred: editing or deleting what already exists (rename a concept, change a field's
- * type, remove a state), reference-typed and enum fields in the add-field forms, and multi-step
- * flow authoring -- see the ledger item for the standing list.
+ * <p><b>Editing what exists, not only adding.</b> Rename/delete a concept, rename/retype/remove a
+ * field, and remove a lifecycle state. Renaming is the dangerous one and is treated as such: a
+ * concept or field that was present in the model AS IMPORTED gets a {@code renamedFrom} stamp, so a
+ * regeneration's schema-lifecycle classifies it as a RENAME rather than an unrelated drop-and-create
+ * that would destroy the table's or column's data -- while one created during the session is
+ * deliberately NOT stamped, because there is nothing on disk to rename. Across repeated renames the
+ * stamp keeps naming the original on-disk name, and a field's stamp is looked up by its concept's
+ * on-disk name so renaming the concept first does not silently lose it. Every reference to a renamed
+ * concept is repointed in the same step by a generic walk over every string under a
+ * concept-naming key, so a DSL section this page has never heard of is still updated. Deletes and
+ * removals are refused, naming the blocker, when something still points at the target, when it is
+ * the concept's id field, or when it backs a lifecycle. Free-text expressions that mention a renamed
+ * field are reported, never silently rewritten.
+ *
+ * <p>Still deferred: reference-typed and enum fields in the add-field forms, multi-step flow
+ * authoring, and editing a flow's or panel's internals once created -- see the ledger item.
  *
  * <p><b>Same shape as {@link ModelSurfaceEmitter}, on purpose.</b> The structural view reuses that
  * emitter's generic walk (array of objects -> collapsible entries, object -> key/value table,

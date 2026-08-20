@@ -198,13 +198,100 @@
 </details>
 
 <p id="np-action-status" class="np-status"></p>
+
+<h2>5. Edit what exists</h2>
+
+<details class="np-action">
+  <summary>Rename concept</summary>
+  <div class="np-row">
+    <select id="np-rename-concept" class="np-concept-select"></select>
+    <label class="np-lbl" for="np-rename-concept-to">new name</label>
+    <input id="np-rename-concept-to" type="text" placeholder="e.g. SalesInvoice" autocomplete="off">
+    <button id="np-rename-concept-btn" type="button">Rename concept</button>
+  </div>
+  <p class="np-hint">
+    Records <code>renamedFrom</code> so a regeneration classifies the table as a RENAME rather than
+    an unrelated drop-and-create -- without it the rename destroys the table's data. Every reference
+    to the old name elsewhere in the model is repointed in the same step, and the original on-disk
+    name is preserved across repeated renames.
+  </p>
+</details>
+
+<details class="np-action">
+  <summary>Rename field</summary>
+  <div class="np-row">
+    <select id="np-rename-field-concept" class="np-concept-select"></select>
+    <select id="np-rename-field-name"></select>
+    <label class="np-lbl" for="np-rename-field-to">new name</label>
+    <input id="np-rename-field-to" type="text" placeholder="e.g. netAmount" autocomplete="off">
+    <button id="np-rename-field-btn" type="button">Rename field</button>
+  </div>
+  <p class="np-hint">
+    Same <code>renamedFrom</code> treatment, at column level. Expressions that mention the old field
+    name (invariants, guards) are NOT rewritten -- they are free text this page will not parse, so it
+    reports which ones look affected instead of silently editing them.
+  </p>
+</details>
+
+<details class="np-action">
+  <summary>Change field type</summary>
+  <div class="np-row">
+    <select id="np-retype-concept" class="np-concept-select"></select>
+    <select id="np-retype-field"></select>
+    <label class="np-lbl" for="np-retype-to">new type</label>
+    <select id="np-retype-to"></select>
+    <button id="np-retype-btn" type="button">Change field type</button>
+  </div>
+</details>
+
+<details class="np-action">
+  <summary>Remove field</summary>
+  <div class="np-row">
+    <select id="np-remove-field-concept" class="np-concept-select"></select>
+    <select id="np-remove-field-name"></select>
+    <button id="np-remove-field-btn" type="button">Remove field</button>
+  </div>
+  <p class="np-hint">
+    Refuses to remove the concept's <code>id</code> field or the field its lifecycle's
+    <code>statusField</code> points at -- either would leave a model that cannot compile.
+  </p>
+</details>
+
+<details class="np-action">
+  <summary>Remove state</summary>
+  <div class="np-row">
+    <select id="np-remove-state-concept" class="np-concept-select"></select>
+    <select id="np-remove-state-value"></select>
+    <button id="np-remove-state-btn" type="button">Remove state</button>
+  </div>
+  <p class="np-hint">
+    Also drops every transition into or out of that state and rebuilds the status enum, so the
+    lifecycle cannot be left naming a value it no longer declares. If that empties the states or the
+    transitions, the whole lifecycle goes with it -- neither is representable, so the alternative
+    would be a <code>model.json</code> that will not parse.
+  </p>
+</details>
+
+<details class="np-action">
+  <summary>Delete concept</summary>
+  <div class="np-row">
+    <select id="np-delete-concept" class="np-concept-select"></select>
+    <button id="np-delete-concept-btn" type="button">Delete concept</button>
+  </div>
+  <p class="np-hint">
+    Refused while anything else in the model still points at it, naming each referencing path --
+    deleting it anyway would leave dangling references the generator rejects.
+  </p>
+</details>
+
+<p id="np-edit-status" class="np-status"></p>
 <p class="np-deferred">
-  Still deferred, not in this slice: editing or deleting what already exists (rename a concept,
-  change a field's type, remove a state), reference-typed and enum fields in the Add-field forms,
-  and multi-step flow authoring. See <code>ledger/items/EDIT-12.yml</code>.
+  Still deferred, not in this slice: reference-typed and enum fields in the Add-field forms,
+  multi-step flow authoring, and editing a flow's or panel's internals once created. See
+  <code>ledger/items/EDIT-12.yml</code>.
 </p>
 
-<h2>5. Export</h2>
+<h2>6. Export</h2>
 <div class="np-row">
   <button id="np-export-btn" type="button" disabled>Export to same folder (model.json)</button>
 </div>
@@ -288,7 +375,9 @@
 
   // ---- authoring state: nothing here is sent anywhere. `dirHandle` and `model` live only in this
   // tab's memory; the only I/O is the File System Access API against the user's own chosen folder. ----
-  var state = { dirHandle: null, model: null };
+  // onDiskConcepts/onDiskFields snapshot the model AS IMPORTED. `renamedFrom` must name what is
+  // actually on disk, so anything created after the import must NOT be stamped with one.
+  var state = { dirHandle: null, model: null, onDiskConcepts: [], onDiskFields: {} };
   var FIELD_TYPES = ['string', 'int', 'decimal', 'boolean', 'datetime', 'date', 'uuid'];
 
   var el = function (id) { return document.getElementById(id); };
@@ -303,6 +392,7 @@
   var conceptNameInput = el('np-concept-name');
   var fieldRowsRoot = el('np-field-rows');
   var actionStatus = el('np-action-status');
+  var editStatus = el('np-edit-status');
   var exportBtn = el('np-export-btn');
   var exportStatus = el('np-export-status');
 
@@ -334,6 +424,20 @@
       if (sameName(list[i], name)) { return list[i]; }
     }
     return null;
+  }
+
+  function snapshotOnDisk() {
+    state.onDiskConcepts = [];
+    state.onDiskFields = {};
+    if (!state.model || !Array.isArray(state.model.concepts)) { return; }
+    state.model.concepts.forEach(function (c) {
+      if (!isPlainObject(c) || typeof c.name !== 'string') { return; }
+      var key = c.name.toLowerCase();
+      state.onDiskConcepts.push(key);
+      state.onDiskFields[key] = (Array.isArray(c.fields) ? c.fields : [])
+        .filter(function (f) { return isPlainObject(f) && typeof f.name === 'string'; })
+        .map(function (f) { return f.name.toLowerCase(); });
+    });
   }
 
   function conceptNames() {
@@ -584,6 +688,7 @@
   function afterModelChange() {
     renderStructure();
     refreshConceptSelects();
+    refreshEditPickers();
   }
 
   // ---- Add concept ----
@@ -842,6 +947,290 @@
     );
   }
 
+  // ---- editing what exists ----------------------------------------------------------------
+  // Renaming and deleting are where an authoring tool does real damage, so both go through one
+  // generic walk rather than a hand-listed set of places that might mention a concept. The walk
+  // visits EVERY string in the document and acts on the ones sitting under a key that means "this
+  // names a concept" -- the same "enumerated, not named" property the structure view has, so a DSL
+  // section this page has never heard of still gets its references repointed.
+  var CONCEPT_REFERENCE_KEYS = ['concept', 'scope', 'reference', 'ref', 'targetConcept', 'parentConcept'];
+
+  function walkStrings(node, path, visit) {
+    if (Array.isArray(node)) {
+      node.forEach(function (entry, index) { walkStrings(entry, path + '[' + index + ']', visit); });
+      return;
+    }
+    if (!isPlainObject(node)) { return; }
+    Object.keys(node).forEach(function (key) {
+      var value = node[key];
+      if (typeof value === 'string') {
+        visit(node, key, value, path + '.' + key);
+      } else {
+        walkStrings(value, path + '.' + key, visit);
+      }
+    });
+  }
+
+  function conceptReferencePaths(conceptName) {
+    var hits = [];
+    walkStrings(state.model, '$', function (owner, key, value, path) {
+      if (CONCEPT_REFERENCE_KEYS.indexOf(key) >= 0 && value.toLowerCase() === conceptName.toLowerCase()) {
+        hits.push(path);
+      }
+    });
+    return hits;
+  }
+
+  function repointConceptReferences(fromName, toName) {
+    var changed = 0;
+    walkStrings(state.model, '$', function (owner, key, value) {
+      if (CONCEPT_REFERENCE_KEYS.indexOf(key) >= 0 && value.toLowerCase() === fromName.toLowerCase()) {
+        owner[key] = toName;
+        changed++;
+      }
+    });
+    return changed;
+  }
+
+  // Expressions are free text this page will not parse; reporting which ones mention a renamed name
+  // is honest, silently rewriting them is not.
+  var EXPRESSION_KEYS = ['expr', 'expression', 'guard', 'condition', 'derivedExpression', 'defaultExpression'];
+
+  function expressionsMentioning(name) {
+    var hits = [];
+    var word = new RegExp('\\b' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+    walkStrings(state.model, '$', function (owner, key, value, path) {
+      if (EXPRESSION_KEYS.indexOf(key) >= 0 && word.test(value)) { hits.push(path); }
+    });
+    return hits;
+  }
+
+  // `renamedFrom` must name what is ON DISK, so: only stamp it for a concept/field that was present
+  // in the model as imported (one created in this session has no table to rename), and never
+  // overwrite an existing value -- across A -> B -> C the answer stays A.
+  function stampRenamedFrom(entry, previousName, existedOnDisk) {
+    if (!existedOnDisk) { return false; }
+    if (!entry.renamedFrom) { entry.renamedFrom = previousName; }
+    return true;
+  }
+
+  function runEdit(describe, mutate) {
+    if (!state.model) {
+      setStatus(editStatus, 'Import a folder first.', true);
+      return;
+    }
+    var problem = mutate();
+    if (problem) {
+      setStatus(editStatus, problem, true);
+      return;
+    }
+    setStatus(editStatus, describe() + ' Not saved yet -- use Export below.', false);
+    afterModelChange();
+  }
+
+  function onRenameConcept() {
+    var oldName = el('np-rename-concept').value;
+    var newName = el('np-rename-concept-to').value.trim();
+    var note = '';
+    runEdit(
+      function () { return 'Renamed concept "' + oldName + '" to "' + newName + '".' + note; },
+      function () {
+        var concept = selectedConcept('np-rename-concept');
+        if (!concept) { return 'Choose a concept first.'; }
+        if (newName.length === 0) { return 'A new name is required.'; }
+        if (newName.toLowerCase() === oldName.toLowerCase()) { return 'That is already its name.'; }
+        if (findByName(state.model.concepts, newName)) {
+          return 'A concept named "' + newName + '" already exists.';
+        }
+        var stamped = stampRenamedFrom(concept, concept.name, state.onDiskConcepts.indexOf(concept.name.toLowerCase()) >= 0);
+        var repointed = repointConceptReferences(concept.name, newName);
+        concept.name = newName;
+        if (isPlainObject(concept.ui) && concept.ui.label === humanize(oldName)) {
+          concept.ui.label = humanize(newName);
+        }
+        note = ' Repointed ' + repointed + ' reference(s)';
+        note += stamped
+          ? ', and recorded renamedFrom "' + concept.renamedFrom + '" so the table is renamed, not dropped.'
+          : '; no renamedFrom recorded -- this concept was created in this session, so there is no table on disk to rename.';
+        el('np-rename-concept-to').value = '';
+        return null;
+      }
+    );
+  }
+
+  function onRenameField() {
+    var conceptName = el('np-rename-field-concept').value;
+    var oldName = el('np-rename-field-name').value;
+    var newName = el('np-rename-field-to').value.trim();
+    var note = '';
+    runEdit(
+      function () { return 'Renamed field "' + oldName + '" to "' + newName + '" on "' + conceptName + '".' + note; },
+      function () {
+        var concept = selectedConcept('np-rename-field-concept');
+        if (!concept) { return 'Choose a concept first.'; }
+        var field = findByName(concept.fields, oldName);
+        if (!field) { return 'Choose a field first.'; }
+        if (newName.length === 0) { return 'A new name is required.'; }
+        if (newName.toLowerCase() === oldName.toLowerCase()) { return 'That is already its name.'; }
+        if (findByName(concept.fields, newName)) {
+          return 'Concept "' + concept.name + '" already has a field named "' + newName + '".';
+        }
+        var affected = expressionsMentioning(oldName);
+        // Look the concept up by the name it has ON DISK, not its current one: after the concept
+        // itself is renamed, `renamedFrom` holds the imported name and the snapshot is keyed by it.
+        // Keying by the current name instead silently loses the field-level renamedFrom -- which
+        // turns a column rename back into a drop-and-add, the exact data loss this stamp prevents.
+        var diskConceptKey = (concept.renamedFrom || concept.name).toLowerCase();
+        var onDisk = (state.onDiskFields[diskConceptKey] || []).indexOf(oldName.toLowerCase()) >= 0;
+        var stamped = stampRenamedFrom(field, field.name, onDisk);
+        field.name = newName;
+        if (isPlainObject(field.ui) && field.ui.label === humanize(oldName)) {
+          field.ui.label = humanize(newName);
+        }
+        if (isPlainObject(concept.lifecycle) && concept.lifecycle.statusField === oldName) {
+          concept.lifecycle.statusField = newName;
+        }
+        note = stamped
+          ? ' Recorded renamedFrom "' + field.renamedFrom + '" so the column is renamed, not dropped and re-added.'
+          : ' No renamedFrom recorded -- this field was added in this session, so there is no column on disk to rename.';
+        if (affected.length > 0) {
+          note += ' NOT rewritten, check by hand: ' + affected.length
+            + ' expression(s) mention "' + oldName + '" (' + affected.join(', ') + ').';
+        }
+        el('np-rename-field-to').value = '';
+        return null;
+      }
+    );
+  }
+
+  function onChangeFieldType() {
+    var conceptName = el('np-retype-concept').value;
+    var fieldName = el('np-retype-field').value;
+    var newType = el('np-retype-to').value;
+    runEdit(
+      function () { return 'Changed "' + conceptName + '.' + fieldName + '" to type ' + newType + '.'; },
+      function () {
+        var concept = selectedConcept('np-retype-concept');
+        if (!concept) { return 'Choose a concept first.'; }
+        var field = findByName(concept.fields, fieldName);
+        if (!field) { return 'Choose a field first.'; }
+        if (field.id) { return 'The id field type is structural and is not editable here.'; }
+        if (isPlainObject(concept.lifecycle) && concept.lifecycle.statusField === field.name) {
+          return 'That field backs the lifecycle of this concept, so it must stay an enum -- remove its '
+            + 'states first if you really mean to retype it.';
+        }
+        if (field.type === newType) { return 'It is already ' + newType + '.'; }
+        field.type = newType;
+        delete field.enumValues;
+        return null;
+      }
+    );
+  }
+
+  function onRemoveField() {
+    var conceptName = el('np-remove-field-concept').value;
+    var fieldName = el('np-remove-field-name').value;
+    runEdit(
+      function () { return 'Removed field "' + fieldName + '" from "' + conceptName + '".'; },
+      function () {
+        var concept = selectedConcept('np-remove-field-concept');
+        if (!concept) { return 'Choose a concept first.'; }
+        var field = findByName(concept.fields, fieldName);
+        if (!field) { return 'Choose a field first.'; }
+        if (field.id) { return 'A concept cannot lose its id field.'; }
+        if (isPlainObject(concept.lifecycle) && concept.lifecycle.statusField === field.name
+            && Array.isArray(concept.lifecycle.states) && concept.lifecycle.states.length > 0) {
+          return 'That field backs the lifecycle of this concept -- remove its states first.';
+        }
+        var affected = expressionsMentioning(field.name);
+        if (affected.length > 0) {
+          return 'Refusing: ' + affected.length + ' expression(s) still mention "' + field.name
+            + '" (' + affected.join(', ') + '). Edit those first.';
+        }
+        concept.fields = concept.fields.filter(function (f) { return f !== field; });
+        return null;
+      }
+    );
+  }
+
+  function onRemoveState() {
+    var conceptName = el('np-remove-state-concept').value;
+    var value = el('np-remove-state-value').value;
+    var note = '';
+    runEdit(
+      function () { return 'Removed state "' + value + '" from "' + conceptName + '".' + note; },
+      function () {
+        var concept = selectedConcept('np-remove-state-concept');
+        if (!concept) { return 'Choose a concept first.'; }
+        if (!isPlainObject(concept.lifecycle) || !value) { return 'That concept declares no states.'; }
+        var lifecycle = concept.lifecycle;
+        var before = lifecycle.transitions.length;
+        lifecycle.states = lifecycle.states.filter(function (s) {
+          return !(isPlainObject(s) && String(s.value).toLowerCase() === value.toLowerCase());
+        });
+        lifecycle.transitions = lifecycle.transitions.filter(function (t) {
+          return !(isPlainObject(t)
+            && (String(t.from).toLowerCase() === value.toLowerCase()
+              || String(t.to).toLowerCase() === value.toLowerCase()));
+        });
+        var droppedTransitions = before - lifecycle.transitions.length;
+        // Neither `states: []` nor `transitions: []` is representable -- the schema puts minItems 1
+        // on transitions and requires the key, and a statusField enum needs at least one value. So a
+        // removal that empties either one collapses the whole lifecycle rather than writing a
+        // model.json that will not even parse.
+        if (lifecycle.states.length === 0 || lifecycle.transitions.length === 0) {
+          var statusName = lifecycle.statusField;
+          var reason = lifecycle.states.length === 0 ? 'its last state' : 'the last transition';
+          delete concept.lifecycle;
+          concept.fields = concept.fields.filter(function (f) { return f.name !== statusName; });
+          note = ' That removed ' + reason + ', and a lifecycle cannot be declared without both, so '
+            + 'the lifecycle and its "' + statusName + '" field were removed too.';
+          return null;
+        }
+        syncStatusEnum(concept);
+        note = droppedTransitions > 0 ? ' Dropped ' + droppedTransitions + ' transition(s) that used it.' : '';
+        note += lifecycleAdvice(concept);
+        return null;
+      }
+    );
+  }
+
+  function onDeleteConcept() {
+    var conceptName = el('np-delete-concept').value;
+    runEdit(
+      function () { return 'Deleted concept "' + conceptName + '".'; },
+      function () {
+        var concept = selectedConcept('np-delete-concept');
+        if (!concept) { return 'Choose a concept first.'; }
+        var referencedBy = conceptReferencePaths(concept.name);
+        if (referencedBy.length > 0) {
+          return 'Refusing: ' + referencedBy.length + ' reference(s) still point at "' + concept.name
+            + '" (' + referencedBy.join(', ') + '). Remove or repoint them first.';
+        }
+        state.model.concepts = state.model.concepts.filter(function (c) { return c !== concept; });
+        return null;
+      }
+    );
+  }
+
+  // The edit forms' field/state pickers follow whichever concept is selected beside them.
+  function refreshEditPickers() {
+    [['np-rename-field-concept', 'np-rename-field-name'],
+     ['np-retype-concept', 'np-retype-field'],
+     ['np-remove-field-concept', 'np-remove-field-name']].forEach(function (pair) {
+      var concept = selectedConcept(pair[0]);
+      var names = concept && Array.isArray(concept.fields)
+        ? concept.fields.filter(function (f) { return isPlainObject(f) && f.name; }).map(function (f) { return f.name; })
+        : [];
+      fillSelect(el(pair[1]), names, true);
+    });
+    var stateConcept = selectedConcept('np-remove-state-concept');
+    var stateValues = stateConcept && isPlainObject(stateConcept.lifecycle) && Array.isArray(stateConcept.lifecycle.states)
+      ? stateConcept.lifecycle.states.map(function (s) { return s.value; })
+      : [];
+    fillSelect(el('np-remove-state-value'), stateValues, true);
+  }
+
   // ---- local-folder I/O ----
   async function readModelJsonFromDirectory(dirHandle) {
     try {
@@ -868,6 +1257,7 @@
       var result = await readModelJsonFromDirectory(dirHandle);
       state.dirHandle = dirHandle;
       state.model = result.model;
+      snapshotOnDisk();
       afterModelChange();
       exportBtn.disabled = false;
       starterBtn.disabled = false;
@@ -910,9 +1300,18 @@
   el('np-add-flow-btn').addEventListener('click', onAddFlow);
   el('np-add-panel-btn').addEventListener('click', onAddPanel);
   el('np-transition-concept').addEventListener('change', refreshTransitionStates);
+  el('np-rename-concept-btn').addEventListener('click', onRenameConcept);
+  el('np-rename-field-btn').addEventListener('click', onRenameField);
+  el('np-retype-btn').addEventListener('click', onChangeFieldType);
+  el('np-remove-field-btn').addEventListener('click', onRemoveField);
+  el('np-remove-state-btn').addEventListener('click', onRemoveState);
+  el('np-delete-concept-btn').addEventListener('click', onDeleteConcept);
+  ['np-rename-field-concept', 'np-retype-concept', 'np-remove-field-concept', 'np-remove-state-concept']
+    .forEach(function (id) { el(id).addEventListener('change', refreshEditPickers); });
   exportBtn.addEventListener('click', doExport);
 
   fillSelect(el('np-new-field-type'), FIELD_TYPES, false);
+  fillSelect(el('np-retype-to'), FIELD_TYPES, false);
 
   if (typeof window.showDirectoryPicker !== 'function') {
     el('np-unsupported').classList.remove('np-hidden');
