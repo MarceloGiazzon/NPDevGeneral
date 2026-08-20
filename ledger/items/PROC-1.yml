@@ -33,3 +33,11 @@ guard:
   ref: scripts/quality/generate_open_items.py (validate_guard)
   asserts: a ledger item's optional guard block, when present, must be a mapping with kind/ref/asserts/provenRed of the right types
   provenRed: false
+resolution: |
+  2026-08-20 (decision field generalized): the `decision:` field is now first-class for ANY status,
+  not just WONTFIX/OBSOLETE. generate_open_items.py validates its type (must be a string) and renders
+  it in the output. The ledger README documents it as optional for non-WONTFIX/OBSOLETE statuses to
+  record deliberate deferral or scope decisions. Still required for WONTFIX/OBSOLETE (unchanged).
+  Remaining R11 scope: (a) derived gate numbers from a gate-manifest.json (the manifest itself does
+  not exist yet -- needs a design pass on what gates to track), (b) gaps.yml v2 (the legacy
+  priorityIndex/fixedEngineBugs format has all entries DONE/CLOSED, so a v2 redesign is low-urgency).

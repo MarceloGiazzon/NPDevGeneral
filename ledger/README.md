@@ -33,7 +33,8 @@ decision: one-line reason        # required iff status: WONTFIX | OBSOLETE -- WO
                                   # confirmed gap deliberately not fixed (state why); OBSOLETE means
                                   # the item itself no longer applies (superseded, duplicate, the
                                   # surface it described was removed) -- never used to mean "fixed",
-                                  # that's DONE
+                                  # that's DONE. Optional for any other status to record a deliberate
+                                  # deferral or scope decision (PROC-1/R11 first-class decision).
 verification: NOT_VERIFIED | UNIT_TESTED | VERIFIED_LIVE   # optional
 source: where/how this was found         # required
 surface: component tag, e.g. runtimehost/schema-lifecycle  # required
