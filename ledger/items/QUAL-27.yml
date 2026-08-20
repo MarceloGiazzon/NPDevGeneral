@@ -43,7 +43,8 @@ detail: |
   **A second, self-inflicted finding worth recording.** The same run also failed NPDevCli at 58.7887%
   against a 58.8398% floor -- a floor raised 40 minutes earlier by this session's own T2 run, because
   the ratchet prints "Updated coverage-baseline.json -- commit the result to keep the higher floor"
-  and that advice was followed. Three runs of IDENTICAL code measured **58.1878 / 58.8398 / 58.7887**.
+  and that advice was followed. Four runs of IDENTICAL code measured **58.1878 / 58.8398 / 58.7887 / 58.8602** -- the fourth
+  observed after this item was filed, when the confirming gate run rewrote the baseline again.
   The measurement is noisy at the sub-0.1pp level (NPDevCli's suite has known
   environment-sensitive tests -- `test_seed_cli` fails if anything is listening on 8099), so banking a
   single run's high-water mark makes the NEXT run red. Had the raise not been committed, 58.7887 would
@@ -52,7 +53,12 @@ detail: |
   **Action taken 2026-08-20:** reverted NPDevCli's floor to 58.1878, and deliberately did NOT bank
   either auto-raise (the generator's 81.5562 included), leaving both at their last stable committed
   values. Both are cleared by a real full run, so nothing is lost, and no landmine is left for the
-  next session. `check-coverage-ratchet.py` exits 0 against these floors.
+  next session. `check-coverage-ratchet.py` exits 0 against these floors, and the full
+  `aiKnowledge` gate then PASSED end to end (2722 s). That passing run promptly rewrote the
+  baseline yet again -- generator to 81.5562, NPDevCli to 58.8602 -- and those raises were
+  discarded rather than committed, for the same reason. **The script rewrites the file on EVERY
+  run, so `git checkout -- scripts/policy/coverage-baseline.json` is the normal post-gate step
+  until this item is closed.**
 
   **Not fixed here**, because both fixes are design decisions rather than patches: whether the ratchet
   should refuse a report whose fully-uncovered class count jumps (and what the threshold is), and
