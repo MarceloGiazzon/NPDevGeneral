@@ -526,6 +526,59 @@ final class ConceptValidation {
     }
 
     /**
+     * R5.8 (Roadmap Collection 2026-08-18, "Effective-dated values"): a concept declaring
+     * {@code temporal: true} is asserting its rows are resolved by an as-of date, not just
+     * documenting intent -- the generic concept-CRUD read path (business-concept-crud-controller
+     * .mustache's {@code asOf} handling) unconditionally filters on fields literally named
+     * {@code validFrom}/{@code validTo}, so a temporal concept missing either (or declaring either
+     * with the wrong type) would silently 400 or silently return nothing at read time instead of
+     * failing loudly here, at author time. Three checks, all named errors:
+     * <ol>
+     *   <li>The concept must declare a field named {@code validFrom} of {@code type: date}, with
+     *       {@code required: true}.</li>
+     *   <li>Same for {@code validTo}.</li>
+     * </ol>
+     * Deliberately does NOT require any particular identity/uniqueness scoping among a temporal
+     * concept's rows (e.g. "at most one row per product covers a given date") -- R5.8's own decided
+     * scope (see ledger RUN-22) leaves "the same logical entity" resolution to an ordinary
+     * {@code where=} filter the caller supplies, not a new schema-level identity key, so there is
+     * nothing further to validate here without inventing that surface speculatively.
+     */
+    static void validateConceptTemporal(
+            ModelAst effectiveModel,
+            List<String> errors
+    ) {
+        for (ConceptAst concept : effectiveModel.getConcepts()) {
+            if (!concept.isTemporal()) {
+                continue;
+            }
+            requireTemporalWindowField(concept, "validFrom", errors);
+            requireTemporalWindowField(concept, "validTo", errors);
+        }
+    }
+
+    private static void requireTemporalWindowField(ConceptAst concept, String fieldName, List<String> errors) {
+        FieldAst field = concept.getFields().stream()
+                .filter(f -> fieldName.equalsIgnoreCase(f.getName()))
+                .findFirst()
+                .orElse(null);
+        if (field == null) {
+            errors.add("Concept " + concept.getName() + ": temporal:true requires a \"" + fieldName
+                    + "\" field (type: date, required: true), which this concept does not declare");
+            return;
+        }
+        if (!"date".equalsIgnoreCase(field.getType())) {
+            errors.add("Concept " + concept.getName() + ": temporal:true requires \"" + fieldName
+                    + "\" to be type: date (found: " + field.getType() + ")");
+        }
+        if (!field.isRequired()) {
+            errors.add("Concept " + concept.getName() + ": temporal:true requires \"" + fieldName
+                    + "\" to be required:true (an effective-dated row with no validity window bound "
+                    + "cannot be resolved by an as-of read)");
+        }
+    }
+
+    /**
      * LNCH-1 §2.1 hygiene rules for the {@code renamedFrom} marker (checked once per field, for
      * every field regardless of type validity):
      * <ol>

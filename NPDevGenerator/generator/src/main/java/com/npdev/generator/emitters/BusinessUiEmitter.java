@@ -281,6 +281,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             view.put("endpointBase", javaString(endpointBase(concept, contexts)));
             view.put("className", concept.getClassName());
             view.put("serviceVariable", uncap(concept.getClassName()) + "Service");
+            // R5.8: threaded into ConceptMetadata so the generic controller's list() endpoint knows
+            // whether an asOf query param applies to this concept -- see business-concept-crud-
+            // controller.mustache's register_{{serviceVariable}} and list() for the consumer.
+            view.put("temporal", concept.isTemporal());
             view.put("fields", fieldTemplateModels(concept, conceptsByName, settingResolver, contexts));
             out.add(view);
         }

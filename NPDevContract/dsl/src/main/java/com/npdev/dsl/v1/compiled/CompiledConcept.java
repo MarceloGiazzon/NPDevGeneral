@@ -11,6 +11,7 @@ public final class CompiledConcept extends CompiledEntity {
     private final String satelliteOf;
     private final CompiledOrigin origin;
     private final boolean softDelete;
+    private final boolean temporal;
 
     public CompiledConcept(String name, String className, String tableName, List<CompiledField> fields) {
         this(name, className, tableName, fields, List.of(), List.of(), null, null, null, null, List.of());
@@ -206,6 +207,30 @@ public final class CompiledConcept extends CompiledEntity {
             CompiledOrigin origin,
             boolean softDelete
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel,
+                module, indexes, access, renamedFrom, satelliteOf, origin, softDelete, false);
+    }
+
+    /** R5.8: declares this concept carries effective-dated rows (validFrom/validTo-scoped) -- see isTemporal. */
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel,
+            String module,
+            List<CompiledIndex> indexes,
+            CompiledConceptAccess access,
+            String renamedFrom,
+            String satelliteOf,
+            CompiledOrigin origin,
+            boolean softDelete,
+            boolean temporal
+    ) {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
@@ -214,6 +239,7 @@ public final class CompiledConcept extends CompiledEntity {
         this.satelliteOf = satelliteOf;
         this.origin = origin;
         this.softDelete = softDelete;
+        this.temporal = temporal;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -251,6 +277,13 @@ public final class CompiledConcept extends CompiledEntity {
      *  physical-delete behavior exactly. */
     public boolean isSoftDelete() {
         return softDelete;
+    }
+
+    /** R5.8: true if this concept carries effective-dated rows -- resolution reads a `validFrom`/
+     *  `validTo` window (both author-declared `date` fields, checked by SemanticValidator) against a
+     *  caller-supplied `asOf` date; false (the default) leaves the concept's read path unchanged. */
+    public boolean isTemporal() {
+        return temporal;
     }
 
     public static CompiledConcept fromLegacyEntity(CompiledEntity legacy) {

@@ -636,7 +636,8 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "renamedFrom"),
                 optionalText(node, "satelliteOf"),
                 toOrigin(node.get("origin")),
-                booleanValue(node, "softDelete")
+                booleanValue(node, "softDelete"),
+                booleanValue(node, "temporal")
         );
     }
 

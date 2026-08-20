@@ -1,0 +1,73 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.temporalpricingr58",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "R5.8 (Roadmap Collection 2026-08-18, 'Effective-dated values'): thin-slice live proof of concept.temporal -- a WidgetPrice row is effective only for its declared validFrom/validTo window, and the generic concept-CRUD read endpoint's asOf query param resolves which row is 'the' price for a given product on a given date. See ledger RUN-22 for the decided shape."
+  },
+  "concepts": [
+    {
+      "name": "WidgetPrice",
+      "temporal": true,
+      "ui": { "label": "Widget price" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "productCode",
+          "type": "string",
+          "required": true,
+          "ui": { "label": "Product code" }
+        },
+        {
+          "name": "amount",
+          "type": "decimal",
+          "required": true,
+          "ui": { "label": "Amount" }
+        },
+        {
+          "name": "validFrom",
+          "type": "date",
+          "required": true,
+          "ui": { "label": "Valid from" }
+        },
+        {
+          "name": "validTo",
+          "type": "date",
+          "required": true,
+          "ui": { "label": "Valid to" }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "WidgetPriceProductCodeRequired",
+          "expr": "productCode != null && productCode != ''"
+        },
+        {
+          "name": "WidgetPriceAmountRequired",
+          "expr": "amount != null"
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    },
+    {
+      "capability": "eventBus",
+      "adapter": "inproc"
+    }
+  ]
+}
