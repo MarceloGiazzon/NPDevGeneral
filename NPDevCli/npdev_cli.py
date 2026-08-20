@@ -4732,6 +4732,53 @@ def _metadata_only_fast_path(
     return True, "metadata-only fast path applied"
 
 
+def _emit_metadata_only_catalogs(
+        root: Path, baseline_model: Path, current_model: Path, deadline: float,
+        emit_to: Path) -> tuple[str | None, bool, str]:
+    """RUN-24 gap 1: the metadata-catalog half of `npdev dev`'s own hot-swap fast path -- classify
+    `baseline_model` vs `current_model` and, only when the result is METADATA_ONLY, emit
+    compiled-metadata.json + metadata/*.manifest.json to `emit_to` in the exact directory shape
+    `MetadataHotSwapController#apply`'s own javadoc documents
+    (`<dir>/src/main/resources/npdev/...`) -- the SAME `--emitMetadataTo` flag
+    `Update-AppMetadata.ps1`'s Gradle call already drives, reused here rather than inventing a
+    second classifier invocation shape. Sibling of `_metadata_only_fast_path` above (that one emits
+    `compiled-model.json` for a RESTART-based fast path; this one emits the descriptive catalogs for
+    a NO-restart hot swap), so it does not also call `resignGeneratedFolder` -- that step only
+    matters for `NPDevModelProvider`'s external `compiled-model.json` path / `StrictExecutionValidator`
+    at BOOT, neither of which a live hot swap touches.
+
+    Returns `(classification, emitted, detail)`. `classification` is `None` only when the classifier
+    itself could not run at all (no staged jar and no Gradle wrapper, or a timeout) -- as distinct
+    from running successfully and reporting something other than METADATA_ONLY, in which case
+    `classification` carries that real value, `emitted` is `False`, and `detail` says so (the
+    classifier's own `--emitMetadataTo` refusal contract: non-METADATA_ONLY writes nothing and exits
+    non-zero) -- never silent, matching every other refusal path this fast path can take."""
+    with tempfile.TemporaryDirectory(prefix="npdev-dev-hotswap-report-") as tmp:
+        report_path = Path(tmp) / "classification.json"
+        resolved = _classifier_command(root, [
+            "--current", str(current_model), "--baseline", str(baseline_model),
+            "--out", str(report_path), "--emitMetadataTo", str(emit_to),
+        ])
+        if resolved is None:
+            return None, False, "no Gradle wrapper and no staged npdev-ai-tools.jar -- cannot classify."
+        command, cwd = resolved
+        try:
+            completed = _run_bounded(command, cwd, deadline)
+        except _DeadlineExceeded:
+            return None, False, "classifyModelChange exceeded the overall --timeout budget."
+        classification = None
+        if report_path.exists():
+            try:
+                classification = json.loads(report_path.read_text(encoding="utf-8")).get("classification")
+            except json.JSONDecodeError:
+                pass
+        if completed.returncode != 0 or classification != "METADATA_ONLY":
+            detail = ((completed.stdout or "") + (completed.stderr or "")).strip()[-800:]
+            return classification, False, (
+                detail or f"classifier did not emit metadata catalogs (classification={classification!r})")
+        return classification, True, ""
+
+
 # ---------------------------------------------------------------------------
 # Move 10 D2 (LC-D2): declarative acceptance scenarios -- boots via D1, seeds `given` through the
 # generic concept CRUD API, executes `when`, asserts `then` with a minimal JSONPath grammar, and
@@ -8982,6 +9029,13 @@ def _human_summary(result: dict) -> str:
             lines.append(f"  metadataGeneration {result.get('metadataGeneration')}")
             for cat in (result.get("catalogsUpdated") or []):
                 lines.append(f"  updated {cat}")
+            # RUN-24 gap 2: the REST catalogs above are half the story -- this line says whether the
+            # SERVED business-ui grid's own static manifest was also patched to match.
+            patch = result.get("uiManifestPatch") or {}
+            if patch.get("patched"):
+                lines.append(f"  served UI manifest patched: {', '.join(patch.get('fieldsChanged') or [])}")
+            elif patch.get("reason"):
+                lines.append(f"  served UI manifest NOT patched: {patch['reason']}")
     elif "found" in result and "state" in result:
         lines.append(f"ScrapForAI engine: {result['state']}")
         lines.append(f"  via      : {result.get('via')}")
@@ -9178,20 +9232,156 @@ def _run_monitor_clone_remove(args: argparse.Namespace) -> int:
     return 0
 
 
+def _patch_generated_ui_manifest(app_root: Path, metadata_source_root: Path) -> dict:
+    """RUN-24 gap 2. `MetadataHotSwapController#apply` only refreshes the descriptive REST catalogs
+    `RuntimeMetadataService` serves -- the actual rendered grid at `/npdev-business-ui/` is built
+    client-side from a SEPARATE static file, `generated-ui-manifest.json`
+    (`business-ui-app.mustache`: `state.manifest = await fetchJson("./generated-ui-manifest.json")`),
+    which the REST call never touches. REG-109 already made that file externally overridable with no
+    restart (`StaticUiResourceConfig`'s `file:` resource location, resolved PER REQUEST, not cached
+    at boot -- verified live 2026-08-02) but nothing writes to it automatically; RUN-22's own
+    browser-routine proof had to hand-patch it to reach the served grid.
+
+    Patches ONLY the field labels the just-emitted `fields.manifest.json` (the SAME
+    `metadata_source_root` the REST call above was already given, from `--emitMetadataTo`)
+    disagrees with -- deliberately never regenerates the whole manifest from a bare model.json
+    compile, which has no access to the settings (`superUserRole`, auth mode, per-field
+    widget-cascade overrides, ...) the real generation pipeline resolves via `SettingResolver`, and
+    would silently revert any of them to a platform default for an app that customized one. That
+    also means it only ever matches TOP-LEVEL fields: `generated-ui-manifest.json`'s own
+    `concepts[].fields[]` list is `BusinessUiEmitter.manifestFields()`, which walks
+    `concept.getFields()` directly and has no entries for a nested object/array field's own
+    sub-paths (`fields.manifest.json`'s `"a.b"`-shaped `fieldPath` entries) -- matching those here
+    would silently do nothing, so they are skipped rather than attempted.
+
+    Read-modify-write, atomic (temp file + `os.replace`, same directory so the replace cannot cross
+    filesystems), and a no-op -- never an exception -- when either input file is missing: an app
+    generated before R1.7/REG-109, or a metadata source root the classifier refused to populate,
+    simply keeps today's behavior (served UI stays stale until the next full regenerate, exactly as
+    before this fix)."""
+    manifest_path = (app_root / "npdev-generated" / "src" / "main" / "resources" / "static"
+                      / "npdev-business-ui" / "generated-ui-manifest.json")
+    fields_manifest_path = (metadata_source_root / "src" / "main" / "resources" / "npdev"
+                             / "metadata" / "fields.manifest.json")
+    if not manifest_path.is_file() or not fields_manifest_path.is_file():
+        return {"patched": False,
+                "reason": "generated-ui-manifest.json or fields.manifest.json not found -- nothing to patch."}
+    try:
+        fields_catalog = json.loads(fields_manifest_path.read_text(encoding="utf-8"))
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"patched": False, "reason": f"could not read/parse manifest: {exc}"}
+
+    labels: dict[tuple[str, str], str] = {}
+    for item in fields_catalog.get("items") or []:
+        concept = item.get("concept")
+        field_path = item.get("fieldPath")
+        if concept and field_path and "." not in field_path:
+            labels[(concept, field_path)] = item.get("label", "")
+
+    changed: list[str] = []
+    for concept_node in manifest.get("concepts") or []:
+        concept_name = concept_node.get("conceptName")
+        for field_node in concept_node.get("fields") or []:
+            key = (concept_name, field_node.get("name"))
+            if key in labels and field_node.get("label") != labels[key]:
+                field_node["label"] = labels[key]
+                changed.append(f"{concept_name}.{field_node.get('name')}")
+
+    if not changed:
+        return {"patched": False, "reason": "no field label differed from the served manifest"}
+
+    tmp = manifest_path.with_name(manifest_path.name + ".tmp")
+    tmp.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, manifest_path)
+    return {"patched": True, "fieldsChanged": changed}
+
+
+def _metadata_hotswap_apply(
+        base_url: str, super_user_key: str, classification: str, reasons: list[str],
+        metadata_source_root: Path, app_root: Path, timeout: float) -> dict:
+    """RUN-24: the shared HTTP core behind BOTH `npdev monitor hotswap` (CLI, discovers the app
+    itself via `probe_app`) and `npdev dev`'s own METADATA_ONLY fast path (already knows the app it
+    booted) -- one POST to `MetadataHotSwapController#apply`, plus RUN-24 gap 2's follow-up: patch
+    `generated-ui-manifest.json` (`_patch_generated_ui_manifest` above) so the SERVED business-ui
+    grid reflects the change too, no restart either way. Factored out so gap 2's fix lands ONCE and
+    both callers get it, rather than reimplementing the POST (and forgetting the manifest patch) a
+    second time in the dev loop.
+
+    Never raises for an ordinary refusal/failure -- returns `{"ok": False, "code": ..., "message":
+    ...}`, the same shape either caller can print or act on. The raw key is used only to build the
+    request header and is never placed in the returned dict."""
+    import urllib.error
+    import urllib.request
+
+    result: dict = {"ok": False, "code": None, "message": None}
+    body = json.dumps({
+        "classification": classification,
+        "classificationReasons": list(reasons or []),
+        "metadataSourceRoot": str(metadata_source_root),
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        base_url + "/api/admin/runtime/metadata-hotswap/apply",
+        data=body, method="POST",
+        headers={"Content-Type": "application/json", "X-Super-User-Key": super_user_key},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raw_body = exc.read().decode("utf-8", "replace")
+        try:
+            payload = json.loads(raw_body)
+        except json.JSONDecodeError:
+            payload = {}
+        if exc.code == 404:
+            result["code"] = "ENDPOINT_NOT_FOUND"
+            result["message"] = (
+                f"HTTP 404 from {base_url} -- this app predates R1.7's MetadataHotSwapController and "
+                "has no /metadata-hotswap/apply endpoint. Regenerate it, or fall back to a restart.")
+            return result
+        result["code"] = payload.get("code") or f"HTTP_{exc.code}"
+        result["message"] = payload.get("message") or f"HTTP {exc.code}: {raw_body[:300]}"
+        return result
+    except urllib.error.URLError as exc:
+        result["code"] = "UNREACHABLE"
+        result["message"] = f"could not reach {base_url}: {exc.reason}"
+        return result
+
+    result["ok"] = bool(payload.get("ok", True))
+    result["metadataGeneration"] = payload.get("metadataGeneration")
+    result["appliedAt"] = payload.get("appliedAt")
+    result["catalogsUpdated"] = payload.get("catalogsUpdated")
+    result["classificationReasons"] = payload.get("classificationReasons")
+    if result["ok"]:
+        result["code"] = "APPLIED"
+        result["message"] = f"metadata hot swap applied, generation {result['metadataGeneration']}"
+        # RUN-24 gap 2: the REST call above only refreshed RuntimeMetadataService's own catalogs.
+        result["uiManifestPatch"] = _patch_generated_ui_manifest(app_root, metadata_source_root)
+    else:
+        result["code"] = payload.get("code") or "UNKNOWN"
+        result["message"] = payload.get("message")
+    return result
+
+
 def _run_monitor_hotswap(args: argparse.Namespace) -> int:
     """R1.7 dev-loop closer: the CLI trigger for `MetadataHotSwapController#apply`, pushing an
     already-classified METADATA_ONLY change's descriptive catalogs (compiled-metadata.json,
-    metadata/*.manifest.json) into a RUNNING app's JVM with no restart. `Update-AppMetadata.ps1`
-    already runs `:generator:classifyModelChange` and hands this verb its report's own
-    classification/classificationReasons plus the SAME `--emitMetadataTo` scratch directory it wrote
-    -- unchanged, matching `MetadataHotSwapController.ApplyRequest`'s own shape exactly so a caller
-    that already ran the classifier can pass its output straight through.
+    metadata/*.manifest.json) into a RUNNING app's JVM with no restart -- and (RUN-24 gap 2) patching
+    the served business-ui's own static manifest to match, via `_metadata_hotswap_apply` above.
+    `Update-AppMetadata.ps1` already runs `:generator:classifyModelChange` and hands this verb its
+    report's own classification/classificationReasons plus the SAME `--emitMetadataTo` scratch
+    directory it wrote -- unchanged, matching `MetadataHotSwapController.ApplyRequest`'s own shape
+    exactly so a caller that already ran the classifier can pass its output straight through.
 
-    Reuses `npdev_monitor.probe_app` for both facts this needs -- is the app running, and where is
-    its Super User key (`_ops/SUPER_USER_KEY.txt`, `SuperUserBootstrapper`'s own file) -- rather than
-    re-deriving app discovery a second time. Authenticates with the `X-Super-User-Key` header
-    (`SuperUserCredentialAuthFilter`), never the business `X-Api-Key` path: `/apply` requires
-    SUPERUSER specifically because an `auth.mode=none` app grants ADMIN to every anonymous caller.
+    Reuses `npdev_monitor.probe_app` for the facts this needs -- is the app running, where is its
+    Super User key (`_ops/SUPER_USER_KEY.txt`, `SuperUserBootstrapper`'s own file, as relocated by
+    `Start-App.ps1`), and its real `finalAppRoot` (the directory actually holding `npdev-generated/`,
+    which is NOT always `app_dir` itself -- see `probe_app`'s own `opsLayout` handling for
+    pre-QUAL-3 apps) -- rather than re-deriving app discovery a second time. Authenticates with the
+    `X-Super-User-Key` header (`SuperUserCredentialAuthFilter`), never the business `X-Api-Key`
+    path: `/apply` requires SUPERUSER specifically because an `auth.mode=none` app grants ADMIN to
+    every anonymous caller.
 
     Every expected outcome -- app not running, no key on disk, the endpoint refusing a non-
     METADATA_ONLY classification, an app generated before R1.7 with no endpoint at all -- comes back
@@ -9199,9 +9389,6 @@ def _run_monitor_hotswap(args: argparse.Namespace) -> int:
     remove` already use, never a traceback. The raw Super User key is read only to build the request
     header and is never placed in `result`, so `_print_result`'s redaction has nothing to catch and
     nothing to miss."""
-    import urllib.error
-    import urllib.request
-
     app_dir = Path(args.app_dir).expanduser().resolve()
     result: dict = {
         "schemaVersion": "npdev-monitor-hotswap.v1", "command": "monitor hotswap",
@@ -9249,47 +9436,15 @@ def _run_monitor_hotswap(args: argparse.Namespace) -> int:
         return _refuse("SUPERUSER_KEY_EMPTY", f"{key_file} exists but is empty")
 
     base_url = app_record.get("probeBaseUrl")
-    body = json.dumps({
-        "classification": args.classification,
-        "classificationReasons": list(args.reason or []),
-        "metadataSourceRoot": str(source_root),
-    }).encode("utf-8")
-    request = urllib.request.Request(
-        base_url + "/api/admin/runtime/metadata-hotswap/apply",
-        data=body, method="POST",
-        headers={"Content-Type": "application/json", "X-Super-User-Key": raw_key},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=args.timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        raw_body = exc.read().decode("utf-8", "replace")
-        try:
-            payload = json.loads(raw_body)
-        except json.JSONDecodeError:
-            payload = {}
-        if exc.code == 404:
-            return _refuse(
-                "ENDPOINT_NOT_FOUND",
-                f"HTTP 404 from {base_url} -- this app predates R1.7's MetadataHotSwapController and "
-                "has no /metadata-hotswap/apply endpoint. Regenerate it, or fall back to a restart.")
-        code = payload.get("code") or f"HTTP_{exc.code}"
-        message = payload.get("message") or f"HTTP {exc.code}: {raw_body[:300]}"
-        return _refuse(code, message)
-    except urllib.error.URLError as exc:
-        return _refuse("UNREACHABLE", f"could not reach {base_url}: {exc.reason}")
-
-    result["ok"] = bool(payload.get("ok", True))
-    result["metadataGeneration"] = payload.get("metadataGeneration")
-    result["appliedAt"] = payload.get("appliedAt")
-    result["catalogsUpdated"] = payload.get("catalogsUpdated")
-    result["classificationReasons"] = payload.get("classificationReasons")
-    if result["ok"]:
-        result["code"] = "APPLIED"
-        result["message"] = f"metadata hot swap applied, generation {result['metadataGeneration']}"
-    else:
-        result["code"] = payload.get("code") or "UNKNOWN"
-        result["message"] = payload.get("message")
+    final_app_root = Path(app_record.get("finalAppRoot") or app_dir)
+    swap_result = _metadata_hotswap_apply(
+        base_url, raw_key, args.classification, list(args.reason or []),
+        source_root, final_app_root, args.timeout)
+    if swap_result.get("code") == "ENDPOINT_NOT_FOUND":
+        return _refuse("ENDPOINT_NOT_FOUND", swap_result.get("message"))
+    if swap_result.get("code") == "UNREACHABLE":
+        return _refuse("UNREACHABLE", swap_result.get("message"))
+    result.update(swap_result)
     _print_result(result, args)
     return 0 if result["ok"] else 2
 

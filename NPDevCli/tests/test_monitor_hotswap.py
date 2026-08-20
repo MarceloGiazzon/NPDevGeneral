@@ -57,13 +57,19 @@ def make_app(root: Path, *, with_super_key: bool = True) -> Path:
     return app
 
 
-def make_metadata_source_root(root: Path) -> Path:
-    """The directory shape `--emitMetadataTo` writes -- only its existence matters here; the
-    controller reads its contents server-side, not this CLI verb."""
+def make_metadata_source_root(root: Path, *, fields_catalog: dict | None = None) -> Path:
+    """The directory shape `--emitMetadataTo` writes -- only its existence matters for the plain
+    hot-swap tests below; `fields_catalog`, when given, is written as `metadata/fields.manifest.json`
+    for the RUN-24 gap 2 (`_patch_generated_ui_manifest`) tests, in the same shape
+    `MetadataManifestAssetEmitter` emits (`{"items": [{"concept":..., "fieldPath":..., "label":...}]}`)."""
     scratch = root / "scratch"
     npdev_dir = scratch / "src" / "main" / "resources" / "npdev"
     npdev_dir.mkdir(parents=True)
     (npdev_dir / "compiled-metadata.json").write_text("{}", encoding="utf-8")
+    if fields_catalog is not None:
+        (npdev_dir / "metadata").mkdir(parents=True, exist_ok=True)
+        (npdev_dir / "metadata" / "fields.manifest.json").write_text(
+            json.dumps(fields_catalog), encoding="utf-8")
     return scratch
 
 
@@ -273,6 +279,139 @@ class HotswapCliExitCodes(unittest.TestCase):
             result = json.loads(buffer.getvalue())
             self.assertFalse(result["ok"])
             self.assertEqual(result["code"], "APP_NOT_RUNNING")
+
+
+def make_generated_ui_manifest(final_app_root: Path, concepts: list[dict]) -> Path:
+    """The static file `business-ui-app.mustache` fetches (`generated-ui-manifest.json`), at the
+    exact relative path `StaticUiResourceConfig`'s external override serves from -- REG-109's own
+    already-verified location."""
+    path = (final_app_root / "npdev-generated" / "src" / "main" / "resources" / "static"
+            / "npdev-business-ui" / "generated-ui-manifest.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schemaVersion": "npdev-generated-ui-manifest.v1", "concepts": concepts}),
+                     encoding="utf-8")
+    return path
+
+
+class PatchGeneratedUiManifest(unittest.TestCase):
+    """RUN-24 gap 2: `_patch_generated_ui_manifest` (the piece `_metadata_hotswap_apply` calls after
+    a successful REST apply) directly -- no HTTP, no app discovery, just the read-modify-write."""
+
+    def test_patches_a_changed_top_level_field_label(self):
+        with TemporaryDirectory() as tmp:
+            app_root = Path(tmp) / "App"
+            manifest_path = make_generated_ui_manifest(app_root, [
+                {"conceptName": "WidgetShipmentEvent", "fields": [
+                    {"name": "warehouseId", "label": "Warehouse"},
+                    {"name": "units", "label": "Units"},
+                ]},
+            ])
+            source_root = make_metadata_source_root(Path(tmp), fields_catalog={"items": [
+                {"concept": "WidgetShipmentEvent", "fieldPath": "warehouseId", "label": "Warehouse (new)"},
+                {"concept": "WidgetShipmentEvent", "fieldPath": "units", "label": "Units"},
+            ]})
+
+            result = npdev_cli._patch_generated_ui_manifest(app_root, source_root)
+
+            self.assertTrue(result["patched"])
+            self.assertEqual(result["fieldsChanged"], ["WidgetShipmentEvent.warehouseId"])
+            written = json.loads(manifest_path.read_text(encoding="utf-8"))
+            fields_by_name = {f["name"]: f for f in written["concepts"][0]["fields"]}
+            self.assertEqual(fields_by_name["warehouseId"]["label"], "Warehouse (new)")
+            self.assertEqual(fields_by_name["units"]["label"], "Units")  # unchanged field untouched
+
+    def test_never_touches_fields_other_than_label(self):
+        """Confirms the fix does NOT regenerate the whole manifest (which would need settings this
+        classifier-only path has no access to, e.g. superUserRole/auth) -- every other key on the
+        manifest and on the untouched field survives byte-for-byte."""
+        with TemporaryDirectory() as tmp:
+            app_root = Path(tmp) / "App"
+            manifest_path = make_generated_ui_manifest(app_root, [
+                {"conceptName": "WidgetShipmentEvent", "fields": [
+                    {"name": "warehouseId", "label": "Warehouse", "widget": "select", "required": True},
+                ]},
+            ])
+            before = json.loads(manifest_path.read_text(encoding="utf-8"))
+            source_root = make_metadata_source_root(Path(tmp), fields_catalog={"items": [
+                {"concept": "WidgetShipmentEvent", "fieldPath": "warehouseId", "label": "Warehouse (new)"},
+            ]})
+
+            npdev_cli._patch_generated_ui_manifest(app_root, source_root)
+
+            after = json.loads(manifest_path.read_text(encoding="utf-8"))
+            field_before = before["concepts"][0]["fields"][0]
+            field_after = after["concepts"][0]["fields"][0]
+            self.assertEqual(field_after["widget"], field_before["widget"])
+            self.assertEqual(field_after["required"], field_before["required"])
+            self.assertEqual(field_after["label"], "Warehouse (new)")
+
+    def test_skips_nested_dotted_field_paths(self):
+        """`fields.manifest.json` can carry `"a.b"`-shaped nested paths; `generated-ui-manifest.json`'s
+        own fields list has no matching entries for those (`BusinessUiEmitter.manifestFields()` only
+        walks top-level `concept.getFields()`), so they must be silently skipped, not mismatched."""
+        with TemporaryDirectory() as tmp:
+            app_root = Path(tmp) / "App"
+            make_generated_ui_manifest(app_root, [
+                {"conceptName": "Order", "fields": [{"name": "customer", "label": "Customer"}]},
+            ])
+            source_root = make_metadata_source_root(Path(tmp), fields_catalog={"items": [
+                {"concept": "Order", "fieldPath": "customer.name", "label": "Customer Name (nested)"},
+            ]})
+
+            result = npdev_cli._patch_generated_ui_manifest(app_root, source_root)
+
+            self.assertFalse(result["patched"])
+
+    def test_no_op_when_manifest_file_is_missing(self):
+        with TemporaryDirectory() as tmp:
+            app_root = Path(tmp) / "App"  # never created
+            source_root = make_metadata_source_root(Path(tmp), fields_catalog={"items": []})
+            result = npdev_cli._patch_generated_ui_manifest(app_root, source_root)
+            self.assertFalse(result["patched"])
+            self.assertIn("not found", result["reason"])
+
+    def test_no_op_when_fields_manifest_is_missing(self):
+        with TemporaryDirectory() as tmp:
+            app_root = Path(tmp) / "App"
+            make_generated_ui_manifest(app_root, [
+                {"conceptName": "WidgetShipmentEvent", "fields": [{"name": "warehouseId", "label": "Warehouse"}]},
+            ])
+            source_root = make_metadata_source_root(Path(tmp))  # no fields_catalog written
+            result = npdev_cli._patch_generated_ui_manifest(app_root, source_root)
+            self.assertFalse(result["patched"])
+
+
+class HotswapUiManifestPatchIntegration(unittest.TestCase):
+    """RUN-24 gap 2 wired end-to-end through the CLI verb: a successful hot swap ALSO patches the
+    served UI's static manifest, not just the REST catalogs -- the exact combination RUN-22's own
+    browser-routine proof had to perform by hand."""
+
+    def test_successful_hotswap_patches_the_served_ui_manifest_too(self):
+        with TemporaryDirectory() as tmp:
+            app = make_app(Path(tmp))
+            final_app_root = app / "App"
+            manifest_path = make_generated_ui_manifest(final_app_root, [
+                {"conceptName": "WidgetShipmentEvent", "fields": [
+                    {"name": "warehouseId", "label": "Warehouse"},
+                ]},
+            ])
+            source_root = make_metadata_source_root(Path(tmp), fields_catalog={"items": [
+                {"concept": "WidgetShipmentEvent", "fieldPath": "warehouseId",
+                 "label": "Warehouse (RUN-24 proof)"},
+            ]})
+
+            with running(app), mock.patch("urllib.request.urlopen", ok_urlopen()):
+                buffer = io.StringIO()
+                with redirect_stdout(buffer):
+                    code = npdev_cli._run_monitor_hotswap(cli_args(app, source_root, json=True))
+
+            self.assertEqual(code, 0)
+            result = json.loads(buffer.getvalue())
+            self.assertTrue(result["uiManifestPatch"]["patched"])
+            self.assertEqual(result["uiManifestPatch"]["fieldsChanged"],
+                              ["WidgetShipmentEvent.warehouseId"])
+            written = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(written["concepts"][0]["fields"][0]["label"], "Warehouse (RUN-24 proof)")
 
 
 if __name__ == "__main__":
