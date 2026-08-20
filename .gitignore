@@ -94,6 +94,7 @@ ai-times-workbench/
 secrets/
 *.env
 !*.env.example
+gh_token.txt
 
 # Local Claude Code session state (auto-accumulated permission log, not shared config).
 # Ignore everything under .claude/ EXCEPT shared, tracked project skills.
