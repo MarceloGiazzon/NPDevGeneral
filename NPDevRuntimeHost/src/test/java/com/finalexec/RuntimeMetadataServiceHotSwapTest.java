@@ -130,9 +130,18 @@ class RuntimeMetadataServiceHotSwapTest {
                 try {
                     start.await();
                     while (!stop.get()) {
+                        // Both fields MUST come from the SAME overview() call -- overview() already
+                        // surfaces metadataVersion (read from the index file inside the same read-lock
+                        // acquisition that reads namespace from compiled-metadata.json), so a second,
+                        // separately-locked service.metadataIndex() call here would open a window
+                        // between the two lock acquisitions for the writer to complete an entire swap,
+                        // pairing THIS read's namespace with a LATER read's metadataVersion -- a real
+                        // cross-call race in the test itself, not evidence of a torn write. Found live:
+                        // the first real run failed at the assertFalse below with two individually
+                        // valid, but not co-atomic, field reads.
                         var overview = service.overview();
                         String namespace = String.valueOf(overview.get("namespace"));
-                        String metadataVersion = String.valueOf(service.metadataIndex().get("metadataVersion"));
+                        String metadataVersion = String.valueOf(overview.get("metadataVersion"));
                         boolean isOld = namespace.equals("old-namespace") && metadataVersion.equals("v-old");
                         boolean isNew = namespace.equals("race-namespace") && metadataVersion.equals("v-race");
                         if (!isOld && !isNew) {
@@ -147,19 +156,27 @@ class RuntimeMetadataServiceHotSwapTest {
 
         writeFixture(externalIndex, indexJsonWithVersion("v-old"));
 
-        Path sourceRoot = appExternalRoot.resolve("reload-source-race");
-        stageMetadataAt(sourceRoot, "race-namespace", "Race Label", "v-race");
+        Path raceSourceRoot = appExternalRoot.resolve("reload-source-race");
+        stageMetadataAt(raceSourceRoot, "race-namespace", "Race Label", "v-race");
+        // The "flip back to old" step below MUST go through the same atomic hot-swap API the race is
+        // actually testing, not a raw Files.writeString reset -- a plain (non-atomic,
+        // non-lock-protected) file write racing against concurrent readers tears on ITS OWN, which is
+        // a bug in this test fixture, not in applyMetadataOnlyReload. Found live: the first real run
+        // of this test failed with a Jackson MismatchedInputException from a reader that opened
+        // externalIndex mid-truncate during the old writeFixture-based reset.
+        Path oldSourceRoot = appExternalRoot.resolve("reload-source-old-reset");
+        stageMetadataAt(oldSourceRoot, "old-namespace", "Old Label", "v-old");
 
         Future<?> writer = pool.submit(() -> {
             try {
                 start.await();
                 for (int i = 0; i < 50 && !tornReadObserved.get(); i++) {
-                    service.applyMetadataOnlyReload("METADATA_ONLY", List.of("race iteration " + i), sourceRoot);
+                    service.applyMetadataOnlyReload("METADATA_ONLY", List.of("race iteration " + i), raceSourceRoot);
                     // Flip back to the old fixture so the next iteration has a real transition to race
-                    // against, rather than becoming a no-op after the first apply.
-                    writeFixture(externalCompiledMetadata, compiledMetadataJson("old-namespace"));
-                    writeFixture(externalIndex, indexJsonWithVersion("v-old"));
-                    writeFixture(externalConceptsManifest, conceptsManifestJson("Old Label"));
+                    // against, rather than becoming a no-op after the first apply -- through the SAME
+                    // atomic swap path, so this loop only ever exercises applyMetadataOnlyReload's own
+                    // atomicity guarantee, never a second, uncoordinated writer.
+                    service.applyMetadataOnlyReload("METADATA_ONLY", List.of("reset to old, iteration " + i), oldSourceRoot);
                 }
             } catch (Exception e) {
                 throw new RuntimeException(e);
