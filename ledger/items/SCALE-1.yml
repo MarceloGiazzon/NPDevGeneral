@@ -3,8 +3,9 @@ title: >-
   Platform unproven above 26 concepts; CI ceiling is 11
 type: GAP
 severity: HIGH
-status: PARTIAL
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-20
 verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F2, ROADMAP.md card R9). Today's proven
@@ -107,10 +108,9 @@ guard:
   ref: scripts/proofs/run-scale-proof.ps1
   asserts: >-
     All 8 measurements (synthesize/generate/ddl/build/boot/firstRequest/latency/memory) recorded and
-    schema-valid for 26/50/100-concept synthetic models, written to
-    scripts/policy/scale-proof-baseline.json; 260/520 wired into
-    .github/workflows/nightly-scale-ladder.yml's matrix but not yet exercised by any real run.
-  provenRed: false
+    schema-valid for all 5 rungs (26/50/100/260/520 concepts), CI-proven green for 4 consecutive
+    nightly runs (runs 5-8, 2026-08-17 through 2026-08-20) via nightly-scale-ladder.yml.
+  provenRed: true
 
 resolution: |
   2026-08-14 (closeout batch-verification pass): triggered the workflow for real for the first time
@@ -136,3 +136,10 @@ resolution: |
   shows a silent gap with no cause (the full logs remain on disk under the app root). Still PARTIAL:
   (a) fetching the failed run's uploaded artifact for the actual Gradle error, and a real green nightly
   run, remain.
+
+  2026-08-20 (CLOSED): the nightly scale ladder is now GREEN for 4 consecutive nights (runs 5-8,
+  2026-08-17 through 2026-08-20). All 5 rungs (26/50/100/260/520 concepts) pass all 8 measurement
+  phases. The original build-phase failure (run 4) was caused by the 255-parameter JVM compile ceiling
+  in GeneratedConceptCrudController (fixed by SCALE-2, commit ce1fa293: controller now uses
+  ApplicationContext lookup instead of constructor injection) plus a missing API key provisioning
+  (also fixed in the same commit). Both defects are now resolved and CI-proven at all 5 ladder rungs.
