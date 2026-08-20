@@ -140,10 +140,6 @@ INTERNAL_ONLY = {
                            "so nothing has needed an auto-increment column yet. Kept because the "
                            "engines genuinely differ here and re-deriving it later is the expensive "
                            "half.",
-    "timestampColumnType": "STOR-13 (prepared early, deliberate). No caller in production or test; "
-                           "column types are emitted through portableColumnType() today.",
-    "cast": "STOR-13 (prepared early, deliberate). No caller in production or test. Every engine "
-            "spells CAST portably enough that no site has needed the dialect to arbitrate yet.",
     "returning": "STOR-13 (prepared early, deliberate). The INSERT paths read generated keys through "
                  "JDBC's getGeneratedKeys rather than a RETURNING clause, so the strategy is "
                  "answered and unused.",
@@ -204,7 +200,29 @@ def production_files(root: Path) -> list[Path]:
 # callers on the first run -- unrelated classes with a `require`/`limited`/`rowLimited` method of
 # their own. A checker that over-reports callers is worse than none: it would have declared STOR-6's
 # `quoteIdentifier` wired while it had zero real callers.
-RECEIVER = re.compile(r"(?i)(dialect|SqlDialects\.active|INSTANCE|forConnection)")
+#
+# `guard(engine` is a fourth, narrower spelling, added after `guardedDropIndexIfExists` read as
+# unasked and investigation found it was not. SchemaRealizationEmitter's own
+# `guard(DatabaseEngine, Function<SqlDialect, String>, String)` -- javadoc: "Ask the dialect, unless
+# there is no dialect to ask" -- is the ONE place that class asks a dialect, and all four
+# `appendGuarded*` call sites spell it `guard(engine, d -> d.someMethod(...), ...)`: a lambda
+# receiver named `d`, which carries no textual "dialect" for the plain heuristic above to find.
+# `guardedDropIndexIfExists` is asked exactly this way, from `appendGuardedDropIndex`, wired into
+# `appendBusinessTableConstraints` for R5.4's soft-delete unique-index rebuild (added 2026-08-19) --
+# real, load-bearing production code, not a hypothetical caller. The other three
+# `guard(engine, ...)` sites only happened to read as asked already because `guardedCreateTable` /
+# `guardedCreateIndex` / `guardedAddColumn` each ALSO have a caller elsewhere (RuntimeHost's
+# migration stores), so this checker had never actually verified SchemaRealizationEmitter's own
+# idiom until now. Verified `guard(engine` is unique to that idiom before adding it: grepping every
+# SEARCH_ROOTS tree for the literal `guard(engine` returns exactly these four call sites, in this
+# one file -- so it cannot pick up an unrelated caller elsewhere.
+#
+# (This edit also removed two stray backspace bytes (0x08) that had sat either side of `INSTANCE`
+# in this same regex literal since commit d80a9213a (2026-08-09) -- confirmed via a raw byte scan,
+# not visible in any normal viewer. They made that one alternative match nothing real; harmless
+# here only because "dialect" already matches every production `XxxDialect.INSTANCE...` call
+# case-insensitively on its own, so no caller was ever missed because of it.)
+RECEIVER = re.compile(r"(?i)(dialect|SqlDialects\.active|INSTANCE|forConnection|guard\(engine)")
 RECEIVER_WINDOW = 90
 
 
