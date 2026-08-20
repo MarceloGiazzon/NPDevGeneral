@@ -1368,6 +1368,11 @@
           "default": false,
           "description": "R5.4: this concept's rows are never physically deleted. A generated delete flips a platform-managed `deletedAt` timestamp instead of removing the row; every generated read (list/page/aggregate/existsUnique/reference finder) excludes a row with `deletedAt` set, and a generated restore action clears it. A `unique:true` field (or compound-unique invariant) is enforced among live (non-deleted) rows only -- a value freed by a soft delete can be reused immediately."
         },
+        "temporal": {
+          "type": "boolean",
+          "default": false,
+          "description": "R5.8: this concept carries effective-dated rows (price lists, tax rates, assignments -- multiple rows for the same logical entity, valid over different, non-overlapping windows). Requires the concept to also declare its own author-owned `validFrom`/`validTo` fields (type: date, required: true -- ordinary business fields, not platform-managed columns; a still-open-ended row uses a far-future sentinel date rather than a null validTo), enforced at compile time. The generic concept-CRUD read/list/query endpoint (`GET /api/concepts/{conceptName}`) accepts an `asOf=<date>` query parameter that composes with any other `where=` filter already supported there (e.g. `where=productCode:eq:P100&asOf=2026-03-15` resolves the row effective for that product on that date) -- `validFrom<=asOf<=validTo` is pushed down as two ordinary ConceptQuery filters, and a temporal concept's default view (asOf absent) resolves as of today, matching `softDelete`'s own default-excludes-noncurrent-rows convention. Scoping resolution to \"the same logical entity\" (e.g. the same product) is the caller's job via an ordinary `where=` filter, not a new identity-key schema concept -- deliberately deferred, see ledger RUN-22."
+        },
         "fields": {
           "type": "array",
           "minItems": 1,

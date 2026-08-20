@@ -402,6 +402,19 @@
         { "name": "supplierCode", "type": "string", "required": true, "unique": true, "ui": { "label": "Supplier code" } },
         { "name": "displayName", "type": "string", "required": true, "ui": { "label": "Name" } }
       ]
+    },
+    {
+      "name": "WidgetPriceListEntry",
+      "truthLevel": "T2",
+      "temporal": true,
+      "ui": { "label": "Widget price list entry" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "productCode", "type": "string", "required": true, "ui": { "label": "Product code" } },
+        { "name": "amount", "type": "decimal", "required": true, "ui": { "label": "Amount" } },
+        { "name": "validFrom", "type": "date", "required": true, "ui": { "label": "Valid from" } },
+        { "name": "validTo", "type": "date", "required": true, "ui": { "label": "Valid to" } }
+      ]
     }
   ],
 

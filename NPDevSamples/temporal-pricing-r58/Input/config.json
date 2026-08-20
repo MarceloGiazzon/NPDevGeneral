@@ -1,0 +1,27 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "temporal-pricing-r58",
+    "description": "R5.8 thin-slice live proof: concept.temporal + asOf resolution on a WidgetPrice concept.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": { "root": "..\\..\\..\\NPDevRuntimeHost", "mergeStrategy": "clean-copy" },
+  "artifact": { "root": "..\\Output\\ArtifactNP", "generatedFolderName": "npdev-generated", "libsFolderName": "libs", "metaFolderName": "npdev-meta" },
+  "finalExec": { "root": "..\\Output\\App", "deleteBeforeMount": true },
+  "database": { "provider": "h2-local", "database": "npdev_temporal_pricing_r58", "resetMode": "reset" },
+  "runtime": { "springProfile": "dev,trial", "serverPort": 8412, "javaArgs": [], "gradleTask": "bootRun" },
+  "trialDefaults": {
+    "apiKey": "dev-key", "recommendedProfiles": "dev,trial", "runtimeUrl": "http://localhost:8412/",
+    "databaseMode": "h2-local",
+    "notes": ["R5.8 thin-slice sample. Proves concept.temporal + asOf resolution live, nothing more."]
+  }
+}
