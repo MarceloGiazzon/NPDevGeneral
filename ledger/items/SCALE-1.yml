@@ -130,3 +130,9 @@ resolution: |
   the failed run's own uploaded artifact/report for the actual Gradle error (not done here), and
   (b) fixing `run-scale-proof.ps1` to surface build failures in the CI log directly, both of which
   are follow-up work, not this closeout pass's own scope.
+
+  2026-08-20 (b done): run-scale-proof.ps1 now streams the tail of scale-proof-build.stdout.log and
+  scale-proof-build.stderr.log to the CI log when the build phase fails, so a failed rung no longer
+  shows a silent gap with no cause (the full logs remain on disk under the app root). Still PARTIAL:
+  (a) fetching the failed run's uploaded artifact for the actual Gradle error, and a real green nightly
+  run, remain.

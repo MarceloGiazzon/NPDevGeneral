@@ -17,6 +17,7 @@ public record ScheduledEventRecord(
         String sourceEventName,
         String sourceEventId,
         String correlationId,
+        String tenantId,
         String eventName,
         OffsetDateTime dueAt,
         String status,
@@ -41,6 +42,7 @@ public record ScheduledEventRecord(
         out.put("sourceEventName", sourceEventName);
         out.put("sourceEventId", sourceEventId);
         out.put("correlationId", correlationId);
+        out.put("tenantId", tenantId);
         out.put("eventName", eventName);
         out.put("dueAt", dueAt == null ? null : dueAt.toString());
         out.put("status", status);

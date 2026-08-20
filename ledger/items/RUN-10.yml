@@ -4,8 +4,10 @@ title: >-
   satisfies an AWAIT_EVENT declaring matchCorrelation:true
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-18
+closed: 2026-08-20
+verification: UNIT_TESTED
 source: >-
   Found while implementing R2.4 (RUN-9) -- disclosed by the implementer rather than left for a user
   to discover, and deliberately filed instead of being fixed inside that item.
@@ -38,13 +40,28 @@ detail: |
   Relevant to R2.5 (durable await timeouts + onTimeout), which the roadmap sequences next and which
   is exactly the "wait for approval, escalate after N hours" shape most likely to want a correlated
   delayed wake. Worth closing before or alongside it.
+
+  2026-08-20 (fix): added an optional `tenant_id` column to `npdev_scheduled_event` (NpdevScheduledEventTable,
+  the V1 schema the generator emits -- additive, so existing apps gain it via the normal schema-lifecycle
+  path). `ScheduledEventRecord` now carries `tenantId`; `ScheduledEventSql`/`ScheduledEventSupport` read
+  and write it; both the flow-level `scheduleDeferredFlowEvent` and the orchestration-level `scheduleEvent`
+  write the envelope's tenant. The drain's `processDueScheduledEvents` now publishes via a new
+  `publishScheduledDueEvent` that passes the row's stored `trigger_correlation_id` and `tenant_id` to
+  `kernelRunner.publishExternalEvent`, so a correlated `AWAIT_EVENT` (matchCorrelation:true) is satisfied.
+  `enforceCorrelationOwnership` only throws on a tenant MISMATCH (it claims otherwise), so echoing the
+  stored (correlation, tenant) pair is safe. Tests: `GeneratedCrudRuntimeSupportDeferredFlowEventTest`
+  gained a `readByCorrelation("corr-r24-adapter")` assertion (the drain republishes with the stored
+  correlation id); the flow + SQL tests, `NpdevInternalTablesSourceOfTruthTest`,
+  `SchemaRealizationEmitterScheduledEventTest`, and `ScheduledEventDrainRunnerIT` (DDL updated) all green.
 guard:
-  kind: manual
-  ref: >-
-    Model a flow that schedules an event with delaySeconds > 0 and awaits it with
-    matchCorrelation:true; after the drain publishes, the instance remains WAITING_EVENT. The same
-    model with matchCorrelation absent/false resumes normally.
+  kind: test
+  ref: NPDevKernel/adapters/expression-cel/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportDeferredFlowEventTest.java
   asserts: >-
-    a deferred event published by the drain carries the correlation id it was scheduled with, so a
-    correlated await is satisfied -- currently false
+    After processDueScheduledEvents drains a due row, the published event is readable by
+    readByCorrelation(trigger_correlation_id) -- the drain echoes the SAME correlation id it was
+    scheduled with (and its tenant), so a correlated AWAIT_EVENT (matchCorrelation:true) is satisfied.
   provenRed: false
+  provenRedNote: >-
+    The defect was a code-cited observation (the drain ignored trigger_correlation_id and published a
+    fresh id), not a captured failing run. The fix is pinned by the new readByCorrelation assertion,
+    which fails if the drain reverts to a fresh correlation id.

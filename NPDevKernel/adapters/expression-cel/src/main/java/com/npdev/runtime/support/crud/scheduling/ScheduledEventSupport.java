@@ -42,6 +42,7 @@ public final class ScheduledEventSupport {
         String sourceEventName = asNonBlankString(row.getObject("source_event_name"));
         String sourceEventId = asNonBlankString(row.getObject("source_event_id"));
         String correlationId = asNonBlankString(row.getObject("trigger_correlation_id"));
+        String tenantId = asNonBlankString(row.getObject("tenant_id"));
         String eventName = asNonBlankString(row.getObject("event_name"));
         OffsetDateTime dueAt = toOffsetDateTime(row.getObject("due_at"));
         String status = asNonBlankString(row.getObject("status"));
@@ -61,6 +62,7 @@ public final class ScheduledEventSupport {
                 sourceEventName,
                 sourceEventId,
                 correlationId,
+                tenantId,
                 eventName,
                 dueAt,
                 status,

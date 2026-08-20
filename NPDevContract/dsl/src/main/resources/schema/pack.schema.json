@@ -317,6 +317,24 @@
     "metadata": {
       "type": "object"
     },
+    "extends": {
+      "type": "object",
+      "description": "PACK-10/R8.11: declares this pack is an additive extension of a concept owned by another pack. The extension pack contributes fields to the target concept via PackExtensionComposer (additive-only, sealedness/collision refusal). Equivalent to the legacy metadata.extends convention but first-class in the schema.",
+      "required": ["pack", "concept"],
+      "properties": {
+        "pack": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The pack id of the base pack whose concept is being extended."
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The bare concept name in the base pack that this extension adds fields to."
+        }
+      },
+      "additionalProperties": false
+    },
     "fragments": {
       "type": "array",
       "items": {

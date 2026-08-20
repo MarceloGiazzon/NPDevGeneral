@@ -4,8 +4,10 @@ title: >-
   label in every generated app, not just enums
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-19
+closed: 2026-08-20
+verification: UNIT_TESTED
 source: >-
   Found by the R7.6 (EDIT-11) CSV import work while rendering PurchaseOrder's enum column, disclosed
   as out of scope. Reproduced independently by the orchestrator.
@@ -44,17 +46,23 @@ detail: |
   Deliberately filed rather than fixed inside R7.6: changing it there would have altered labels
   throughout the app under a commit about CSV import, and the browser routine that proves R7.6 asserts
   on some of those labels.
+
+  2026-08-20 (fix): adopted the sibling templates' split -- only a capital following a lower-case
+  letter or digit is split (`/([a-z0-9])([A-Z])/g, "$1 $2"`), so runs of capitals stay intact. Decision
+  taken for the "leave acronyms alone" option ("HIGH" stays "HIGH"), matching model-surface.mustache /
+  model-authoring.mustache. Verified with Node over the emitted function: inProgress -> "In Progress",
+  status -> "Status", HIGH -> "HIGH", OPEN -> "OPEN", orderId -> "Order Id", skuCode -> "Sku Code",
+  URLValue -> "URLValue". Regression test added (BusinessUiEmitterHumanizeTest), RED captured against
+  the old regex, GREEN after the fix.
 guard:
-  kind: manual
-  ref: >-
-    In a generated app, render any concept with an ALL-CAPS enum value (PurchaseOrder.priority in
-    AppGen/apps/payment-webhook-rehearsal is one) and read the grid cell -- today it shows "H I G H".
-    Or evaluate humanize("HIGH") in the browser console against business-ui-app.mustache:114.
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterHumanizeTest.java
   asserts: >-
-    humanize renders camelCase identifiers as spaced words while leaving runs of capitals intact, so
-    an enum value or acronym is not exploded letter by letter
-  provenRed: false
+    The emitted business-ui app.js contains the camelCase-boundary split
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2") and no longer contains the every-capital split
+    .replace(/([A-Z])/g, " $1"), so an ALL-CAPS enum value or acronym token is not exploded letter by
+    letter.
+  provenRed: true
   provenRedNote: >-
-    Reproduced by running the exact regex from the emitted source over real inputs, and observed in a
-    live app by the R7.6 work, but not captured by a test written to force it -- there is no unit test
-    over humanize today.
+    Captured by temporarily restoring the old regex: BusinessUiEmitterHumanizeTest fails at the
+    corrected-split assertion (line 78); re-applying the fix turns the same test green.

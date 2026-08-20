@@ -25,6 +25,7 @@ if ([string]::IsNullOrWhiteSpace($ReportPath)) {
 }
 
 $templateRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost"
+$runtimeHostCoreRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\runtimehost-core"
 $syncRuntimeHostLibsScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\runtimehost\sync-runtimehost-libs.ps1"
 $generateSampleScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevSamples\scripts\generate-sample-app.ps1"
 $cleanSampleOutputScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\samples\clean-sample-output.ps1"
@@ -39,6 +40,7 @@ $runtimeSecurityConsistencyReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoo
 $sampleDiagnosticsReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\sample-diagnostics-enrichment-report.json"
 
 Ensure-NPDevDirectory $templateRoot "RuntimeHost template root"
+Ensure-NPDevDirectory $runtimeHostCoreRoot "runtimehost-core module root"
 Ensure-NPDevFile $syncRuntimeHostLibsScript "RuntimeHost libs sync script"
 Ensure-NPDevFile $generateSampleScript "Sample generation script"
 Ensure-NPDevFile $cleanSampleOutputScript "Sample cleanup script"
@@ -50,6 +52,7 @@ Ensure-NPDevFile $sampleDiagnosticsAuditScript "Sample diagnostics enrichment au
 $status = "passed"
 $errorMessage = $null
 $verificationCommand = $null
+$runtimeHostCoreCommand = $null
 $cleanupEvidence = $null
 $observabilityHardening = $null
 $runtimeSecurityConsistency = $null
@@ -90,6 +93,22 @@ try {
 
         if ([string]$verificationCommand.status -ne "passed") {
             throw "RuntimeHost verification command failed."
+        }
+
+        # QUAL-19: runtimehost-core is a STANDALONE Gradle root (its own settings.gradle, included by no
+        # other settings.gradle), so nothing else runs its `test` task. Run it here -- the sync above
+        # already staged the kernel/contract jars the module resolves from the runtimehost-libs fileTree.
+        Write-NPDevInfo "Running runtimehost-core test task"
+        $runtimeHostCoreLogPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\runtimehost-core-test.log"
+        $runtimeHostCoreWrapper = Get-NPDevGradleWrapperExecutable $runtimeHostCoreRoot
+        $runtimeHostCoreCommand = Invoke-NPDevCommandEvidence `
+            -WorkspaceRoot $WorkspaceRoot `
+            -WorkingDirectory $runtimeHostCoreRoot `
+            -Executable $runtimeHostCoreWrapper `
+            -Arguments @("--no-daemon", "--console=plain", "test") `
+            -LogPath $runtimeHostCoreLogPath
+        if ([string]$runtimeHostCoreCommand.status -ne "passed") {
+            throw "runtimehost-core test task failed."
         }
 
         # R3: scripts/quality/check-coverage-ratchet.py reads this stable, non-cleaned path -- the
@@ -222,8 +241,9 @@ $report = [pscustomobject]@{
     sampleId = $SampleId
     assembledAppRoot = $assembledAppRoot
     generationMarker = $generationMarkerEvidence
-    verificationTasks = @("enforceSingleSchemaRealizationSource", "test")
+    verificationTasks = @("enforceSingleSchemaRealizationSource", "test", "runtimehost-core:test")
     verificationCommand = $verificationCommand
+    runtimeHostCoreCommand = $runtimeHostCoreCommand
     cleanup = $cleanupEvidence
     observabilityHardening = if ($null -eq $observabilityHardening) {
         $null

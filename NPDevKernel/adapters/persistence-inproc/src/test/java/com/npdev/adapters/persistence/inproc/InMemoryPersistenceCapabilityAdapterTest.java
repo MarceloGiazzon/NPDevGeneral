@@ -4,6 +4,7 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
+import com.npdev.kernel.inproc.InMemoryConceptStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -33,6 +34,25 @@ class InMemoryPersistenceCapabilityAdapterTest {
 
         assertTrue((Boolean) adapter.delete("User", id));
         assertFalse((Boolean) adapter.exists("User", "email", "a@b.com"));
+    }
+
+    @Test
+    void saveDelegatesToTheInjectedConceptStore() {
+        // REG-187: with a ConceptStore injected (as the runtime does), save() writes to THAT store, so
+        // a flow-driven create is visible to the generated service's post-flow findById.
+        InMemoryConceptStore conceptStore = new InMemoryConceptStore();
+        InMemoryPersistenceCapabilityAdapter adapter =
+                new InMemoryPersistenceCapabilityAdapter(null, conceptStore);
+
+        Map<?, ?> saved = (Map<?, ?>) adapter.save("User",
+                Map.of("email", "a@b.com", "name", "Ana", "tenantId", "dev"));
+        Object id = saved.get("id");
+        assertNotNull(id);
+
+        // The row must be readable from the SAME store the service reads (tenant "dev", concept "user").
+        assertTrue(conceptStore.findById("dev", "user", String.valueOf(id)).isPresent());
+        assertEquals("a@b.com",
+                conceptStore.findById("dev", "user", String.valueOf(id)).orElseThrow().data().get("email"));
     }
 
     @Test

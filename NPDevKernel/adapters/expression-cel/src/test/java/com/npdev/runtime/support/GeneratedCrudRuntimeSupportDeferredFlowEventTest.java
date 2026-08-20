@@ -155,6 +155,9 @@ class GeneratedCrudRuntimeSupportDeferredFlowEventTest {
                 "The deferred event should now be published, got: " + events.eventNames());
         assertTrue(events.eventNames().contains("OrchestrationScheduleProcessed"),
                 "The drain should publish its evidence event, got: " + events.eventNames());
+        assertFalse(events.readByCorrelation("corr-r24-adapter").isEmpty(),
+                "RUN-10: the drain must publish with the SAME correlation id the event was scheduled with,"
+                        + " so a correlated AWAIT_EVENT (matchCorrelation: true) is satisfied");
     }
 
     /**
@@ -291,6 +294,7 @@ class GeneratedCrudRuntimeSupportDeferredFlowEventTest {
                       source_event_name VARCHAR(191) NOT NULL,
                       source_event_id VARCHAR(191),
                       trigger_correlation_id TEXT,
+                      tenant_id TEXT,
                       event_name TEXT NOT NULL,
                       due_at TIMESTAMP NOT NULL,
                       payload TEXT NOT NULL,

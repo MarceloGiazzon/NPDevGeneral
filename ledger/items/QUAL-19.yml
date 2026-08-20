@@ -4,8 +4,10 @@ title: >-
   items run only when someone remembers to type the command
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-19
+closed: 2026-08-20
+verification: VERIFIED_LIVE
 source: >-
   Found by the orchestrator while verifying RUN-15 (R2.7) and QUAL-18 (R3.2). Both agents
   independently put their tests in runtimehost-core/src/test and both declared `kind: test` guards,
@@ -58,18 +60,25 @@ detail: |
   `runtimehost-libs` fileTree, so the gate would need the jars staged before the step -- the gate
   already runs `sync-runtimehost-libs.ps1`, so the ordering likely works, but that must be measured
   on a clean checkout rather than assumed.
+
+  2026-08-20 (fix): added a runtimehost-core `test` invocation to run-runtimehost-gate.ps1, placed
+  after the assembled-app verification (the sync-runtimehost-libs step already ran first, so the staged
+  jars are present). The report's verificationTasks now lists "runtimehost-core:test" and the
+  runtimeHostCoreCommand evidence is recorded. The step is fail-loud: a failure throws and fails the
+  gate. Verified the ordering live: ran `runtimehost-core`'s own `./gradlew test` against the staged
+  runtimehost-libs (with NPDEV_BUILD_ROOT pointing at the Build root) -> BUILD SUCCESSFUL, `:test`
+  executed (55s), so the jars-staged-then-test ordering the gate step relies on is real, not assumed.
 guard:
   kind: manual
-  ref: >-
-    grep for an invocation of runtimehost-core's `test` task across scripts/quality/*.ps1 and
-    .github/workflows/*.yml -- today there is none; every hit is a .java source-path reference for a
-    static check. Confirm by checking that NPDevRuntimeHost/runtimehost-core/settings.gradle declares
-    its own rootProject and is included by no other settings.gradle.
+  ref: scripts/quality/run-runtimehost-gate.ps1
   asserts: >-
-    tests placed in runtimehost-core/src/test are executed by an automated gate, so a ledger item may
-    legitimately carry a kind: test guard pointing there
+    run-runtimehost-gate.ps1 invokes runtimehost-core's `test` task after sync-runtimehost-libs.ps1
+    stages the jars, so the 19 tests in runtimehost-core/src/test are executed by an automated gate --
+    the jars-staged-then-test ordering was verified live by running the module's own `./gradlew test`
+    against the staged runtimehost-libs (BUILD SUCCESSFUL).
   provenRed: false
   provenRedNote: >-
-    Established by reading the gate scripts, the workflows and the module's settings.gradle, not by
-    running anything -- the assertion is about what is NOT invoked, which has no failing run to
-    capture. The 19 affected tests were counted directly from their @Test annotations.
+    The gap was established by reading the gate scripts, workflows and the module's settings.gradle (no
+    invocation existed) -- the assertion is about what was NOT invoked, which has no failing run to
+    capture. The added invocation is verified (test task runs against staged jars); the full gate was
+    not re-run end to end here.

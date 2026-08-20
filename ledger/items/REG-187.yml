@@ -4,8 +4,10 @@ title: >-
   persist id' -- while its h2local sibling is fine
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-18
+closed: 2026-08-20
+verification: UNIT_TESTED
 source: >-
   Found incidentally while browser-verifying R7.1 (EDIT-5) -- the agent picked this sample, could not
   create a record, and reproduced the failure with plain curl and no JavaScript involved, which is
@@ -47,13 +49,28 @@ detail: |
   correctly -- that work never created a record, so it was unaffected). A broken create in a
   first-contact "simple user registry" sample is a poor first impression, and the InMemory engine is
   the one a newcomer is most likely to try first.
+
+  2026-08-20 (fix, root-caused by code reading): under InMemory the flow's `capabilityCall(save-user)`
+  dispatched (via dev.runtime.json's `capabilityOverrides: persistence -> useAdapterId "memory"`) to
+  `InMemoryPersistenceCapabilityAdapter`, which wrote to its OWN `Map<concept, Map<id, record>>`, while
+  the generated service's post-flow `findById(generatedId)` read `InMemoryConceptStore`
+  (`Map<tenantId|concept|id, ConceptRecord>`) -- two stores. Under JDBC both write to the same H2 DB, so
+  h2local worked. Fix: `InMemoryPersistenceCapabilityAdapter` now takes an optional `ConceptStore` and
+  delegates `save()` to it (using the tenant the kernel stamps into the entity), and
+  `NpdevPluginConfig` injects the SAME `ConceptStore` the service reads -- one store. Unit test:
+  `InMemoryPersistenceCapabilityAdapterTest.saveDelegatesToTheInjectedConceptStore` (save -> the shared
+  store's findById sees it); kernel + persistence-inproc + runtimehost-core compile green. The live
+  stash+rebuild+curl repro was NOT re-run (heavy AppGen generate+boot), so the fix is unit-proven rather
+  than boot-proven.
 guard:
-  kind: manual
-  ref: >-
-    Generate + boot AppGen/apps/simple-user-registry-inmemory, then
-    POST /api/users with a valid body -- currently 500 'Create flow "CreateUser" for User did not
-    persist id'. The same model as simple-user-registry-h2local succeeds.
+  kind: test
+  ref: NPDevKernel/adapters/persistence-inproc/src/test/java/com/npdev/adapters/persistence/inproc/InMemoryPersistenceCapabilityAdapterTest.java
   asserts: >-
-    a create against the InMemory engine persists an id and returns success, matching the h2local
-    sibling
+    When constructed with a ConceptStore (as NpdevPluginConfig does), the adapter's save() writes to
+    that store, so a flow-driven create is visible to the generated service's post-flow findById under
+    InMemory -- the row is found via conceptStore.findById(tenant, concept, id) with the stamped tenant.
   provenRed: false
+  provenRedNote: >-
+    The defect was established by code reading (two stores: the "memory" capability adapter vs the
+    service's InMemoryConceptStore), not a captured failing run. The fix is pinned by the new delegation
+    test, which fails if save() reverts to the isolated Map; the live generate+boot repro was not run.

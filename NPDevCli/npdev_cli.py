@@ -17,6 +17,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 import zipfile
 from datetime import datetime, timezone
@@ -2689,8 +2690,6 @@ def run_setup(args: argparse.Namespace) -> int:
     Phase 0 I2: --json wraps the same two phases (jar build, knowledge index) with started/done
     events carrying elapsed seconds, ending with one npdev-cli-result.v1 object -- setup is long
     (~573s), so the Manager needs progress, not just a final verdict."""
-    import time as _time
-
     out = _SetupOutput(getattr(args, "json", False))
     root = repo_root()
     kernel_root = root / "NPDevKernel"
@@ -2716,7 +2715,7 @@ def run_setup(args: argparse.Namespace) -> int:
     libs_dir = build_root / "runtimehost-libs"
     libs_dir.mkdir(parents=True, exist_ok=True)
 
-    jars_started = _time.monotonic()
+    jars_started = time.monotonic()
     out.event("jars", "started")
 
     # I5: try a prebuilt Release asset before spending the ~9 of setup's ~10 minutes compiling --
@@ -2801,7 +2800,7 @@ def run_setup(args: argparse.Namespace) -> int:
         (libs_dir / "runtimehost-libs-manifest.json").write_text(
             json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         out.narrate(f"npdev setup: {len(copied)} jar(s) copied, {len(up_to_date)} already current -> {libs_dir}")
-    out.event("jars", "done", seconds=round(_time.monotonic() - jars_started, 1), source=jars_source)
+    out.event("jars", "done", seconds=round(time.monotonic() - jars_started, 1), source=jars_source)
 
     # JDBC drivers, on BOTH jar paths. The build path used to leave Postgres in the Gradle module
     # cache as a side effect of compiling the RuntimeHost template; the download path stages prebuilt
@@ -2810,14 +2809,14 @@ def run_setup(args: argparse.Namespace) -> int:
     # being honest about an absent precondition, and setup is the thing that is supposed to supply it:
     # this command's own output tells the user "Run `npdev setup` ... to fetch it". Now that is true
     # however setup got its jars. Best-effort: an offline machine still completes setup.
-    drivers_started = _time.monotonic()
+    drivers_started = time.monotonic()
     out.event("jdbc-drivers", "started")
     driver_results: dict[str, str] = {}
     for engine_key in sorted(_JDBC_DRIVER_COORDINATES):
         jar, outcome = _ensure_jdbc_driver(engine_key)
         driver_results[engine_key] = outcome
         out.narrate(f"npdev setup: [2/3] JDBC driver {engine_key}: {outcome}")
-    out.event("jdbc-drivers", "done", seconds=round(_time.monotonic() - drivers_started, 1),
+    out.event("jdbc-drivers", "done", seconds=round(time.monotonic() - drivers_started, 1),
               **driver_results)
 
     # Clean the source builds' own build/ dirs afterward -- build output does not belong inside
@@ -2833,14 +2832,14 @@ def run_setup(args: argparse.Namespace) -> int:
                                  key=lambda p: len(str(p)), reverse=True):
             shutil.rmtree(build_dir, ignore_errors=True)
 
-    knowledge_started = _time.monotonic()
+    knowledge_started = time.monotonic()
     out.event("knowledge-index", "started")
     build_knowledge = root / "scripts" / "ai" / "build_knowledge.py"
     if build_knowledge.exists():
         out.narrate("npdev setup: [2/3] building the AI knowledge index")
         out.run([sys.executable, str(build_knowledge)], root)
         knowledge_note = str(build_root / "npdev-ai")
-        out.event("knowledge-index", "done", seconds=round(_time.monotonic() - knowledge_started, 1))
+        out.event("knowledge-index", "done", seconds=round(time.monotonic() - knowledge_started, 1))
     else:
         out.narrate(f"npdev setup: [2/3] skipped -- not found: {build_knowledge}")
         knowledge_note = "skipped"
@@ -5489,6 +5488,12 @@ BENCH_BASELINE_SCHEMA_VERSION = "npdev-bench-baseline.v1"
 # is no reason to invent a different default sample count for the same kind of measurement.
 DEFAULT_BENCH_SAMPLES = 20
 DEFAULT_BENCH_REGRESSION_THRESHOLD = 1.5
+# MON-21: a known-stable control endpoint measured in the SAME run, so ambient machine load (which
+# moves every endpoint's latency together) can be normalised out instead of reading as a regression.
+# /actuator/health is cheap, data-independent, and present on the dev/trial profile (actuator is
+# exposed to health,info,mappings,beans). If it is absent the bench degrades to the raw ratio.
+BENCH_CONTROL_PATH = "/actuator/health"
+BENCH_CONTROL_BASELINE_KEY = "__control__"
 
 
 def _bench_plan(app_record: dict, final_app_root: Path, *,
@@ -5621,23 +5626,37 @@ def _load_bench_baseline(path: Path) -> dict:
     return endpoints if isinstance(endpoints, dict) else {}
 
 
-def _compare_to_baseline(stats: dict, baseline_entry: dict | None, threshold: float) -> dict:
+def _compare_to_baseline(stats: dict, baseline_entry: dict | None, threshold: float,
+                         control_ratio: float | None = None) -> dict:
     """RELATIVE comparison only (RUN-16's lesson) -- never an absolute ms ceiling. No baseline entry,
     or zero successful samples on either side, means "nothing to compare" rather than a manufactured
-    regression."""
+    regression.
+
+    MON-21: when `control_ratio` (the control endpoint's own current/baseline p50 ratio) is supplied,
+    the raw ratio is NORMALISED by it -- a machine that is uniformly slower this run (the control
+    slowed too) no longer reads as a per-endpoint regression. The report states which claim it is
+    making: `normalizedRatio` vs a raw `ratio` with `normalizationApplied: false`."""
     if not baseline_entry or not stats.get("samples") or not baseline_entry.get("p50Ms"):
         return {"hasBaseline": bool(baseline_entry), "regressed": False}
     baseline_p50 = baseline_entry["p50Ms"]
-    ratio = stats["p50Ms"] / baseline_p50
-    return {
+    raw_ratio = stats["p50Ms"] / baseline_p50
+    result = {
         "hasBaseline": True,
         "baselineP50Ms": baseline_p50,
         "baselineSamples": baseline_entry.get("samples"),
         "baselineMeasuredAt": baseline_entry.get("measuredAt"),
-        "ratio": round(ratio, 3),
+        "ratio": round(raw_ratio, 3),
         "thresholdRatio": threshold,
-        "regressed": ratio >= threshold,
     }
+    if control_ratio is not None and control_ratio > 0:
+        normalized = raw_ratio / control_ratio
+        result["controlRatio"] = round(control_ratio, 3)
+        result["normalizedRatio"] = round(normalized, 3)
+        result["regressed"] = normalized >= threshold
+    else:
+        result["normalizationApplied"] = False
+        result["regressed"] = raw_ratio >= threshold
+    return result
 
 
 def run_bench(args: argparse.Namespace) -> dict:
@@ -5677,12 +5696,26 @@ def run_bench(args: argparse.Namespace) -> dict:
 
     started_at = _utc_now()
     begin = time.time()
+
+    # MON-21: measure the control endpoint in the SAME run. Its own slow-down under ambient load is
+    # the yardstick that normalises every other endpoint's ratio, so machine load alone cannot read as
+    # a regression. A failed/absent control degrades to the raw ratio (normalizationApplied=false).
+    control_latencies_ms, control_failures = _bench_measure_endpoint(
+        base_url, headers, BENCH_CONTROL_PATH, args.samples, args.timeout)
+    control_stats = _bench_stats(control_latencies_ms)
+    control_baseline = baseline.get(BENCH_CONTROL_BASELINE_KEY) or {}
+    control_ratio = None
+    if control_stats.get("p50Ms") and control_baseline.get("p50Ms"):
+        control_ratio = control_stats["p50Ms"] / control_baseline["p50Ms"]
+
     endpoints = []
     for entry in plan:
         latencies_ms, failures = _bench_measure_endpoint(
             base_url, headers, entry["path"], args.samples, args.timeout)
         stats = _bench_stats(latencies_ms)
-        comparison = _compare_to_baseline(stats, baseline.get(entry["id"]), args.regression_threshold)
+        comparison = _compare_to_baseline(
+            stats, baseline.get(entry["id"]), args.regression_threshold,
+            control_ratio=control_ratio)
         endpoints.append({
             **entry,
             "stats": stats,
@@ -5709,6 +5742,14 @@ def run_bench(args: argparse.Namespace) -> dict:
         "samplesPerEndpoint": args.samples,
         "regressionThreshold": args.regression_threshold,
         "warnings": warnings,
+        "control": {
+            "path": BENCH_CONTROL_PATH,
+            "stats": control_stats,
+            "failedSamples": len(control_failures),
+            "failures": control_failures[:5],
+            "ratio": round(control_ratio, 3) if control_ratio is not None else None,
+            "normalizationApplied": control_ratio is not None and control_ratio > 0,
+        },
         "endpoints": endpoints,
         "counts": {
             "total": len(endpoints),
@@ -5737,6 +5778,13 @@ def run_bench(args: argparse.Namespace) -> dict:
                 "name": endpoint["name"], "kind": endpoint["kind"], "path": endpoint["path"],
                 "samples": endpoint["stats"]["samples"], "p50Ms": endpoint["stats"]["p50Ms"],
                 "p95Ms": endpoint["stats"]["p95Ms"], "meanMs": endpoint["stats"]["meanMs"],
+                "measuredAt": started_at,
+            }
+        if control_stats["samples"] > 0:
+            new_baseline[BENCH_CONTROL_BASELINE_KEY] = {
+                "name": "control", "kind": "control", "path": BENCH_CONTROL_PATH,
+                "samples": control_stats["samples"], "p50Ms": control_stats["p50Ms"],
+                "p95Ms": control_stats["p95Ms"], "meanMs": control_stats["meanMs"],
                 "measuredAt": started_at,
             }
         baseline_path.parent.mkdir(parents=True, exist_ok=True)
@@ -7983,6 +8031,63 @@ def _pack_export_reference_targets(concept: dict):
             yield f"{concept_name}.{field_name}.reference.target", _get_obj, _set_obj
 
 
+def _pack_export_classify_inline(exported_concepts: list[dict], export_set: set[str],
+                                 packs_root: Path) -> tuple[list[dict], list[dict], dict[str, str], list[dict]]:
+    """PACK-14 fallback: the inline reference classification, kept for a fresh checkout with no staged
+    npdev-ai-tools.jar (or no java). The primary path is _pack_export_classify -> the shared Java
+    PackExportReferenceClassifierMain."""
+    rewrites: list[dict] = []
+    cross_pack_versions: dict[str, str] = {}
+    unresolved: list[dict] = []
+    for concept in exported_concepts:
+        for field_label, get_target, set_target in _pack_export_reference_targets(concept):
+            target = get_target()
+            local_name = target.split("::", 1)[-1] if "::" in target else target
+            if local_name in export_set:
+                if target != local_name:
+                    set_target(local_name)
+                    rewrites.append({"field": field_label, "from": target, "to": local_name})
+                continue
+            if "::" in target:
+                prefix = target.split("::", 1)[0]
+                sibling_pack_json = packs_root / prefix / "pack.json"
+                if sibling_pack_json.exists():
+                    sibling = read_json(sibling_pack_json)
+                    version = str(sibling.get("version", "")).strip()
+                    parts = version.split(".")
+                    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+                        cross_pack_versions[prefix] = f"^{parts[0]}.{parts[1]}"
+                    else:
+                        cross_pack_versions.setdefault(prefix, "^0.0")
+                    continue
+            unresolved.append({"field": field_label, "target": target})
+    return exported_concepts, rewrites, cross_pack_versions, unresolved
+
+
+def _pack_export_classify(exported_concepts: list[dict], export_set: set[str],
+                          packs_root: Path) -> tuple[list[dict], list[dict], dict[str, str], list[dict]]:
+    """PACK-14: the single reference-classification implementation is the Java
+    PackExportReferenceClassifier (entry point PackExportReferenceClassifierMain), shared with the
+    generated controller. Run it directly as `java -cp npdev-ai-tools.jar` when available; fall back to
+    the inline copy only when the jar/java is absent (R1.1's mandatory fallback)."""
+    command = _ai_tools_command("com.npdev.dsl.v1.cli.PackExportReferenceClassifierMain", [])
+    if command is not None:
+        payload = json.dumps({
+            "concepts": exported_concepts,
+            "exportSet": sorted(export_set),
+            "packsRoot": str(packs_root),
+        })
+        try:
+            completed = subprocess.run(command, input=payload, capture_output=True, text=True, timeout=120)
+            if completed.returncode == 0:
+                result = json.loads(completed.stdout)
+                return (result["concepts"], result["rewrites"],
+                        result["crossPackVersions"], result["unresolved"])
+        except (subprocess.SubprocessError, json.JSONDecodeError, KeyError, OSError):
+            pass  # fall through to the inline path
+    return _pack_export_classify_inline(exported_concepts, export_set, packs_root)
+
+
 def run_pack_export(args: argparse.Namespace) -> int:
     """R8.2: a real `npdev pack export` verb, replacing the ONLY-previously-real path from a
     working app concept to a reusable pack -- an external one-concept PowerShell script
@@ -8069,32 +8174,10 @@ def run_pack_export(args: argparse.Namespace) -> int:
 
     export_set = set(concept_names)
     exported_concepts = [copy.deepcopy(by_name[name]) for name in concept_names]
-
-    rewrites: list[dict] = []
-    cross_pack_versions: dict[str, str] = {}
-    unresolved: list[dict] = []
-    for concept in exported_concepts:
-        for field_label, get_target, set_target in _pack_export_reference_targets(concept):
-            target = get_target()
-            local_name = target.split("::", 1)[-1] if "::" in target else target
-            if local_name in export_set:
-                if target != local_name:
-                    set_target(local_name)
-                    rewrites.append({"field": field_label, "from": target, "to": local_name})
-                continue
-            if "::" in target:
-                prefix = target.split("::", 1)[0]
-                sibling_pack_json = packs_root / prefix / "pack.json"
-                if sibling_pack_json.exists():
-                    sibling = read_json(sibling_pack_json)
-                    version = str(sibling.get("version", "")).strip()
-                    parts = version.split(".")
-                    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
-                        cross_pack_versions[prefix] = f"^{parts[0]}.{parts[1]}"
-                    else:
-                        cross_pack_versions.setdefault(prefix, "^0.0")
-                    continue
-            unresolved.append({"field": field_label, "target": target})
+    # PACK-14: delegate to the shared Java classifier (with the inline fallback inside), so the CLI
+    # and the generated controller use one rule set.
+    exported_concepts, rewrites, cross_pack_versions, unresolved = _pack_export_classify(
+        exported_concepts, export_set, packs_root)
 
     if unresolved and not getattr(args, "allow_unresolved_refs", False):
         lines = "; ".join(f"{item['field']} -> {item['target']!r}" for item in unresolved)
@@ -9111,12 +9194,6 @@ def _run_monitor_engine_start(args: argparse.Namespace) -> int:
     so closing the window takes this process and the engine down together instead of leaving a
     browser-automation server listening on a user's machine.
     """
-    # This module imports `time` per-function (there is no module-level import), and this one was
-    # missing while the readiness loop below calls time.sleep -- so `npdev monitor engine-start`
-    # raised NameError the moment it reached that loop, i.e. on every invocation that got as far as
-    # waiting for the engine. Found when an agent had to bypass the verb and spawn the engine
-    # process directly to do browser verification.
-    import time
     root = Path(args.root).expanduser()
     if not npdev_monitor._engine_root_ok(root):
         raise CliError(
@@ -9137,7 +9214,8 @@ def _run_monitor_engine_start(args: argparse.Namespace) -> int:
     if not Path(argv[0]).exists():
         raise CliError(f"the engine launcher is missing: {argv[0]} -- run `npm install` in {root} once")
     env = dict(os.environ)
-    env.update(npdev_monitor.engine_start_env(args.port, args.allow_origin, api_key, str(artifact_dir)))
+    env.update(npdev_monitor.engine_start_env(args.port, args.allow_origin, api_key, str(artifact_dir),
+                                              allow_evaluate=args.allow_evaluate))
     emit({"kind": "starting", "root": str(root), "port": args.port,
           "allowedOrigins": sorted(set(args.allow_origin))})
     process = subprocess.Popen(argv, cwd=str(artifact_dir), env=env,
@@ -11533,6 +11611,11 @@ def build_parser() -> argparse.ArgumentParser:
                                            "need the union, and a caller that sends one origin "
                                            "silently breaks the other.")
     monitor_engine_start.add_argument("--api-key", default=None)
+    monitor_engine_start.add_argument("--allow-evaluate", action="store_true",
+                                      help="Opt-in: enable the engine's `evaluate` step "
+                                           "(ALLOW_EVALUATE=true) so a routine can stub window.prompt/"
+                                           "window.confirm. Powerful by design, so it stays off unless "
+                                           "the caller asks for it -- never a silent default.")
     monitor_engine_start.add_argument("--json", action="store_true")
 
     monitor_logs = monitor_sub.add_parser(

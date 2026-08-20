@@ -20,7 +20,7 @@ public final class ScheduledEventSql {
 
     public static String selectDue(boolean forceDue, SqlDialect dialect) {
         return dialect.limited("SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
-                + "trigger_correlation_id, event_name, due_at, status, attempt_count, created_at, updated_at, "
+                + "trigger_correlation_id, tenant_id, event_name, due_at, status, attempt_count, created_at, updated_at, "
                 + "processed_at, payload "
                 + "FROM " + SCHEDULE_TABLE + " "
                 + "WHERE status = ? "
@@ -50,9 +50,9 @@ public final class ScheduledEventSql {
     public static String insert() {
         return "INSERT INTO " + SCHEDULE_TABLE + " ("
                 + "id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
-                + "trigger_correlation_id, event_name, due_at, payload, status, attempt_count, created_at, updated_at"
+                + "trigger_correlation_id, tenant_id, event_name, due_at, payload, status, attempt_count, created_at, updated_at"
                 + ") VALUES ("
-                + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?"
+                + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?"
                 + ")";
     }
 }

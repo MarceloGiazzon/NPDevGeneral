@@ -4,8 +4,10 @@ title: >-
   ALLOW_EVALUATE=false, and r7-2's routine searches for seed-button text that REG-189 changed
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-19
+closed: 2026-08-20
+verification: UNIT_TESTED
 source: >-
   Found while browser-verifying EDIT-7 (R7.4). Both confirmed against real source/behaviour; neither
   fixed, as `NPDevCli` was held by a concurrent workstream and the routine belongs to another item.
@@ -34,13 +36,27 @@ detail: |
   Preferring the emitter's deterministic selectors (`#concept-<Name>`, `[name=field]`, action-button
   ids) over visible text is the durable answer, and is what MON-15's coverage matching and R3.3's
   generated routines already rely on.
+
+  2026-08-20 (fix), two parts:
+  (a) `engine_start_env` now takes `allow_evaluate: bool = False` and sets ALLOW_EVALUATE
+      "true"/"false" accordingly; `npdev monitor engine-start` gained an `--allow-evaluate` opt-in flag
+      threaded through `_run_monitor_engine_start`. `npdev explore`'s `_start_engine` keeps the default
+      (off) unchanged. Test: NPDevCli/tests/test_monitor_engine_start.py (3 tests, RED->GREEN).
+  (b) The seed CTA now exposes `data-seed-id=<seed.id>` (business-ui-app.mustache), and
+      r7-2-empty-state-seed-cta.json addresses it via `button[data-seed-id="demo-users"]` instead of the
+      rendered label. Test: BusinessUiEmitterSeedCtaHookTest (asserts the emitted asset carries the
+      hook); the routine-side RED (matching "Demo users" while the one-seed app renders "Load sample
+      data") was already recorded above.
 guard:
-  kind: manual
-  ref: >-
-    (a) grep ALLOW_EVALUATE in NPDevCli/npdev_monitor.py -- currently the literal "false".
-    (b) Run r7-2-empty-state-seed-cta.json against simple-user-registry-h2local (now one seed) --
-    it looks for "Demo users" while the CTA renders "Load sample data".
+  kind: test
+  ref: NPDevCli/tests/test_monitor_engine_start.py
   asserts: >-
-    (a) a routine can opt into evaluate steps through a supported path rather than needing the engine
-    started by hand; (b) r7-2's assertion matches the CTA the app actually renders for a one-seed app
-  provenRed: false
+    engine_start_env sets ALLOW_EVALUATE=false by default and =true under allow_evaluate=True (the
+    opt-in threaded from `npdev monitor engine-start --allow-evaluate`), so a routine can stub
+    window.prompt/confirm through a supported path rather than starting the engine by hand; and the
+    seed CTA exposes data-seed-id so r7-2 addresses it by identity, not rendered label.
+  provenRed: true
+  provenRedNote: >-
+    Captured by running test_monitor_engine_start before the fix: engine_start_env rejected the
+    allow_evaluate kwarg (TypeError). The (b) half's RED was already observed live (routine matched
+    "Demo users" while the one-seed app renders "Load sample data"), as recorded in the source note.

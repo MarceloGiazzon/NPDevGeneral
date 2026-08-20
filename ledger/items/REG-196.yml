@@ -1,0 +1,63 @@
+id: REG-196
+title: >-
+  SupportedCoreControllerBlackBoxIntegrationTest's source-tree discovery cannot match the manifest's
+  actual (api-only, two-module) scope -- a test-side scope mismatch, not a manifest drift
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-20
+source: >-
+  Found 2026-08-20 while reviving SupportedCoreControllerBlackBoxIntegrationTest during QUAL-5 Stage 3
+  against the assembled simple-contact-intake sample. The test asserts "every RuntimeHost controller
+  source must be classified as allowed, deferred, or test-only" and failed for real (not fixture
+  coupling).
+surface: runtimehost/controller-surface-governance
+files:
+  - NPDevRuntimeHost/src/test/java/com/finalexec/SupportedCoreControllerBlackBoxIntegrationTest.java
+  - NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json
+detail: |
+  SupportedCoreControllerBlackBoxIntegrationTest.everyRuntimeHostControllerIsClassifiedExactlyOnce()
+  discovers every *Controller.java under the assembled app's src/main/java/com/finalexec (recursive) and
+  asserts that set equals allowedControllers UNION deferredControllers UNION testOnlyControllers. It fails
+  with a real diff (line 66), not fixture-coupling:
+
+  The first read of that diff as "the manifest drifted" was WRONG. Verified against the actual module
+  layout:
+
+  - The manifest is api-scoped and has ZERO phantom entries -- all 39 entries map to a real controller:
+    29 in RuntimeHost/src/main/java/com/finalexec/api(+.internal), 3 in the jar-shipped runtimehost-core
+    module (RuntimeMetadataValidationController, RuntimeSchedulesController, StorageSummaryController --
+    moved there by the BT-1 split), 4 more api.internal deferred, 2 api.experimental deferred
+    (FlowBuilderController, BetaOnboardingController), and HelloController (the compile-time-excluded root
+    placeholder).
+
+  - The 10 "unclassified" controllers are NOT a manifest gap -- they are NON-api controllers
+    (com.finalexec.controlpanel.*, com.finalexec.auth, com.finalexec.seed, com.finalexec.review) that
+    RuntimeControllerAllowlistConfig's own REG-180 comment says are INTENTIONALLY not in allowedControllers
+    ("add-ControlPanel-to-allowlist ... tried and reverted ... would break the runtime-surface invariant").
+    They are a separate SUPERUSER admin surface, outside the supported-core api surface the manifest governs.
+
+  - The real defect is the TEST's discovery scope. It walks the assembled app's whole com.finalexec tree,
+    which (a) INCLUDES the 10 non-api controllers the manifest deliberately omits, and (b) EXCLUDES the 3
+    runtimehost-core controllers (jar-shipped, no source under src/main/java) and the 3
+    experimental/placeholder deferred controllers (copy/compile-time excluded). No walk of the assembled
+    app's source tree can ever equal the manifest's platform-wide, api-only set.
+
+  Why it matters: the completeness invariant ("every controller classified") is genuinely valuable -- it is
+  the only thing that catches an api controller added to source but forgotten in the manifest (which would
+  then be stripped at runtime under supported-core). But as written it is untestable, because the manifest
+  spans two modules and the test scans one assembled tree. The fix is a TEST-side design decision, not a
+  manifest edit, and until it lands the test stays excluded (see QUAL-5).
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/SupportedCoreControllerBlackBoxIntegrationTest.java
+  asserts: >-
+    everyRuntimeHostControllerIsClassifiedExactlyOnce() passes against the manifest's ACTUAL scope: every
+    com.finalexec.api controller across RuntimeHost AND runtimehost-core is classified, and no manifest
+    entry is phantom.
+  provenRed: true
+  provenRedNote: >-
+    Reproduced live 2026-08-20 against the assembled simple-contact-intake sample: the test failed at
+    SupportedCoreControllerBlackBoxIntegrationTest.java:66. The initial 10-unclassified / 6-phantom read
+    was later corrected to a test-side scope mismatch -- the manifest is api-scoped with zero phantom
+    entries, and the test scans a single assembled tree that can never equal it.

@@ -113,7 +113,7 @@
 
   function humanize(str) {
     return String(str)
-      .replace(/([A-Z])/g, " $1")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
       .replace(/^./, function (s) { return s.toUpperCase(); })
       .trim();
   }
@@ -3046,7 +3046,12 @@
       const multiple = state.seeds.available.length > 1;
       state.seeds.available.forEach(function (seed) {
         const label = "Load sample data" + (multiple ? ": " + (seed.label || seed.id) : "");
-        actions.appendChild(button(label, "secondary", function () { runSeed(seed.id, concept); }));
+        const seedButton = button(label, "secondary", function () { runSeed(seed.id, concept); });
+        // REG-192: a stable, data-shape-independent hook (the seed's own id) so a routine can address
+        // this CTA without coupling to its rendered label, which changed "Demo users" -> "Load sample
+        // data" when REG-189 made a single-seed manifest render correctly.
+        seedButton.dataset.seedId = seed.id;
+        actions.appendChild(seedButton);
       });
     }
     wrap.appendChild(actions);

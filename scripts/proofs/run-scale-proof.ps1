@@ -313,7 +313,16 @@ if (-not $overallFailed) {
     $sw.Stop()
     $buildOk = $build.ExitCode -eq 0
     $phases.build = New-Phase -Status ($(if ($buildOk) { "passed" } else { "failed" })) -DurationMs $sw.ElapsedMilliseconds -Message ("exit " + $build.ExitCode)
-    if (-not $buildOk) { $overallFailed = $true }
+    if (-not $buildOk) {
+        $overallFailed = $true
+        # SCALE-1: a build failure captured only into log files leaves the CI log with a silent gap
+        # and no cause. Stream the tail of both logs so the failure is visible where the run is
+        # inspected -- the full files remain on disk under $appRoot for anyone who needs them.
+        Write-Host "-- build FAILED (exit $($build.ExitCode)); tail of scale-proof-build.stderr.log --" -ForegroundColor Red
+        if (Test-Path -LiteralPath $buildStderr) { Get-Content -LiteralPath $buildStderr -Tail 40 | ForEach-Object { Write-Host $_ } }
+        Write-Host "-- tail of scale-proof-build.stdout.log --" -ForegroundColor Red
+        if (Test-Path -LiteralPath $buildStdout) { Get-Content -LiteralPath $buildStdout -Tail 40 | ForEach-Object { Write-Host $_ } }
+    }
 }
 
 # -- API key provisioning (SCALE-2) ----------------------------------------------------------------

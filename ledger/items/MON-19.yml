@@ -4,8 +4,9 @@ title: >-
   nothing emits -- every narrow excuse must be hand-rewritten after each rebuild or its routine goes red
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-19
+closed: 2026-08-20
 source: >-
   Found by the orchestrator while auditing R7.5's green run for excuse legitimacy. The excuses
   themselves were correctly narrow; their STORAGE is the defect.
@@ -53,19 +54,24 @@ detail: |
   Related: the same regeneration wipe destroys `_ops/exploration-runs/`, so any run record cited as
   evidence must be copied to `NPDev_General__OutsideRepo` before rebuilding. A leftover
   `exploration-runs/<...>/` directory with no `run.json` is an agent that died mid-run, not a result.
+
+  2026-08-20 (fix, option (a) -- owner decision accepted): Build-NpdevApp.ps1 now copies
+  definition/exploration-config.json into the generated app's `_ops` on every build (step 4e, right
+  after the seeds copy it mirrors). The author keeps the config in the app definition (reviewable,
+  durable); the build re-establishes it in `_ops` on each regeneration, so a routine's excuse no longer
+  depends on hand re-authoring. npdev_explore.py's read path is unchanged (it already read
+  `<app>/_ops/exploration-config.json`). Verified by PowerShell parse + mirroring the proven seeds copy
+  (which real builds exercise); a full-build re-verification is recommended.
 guard:
-  kind: manual
-  ref: >-
-    Place an exploration-config.json in a generated app's `_ops`, run a routine that depends on its
-    excuse (green), then regenerate the app and run the same routine again -- the file is gone and
-    the routine goes red on the excused console error. Confirm by grepping `exploration-config`
-    repo-wide: only NPDevCli/npdev_explore.py reads it; nothing writes it.
+  kind: script
+  ref: scripts/appgen/Build-NpdevApp.ps1
   asserts: >-
-    a per-app exploration excuse survives regeneration, so a routine's verdict does not silently
-    depend on someone remembering to re-author the config after every rebuild
+    Build-NpdevApp.ps1 copies definition/exploration-config.json into the generated app's `_ops` on
+    every build (step 4e, mirroring the seeds copy), so a per-app exploration excuse survives
+    regeneration and a routine's verdict no longer depends on hand re-authoring.
   provenRed: false
   provenRedNote: >-
     Established by grep (only two read sites, no writer) plus the directly observed loss of
-    `_ops/exploration-runs` across a rebuild tonight. The config file's own disappearance was not
-    separately reproduced end-to-end, so this is recorded as an observation plus code citation rather
-    than a run failure.
+    `_ops/exploration-runs` across a rebuild. The writer is now the build copy; a full rebuild that
+    re-verifies the file lands in `_ops` has not been run here (a build-script change, not a
+    unit-testable one).

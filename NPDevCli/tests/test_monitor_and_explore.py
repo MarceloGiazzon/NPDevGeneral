@@ -381,7 +381,7 @@ class EngineDetection(unittest.TestCase):
     def test_not_found_is_reported_not_guessed(self):
         with TemporaryDirectory() as tmp:
             result = npdev_monitor.detect_engine(port=59998, configured_root=None,
-                                                 workspace_root=Path(tmp))
+                                                 workspace_root=Path(tmp), search_derived=False)
             self.assertFalse(result["found"])
             self.assertEqual(result["state"], "not-found")
             self.assertIsNone(result["root"])
@@ -392,7 +392,7 @@ class EngineDetection(unittest.TestCase):
             fake = Path(tmp) / "scrapforai"
             fake.mkdir()
             result = npdev_monitor.detect_engine(port=59998, configured_root=str(fake),
-                                                 workspace_root=Path(tmp))
+                                                 workspace_root=Path(tmp), search_derived=False)
             self.assertFalse(result["found"])
 
     def test_a_declared_root_with_the_right_contents_is_accepted(self):
@@ -407,6 +407,25 @@ class EngineDetection(unittest.TestCase):
             self.assertTrue(result["found"])
             self.assertEqual(result["state"], "installed-stopped")
             self.assertEqual(result["via"], "manager.json")
+
+    def test_search_derived_false_skips_the_derived_candidate_scan(self):
+        # MON-24: the verdict must depend only on the arguments passed, not on whether the runner's
+        # temp directory sits under a tree that happens to contain a real engine checkout.
+        with TemporaryDirectory() as tmp:
+            with mock.patch.object(npdev_monitor, "_derived_candidate_groups") as derived:
+                derived.return_value = iter([])
+                result = npdev_monitor.detect_engine(port=59998, configured_root=None,
+                                                     workspace_root=Path(tmp), search_derived=False)
+            derived.assert_not_called()
+            self.assertFalse(result["found"])
+
+    def test_search_derived_defaults_to_on(self):
+        with TemporaryDirectory() as tmp:
+            with mock.patch.object(npdev_monitor, "_derived_candidate_groups") as derived:
+                derived.return_value = iter([])
+                npdev_monitor.detect_engine(port=59998, configured_root=None,
+                                            workspace_root=Path(tmp))
+            derived.assert_called_once_with(Path(tmp))
 
 
 class RoutineValidation(unittest.TestCase):

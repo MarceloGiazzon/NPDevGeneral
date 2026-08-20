@@ -324,12 +324,15 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/PublicationRollbackE2EIT.java',
         'com/finalexec/RuntimeMetadataControllerStandaloneTest.java',
         'com/finalexec/RuntimeMetadataValidationControllerStandaloneTest.java',
-        'com/finalexec/RuntimePluginFilesystemDiscoveryIntegrationTest.java',
-        'com/finalexec/RuntimePluginStatusControllerIntegrationTest.java',
         'com/finalexec/RuntimePluginRuntimeRefResolverTest.java',
         'com/finalexec/RuntimeUiMetadataControllerStandaloneTest.java',
+        // QUAL-5 Stage 3 (2026-08-20): RuntimePluginStatusControllerIntegrationTest,
+        // RuntimePluginFilesystemDiscoveryIntegrationTest, and SupportedRuntimeSurfaceAllowlistIntegrationTest
+        // are REVIVED -- each passes against the assembled simple-contact-intake sample. This one stays
+        // excluded because it FAILS FOR REAL (not fixture-coupling): runtime-supported-controllers.json and
+        // the controller source tree have diverged -- 10 unclassified source controllers, 6 phantom manifest
+        // entries (see QUAL-5 detail). Reconcile the manifest before reviving this test.
         'com/finalexec/SupportedCoreControllerBlackBoxIntegrationTest.java',
-        'com/finalexec/SupportedRuntimeSurfaceAllowlistIntegrationTest.java',
         'com/finalexec/Stage12UiModelRuntimeIT.java',
         'com/finalexec/Step01MultiConceptIntegrationTest.java',
         'com/finalexec/Step03NestedJsonbIntegrationTest.java',
