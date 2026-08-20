@@ -3,7 +3,7 @@ title: >-
   R10.3 is blocked: AuthoringApp's scaffolding/import-export studio has no replacement
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-08-19
 source: >-
   R10.3 (Roadmap Collection 2026-08-18) attempted 2026-08-19. The frozen bundle was deleted, then
@@ -13,6 +13,12 @@ files:
   - NPDevGenerator/generator/src/main/resources/npdev-templates/static-react/assets/AuthoringApp.js
   - NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ModelAuthoringEmitter.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/model-authoring.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/model-surface.mustache
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/api/GeneratorFacade.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ModelAuthoringEmitterTest.java
 detail: |
   **R10.3 (delete `static-react/`) cannot proceed yet.** The deletion was performed and then fully
   reverted from git on the same day, once the three JS chunks were audited by grepping their actual
@@ -72,6 +78,90 @@ detail: |
   remainder is duplicated by `/npdev-ui/`), but the manifest ships the three chunks together and
   `app.js` lazy-loads both by name, so a partial deletion needs the router shell edited too -- and
   that file has no producer.
+
+  2026-08-19, later same session: option 2 above (re-emit the scaffolding/import-export capability
+  from the generator) SHIPPED a real, minimal slice -- `ModelAuthoringEmitter`
+  (`NPDevGenerator/generator/.../emitters/ModelAuthoringEmitter.java`) + `model-authoring.mustache`,
+  wired into `GeneratorFacade` right after `ModelSurfaceEmitter` and reserved in
+  `FinalAppAssembler.RESERVED_WEB_ASSET_FILES`. Every generated app now also ships
+  `static/model-authoring.html`, a second self-contained page alongside `model-surface.html` (linked
+  from it), unconditional and independent of `UI_GENERATE_BUSINESS_UI` like its sibling.
+
+  What it does, matching the owner's "minimal replacement" framing: (1) import an arbitrary
+  `model.json` from a local folder via `window.showDirectoryPicker`, rendering its top-level shape
+  with the SAME generic array/object/scalar walk `model-surface.mustache` uses for the compiled
+  model it embeds -- copied into this page rather than shared, so a DSL section this page has never
+  heard of still renders once imported, the same "enumerated, not named" property; (2) ONE
+  scaffolding action, "Add concept" (name + N typed fields from a small dropdown --
+  string/int/decimal/boolean/datetime/uuid -- every new concept auto-gets a standard `id:uuid`
+  field), mutating the in-browser model object and re-rendering; (3) export back to `model.json` in
+  the SAME chosen folder via `createWritable()`/`write()`/`close()`. Zero `fetch()`/XHR anywhere in
+  the page's script, and critically zero call to any `/api/...` path -- R10.1's deleted draft
+  write-back door stays shut by construction, mechanically guarded by
+  `ModelAuthoringEmitterTest.neverCallsBackIntoThisAppsOwnServer` (asserts no `"/api/"` substring
+  anywhere in the emitted HTML, not just the script body).
+
+  Deliberately NOT built this slice, same discipline as BUILD-2's own deferred list: starter
+  templates (Business Record / Approval Workflow), the other six scaffolding actions
+  (field/flow/panel/invariant/state/transition -- only "concept" shipped), reference-typed fields in
+  the Add-concept form (dropdown offers only scalar types), and any richer editing UI (rename/delete
+  a concept, edit an existing field). AuthoringApp.js's own ~594-label surface is not remotely
+  matched; this is a proof that the capability CLASS (local-folder round trip + at least one
+  scaffolding action) works end to end through the generator, not a feature-complete port.
+
+  Verified for real, not just unit-tested:
+  - `:generator:test`: 435 tests, 0 failures attributable to this change (`ModelAuthoringEmitterTest`'s
+    3 new cases + `ModelSurfaceEmitterTest`'s existing 4, all green). Confirmed on an ISOLATED private
+    Gradle build root (`NPDEV_BUILD_ROOT` override) after the shared worktree build root
+    (`.claude/worktrees/Build`) produced non-reproducible cross-agent corruption
+    (`NoClassDefFoundError`/`ClassNotFoundException`/jacoco execution-data mismatches) under
+    concurrent sibling-worktree agents -- confirmed NOT this change's fault by reproducing the same
+    corruption on a fully clean git-stash baseline. Two PRE-EXISTING, unrelated failures remain on a
+    clean isolated run: `ModelChangeClassifierTest`'s two corpus property tests choke on
+    `NPDevSamples/pack9-role-binding-a/Input/model.json` (today's earlier PACK-9 commit, `340ed423` --
+    that model has no top-level `"concepts"` key, composing it entirely via `packs[]`, and the test
+    parses the raw JSON directly rather than through `ModelSourceResolver`'s pack-composition path).
+    Confirmed pre-existing and unrelated by reproducing on a clean stash with no EDIT-12 changes
+    present. Not fixed here -- out of scope for this item, filed for whoever picks up PACK-9
+    follow-through.
+  - Generated, built (`gradlew clean build -x test` -- the generated app's OWN full `:test` suite has
+    unrelated pre-existing failures of its own, see below), and BOOTED the real `npdev-canary` sample
+    from this change (H2Local, dev+trial profiles), confirming `GET /model-authoring.html` returns 200
+    with the expected content (14312 bytes, `showDirectoryPicker` present) from the running app's
+    static resource handler -- not just present on disk. `model-surface.html`'s new cross-link to it
+    also confirmed live. The old `static-react/` bundle (`AuthoringApp.js` included) still serves
+    unchanged at `/npdev-ui-react/`, confirmed 200 -- this slice added a page, it did not touch or
+    replace the old bundle's own delivery. Skipped the generated app's OWN `:test` task: three
+    unrelated pre-existing failures (`RuntimeMetadataServiceHotSwapTest`,
+    `SandboxedPluginExecutionEngineTest`, `SchemaLifecycleExecutorProofMatrixTest` -- the last throwing
+    a raw H2 `JdbcSQLSyntaxErrorException`, consistent with concurrent-agent DB contention on this
+    machine) have nothing to do with this change; `:generator:test` above is the module actually
+    touched.
+  - Real browser round-trip proof (Playwright, headless Chromium, both against the static file on
+    disk AND against the live running app's served URL): import(seed model, 1 concept) -> Add concept
+    "Invoice" (fields amount:decimal, issuedAt:datetime) -> export -> re-import the SAME exported
+    file. All 20 assertions passed both times: exported "Widget" byte-identical to the original
+    (nothing else touched), new "Invoice" concept present with its auto id field plus both
+    user-entered fields, and the re-import (an independent re-parse of the exported bytes, not the
+    mutated in-memory object) shows both concepts. `window.showDirectoryPicker` itself was NOT
+    exercised -- it opens a native OS dialog with no Playwright automation surface (unlike
+    `<input type=file>`), so the test injects a fake `FileSystemDirectoryHandle`-shaped object via
+    `page.addInitScript()` BEFORE the page's own script runs; the page's own
+    `import()`/`export()`/`onAddConcept()` functions run completely unmodified against it. What this
+    does NOT prove: that the real native folder-picker dialog opens and grants permission correctly --
+    inherently un-automatable without OS-level input injection, stated honestly rather than hidden.
+  - `scripts/hygiene/check-deterministic-generation.ps1`: PASSED (two independent generations of the
+    default sample, byte-identical).
+
+  EDIT-12 moves OPEN -> PARTIAL, not DONE, not closed: this ships a real, working instance of option
+  2, proving the mechanism (generator-emitted, model-authoring capability, local-folder round trip)
+  end to end -- but AuthoringApp.js's actual surface (starter templates, 6 more scaffolding actions,
+  richer editing) remains unreplaced by a wide margin. **R10.3 (delete `static-react/`) is explicitly
+  NOT safe to attempt on the strength of this alone** -- AuthoringApp.js is still the only place a
+  user can scaffold a field/flow/panel/invariant/state/transition or start from a template. The guard
+  below is UNCHANGED for that reason: the manifest must keep listing all five bundle assets and
+  `AuthoringApp.js` must keep existing until a future slice (or an owner decision per option 1)
+  closes the remaining gap.
 guard:
   kind: manual
   ref: NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json
@@ -79,5 +169,7 @@ guard:
     The manifest still lists all five bundle assets, and `static-react/assets/AuthoringApp.js` still
     exists. When R10.3 is finally executed, this item must close in the same change -- and if the
     manifest is emptied while AuthoringApp's scaffolding/import-export capability still has no
-    replacement, that is the regression this item exists to prevent.
+    replacement (starter templates + all seven scaffolding action types + a richer editing UI, not
+    just the "Add concept" slice this session shipped), that is the regression this item exists to
+    prevent.
   provenRed: false
